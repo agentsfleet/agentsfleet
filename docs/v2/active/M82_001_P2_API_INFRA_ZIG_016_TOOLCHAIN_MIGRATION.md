@@ -4,13 +4,13 @@
 **Milestone:** M82
 **Workstream:** 001
 **Date:** Jun 02, 2026
-**Status:** PENDING
-**Priority:** P2 — toolchain bump, no customer-facing behaviour change; parked until a forcing function pulls it.
+**Status:** IN_PROGRESS
+**Priority:** P2 — toolchain bump, no customer-facing behaviour change.
 **Categories:** API, INFRA
-**Batch:** B1 — runs first; M82_002 (`std.http.Client`/auth rewrite) is B2, gated on this clearing.
-**Branch:** {feat/m82-zig-016-toolchain — added when work begins}
+**Batch:** B1 — single atomic landing. The `std.http.Client` migration originally carved out to M82_002 is **absorbed into B1** (see Discovery, Jun 03, 2026): 0.16 makes `io: Io` a required, no-default field on `std.http.Client`, so the build cannot go green on 0.16 while those sites stay on the 0.15 constructor — the split was infeasible. M82_002 is dissolved.
+**Branch:** feat/m82-zig-016-toolchain
 **Depends on:** None hard. Sequenced PENDING behind M80 (runner fleet) completion — see Overview for the forcing-function trigger.
-**Provenance:** agent-generated (pre-spec, `spike/zig-0.16-feasibility` — feasibility proven: full dependency graph compiles on 0.16, only mechanical `std` renames remain in our own source)
+**Provenance:** agent-generated (pre-spec, `spike/zig-0.16-feasibility` — feasibility proven: full dependency graph compiles on 0.16). **Correction (Jun 03, 2026):** the spike's "only mechanical `std` renames remain in our own source" claim was proven for the *dependency graph*, not the full `src/` tree — the spike diff touched zero `std.http.Client` sites and never hit the 0.16 `io: Io` requirement. That migration is real work and is now in-scope (§3b).
 
 > **Provenance is load-bearing.** This spec was authored from a live spike, not from reading alone. The dependency-graph claims (§1) are compile-verified on the spike branch; the source-migration counts (§2–§3) are `git grep` calibrations, not estimates. Re-verify the counts at PLAN — they drift as `main` advances.
 
@@ -49,6 +49,7 @@
 - **`docs/ZIG_RULES.md`** — all `*.zig` edits: pg-drain lifecycle (untouched here), tagged-union results, multi-step `errdefer`, cross-compile.
 - **`docs/LOGGING_STANDARD.md`** — the logging hot path (`src/lib/logging/mod.zig`) changes how it sources the timestamp; emit shape must not change.
 - **`docs/LIFECYCLE_PATTERNS.md`** — `vendor/httpz` `Worker.deinit` (the UAF patch) and the new `clock.zig` init/deinit-free shape.
+- **`docs/AUTH.md`** — **mandatory read for §3b**: `clerk_backend.zig` and `jwks.zig` are auth-boundary files. The migration threads `io` only; credential/token logic is untouched. Any deviation STOPs and surfaces to Indy.
 
 ---
 
@@ -73,9 +74,9 @@
 
 **Problem:** The toolchain is pinned to Zig 0.15.2 while 0.16.0 is the current stable (released Apr 13, 2026). Our own libraries (`posthog-zig`, `nullclaw`) have already moved to 0.16; staying on 0.15.2 splits the toolchain across the org and blocks adopting any 0.16-only dependency. There is no behaviour to change — this is pure toolchain currency.
 
-**Solution summary:** Re-pin every dependency to its 0.16-compatible revision (two needing a vendored fork — `httpz`, `zig-yaml`), introduce a single `clock` helper to absorb the removal of `std.time.milliTimestamp`/`nanoTimestamp`, mechanically redirect ~206 wall-clock call sites to it, apply the handful of remaining `std` renames (`DebugAllocator`, `Io.Writer.fixed`, unmanaged HashMaps), and cut CI over to freshly-baked `:0.16.0` images. The `std.http.Client` rewrite touches the auth boundary and is split into M82_002.
+**Solution summary:** Re-pin every dependency to its 0.16-compatible revision (two needing a vendored fork — `httpz`, `zig-yaml`), introduce a single `clock` helper to absorb the removal of `std.time.milliTimestamp`/`nanoTimestamp`, mechanically redirect ~206 wall-clock call sites to it, apply the handful of remaining `std` renames (`DebugAllocator`, `Io.Writer.fixed`, unmanaged HashMaps), thread a `std.Io.Threaded` instance to the `std.http.Client` sites (0.16 requires `io: Io`), and cut CI over to freshly-baked `:0.16.0` images. **Scope note (Indy directive, Jun 03, 2026):** migrate *everything* to the 0.16 approach — no 0.15 shims retained, `std.http.Client` included. The clock helper uses a **direct wall-clock syscall, not `Io`**, deliberately keeping `Io` out of the 206 timestamp sites; `Io` is threaded only to the ~5 http.Client sites. Adopting `std.Io` as the daemon's central async runtime (Io threaded everywhere) remains out of scope — that is a prototype-scale refactor, not a toolchain bump.
 
-**Forcing-function trigger (why PENDING, not active):** This is a no-deadline migration with real churn and one runtime risk (upstream's `http.zig` 0.16 branch self-describes as experimental). It flips to active when **any** of: a dependency we want goes 0.16-only · a measured 0.16 perf/footprint win we need · `http.zig`'s 0.16 branch sheds the "experimental" label · M80 (runner fleet) wraps and a cleanup window opens.
+**Forcing-function trigger (historical — now active):** Authored PENDING as a no-deadline migration with real churn and one runtime risk (upstream's `http.zig` 0.16 branch self-describes as experimental). **Pulled active Jun 03, 2026 by Indy's "migrate all to 0.16" directive** (Discovery) — the toolchain currency is wanted now, not parked behind a later forcing function.
 
 ---
 
@@ -103,6 +104,9 @@
 | `src/zombied/observability/metrics_workspace.zig`, `metrics_runner_test.zig`, `cmd/doctor.zig` | EDIT | `fixedBufferStream` → `Io.Writer.fixed` |
 | `src/zombied/main.zig` | EDIT | `GeneralPurposeAllocator` → `DebugAllocator`; clock for log timestamps |
 | `src/zombied/cmd/preflight.zig` | EDIT | `posthog.init` gains the `io` param (v0.2.0 signature) |
+| `src/runner/daemon/control_plane_client.zig`, `src/zombied/observability/otel_logs.zig` | EDIT | `std.http.Client` gains the required `io: Io` field; thread a `std.Io.Threaded` to each construction (§3b) |
+| `src/zombied/auth/clerk_backend.zig`, `src/zombied/auth/jwks.zig` | EDIT | **Auth boundary** — same `io: Io` threading; read `docs/AUTH.md`, `/review` these two specifically. Mechanical Io-plumbing only; any auth-logic change STOPs and surfaces (§3b) |
+| http.Client test harnesses (`test_harness_server.zig`, `test_http_message.zig`, `cross_workspace_idor_test.zig`) | EDIT | Same `io: Io` threading in the test construction sites |
 | `.github/workflows/{test,lint,memleak,bench,cross-compile,deploy-dev,release,test-integration}.yml` | EDIT | `:0.15.2` image tags + `setup-zig` version → `0.16.0` (9 files) |
 | `playbooks/013_ci_zig_images/versions.env` | EDIT | `ZIG_VERSION` 0.15.2 → 0.16.0 + four new SHA256s; rebuild/push the three base images |
 | `docs/greptile-learnings/RULES.md` | EDIT | Reconcile RULE ZAL (0.15 ArrayList API → 0.16) — §5 |
@@ -111,8 +115,9 @@
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Two workstreams. **M82_001 (this, B1)** = deps + mechanical `std` migration + clock helper + CI. **M82_002 (B2)** = the `std.http.Client` rewrite, split out because it touches the auth boundary (`clerk_backend`, `jwks`) — per the rule that security-boundary follow-ups get their own spec+PR, not folded into a mechanical-cleanup diff. Within B1, the clock migration is its own Section because it is the single largest and riskiest mechanical change (orphan-sweep discipline).
-- **Alternatives considered:** (a) **One mega-PR** including `http.Client` — rejected: a ~95-file mechanical diff plus an auth-surface rewrite is unreviewable and violates the security-split rule. (b) **Thread `std.Io` through every timestamp call site** instead of a clock helper — rejected: that propagates `io` parameters through ~95 files and up their call trees, a far larger and more invasive diff than a single localized helper. (c) **Don't vendor zig-yaml; pin upstream main** — rejected: upstream's broken conformance harness breaks our build (proven on the spike); vendoring is the only way to consume the clean library today.
+- **Chosen shape:** One atomic workstream (B1). Deps + clock helper + mechanical `std` renames + `std.http.Client` `io`-threading + CI, landing together. The original two-workstream split (M82_002 for `std.http.Client`) was **dissolved** once 0.16's required `io: Io` field proved the build cannot go green without those sites — a deferral that breaks the build is not a deferral. Within B1, the clock migration (§2) and the http.Client `io`-threading (§3b) are their own Sections: the former is the largest mechanical change (orphan-sweep discipline), the latter the only one crossing the auth boundary (extra `docs/AUTH.md` + `/review` scrutiny).
+- **Security-split rule, reconciled:** the house rule (security-boundary work gets its own spec+PR) is satisfied differently here — `clerk_backend`/`jwks` changes are *mechanical `io`-plumbing forced by the compiler*, not auth-logic edits, and they cannot be separated from a green build. The rule's intent (no auth-logic riding an unrelated diff) is honoured by the §3b STOP-and-surface guard: any change beyond threading `io` halts and goes to Indy.
+- **Alternatives considered:** (a) **Keep `http.Client` in a follow-up (M82_002)** — rejected: infeasible, the 0.16 `io: Io` requirement breaks the build without it. (b) **Thread `std.Io` through every timestamp call site** instead of a clock helper — rejected: that propagates `io` through ~95 files and up their call trees; the clock helper uses a direct syscall and localizes the change. (c) **Adopt `std.Io` as the daemon's central runtime** — rejected for this PR: prototype-scale refactor, not toolchain currency (Out of Scope). (d) **Don't vendor zig-yaml; pin upstream main** — rejected: upstream's broken conformance harness breaks our build (proven on the spike); vendoring is the only way to consume the clean library today.
 - **Patch-vs-refactor verdict:** this is a **patch** (toolchain currency, behaviour-preserving) with one small **new abstraction** (the clock helper) that is itself the minimal change. The larger refactor — adopting `std.Io` as a first-class threaded dependency across the daemon — is real future work but explicitly out of scope; named in Out of Scope.
 
 ---
@@ -145,6 +150,14 @@ The small, well-bounded 0.16 renames. Each is a verbatim substitution surfaced b
 - **Dimension 3.2** — `std.io.fixedBufferStream` → `std.Io.Writer.fixed` (10 sites: logging/metrics/doctor) → Test `test_fixed_writer_emits_expected_bytes`
 - **Dimension 3.3** — `StringHashMap`/`AutoHashMap` unmanaged-API reconciliation (~6 sites) → Test `test_hashmap_unmanaged_round_trip`
 - **Dimension 3.4** — ArrayList 0.16 API reconciled across the diff (RULE ZAL surface) → Test `test_arraylist_016_api_compiles`
+
+### §3b — `std.http.Client` → 0.16 (`io: Io` threading)
+
+0.16 makes `io: Io` a **required, no-default field** on `std.http.Client` (alongside `allocator`). Every site constructs it as `.{ .allocator = alloc }`, which no longer compiles — so this is mandatory for a green build, not optional polish. Stand up one `std.Io.Threaded` (blocking-threaded backend; the daemon makes synchronous outbound HTTP calls) and thread it to each `std.http.Client` construction. This is the work the dissolved M82_002 named; it is mechanical `Io`-plumbing, **not** an auth-logic change. The two auth-boundary sites get extra scrutiny.
+
+- **Dimension 3b.1** — `std.Io.Threaded` stood up and `std.http.Client` constructions take `.io`; non-auth prod sites (`control_plane_client.zig`, `otel_logs.zig`) build + behave identically → Test `test_http_client_fetch_with_io`
+- **Dimension 3b.2** — auth-boundary sites (`clerk_backend.zig`, `jwks.zig`) threaded the same `io`; `docs/AUTH.md` read; emit/verify behaviour unchanged; null-key/no-token paths still gate cleanly → Test `test_auth_http_client_io_threaded`
+- **Dimension 3b.3** — http.Client test harnesses (`test_harness_server.zig`, `test_http_message.zig`, `cross_workspace_idor_test.zig`) threaded `io`; integration suite green → Test `test_integration_http_round_trip_on_016`
 
 ### §4 — CI / infra cutover
 
@@ -193,6 +206,8 @@ Contract: `clock.nowMillis()`/`nowNanos()` return the SAME epoch semantics as th
 |------|-------|--------------------------------------------------------|
 | httpz shutdown UAF regression | UAF patch dropped/mis-ported during re-vendor | `make memleak` + integration teardown on Linux non-blocking loop SIGSEGV/leak-reports; CI red before merge |
 | Missed timestamp site | A `std.time.*` call not redirected | Build fails (symbol removed) OR orphan sweep `test_no_residual_*` shows >0; gate blocks |
+| http.Client missing `io` | A `std.http.Client` construction left as `.{ .allocator = … }` | Build fails on 0.16 (`io` is required, no default); compile error names the site; gate blocks before merge |
+| Auth-logic drift in http migration | An auth-boundary edit goes beyond mechanical `io`-threading | §3b STOP-and-surface guard + `/review` over `clerk_backend`/`jwks`; any non-mechanical change halts to Indy with an ack quote |
 | Wrong clock epoch/unit | Helper returns monotonic ns or wrong scale | `test_clock_now_millis_is_wall_time` asserts ms magnitude ≈ Unix epoch, not a small monotonic counter |
 | zbench branch breaks bench build | `zig-0.16.0` branch incompatible with our bench harness | `zig build bench` compile check (bench lane); fall back to a pinned commit or fork-branch |
 | CI image SHA mismatch | Wrong/stale Zig SHA256 in `versions.env` | Image bake fails loud on checksum verify; no green CI until corrected |
@@ -208,6 +223,7 @@ Contract: `clock.nowMillis()`/`nowNanos()` return the SAME epoch semantics as th
 3. **Single Zig-version source of truth** — `build.zig.zon` `minimum_zig_version`, `versions.env` `ZIG_VERSION`, and the CI image tags all read `0.16.0`. Enforced by `test_no_residual_0152_in_ci` + a version-consistency grep (RULE UFS).
 4. **Cross-compile parity** — both `x86_64-linux` and `aarch64-linux` build (RULE XCC). Enforced by the cross-compile CI lane.
 5. **No milestone IDs in source** — no `M82`/`§`/dim tokens in `.zig`/`.sh`/test names (RULE TST-NAM). Enforced by the milestone-ID audit.
+6. **Every `std.http.Client` carries an `io`** — zero `std.http.Client = .{ .allocator = ... }` constructions without `.io` in `src/`. Enforced by the 0.16 compiler (required field) + an orphan grep; the auth-boundary sites change *only* their `io` threading, nothing in the credential/token logic.
 
 ---
 
@@ -227,6 +243,9 @@ Contract: `clock.nowMillis()`/`nowNanos()` return the SAME epoch semantics as th
 | 3.2 | unit | `test_fixed_writer_emits_expected_bytes` | each migrated `Io.Writer.fixed` site emits byte-identical output to its 0.15 `fixedBufferStream` baseline |
 | 3.3 | unit | `test_hashmap_unmanaged_round_trip` | put/get/iterate over the migrated maps returns inserted entries |
 | 3.4 | integration | `test_arraylist_016_api_compiles` | the full build compiles with the 0.16 ArrayList API |
+| 3b.1 | unit | `test_http_client_fetch_with_io` | `std.http.Client` built with `.io` performs a fetch; `control_plane_client`/`otel_logs` round-trip byte-identical to 0.15 baseline |
+| 3b.2 | unit | `test_auth_http_client_io_threaded` | `clerk_backend`/`jwks` build + fetch with threaded `io`; null-key/no-token paths still gate cleanly (no auth-logic change) |
+| 3b.3 | integration | `test_integration_http_round_trip_on_016` | full HTTP integration suite green on 0.16 with the threaded `Io.Threaded` |
 | 4.1 | integration | `test_ci_images_pin_016` | `versions.env` `ZIG_VERSION==0.16.0`; baked image reports `zig version` 0.16.0 |
 | 4.2 | unit (orphan) | `test_no_residual_0152_in_ci` | `grep -rn '0.15.2' .github/workflows playbooks/013_ci_zig_images` == 0 |
 | 4.3 | integration | `test_cross_compile_both_linux_targets` | `zig build -Dtarget=x86_64-linux` && `-Dtarget=aarch64-linux` both exit 0 |
@@ -304,6 +323,9 @@ grep -rn '0.15.2' .github/workflows playbooks/013_ci_zig_images | head
 - **Prerequisite verification (Jun 03, 2026) — both toolchain prerequisites resolved ahead of implementation:**
   - **zlint compatibility CONFIRMED.** zlint `v0.8.1` (the pin in `lint.yml`) parses Zig 0.16 grammar fine — `--print-ast` over all 575 real 0.16 files (full 0.16 std library recursively + the vendored 0.16 deps) returned **zero parse errors** (negative control verified the test catches real failures). 0.16 is a std-library reform, not a grammar change. No zlint fork or lane-gate needed; keep `ZLINT_VERSION: v0.8.1`. This removes the only out-of-our-control prerequisite.
   - **ci-zig 0.16.0 images BUILT + PUSHED.** All three `ghcr.io/usezombie/ci-zig-{alpine,debian-trixie,ubuntu}:0.16.0` are in GHCR (alpine multi-arch amd64+arm64). `playbooks/013_ci_zig_images/versions.env` bumped to 0.16.0 with authoritative ziglang.org SHAs (`x86_64-linux 70e49664…`, `aarch64-linux ea4b09bf…`) — that edit rides in `stash@{0}` with the rest of the foundation. §4 image-bake work is DONE; the workstream only needs to flip the `:0.15.2`→`:0.16.0` tags in the 9 workflows. Note: GHCR pushes were intermittently flaky (transient `DeadlineExceeded`/`connection reset` on the auth token) — each image took 1–2 retries; the cached layers make retries cheap.
+- **Scope reshape — `std.http.Client` pulled in, M82_002 dissolved (Jun 03, 2026):** At CHORE(open), Indy questioned the http.Client deferral. Investigation found 0.16's `std.http.Client` adds a **required, no-default `io: Io` field** (`$ZIG/lib/std/http/Client.zig` — `allocator: Allocator,` + `io: Io,`, neither defaulted). All sites construct `.{ .allocator = alloc }`, which does not compile on 0.16. Acceptance Criterion #1 ("`zig build` succeeds on 0.16") is therefore unsatisfiable while http.Client is deferred — the M82_001/M82_002 split was infeasible, not merely inconvenient. The spike never surfaced this: its diff touches zero http.Client sites, so "full src compiles on 0.16" was never actually true (only the dep graph was proven). Decision: fold the http.Client `io`-threading into B1 (§3b), dissolve M82_002.
+  - **Indy directive (verbatim):** _"I want to migrate all to the 0.16.0 approach not cling to 0.15.2"_ — context: whether to keep the conservative split or migrate everything, including `std.http.Client`, to 0.16 in one go. Resolved: migrate all; minimal-`Io` approach (clock via direct syscall, `Io` threaded only to the http.Client sites that require it); full `std.Io` daemon adoption stays out of scope.
+- **Q&A banked at CHORE(open) (Jun 03, 2026):** (1) `vendor/httpz` is a verbatim copy of `karlseguin/http.zig` branch `zig-0.16` @ `40be022` — confirmed via `git ls-remote` to be the *current* upstream `zig-0.16` HEAD — plus the one documented UAF stop-before-deinit patch. (2) Post-migration, local `make`/`zig build`/`make test` resolve `zig` via the repo-local `.mise.toml` (→ 0.16.0); `docker-compose` runs stock `postgres:18`/`redis:7` (no Zig) plus a `zombied` container whose `Dockerfile` `COPY`s a *host-built* binary (host build = mise = 0.16.0); CI uses `ci-zig-*:0.16.0`. No 0.15.2 survives once §4 lands.
 - **Consults** — {Architecture / Legacy-Design / gate-flag triage: question + Indy's decision, as they arise.}
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.}
 - **Deferrals** — every "deferred to follow-up" needs an Indy-acked verbatim quote here.
@@ -332,7 +354,7 @@ grep -rn '0.15.2' .github/workflows playbooks/013_ci_zig_images | head
 
 ## Out of Scope
 
-- **`std.http.Client` rewrite → M82_002 (B2).** The 5 real call sites (`clerk_backend`, `jwks`, `control_plane_client`, `runner/daemon/loop`, `otel_logs`) are split into their own spec+PR because two cross the auth boundary — security-surface work does not ride a mechanical-cleanup diff. M82_002 depends on this workstream clearing.
-- **Adopting `std.Io` as a first-class threaded dependency across the daemon** (vs the localized clock helper) — the larger refactor the 0.16 Io reform invites; future work, not triggered by toolchain currency.
+- ~~**`std.http.Client` rewrite → M82_002 (B2).**~~ **Pulled in-scope (§3b), M82_002 dissolved** — 0.16's required `io: Io` field makes deferral infeasible (the build won't compile without it). The 5 sites (`clerk_backend`, `jwks`, `control_plane_client`, runner loop caller, `otel_logs`) are migrated here.
+- **Adopting `std.Io` as a first-class threaded dependency across the daemon** (Io threaded through every call path, clock via `Io.now`, all blocking I/O via Io) — the larger refactor the 0.16 Io reform invites; future work, not triggered by toolchain currency. §3b threads `Io` only to the http.Client sites that *require* it, nothing further.
 - **Dropping the `httpz`/`zig-yaml` vendors** once upstream lands 0.16 fixes — a future re-pin; tracked in each `vendor/*/CHANGES.md`.
 - **Bumping `VERSION` / changelog** — internal toolchain change, no user-visible behaviour; no `<Update>` entry.
