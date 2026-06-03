@@ -28,7 +28,7 @@ Permanently delete all data from PlanetScale databases (DEV and/or PROD). This i
 ### Check credentials only (dry run)
 
 ```bash
-cd playbooks/011_database_teardown
+cd playbooks/operations/teardown/database
 ENV=dev ./01_credential_check.sh
 ```
 
@@ -37,7 +37,7 @@ ENV=dev ./01_credential_check.sh
 **Must run separately from PROD for safety:**
 
 ```bash
-cd playbooks/011_database_teardown
+cd playbooks/operations/teardown/database
 ALLOW_DATABASE_TEARDOWN=1 ENV=dev ./00_gate.sh
 ```
 
@@ -46,7 +46,7 @@ ALLOW_DATABASE_TEARDOWN=1 ENV=dev ./00_gate.sh
 **Must run separately from DEV for safety:**
 
 ```bash
-cd playbooks/011_database_teardown
+cd playbooks/operations/teardown/database
 ALLOW_DATABASE_TEARDOWN=1 ENV=prod ./00_gate.sh
 ```
 

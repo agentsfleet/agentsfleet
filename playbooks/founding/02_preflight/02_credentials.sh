@@ -219,7 +219,7 @@ check_vercel_envs() {
       echo "✓ vercel:$project/$key (production+preview)"
     else
       echo "✗ MISSING: vercel:$project/$key (have targets: ${targets:-none})"
-      echo "  fix: ./playbooks/001_bootstrap/02_vercel_env.sh"
+      echo "  fix: ./playbooks/founding/01_bootstrap/02_vercel_env.sh"
       missing=$((missing + 1))
     fi
   done

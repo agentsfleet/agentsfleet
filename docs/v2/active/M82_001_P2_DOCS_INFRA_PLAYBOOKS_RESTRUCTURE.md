@@ -109,24 +109,24 @@
 
 ## Sections (implementation slices)
 
-### §1 — Founding/operations directory split (history-preserving)
+### §1 — Founding/operations directory split (history-preserving) — ✅ DONE
 `git mv` the 15 dirs into the two-tier layout. Founding keeps two-digit ordinals where order is real; operations are named; teardowns nest under `operations/teardown/`. `015_redis_teardown` is untracked — `git add` it as part of the move so it stops living only in a local tree.
 - **Dimension 1.1** — every founding dir lands at `playbooks/founding/0N_<name>` with git history intact → Test `test_founding_layout_present`
 - **Dimension 1.2** — every operations runbook lands at `playbooks/operations/<name>` (teardowns under `teardown/`) → Test `test_operations_layout_present`
 - **Dimension 1.3** — no `playbooks/NNN_*` numeric-prefixed dir remains at the root → Test `test_no_legacy_numbered_dirs`
 
-### §2 — Reference re-pointing across the live blast radius
+### §2 — Reference re-pointing across the live blast radius — ✅ DONE
 Update every reference in CI, source, ops scripts, Makefile, active docs, and internal playbook cross-links to the new paths. Frozen records (done-specs, CHANGELOG) excluded by design.
 - **Dimension 2.1** — every `playbooks/<path>` reference in non-frozen files resolves on disk → Test `test_all_refs_resolve` (this is the core `check-playbooks` assertion)
 - **Dimension 2.2** — CI workflows reference the moved gate/script paths → Test `test_ci_paths_resolve`
 
-### §3 — README + ARCHITECTURE accuracy
+### §3 — README + ARCHITECTURE accuracy — ✅ DONE
 Rename `ARCHITECHTURE.md`→`ARCHITECTURE.md`; rewrite the README tree to the new layout; fix the `architecture/` directory reference to the real file; narrow the `ALLOW_VAULT_READS` convention to interactive gates (call #5, doc-only — adding the guard to CI gates would break unattended runs); fix phantom `playbooks/gates/...` and `001_gate.sh` prose to the real `00_gate.sh`.
 - **Dimension 3.1** — README tree exactly matches the on-disk founding+operations dir set → Test `test_readme_matches_tree`
 - **Dimension 3.2** — no playbook prose references a non-existent gate path → Test `test_no_phantom_gate_refs`
 - **Dimension 3.3** — `ALLOW_VAULT_READS` README convention scoped to interactive gates; CI/destructive gates documented as exempt → Test `test_vault_read_convention_narrowed` (grep assertion)
 
-### §4 — `check-playbooks` make target
+### §4 — `check-playbooks` make target — ✅ DONE
 New `check-*` validator in `make/quality.mk` (sibling to `check-gh-actions-valid`): shellcheck `playbooks/**/*.sh`; assert reference integrity (§2.1); assert README/tree parity (§3.1). Wire into `lint-all`; add a `help` line under "Quality Gates".
 - **Dimension 4.1** — `make check-playbooks` exits 0 on the corrected tree → Test `test_check_playbooks_passes_clean`
 - **Dimension 4.2** — it exits non-zero on a planted broken ref, a tree/README mismatch, and a shellcheck violation → Test `test_check_playbooks_catches_each_failure`
@@ -271,13 +271,13 @@ gitleaks detect 2>&1 | tail -3
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Gate clean | `make check-playbooks` | {paste} | |
-| Refs resolve | E2 above | {paste} | |
-| Phantom gate refs gone | E3 above | {paste} | |
-| Shellcheck | E5 above | {paste} | |
-| Lint umbrella | `make lint` | {paste} | |
-| History preserved | `git log --follow …01_bootstrap` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Gate clean | `make check-playbooks` | shellcheck ✓ · all refs resolve ✓ · README parity ✓ | ✅ |
+| Gate catches faults | planted bad-ref / drift / shellcheck | all 3 → exit non-zero | ✅ |
+| Refs resolve | full residual scan | CLEAN — no `playbooks/[0-9]{3}_` or `gates/` refs (excl frozen) | ✅ |
+| CI paths resolve | grep workflows | `founding/02_preflight/00_gate.sh`, `founding/06_…/03_deploy_readiness.sh` ✓ | ✅ |
+| ARCHITECHTURE gone | `git grep ARCHITECHTURE` (playbooks) | CLEAN (docs/ ref is a separate pre-existing file) | ✅ |
+| History preserved | `git status` rename detection | 46 renames detected (R), redis added (A — was untracked) | ✅ |
+| Gitleaks | pre-commit `gitleaks protect` | confirmed at commit | ✅ |
 
 ---
 

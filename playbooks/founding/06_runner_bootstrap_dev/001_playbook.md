@@ -104,7 +104,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" "ec
 # Expected: ok
 ```
 
-**Gate check:** `SECTIONS=1 ./playbooks/gates/m4_001/run.sh`
+**Gate check:** `SECTIONS=1 ./playbooks/founding/06_runner_bootstrap_dev/00_gate.sh`
 
 ---
 
@@ -188,7 +188,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 #   all deps ok
 ```
 
-**Gate check:** `SECTIONS=2 ./playbooks/gates/m4_001/run.sh`
+**Gate check:** `SECTIONS=2 ./playbooks/founding/06_runner_bootstrap_dev/00_gate.sh`
 
 ---
 

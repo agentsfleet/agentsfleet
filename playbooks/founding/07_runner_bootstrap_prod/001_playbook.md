@@ -376,4 +376,4 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 --- CI-automated after this point ---
 ```
 
-**DEV worker** bootstrap follows the same pattern. See `playbooks/006_runner_bootstrap_dev/001_playbook.md`.
+**DEV worker** bootstrap follows the same pattern. See `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md`.

@@ -64,4 +64,4 @@ There is no deploy workflow and no CI credentials; Vercel's GitHub integration h
 `_redirects`/`_headers`. The `lint-usezombie-sh` CI job (shellcheck + `install_test.sh`) gates the
 merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
 globally within minutes. One-time Vercel provisioning (project + custom domain) lives in
-[`playbooks/014_usezombie_sh_deploy/`](../../playbooks/014_usezombie_sh_deploy/).
+[`playbooks/operations/installer_deploy/`](../../playbooks/operations/installer_deploy/).

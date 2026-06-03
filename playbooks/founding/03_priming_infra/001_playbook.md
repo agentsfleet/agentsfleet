@@ -4,7 +4,7 @@
 **Workstream:** 001
 **Updated:** Mar 19, 2026
 **Owner:** Agent
-**Prerequisite:** `playbooks/001_bootstrap/001_playbook.md` complete — vaults created, GitHub Secrets set, API keys stored in 1Password.
+**Prerequisite:** `playbooks/founding/01_bootstrap/001_playbook.md` complete — vaults created, GitHub Secrets set, API keys stored in 1Password.
 
 Reusable across startups. Replace `ZMB` vault prefix and service names per project.
 
@@ -15,10 +15,10 @@ export VAULT_DEV="${VAULT_DEV:-ZMB_CD_DEV}"
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 
 # startup preflight (M2_001 section 1)
-SECTIONS=1 ./playbooks/gates/m2_001/run.sh
+SECTIONS=1 ./playbooks/founding/02_preflight/00_gate.sh
 
 # procurement readiness gate (M2_001 section 2, must pass)
-SECTIONS=2 ./playbooks/gates/m2_001/run.sh
+SECTIONS=2 ./playbooks/founding/02_preflight/00_gate.sh
 ```
 
 ---
@@ -26,7 +26,7 @@ SECTIONS=2 ./playbooks/gates/m2_001/run.sh
 ## Sequence Overview
 
 ```
-Bootstrap (`playbooks/001_bootstrap/001_playbook.md`) — human + agent bootstrap
+Bootstrap (`playbooks/founding/01_bootstrap/001_playbook.md`) — human + agent bootstrap
     └── Milestone 2 (this doc) — agent infra priming
         ├── 1.0 Container pipeline (GHCR)
         ├── 2.0 Fly.io — API + Worker services (recommended)
@@ -36,8 +36,8 @@ Bootstrap (`playbooks/001_bootstrap/001_playbook.md`) — human + agent bootstra
         ├── 3.0 Data-plane bootstrap (PlanetScale + Upstash)
         └── 4.0 Worker infrastructure (OVHCloud + Tailscale — defer to v2/scale)
             └── Milestone 3 deployment execution:
-                ├── playbooks/004_deploy_dev/001_playbook.md
-                └── playbooks/005_deploy_prod/001_playbook.md
+                ├── playbooks/founding/04_deploy_dev/001_playbook.md
+                └── playbooks/founding/05_deploy_prod/001_playbook.md
 ```
 
 **Human vs Agent split:**
@@ -412,10 +412,10 @@ Clerk dashboard → **Sessions → Customize session token** → **Reset to defa
 
 Worker bootstrap, CI deployment handoff, and startup reuse guidance moved to:
 
-- `playbooks/003_priming_infra/002_workers_and_handoff.md`
-- `playbooks/006_runner_bootstrap_dev/001_playbook.md`
-- `playbooks/007_runner_bootstrap_prod/001_playbook.md`
-- `playbooks/004_deploy_dev/001_playbook.md`
-- `playbooks/005_deploy_prod/001_playbook.md`
+- `playbooks/founding/03_priming_infra/002_workers_and_handoff.md`
+- `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md`
+- `playbooks/founding/07_runner_bootstrap_prod/001_playbook.md`
+- `playbooks/founding/04_deploy_dev/001_playbook.md`
+- `playbooks/founding/05_deploy_prod/001_playbook.md`
 
 Keep this file focused on infra priming (container, Fly, Cloudflare tunnel, data plane) so it stays under the repository line-limit gate.

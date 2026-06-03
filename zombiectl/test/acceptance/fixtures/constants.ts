@@ -67,8 +67,8 @@ export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 // acceptance API target — no separate skip-gating env var needed.
 //   - PROD dashboard mirrors `runtime_loader.zig`'s `APP_URL` default.
 //   - DEV dashboard is the Vercel-deploy URL used by the dev workflow
-//     (per `playbooks/004_deploy_dev/001_playbook.md` +
-//     `playbooks/008_credential_rotation_dev/02_service_health.sh`).
+//     (per `playbooks/founding/04_deploy_dev/001_playbook.md` +
+//     `playbooks/operations/credential_rotation/02_service_health.sh`).
 export const API_URL_PROD = "https://api.usezombie.com";
 export const API_URL_DEV = "https://api-dev.usezombie.com";
 export const DASHBOARD_URL_PROD = "https://app.usezombie.com";

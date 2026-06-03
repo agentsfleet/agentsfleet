@@ -43,7 +43,7 @@ The three images this playbook publishes are:
 ## 0. fetch-shas — refresh `versions.env` (only when bumping Zig)
 
 ```bash
-./playbooks/013_ci_zig_images/build_and_push.sh fetch-shas 0.15.2
+./playbooks/operations/ci_zig_images/build_and_push.sh fetch-shas 0.15.2
 ```
 
 Pulls `https://ziglang.org/download/index.json`, extracts the four
@@ -77,7 +77,7 @@ gh auth refresh -h github.com -s write:packages
 **Default — all three images, multi-arch where applicable, pushed to `ghcr.io/usezombie`:**
 
 ```bash
-./playbooks/013_ci_zig_images/build_and_push.sh build
+./playbooks/operations/ci_zig_images/build_and_push.sh build
 ```
 
 Tags produced:
@@ -134,7 +134,7 @@ Run from any host with Docker (the script does not do this itself — it's a
 post-publish sanity check the operator runs once per release):
 
 ```bash
-ZIG_VERSION="$(grep '^ZIG_VERSION=' playbooks/013_ci_zig_images/versions.env | cut -d= -f2)"
+ZIG_VERSION="$(grep '^ZIG_VERSION=' playbooks/operations/ci_zig_images/versions.env | cut -d= -f2)"
 
 # alpine — confirm zig + static OpenSSL symlinks
 docker run --rm --platform linux/amd64 \
