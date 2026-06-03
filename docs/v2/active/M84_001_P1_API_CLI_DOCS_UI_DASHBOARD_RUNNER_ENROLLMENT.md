@@ -4,11 +4,11 @@
 **Milestone:** M84
 **Workstream:** 001
 **Date:** Jun 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator credential-surface fix; removes the only CLI/shell use of the operator's full identity JWT.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — the CLI removal (§1) and the dashboard mint (§2) ship together (removing the CLI before the UI just moves the admin JWT to `curl`).
-**Branch:** {feat/m84-dashboard-runner-enrollment — added when work begins}
+**Branch:** feat/m84-dashboard-runner-enrollment
 **Depends on:** none hard — `POST /v1/runners` (the mint primitive) already exists.
 **Provenance:** agent-generated (Indy CTO consult, Jun 03 2026 — reverses the "leave it" in memory `project_runner_register_admin_token_intentional`).
 
