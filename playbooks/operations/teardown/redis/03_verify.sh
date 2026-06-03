@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../lib/common.sh"
+source "${SCRIPT_DIR}/../../../lib/common.sh"
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 vault_prod="${VAULT_PROD:-ZMB_CD_PROD}"
