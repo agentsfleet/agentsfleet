@@ -4,7 +4,7 @@
 **Milestone:** M82
 **Workstream:** 001
 **Date:** Jun 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — operator/agent-facing runbooks; wrong paths break the founding flow but no customer surface.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — standalone; no concurrent workstream.
@@ -134,6 +134,22 @@ New `check-*` validator in `make/quality.mk` (sibling to `check-gh-actions-valid
 
 ---
 
+## Scope Addendum — folded-in workstreams (Indy-directed)
+
+Two workstreams outside the original playbooks restructure were folded into this PR by explicit Indy direction (ack-quotes in Discovery). Each is independently verified; neither touches CI-workflow files.
+
+### §5 — Hermetic zombiectl test-infra fix — ✅ DONE
+The pre-push hook's `make test-unit-zombiectl` flaked on the CLI's PostHog telemetry flush (network-dependent, ~5s per-test timeouts) — surfaced because a zombiectl file in this branch makes the lane run. Fix (commit `2aa2eb3b`): `composeEnv` injects `ZOMBIE_TELEMETRY_DISABLED=1` into every spawned-CLI child env (children do not inherit `process.env`); a bun preload (`test/setup.ts`) defaults the runner telemetry-off for in-process `runCli` tests and raises `setDefaultTimeout` to 15s for subprocess specs under `--coverage`. Telemetry-consent tests self-manage the env var, so the default is invisible to them.
+- **Dimension 5.1** — `make test-unit-zombiectl` is deterministically green offline → verified 5/5 `bun test --coverage` runs, 0 timeouts
+- **Dimension 5.2** — coverage floor unaffected by telemetry-off default → enforce-coverage PASS
+
+### §6 — zombiectl zombie/* command + workspaces coverage — ✅ DONE
+Removed the Category B entries from `coveragePathIgnorePatterns` (added in M74-001, "deferred to a follow-up coverage spec") and added test files bringing 6 command files from ~0–80% to ~100% and `workspaces.ts` real logic to 100% line (commit `dd5c2bd8`). `workspaces.ts` function coverage caps at 90% — the bun `Context.Service` class-factory artifact, same limitation as the kept Context.Tag ignores, absorbed by the aggregate. Adversarial `/review` removed one coverage-gaming unit file (redundant: integration tests cover `handlers-bind-zombie.ts` 100%/100%) and strengthened weak/root-fragile assertions (commit `406e6372`).
+- **Dimension 6.1** — every Category B file driven by behavioral tests (wire-request / error-path assertions), not vacuous coverage-padding → adversarial review clean
+- **Dimension 6.2** — aggregate floor enforces the un-ignored files → function 96.54% ≥ 96, line 98.25% ≥ 97
+
+---
+
 ## Interfaces
 
 ```
@@ -250,6 +266,10 @@ gitleaks detect 2>&1 | tail -3
 ## Discovery (consult log)
 
 - **Indy decisions (Jun 02, 2026):** layout (founding/ + operations/, teardowns nested) approved; calls 1–3 delegated ("yes 1, 2, 3 take the call") → done-specs + CHANGELOG frozen, runners in `founding/`, CI-edit dimension in-scope; `.github/workflows` edits explicitly cleared.
+- **Indy decisions (Jun 03, 2026) — folded-in workstreams + investigations (§5/§6):**
+  > Indy (2026-06-03): "Fold full fix into #361" — context: the hermetic zombiectl test-infra fix (§5) that unblocked the pre-push hook's flaky telemetry-flush timeouts; chosen over a separate test-infra PR.
+  > Indy (2026-06-03): "Fold Category B into #361" — context: covering the zombie/* command surface + workspaces.ts (§6), chosen over a standalone M82_002 coverage spec.
+  > Indy (2026-06-03): "Keep all three" — context: three branches the test agents flagged as "dead code" (renderOutcome sse_error/else, onTurnError non-CliError, loadBundle non-SkillLoadError catch) proved on analysis to be defensive handling of `unknown`/union types; removing them needs unsafe casts and the floor passes with them present. Kept; a subagent's rogue removal of the renderOutcome branches was reverted before any commit.
 - **Deferral (Indy-acked):**
   > Indy (2026-06-02): "Well i only deferred config.template" — context: the portability / de-milestoning config-template pass (abstracting vault names `ZMB_CD_*`, Clerk URLs, domains `usezombie.com/.sh`, hostnames `zombie-*-worker-*`, and milestone IDs `M{N}_{NNN}` out of the playbooks for a public "start a startup" repo) is a follow-up spec, NOT this workstream.
 - **Pre-existing drift noted (NLR, fix-on-touch only):** several files cite `006_worker_bootstrap_dev` / `007_worker_bootstrap_prod` (pre-M80 "worker" name; dirs are `runner_*`). Fix to the correct `runner` name only in files we already edit for the move; do NOT touch frozen `done/` specs or CHANGELOG to chase it.
@@ -278,6 +298,9 @@ gitleaks detect 2>&1 | tail -3
 | ARCHITECHTURE gone | `git grep ARCHITECHTURE` (playbooks) | CLEAN (docs/ ref is a separate pre-existing file) | ✅ |
 | History preserved | `git status` rename detection | 46 renames detected (R), redis added (A — was untracked) | ✅ |
 | Gitleaks | pre-commit `gitleaks protect` | confirmed at commit | ✅ |
+| §5 suite hermetic | `make test-unit-zombiectl` | 961 tests, 0 fail, no telemetry flake | ✅ |
+| §6 coverage floor | `bun run test` (enforce-coverage) | function 96.54% ≥ 96, line 98.25% ≥ 97 | ✅ |
+| §6 review clean | `/review` (3-lens adversarial) | scope/rules clean; test-quality findings fixed | ✅ |
 
 ---
 
