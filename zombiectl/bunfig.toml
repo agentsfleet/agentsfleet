@@ -44,15 +44,6 @@ coverageDir = "coverage"
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
   "test/**",
-  # Pre-existing zombie/* command surface — deferred to a follow-up
-  # coverage spec. Captain ack: ≥97% floor.
-  "src/commands/zombie.ts",
-  "src/commands/zombie_events.ts",
-  "src/commands/zombie_steer.ts",
-  "src/commands/zombie_install.ts",
-  "src/commands/zombie_credential.ts",
-  "src/program/handlers-bind-zombie.ts",
-  "src/services/workspaces.ts",
   # Context.Tag-only shapes (Supabase split pattern: .service.ts
   # holds the tag, .layer.ts holds the implementation + tests).
   # See bunfig.toml header re: bun's per-function coverage of
