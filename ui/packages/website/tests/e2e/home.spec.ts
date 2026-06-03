@@ -61,10 +61,10 @@ test.describe("Home page", () => {
     await expect(flow.getByRole("heading", { name: "Install the CLI" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Run the install skill" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Wire your trigger" })).toBeVisible();
-    await expect(flow.getByRole("heading", { name: "Steer your zombie" })).toBeVisible();
+    await expect(flow.getByRole("heading", { name: "Steer your agent" })).toBeVisible();
 
     // Regression: the four cards used to be a single non-wrapping row that ran
-    // the fourth card ("Steer your zombie") off the right edge. Pin the desktop
+    // the fourth card ("Steer your agent") off the right edge. Pin the desktop
     // breakpoint (>=1024px) the bug lived at so this guard stays meaningful
     // regardless of the Playwright project's device viewport.
     await page.setViewportSize({ width: 1280, height: 800 });
