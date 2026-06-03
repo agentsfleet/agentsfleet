@@ -1,8 +1,8 @@
 //! Shared JSON value helpers for the runner module.
 //!
-//! Used by handler.zig, runner.zig, and client.zig to extract typed
-//! fields from std.json.Value objects. Consolidated here to avoid
-//! duplication across the runner module boundary.
+//! Used by runner.zig, runner_helpers.zig, and context_budget.zig to
+//! extract typed fields from std.json.Value objects. Consolidated here to
+//! avoid duplication across the runner module boundary.
 //!
 //! Tests live in `json_helpers_test.zig`.
 

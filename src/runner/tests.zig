@@ -33,7 +33,6 @@ test {
     _ = @import("engine/types.zig");
     _ = @import("engine/context_budget.zig");
     _ = @import("engine/tool_bridge.zig");
-    _ = @import("engine/session.zig");
     _ = @import("engine/cgroup.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/network.zig");

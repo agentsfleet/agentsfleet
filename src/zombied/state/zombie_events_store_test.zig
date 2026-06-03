@@ -1,5 +1,6 @@
 //! Unit tests for `zombie_events_store` (filter parsers + cursor).
-//! DB-backed listing tests live in `tests/integration/zombie_events_test.zig`.
+//! DB-backed listing is covered by the events HTTP integration tests in
+//! `http/handlers/zombies/events_integration_test.zig`.
 
 const std = @import("std");
 const filter_mod = @import("zombie_events_filter.zig");
