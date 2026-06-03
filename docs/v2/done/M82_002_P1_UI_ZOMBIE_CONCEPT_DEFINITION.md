@@ -4,7 +4,7 @@
 **Milestone:** M82
 **Workstream:** 002
 **Date:** Jun 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing; the product's core noun is presented three ways ("zombie" / "agent" / "runtime") with no definition, and the dashboard ("Zombies") disagrees with the public API + `/agents` page ("agent"). Newcomers must infer the central concept.
 **Categories:** UI
 **Batch:** B1 — standalone; no concurrent workstream.
@@ -105,6 +105,8 @@
 
 > The exact module path for each copy constant mirrors each package's nearest existing constants module (`website/src/lib/`, `app/lib/`); FILES + ROLES are fixed here.
 
+> **Scope-expansion surfaces (added Jun 03, 2026 — see Discovery).** Beyond the UI: `docs/architecture/**` prose (14 files), root `README.md`, `zombiectl/README.md`, `Dockerfile` (OCI labels → GHCR `zombied` page points to docs.usezombie.com), the app agent-detail page (`zombies/[id]/components/KillSwitch.tsx`, `ZombieConfig.tsx`), and tests (`copy.test.ts` ×2, `vocab-guard.test.ts`). Separate-repo PRs: `usezombie/skills#2`, `usezombie/docs#78`.
+
 ---
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -117,25 +119,25 @@
 
 ## Sections (implementation slices)
 
-### §1 — Canonical user-facing definition (single source per package)
+### §1 — Canonical user-facing definition (single source per package) — DONE
 Establish the one faithful, voice-reviewed definition of an "agent" (sourced from `direction.md`), stored as a named copy constant in each UI package. Wording fixed in **Interfaces**. **Implementation default:** one constant per package referencing the same agreed wording, because website and app are separate packages with no shared content module; mirror each package's nearest existing constants module.
 
 - **Dimension 1.1** — a named constant (`AGENT_DEFINITION`) holds the definition string in each touched package; no spot inlines a second copy → Test `test_agent_definition_constant_single_source`
 - **Dimension 1.2** — the rendered definition is faithful to `direction.md` (durable, autonomous, event/wake, "not a one-shot prompt") → Test `test_agent_definition_matches_canonical`
 
-### §2 — App first-touch definitions + rename
+### §2 — App first-touch definitions + rename — DONE
 The two surfaces a newcomer lands on first render the definition under the noun "agent". **Implementation default:** the definition goes in the empty-state *description* and the first-run card *body*, beside the existing install-mechanics copy.
 
 - **Dimension 2.1** — the `zombies`-route "No agents yet" empty state (`zombies/page.tsx`) renders the definition and uses "agent" → Test `test_app_empty_state_defines_agent`
 - **Dimension 2.2** — the dashboard first-run / "First wake" card (`page.tsx`) renders the definition and uses "agent" → Test `test_app_first_run_defines_agent`
 
-### §3 — Website definition + full user-facing rename
+### §3 — Website definition + full user-facing rename — DONE
 The website primary entry point ("What is usezombie?" FAQ) states the definition explicitly under "agent", and every user-facing product-noun "zombie" across the site becomes "agent".
 
 - **Dimension 3.1** — the FAQ "What is usezombie?" answer renders the explicit "An agent is …" definition → Test `test_website_defines_agent`
 - **Dimension 3.2** — user-facing rename: no website component renders a standalone product-noun "zombie" (brand/CLI/route excepted) → Test `test_website_no_user_facing_zombie_noun`
 
-### §4 — Vocab guard (mandatory) + optional nav affordance
+### §4 — Vocab guard (mandatory) + optional nav affordance — DONE
 A CI-runnable guard fails on any user-facing standalone product-noun "zombie" in either package's components (allowlisting brand/CLI/route/code). The app sidebar `Zombies` nav becomes `Agents`; an optional tooltip carries the short gloss.
 
 - **Dimension 4.1** — the vocab-guard test scans user-facing copy in both packages and reports 0 standalone product-noun "zombie" violations (allowlist: `usezombie`, `zombiectl`, `zombied`, `zombie-runner`, `/zombies`, code identifiers) → Test `test_no_user_facing_zombie_noun`
@@ -209,12 +211,12 @@ UI is a user-facing Category, so §2/§3 carry render-tier tests; §4 vocab guar
 
 ## Acceptance Criteria
 
-- [ ] FAQ "What is usezombie?" renders an explicit "An agent is …" definition — verify: website render test
-- [ ] App `zombies`-route empty state + dashboard first-run card render the definition under "agent" — verify: `cd ui/packages/app && bun run test`
-- [ ] Definition sourced from a single named constant per package — verify: single-source test green
-- [ ] No user-facing standalone product-noun "zombie" remains (allowlist: brand/CLI/route/code) — verify: the §4 vocab-guard test
-- [ ] Routes/API/code unchanged — verify: `git diff` shows no `/zombies` route, `zombie_id`, `ZOMBIE_STATUS`, `listZombies`, or `usezombie` brand removed; build + tests green
-- [ ] `make lint` clean · app + website `bun run test` pass · `gitleaks detect` clean · no file over 350 lines added
+- [x] FAQ "What is usezombie?" renders an explicit "An agent is …" definition — website render test green
+- [x] App `zombies`-route empty state + dashboard first-run card render the definition under "agent" — `make test-unit-app` green
+- [x] Definition sourced from a single named constant per package — `copy.test.ts` green
+- [x] No user-facing standalone product-noun "zombie" remains (allowlist: brand/CLI/route/code) — `vocab-guard.test.ts` green
+- [x] Routes/API/code unchanged — keep-token integrity gate: `/zombies`, `zombie_id`, `ZOMBIE_STATUS`, `listZombies`, `usezombie` brand all preserved; tests green
+- [x] `make lint-{app,website}` clean · `make test-unit-{app,website}` pass · gitleaks clean · no file over 350 lines added
 
 ---
 
@@ -250,7 +252,13 @@ N/A — no files deleted; this workstream renames/adds copy and constants.
   > Indy (2026-06-03, voice review): "i only want to use agent, dont use zombie." — context: **inverts the original "define zombie" intent**. User-facing product noun becomes "agent"; "zombie" is retired from user-facing copy (brand/CLI/route/code excepted). Confirmed via a follow-up disambiguation question: "Use 'agent', drop 'zombie' in copy."
 - **Re-scope blast-radius grep (Jun 03, 2026):** repo-root grep of `ui/packages/{website,app}` classified ~30 user-facing product-noun "zombie" usages (rename) vs the KEEP set (brand/CLI/route/code). Notable same-spelling trap: `"Which agent hosts work for the install skill?"` — "agent" there = the *coding tool* (Claude Code/Codex), not the product; resolved to "coding agent"/"host".
 - **CHORE(open) (Jun 03, 2026):** also removed the stale `docs/v2/pending/M80_004_…md` twin (orphan left by M80_004's CHORE(close); the `done/` copy is canonical) — folded into this branch per Indy.
-- **Skill chain outcomes** — appended during VERIFY/CHORE(close).
+- **Scope expansion (Jun 03, 2026, Indy-directed).** After the UI rename, Indy widened scope to a full product-wide terminology sweep, in this PR:
+  > Indy (2026-06-03): "Ensure the docs/architecture/** is scoured … README.md … the zombiectl/README.md must have the term zombie removed. Ensure the ~/Projects/skills repo is updated with agents term and the ui/usezombie.sh/ is updated … Also ensure the comments and text in playbooks are renamed."
+  > Indy (2026-06-03): "We leave out the folder names zombiectl, zombie/ zombied binary, zombie-runner for now, and the api responses and the api resources." + "preserve anything that will have a code impact, any static text changes can be done." + "No updates to historical [changelog], but add a change log to this effect."
+  Resolved surfaces: `docs/architecture/**` prose (14 files), root + `zombiectl` READMEs, the `Dockerfile` OCI labels (GHCR `zombied` package → `docs.usezombie.com`), the `skills` repo README, and a `docs` changelog entry. **No change required:** `playbooks/**` (every "zombie" is the `zombie` DB / `zombied` / `zombie-runner` / vault refs / datasource = code impact), `ui/usezombie.sh/**` (brand/CLI only), `.github/profile/README.md` (brand/URLs only; line 9 already reads "Durable agent runtime").
+- **Rename method + integrity (Jun 03, 2026).** A guarded regex first pass on the architecture docs wrongly renamed schema/module identifiers (`core.zombies`→`core.agents`, `redis_zombie`→`redis_agent`) — reverted. Redone with judgment-based sub-agents per file, then verified with a keep-token integrity gate: every identifier token (`zombiectl`, `zombied`, `core.zombie*`, `redis_zombie`, `parseZombie`, `src/zombie/`, `/zombies`, brand) matches HEAD count exactly; zero `core.agents`/`redis_agent`/`/agents/`-style wrong renames.
+- **Cross-repo PRs (separate repos, same effort):** `usezombie/skills#2` (README prose) and `usezombie/docs#78` (changelog entry). The in-repo PR is this branch.
+- **Skill chain outcomes:** `/write-unit-test` intent satisfied by the new copy-constant + FAQ-definition tests and the `vocab-guard.test.ts` regression guard (website 146, app 667 green). `/review` performed inline (keep-set integrity gate + per-file sub-agent verification of the architecture rename).
 
 ---
 
@@ -268,12 +276,12 @@ N/A — no files deleted; this workstream renames/adds copy and constants.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| App render tests | `cd ui/packages/app && bun run test` | {paste snippet} | |
-| Website render tests | `cd ui/packages/website && bun run test` | {paste snippet} | |
-| Single-source / vocab guard | the §1 + §4 tests | {paste snippet} | |
-| Lint | `make lint` | {paste snippet} | |
-| Internal-surface unchanged | `git diff` KEEP-set grep | {paste snippet} | |
-| Gitleaks | `gitleaks detect` | {paste snippet} | |
+| App unit/render tests | `make test-unit-app` | 667 passed | ✅ |
+| Website unit/render tests | `make test-unit-website` | 146 passed | ✅ |
+| Single-source / vocab guard | `vocab-guard.test.ts` + `copy.test.ts` (both pkgs) | green (guard caught + fixed detail-page copy) | ✅ |
+| Lint | `make lint-app` · `make lint-website` | both passed (Oxlint + tsc) | ✅ |
+| Internal-surface unchanged (arch docs) | keep-token HEAD-vs-WORK count gate | all tokens match; 0 wrong renames | ✅ |
+| Gitleaks | pre-commit `gitleaks protect --staged` | no leaks (every commit) | ✅ |
 
 ---
 
