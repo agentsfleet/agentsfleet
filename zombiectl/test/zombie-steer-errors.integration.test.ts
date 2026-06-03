@@ -6,107 +6,31 @@
 // that need pollEventTerminal to return "timeout" quickly.
 
 import { describe, expect, test, setSystemTime } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { Readable, Writable } from "node:stream";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/zombie_steer.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
-import { CliConfig } from "../src/services/config.ts";
-import { Credentials } from "../src/services/credentials.ts";
-import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
-import { Workspaces } from "../src/services/workspaces.ts";
-import { ReplSignalEmitter, type ReplInputStream, type ReplOutputStream } from "../src/lib/repl.ts";
-import type { StreamGetCallback } from "../src/lib/sse.ts";
+import type { HttpRequestInput } from "../src/services/http-client.ts";
+import { ReplSignalEmitter } from "../src/lib/repl.ts";
+// Shared fixtures + mocked-layer config — single source of truth with the
+// part-1 steer suite so the two files cannot drift apart (makeLayer closes
+// over the part-1 constants, so only the values used directly here are imported).
+import {
+  ZOMBIE_ID,
+  EVENT_ID,
+  streamFrom,
+  nullOutput,
+  makeRecorder,
+  makeLayer,
+  eventStream,
+} from "./zombie-steer.integration.test.ts";
 
-const WS_ID = "01910000-0000-7000-8000-000000a6e711";
-const ZOMBIE_ID = "01910000-0000-7000-8000-000000a67e57";
-const TOKEN = "test.jwt.token";
-const EVENT_ID = "1729874000000-abc";
-const API_URL = "https://api.steer-test.local";
-const DASHBOARD_URL = "https://dash.steer-test.local";
 const POST = "POST";
-
-const streamFrom = (chunks: ReadonlyArray<string>, isTTY: boolean): ReplInputStream => {
-  const stream = Readable.from(chunks);
-  Object.defineProperty(stream, "isTTY", { value: isTTY });
-  return stream as unknown as ReplInputStream;
-};
-
-const nullOutput = (): ReplOutputStream =>
-  new Writable({ write(_c, _e, cb) { cb(); } }) as unknown as ReplOutputStream;
-
-interface Recorder {
-  readonly stdout: string[];
-  readonly stderr: string[];
-  readonly requests: HttpRequestInput[];
-}
-
-const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], requests: [] });
-
-const makeLayer = (
-  rec: Recorder,
-  httpReply: <T>(input: HttpRequestInput) => T = <T>() => ({ event_id: EVENT_ID } as T),
-  jsonMode = false,
-  outputOverrides?: Partial<typeof Output.Service>,
-) =>
-  Layer.mergeAll(
-    Layer.succeed(CliConfig, {
-      apiUrl: API_URL,
-      dashboardUrl: DASHBOARD_URL,
-      accessToken: Option.none(),
-      jsonMode,
-      noOpen: false,
-      telemetryPosthogKey: "phc_test",
-      telemetryPosthogHost: "https://us.i.posthog.com",
-    }),
-    Layer.succeed(Credentials, {
-      getAccessToken: Effect.sync(() => Option.some(Redacted.make(TOKEN))),
-      getSavedAt: Effect.sync(() => null),
-      getSessionId: Effect.sync(() => null),
-      getApiUrl: Effect.sync(() => null),
-      saveAccessToken: () => Effect.void,
-      clearAccessToken: Effect.void,
-    }),
-    Layer.succeed(Workspaces, {
-      load: Effect.sync(() => ({ current_workspace_id: WS_ID, items: [] })),
-      save: () => Effect.void,
-    }),
-    Layer.succeed(HttpClient, {
-      request: <T>(input: HttpRequestInput) =>
-        Effect.sync(() => { rec.requests.push(input); return httpReply<T>(input); }),
-    }),
-    Layer.succeed(Output, {
-      intro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
-      info: (m) => Effect.sync(() => { rec.stdout.push(m); }),
-      success: (m) => Effect.sync(() => { rec.stdout.push(m); }),
-      warn: (m) => Effect.sync(() => { rec.stderr.push(m); }),
-      error: (m) => Effect.sync(() => { rec.stderr.push(m); }),
-      outro: (m) => Effect.sync(() => { rec.stdout.push(m); }),
-      printJson: (p) => Effect.sync(() => { rec.stdout.push(JSON.stringify(p)); }),
-      printJsonErr: (p) => Effect.sync(() => { rec.stderr.push(JSON.stringify(p)); }),
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
-      printTable: () => Effect.void,
-      ...outputOverrides,
-    }),
-  );
 
 type StreamGetFn = typeof import("../src/lib/sse.ts").streamGet;
 
 const silentStream: StreamGetFn = async (): Promise<void> => { /* no events → sse_disconnected */ };
-
-const eventStream = (events: Parameters<StreamGetCallback>[0][]): StreamGetFn =>
-  async (
-    _url: string,
-    _headers: Record<string, string>,
-    cb: StreamGetCallback,
-  ): Promise<void> => {
-    for (const ev of events) {
-      if (cb(ev) === false) return;
-    }
-  };
 
 // ── SSE error path (lines 139-141) ────────────────────────────────────────
 

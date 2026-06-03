@@ -21,12 +21,14 @@ import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi } from "./helpers-mock-api.ts";
 
-const WS_ID = "01910000-0000-7000-8000-000000a6e711";
-const ZOMBIE_ID = "01910000-0000-7000-8000-000000a67e57";
-const TOKEN = "test.jwt.token";
-const EVENT_ID = "1729874000000-abc";
-const API_URL = "https://api.steer-test.local";
-const DASHBOARD_URL = "https://dash.steer-test.local";
+// Exported so the sibling error-path suite shares one source of truth for
+// the fixture ids + mocked-layer config (see makeLayer below).
+export const WS_ID = "01910000-0000-7000-8000-000000a6e711";
+export const ZOMBIE_ID = "01910000-0000-7000-8000-000000a67e57";
+export const TOKEN = "test.jwt.token";
+export const EVENT_ID = "1729874000000-abc";
+export const API_URL = "https://api.steer-test.local";
+export const DASHBOARD_URL = "https://dash.steer-test.local";
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_steer" }, fn);

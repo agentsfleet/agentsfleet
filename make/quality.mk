@@ -285,10 +285,11 @@ check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + 
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
 	echo "✓ [playbooks] all references resolve"
 	@echo "→ [playbooks] README ↔ tree parity..."
-	@FAIL=0; \
+	@FAIL=0; seen=""; \
 	for d in $$(find playbooks/founding playbooks/operations -type d); do \
 	  [ -f "$$d/001_playbook.md" ] || continue; \
 	  base=$$(basename "$$d"); \
+	  case " $$seen " in *" $$base "*) echo "✗ duplicate playbook basename '$$base' — README parity is basename-matched (tree shows leaf names) and cannot disambiguate: $$d"; FAIL=1 ;; *) seen="$$seen $$base" ;; esac; \
 	  grep -q "$$base/" playbooks/README.md || { echo "✗ playbook dir absent from README tree: $$d"; FAIL=1; }; \
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
