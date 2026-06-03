@@ -36,7 +36,7 @@ Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `tri
 
 These are the tool primitives NullClaw exposes. The agent's `tools:` allowlist gates which of them are reachable for a given agent.
 
-| Tool | Purpose | Visible to the agent's agent |
+| Tool | Purpose | Visible to the agent (host) |
 |---|---|---|
 | `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. | The agent sees placeholders only; it never sees raw secret bytes. |
 | `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the agent reads and writes. |
