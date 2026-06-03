@@ -82,7 +82,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
           }
         }}
         title={`Delete credential "${target ?? ""}"?`}
-        description="Zombies referencing this name will fail to resolve until it is re-added. This cannot be undone."
+        description="Agents referencing this name will fail to resolve until it is re-added. This cannot be undone."
         confirmLabel="Delete"
         intent="destructive"
         errorMessage={error}

@@ -99,7 +99,7 @@ export default function BillingUsageTab({
       <EmptyState
         icon={<ActivityIcon size={28} />}
         title="No billable events yet"
-        description="Run a zombie event and its charges will appear here. Each event yields up to two rows (the receive gate and the stage execution)."
+        description="Run an agent event and its charges will appear here. Each event yields up to two rows (the receive gate and the stage execution)."
       />
     );
   }

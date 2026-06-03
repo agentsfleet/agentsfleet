@@ -10,6 +10,7 @@ import {
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { resolveActiveWorkspace } from "@/lib/workspace";
+import { AGENT_DEFINITION } from "@/lib/copy";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import ZombiesList from "./components/ZombiesList";
@@ -26,11 +27,11 @@ export default async function ZombiesListPage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>Zombies</PageTitle>
+          <PageTitle>Agents</PageTitle>
         </PageHeader>
         <EmptyState
           title="No workspace yet"
-          description="Create a workspace before installing zombies."
+          description="Create a workspace before installing agents."
         />
       </div>
     );
@@ -45,19 +46,19 @@ export default async function ZombiesListPage() {
     <div>
       <ExhaustionBanner billing={billing} />
       <PageHeader>
-        <PageTitle>Zombies</PageTitle>
+        <PageTitle>Agents</PageTitle>
         <Link
           href="/zombies/new"
           className={buttonClassName("default", "sm")}
         >
-          <PlusIcon size={14} /> Install Zombie
+          <PlusIcon size={14} /> Install Agent
         </Link>
       </PageHeader>
 
       {page.items.length === 0 ? (
         <EmptyState
-          title="No zombies yet"
-          description="Install your first zombie from a skill template."
+          title="No agents yet"
+          description={`${AGENT_DEFINITION} Install your first one from a skill template.`}
         />
       ) : (
         <ZombiesList

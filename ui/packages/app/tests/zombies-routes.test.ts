@@ -86,7 +86,7 @@ describe("zombies routes", () => {
     const { default: Loading } = await import("../app/(dashboard)/zombies/loading");
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
-    expect(el.textContent).toContain("Loading zombies");
+    expect(el.textContent).toContain("Loading agents");
     // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
     const dot = el.querySelector("[data-live]");
     expect(dot).toBeTruthy();
@@ -120,8 +120,8 @@ describe("zombies routes", () => {
     });
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No zombies yet");
-    expect(markup).toContain("Install Zombie");
+    expect(markup).toContain("No agents yet");
+    expect(markup).toContain("Install Agent");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -149,7 +149,7 @@ describe("zombies routes", () => {
     });
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No zombies yet");
+    expect(markup).toContain("No agents yet");
   });
 
   it("zombies new page redirects to /sign-in when no token", async () => {
@@ -162,14 +162,14 @@ describe("zombies routes", () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Create a workspace before installing zombies");
+    expect(markup).toContain("Create a workspace before installing agents");
   });
 
   it("zombies new page renders the install form when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Install Zombie");
+    expect(markup).toContain("Install Agent");
     expect(markup).toContain("name=\"trigger_markdown\"");
     expect(markup).toContain("name=\"source_markdown\"");
   });

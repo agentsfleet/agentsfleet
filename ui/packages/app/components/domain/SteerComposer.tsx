@@ -3,8 +3,8 @@
 import { ComposerPrimitive } from "@assistant-ui/react";
 import { Button, Textarea, cn } from "@usezombie/design-system";
 
-const PLACEHOLDER_IDLE = "Steer this zombie…";
-const PLACEHOLDER_RUNNING = "Zombie is working — composer disabled";
+const PLACEHOLDER_IDLE = "Steer this agent…";
+const PLACEHOLDER_RUNNING = "Agent is working — composer disabled";
 const SEND_LABEL = "steer ⏎";
 
 export type SteerComposerProps = {
