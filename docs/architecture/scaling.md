@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Companions: [`data_flow.md`](./data_flow.md) §"Connection topology", [`runner_fleet.md`](./runner_fleet.md) §"Scaling".
 >
-> **Scope:** this file sizes the runtime as it runs now — after the M80_002 cutover. The cutover **deleted the per-zombie dedicated Redis connection** (the worker's blocking `XREADGROUP` loop), which was the pre-cutover binding constraint. The binding constraint moved; the math below reflects the new shape.
+> **Scope:** this file sizes the runtime as it runs now — after the M80_002 cutover. The cutover **deleted the per-agent dedicated Redis connection** (the worker's blocking `XREADGROUP` loop), which was the pre-cutover binding constraint. The binding constraint moved; the math below reflects the new shape.
 
 Read this when you need to size a deployment, pick env-var values, or decide whether the next bottleneck is `zombied` API replicas, Postgres, the Upstash plan, or runner fan-out.
 
@@ -10,7 +10,7 @@ Read this when you need to size a deployment, pick env-var values, or decide whe
 
 ## TL;DR — what the cutover changed
 
-**The old wall is gone.** Before the cutover, every zombie held one dedicated `XREADGROUP … BLOCK 5000` Redis connection, so the fleet was capped by the Upstash max-concurrent-connections ceiling at roughly one connection per zombie. **That tier no longer exists.** `zombied` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command. Runners hold **zero** Redis connections.
+**The old wall is gone.** Before the cutover, every agent held one dedicated `XREADGROUP … BLOCK 5000` Redis connection, so the fleet was capped by the Upstash max-concurrent-connections ceiling at roughly one connection per agent. **That tier no longer exists.** `zombied` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command. Runners hold **zero** Redis connections.
 
 **The new binding constraint** is `zombied` API replicas + Postgres write throughput on the lease/report hot path — both horizontally scalable. Redis sees only pooled short-lived commands (`XADD`, non-blocking `XREADGROUP`, `PUBLISH`, `XACK`) plus the SSE `SUBSCRIBE` tier; runners scale out with no Redis coordination at all.
 
@@ -18,11 +18,11 @@ Read this when you need to size a deployment, pick env-var values, or decide whe
 
 | What | Before (deleted) | Now |
 |---|---|---|
-| Per-zombie Redis connections | 1 dedicated blocking conn per zombie | 0 — `lease` uses a pooled non-blocking read |
-| Binding constraint | Upstash max-connections cap (~1/zombie) | `zombied` API replicas + Postgres write throughput |
-| Idle request driver | `(zombies + workers) × (3600 / BLOCK_s)` | `runners × (3600 / poll_s)` |
+| Per-agent Redis connections | 1 dedicated blocking conn per agent | 0 — `lease` uses a pooled non-blocking read |
+| Binding constraint | Upstash max-connections cap (~1/agent) | `zombied` API replicas + Postgres write throughput |
+| Idle request driver | `(agents + workers) × (3600 / BLOCK_s)` | `runners × (3600 / poll_s)` |
 | Idle-cost knob | `XREADGROUP BLOCK` | `NO_WORK_RETRY_AFTER_MS` (runner poll backoff) |
-| Redis dedicated connections | per-zombie XREADGROUP + watcher + SSE | **SSE only** |
+| Redis dedicated connections | per-agent XREADGROUP + watcher + SSE | **SSE only** |
 
 ---
 
@@ -30,7 +30,7 @@ Read this when you need to size a deployment, pick env-var values, or decide whe
 
 v2 ships hosted on Fly.io; the canonical Redis is **Upstash Redis**, accessed over Transport Layer Security (TLS) from every Fly machine. Three Upstash-specific properties still shape decisions, though the cutover changed which one binds:
 
-1. **Plan-bound max-connections cap.** Each Upstash database has a hard concurrent-connection ceiling. New dials past the cap are refused. **After the cutover this no longer scales with zombie count** — only with `zombied` API-pool connections + open SSE tails. It is rarely the first wall now.
+1. **Plan-bound max-connections cap.** Each Upstash database has a hard concurrent-connection ceiling. New dials past the cap are refused. **After the cutover this no longer scales with agent count** — only with `zombied` API-pool connections + open SSE tails. It is rarely the first wall now.
 2. **Per-request pricing on Pay-as-you-go.** Every command is billable: `XADD`, the non-blocking `XREADGROUP` (one per idle lease poll), `PUBLISH`, `XACK`, SSE acknowledgements. The idle bill is the lease-poll loop — see §"Per-request volume".
 3. **TLS dial cost + regional round-trip-time (RTT).** Pool warm-up matters because each dial pays a TLS handshake. Regional vs Global database choice sets the floor on every round-trip.
 
@@ -68,7 +68,7 @@ sse tier:      1 conn per open dashboard / CLI tail       ≈ S
                                                           ≈ 8·R + S
 ```
 
-**There is no per-zombie term.** Adding zombies adds Postgres writes and lease throughput, not Redis connections. The SSE tier is customer-driven (a dashboard with 100 open tabs = 100 `SUBSCRIBE` connections) — plan API-tier sizing around peak concurrent SSE, exactly as before. Runners contribute **zero** Upstash connections.
+**There is no per-agent term.** Adding agents adds Postgres writes and lease throughput, not Redis connections. The SSE tier is customer-driven (a dashboard with 100 open tabs = 100 `SUBSCRIBE` connections) — plan API-tier sizing around peak concurrent SSE, exactly as before. Runners contribute **zero** Upstash connections.
 
 ### Per-request volume (the Upstash bill)
 
@@ -77,11 +77,11 @@ Idle cost is now the runner lease-poll loop, fully idle:
 | Source | Requests per hour |
 |---|---|
 | Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing one bounded non-blocking `XREADGROUP` scan | `R_runners × 3600` at the 1 s default |
-| (No watcher loop, no per-zombie BLOCK loops — both deleted) | 0 |
+| (No watcher loop, no per-agent BLOCK loops — both deleted) | 0 |
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
-**The load-bearing shift:** the idle bill now scales with **runner count**, not `(zombies + workers)`. A fleet with many idle zombies but few runners is cheap at idle; the cost follows the pollers, not the population.
+**The load-bearing shift:** the idle bill now scales with **runner count**, not `(agents + workers)`. A fleet with many idle agents but few runners is cheap at idle; the cost follows the pollers, not the population.
 
 ---
 
@@ -89,7 +89,7 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hou
 
 | Knob | Default | What it scales with | Turn it when |
 |---|---|---|---|
-| `REDIS_POOL_MAX_IDLE` | 8 | Concurrent in-flight short-lived commands per `zombied` replica — **not** zombie count | p99 of `Pool.acquire` wait exceeds ~5 ms under load. The lease/report/ingress/activity commands all complete in single-digit ms over Upstash TLS; above 16 is unusual. |
+| `REDIS_POOL_MAX_IDLE` | 8 | Concurrent in-flight short-lived commands per `zombied` replica — **not** agent count | p99 of `Pool.acquire` wait exceeds ~5 ms under load. The lease/report/ingress/activity commands all complete in single-digit ms over Upstash TLS; above 16 is unusual. |
 | `REDIS_POOL_EAGER_MIN` | 2 | Cold-boot dial cost (Upstash TLS handshake) | Cold-boot `zombied` latency p99 is dominated by dial time. |
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `src/lib/common/constants.zig`. |
@@ -107,19 +107,19 @@ Once Redis connection count and request volume fit the plan, the next bottleneck
 
 ### 1. `zombied` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do — `INSERT zombie_events`, the two billing debits, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `zombied` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per zombie.
+The lease/report hot path does the durable writes the worker used to do — `INSERT zombie_events`, the two billing debits, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `zombied` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per agent.
 
 Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `zombied` replicas + Postgres sizing in the deployment runbook.
 
 ### 2. Pub/sub fan-out on activity (unchanged in shape)
 
-`zombie:{id}:activity` PUBLISH is cheap server-side (`zombied` is the sole publisher); SSE subscribers each hold one dedicated Upstash `SUBSCRIBE` connection. A dashboard with 1000 simultaneous viewers = 1000 Upstash connections before the underlying zombie produces a byte. Plan API-tier sizing around peak concurrent SSE.
+`zombie:{id}:activity` PUBLISH is cheap server-side (`zombied` is the sole publisher); SSE subscribers each hold one dedicated Upstash `SUBSCRIBE` connection. A dashboard with 1000 simultaneous viewers = 1000 Upstash connections before the underlying agent produces a byte. Plan API-tier sizing around peak concurrent SSE.
 
 Symptom: API-tier file-descriptor exhaustion while Upstash is otherwise idle; Upstash connection count climbing with viewer count. Fix: more API replicas, or a dedicated SSE process pool.
 
 ### 3. Upstash plan ceiling (now rarely first)
 
-Max concurrent connections, requests/sec, or daily request quota — whichever the plan tier defines first. After the cutover the connection axis is `8·R + S`, far below the pre-cutover `~zombies`. The request axis is the runner poll loop. Check current plan limits before sizing; the binding axis is usually #1 now, not this.
+Max concurrent connections, requests/sec, or daily request quota — whichever the plan tier defines first. After the cutover the connection axis is `8·R + S`, far below the pre-cutover `~agents`. The request axis is the runner poll loop. Check current plan limits before sizing; the binding axis is usually #1 now, not this.
 
 ---
 
@@ -131,7 +131,7 @@ Structured for an LLM agent or a `zombiectl`-driven scaling playbook. Each step 
 
 | Symbol | Meaning | Source |
 |---|---|---|
-| `Z` | Target zombie count (active + idle) | Product / fleet plan |
+| `Z` | Target agent count (active + idle) | Product / fleet plan |
 | `N` | Runner host count | Operator / capacity plan |
 | `R` | `zombied` API replica count | Deployment plan |
 | `S` | Peak concurrent SSE tails | Product / dashboard usage |
@@ -142,12 +142,12 @@ Structured for an LLM agent or a `zombiectl`-driven scaling playbook. Each step 
 ### Procedure
 
 ```
-Step 1: Redis connection budget (no per-zombie term)
+Step 1: Redis connection budget (no per-agent term)
   redis_conns = R * REDIS_POOL_MAX_IDLE + S
   ASSERT redis_conns + failover_burst <= P_conn
     failover_burst ≈ R * REDIS_POOL_MAX_IDLE   (pool re-dials on failover; SSE re-subscribes)
     if violated → add Upstash capacity OR reduce S per replica (more API replicas)
-  NOTE: Z does not appear — zombies add PG writes, not Redis connections.
+  NOTE: Z does not appear — agents add PG writes, not Redis connections.
 
 Step 2: Idle Upstash request rate (the lease-poll loop)
   idle_rps = N / poll_s
@@ -171,7 +171,7 @@ Step 4: Emit configuration
 
 ### Anti-patterns (do NOT do these)
 
-1. **Size Redis connections by zombie count.** There is no per-zombie connection after the cutover. The connection budget is `8·R + S`.
+1. **Size Redis connections by agent count.** There is no per-agent connection after the cutover. The connection budget is `8·R + S`.
 2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER_MS` for the idle-cost/latency trade.
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `zombied` replicas + Postgres for hot-path latency.
 4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
@@ -191,7 +191,7 @@ A new runner registers and starts polling `lease`. No rebalance of in-flight wor
 
 ### Upstash failover (provider-side primary swap)
 
-Only `zombied`'s pool + SSE connections re-dial. `READONLY`-after-failover is resumable (connection recycled, retry against the new primary); transport errors close + re-dial (paying a TLS handshake). The storm is bounded by `8·R + S` re-dials, far smaller than the pre-cutover `~zombies` storm.
+Only `zombied`'s pool + SSE connections re-dial. `READONLY`-after-failover is resumable (connection recycled, retry against the new primary); transport errors close + re-dial (paying a TLS handshake). The storm is bounded by `8·R + S` re-dials, far smaller than the pre-cutover `~agents` storm.
 
 ---
 

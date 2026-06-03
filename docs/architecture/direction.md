@@ -8,7 +8,7 @@ The architecture optimises for one generic operational runtime, not bespoke type
 
 Principles. Each links to where it's enforced — when a spec contradicts one of these, the spec is wrong:
 
-- **One zombie is a durable runtime, not a one-shot prompt.** Enforced by the lease model: `zombied` hands a runner one event at a time and a zombie's state survives runner restarts via `core.zombie_sessions`. See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The two agents in play".
+- **One agent is a durable runtime, not a one-shot prompt.** Enforced by the lease model: `zombied` hands a runner one event at a time and an agent's state survives runner restarts via `core.zombie_sessions`. See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The two agents in play".
 - **Trigger sources can differ; execution enters one common event-processing path.** Webhook, cron, steer, and continuation all `XADD zombie:{id}:events`; the lease/execute path doesn't branch on actor. See [`data_flow.md`](./data_flow.md) §B (TRIGGER) and §C (EXECUTE).
 - **Behaviour is primarily defined in natural language through `SKILL.md` and `TRIGGER.md`.** The platform parses `TRIGGER.md` frontmatter (tools, credentials, network, budget, context, model); `SKILL.md` is advisory prose the agent reads at run open. See [`capabilities.md`](./capabilities.md) §1.
 - **Secrets are injected at execution time, never embedded in prompt text or written into the agent's context.** Tool bridge substitutes `${secrets.NAME.FIELD}` after sandbox entry; `args_redacted` rebuilds the placeholder before progress frames leave the runner's sandboxed child. See [`data_flow.md`](./data_flow.md) §C step 4 + step 7, [`capabilities.md`](./capabilities.md) §3 "Credential vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
@@ -21,7 +21,7 @@ Principles. Each links to where it's enforced — when a spec contradicts one of
 The runtime keeps only a thin typed envelope:
 
 - trigger source + actor
-- zombie id / workspace id
+- agent id / workspace id
 - timestamps
 - idempotency key
 - raw payload
@@ -29,4 +29,4 @@ The runtime keeps only a thin typed envelope:
 - execution state
 - context budget knobs (defaults inherited from the active model's tier; user-overridable in `x-usezombie.context`)
 
-Everything else stays prompt-driven and iterated by editing the zombie's documents and policies.
+Everything else stays prompt-driven and iterated by editing the agent's documents and policies.

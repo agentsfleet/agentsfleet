@@ -28,7 +28,7 @@ The demand starting point is Customer Zero pain, not broad external validation.
 That is acceptable only if the product is explicit about the bar it must clear next:
 
 - an external operator must keep the install on
-- the zombie must help on a real production-flavored event
+- the agent must help on a real production-flavored event
 - the value must come from the durable runtime, not just from a one-shot chat summary
 
 The purpose of this file is to keep that honesty intact. It is not a substitute for customer-development evidence.
@@ -66,7 +66,7 @@ These are the conclusions from the office-hours work that should be treated as d
 - v2 differentiation is **open source + self-managed provider key + markdown-defined behaviour**.
 - v2 is **hosted-only** on `api.usezombie.com`; self-host is a later workstream.
 - the flagship workflow is **GitHub Actions deploy-failure response plus manual steer**, not a generic automation platform
-- the same zombie should handle webhook, cron, and manual steer through one reasoning loop
+- the same agent should handle webhook, cron, and manual steer through one reasoning loop
 - the initial trust boundary is **internal operations**, not customer-facing status communication
 - the install experience should be **host-neutral** across Claude Code, Amp, Codex CLI, and OpenCode
 
@@ -83,7 +83,7 @@ Those may become adjacent stories later, but they weaken the v2 wedge if they le
 
 ## Bastion direction
 
-The bastion direction remains strategically important: the same zombie that handles internal triage could later own customer-facing status communication. But that is a second-order extension. The product has to earn trust on internal-only incidents first.
+The bastion direction remains strategically important: the same agent that handles internal triage could later own customer-facing status communication. But that is a second-order extension. The product has to earn trust on internal-only incidents first.
 
 That is why [`bastion.md`](./bastion.md) exists as direction, while the launch framing stays centered on internal deploy and outage triage.
 
@@ -94,7 +94,7 @@ The useful validation bar is not raw install count.
 The useful validation bar is:
 
 - an external team keeps the install on for at least a week
-- the zombie participates in a real event
+- the agent participates in a real event
 - the operator reports that the product materially improved the outcome
 
 Install count matters only as supporting evidence. Retention and real-event value matter more.
