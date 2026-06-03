@@ -30,8 +30,8 @@
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Remove verified-dead src/ code; re-aggregate two orphan tests
-- **Intent (one sentence):** Strip pre-2.0 dead code an exhaustive reachability audit proved unreachable, restore two real test suites that silently never ran, and fix the stale comments/doc-paths that masked both — leaving `src/` honest with zero behaviour change.
+- **PR title (eventual):** Remove verified-dead src/ code; restore the one live orphan test
+- **Intent (one sentence):** Strip pre-2.0 dead code an exhaustive reachability audit proved unreachable, restore the one genuinely-live orphaned test suite (`policy_http_request_test`) — deleting the other (`session_test`) once post-merge review found its subject `session.zig` itself dead — and fix the stale comments/doc-paths that masked the rot, leaving `src/` honest with zero behaviour change.
 - **Handshake (agent fills at PLAN, before EXECUTE):** restate intent + `ASSUMPTIONS I'M MAKING: …`. A mismatch with the Intent above → STOP and reconcile.
 
 ---
@@ -60,11 +60,11 @@
 
 ## Overview
 
-**Goal (testable):** After this PR, `zig build` + `zig build --build-file build_runner.zig` + cross-compile both linux targets pass, `make test` + runner tests are green, the dead-code sweep greps all return zero, and `session_test`/`policy_http_request_test` now compile and run — with no production response or behaviour changed.
+**Goal (testable):** After this PR, `zig build` + `zig build --build-file build_runner.zig` + cross-compile both linux targets pass, `make test` + runner tests are green, the dead-code sweep greps all return zero, and `policy_http_request_test` now compiles and runs — with no production response or behaviour changed. (The audit originally listed `session_test` as a second orphan, but post-merge review found its subject `session.zig` is itself dead → deleted, not restored. See §1 correction.)
 
-**Problem:** A folder-by-folder reachability audit (387 `.zig` files, two build graphs) found a small set of files/exports nothing reaches, plus two real test suites that never compile because no aggregator pulls them in, plus stale comments and doc-paths (`src/auth/` post-M80) that actively mislead. Pre-2.0 RULE NDC/NLG say this cruft should not linger.
+**Problem:** A folder-by-folder reachability audit (387 `.zig` files, two build graphs) found a small set of files/exports nothing reaches, plus an orphaned test suite (`policy_http_request_test`) that never compiles because no aggregator pulls it in, plus stale comments and doc-paths (`src/auth/` post-M80) that actively mislead. Pre-2.0 RULE NDC/NLG say this cruft should not linger.
 
-**Solution summary:** Delete the verified-dead files and exports; re-aggregate the two orphan tests via the existing test-block pattern (RULE ORP); triage `wire.zig`'s unused single-source constants (use or remove); and fix the stale comments/doc-paths the audit surfaced. Pure hygiene — the only *behavioural* delta is that two previously-dead test suites now run.
+**Solution summary:** Delete the verified-dead files and exports; re-aggregate the one live orphan test (`policy_http_request_test`) via the existing test-block pattern (RULE ORP); triage `wire.zig`'s unused single-source constants (use or remove); and fix the stale comments/doc-paths the audit surfaced. Pure hygiene — the only *behavioural* deltas are that one previously-dead test suite (`policy_http_request_test`, ~10 tests) now runs, and the dead-`Session` test ecosystem (−39 tests, see §1/§4 corrections) is removed.
 
 ---
 
@@ -123,7 +123,7 @@
 
 ## Sections (implementation slices)
 
-### §1 — Restore the two orphan test suites (RULE ORP) — **DONE**
+### §1 — Restore the live orphan test suite (RULE ORP) — **DONE**
 
 > **CORRECTION (Indy, post-merge):** only `policy_http_request.zig` is a live production file — `PolicyHttpRequestTool` is instantiated at `tool_builders.zig:184` (← `tool_bridge`). `session.zig`'s `Session` is **dead** post-M80: the runner is stateless (`runner.execute` → `ExecutionResult`), nothing constructs a `Session`. So `session_test.zig` tested dead code and was **deleted**, not restored; only the policy suite (§1.2) is re-aggregated. See Discovery.
 
