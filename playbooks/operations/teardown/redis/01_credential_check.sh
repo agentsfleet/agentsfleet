@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/common.sh
-source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck source=../../../lib/common.sh
+source "${SCRIPT_DIR}/../../../lib/common.sh"
 
 echo ""
 echo "== redis-teardown Section 1: credential and approval check =="
