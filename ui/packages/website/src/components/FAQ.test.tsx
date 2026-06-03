@@ -15,7 +15,7 @@ describe("FAQ", () => {
     expect(screen.getByText("What does self-managed mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
     expect(screen.getByText("Can I self-host?")).toBeInTheDocument();
-    expect(screen.getByText("Which agent hosts work for the install skill?")).toBeInTheDocument();
+    expect(screen.getByText("Which coding agents work for the install skill?")).toBeInTheDocument();
     expect(screen.getByText("What if my agent hits the model's context window?")).toBeInTheDocument();
   });
 

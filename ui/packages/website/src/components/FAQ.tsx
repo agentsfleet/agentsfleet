@@ -7,11 +7,12 @@ import {
   DisplayLG,
   SectionLabel,
 } from "@usezombie/design-system";
+import { AGENT_DEFINITION } from "../lib/copy";
 
 const items: { q: string; a: ReactNode }[] = [
   {
     q: "What is usezombie?",
-    a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via zombiectl steer for manual investigation.",
+    a: `${AGENT_DEFINITION} The platform-ops agent, for example, wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via zombiectl steer for manual investigation.`,
   },
   {
     q: "What does self-managed mean?",
@@ -19,7 +20,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Free to try until July 31, 2026 — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime ($0.0001/sec, about $0.36/hr) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while a zombie is actually working; idle time and event receipts are free. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise post-GA.",
+    a: "Free to try until July 31, 2026 — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime ($0.0001/sec, about $0.36/hr) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while an agent is actually working; idle time and event receipts are free. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise post-GA.",
   },
   {
     q: "Does the platform default cost more than bringing my own provider key?",
@@ -30,7 +31,7 @@ const items: { q: string; a: ReactNode }[] = [
     a: "Not in v2. v2 ships hosted-only on api.usezombie.com via Clerk OAuth. Self-host arrives in v3 — the runtime is open source today, and the auth substrate plus KMS adapter are the only deployment-specific layers.",
   },
   {
-    q: "Which agent hosts work for the install skill?",
+    q: "Which coding agents work for the install skill?",
     a: "Claude Code, Amp, Codex CLI, and OpenCode — same skill, same prompts in every host. Run npm install -g @usezombie/zombiectl, then /usezombie-install-platform-ops inside any of them.",
   },
   {

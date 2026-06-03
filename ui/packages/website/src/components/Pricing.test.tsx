@@ -53,7 +53,7 @@ describe("Pricing component", () => {
     const { container } = renderPricing();
     const table = screen.getByTestId("pricing-rate-table");
     expect(table).toHaveTextContent(/active runtime/i);
-    expect(table).toHaveTextContent(/only while a zombie is running/i);
+    expect(table).toHaveTextContent(/only while an agent is running/i);
     expect(table).toHaveTextContent(/platform or your own key/i);
     // No struck-through dual-rate presentation.
     expect(container.querySelector("s")).toBeNull();
@@ -91,7 +91,7 @@ describe("Pricing component", () => {
     renderPricing();
     const card = screen.getByTestId("pricing-rate-card");
     expect(card.textContent).toMatch(/billed by the second/i);
-    expect(card.textContent).toMatch(/only while a zombie is actively working/i);
+    expect(card.textContent).toMatch(/only while an agent is actively working/i);
     expect(card.textContent).toMatch(/idle time/i);
   });
 

@@ -29,9 +29,9 @@ npx skills add usezombie/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
 #    /usezombie-install-platform-ops
-#    The slash-command provisions the platform-ops zombie and prints its zombie_id.
+#    The slash-command provisions the platform-ops agent and prints its zombie_id.
 
-# 3. Back in the shell — steer the zombie
+# 3. Back in the shell — steer the agent
 zombiectl steer <zombie_id> "morning health check"`;
 
 const webhookPayload = `{
@@ -151,7 +151,7 @@ export default function Agents() {
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
             <code className="font-mono">/v1/webhooks/:zombie_id</code>. Every inbound webhook must
-            carry a per-zombie HMAC signature header — unsigned requests are rejected.
+            carry a per-agent HMAC signature header — unsigned requests are rejected.
           </p>
           <Terminal label="Webhook payload example" className="max-w-wide">
             {webhookPayload}

@@ -113,7 +113,7 @@ describe("dashboard overview page", () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("First wake");
-    expect(m).toContain("Install a zombie from your terminal");
+    expect(m).toContain("Install an agent from your terminal");
   });
 
   it("StatusTiles returns null without a token or an active workspace", async () => {

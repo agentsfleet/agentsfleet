@@ -159,7 +159,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       <div className="mb-4">
         <Input
           type="search"
-          placeholder="Filter by zombie, tool, or action…"
+          placeholder="Filter by agent, tool, or action…"
           value={filter}
           onChange={(e) => setFilter(e.currentTarget.value)}
           aria-label="Filter approvals"

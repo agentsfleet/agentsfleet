@@ -21,7 +21,7 @@ describe("CTABlock", () => {
 
   it("speaks to the operator, not the machine API", () => {
     renderCtaBlock();
-    expect(screen.getByText(/install one zombie, wire one webhook/i)).toBeInTheDocument();
+    expect(screen.getByText(/install one agent, wire one webhook/i)).toBeInTheDocument();
     // The OpenAPI / machine-surface pitch belongs on /agents, not the human closer.
     expect(screen.queryByText(/openapi 3\.1/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/machine surface/i)).not.toBeInTheDocument();
@@ -50,6 +50,6 @@ describe("CTABlock", () => {
     expect(heading.closest(".max-w-measure")).toBeNull();
     const measure = container.querySelector(".max-w-measure");
     expect(measure).not.toBeNull();
-    expect(measure!.textContent).toMatch(/install one zombie/i);
+    expect(measure!.textContent).toMatch(/install one agent/i);
   });
 });

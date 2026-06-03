@@ -70,7 +70,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
-            action: "install the zombie",
+            action: "install the agent",
           }),
         );
       }
@@ -96,7 +96,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormControl>
                 <Textarea
                   placeholder={
-                    "---\nname: my-zombie\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n"
+                    "---\nname: my-agent\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n"
                   }
                   rows={8}
                   className="font-mono text-xs"
@@ -122,7 +122,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormLabel>SKILL.md body</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder={"---\nname: my-zombie\ndescription: …\nversion: 0.1.0\n---\n# My Zombie\n…"}
+                  placeholder={"---\nname: my-agent\ndescription: …\nversion: 0.1.0\n---\n# My Agent\n…"}
                   rows={8}
                   className="font-mono text-xs"
                   {...field}
@@ -149,7 +149,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
             variant="default"
             size="sm"
           >
-            {pending ? <Spinner size="sm" label="Installing…" /> : "Install Zombie"}
+            {pending ? <Spinner size="sm" label="Installing…" /> : "Install Agent"}
           </Button>
           <Button
             type="button"

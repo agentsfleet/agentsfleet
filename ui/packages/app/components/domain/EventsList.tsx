@@ -48,7 +48,7 @@ export function EventsList({
   scope,
   initial,
   emptyTitle = "No events yet",
-  emptyDescription = "Operator steers, webhooks, and cron triggers will land here once your zombies start running.",
+  emptyDescription = "Operator steers, webhooks, and cron triggers will land here once your agents start running.",
 }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);

@@ -31,7 +31,7 @@ import ThemeToggle from "./ThemeToggle";
 
 const NAV = [
   { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
-  { label: "Zombies", href: "/zombies", icon: SkullIcon },
+  { label: "Agents", href: "/zombies", icon: SkullIcon },
   { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },

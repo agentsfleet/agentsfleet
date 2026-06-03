@@ -46,7 +46,7 @@ export default async function CredentialsPage() {
       </PageHeader>
       <p className="mb-6 text-sm text-muted-foreground">
         Each credential is a JSON object stored in the vault, envelope-encrypted at rest.
-        Reference fields from a zombie&apos;s tool calls as
+        Reference fields from an agent&apos;s tool calls as
         {" "}<code>{"${secrets.<name>.<field>}"}</code>.
       </p>
       <div className="grid gap-8 md:grid-cols-2">

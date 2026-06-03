@@ -187,7 +187,7 @@ describe("app components", () => {
     expect(markup).toContain("usezombie");
     // Sidebar nav rendered with all 5 operational routes + 2 in More.
     expect(markup).toContain("Dashboard");
-    expect(markup).toContain("Zombies");
+    expect(markup).toContain("Agents");
     expect(markup).toContain("Credentials");
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
@@ -232,7 +232,7 @@ describe("app components", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeTruthy();
     expect(dialog.textContent).toContain("Dashboard");
-    expect(dialog.textContent).toContain("Zombies");
+    expect(dialog.textContent).toContain("Agents");
     cleanup();
   });
 
@@ -246,7 +246,7 @@ describe("app components", () => {
     // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
     // 'Zombies' exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
-    await user.click(screen.getByText("Zombies"));
+    await user.click(screen.getByText("Agents"));
     // Bottom group: 'Docs' is external (anchor branch), 'Settings' internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Settings"));

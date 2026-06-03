@@ -18,10 +18,10 @@ export default async function InstallZombiePage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>Install Zombie</PageTitle>
+          <PageTitle>Install Agent</PageTitle>
         </PageHeader>
         <p className="text-sm text-muted-foreground">
-          Create a workspace before installing zombies.
+          Create a workspace before installing agents.
         </p>
       </div>
     );
@@ -30,7 +30,7 @@ export default async function InstallZombiePage() {
   return (
     <div>
       <PageHeader>
-        <PageTitle>Install Zombie</PageTitle>
+        <PageTitle>Install Agent</PageTitle>
       </PageHeader>
       <InstallZombieForm workspaceId={workspace.id} />
     </div>

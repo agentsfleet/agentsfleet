@@ -46,7 +46,7 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
             </span>
           </CardTitle>
           <CardDescription className="mt-1">
-            Covers all your zombie events.
+            Covers all your agent events.
           </CardDescription>
         </div>
         <PurchaseCreditsButton />
@@ -54,7 +54,7 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
       {isExhausted ? (
         <CardContent>
           <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New zombie events are gate-blocked until a
+            Balance exhausted. New agent events are gate-blocked until a
             top-up — Stripe purchase ships in v2.1; contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support

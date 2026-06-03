@@ -54,7 +54,7 @@ describe("Home", () => {
     expect(screen.getByRole("heading", { level: 3, name: "Install the CLI" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "Run the install skill" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "Wire your trigger" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Steer your zombie" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Steer your agent" })).toBeInTheDocument();
   });
 
   it("renders How it works section", () => {

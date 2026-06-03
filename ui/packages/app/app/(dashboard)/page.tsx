@@ -7,6 +7,7 @@ import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
+import { AGENT_DEFINITION } from "@/lib/copy";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 
@@ -62,23 +63,24 @@ export async function StatusTiles() {
 function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
-    <Section asChild>
-      <section aria-label="Install your first zombie" className="mb-8">
-        <SectionLabel>First wake</SectionLabel>
-        <p className="mt-1 mb-6 max-w-prose text-sm text-muted-foreground">
-          {credits != null && credits > 0
-            ? `$${credits} of free credit is sitting in your balance, waiting on a wake. Install a zombie from your terminal and trigger one.`
-            : "Install a zombie from your terminal — point it at a SKILL.md and a TRIGGER.md, and it'll wake on the matching event."}
-        </p>
-        <InstallBlock
-          title="Install your first zombie"
-          command="zombiectl install --from ./platform-ops"
-          actions={[
-            { label: "Read the docs", to: "https://docs.usezombie.com/quickstart", variant: "default", external: true },
-            { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },
-          ]}
-        />
-      </section>
+    <Section aria-label="Install your first agent" className="mb-8">
+      <SectionLabel>First wake</SectionLabel>
+      <p className="mt-1 mb-3 max-w-prose text-sm text-muted-foreground">
+        {AGENT_DEFINITION}
+      </p>
+      <p className="mb-6 max-w-prose text-sm text-muted-foreground">
+        {credits != null && credits > 0
+          ? `$${credits} of free credit is sitting in your balance, waiting on a wake. Install an agent from your terminal and trigger one.`
+          : "Install an agent from your terminal — point it at a SKILL.md and a TRIGGER.md, and it'll wake on the matching event."}
+      </p>
+      <InstallBlock
+        title="Install your first agent"
+        command="zombiectl install --from ./platform-ops"
+        actions={[
+          { label: "Read the docs", to: "https://docs.usezombie.com/quickstart", variant: "default", external: true },
+          { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },
+        ]}
+      />
     </Section>
   );
 }
