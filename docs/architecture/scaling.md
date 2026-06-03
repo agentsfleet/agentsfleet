@@ -200,5 +200,5 @@ Only `zombied`'s pool + SSE connections re-dial. `READONLY`-after-failover is re
 - **Adaptive pool sizing.** Fixed `max_idle` cap is sufficient; revisit only if post-landing bench shows pool contention.
 - **Switching off Upstash.** Self-hosted Redis on Fly machines is a v3 consideration; the connection/request shape here still applies.
 - **Postgres scaling.** Pgbouncer + plan sizing covered in the deployment runbook, not here — though after the cutover it is the **primary** scaling axis, so the runbook carries more weight than it did.
-- **Placement / scheduler.** Label/capacity-aware assignment and autoscale-by-queue-depth are M80_007.
+- **Placement / scheduler.** Label-aware assignment (`required_tags ⊆ runner.labels`) is M85_001; capacity-aware placement and autoscale-by-queue-depth stay out of scope (the non-goals fence in runner_fleet.md).
 - **Multi-region Redis.** Single regional Upstash database assumed; co-locate with the Fly `zombied` region.

@@ -284,14 +284,14 @@ Flows 1–3 and agent keys all act *on behalf of* a human or a tenant. The **run
 
 ### Provisioning (register)
 
-A runner has no credential until **usezombie's platform operator** mints one. Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the one endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token.
+A runner has no credential until **usezombie's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the one endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleet/runners` (M84_001) and the operator-plane mutation `PATCH /v1/fleet/runners/{id}` (M84_002).
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `zrn_` and installs it on the host as `ZOMBIE_RUNNER_TOKEN`; the daemon validates the `zrn_` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
 ```
-Platform operator (Clerk JWT, metadata.platform_admin=true)        zombied
-   │ POST /v1/runners
-   │   Authorization: Bearer <Clerk-JWT>
+Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  zombied
+   │ server action → POST /v1/runners
+   │   Authorization: Bearer <session-JWT>
    │   { host_id, sandbox_tier, labels[] }
    ▼
    platformAdmin() chain [bearer_or_api_key, PlatformAdmin] gates the route;
@@ -303,7 +303,7 @@ Platform operator (Clerk JWT, metadata.platform_admin=true)        zombied
    does NOT call register — it authenticates every later call with that zrn_
 ```
 
-`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `status='revoked'`.
+`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'` (M84_002, renamed from `status`).
 
 ### Validation — a separate middleware, on purpose
 

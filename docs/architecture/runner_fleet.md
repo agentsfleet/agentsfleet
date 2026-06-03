@@ -73,7 +73,7 @@ Fail-safe by construction: a transient `/renew` failure retries on the next tick
 
 The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencing, node heartbeats, drain, sticky scheduling, checkpointed workloads — but it is **not** a general orchestrator and must not drift into one. The non-goals are load-bearing; each rejected feature is one we deliberately do not build until a spec changes this direction:
 
-- **Not a general scheduler.** Placement is capped at *sticky + any-eligible*. Label / capacity / sandbox-tier placement is M80_007, full stop.
+- **Not a general scheduler — *until M85_001*.** Placement is capped at *sticky + any-eligible* today. **Label** placement (a zombie's `required_tags ⊆ runner.labels`, matched before the sticky hint) is built in **M85_001**; capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
 - **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
@@ -134,7 +134,7 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
-| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform operator mints a durable `runner_token` (`zrn_`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `zmb_t_` api_key → `403`. The host does not call this — the operator does, then installs the `zrn_` |
+| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform admin mints a durable `runner_token` (`zrn_`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `zmb_t_` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `zrn_` (M84_001) |
 | `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer zrn_` | `runner/heartbeat.zig` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
 | `lease` | `POST /v1/runners/me/leases` | `Bearer zrn_` | `runner/lease.zig` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | `runner/report.zig` | terminal result for a lease; `zombied` persists + `XACK`s after a fencing check |
@@ -144,18 +144,18 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 
 ## Registering a runner
 
-A runner needs a `zrn_` token before it can pull work. The **platform operator pre-mints it** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The operator calls `register` once with a Clerk JWT carrying `platform_admin`; `zombied` mints the `zrn_` and the operator drops it into the host's `ZOMBIE_RUNNER_TOKEN` env var. On boot the daemon validates the `zrn_` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the operator-as-minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
+A runner needs a `zrn_` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The admin opens **dashboard → Admin → Runners → "Add runner"**; a session-authed server action calls `POST /v1/runners`; `zombied` mints the `zrn_` and reveals it **once** (copy-to-clipboard, then dropped from the browser), and the admin drops it into the host's vault / `ZOMBIE_RUNNER_TOKEN` env var. No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the daemon validates the `zrn_` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
 
 ```
- platform operator                                       zombied
- (Clerk JWT, metadata.platform_admin=true)
-   │ POST /v1/runners                                🔒 GATE 1 — who may enroll:
-   │   Authorization: Bearer <Clerk-JWT>             platform_admin claim required
+ platform admin                                          zombied
+ (dashboard session; metadata.platform_admin=true)
+   │ "Add runner" server action → POST /v1/runners   🔒 GATE 1 — who may enroll:
+   │   Authorization: Bearer <session-JWT>           platform_admin claim required
    │   { host_id, sandbox_tier, labels[] }           (tenant admin / zmb_t_ → 403)
    ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
-   │                                                  │ store ONLY sha256(zrn_) in fleet.runners
-   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (shown once)
-   │ operator installs zrn_ on the host (env ZOMBIE_RUNNER_TOKEN)
+   │                                                  │ store sha256(zrn_) + last_seen_at=0 in fleet.runners
+   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (revealed once)
+   │ admin installs zrn_ on the host (vault → env ZOMBIE_RUNNER_TOKEN)
    ▼
  host: zombie-runner
  (env ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN=zrn_…)
@@ -165,7 +165,23 @@ A runner needs a `zrn_` token before it can pull work. The **platform operator p
    │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `status='revoked'` so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `zombied` / `zombiectl` convention), and `ZOMBIE_RUNNER_TOKEN` holds the operator-minted `zrn_` directly — there is no bootstrap credential on the host and no datastore secret.
+`zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `zombied` / `zombiectl` convention), and `ZOMBIE_RUNNER_TOKEN` holds the minted `zrn_` directly — there is no bootstrap credential on the host and no datastore secret.
+
+## Runner state — three categories, no JSONB status
+
+A runner's "status" is three *separate* concerns; conflating them into one Kubernetes-style `status` JSONB object is the trap we deliberately avoid (cross-validated Jun 2026). Kubernetes needs `status.conditions[]` because dozens of controllers write orthogonal state onto one object; the fleet has one operator-intent dimension and a simple pull/lease loop, so typed columns + an event log stay clearer and queryable.
+
+| Category | Where it lives | Examples | Stored? |
+|---|---|---|---|
+| **Operator intent** | `fleet.runners.admin_state` (typed enum) | `active` · `cordoned` · `draining` · `drained` · `revoked` | **yes** — and `admin_state != 'active'` is the cordon/revoke auth gate (M84_002) |
+| **Runtime liveness** | **derived** at read from `last_seen_at` + leases | `registered` · `online` · `busy` · `offline` | **no** — a pure function; storing it would drift |
+| **History** | `fleet.runner_events` (append-only) | `runner_registered` · `lease_acquired` · `runner_offline` · `runner_revoked` | **yes** — answers "last busy?", "runs this period", "offline how long?" |
+
+Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel): a freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001). "Auth failed" is *not* a runner state — identity is the token, so a bad `zrn_` matches no row; it surfaces in logs/metrics, never as a row's liveness. The `phase + conditions JSONB` split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security) — not before.
+
+### Operator plane + reassignment
+
+The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — lands in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires their affinity so work re-leases to a healthy host (heartbeat-lapse reassignment) — is **M84_002**. `current_lease_id` makes "busy" a column read and names the reassignment target. Until M84_002, heartbeat-lapse recovery is bounded by the lease-TTL backstop + the pull-triggered reclaim M80_002 already ships.
 
 ## Datastore role model — why there is no `runner_runtime`
 
@@ -304,7 +320,7 @@ On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack /
 
 ## Scaling
 
-The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## Observability — runner metrics on `zombied` `/metrics`
 
@@ -371,11 +387,17 @@ The exact and restart-resilient form of the two gauges is a read-only background
  S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (pending)
  S5  M80_005  IDENTITY   DONE — platform_admin gate on enrollment (POST /v1/runners) + Option B host
                                  (operator pre-mints zrn_, no self-register); trust_class +
-                                 allowed_workspace_ids + trust-gated placement deferred to M80_007
- S5  M80_006  FLEET      node inventory + heartbeat-driven reassignment + PER-LEASE RENEWAL        (pending, MANDATORY)
-                         (closes the > 30 s renewal gap; sub-10 s recovery; cordon / reaping)
- S6  M80_007  SCHEDULER  placement on labels / capacity / sandbox-tier + trust-gated placement
-                         (trust_class + allowed_workspace_ids); autoscale by queue depth           (later)
+                                 allowed_workspace_ids + trust-gated placement deferred to M85_001
+ S5  M80_006  FLEET      DONE — per-lease renewal (live runner keeps its lease); operator plane +
+                                 heartbeat-lapse reassignment carved out → M84_002
+ S6  M84_001  ENROLLMENT dashboard "Add runner" mint (retired register --token CLI) + GET
+                         /v1/fleet/runners read + honest derived liveness                          (active)
+ S6  M84_002  OPERATOR   PATCH /v1/fleet/runners cordon/drain/revoke + admin_state + UZ-RUN-009 +
+                         fleet.runner_events log + liveness sweeper / reassignment                 (pending)
+ S7  M85_001  SCHEDULER  label placement (required_tags ⊆ runner.labels, before the sticky hint) +
+                         trust-gated placement; capacity / fairness / autoscale stay out            (pending)
+ ── note ──────────────────────────────────────────────────────────────────────────────────────
+     "M80_007" shipped as the runner-observability spec; the placement reservation moved to M85_001
  ── later ─────────────────────────────────────────────────────────────────────────────────────
      mode C    self-enrolling runners — the open "run it on your own host" case
 ```
