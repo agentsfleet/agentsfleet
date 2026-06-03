@@ -80,9 +80,9 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/runner/engine/session_test.zig` | EDIT | Fix drift vs current `session.zig`; keep (live equivalent). |
-| `src/runner/engine/runtime/policy_http_request_test.zig` | EDIT | Fix drift vs current `policy_http_request.zig`; keep (live equivalent). |
-| `src/runner/engine/runner.zig` | EDIT | Add `session_test.zig` to the engine test-block aggregator. |
+| `src/runner/engine/session_test.zig` | DELETE | **Correction (Indy, post-merge):** `session.zig`'s `Session` is dead post-M80 (the runner is stateless: `runner.execute` → `ExecutionResult`; no prod caller). This suite tested dead code → deleted, not restored. |
+| `src/runner/engine/runtime/policy_http_request_test.zig` | EDIT | Fix drift vs current `policy_http_request.zig`; keep (live equivalent — `PolicyHttpRequestTool` is instantiated at `tool_builders.zig:184`). |
+| `src/runner/engine/runner.zig` | EDIT | Drop the dead-`Session` suites (`session_test`/`sandbox_edge_test`/`resource_security_test`) from the engine test block; keep `runner_security_test` + `runner_progress_redact_test`. |
 | `src/runner/engine/runtime/policy_http_request.zig` | EDIT | Add `test {}` pulling its sibling test; delete the false "Tests live in sibling" comment (line ~152). |
 | `src/zombied/reliability/backoff.zig` | DELETE | Dead `expBackoffJitter` — no prod caller (worker consumer removed at M80). |
 | `src/runner/engine/client_errors.zig` | EDIT | Remove the unused `ClientError` error set (~lines 5–17); KEEP the live `ERR_*` string codes. |
@@ -92,8 +92,12 @@
 | `src/zombied/auth/tests.zig` | EDIT | Drop isolation imports of the two deleted middlewares (lines 29, 31). |
 | `src/zombied/auth/middleware/bearer_or_api_key.zig` | EDIT | Reword the now-stale "mirrors bearer_oidc" comment (line ~30). |
 | `src/runner/engine/runtime/session_store.zig` | DELETE | Production-dead `SessionStore`; no prod path reaches it. |
-| `src/runner/engine/resource_security_test.zig` | EDIT | Drop the `SessionStore` import + its test cases (T11 + concurrency); KEEP the rest of the suite. |
-| `src/runner/engine/sandbox_edge_test.zig` | EDIT | Drop the `SessionStore` import + the `reapExpired` case (T3); KEEP the rest of the suite. |
+| `src/runner/engine/session.zig` | DELETE | **Correction:** dead post-M80 — the runner is stateless; `Session` has no prod caller (only the deleted tests + a stale `context_budget` comment). |
+| `src/runner/engine/resource_security_test.zig` | DELETE | **Correction:** the whole suite is `Session`-resource-metrics tests (dead). Live-symbol bits (`mapError`/`FailureClass`) are covered in `runner_security_test.zig`. |
+| `src/runner/engine/sandbox_edge_test.zig` | DELETE | **Correction:** predominantly `Session` lifecycle/edge tests (dead). Live bits (`mapError`/`ResourceLimits`/`LeaseState`/`appendBwrapNetworkArgs`) covered in `types.zig`/`network.zig`/`runner_security_test.zig`/`sandbox_args_edge_test.zig`. |
+| `src/runner/tests.zig` | EDIT | Drop the `engine/session.zig` aggregator import. |
+| `src/runner/engine/context_budget.zig` | EDIT | Reword the stale `Session.create` lifetime comment. |
+| `src/runner/sandbox_args_edge_test.zig` | EDIT | Drop the comment pointer to the deleted `sandbox_edge_test.zig`. |
 | `src/zombied/config/contact.zig` | DELETE | Cross-tier `SUPPORT_EMAIL` pin with no Zig consumer. |
 | `src/zombied/config/contact_test.zig` | DELETE | Tests only the deleted constant. |
 | `src/zombied/tests.zig` | EDIT | Remove `contact`, `contact_test`, `backoff` aggregator imports (lines 19, 20, 75). |
@@ -121,9 +125,11 @@
 
 ### §1 — Restore the two orphan test suites (RULE ORP) — **DONE**
 
-The only two genuinely-dead tests. Both cover live production files (`session.zig`, `policy_http_request.zig`) and were written May 27 but never compiled against current sources. Re-aggregate via the existing test-block pattern, then fix any drift so they compile and pass. **Implementation default:** wire `session_test.zig` into `runner.zig`'s engine test block; add a `test {}` to `policy_http_request.zig` pulling its sibling — because that is the reachable parent (RULE ORP), not a new aggregator.
+> **CORRECTION (Indy, post-merge):** only `policy_http_request.zig` is a live production file — `PolicyHttpRequestTool` is instantiated at `tool_builders.zig:184` (← `tool_bridge`). `session.zig`'s `Session` is **dead** post-M80: the runner is stateless (`runner.execute` → `ExecutionResult`), nothing constructs a `Session`. So `session_test.zig` tested dead code and was **deleted**, not restored; only the policy suite (§1.2) is re-aggregated. See Discovery.
 
-- **Dimension 1.1** — `session_test.zig` compiles and runs under the runner test build → Test `session lifecycle suite`.
+Originally framed as two genuinely-dead tests covering live files. For the live one (`policy_http_request.zig`), re-aggregate via the existing test-block pattern — a `test {}` pulling its sibling (the reachable parent, RULE ORP) — and fix any drift so it compiles and passes.
+
+- **Dimension 1.1** — **VOIDED**: `session.zig`/`Session` is dead → `session_test.zig` deleted (it tested dead code), not restored.
 - **Dimension 1.2** — `policy_http_request_test.zig` compiles and runs under the runner test build; the false coverage comment is gone → Test `policy http request suite`.
 
 ### §2 — Trivial dead-code deletes (no behavioural risk) — **DONE**
@@ -143,10 +149,12 @@ Delete `bearer_oidc.zig` (superseded by `bearer_or_api_key`, which lifts `platfo
 
 ### §4 — Remove runner `SessionStore`, de-couple its security suites — **DONE**
 
-Delete `runtime/session_store.zig` (production-dead). Its only users are two *running* security suites that exercise it as a fixture — surgically remove the `SessionStore` import + the cases that test it (`resource_security_test`: the no-leaks + concurrency cases; `sandbox_edge_test`: the `reapExpired` case), and KEEP every other case in both suites plus `runner.zig:306-307` (which aggregate the surviving suites). **Invariant to protect:** both suites still compile and their non-SessionStore assertions still run.
+> **CORRECTION (Indy, post-merge):** the surgical de-coupling was superseded once `Session` itself was found dead (§1 correction). `session.zig` + the whole `Session` test ecosystem — `session_test.zig`, `resource_security_test.zig`, `sandbox_edge_test.zig` — were **deleted wholesale** (they exercise the dead `Session` resource-metrics/lifecycle abstraction). The live-symbol coverage they incidentally carried (`mapError`/`FailureClass`/`ResourceLimits`/`LeaseState`/`appendBwrapNetworkArgs`/`executionId`) is preserved in those symbols' own files (`runner_security_test.zig`, `types.zig`, `network.zig`, `sandbox_args_edge_test.zig`, `child_supervisor_test.zig`).
+
+Delete `runtime/session_store.zig` (production-dead) along with the dead `Session` it managed.
 
 - **Dimension 4.1** — `session_store.zig` gone; `SessionStore` unreferenced repo-wide → Test `dead-code sweep: session_store`.
-- **Dimension 4.2** — `resource_security_test` + `sandbox_edge_test` compile and pass with their remaining cases under the runner test build → Test `runner security suites survive`.
+- **Dimension 4.2** — **REVISED**: `resource_security_test` + `sandbox_edge_test` deleted (dead-`Session` suites). Runner test build green at 233 (−39 dead-`Session` tests); live coverage retained in sibling files.
 
 ### §5 — `wire.zig` UFS triage + comment/doc hygiene — **DONE**
 
@@ -208,7 +216,7 @@ No public HTTP, CLI, or cross-module *contract* changes. Removed internal symbol
 
 ## Acceptance Criteria
 
-- [x] `session_test` + `policy_http_request_test` run & pass — runner `268/272` (4 skips); proved the in-source block runs (count 281→270 when removed, Δ11 = 10 policy tests + the aggregator `test{}`).
+- [x] `policy_http_request_test` runs & passes (live — `tool_builders.zig:184`) — runner `229/233` (4 skips). `session_test` was deleted, not restored: `session.zig`/`Session` is dead (see Discovery).
 - [x] zombied unit suite green — `zig build test` → `1189/1470` (281 integration skips). *(repo target is `zig build test`, not `make test`.)*
 - [x] Both graphs build; cross-compile clean — `zig build` + `zig build --build-file build_runner.zig` + both graphs × `x86_64-linux` + `aarch64-linux` all exit 0.
 - [x] `test-auth` portability gate green — `zig build test-auth` → `227/227` (platform_admin invariant holds).
@@ -275,7 +283,8 @@ grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md
 - **Scope consult (Jun 03 2026)** — Indy adjudicated the keep-vs-delete calls: delete `bearer_oidc`, `security_headers` (skeleton, not wire), `session_store` (+ de-couple tests), `contact`; wire-in the two orphan tests (live equivalents exist). Two deletion-safety gates verified green before authoring (platform_admin covered by `bearer_or_api_key`; HSTS is load-balancer-only).
 - **Runner-CLI token scope decision (Jun 03 2026)** — Mid-work, Indy questioned the `zombie-runner register` token model (`--token`/`ZOMBIE_TOKEN`). Investigated M80_004 (DONE), the runner bootstrap playbooks, and `docs/architecture/runner_fleet.md`: `register` deliberately authenticates with the operator's platform-admin Clerk JWT via `ZOMBIE_TOKEN`/`--token` (verbatim `zombiectl` precedence); under Option B the host holds only `ZOMBIE_RUNNER_TOKEN` (the operator-minted `zrn_`), never an admin credential. **Decision: leave the runner CLI as-is** — the shared `ZOMBIE_TOKEN` is the agreed, integration-tested M80_004 design; a rename would supersede M80_004 and belongs in its own spec, NOT this dead-code cleanup. M83 stays dead-code-only. Recorded in agent memory `project_runner_register_admin_token_intentional`.
 - **§4 SessionStore test-case count (Jun 03 2026)** — Adversarial re-confirmation found `resource_security_test.zig` references `SessionStore` in **three** cases (T8 "destroying one session in store" @76, T5+T8 concurrency @266, T11 no-leaks @411), not the two the §4 prose names ("no-leaks + concurrency"). All three must go for the import removal to compile (Invariant: both suites still compile); the neighbour-isolation intent survives via the bare-`Session` T8 @36. `sandbox_edge_test.zig` is as specified (one case, T3 reapExpired @268).
-- **Skill chain outcomes** — `/write-unit-test`: ledger 100% resolved (5 tested / 3 won't-test dead-code removal); no new tests warranted (removal + restoration PR; restored §1 suites add 18 real behavioural/invariant/security tests). `/review`: ship-as-is — all 5 priority areas clean @9/10 (no dropped consumer, wire triage sound, §4 well-formed, §3 platform_admin intact, docs not over-replaced); one finding (pre-existing `///` mis-attachment in `bearer_or_api_key.zig` that §3 had touched) fixed under RULE NLR (commit 7243894e). `/review-pr` + `kishore-babysit-prs` run post-PR.
+- **`session.zig`/`Session` is DEAD — §1/§4 corrected (Indy, post-merge, Jun 03 2026)** — After the PR opened, Indy asked whether the *subjects* of the restored tests are used in production. Tracing `runner.execute` (`runner.zig:64`) showed it is **stateless** (params → `ExecutionResult`); `session.zig`'s `Session` has **zero production caller** — every reference is a test fixture or the test aggregator, plus one stale `context_budget.zig:22` comment. The persistent session/checkpoint state lives **zombied-side** in `core.zombie_sessions` (`008_core_zombie_sessions.sql`, managed by `fleet/zombie_session.zig`'s `ZombieSession`), which the runner never touches (Option B, no datastore creds). So `Session` is pre-M80-worker leftover — dead like the `SessionStore` that managed it. **Audit blind spot:** the original audit caught `SessionStore` but treated `session.zig` as "live", so §1 *restored* `session_test.zig` for dead code. **Corrected:** deleted `session.zig` + `session_test.zig` + `resource_security_test.zig` + `sandbox_edge_test.zig` (the whole dead-`Session` test ecosystem, −39 tests); live-symbol coverage they incidentally carried (`mapError`/`FailureClass`/`ResourceLimits`/`LeaseState`/`appendBwrapNetworkArgs`/`executionId`) is retained in those symbols' own files. The `policy_http_request_test.zig` restore **stands** (live: `tool_builders.zig:184`). My §1 restore, `/write-unit-test`, and `/review` all validated tests against `session.zig` as if live and missed it; **Indy's question caught it** — a reminder that automated review checks "do the tests pass / do deletions drop a live consumer", not "is the code-under-test itself live."
+- **Skill chain outcomes** — `/write-unit-test`: ledger 100% resolved. `/review`: ship-as-is — all 5 priority areas clean @9/10; one finding (pre-existing `///` mis-attachment in `bearer_or_api_key.zig` that §3 had touched) fixed under RULE NLR (commit 7243894e). `kishore-babysit-prs`: greptile reviewed clean (check SUCCESS, 0 findings). **Note:** the review chain validated `session.zig` as live — the dead-`Session` correction above came from Indy's adversarial question, not the skills.
 - **Deferrals** — none.
 
 ---
@@ -296,7 +305,7 @@ grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Orphan tests run | `zig build --build-file build_runner.zig test` | 268/272 pass, 4 skip; both restored suites execute (proved via Δ11 count delta) | ✅ |
+| Orphan tests run | `zig build --build-file build_runner.zig test` | 229/233 pass, 4 skip; the live policy suite executes; dead-`Session` test ecosystem removed (−39) | ✅ |
 | Unit tests | `zig build test` (repo target, not `make test`) | 1189/1470 pass, 281 integration skips | ✅ |
 | Auth portability | `zig build test-auth` | 227/227 pass (platform_admin invariant) | ✅ |
 | Lint (unused-decls) | `make lint-zig` | ZLint 0 errors / 0 warnings across 387 files; fmt + pg-drain + FLL + ORP guards green | ✅ |
