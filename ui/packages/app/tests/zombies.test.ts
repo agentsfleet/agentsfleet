@@ -135,7 +135,7 @@ describe("ZombieConfig interactions", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /delete zombie/i }));
+    await user.click(screen.getByRole("button", { name: /delete agent/i }));
     // Confirm dialog is now visible.
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /yes, delete/i }));
@@ -169,7 +169,7 @@ describe("ZombieConfig interactions", () => {
         zombieName: "platform-ops",
       }),
     );
-    await user.click(screen.getByRole("button", { name: /delete zombie/i }));
+    await user.click(screen.getByRole("button", { name: /delete agent/i }));
     await user.click(screen.getByRole("button", { name: /yes, delete/i }));
     // 401 from withToken maps to UZ-AUTH-401, which presentError renders as
     // the curated "Your session expired" copy — no raw "Not authenticated"
@@ -198,7 +198,7 @@ describe("ZombieConfig interactions", () => {
         zombieName: "platform-ops",
       }),
     );
-    await user.click(screen.getByRole("button", { name: /delete zombie/i }));
+    await user.click(screen.getByRole("button", { name: /delete agent/i }));
     await user.click(screen.getByRole("button", { name: /yes, delete/i }));
     await waitFor(() =>
       expect(screen.getByText(/run in progress/i)).toBeTruthy(),
@@ -218,7 +218,7 @@ describe("ZombieConfig interactions", () => {
         zombieName: "platform-ops",
       }),
     );
-    await user.click(screen.getByRole("button", { name: /delete zombie/i }));
+    await user.click(screen.getByRole("button", { name: /delete agent/i }));
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(screen.queryByRole("alertdialog")).toBeNull();

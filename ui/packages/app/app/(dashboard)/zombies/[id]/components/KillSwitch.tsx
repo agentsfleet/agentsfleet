@@ -25,7 +25,7 @@ interface ActionConfig {
   // naturally per action. Kept as a string literal — never built from
   // confirmLabel at the call site (RULE UFS — verb literals stay
   // adjacent to the config that owns them).
-  errorVerb: "stop this zombie" | "resume this zombie" | "kill this zombie";
+  errorVerb: "stop this agent" | "resume this agent" | "kill this agent";
 }
 
 // Drives the per-zombie lifecycle controls. The panel renders a state-aware
@@ -76,35 +76,35 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
     target: ZOMBIE_STATUS.STOPPED,
     buttonLabel: "Stop",
     variant: "destructive",
-    dialogTitle: "Stop this zombie?",
+    dialogTitle: "Stop this agent?",
     dialogDescription: "Halt execution now. You can resume it later from this page or via the CLI.",
     confirmLabel: "Stop",
     intent: "destructive",
-    errorVerb: "stop this zombie",
+    errorVerb: "stop this agent",
   };
   const resumeAction: ActionConfig = {
     target: ZOMBIE_STATUS.ACTIVE,
     buttonLabel: "Resume",
     variant: "outline",
-    dialogTitle: "Resume this zombie?",
+    dialogTitle: "Resume this agent?",
     dialogDescription:
       optimisticStatus === ZOMBIE_STATUS.PAUSED
-        ? "This zombie was auto-paused by the platform. Resuming returns it to active execution — investigate the trigger first."
-        : "Return this zombie to active execution.",
+        ? "This agent was auto-paused by the platform. Resuming returns it to active execution — investigate the trigger first."
+        : "Return this agent to active execution.",
     confirmLabel: "Resume",
     intent: "default",
-    errorVerb: "resume this zombie",
+    errorVerb: "resume this agent",
   };
   const killAction: ActionConfig = {
     target: ZOMBIE_STATUS.KILLED,
     buttonLabel: "Kill",
     variant: "destructive",
-    dialogTitle: "Kill this zombie permanently?",
+    dialogTitle: "Kill this agent permanently?",
     dialogDescription:
-      "Marks the zombie terminal. This is irreversible — once killed, the zombie cannot be resumed and only Delete remains.",
+      "Marks the agent terminal. This is irreversible — once killed, the agent cannot be resumed and only Delete remains.",
     confirmLabel: "Kill",
     intent: "destructive",
-    errorVerb: "kill this zombie",
+    errorVerb: "kill this agent",
   };
 
   const actions: ActionConfig[] = (() => {

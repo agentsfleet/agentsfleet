@@ -70,6 +70,16 @@ describe("FAQ", () => {
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
   });
 
+  it("defines the agent at first touch: 'What is usezombie?' opens to the explicit definition", async () => {
+    const user = userEvent.setup();
+    render(<FAQ />);
+    await user.click(screen.getByText("What is usezombie?"));
+    expect(
+      screen.getByText(/An agent is a long-lived runtime you install once/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not a one-shot prompt/i)).toBeInTheDocument();
+  });
+
   it("does not render the operational-extras FAQ entry (extras were removed from pricing)", () => {
     render(<FAQ />);
     expect(screen.queryByText(/extras provisioned per workspace/i)).not.toBeInTheDocument();
