@@ -43,6 +43,12 @@ pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 /// an operator's `status` check can never mask a dead runner's liveness.
 pub const PATH_RUNNER_SELF = PATH_RUNNERS ++ "/me";
 
+/// GET /v1/fleet/runners — platform-admin operator-plane read of the whole
+/// fleet (paginated). The `/v1/fleet/...` namespace is the operator plane;
+/// `/v1/runners` is enrollment + the runner self-plane. Distinct prefix so the
+/// two never collide in the matcher.
+pub const PATH_FLEET_RUNNERS = "/v1/fleet/runners";
+
 /// Trailing segment of the per-lease activity sub-resource. `lease_id` is a path
 /// param — `POST /v1/runners/me/leases/{lease_id}/activity` — so this can't be a
 /// joined const like the others: the runner builds the full path off
@@ -101,6 +107,23 @@ pub const HeartbeatStatus = enum { ok, drain, stop };
 /// RULE STS). Single-sourced here for register (insert) and the runnerBearer
 /// lookup (active gate). Not a wire value.
 pub const RUNNER_STATUS_ACTIVE = "active";
+
+/// `fleet.runners.last_seen_at` sentinel for a runner minted but never seen.
+/// register inserts this; the heartbeat moves it to `now`. The fleet read
+/// derives `registered` from it, so a fresh runner is honestly "registered",
+/// not a fake "online". Single-sourced (RULE UFS) — the minter and the liveness
+/// derivation must agree on the sentinel.
+pub const RUNNER_LAST_SEEN_NEVER: i64 = 0;
+
+/// Derived runtime liveness of a runner — computed by the fleet read from
+/// `last_seen_at` + the live-lease join, NEVER stored (storing it would drift;
+/// see docs/architecture/runner_fleet.md "Runner state"). Serialized by tag
+/// name; the dashboard's `RunnerLiveness` union mirrors these verbatim (UFS).
+///   registered — minted, never connected (`last_seen_at == RUNNER_LAST_SEEN_NEVER`)
+///   busy       — holds a live lease (actively renewing — takes precedence over offline)
+///   online     — heartbeat fresh, no live lease
+///   offline    — heartbeat stale beyond the lapse threshold
+pub const RunnerLiveness = enum { registered, busy, online, offline };
 
 /// `fleet.runner_leases.status` lifecycle values — app-enforced (no SQL CHECK,
 /// per RULE STS). `active` at lease issue, `reported` once the runner's report

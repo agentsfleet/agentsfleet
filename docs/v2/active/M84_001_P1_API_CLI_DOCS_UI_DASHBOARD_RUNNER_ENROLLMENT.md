@@ -140,9 +140,9 @@ Liveness derivation (single-sourced consts, Zig↔TS verbatim):
 - else holds ≥1 live lease (`fleet.runner_leases.lease_expires_at > now`) → **busy**
 - else → **online**
 
-- **Dimension 2.1** — mint stores `last_seen_at = 0`; a never-heartbeated runner derives `registered` → Test `freshly minted runner is registered not online`.
-- **Dimension 2.2** — `GET /v1/fleet/runners` returns rows with derived liveness (registered/online/busy/offline across varied `last_seen_at` + lease fixtures) and **no `token_hash`** → Test `fleet list derives liveness and hides token hash`.
-- **Dimension 2.3** — `GET /v1/fleet/runners` is `platformAdmin()`-gated: platform-admin → 200; tenant admin JWT / `zmb_t_` → 403 `UZ-AUTH-021` → Test `fleet list is platform-admin-gated`.
+- **Dimension 2.1** — ✅ DONE — mint stores `last_seen_at = 0`; a never-heartbeated runner derives `registered` → Tests `register: the mint records last_seen_at = 0` (integration) + `deriveLiveness: never-seen sentinel is registered` (unit). Passed in `make test-integration`.
+- **Dimension 2.2** — ✅ DONE — `GET /v1/fleet/runners` returns rows with derived liveness (all four states unit-tested across varied `last_seen_at` + lease inputs) and **no `token_hash`/`zrn_`** → Tests `deriveLiveness: …` (unit ×3) + `fleet list: a platform_admin JWT lists the fleet with derived liveness (200)` (integration). Passed.
+- **Dimension 2.3** — ✅ DONE — `GET /v1/fleet/runners` is `platformAdmin()`-gated: platform-admin → 200; tenant admin JWT / `zmb_t_` → 403 `UZ-AUTH-021` → Tests `fleet list: a tenant-admin JWT is rejected 403` + `fleet list: a zmb_t_ api_key is rejected 403` (integration). Passed.
 
 ### §3 — Dashboard "Add runner" + fleet list (platform-admin, reveal-once)
 
@@ -288,6 +288,9 @@ gitleaks detect 2>&1 | tail -3
   > "Update the runner_fleet.md and any other docs/architecture/**.md files as part of this discussion above (dont keep it stale). Ensure the md update are sent as part of this PR."
   This authorizes folding the backend list + honest liveness into this UI PR (overrides the split-security-features default), authoring `M85_001` in this PR, and reconciling the architecture docs here.
 - **Architecture reconciliation (Jun 04 2026, grounded in the code)** — (1) the list is the already-designed `GET /v1/fleet/runners` operator-plane **read** (`roadmap.md`), not a new `GET /v1/runners`; `PATCH`/cordon/revoke + reassignment stay deferred. (2) honest liveness is **derived** (registered/online/busy/offline) from `last_seen_at` + a live-lease join; the stored `status` auth-gate column and the `cordoned`/`revoked` states (left unbuilt per `roadmap.md:41`) are untouched; mint sets `last_seen_at = 0`. (3) "auth failed" can't be a per-runner row state (identity *is* the token; a bad `zrn_` matches no row) — surfaced in logs, not the list. (4) tag/label placement was reserved as `M80_007`, but **`M80_007` is the shipped observability spec** — a real ID collision; the scheduler spec is **`M85_001`** and the stale `M80_007` placement refs are corrected here.
+- **LENGTH GATE triage (§2)** — adding the `GET /v1/fleet/runners` route tipped two dispatch-registry files past the 350-line cap (`router.zig` 352, `route_table_invoke.zig` 355). Indy chose the **split** over an override:
+  > Indy (2026-06-04): "Yeah. A. split"
+  Resolution: extracted the `Route` union → `routes.zig` (router.zig re-exports it) and the runner+fleet invokes → `route_table_invoke_runner.zig` (re-exported, mirroring the existing `route_table_invoke_{api_keys,events,approvals}.zig` precedent). All four files now ≤350; `router_test` confirms matching behavior unchanged.
 - **Skill chain outcomes / Deferrals** — populate during VERIFY/CHORE(close). Deferred-by-design (Indy-acked above, not agent-unilateral): `PATCH /v1/fleet/runners` cordon/revoke, heartbeat-lapse reassignment, stored `cordoned`/`revoked` + `UZ-RUN-009`, and the M85_001 *implementation*.
 
 ---
