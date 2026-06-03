@@ -4,11 +4,11 @@
 **Milestone:** M83
 **Workstream:** 001
 **Date:** Jun 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — pre-2.0 hygiene (RULE NDC/NLG); no customer-facing behaviour change.
 **Categories:** API, DOCS
 **Batch:** B1 — standalone; no concurrent workstream.
-**Branch:** {feat/m83-dead-code-cleanup — added when work begins}
+**Branch:** feat/m83-dead-code-cleanup
 **Depends on:** none.
 **Provenance:** agent-generated (folder-by-folder reachability audit of src/, Jun 03 2026; method + evidence in memory `project_dead_code_audit_method.md`).
 
