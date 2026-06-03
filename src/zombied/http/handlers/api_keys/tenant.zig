@@ -5,7 +5,7 @@
 //! First-party consumer: the dashboard `/settings/api-keys` page mints, lists,
 //! revokes, and deletes keys over these routes (operator role). Admin-tenant
 //! bootstrap also provisions keys here via
-//! `playbooks/012_usezombie_admin_bootstrap/001_playbook.md` (steps 4 + 5 +
+//! `playbooks/operations/admin_bootstrap/001_playbook.md` (steps 4 + 5 +
 //! rollback step 1).
 
 const std = @import("std");

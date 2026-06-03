@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-zombiectl lint-shell check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-zombiectl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -232,7 +232,7 @@ lint-zombiectl: _zombiectl_lint  ## Lint zombiectl CLI only (node --check)
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid  ## Run all linters + quality gates
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
@@ -268,3 +268,29 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
+
+check-playbooks:  ## Validate playbooks/ — shellcheck + reference integrity + README/tree parity
+	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
+	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
+	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
+	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
+	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
+	@# themselves). Excludes docs/v2/ and CHANGELOG.md: specs and the changelog are
+	@# historical records that intentionally cite now-moved paths.
+	@FAIL=0; \
+	REFS=$$(git grep -hoE 'playbooks/[A-Za-z0-9_./-]+' -- . ':!docs/v2/' ':!CHANGELOG.md' | sed 's/[.,):]*$$//' | sort -u); \
+	for ref in $$REFS; do \
+	  [ -e "$$ref" ] || { echo "✗ broken playbooks/ reference: $$ref"; FAIL=1; }; \
+	done; \
+	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] reference integrity failed"; exit 1; fi; \
+	echo "✓ [playbooks] all references resolve"
+	@echo "→ [playbooks] README ↔ tree parity..."
+	@FAIL=0; seen=""; \
+	for d in $$(find playbooks/founding playbooks/operations -type d); do \
+	  [ -f "$$d/001_playbook.md" ] || continue; \
+	  base=$$(basename "$$d"); \
+	  case " $$seen " in *" $$base "*) echo "✗ duplicate playbook basename '$$base' — README parity is basename-matched (tree shows leaf names) and cannot disambiguate: $$d"; FAIL=1 ;; *) seen="$$seen $$base" ;; esac; \
+	  grep -q "$$base/" playbooks/README.md || { echo "✗ playbook dir absent from README tree: $$d"; FAIL=1; }; \
+	done; \
+	if [ $$FAIL -eq 1 ]; then echo "✗ [playbooks] README/tree parity failed"; exit 1; fi; \
+	echo "✓ [playbooks] README documents every playbook dir"

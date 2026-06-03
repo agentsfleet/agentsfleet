@@ -116,7 +116,7 @@ sync_systemd_unit() {
 
 sync_env() {
   [[ -f "$ENV_FILE" ]] \
-    || die "missing $ENV_FILE — provision via playbooks/006_runner_bootstrap_dev/04_provision_runner_env.sh (dev) or the equivalent prod path"
+    || die "missing $ENV_FILE — provision via playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh (dev) or the equivalent prod path"
   cp "$ENV_FILE" "$ENV_DEST"
   log "Synced .env → ${ENV_DEST}"
 
