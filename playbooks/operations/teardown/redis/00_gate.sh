@@ -1,5 +1,5 @@
 #!/bin/bash
-# 015_redis_teardown - Redis Cache Teardown Playbook
+# redis-teardown - Redis Cache Teardown Playbook
 #
 # WARNING: DESTRUCTIVE OPERATION
 # This playbook permanently flushes all keys from the Upstash Redis cache.
@@ -36,4 +36,4 @@ for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
 	"$script"
 done
 
-echo "✅ 015_redis_teardown complete (env: $ENV)"
+echo "✅ redis-teardown complete (env: $ENV)"

@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 echo ""
-echo "== 015_redis_teardown Section 2: redis teardown execution =="
+echo "== redis-teardown Section 2: redis teardown execution =="
 echo ""
 
 # Require approval (double-check)
