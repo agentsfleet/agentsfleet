@@ -43,7 +43,7 @@ _ensure-test-infra:
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
 _reset-test-db: _ensure-test-infra
 	@echo "→ [infra] Resetting test database schemas to a clean state..."
-	@docker compose cp playbooks/011_database_teardown/teardown.sql postgres:/tmp/teardown.sql >/dev/null
+	@docker compose cp playbooks/operations/teardown/database/teardown.sql postgres:/tmp/teardown.sql >/dev/null
 	@out=$$(docker compose exec -T postgres psql -U usezombie -d usezombiedb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"

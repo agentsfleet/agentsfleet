@@ -51,7 +51,7 @@ Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on you
 git clone https://github.com/usezombie/usezombie.git
 cd usezombie
 
-# Populate .env before running make up. See playbooks/001_bootstrap/001_playbook.md for the full bootstrap.
+# Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
 make up           # Postgres + Redis + zombied (auto-migrates DB)
 
 cd ui/packages/app

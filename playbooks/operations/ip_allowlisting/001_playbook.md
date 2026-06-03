@@ -36,13 +36,13 @@ export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 ### Run full gate (sections 1 + 2)
 
 ```bash
-ALLOW_VAULT_READS=1 ./playbooks/010_data_plane_ip_allowlisting/00_gate.sh
+ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/00_gate.sh
 ```
 
 ### Section 1 — Egress IP inventory and CIDR validation
 
 ```bash
-ALLOW_VAULT_READS=1 ./playbooks/010_data_plane_ip_allowlisting/01_egress_inventory.sh
+ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/01_egress_inventory.sh
 ```
 
 Checks:
@@ -56,7 +56,7 @@ Runs for both `$VAULT_DEV` and `$VAULT_PROD` by default. Scope with `ENV=dev` or
 ### Section 2 — Provider target separation
 
 ```bash
-ALLOW_VAULT_READS=1 ./playbooks/010_data_plane_ip_allowlisting/02_provider_targets.sh
+ALLOW_VAULT_READS=1 ./playbooks/operations/ip_allowlisting/02_provider_targets.sh
 ```
 
 Checks:

@@ -79,7 +79,7 @@ openssl rand -hex 32   # → store in op://$VAULT_PROD/audit-log-pepper/credenti
 
 **Rotation:** rotating `auth-session-code-pepper` invalidates every in-flight CLI login session (their HMACs no longer match). Cheap because sessions are 5-minute-TTL — drain old sessions by waiting 5+ minutes between provisioning the new pepper and cutting the API process over. Rotating `audit-log-pepper` breaks cross-event correlation for past sessions but does not affect security (a different pepper protects the code itself).
 
-**Optional automation:** `playbooks/001_bootstrap/03_auth_pepper_provision.sh` mirrors `02_vercel_env.sh`'s shape — idempotently upserts both pepper items into both vaults via `op item create`; `--check` mode reads-only and exits 1 on missing items.
+**Provisioning is manual:** run the four `openssl rand` commands above and store each value with `op item create` (or `op item edit` to update). There is no helper script — `zombied` boot fails fast if either pepper is missing, so verify both items exist in both vaults before handoff.
 
 ### 1.3c Provision E2E Fixture Email Identities
 
@@ -105,7 +105,7 @@ Give the agent:
 
 Hand-off message:
 
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/001_bootstrap/001_playbook.md §2.0`, including the new entries from §1.3b (auth peppers) and §1.3c (e2e fixture emails). Then run `./playbooks/002_preflight/001_gate.sh` and proceed with `playbooks/002_preflight/001_playbook.md`."
+> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/founding/01_bootstrap/001_playbook.md §2.0`, including the new entries from §1.3b (auth peppers) and §1.3c (e2e fixture emails). Then run `./playbooks/founding/02_preflight/00_gate.sh` and proceed with `playbooks/founding/02_preflight/001_playbook.md`."
 
 ---
 
@@ -115,7 +115,7 @@ Agent executes these steps immediately after receiving the hand-off from 1.3.
 
 ### 2.1 Store Keys in 1Password Vaults
 
-See [002 preflight playbook](../002_preflight/001_playbook.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
+See [preflight playbook](../02_preflight/001_playbook.md) §1.1 and §1.2 for the full vault inventory (items, fields, and consumers).
 
 Create each item listed there. Value sources for items that require human provisioning:
 
@@ -281,8 +281,8 @@ curl -s -H "Authorization: Bearer $CF_TOKEN" \
 Agent reads project IDs and API token from 1Password, then upserts via the Vercel v10 env API (`POST /v10/projects/{id}/env?upsert=true`). Use the script — the table is reference, the script is the source of truth:
 
 ```bash
-./playbooks/001_bootstrap/02_vercel_env.sh           # apply
-./playbooks/001_bootstrap/02_vercel_env.sh --check   # read-only diff, exits 1 on drift
+./playbooks/founding/01_bootstrap/02_vercel_env.sh           # apply
+./playbooks/founding/01_bootstrap/02_vercel_env.sh --check   # read-only diff, exits 1 on drift
 ```
 
 After applying, **trigger a fresh redeploy per project without build cache** — `VITE_*` and `NEXT_PUBLIC_*` are inlined at build time, so existing deployments keep stale (or empty) values until they rebuild.
@@ -318,9 +318,9 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 
 ## 3.0 Handoff to Milestone 2
 
-Once 2.4 is verified, agent runs `./playbooks/002_preflight/001_gate.sh` (`002_preflight`) to confirm all vault items are present before executing `playbooks/003_priming_infra/001_playbook.md`.
+Once 2.4 is verified, agent runs `./playbooks/founding/02_preflight/00_gate.sh` (`founding/02_preflight`) to confirm all vault items are present before executing `playbooks/founding/03_priming_infra/001_playbook.md`.
 
-All vault items the agent will need are listed in `playbooks/002_preflight/001_playbook.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
+All vault items the agent will need are listed in `playbooks/founding/02_preflight/001_playbook.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
 
 ---
 

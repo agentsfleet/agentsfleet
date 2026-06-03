@@ -42,12 +42,12 @@ Field: credential → paste new value
 2. Re-run the env sync:
 
 ```bash
-./playbooks/001_bootstrap/02_vercel_env.sh --check   # see drift
-./playbooks/001_bootstrap/02_vercel_env.sh           # apply
+./playbooks/founding/01_bootstrap/02_vercel_env.sh --check   # see drift
+./playbooks/founding/01_bootstrap/02_vercel_env.sh           # apply
 ```
 
 3. Trigger one redeploy per affected project (`usezombie-website`, `usezombie-agents-sh`, `usezombie-app`) without build cache so the new bundles inline the rotated key.
-4. Verify post-deploy: `ENV=prod ./playbooks/002_preflight/02_credentials.sh` reports `✓ vercel:<project>/<key>` for all PostHog rows.
+4. Verify post-deploy: `ENV=prod ./playbooks/founding/02_preflight/02_credentials.sh` reports `✓ vercel:<project>/<key>` for all PostHog rows.
 
 ---
 
@@ -166,7 +166,7 @@ rm /tmp/old-bypass-secret.txt
 6. Run vault sync gate to verify all credentials are consistent:
 
 ```bash
-./playbooks/gates/m7_002/run.sh
+./playbooks/operations/credential_rotation/00_gate.sh
 ```
 
 ---
@@ -187,7 +187,7 @@ gh run view <run-id> --log --job <qa-dev-job-id> | grep -i "VERCEL_BYPASS"
 3. Run full gate check to confirm rotation is complete:
 
 ```bash
-./playbooks/gates/m7_002/run.sh
+./playbooks/operations/credential_rotation/00_gate.sh
 ```
 
 ---
@@ -200,4 +200,4 @@ gh run view <run-id> --log --job <qa-dev-job-id> | grep -i "VERCEL_BYPASS"
 - [ ] Redis worker `WriteFailed` loop resolved (or confirmed as separate ACL issue)
 - [ ] CI logs show `***` for `VERCEL_BYPASS_SECRET`
 - [ ] Update evidence doc: mark P0 security items as resolved
-- [ ] Gate passes: `./playbooks/gates/m7_002/run.sh` exits 0
+- [ ] Gate passes: `./playbooks/operations/credential_rotation/00_gate.sh` exits 0

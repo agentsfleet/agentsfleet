@@ -486,7 +486,7 @@ flowchart TB
 
 ### Stage 1 — Option 2: single-token via session-token claim customization (shipped, M74_002 §9)
 
-> Operator setup for the Clerk dashboard configuration lives at `playbooks/003_priming_infra/001_playbook.md` §3.3 ("Clerk — Session Token Customization"). Per-env audience (`aud`) MUST match the env's `OIDC_AUDIENCE` Fly secret; defaults today are `https://api.usezombie.com` (PROD) and `https://api-dev.usezombie.com` (DEV).
+> Operator setup for the Clerk dashboard configuration lives at `playbooks/founding/03_priming_infra/001_playbook.md` §3.3 ("Clerk — Session Token Customization"). Per-env audience (`aud`) MUST match the env's `OIDC_AUDIENCE` Fly secret; defaults today are `https://api.usezombie.com` (PROD) and `https://api-dev.usezombie.com` (DEV).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -522,7 +522,7 @@ flowchart TB
 | `app/backend/.../events/stream/route.ts` (D46) | `getToken({template:"api"})` → `getToken()` (no template arg). |
 | `app/cli-auth/[session_id]/page.tsx` (D47) | UNCHANGED — carve-out. The api-template mint survives at this single call site for the CLI handoff. |
 | `tests/e2e/acceptance/fixtures/clerk-admin.ts` (D48) | Mint endpoint switched to `POST /v1/sessions/{id}/tokens` (default session token). `JWT_TEMPLATE` constant retired. |
-| `playbooks/003_priming_infra/001_playbook.md` §3.3 + this doc (D49) | Operator UI walkthrough + rollback procedure captured. |
+| `playbooks/founding/03_priming_infra/001_playbook.md` §3.3 + this doc (D49) | Operator UI walkthrough + rollback procedure captured. |
 
 **Reversibility:** Clerk dashboard → **Sessions → Customize session token** → reset to default. Next minted token lacks `aud`; dashboard fetches fail loudly with `AudienceMismatch` 401 on the next refresh. Re-apply the claims to restore. No zombied or schema state involved.
 

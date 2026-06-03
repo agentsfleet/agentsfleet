@@ -35,7 +35,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_DEV: ${{ vars.VAULT_DEV }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-        run: ./playbooks/002_preflight/00_gate.sh
+        run: ./playbooks/founding/02_preflight/00_gate.sh
 
   # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
   # Build inside Alpine so static OpenSSL archives are musl-compatible.
@@ -208,7 +208,7 @@ jobs:
           tags: tag:ci
 
       - name: Verify worker host readiness
-        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/006_runner_bootstrap_dev/03_deploy_readiness.sh
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/founding/06_runner_bootstrap_dev/03_deploy_readiness.sh
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
@@ -250,7 +250,7 @@ jobs:
           # NOTE: the runner needs three vars in /etc/default/zombie-runner:
           #   ZOMBIE_API_URL, ZOMBIE_RUNNER_TOKEN (a pre-minted zrn_; Option B),
           #   RUNNER_HOST_ID
-          # — provisioned per host by playbooks/006_runner_bootstrap_dev/
+          # — provisioned per host by playbooks/founding/06_runner_bootstrap_dev/
           # 04_provision_runner_env.sh; this job stays gated off
           # (DEV_WORKER_READY) until the placeholder zrn_ in vault has been
           # swapped for a real admin-minted token and the runner is verified

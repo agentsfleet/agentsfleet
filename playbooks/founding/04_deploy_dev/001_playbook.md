@@ -4,7 +4,7 @@
 **Workstream:** 001
 **Updated:** Mar 27, 2026
 **Owner:** Agent
-**Prerequisite:** `playbooks/001_bootstrap/001_playbook.md`, `playbooks/002_preflight/001_playbook.md`, `playbooks/003_priming_infra/001_playbook.md`
+**Prerequisite:** `playbooks/founding/01_bootstrap/001_playbook.md`, `playbooks/founding/02_preflight/001_playbook.md`, `playbooks/founding/03_priming_infra/001_playbook.md`
 
 This is the canonical step-by-step DEV deployment runbook.
 
@@ -17,7 +17,7 @@ This is the canonical step-by-step DEV deployment runbook.
 1. Ensure required credentials exist:
 
 ```bash
-ENV=dev ./playbooks/002_preflight/001_gate.sh
+ENV=dev ./playbooks/founding/02_preflight/00_gate.sh
 ```
 
 2. Ensure branch is clean and validated:
@@ -150,4 +150,4 @@ Expected outcomes:
 - ⏳ CLI acceptance run complete (§6.0) — **blocked on `zombiectl`**
 - ✅ evidence recorded (see M7_001_DEV_ACCEPTANCE.md §7.0)
 
-When all pass, continue to `playbooks/005_deploy_prod/001_playbook.md`.
+When all pass, continue to `playbooks/founding/05_deploy_prod/001_playbook.md`.
