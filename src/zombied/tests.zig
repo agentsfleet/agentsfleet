@@ -16,8 +16,6 @@ test {
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
-    _ = @import("config/contact.zig");
-    _ = @import("config/contact_test.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
@@ -72,7 +70,6 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
-    _ = @import("reliability/backoff.zig");
     // Persistent Zombie Memory — role isolation tests.
     _ = @import("memory/zombie_memory_role_test.zig");
     // Zombie CRUD, activity, router
