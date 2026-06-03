@@ -21,6 +21,7 @@ const api_key_lookup = @import("../cmd/api_key_lookup.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
 const error_registry = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
@@ -175,6 +176,73 @@ test "register: a zmb_t_ api_key cannot enroll a runner (403)" {
     defer cleanup(h);
 
     const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(ZMB_T_KEY)).json(REGISTER_BODY)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.forbidden);
+    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+}
+
+test "register: the mint records last_seen_at = 0 (never connected → registered)" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer mint.deinit();
+    try mint.expectStatus(.created);
+
+    // The row carries the never-seen sentinel, so the fleet read derives
+    // `registered` (not a fake `online`) until the first heartbeat moves it.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query("SELECT last_seen_at FROM fleet.runners WHERE host_id = 'host-enroll-test'", .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(protocol.RUNNER_LAST_SEEN_NEVER, try row.get(i64, 0));
+}
+
+// ── Operator-plane fleet read (GET /v1/fleet/runners) ────────────────────────
+// Same platform-admin gate as enrollment; read-only; derives liveness and never
+// leaks the token hash or the raw zrn_.
+
+test "fleet list: a platform_admin JWT lists the fleet with derived liveness (200)" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const mint = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
+    defer mint.deinit();
+    try mint.expectStatus(.created);
+
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("host-enroll-test"));
+    try std.testing.expect(resp.bodyContains("registered")); // never-connected liveness
+    try std.testing.expect(!resp.bodyContains("token_hash")); // invariant: hash never leaves
+    try std.testing.expect(!resp.bodyContains("zrn_")); // the raw token is mint-only
+}
+
+test "fleet list: a tenant-admin JWT is rejected 403" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(TENANT_ADMIN_TOKEN)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.forbidden);
+    try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+}
+
+test "fleet list: a zmb_t_ api_key is rejected 403" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(ZMB_T_KEY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
