@@ -32,7 +32,7 @@ Two distinct agents are in play. Keeping them straight is essential to understan
 
 ```
 ┌────────────────────────────────┐         ┌──────────────────────────────┐
-│  USER'S AGENT (laptop)         │         │  AGENT'S AGENT (host)         │
+│  CODING AGENT (laptop)         │         │  THE AGENT (host)            │
 │                                │         │                              │
 │  Claude Code / Amp / Codex /   │         │  NullClaw running inside the │
 │  OpenCode driving zombiectl    │         │  zombie-runner's sandboxed   │
@@ -42,14 +42,14 @@ Two distinct agents are in play. Keeping them straight is essential to understan
 └────────────────────────────────┘         └──────────────────────────────┘
 ```
 
-The user's agent is a workstation tool driving `zombiectl`. The agent's agent is a NullClaw instance inside the runner's sandboxed child. The user's agent never becomes the agent's agent and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
+The coding agent is a workstation tool driving `zombiectl`. The agent — the product itself — is a NullClaw instance inside the runner's sandboxed child. The coding agent never becomes the agent and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
 
 ## Steer flow end-to-end
 
 ```
                 "what's the deploy status?"
                           ↓
-         User's Agent → zombiectl steer <zombie_id> "<msg>"
+         Coding Agent → zombiectl steer <zombie_id> "<msg>"
                           ↓
 
            ╔═══════════════════════════════════╗
@@ -101,9 +101,9 @@ The user's agent is a workstation tool driving `zombiectl`. The agent's agent is
            ║  zombie-runner (parent + child)   ║
            ║  ───────────────────────────────  ║
            ║  parent: establish cgroup, fork,   ║       This is the
-           ║  exec self as `__execute` under    ║       "AGENT'S AGENT".
+           ║  exec self as `__execute` under    ║       "THE AGENT" (host).
            ║  bwrap, feed the lease via stdin   ║       An LLM in a
-           ║                                    ║       sandbox; the user's
+           ║                                    ║       sandbox; the coding
            ║  sandboxed child:                  ║       agent never becomes
            ║   apply mandatory Landlock,        ║       it, never sees its
            ║   run NullClaw over the policy.    ║       tokens or context.
@@ -146,7 +146,7 @@ The user's agent is a workstation tool driving `zombiectl`. The agent's agent is
            ║  12. release affinity (token-guard)║
            ╚═══════════════════════════════════╝
                           ↓
-   User's Agent's `zombiectl steer <zombie_id>` polls GET /events
+   Coding Agent's `zombiectl steer <zombie_id>` polls GET /events
    (or SSE-tails GET /events/stream which SUBSCRIBEs
     zombie:{id}:activity)
                           ↓
@@ -668,14 +668,14 @@ Before the cutover, a single worker thread owned all events for an agent, and th
 
 Failure mode: if the runner holding a lease dies, no other runner can claim that agent until `lease_expires_at`; the reclaim sweep then re-leases it with a higher fencing token. Recovery latency is bounded by the TTL (Time To Live) plus poll density — the S0 lazy-reclaim SLA. Tightening it (heartbeat-driven reassignment, sub-10 s recovery) is M80_006.
 
-## What the user's agent never does
+## What the coding agent never does
 
 - Never sees the agent's LLM tokens or reasoning state
 - Never holds the agent's credentials in its own context
 - Never executes the agent's tool calls in its own session
 - Never persists across the user's laptop being closed
 
-## What the agent's agent never does
+## What the agent (host) never does
 
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the SKILL.md and TRIGGER.md grant it)
