@@ -131,6 +131,7 @@ New `check-*` validator in `make/quality.mk` (sibling to `check-gh-actions-valid
 - **Dimension 4.1** — `make check-playbooks` exits 0 on the corrected tree → Test `test_check_playbooks_passes_clean`
 - **Dimension 4.2** — it exits non-zero on a planted broken ref, a tree/README mismatch, and a shellcheck violation → Test `test_check_playbooks_catches_each_failure`
 - **Dimension 4.3** — `lint-all` invokes `check-playbooks` → Test `test_lint_all_includes_check_playbooks`
+- **Dimension 4.4** — `check-playbooks` is actually *enforced*, not just defined: wired into `.githooks/pre-commit` as a lane triggered by `playbooks/`, `deploy/`, and `.github/workflows/` changes (the surfaces whose playbook refs execute at deploy time). Closes the gap where the gate lived only in `lint-all` — which no automated pipeline runs — so a broken ref could previously reach a deploy unguarded. [Indy: "yes wire the check-playbooks to .githooks/pre-commit (not in lint.yml)"] Verified end-to-end (staging a `playbooks/` change launches the lane).
 
 ---
 
