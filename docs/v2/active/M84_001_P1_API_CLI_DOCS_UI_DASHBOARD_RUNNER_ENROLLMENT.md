@@ -126,9 +126,9 @@
 
 Delete the CLI minting path so the runner never accepts an identity credential. The `Command` enum drop cascades to dispatch + the help golden; the config constant + client fn go with their sole caller; the dead `--host-id` flag goes (the daemon reads `RUNNER_HOST_ID` env directly). **Invariant:** the daemon + `status`/`doctor` (all on `ZOMBIE_RUNNER_TOKEN`) and `POST /v1/runners` + its gate are untouched.
 
-- **Dimension 1.1** — `register` gone; running it exits non-zero with unknown-command help → Test `runner cli rejects removed register`.
-- **Dimension 1.2** — `--help` golden + src have no `register`/`--token`/`ZOMBIE_TOKEN`/`--host-id` flag; the live `zombie-runner register` suggestion string in `status.zig` is reworded → Test `runner help has no enrollment-token surface`.
-- **Dimension 1.3** — `control_plane_client.register` removed; ZLint clean; both graphs + cross-compile green → Test `runner builds without register client`.
+- **Dimension 1.1** — ✅ DONE — `register` gone; running it exits non-zero with unknown-command help → Test `cli rejects the removed register subcommand with unknown-command exit` (registry.zig).
+- **Dimension 1.2** — ✅ DONE — `--help` golden + src have no `register`/`--token`/`ZOMBIE_TOKEN`/`--host-id` flag; the live `zombie-runner register` suggestion string in `status.zig` is reworded → Test `help carries no enrollment-token surface` (help.zig) + the byte-exact golden.
+- **Dimension 1.3** — ✅ DONE — `control_plane_client.register` + `RegisterResult` removed; ZLint clean (0/0 across 382 files); both graphs build + cross-compile (x86_64-linux, aarch64-linux) green.
 
 ### §2 — `GET /v1/fleet/runners` (read-only operator plane) + honest derived liveness
 
