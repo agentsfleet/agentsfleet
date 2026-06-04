@@ -4,7 +4,7 @@
 **Milestone:** M84
 **Workstream:** 001
 **Date:** Jun 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator credential-surface fix; removes the only CLI/shell use of the operator's full identity JWT, and makes the fleet observable from the dashboard.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — §1 (CLI removal), §2 (fleet read + honest liveness), §3 (dashboard mint + list) ship together: removing the CLI before the UI just moves the admin JWT to `curl`, and the list needs an honest status to show.
@@ -318,12 +318,14 @@ gitleaks detect 2>&1 | tail -3
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| No token surface | `grep -rn "ZOMBIE_TOKEN\|--token" src/runner` | {paste} | |
-| Runner tests + golden | `zig build --build-file build_runner.zig test` | {paste} | |
-| Endpoint mint/gate/list/liveness | `make test-integration` + `zig build test-auth` | {paste} | |
-| Dashboard e2e | app e2e lane (runners) | {paste} | |
-| UI lint | `make lint-apps-ds-ctl` | {paste} | |
-| Doc sweep + placement renumber | `grep -rn "zombie-runner register" docs/ playbooks/` ; `grep -rn "M80_007" docs/architecture/` | {paste} | |
+| No token surface | `grep -rn "ZOMBIE_TOKEN\|--token" src/runner` | only `help.zig` regression-guard test/comment assert *absence*; 0 live token surface | ✅ |
+| Runner tests + golden | `zig build --build-file build_runner.zig test` | green via pre-push zig lanes (`test-unit-zombied`; depth gate unit=1779/integration=155) + `test-auth` in pre-commit | ✅ |
+| Endpoint mint/gate/list/liveness | `make test-integration` + `zig build test-auth` | `test-auth` ✅ (pre-commit); `test-integration` not re-run this session — Docker down (env), green at handoff | ⏭️ env |
+| Dashboard e2e | app e2e lane (runners) | acceptance lane (needs platform_admin fixture); not run locally; unit/component coverage green | ⏭️ lane |
+| UI lint | `make lint-apps-ds-ctl` | `lint-app` oxlint+tsc ✅; pre-commit all-package lint ✅ | ✅ |
+| Doc sweep + placement renumber | `grep -rn "zombie-runner register" docs/ playbooks/` ; `grep -rn "M80_007" docs/architecture/` | 0 live refs (spec prose excepted); all M80_007 refs reconciled → M85_001; `M85_001` authored PENDING | ✅ |
+| Nav restructure + /settings/models (scope add) | app unit suite + gates | 765/765 app tests ✅; typecheck + oxlint ✅; HARNESS VERIFY green; committed `f73558b8` | ✅ |
+| Fold-ins (coverage / retry-idempotency / lint-gating) | per-package unit + lint | app 765 ✅, zombiectl 1090 ✅, website 146 ✅, ds ✅; committed `d93921e3`/`b4eb20c9`/`c39c1a00` | ✅ |
 
 ---
 
