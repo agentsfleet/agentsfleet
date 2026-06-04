@@ -39,8 +39,8 @@ _design_system_lint:
 	@echo "✓ [design-system] Lint passed"
 
 _zombiectl_lint:
-	@echo "→ [zombiectl] Checking CLI syntax..."
-	@cd zombiectl && bun run typecheck >/dev/null
+	@echo "→ [zombiectl] Oxlint + runtime/const audits + tsc..."
+	@cd zombiectl && bun run lint
 	@echo "✓ [zombiectl] Lint passed"
 
 _lint_zig_pg_drain:
@@ -227,7 +227,7 @@ lint-app: _app_lint  ## Lint ui/packages/app only (Oxlint + tsc)
 
 lint-design-system: _design_system_lint  ## Lint ui/packages/design-system only (Oxlint + tsc)
 
-lint-zombiectl: _zombiectl_lint  ## Lint zombiectl CLI only (node --check)
+lint-zombiectl: _zombiectl_lint  ## Lint zombiectl CLI only (Oxlint + runtime/const audits + tsc)
 
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
