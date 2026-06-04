@@ -34,11 +34,14 @@ const ListQuery = struct {
 };
 
 fn parseListQuery(req: *httpz.Request) ?ListQuery {
-    const qs = req.query() catch return .{};
+    // Fail closed on any malformed pagination param (non-numeric, out-of-range,
+    // page < 1) so the client gets one consistent 400 instead of a silent
+    // default. Mirrors fleet/runners_list.zig's parser verbatim.
+    const qs = req.query() catch return null;
     var out: ListQuery = .{};
-    if (qs.get("page")) |v| out.page = std.fmt.parseInt(i32, v, 10) catch 1;
-    if (qs.get("page_size")) |v| out.page_size = std.fmt.parseInt(i32, v, 10) catch DEFAULT_PAGE_SIZE;
-    if (out.page < 1) out.page = 1;
+    if (qs.get("page")) |v| out.page = std.fmt.parseInt(i32, v, 10) catch return null;
+    if (qs.get("page_size")) |v| out.page_size = std.fmt.parseInt(i32, v, 10) catch return null;
+    if (out.page < 1) return null;
     if (out.page_size < 1 or out.page_size > MAX_PAGE_SIZE) return null;
     if (qs.get("sort")) |s| out.order_sql = sortClauseFor(s) orelse return null;
     return out;
@@ -58,7 +61,7 @@ pub fn innerListApiKeys(hx: Hx, req: *httpz.Request) void {
         return;
     };
     const q = parseListQuery(req) orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "page_size must be between 1 and 100; sort must be one of created_at|-created_at|key_name|-key_name");
+        hx.fail(ec.ERR_INVALID_REQUEST, "page must be a positive integer; page_size must be between 1 and 100; sort must be one of created_at|-created_at|key_name|-key_name");
         return;
     };
 

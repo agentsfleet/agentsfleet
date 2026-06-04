@@ -261,3 +261,23 @@ test "integration: GET /v1/api-keys returns only the calling tenant's rows" {
     try std.testing.expect(!list_resp.bodyContains(FOREIGN_KEY_ID));
     finalCleanup(h);
 }
+
+test "integration: GET /v1/api-keys rejects malformed pagination params with 400" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // A non-numeric page_size now fails closed (400 UZ-REQ-001) instead of
+    // silently defaulting — consistent with the out-of-range rejection.
+    const bad_size = try (try h.get("/v1/api-keys?page_size=abc").bearer(TOKEN_OPERATOR)).send();
+    defer bad_size.deinit();
+    try bad_size.expectStatus(.bad_request);
+
+    // page below 1 is a 400 as well, not a silent clamp to page 1.
+    const bad_page = try (try h.get("/v1/api-keys?page=0").bearer(TOKEN_OPERATOR)).send();
+    defer bad_page.deinit();
+    try bad_page.expectStatus(.bad_request);
+    finalCleanup(h);
+}
