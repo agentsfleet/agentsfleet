@@ -121,42 +121,62 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
     });
     defer rows_q.deinit();
 
+    return collectItems(hx.alloc, &rows_q, now_ms) catch |err| switch (err) {
+        error.OutOfMemory => {
+            common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+            return null;
+        },
+        else => {
+            common.internalDbError(hx.res, hx.req_id);
+            return null;
+        },
+    };
+}
+
+/// Drain the row iterator into owned items. A row that fails to decode is
+/// skipped (logged) — one bad row must not abort the page — but a mid-iteration
+/// transport error propagates so the caller fails closed instead of returning a
+/// partial page that disagrees with the COUNT. `rows` is anything exposing
+/// `next() !?Row`; tests drive every branch with a fake iterator. `alloc` is the
+/// caller-owned request arena, so partial items on the error path are reclaimed
+/// when that arena is released.
+fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) ![]RunnerItem {
     var items: std.ArrayListUnmanaged(RunnerItem) = .{};
-    // A mid-iteration row-fetch transport error is a different failure class than
-    // a single undecodable row: it must surface as a 500, never a silent partial
-    // page (which would disagree with fetchTotal's independent COUNT).
-    while (rows_q.next() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    }) |row| {
-        const item = readItem(hx.alloc, row, now_ms) catch |err| {
+    errdefer items.deinit(alloc);
+    while (try rows.next()) |row| {
+        const item = readItem(alloc, row, now_ms) catch |err| {
             log.warn("row_decode_skipped", .{ .err = @errorName(err) });
             continue;
         };
-        items.append(hx.alloc, item) catch {
-            common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
-            return null;
-        };
+        try items.append(alloc, item);
     }
-    return items.toOwnedSlice(hx.alloc) catch {
-        common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
-        return null;
-    };
+    return items.toOwnedSlice(alloc);
 }
 
 /// Build one item, duping borrowed row slices into the request arena (they
 /// outlive `rows_q.deinit()`) and parsing the labels JSONB. `token_hash` and the
 /// stored `status` are deliberately absent.
 fn readItem(alloc: std.mem.Allocator, row: anytype, now_ms: i64) !RunnerItem {
+    // Read the scalar columns first (fallible, no allocation), then dupe the
+    // borrowed slices with an errdefer per owned slice — a decode error on a
+    // later column frees the earlier dupes instead of leaking them on partial init.
     const last_seen_at = try row.get(i64, 4);
+    const created_at = try row.get(i64, 5);
+    const has_live_lease = try row.get(bool, 6);
+    const id = try alloc.dupe(u8, try row.get([]u8, 0));
+    errdefer alloc.free(id);
+    const host_id = try alloc.dupe(u8, try row.get([]u8, 1));
+    errdefer alloc.free(host_id);
+    const sandbox_tier = try alloc.dupe(u8, try row.get([]u8, 2));
+    errdefer alloc.free(sandbox_tier);
     return .{
-        .id = try alloc.dupe(u8, try row.get([]u8, 0)),
-        .host_id = try alloc.dupe(u8, try row.get([]u8, 1)),
-        .sandbox_tier = try alloc.dupe(u8, try row.get([]u8, 2)),
+        .id = id,
+        .host_id = host_id,
+        .sandbox_tier = sandbox_tier,
         .labels = parseLabels(alloc, try row.get([]u8, 3)),
         .last_seen_at = last_seen_at,
-        .created_at = try row.get(i64, 5),
-        .liveness = deriveLiveness(last_seen_at, try row.get(bool, 6), now_ms),
+        .created_at = created_at,
+        .liveness = deriveLiveness(last_seen_at, has_live_lease, now_ms),
     };
 }
 
@@ -213,4 +233,110 @@ test "deriveLiveness: fresh heartbeat without a lease is online; stale is offlin
     try std.testing.expectEqual(protocol.RunnerLiveness.online, deriveLiveness(fresh, false, now));
     try std.testing.expectEqual(protocol.RunnerLiveness.online, deriveLiveness(at_threshold, false, now));
     try std.testing.expectEqual(protocol.RunnerLiveness.offline, deriveLiveness(stale, false, now));
+}
+
+// ── Row-iteration error paths (fault-injected via a fake iterator) ───────────
+//
+// fetchPage's real transport is pg.Result; here a scriptable FakeRow + FakeRows
+// drive collectItems + readItem through every branch — clean read, one bad row
+// skipped, a mid-iteration transport error propagated, and the partial-init
+// errdefer leak-cleanliness — without a database.
+
+const FakeRow = struct {
+    id: []const u8 = "r1",
+    host_id: []const u8 = "h1",
+    sandbox_tier: []const u8 = "landlock_full",
+    labels_json: []const u8 = "[]",
+    last_seen_at: i64 = 0,
+    created_at: i64 = 0,
+    has_live_lease: bool = false,
+    fail_at: ?usize = null, // inject a decode error at this column index
+
+    fn get(self: *const FakeRow, comptime T: type, col: usize) !T {
+        if (self.fail_at) |fc| {
+            if (fc == col) return error.TestDecode;
+        }
+        if (T == []u8) return @constCast(switch (col) {
+            0 => self.id,
+            1 => self.host_id,
+            2 => self.sandbox_tier,
+            3 => self.labels_json,
+            else => unreachable,
+        });
+        if (T == i64) return switch (col) {
+            4 => self.last_seen_at,
+            5 => self.created_at,
+            else => unreachable,
+        };
+        if (T == bool) return switch (col) {
+            6 => self.has_live_lease,
+            else => unreachable,
+        };
+        unreachable;
+    }
+};
+
+const FakeRows = struct {
+    rows: []const FakeRow,
+    idx: usize = 0,
+    fail_after: ?usize = null, // transport error once this many rows are yielded
+
+    fn next(self: *FakeRows) !?FakeRow {
+        if (self.fail_after) |n| {
+            if (self.idx == n) return error.TestTransport;
+        }
+        if (self.idx >= self.rows.len) return null;
+        const r = self.rows[self.idx];
+        self.idx += 1;
+        return r;
+    }
+};
+
+test "collectItems: a clean read returns every row in order" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "b" } } };
+    const items = try collectItems(arena.allocator(), &rows, 1000);
+    try std.testing.expectEqual(@as(usize, 2), items.len);
+    try std.testing.expectEqualStrings("a", items[0].id);
+    try std.testing.expectEqualStrings("b", items[1].id);
+}
+
+test "collectItems: a row that fails to decode is skipped; the rest survive" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "bad", .fail_at = 0 }, .{ .id = "c" } } };
+    const items = try collectItems(arena.allocator(), &rows, 1000);
+    try std.testing.expectEqual(@as(usize, 2), items.len);
+    try std.testing.expectEqualStrings("a", items[0].id);
+    try std.testing.expectEqualStrings("c", items[1].id);
+}
+
+test "collectItems: a mid-iteration transport error propagates (caller fails closed)" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "b" } }, .fail_after = 1 };
+    try std.testing.expectError(error.TestTransport, collectItems(arena.allocator(), &rows, 1000));
+}
+
+test "readItem: a mid-decode column error frees the slices duped before it" {
+    // Raw testing allocator (no arena): the leak detector fires if the errdefer
+    // chain misses a dupe. fail_at=2 errors on sandbox_tier after id + host_id
+    // are duped — both must be freed by readItem's errdefers.
+    const fake = FakeRow{ .fail_at = 2 };
+    try std.testing.expectError(error.TestDecode, readItem(std.testing.allocator, fake, 1000));
+}
+
+test "parseLabels: a JSON array of strings parses to owned slices" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const labels = parseLabels(arena.allocator(), "[\"gpu\",\"prod\"]");
+    try std.testing.expectEqual(@as(usize, 2), labels.len);
+    try std.testing.expectEqualStrings("gpu", labels[0]);
+}
+
+test "parseLabels: malformed JSONB degrades to an empty set, not an error" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), parseLabels(arena.allocator(), "{not valid").len);
 }
