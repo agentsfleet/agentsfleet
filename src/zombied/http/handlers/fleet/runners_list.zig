@@ -29,6 +29,8 @@ const S_CREATED_AT_DESC = "r.created_at DESC, r.id DESC";
 const DEFAULT_PAGE_SIZE: i32 = 25;
 const MAX_PAGE_SIZE: i32 = 100;
 
+const MSG_OUT_OF_MEMORY = "Out of memory";
+
 /// One fleet row as returned to the operator — no `token_hash`, no stored
 /// `status`; `liveness` is derived, `labels` parsed from the stored JSONB.
 const RunnerItem = struct {
@@ -91,7 +93,7 @@ pub fn innerListFleetRunners(hx: Hx, req: *httpz.Request) void {
 
     const now_ms = std.time.milliTimestamp();
     const items = fetchPage(hx, conn, q, now_ms) orelse return;
-    const total = fetchTotal(hx, conn, items.len) orelse return;
+    const total = fetchTotal(hx, conn) orelse return;
 
     hx.ok(.ok, .{
         .items = items,
@@ -120,11 +122,26 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
     defer rows_q.deinit();
 
     var items: std.ArrayListUnmanaged(RunnerItem) = .{};
-    while (rows_q.next() catch null) |row| {
-        items.append(hx.alloc, readItem(hx.alloc, row, now_ms) catch continue) catch |err|
-            log.warn("ignored_error", .{ .err = @errorName(err) });
+    // A mid-iteration row-fetch transport error is a different failure class than
+    // a single undecodable row: it must surface as a 500, never a silent partial
+    // page (which would disagree with fetchTotal's independent COUNT).
+    while (rows_q.next() catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return null;
+    }) |row| {
+        const item = readItem(hx.alloc, row, now_ms) catch |err| {
+            log.warn("row_decode_skipped", .{ .err = @errorName(err) });
+            continue;
+        };
+        items.append(hx.alloc, item) catch {
+            common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+            return null;
+        };
     }
-    return items.toOwnedSlice(hx.alloc) catch &[_]RunnerItem{};
+    return items.toOwnedSlice(hx.alloc) catch {
+        common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+        return null;
+    };
 }
 
 /// Build one item, duping borrowed row slices into the request arena (they
@@ -149,7 +166,7 @@ fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, text, .{ .allocate = .alloc_always }) catch &.{};
 }
 
-fn fetchTotal(hx: Hx, conn: anytype, fallback: usize) ?i64 {
+fn fetchTotal(hx: Hx, conn: anytype) ?i64 {
     var q = PgQuery.from(conn.query(
         \\SELECT COUNT(*)::bigint FROM fleet.runners
     , .{}) catch {
@@ -157,9 +174,19 @@ fn fetchTotal(hx: Hx, conn: anytype, fallback: usize) ?i64 {
         return null;
     });
     defer q.deinit();
-    const row = q.next() catch return @intCast(fallback);
-    if (row == null) return @intCast(fallback);
-    return row.?.get(i64, 0) catch @intCast(fallback);
+    // COUNT(*) always yields exactly one row; any error or absent row is a real
+    // DB failure → 500, not a fabricated total derived from the page length.
+    const row = (q.next() catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return null;
+    }) orelse {
+        common.internalDbError(hx.res, hx.req_id);
+        return null;
+    };
+    return row.get(i64, 0) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return null;
+    };
 }
 
 // ── Tests (pure liveness derivation; no DB) ──────────────────────────────────
