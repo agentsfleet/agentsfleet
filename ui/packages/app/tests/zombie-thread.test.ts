@@ -15,18 +15,36 @@ import {
   waitFor,
 } from "@testing-library/react";
 
-import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
-const { steerZombieActionMock, useZombieEventStreamMock } = vi.hoisted(() => ({
-  steerZombieActionMock: vi.fn(),
-  useZombieEventStreamMock: vi.fn(),
-}));
+const { steerZombieActionMock, useZombieEventStreamMock, capturedOnNew } =
+  vi.hoisted(() => ({
+    steerZombieActionMock: vi.fn(),
+    useZombieEventStreamMock: vi.fn(),
+    // Capture the `onNew` callback wired into the external-store runtime so a
+    // test can drive it with content the composer UI never emits (e.g. an
+    // image-only append) to reach `extractMessageText`'s no-text-part path.
+    capturedOnNew: { current: null as ((msg: AppendMessage) => Promise<void>) | null },
+  }));
 
 vi.mock("@/app/(dashboard)/zombies/actions", () => ({
   steerZombieAction: steerZombieActionMock,
 }));
+
+vi.mock("@assistant-ui/react", async () => {
+  const actual = await vi.importActual<typeof import("@assistant-ui/react")>(
+    "@assistant-ui/react",
+  );
+  return {
+    ...actual,
+    useExternalStoreRuntime: (cfg: Parameters<typeof actual.useExternalStoreRuntime>[0]) => {
+      capturedOnNew.current = cfg.onNew ?? null;
+      return actual.useExternalStoreRuntime(cfg);
+    },
+  };
+});
 
 vi.mock("@/components/domain/useZombieEventStream", async () => {
   const actual = await vi.importActual<
@@ -113,6 +131,7 @@ function renderThread() {
 beforeEach(() => {
   steerZombieActionMock.mockReset();
   useZombieEventStreamMock.mockReset();
+  capturedOnNew.current = null;
 });
 
 afterEach(() => cleanup());
@@ -366,6 +385,21 @@ describe("ZombieThread — steer submission", () => {
     expect(steerZombieActionMock).not.toHaveBeenCalled();
     expect(appendOptimistic).not.toHaveBeenCalled();
   });
+
+  it("does not call the action when the append carries no text part", async () => {
+    // The composer UI always emits a text part, but `onNew` may receive an
+    // image-only append. `extractMessageText` must fall through to "" and the
+    // empty-text guard must short-circuit before any optimistic write/RPC.
+    const appendOptimistic = vi.fn().mockReturnValue("temp_img");
+    mockStream([], { appendOptimistic });
+    renderThread();
+    expect(capturedOnNew.current).toBeTypeOf("function");
+    await capturedOnNew.current!({
+      content: [{ type: "image", image: "data:image/png;base64,xx" }],
+    } as unknown as AppendMessage);
+    expect(steerZombieActionMock).not.toHaveBeenCalled();
+    expect(appendOptimistic).not.toHaveBeenCalled();
+  });
 });
 
 describe("ZombieThread — connection-state header", () => {
@@ -419,6 +453,62 @@ describe("ZombieThread — robustness against malformed metadata", () => {
     });
     expect(() => renderThread()).not.toThrow();
     expect(screen.getByText(/config has non-string actor/)).toBeTruthy();
+  });
+
+  it("degrades a non-string custom.status to neither queued nor failed", () => {
+    // `readCustomStatus` reads metadata.custom.status; a frame whose converter
+    // emits a non-string status (numeric here) must fall through to "" so the
+    // user row is treated as settled — no optimistic "queued" / "failed" badge.
+    const e = ev({ role: "user", actor: "steer:kishore@e2e.com", text: "non-string status" });
+    useZombieEventStreamMock.mockReturnValue({
+      events: [e],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      isRunning: false,
+      appendOptimistic: vi.fn(),
+      reconcileOptimistic: vi.fn(),
+      markOptimisticFailed: vi.fn(),
+      convertEvent: (m: ZombieEvent) => ({
+        role: m.role,
+        id: m.id,
+        createdAt: m.createdAt,
+        content: [{ type: "text" as const, text: m.text }],
+        metadata: { custom: { actor: m.actor, status: 7 as unknown as string } },
+      }),
+    });
+    const { container } = renderThread();
+    const row = container.querySelector('[data-role="user"]');
+    expect(row).toBeTruthy();
+    expect(row?.getAttribute("data-optimistic")).toBeNull();
+    expect(row?.getAttribute("data-failed")).toBeNull();
+    expect(screen.queryByText(/^queued$/i)).toBeNull();
+    expect(screen.queryByText(/^failed$/i)).toBeNull();
+    expect(screen.getByText(/non-string status/)).toBeTruthy();
+  });
+
+  it("renders a user row whose converted content has no text part", () => {
+    // `readText` iterates content for a `text` part; an image-only user
+    // append leaves it empty, so the row paints the steer glyph with no body.
+    const e = ev({ role: "user", actor: "steer:kishore@e2e.com", text: "" });
+    useZombieEventStreamMock.mockReturnValue({
+      events: [e],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      isRunning: false,
+      appendOptimistic: vi.fn(),
+      reconcileOptimistic: vi.fn(),
+      markOptimisticFailed: vi.fn(),
+      convertEvent: (m: ZombieEvent) => ({
+        role: m.role,
+        id: m.id,
+        createdAt: m.createdAt,
+        content: [{ type: "image" as const, image: "data:image/png;base64,xx" }],
+        metadata: { custom: { actor: m.actor, status: m.status } },
+      }),
+    });
+    const { container } = renderThread();
+    const row = container.querySelector('[data-role="user"]');
+    expect(row).toBeTruthy();
+    // Glyph renders; body text is empty because readText found no text part.
+    expect(row?.textContent).toContain("›");
   });
 
   it("viewport carries role=log, aria-live=polite, aria-label", () => {

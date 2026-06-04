@@ -36,7 +36,8 @@ export async function resolveActiveWorkspace(
   token: string,
 ): Promise<TenantWorkspace | null> {
   const { items } = await listTenantWorkspacesCached(token).catch(() => ({ items: [] }));
-  if (items.length === 0) return null;
+  const fallback = items[0];
+  if (!fallback) return null;
 
   const cookieStore = await cookies();
   const preferredId = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value;
@@ -51,7 +52,7 @@ export async function resolveActiveWorkspace(
     if (match) return match;
   }
 
-  return items[0] ?? null;
+  return fallback;
 }
 
 // Reads the `workspace_id` claim from the session metadata.

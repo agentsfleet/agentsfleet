@@ -120,4 +120,18 @@ describe("lib/workspace resolveActiveWorkspace", () => {
     const result = await resolveActiveWorkspace("tok");
     expect(result?.id).toBe("ws_1");
   });
+
+  it("falls back to first workspace when the claim names a workspace the tenant no longer owns", async () => {
+    // Cookie absent, but the JWT claim resolves a *real string* id that no
+    // longer matches any owned workspace (stale primary after a delete/move).
+    // readWorkspaceClaim returns the string, items.find misses → the
+    // `if (match)` else-arm falls through to items[0]. Distinct from the
+    // null-claim cases above, which never reach items.find at all.
+    mockListTenantWorkspaces(["ws_1", "ws_2"]);
+    cookieGet.mockReturnValue(undefined);
+    authMock.mockResolvedValueOnce({ sessionClaims: { metadata: { workspace_id: "ws_stale" } } });
+    const { resolveActiveWorkspace } = await import("../lib/workspace");
+    const result = await resolveActiveWorkspace("tok");
+    expect(result?.id).toBe("ws_1");
+  });
 });

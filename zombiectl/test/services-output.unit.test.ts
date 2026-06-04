@@ -151,6 +151,33 @@ describe("Output service", () => {
     );
     expect(stdout.toString()).toContain("Authentication");
   });
+  // printTable's live closure (output.ts:83-86) is otherwise only reached
+  // through stubbed Output layers in the command tests — every dispatcher
+  // test swaps in `printTable: () => Effect.void`. Drive it through the
+  // real makeStdioOutput shape so the renderer closure is counted.
+  test("printTable renders columns and rows to stdout", async () => {
+    const { stdout, layer } = makeStreams();
+    await provideEffect(
+      Effect.gen(function* () {
+        const o = yield* Output;
+        yield* o.printTable(
+          [
+            { label: "Name", key: "name" },
+            { label: "ID", key: "id" },
+          ],
+          [
+            { name: "alpha", id: "ws-1" },
+            { name: "beta", id: "ws-2" },
+          ],
+        );
+      }),
+      layer,
+    );
+    const text = stdout.toString();
+    expect(text).toContain("Name");
+    expect(text).toContain("alpha");
+    expect(text).toContain("ws-2");
+  });
 });
 
 describe("makeStdioOutput", () => {

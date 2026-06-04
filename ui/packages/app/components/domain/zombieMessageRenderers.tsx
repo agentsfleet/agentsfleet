@@ -335,11 +335,16 @@ function systemChipFor(actor: string): { chipLabel: string; chipVariant: BadgeVa
   return { chipLabel: actor || "system", chipVariant: "default" };
 }
 
+function firstSegment(value: string, separator: string): string {
+  const idx = value.indexOf(separator);
+  return idx === -1 ? value : value.slice(0, idx);
+}
+
 export function formatActorLabel(actor: string): string {
   if (actor.startsWith(ACTOR_STEER_PREFIX)) {
     const rest = actor.slice(ACTOR_STEER_PREFIX.length);
-    const local = rest.split("@", 1)[0] ?? rest;
-    const first = local.split(".", 1)[0] ?? local;
+    const local = firstSegment(rest, "@");
+    const first = firstSegment(local, ".");
     return first.toLowerCase();
   }
   if (actor === ACTOR_AGENT) return ACTOR_AGENT;

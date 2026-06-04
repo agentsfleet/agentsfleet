@@ -62,8 +62,8 @@ export default function RunnerList({ initial }: { initial: RunnerListResponse })
     setSort(nextSort);
   }
 
-  function loadPage(next: { page?: number; sort?: RunnerSort }, retried = false) {
-    const nextPage = next.page ?? page;
+  function loadPage(next: { page: number; sort?: RunnerSort }, retried = false) {
+    const nextPage = next.page;
     const nextSort = next.sort ?? sort;
     startTransition(async () => {
       const r = await listRunnersAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });

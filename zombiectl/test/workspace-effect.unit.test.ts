@@ -224,6 +224,41 @@ describe("workspaceAddEffect", () => {
     expect(workspacesState.value.items).toEqual([]);
   });
 
+  test("re-adding an already-known workspace keeps the existing item list", async () => {
+    // Pre-seed the store with the workspace the API returns. The add-path
+    // dedupe runs `state.items.find(...)` over a NON-empty list — that
+    // predicate arrow never fires when items start empty — and takes the
+    // `existing ? state.items` branch instead of appending a duplicate.
+    const rec = makeRecorder();
+    const workspacesState = {
+      value: {
+        current_workspace_id: null,
+        items: [{ workspace_id: WS_ID, name: "pre", created_at: 7 }],
+      } as WorkspacesValue,
+    };
+    const credsState: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+    };
+    const program = workspaceAddEffect("pre").pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(credsState)),
+      Effect.provide(
+        httpClientLayer(() =>
+          Effect.succeed({ workspace_id: WS_ID, name: "pre" }),
+        ),
+      ),
+      Effect.provide(workspacesLayer(workspacesState)),
+      Effect.provide(outputLayer(rec)),
+      Effect.provide(analyticsLayer(rec)),
+    );
+    const exit = await runWith(program);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    // No duplicate appended; the original single item is preserved.
+    expect(workspacesState.value.items).toHaveLength(1);
+    expect(workspacesState.value.items[0]?.created_at).toBe(7);
+    expect(workspacesState.value.current_workspace_id).toBe(WS_ID);
+  });
+
   test("fails ConfigError when no token configured", async () => {
     const rec = makeRecorder();
     const workspacesState = {

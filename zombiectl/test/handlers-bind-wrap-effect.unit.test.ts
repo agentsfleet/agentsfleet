@@ -33,6 +33,25 @@ const frame: ActionFrame = {
   parsed: { positionals: [], options: {} },
 } as unknown as ActionFrame;
 
+// Frame carrying options, used to drive the wrapEffectFn factory closures
+// that read frame.parsed.options (workspace.delete --workspace-id,
+// tenant.provider.add --credential/--model, billing.show --limit/--cursor).
+const frameWith = (
+  options: Record<string, unknown>,
+  positionals: string[] = [],
+): ActionFrame =>
+  ({ parsed: { positionals, options } } as unknown as ActionFrame);
+
+const lifecycleFor = (): Lifecycle => {
+  const workspaces: Workspaces = { current_workspace_id: null, items: [] };
+  return {
+    ctx: minimalCtx(),
+    workspaces,
+    deps: minimalDeps(),
+    lastCommand: null,
+  };
+};
+
 let stateDir: string;
 let prevStateDir: string | undefined;
 let prevTelemetryDisabled: string | undefined;
@@ -80,5 +99,80 @@ describe("wrapEffect inner handler", () => {
     const code = await handlers.logout(frame);
     expect(typeof code).toBe("number");
     expect(lifecycle.lastCommand).toBe("logout");
+  });
+});
+
+describe("wrapEffectFn factory closures", () => {
+  // workspace.delete reads the positional id and the --workspace-id /
+  // --workspaceId fallbacks; invoking the handler runs the factory closure
+  // in handlers-bind-workspace.ts that builds workspaceDeleteEffectFromArgs.
+  test("workspace.delete resolves --workspace-id and exits numerically", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.workspace.delete(
+      frameWith({ "workspace-id": "ws_kebab" }),
+    );
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("workspace.delete");
+  });
+
+  test("workspace.delete reads the camelCase workspaceId fallback", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.workspace.delete(
+      frameWith({ workspaceId: "ws_camel" }),
+    );
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("workspace.delete");
+  });
+
+  test("workspace.delete prefers the positional over the option", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.workspace.delete(
+      frameWith({ "workspace-id": "ws_opt" }, ["ws_positional"]),
+    );
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("workspace.delete");
+  });
+
+  // tenant.provider.add reads --credential and --model from the frame and
+  // builds tenantProviderAddEffectFromArgs (handlers-bind.ts:266-268).
+  test("tenant.provider.add threads --credential and --model and exits numerically", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.tenant.provider.add(
+      frameWith({ credential: "vault://openai", model: "gpt-4o" }),
+    );
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("tenant.provider.add");
+  });
+
+  test("tenant.provider.add with no flags still drives the factory closure", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.tenant.provider.add(frameWith({}));
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("tenant.provider.add");
+  });
+
+  // billing.show reads --limit and --cursor from the frame and builds
+  // billingShowEffectFromArgs (handlers-bind.ts:279-282).
+  test("billing.show threads --limit and --cursor and exits numerically", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.billing.show(
+      frameWith({ limit: "5", cursor: "opaque-cursor" }),
+    );
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("billing.show");
+  });
+
+  test("billing.show with no flags still drives the factory closure", async () => {
+    const lifecycle = lifecycleFor();
+    const handlers = buildHandlers(lifecycle);
+    const code = await handlers.billing.show(frameWith({}));
+    expect(typeof code).toBe("number");
+    expect(lifecycle.lastCommand).toBe("billing.show");
   });
 });

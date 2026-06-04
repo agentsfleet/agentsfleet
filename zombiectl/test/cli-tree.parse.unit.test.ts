@@ -39,6 +39,13 @@ test("doctor dispatches", async () => {
   expect(calls[0]?.name).toBe("doctor");
 });
 
+test("auth status dispatches the nested status action", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["auth", "status"], handlers);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.name).toBe("auth.status");
+});
+
 // ── Workspace tree ──────────────────────────────────────────────────────
 
 test("workspace add [name] captures optional positional", async () => {
@@ -256,4 +263,29 @@ test("helpFactory is deferred — not invoked at construction, fires when help r
     // rendering help; that's the expected control-flow.
   }
   expect(factoryCalls).toBeGreaterThan(0);
+});
+
+// ── Default help factory closure fires when no helpFactory is injected ───
+
+test("default createHelp (() => new ZombieHelp()) renders --help when no factory is supplied", async () => {
+  const { handlers } = makeSpyTree();
+  const state = { exitCode: 0 };
+  // No helpFactory → buildProgram installs the default `() => new ZombieHelp()`
+  // closure. Rendering --help invokes it, covering that arrow.
+  const program = buildProgram({ handlers, version: "0.0.0-test", state });
+  program.exitOverride();
+  let rendered = "";
+  program.configureOutput({
+    writeOut: (s) => {
+      rendered += s;
+    },
+    writeErr: () => {},
+  });
+  try {
+    await program.parseAsync(["--help"], { from: "user" });
+  } catch {
+    // commander throws CommanderError(0, "commander.helpDisplayed") post-render.
+  }
+  expect(rendered).toContain("zombiectl");
+  expect(rendered).toContain("Subcommands:");
 });

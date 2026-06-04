@@ -23,6 +23,13 @@ import { presentErrorString } from "@/lib/errors";
 
 type Props = { workspaceId: string };
 
+// `JSON.parse` only ever throws `SyntaxError` (an `Error`), so the fallback is
+// a belt-and-braces default for the `unknown` catch binding. Exported so the
+// branch is exercised directly without round-tripping a non-Error throw.
+export function jsonParseErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Invalid JSON";
+}
+
 const schema = z.object({
   name: z
     .string()
@@ -38,8 +45,7 @@ const schema = z.object({
       try {
         parsed = JSON.parse(s);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Invalid JSON";
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Invalid JSON: ${message}` });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Invalid JSON: ${jsonParseErrorMessage(err)}` });
         return;
       }
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
