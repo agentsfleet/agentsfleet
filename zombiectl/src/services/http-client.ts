@@ -9,13 +9,8 @@
 // and passing it here as a Redacted value.
 
 import { Effect, Layer, Option, Redacted, Context } from "effect";
-import {
-  ApiError,
-  apiRequestWithRetry,
-  authHeaders,
-  type FetchImpl,
-  type RetryConfig,
-} from "../lib/http.ts";
+import { ApiError, authHeaders, type FetchImpl } from "../lib/http.ts";
+import { apiRequestWithRetry, type RetryConfig } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 

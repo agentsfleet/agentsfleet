@@ -4,12 +4,13 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
+import { ApiError } from "../src/lib/http.ts";
 import {
-  ApiError,
   apiRequestWithRetry,
+  isIdempotentMethod,
   type AttemptInfo,
   type RetryInfo,
-} from "../src/lib/http.ts";
+} from "../src/lib/http-retry.ts";
 import { asFetchImpl, type ResponseLike } from "./helpers.ts";
 
 interface FetchCall { url: string; init: RequestInit | undefined }
@@ -293,4 +294,71 @@ test("apiRequestWithRetry: backoff caps at capDelayMs even after exponential gro
   // Three retries → three sleeps. base*2^(n-1): 1000, 2000, 4000.
   // Capped at 1500. Jitter is zero so we expect exactly 1000, 1500, 1500.
   assert.deepEqual(sleeps, [1000, 1500, 1500]);
+});
+
+test("apiRequestWithRetry: POST 503 is NOT retried (duplicate-mutation hazard)", async () => {
+  const events: Event[] = [];
+  const r503 = makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } });
+  const { fetchImpl, count } = makeFetch([r503, r503, r503]);
+
+  await assert.rejects(
+    () =>
+      apiRequestWithRetry("http://x", {
+        method: "POST",
+        fetchImpl,
+        sleepImpl: NO_SLEEP,
+        randomFn: NO_JITTER,
+        env: {},
+        retry: { maxAttempts: 3 },
+        onRetry: (i: RetryInfo) => events.push({ kind: "retry", ...i }),
+      }),
+    (err: unknown) => err instanceof ApiError && err.status === 503,
+  );
+
+  // One attempt only — a non-idempotent 5xx is not replayed.
+  assert.equal(count(), 1);
+  assert.equal(events.filter((e) => e.kind === "retry").length, 0);
+});
+
+test("apiRequestWithRetry: PUT 503 IS retried (idempotent method)", async () => {
+  const { fetchImpl, count } = makeFetch([
+    makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } }),
+    makeResponse({ body: { ok: true } }),
+  ]);
+
+  const out = await apiRequestWithRetry("http://x", {
+    method: "PUT",
+    fetchImpl,
+    sleepImpl: NO_SLEEP,
+    randomFn: NO_JITTER,
+    env: {},
+  });
+
+  assert.deepEqual(out, { ok: true });
+  assert.equal(count(), 2);
+});
+
+test("apiRequestWithRetry: POST 429 and 408 ARE retried (request not processed server-side)", async () => {
+  for (const status of [429, 408]) {
+    const { fetchImpl, count } = makeFetch([
+      makeResponse({ status, body: { error: { code: "X" } } }),
+      makeResponse({ body: { ok: true } }),
+    ]);
+
+    const out = await apiRequestWithRetry("http://x", {
+      method: "POST",
+      fetchImpl,
+      sleepImpl: NO_SLEEP,
+      randomFn: NO_JITTER,
+      env: {},
+    });
+
+    assert.deepEqual(out, { ok: true });
+    assert.equal(count(), 2, `status ${status} should retry once`);
+  }
+});
+
+test("isIdempotentMethod: GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensitive)", () => {
+  for (const m of ["GET", "put", "Delete", "HEAD"]) assert.equal(isIdempotentMethod(m), true);
+  for (const m of ["POST", "patch", "CONNECT"]) assert.equal(isIdempotentMethod(m), false);
 });
