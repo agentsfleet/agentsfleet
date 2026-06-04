@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const build_options = @import("build_options");
+const output = @import("output.zig");
 
 /// Format the version line into `buf`. Pure (no I/O) so the contract is
 /// unit-testable. Shape: `zombie-runner <version> (git <sha>)`.
@@ -17,11 +18,13 @@ pub fn line(buf: []u8) []const u8 {
     }) catch "zombie-runner\n";
 }
 
-/// Write the version line to stdout; returns the process exit code (0, or 1 if
-/// the write itself fails — e.g. a closed pipe).
+/// Write the version line to stdout via the CLI output layer; returns the
+/// process exit code (always 0 — a closed-pipe write failure is swallowed by
+/// `output`, matching the other operator-CLI commands). Zig 0.16 removed
+/// `std.fs.File`; `output.writeOut` owns the io-free stdout write.
 pub fn run() u8 {
     var buf: [128]u8 = undefined;
-    std.fs.File.stdout().writeAll(line(&buf)) catch return 1;
+    output.writeOut(line(&buf));
     return 0;
 }
 

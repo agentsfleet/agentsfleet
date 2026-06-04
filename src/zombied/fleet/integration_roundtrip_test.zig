@@ -16,6 +16,7 @@
 // Requires LIVE_DB=1 + a reachable Redis; skipped when either is missing.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -107,7 +108,7 @@ fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, 
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, runner_id, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, std.time.milliTimestamp() + 60_000 });
+    , .{ lease_id, runner_id, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -128,7 +129,7 @@ fn publishFreshEvent(h: *TestHarness) !void {
         .actor = "steer:test-user",
         .event_type = .chat,
         .request_json = "{\"message\":\"ping\"}",
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     });
     h.queue.alloc.free(id);
 }
@@ -325,10 +326,10 @@ test "a failed runner report persists the granular failure_label and increments 
     // ... and the per-runner metrics carry both the granular reason and the
     // outcome-bucketed execution on /metrics (render via an allocating writer so
     // the assertion is robust to runners accumulated by sibling tests).
-    var out: std.ArrayList(u8) = .{};
-    defer out.deinit(ALLOC);
-    try metrics_runner.renderPrometheus(out.writer(ALLOC));
-    const metrics = out.items;
+    var aw: std.Io.Writer.Allocating = .init(ALLOC);
+    defer aw.deinit();
+    try metrics_runner.renderPrometheus(&aw.writer);
+    const metrics = aw.written();
     const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"runner_crash\"";
     const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"agent_error\"";
     try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, failure_needle));

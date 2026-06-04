@@ -10,9 +10,14 @@ const PrettyMode = enum { off, on };
 
 var pretty_mode: PrettyMode = .off;
 
-pub fn initPrettyMode(alloc: std.mem.Allocator) void {
-    if (std.process.getEnvVarOwned(alloc, "ZOMBIE_LOG_PRETTY")) |val| {
-        defer alloc.free(val);
+/// `pretty_raw` is the resolved `ZOMBIE_LOG_PRETTY` value (or null when unset);
+/// `stderr_is_tty` is the caller's resolved TTY probe. Zig 0.16 made env a
+/// threaded snapshot and removed `std.posix.isatty`, so the caller (main) reads
+/// both via the threaded `io`/`env_map` and passes them here — keeping the
+/// `log` module free of `common`/`io` dependencies. `1|true` forces on,
+/// `0|false` forces off, otherwise the TTY probe decides.
+pub fn initPrettyMode(pretty_raw: ?[]const u8, stderr_is_tty: bool) void {
+    if (pretty_raw) |val| {
         if (std.mem.eql(u8, val, "1") or std.mem.eql(u8, val, "true")) {
             pretty_mode = .on;
             return;
@@ -21,13 +26,8 @@ pub fn initPrettyMode(alloc: std.mem.Allocator) void {
             pretty_mode = .off;
             return;
         }
-    } else |_| {}
-    const stderr = std.fs.File.stderr();
-    if (std.posix.isatty(stderr.handle)) {
-        pretty_mode = .on;
-    } else {
-        pretty_mode = .off;
     }
+    pretty_mode = if (stderr_is_tty) .on else .off;
 }
 
 pub inline fn isPretty() bool {

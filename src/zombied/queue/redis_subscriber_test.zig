@@ -10,13 +10,12 @@
 //! Pattern matches `redis_test.zig` "integration: rediss ping".
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
+const net = std.Io.net;
+const test_port = @import("../http/test_port.zig");
 const Subscriber = @import("redis_subscriber.zig");
 const redis = @import("redis.zig");
-
-// Loopback host shared across every in-process fake server in this file.
-// `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
-// the same literal — extracting prevents drift.
-const LOOPBACK_IPV4 = "127.0.0.1";
 
 // Shutdown-loop poll tick for fake servers — fine-grained enough that
 // `stop.store(.release)` is observed within one tick of `shutdown()` but
@@ -31,6 +30,15 @@ const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
 //     "expected ~100ms" test silently hang for minutes.
 const RCVTIMEO_FLOOR_NS = 50 * std.time.ns_per_ms;
 const RCVTIMEO_CEILING_NS = 5 * std.time.ns_per_s;
+
+// Drain whatever the client has sent with a SINGLE read. `readSliceShort`
+// loops until the buffer fills or hits EOF, so on an open socket holding only
+// the short SUBSCRIBE it blocks forever waiting for bytes that never arrive.
+// One `readVec` consumes what is available; the fakes never inspect the bytes.
+fn drainOnce(reader: *std.Io.Reader, buf: []u8) void {
+    var vec: [1][]u8 = .{buf};
+    _ = reader.readVec(&vec) catch return;
+}
 
 // Façade-vs-impl type-equality: the unified façade `redis.zig` MUST
 // re-export `redis_subscriber.zig` as `Subscriber`. The previous split
@@ -48,7 +56,7 @@ comptime {
 // `zig build test` is the project root, so the relative path resolves
 // against the workspace toplevel. `error.FileNotFound` is the green path.
 test "redis_pubsub.zig stays deleted (spec: unified subscriber)" {
-    const result = std.fs.cwd().access("src/queue/redis_pubsub.zig", .{});
+    const result = std.Io.Dir.cwd().access(common.globalIo(), "src/queue/redis_pubsub.zig", .{});
     if (result) |_| {
         std.debug.print("FAIL: src/queue/redis_pubsub.zig was re-introduced — spec §unified-subscriber claim is broken\n", .{});
         return error.RedisPubsubResurrected;
@@ -60,10 +68,9 @@ test "redis_pubsub.zig stays deleted (spec: unified subscriber)" {
 const TLS_URL_ENV = "TEST_REDIS_TLS_URL";
 const REDISS_SCHEME = "rediss://";
 
-fn tlsUrlOrSkip(alloc: std.mem.Allocator) ![]u8 {
-    const url = std.process.getEnvVarOwned(alloc, TLS_URL_ENV) catch return error.SkipZigTest;
+fn tlsUrlOrSkip() ![]const u8 {
+    const url = common.env.testLiveValue(TLS_URL_ENV) orelse return error.SkipZigTest;
     if (!std.mem.startsWith(u8, url, REDISS_SCHEME)) {
-        alloc.free(url);
         return error.SkipZigTest;
     }
     return url;
@@ -106,8 +113,8 @@ fn isTlsEnvError(err: anyerror) bool {
 // Used to prove `nextMessage()` with `read_timeout_ms = null` blocks past
 // the ack and returns the delivered Message — the production blocking path.
 const SubscribeAckThenMessage = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
     channel: []const u8,
@@ -115,9 +122,9 @@ const SubscribeAckThenMessage = struct {
     publish_delay_ms: u64,
 
     fn start(self: *SubscribeAckThenMessage, channel: []const u8, payload: []const u8, publish_delay_ms: u64) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const lp = try test_port.listenLoopback(common.globalIo());
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.channel = channel;
         self.payload = payload;
@@ -126,56 +133,62 @@ const SubscribeAckThenMessage = struct {
     }
 
     fn shutdown(self: *SubscribeAckThenMessage) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4("127.0.0.1", self.port) catch return;
+        if (addr.connect(io, .{ .mode = .stream })) |s| s.close(io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn loop(self: *SubscribeAckThenMessage) void {
-        const conn = self.server.accept() catch return;
+        const io = common.globalIo();
+        const stream = self.server.accept(io) catch return;
         if (self.stop.load(.acquire)) {
-            conn.stream.close();
+            stream.close(io);
             return;
         }
+        var read_buf: [256]u8 = undefined;
+        var stream_reader = stream.reader(io, &read_buf);
         var drain: [256]u8 = undefined;
-        // Drain SUBSCRIBE bytes; read errors here just mean the client
-        // hung up before we got around to it — fake-server, ignore.
-        if (conn.stream.read(&drain)) |_| {} else |_| {}
+        // Drain the SUBSCRIBE with a single read (see `drainOnce`); the fake
+        // never inspects the bytes — it just needs the socket cleared before
+        // it acks and pushes the message.
+        drainOnce(&stream_reader.interface, &drain);
 
-        var ack_buf: [256]u8 = undefined;
-        const ack = std.fmt.bufPrint(
-            &ack_buf,
+        var write_buf: [512]u8 = undefined;
+        var stream_writer = stream.writer(io, &write_buf);
+        const w = &stream_writer.interface;
+
+        w.print(
             "*3\r\n$9\r\nsubscribe\r\n${d}\r\n{s}\r\n:1\r\n",
             .{ self.channel.len, self.channel },
         ) catch {
-            conn.stream.close();
+            stream.close(io);
             return;
         };
-        conn.stream.writeAll(ack) catch {
-            conn.stream.close();
+        w.flush() catch {
+            stream.close(io);
             return;
         };
 
-        std.Thread.sleep(self.publish_delay_ms * std.time.ns_per_ms);
+        common.sleepNanos(self.publish_delay_ms * std.time.ns_per_ms);
 
-        var msg_buf: [512]u8 = undefined;
-        const msg = std.fmt.bufPrint(
-            &msg_buf,
+        w.print(
             "*3\r\n$7\r\nmessage\r\n${d}\r\n{s}\r\n${d}\r\n{s}\r\n",
             .{ self.channel.len, self.channel, self.payload.len, self.payload },
         ) catch {
-            conn.stream.close();
+            stream.close(io);
             return;
         };
-        conn.stream.writeAll(msg) catch {};
+        w.flush() catch return;
 
-        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
-        conn.stream.close();
+        while (!self.stop.load(.acquire)) common.sleepNanos(FAKE_SHUTDOWN_POLL_NS);
+        stream.close(io);
     }
 
     fn url(self: *SubscribeAckThenMessage, alloc: std.mem.Allocator) ![]u8 {
-        return try std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.addr.in.getPort()});
+        return try std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.port});
     }
 };
 
@@ -197,13 +210,13 @@ test "Subscriber.nextMessage with read_timeout_ms=null blocks until message arri
     const url = try fake.url(alloc);
     defer alloc.free(url);
 
-    var sub = try Subscriber.connectFromUrl(alloc, url, .{ .read_timeout_ms = null });
+    var sub = try redis.testing.subscriberFromUrl(common.globalIo(), alloc, url, .{ .read_timeout_ms = null });
     defer sub.deinit();
     try sub.subscribe(channel);
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const maybe_msg = try sub.nextMessage();
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
     // Must have a message — null would mean stream closed or timeout fired.
     try std.testing.expect(maybe_msg != null);
@@ -226,14 +239,14 @@ test "integration: subscriber receives a real PUBLISH from a sibling connection"
     // on a separate connection PUBLISHes after 100ms; the subscriber
     // blocks past the ack and returns the delivered payload.
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    // testLiveValue returns a borrowed slice into the live environment — never free it.
+    const tls_url = try tlsUrlOrSkip();
 
     var channel_buf: [64]u8 = undefined;
-    const channel = try std.fmt.bufPrint(&channel_buf, "uz:m69:pub:{d}", .{std.time.nanoTimestamp()});
+    const channel = try std.fmt.bufPrint(&channel_buf, "uz:m69:pub:{d}", .{clock.nowNanos()});
     const payload = "real-redis-publish";
 
-    var sub = Subscriber.connectFromUrl(alloc, tls_url, .{ .read_timeout_ms = null }) catch |err| {
+    var sub = redis.testing.subscriberFromUrl(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = null }) catch |err| {
         if (isTlsEnvError(err)) return error.SkipZigTest;
         return err;
     };
@@ -251,9 +264,8 @@ test "integration: subscriber receives a real PUBLISH from a sibling connection"
         delay_ms: u64,
 
         fn run(ctx: *const @This()) void {
-            std.Thread.sleep(ctx.delay_ms * std.time.ns_per_ms);
-            const Client = @import("redis_client.zig");
-            var client = Client.connectFromUrl(ctx.alloc, ctx.url) catch return;
+            common.sleepNanos(ctx.delay_ms * std.time.ns_per_ms);
+            var client = redis.testing.connectFromUrl(common.globalIo(), ctx.alloc, ctx.url) catch return;
             defer client.deinit();
             client.publish(ctx.channel, ctx.payload) catch {};
         }
@@ -267,9 +279,9 @@ test "integration: subscriber receives a real PUBLISH from a sibling connection"
     };
     const pub_thread = try std.Thread.spawn(.{}, PublishCtx.run, .{&ctx});
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const maybe_msg = try sub.nextMessage();
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
     pub_thread.join();
 
     try std.testing.expect(maybe_msg != null);
@@ -284,10 +296,10 @@ test "integration: subscriber receives a real PUBLISH from a sibling connection"
 
 test "integration: subscriber with 100ms read_timeout returns null on a quiet channel" {
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    // testLiveValue returns a borrowed slice into the live environment — never free it.
+    const tls_url = try tlsUrlOrSkip();
 
-    var sub = Subscriber.connectFromUrl(alloc, tls_url, .{ .read_timeout_ms = 100 }) catch |err| {
+    var sub = redis.testing.subscriberFromUrl(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = 100 }) catch |err| {
         if (isTlsEnvError(err)) return error.SkipZigTest;
         return err;
     };
@@ -299,9 +311,9 @@ test "integration: subscriber with 100ms read_timeout returns null on a quiet ch
     // before we sit on nextMessage.
     try sub.subscribe("test:subscriber:quiet-channel");
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const msg = try sub.nextMessage();
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
     try std.testing.expect(msg == null);
     // Timer floor: kernel SO_RCVTIMEO granularity + RESP parser overhead
@@ -323,52 +335,60 @@ test "integration: subscriber with 100ms read_timeout returns null on a quiet ch
 // assertion. Trimmed from 100 to 50 to keep CPU-starved CI hosts
 // from flaking on thread-spawn pile-up.
 const AckThenCloseStorm = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
     fn start(self: *AckThenCloseStorm) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const lp = try test_port.listenLoopback(common.globalIo());
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *AckThenCloseStorm) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4("127.0.0.1", self.port) catch return;
+        if (addr.connect(io, .{ .mode = .stream })) |s| s.close(io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn loop(self: *AckThenCloseStorm) void {
+        const io = common.globalIo();
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            const stream = self.server.accept(io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                stream.close(io);
                 return;
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
-            var buf: [256]u8 = undefined;
-            // Drain whatever the subscriber sent; the test's load-bearing
-            // assertion is the accept count + ack write below, not the
-            // bytes read here — peer-side read errors are expected on close.
-            if (conn.stream.read(&buf)) |_| {} else |_| {}
+            var read_buf: [256]u8 = undefined;
+            var stream_reader = stream.reader(io, &read_buf);
+            var drain: [256]u8 = undefined;
+            // Drain whatever the subscriber sent with a single read (see
+            // `drainOnce`); the load-bearing assertion is the accept count +
+            // ack write below, not the bytes read here.
+            drainOnce(&stream_reader.interface, &drain);
             // pin test: literal is the contract — a valid RESP
             // subscribe-ack array for channel "ch". The subscriber's
             // ack parser advances past this; the immediate close
             // afterwards surfaces as null on nextMessage.
-            conn.stream.writeAll("*3\r\n$9\r\nsubscribe\r\n$2\r\nch\r\n:1\r\n") catch {};
-            conn.stream.close();
+            var write_buf: [64]u8 = undefined;
+            var stream_writer = stream.writer(io, &write_buf);
+            stream_writer.interface.writeAll("*3\r\n$9\r\nsubscribe\r\n$2\r\nch\r\n:1\r\n") catch return;
+            stream_writer.interface.flush() catch return;
+            stream.close(io);
         }
     }
 
     fn url(self: *AckThenCloseStorm, alloc: std.mem.Allocator) ![]u8 {
-        return try std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.addr.in.getPort()});
+        return try std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.port});
     }
 };
 
@@ -378,7 +398,7 @@ const SubscriberStormCtx = struct {
     ok: *std.atomic.Value(u32),
 
     fn worker(self: *SubscriberStormCtx) void {
-        var sub = Subscriber.connectFromUrl(self.alloc, self.url, .{ .read_timeout_ms = 200 }) catch return;
+        var sub = redis.testing.subscriberFromUrl(common.globalIo(), self.alloc, self.url, .{ .read_timeout_ms = 200 }) catch return;
         defer sub.deinit();
         sub.subscribe("ch") catch return;
         if (sub.nextMessage()) |maybe| {

@@ -11,6 +11,8 @@
 // the same as `.denied` (safe default for destructive ops).
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
@@ -81,7 +83,7 @@ fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
         \\SELECT action_id FROM core.zombie_approval_gates
         \\WHERE status = $1 AND timeout_at <= $2
@@ -90,7 +92,7 @@ fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
     , .{ PENDING_STATUS, now_ms, @as(i64, @intCast(BATCH_LIMIT)) }));
     defer q.deinit();
 
-    var ids: std.ArrayList([]const u8) = .{};
+    var ids: std.ArrayList([]const u8) = .empty;
     errdefer freeExpiredArrayList(alloc, &ids);
 
     while (try q.next()) |row| {
@@ -120,7 +122,7 @@ fn sleepInterruptible(shutdown: *std.atomic.Value(bool), total_ns: u64) void {
     while (remaining > 0) {
         if (shutdown.load(.acquire)) return;
         const step = @min(remaining, SHUTDOWN_POLL_NS);
-        std.Thread.sleep(step);
+        constants.sleepNanos(step);
         remaining -|= step;
     }
 }

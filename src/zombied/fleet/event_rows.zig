@@ -13,6 +13,7 @@
 //! deleted finalize); row-equivalence with the direct path is the invariant.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
@@ -47,7 +48,7 @@ pub fn insertReceivedRow(
 ) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     // Continuation events carry parent event_id in request_json's
     // `original_event_id` (§7); lift onto resumes_event_id for index walks.
@@ -96,7 +97,7 @@ pub fn markTerminal(
         return;
     };
     defer pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
     const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
     _ = conn.exec(
@@ -122,7 +123,7 @@ pub fn markTerminal(
 pub fn checkpointZombieSession(alloc: Allocator, pool: *pg.Pool, zombie_id: []const u8, context_json: []const u8) !void {
     const row_id = try id_format.generateZombieId(alloc);
     defer alloc.free(row_id);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const conn = try pool.acquire();
     defer pool.release(conn);
     _ = try conn.exec(

@@ -17,6 +17,7 @@
 //! PgQuery / conn.exec).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -54,7 +55,7 @@ pub fn claim(
 ) !Claim {
     const affinity_id = try id_format.generateRunnerAffinityId(alloc);
     defer alloc.free(affinity_id);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const leased_until = now_ms + ttl_ms;
     var q = PgQuery.from(try conn.query(
         \\INSERT INTO fleet.runner_affinity
@@ -99,7 +100,7 @@ pub fn resetCursor(conn: *pg.Conn, zombie_id: []const u8, now_ms: i64) !void {
 /// a holder superseded by a reclaim cannot free the current holder's slot.
 /// Idempotent: a no-op if the row is gone or the token has been bumped.
 pub fn release(conn: *pg.Conn, zombie_id: []const u8, token: u64) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = conn.exec(
         \\UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
         \\WHERE zombie_id = $1::uuid AND fencing_seq = $3

@@ -52,7 +52,7 @@ pub fn substitute(
     raw: []const u8,
     secrets_map: ?std.json.Value,
 ) SubstitutionError![]u8 {
-    var out: std.ArrayList(u8) = .{};
+    var out: std.ArrayList(u8) = .empty;
     out.ensureTotalCapacity(alloc, raw.len) catch return error.MissingSecret;
     errdefer out.deinit(alloc);
 
@@ -117,15 +117,15 @@ fn lookupString(secrets_map: ?std.json.Value, name: []const u8, field: []const u
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 fn buildSecrets(arena: std.mem.Allocator) !std.json.Value {
-    var fly = std.json.ObjectMap.init(arena);
-    try fly.put("api_token", .{ .string = "FlyTokenXyz" });
+    var fly: std.json.ObjectMap = .empty;
+    try fly.put(arena, "api_token", .{ .string = "FlyTokenXyz" });
 
-    var slack = std.json.ObjectMap.init(arena);
-    try slack.put("bot_token", .{ .string = "xoxb-AAA" });
+    var slack: std.json.ObjectMap = .empty;
+    try slack.put(arena, "bot_token", .{ .string = "xoxb-AAA" });
 
-    var top = std.json.ObjectMap.init(arena);
-    try top.put("fly", .{ .object = fly });
-    try top.put("slack", .{ .object = slack });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "fly", .{ .object = fly });
+    try top.put(arena, "slack", .{ .object = slack });
     return .{ .object = top };
 }
 
@@ -189,10 +189,10 @@ test "substitute fails closed on non-string field" {
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    var fly = std.json.ObjectMap.init(arena);
-    try fly.put("api_token", .{ .integer = 42 });
-    var top = std.json.ObjectMap.init(arena);
-    try top.put("fly", .{ .object = fly });
+    var fly: std.json.ObjectMap = .empty;
+    try fly.put(arena, "api_token", .{ .integer = 42 });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "fly", .{ .object = fly });
     const sm: std.json.Value = .{ .object = top };
 
     try std.testing.expectError(error.NotAString,

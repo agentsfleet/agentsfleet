@@ -76,35 +76,57 @@ pub const InitOptions = struct {
     /// (legacy / test harness). Production callers pass the env-derived
     /// value so a frozen Upstash proxy can't pin a worker thread.
     read_timeout_ms: ?u32 = null,
+    /// Custom TLS CA bundle path → `Config.ca_cert_file` (the URL-only connect
+    /// paths carry no env snapshot). Test harnesses pass the broker's self-signed
+    /// cert; the env-map path resolves it from `REDIS_TLS_CA_CERT_FILE` instead.
+    /// Null = system trust store.
+    ca_cert_file: ?[]const u8 = null,
 };
 
 alloc: std.mem.Allocator,
 pool: Pool,
 
-pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
-    return connectFromEnvWithOptions(alloc, role, .{});
+pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
+    return connectFromEnvWithOptions(io, env_map, alloc, role, .{});
 }
 
-pub fn connectFromEnvWithOptions(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Client {
-    const url_owned = try redis_config.resolveRedisUrl(alloc, role);
+pub fn connectFromEnvWithOptions(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Client {
+    const url_owned = try redis_config.resolveRedisUrl(env_map, alloc, role);
     defer alloc.free(url_owned);
-    return connectFromUrlWithOptions(alloc, url_owned, options);
+    var cfg = try redis_config.parseRedisUrl(alloc, url_owned);
+    {
+        // Resolve the optional custom CA path once from the env snapshot and
+        // hand ownership to cfg. Scoped errdefer covers only this window —
+        // once finishFromConfig calls Pool.init, the pool owns cfg.
+        errdefer redis_config.deinitConfig(alloc, cfg);
+        cfg.ca_cert_file = try common.env.owned(env_map, alloc, redis_config.CA_CERT_FILE_ENV);
+    }
+    return finishFromConfig(io, alloc, cfg, options);
 }
 
-pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
-    return connectFromUrlWithOptions(alloc, url, .{});
+pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8) !Client {
+    return connectFromUrlWithOptions(io, alloc, url, .{});
 }
 
-pub fn connectFromUrlWithOptions(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
-    const cfg = try redis_config.parseRedisUrl(alloc, url);
-    // NOTE: do NOT register an `errdefer deinitConfig(alloc, cfg)` here.
-    // `Pool.init` takes ownership of cfg unconditionally — it has its own
-    // `errdefer redis_config.deinitConfig(alloc, pool.cfg)` (pool.zig:73)
-    // that fires on init failure, AND owns the cfg in `pool.deinit()` on
-    // success. A second errdefer at this layer double-frees cfg.host on
-    // Pool.init failure (segfault in `@memset` poisoning of already-freed
-    // memory).
-    var pool = try Pool.init(alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
+pub fn connectFromUrlWithOptions(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
+    var cfg = try redis_config.parseRedisUrl(alloc, url);
+    {
+        // Own the optional CA path on cfg; scoped errdefer covers only the dup
+        // window — finishFromConfig's Pool.init takes ownership of cfg after.
+        errdefer redis_config.deinitConfig(alloc, cfg);
+        if (options.ca_cert_file) |ca| cfg.ca_cert_file = try alloc.dupe(u8, ca);
+    }
+    return finishFromConfig(io, alloc, cfg, options);
+}
+
+/// Take ownership of `cfg`, stand up the Pool, and wrap it in a Client.
+/// NOTE: do NOT register an `errdefer deinitConfig(alloc, cfg)` here.
+/// `Pool.init` takes ownership of cfg unconditionally — it has its own
+/// `errdefer redis_config.deinitConfig(alloc, pool.cfg)` that fires on init
+/// failure, AND owns the cfg in `pool.deinit()` on success. A second errdefer
+/// at this layer double-frees cfg.host on Pool.init failure.
+fn finishFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Client {
+    var pool = try Pool.init(io, alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
     errdefer pool.deinit();
 
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
@@ -290,11 +312,14 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
     const host = std.posix.gethostname(&host_buf) catch "localhost";
-    const now = std.time.nanoTimestamp();
+    const now = clock.nowNanos();
     return std.fmt.allocPrint(alloc, "{s}-{s}-{d}", .{ queue_consts.consumer_prefix, host, now });
 }
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
+const EnvMap = common.env.Map;
 const logging = @import("log");
 const queue_consts = @import("constants.zig");
 const redis_types = @import("redis_types.zig");

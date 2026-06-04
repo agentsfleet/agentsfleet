@@ -11,27 +11,46 @@
 //! next step is to hand httpz the already-bound fd instead of closing.
 
 const std = @import("std");
-const posix = std.posix;
+const common = @import("common");
+const net = std.Io.net;
+
+/// A bound, listening loopback socket plus its kernel-assigned port. The server
+/// stays open so the caller can `accept`; the caller owns `deinit`.
+pub const Loopback = struct {
+    server: net.Server,
+    port: u16,
+};
+
+/// Bind a loopback TCP listener on an ephemeral port (0 → kernel-assigned) and
+/// report that port. Zig 0.16 removed raw `std.posix` socket/bind/getsockname;
+/// the listener goes through `std.Io.net` and the port is read off the raw
+/// handle via libc. Shared single home for the getsockname incantation so test
+/// socket fakes (redis, etc.) and `allocFreePort` don't each re-roll it.
+pub fn listenLoopback(io: std.Io) !Loopback {
+    var addr = try net.IpAddress.parseIp4("127.0.0.1", 0);
+    var server = try addr.listen(io, .{ .reuse_address = true });
+    errdefer server.deinit(io);
+    return .{ .server = server, .port = try boundPort(server.socket.handle) };
+}
 
 pub fn allocFreePort() !u16 {
-    const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM, posix.IPPROTO.TCP);
-    defer posix.close(sock);
+    const io = common.globalIo();
+    // Bind a throwaway listener, read its port, then close. SO_REUSEADDR (set
+    // here and by httpz) keeps TIME_WAIT on our close from blocking httpz's
+    // bind to the same port across the sub-ms TOCTOU window.
+    var lp = try listenLoopback(io);
+    lp.server.deinit(io);
+    return lp.port;
+}
 
-    try posix.setsockopt(
-        sock,
-        posix.SOL.SOCKET,
-        posix.SO.REUSEADDR,
-        &std.mem.toBytes(@as(c_int, 1)),
-    );
-
-    const addr = try std.net.Address.parseIp4("127.0.0.1", 0);
-    try posix.bind(sock, &addr.any, addr.getOsSockLen());
-
-    // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-    var bound: std.net.Address = undefined;
-    var len: posix.socklen_t = @sizeOf(std.net.Address);
-    try posix.getsockname(sock, &bound.any, &len);
-    return bound.getPort();
+/// Read the kernel-assigned local port off a bound socket handle. `std.Io.net`
+/// exposes no getsockname, so go through libc on the raw fd.
+fn boundPort(handle: net.Socket.Handle) !u16 {
+    // SAFETY: written by getsockname via @ptrCast(&sa) below before sa.port is read.
+    var sa: std.posix.sockaddr.in = undefined;
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
+    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
+    return std.mem.bigToNative(u16, sa.port);
 }
 
 test "allocFreePort returns a non-zero port" {
@@ -59,21 +78,15 @@ test "allocFreePort: two consecutive calls both return valid ports" {
 }
 
 test "allocFreePort: returned port is immediately bindable by the caller" {
-    // The load-bearing claim of the helper: after getsockname + close, the
-    // caller can bind the port without AddressInUse. If this fails, the
-    // whole test-infra fix is broken.
+    // The load-bearing claim of the helper: after listenLoopback + close, the
+    // caller can re-bind the port without AddressInUse. If this fails, the
+    // whole test-infra fix is broken. SO_REUSEADDR (set by listen) covers the
+    // TIME_WAIT on the freed port.
+    const io = common.globalIo();
     const port = try allocFreePort();
-
-    const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM, posix.IPPROTO.TCP);
-    defer posix.close(sock);
-    try posix.setsockopt(
-        sock,
-        posix.SOL.SOCKET,
-        posix.SO.REUSEADDR,
-        &std.mem.toBytes(@as(c_int, 1)),
-    );
-    const addr = try std.net.Address.parseIp4("127.0.0.1", port);
-    try posix.bind(sock, &addr.any, addr.getOsSockLen());
+    var addr = try net.IpAddress.parseIp4("127.0.0.1", port);
+    var server = try addr.listen(io, .{ .reuse_address = true });
+    server.deinit(io);
 }
 
 test "allocFreePort: 64 sequential allocations all succeed" {

@@ -19,6 +19,7 @@
 //         `actor=webhook:github`, `event_type=webhook`. Returns 202.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -149,7 +150,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     // Dedupe AFTER validation+filter — see file header for why.
     if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
 
-    const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, std.time.timestamp()) catch |err| {
+    const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, clock.nowSeconds()) catch |err| {
         log.err("normalize_failed", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
             .zombie_id = zombie_id,
@@ -168,7 +169,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         .actor = ACTOR,
         .event_type = .webhook,
         .request_json = request_json,
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
         log.err("enqueue_failed", .{

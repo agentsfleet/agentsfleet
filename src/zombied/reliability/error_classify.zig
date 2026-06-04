@@ -40,7 +40,7 @@ fn parseRetryAfterMs(detail: []const u8) ?u64 {
     const idx = findIgnoreCase(detail, needle) orelse return null;
 
     var rest = detail[idx + needle.len ..];
-    rest = std.mem.trimLeft(u8, rest, " \t");
+    rest = std.mem.trimStart(u8, rest, " \t");
 
     var end: usize = 0;
     while (end < rest.len and rest[end] >= '0' and rest[end] <= '9') : (end += 1) {}

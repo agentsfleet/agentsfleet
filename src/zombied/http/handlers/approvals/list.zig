@@ -125,7 +125,7 @@ fn writeResponse(hx: hx_mod.Hx, rows: []approval_gate_db.PendingRow, limit: u32)
             .timeout_at = row.timeout_at,
             .updated_at = row.updated_at,
             .resolved_by = row.resolved_by,
-            .evidence = if (evidence_value) |p| p.value else .{ .object = std.json.ObjectMap.init(hx.alloc) },
+            .evidence = if (evidence_value) |p| p.value else .{ .object = .empty },
         };
     }
 

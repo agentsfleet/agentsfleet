@@ -17,6 +17,7 @@
 // Tests — Use TestHarness".
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -133,7 +134,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedFixture(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'PatchBodyFieldsTest', $2, $2)
@@ -218,7 +219,7 @@ test "integration: PATCH trigger_markdown only — reparses, persists, bumps rev
     defer freeRow(before);
 
     // Wait one ms so updated_at strictly advances even on fast hosts.
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    @import("common").sleepNanos(2 * std.time.ns_per_ms);
 
     const body = "{\"trigger_markdown\":" ++ NEW_TRIGGER_JSON ++ "}";
     const r = try (try (try h.request(.PATCH, url).bearer(TOKEN_USER)).json(body)).send();
@@ -261,7 +262,7 @@ test "integration: PATCH source_markdown only — overlays source body, leaves t
     const url = try patchUrl();
     defer ALLOC.free(url);
 
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    @import("common").sleepNanos(2 * std.time.ns_per_ms);
 
     const body = "{\"source_markdown\":" ++ NEW_SOURCE_JSON ++ "}";
     const r = try (try (try h.request(.PATCH, url).bearer(TOKEN_USER)).json(body)).send();
@@ -304,7 +305,7 @@ test "integration: PATCH trigger_markdown + source_markdown — single UPDATE, b
     };
     defer freeRow(before);
 
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    @import("common").sleepNanos(2 * std.time.ns_per_ms);
 
     const body = "{\"trigger_markdown\":" ++ NEW_TRIGGER_JSON ++
         ",\"source_markdown\":" ++ NEW_SOURCE_JSON ++ "}";
@@ -369,12 +370,12 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
     // means if the lock leaked, this would hang ~5s — but with rollback it
     // returns in milliseconds. Asserting status alone is sufficient: a hang
     // would manifest as test timeout failure, not a wrong status code.
-    const t0 = std.time.milliTimestamp();
+    const t0 = clock.nowMillis();
     const good_body = "{\"trigger_markdown\":" ++ NEW_TRIGGER_JSON ++ "}";
     const r_good = try (try (try h.request(.PATCH, url).bearer(TOKEN_USER)).json(good_body)).send();
     defer r_good.deinit();
     try r_good.expectStatus(.ok);
-    const elapsed_ms = std.time.milliTimestamp() - t0;
+    const elapsed_ms = clock.nowMillis() - t0;
     try std.testing.expect(elapsed_ms < 1_000);
 
     const c = try h.acquireConn();

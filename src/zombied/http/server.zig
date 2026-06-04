@@ -2,6 +2,7 @@
 //! Thread 1 — all endpoint handlers run here. Never blocks on agent execution.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const handler = @import("handler.zig");
 const router = @import("router.zig");
@@ -55,14 +56,18 @@ pub const Server = struct {
 
     /// `registry` must outlive the server — typically a pointer to a var in
     /// `src/cmd/serve.zig::run()` that was fully initialised via `initChains()`.
-    pub fn init(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, cfg: ServerConfig) !*Server {
+    pub fn init(io: std.Io, ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, cfg: ServerConfig) !*Server {
         const alloc = ctx.alloc;
         const self = try alloc.create(Server);
         errdefer alloc.destroy(self);
+        // Parse the configured interface string ("::" dual-stack default,
+        // "0.0.0.0", "::1", …) into an Io.net.IpAddress. `.localhost`/`.all`
+        // constructors would drop the operator-chosen interface.
+        const listen_addr = try std.Io.net.IpAddress.parse(cfg.interface, cfg.port);
         self.* = .{
             .alloc = alloc,
-            .inner = try httpz.Server(App).init(alloc, .{
-                .address = .{ .ip = .{ .host = cfg.interface, .port = cfg.port } },
+            .inner = try httpz.Server(App).init(io, alloc, .{
+                .address = .{ .ip = listen_addr },
                 .workers = .{
                     .count = @intCast(cfg.workers),
                     .max_conn = if (cfg.max_clients) |mc| @intCast(mc) else null,
@@ -98,8 +103,8 @@ pub const Server = struct {
     /// Convenience constructor for tests that do not exercise the middleware
     /// fast-path. Uses a module-level dummy registry (route table is empty in
     /// C.2, so the registry is never dereferenced during test runs).
-    fn initForTesting(ctx: *handler.Context, cfg: ServerConfig) !*Server {
-        return init(ctx, &testing_dummy_registry, cfg);
+    fn initForTesting(io: std.Io, ctx: *handler.Context, cfg: ServerConfig) !*Server {
+        return init(io, ctx, &testing_dummy_registry, cfg);
     }
 };
 
@@ -122,7 +127,7 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
 
     // Resolve trace context from inbound traceparent header or generate root.
     const tctx = common.resolveTraceContext(req);
-    const start_ns: u64 = @intCast(std.time.nanoTimestamp());
+    const start_ns: u64 = @intCast(clock.nowNanos());
 
     if (dispatchMatchedRoute(ctx, registry, req, res, path)) {
         emitRequestSpan(tctx, path, start_ns);
@@ -132,7 +137,7 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
 }
 
 fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) void {
-    const end_ns: u64 = @intCast(std.time.nanoTimestamp());
+    const end_ns: u64 = @intCast(clock.nowNanos());
     var span = otel_traces.buildSpan(tctx, "http.request", start_ns, end_ns);
     _ = otel_traces.addAttr(&span, "http.route", path);
     otel_traces.enqueueSpan(span);
@@ -258,7 +263,7 @@ test "Server.init then deinit without listen does not leak" {
     const alloc = std.testing.allocator;
     var ctx: handler.Context = undefined;
     ctx.alloc = alloc;
-    const srv = try Server.initForTesting(&ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
+    const srv = try Server.initForTesting(@import("common").globalIo(), &ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
     srv.deinit();
 }
 

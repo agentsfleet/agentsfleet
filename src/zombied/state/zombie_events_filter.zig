@@ -114,7 +114,7 @@ fn daysFromCivil(y_in: i32, m: u8, d: u8) i32 {
 ///
 /// Caller owns the returned slice.
 pub fn globToLike(alloc: std.mem.Allocator, glob: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .{};
+    var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     for (glob) |b| {
         switch (b) {

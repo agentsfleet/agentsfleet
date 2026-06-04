@@ -17,6 +17,8 @@ pub const Subscriber = @This();
 const S_AUTH = "AUTH";
 
 alloc: std.mem.Allocator,
+/// Io backing this subscriber's socket (Zig 0.16 Stream ops take Io).
+io: std.Io,
 transport: redis_transport.Transport,
 read_timeout_ms: ?u32,
 
@@ -37,30 +39,47 @@ pub const Message = struct {
 /// their own deadline externally).
 pub const InitOptions = struct {
     read_timeout_ms: ?u32 = null,
+    /// Custom TLS CA bundle path → `Config.ca_cert_file`. Test harnesses pass the
+    /// broker's self-signed cert; the env-map path resolves it from
+    /// `REDIS_TLS_CA_CERT_FILE` instead. Null = system trust store.
+    ca_cert_file: ?[]const u8 = null,
 };
 
-pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Subscriber {
-    const url = try redis_config.resolveRedisUrl(alloc, role);
+pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Subscriber {
+    const url = try redis_config.resolveRedisUrl(env_map, alloc, role);
     defer alloc.free(url);
-    return connectFromUrl(alloc, url, options);
+    var cfg = try redis_config.parseRedisUrl(alloc, url);
+    defer redis_config.deinitConfig(alloc, cfg);
+    cfg.ca_cert_file = try common.env.owned(env_map, alloc, redis_config.CA_CERT_FILE_ENV);
+    return connectFromConfig(io, alloc, cfg, options);
 }
 
-pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Subscriber {
-    const cfg = try redis_config.parseRedisUrl(alloc, url);
+pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Subscriber {
+    var cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
+    if (options.ca_cert_file) |ca| cfg.ca_cert_file = try alloc.dupe(u8, ca);
+    return connectFromConfig(io, alloc, cfg, options);
+}
 
-    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
+/// Dial a dedicated pub/sub connection from an already-resolved config. `cfg`
+/// is BORROWED (e.g. the request-path Client's pool config) — read during the
+/// dial, never freed here. This is the SSE path's seam: it reuses the pool's
+/// resolved config instead of re-reading env.
+pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Subscriber {
+    // Zig 0.16 dial: resolve host (DNS) + connect via Io.net.HostName.
+    const hostname = try std.Io.net.HostName.init(cfg.host);
+    const stream = try hostname.connect(io, cfg.port, .{ .mode = .stream });
     // SAFETY: written by surrounding init logic before any read of this storage.
-    var sub = Subscriber{ .alloc = alloc, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
+    var sub = Subscriber{ .alloc = alloc, .io = io, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
     if (cfg.use_tls) {
         // SAFETY: written by surrounding init logic before any read of this storage.
         sub.transport = .{ .tls = undefined };
-        try sub.transport.tls.initInPlace(alloc, stream, cfg.host);
+        try sub.transport.tls.initInPlace(io, alloc, stream, cfg.host, cfg.ca_cert_file);
     } else {
-        sub.transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
+        sub.transport = .{ .plain = try redis_transport.PlainTransport.init(io, alloc, stream) };
     }
-    errdefer sub.transport.deinit(alloc);
+    errdefer sub.transport.deinit(io, alloc);
 
     if (cfg.password) |pwd| {
         if (cfg.username) |usr| {
@@ -78,7 +97,7 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8, options: InitOp
 }
 
 pub fn deinit(self: *Subscriber) void {
-    self.transport.deinit(self.alloc);
+    self.transport.deinit(self.io, self.alloc);
 }
 
 /// SUBSCRIBE to a single channel and consume the acknowledgment.
@@ -171,9 +190,12 @@ fn expectSubscribeAck(value: redis_protocol.RespValue, channel: []const u8) !voi
 }
 
 const std = @import("std");
+const common = @import("common");
 const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
 const redis_types = @import("redis_types.zig");
 const log = logging.scoped(.redis_subscriber);
+
+const EnvMap = common.env.Map;

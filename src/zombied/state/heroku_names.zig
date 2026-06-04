@@ -4,9 +4,11 @@
 //! default name (e.g. `jolly-harbor-482`). Word lists are small and inlined —
 //! collision avoidance happens at the SQL layer via `uq_workspaces_tenant_name`,
 //! not via list cardinality. Pure: no DB, OOM is the only error.
-//! Randomness is `std.crypto.random`.
+//! Randomness is `common.secureRandomBytes` (modulo reduction — bias is
+//! negligible for these tiny word-list ranges, and names aren't security state).
 
 const std = @import("std");
+const constants = @import("common");
 
 pub const ADJECTIVES = [_][]const u8{
     "jolly",   "bright",  "swift",   "calm",
@@ -36,9 +38,11 @@ pub const SUFFIX_MAX: u32 = 1000;
 
 /// Generate a fresh `{adjective}-{noun}-{NNN}` name. Caller owns the slice.
 pub fn generate(alloc: std.mem.Allocator) ![]u8 {
-    const adj_idx = std.crypto.random.intRangeLessThan(usize, 0, ADJECTIVES.len);
-    const noun_idx = std.crypto.random.intRangeLessThan(usize, 0, NOUNS.len);
-    const suffix = std.crypto.random.intRangeLessThan(u32, 0, SUFFIX_MAX);
+    var rb: [12]u8 = undefined;
+    try constants.secureRandomBytes(&rb);
+    const adj_idx = std.mem.readInt(u32, rb[0..4], .little) % @as(u32, ADJECTIVES.len);
+    const noun_idx = std.mem.readInt(u32, rb[4..8], .little) % @as(u32, NOUNS.len);
+    const suffix = std.mem.readInt(u32, rb[8..12], .little) % SUFFIX_MAX;
     return std.fmt.allocPrint(alloc, "{s}-{s}-{d:0>3}", .{
         ADJECTIVES[adj_idx],
         NOUNS[noun_idx],

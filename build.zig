@@ -165,6 +165,17 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/lib/common/constants.zig"),
     });
 
+    // Logging sources its envelope wall-clock from `common.clock` (Zig 0.16
+    // removed std.time.*Timestamp). The log module is otherwise dependency-free;
+    // `common` is a pure, datastore-free shared module, so this adds no domain
+    // coupling and no cycle (common never imports log).
+    log_mod.addImport(S_COMMON, common_mod);
+
+    // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
+    // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
+    // no domain coupling, no cycle (common never imports hmac_sig).
+    hmac_sig_mod.addImport(S_COMMON, common_mod);
+
     // ── usezombie executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "zombied",
@@ -269,6 +280,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
             },
         }),
         .filters = test_filters,
@@ -301,6 +313,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
             },
         });
 

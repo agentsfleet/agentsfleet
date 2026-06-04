@@ -159,7 +159,7 @@ pub fn composeMessage(
     const ctx = context orelse return message;
     if (ctx != .object) return message;
 
-    var parts: std.ArrayList(u8) = .{};
+    var parts: std.ArrayList(u8) = .empty;
     errdefer parts.deinit(alloc);
 
     try parts.appendSlice(alloc, message);

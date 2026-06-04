@@ -8,6 +8,7 @@
 // self-skips when TEST_DATABASE_URL is unset.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -65,7 +66,7 @@ fn fixture() !Fixture {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'MemoriesTest', $2, $2)

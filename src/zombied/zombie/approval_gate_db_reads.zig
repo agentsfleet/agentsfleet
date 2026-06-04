@@ -104,7 +104,7 @@ pub fn listPending(
     }));
     defer q.deinit();
 
-    var items: std.ArrayList(PendingRow) = .{};
+    var items: std.ArrayList(PendingRow) = .empty;
     errdefer {
         for (items.items) |*r| r.deinit(alloc);
         items.deinit(alloc);
@@ -148,7 +148,7 @@ pub fn getByGateId(
 }
 
 fn readPendingRow(alloc: Allocator, row: pg.Row) !PendingRow {
-    var owned: std.ArrayList([]const u8) = .{};
+    var owned: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (owned.items) |s| alloc.free(s);
         owned.deinit(alloc);

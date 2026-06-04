@@ -7,9 +7,9 @@
 #   help                    show usage
 #
 # Flags:
-#   --zig-version <v>   override ZIG_VERSION from versions.env (e.g. 0.15.2)
+#   --zig-version <v>   override ZIG_VERSION from versions.env (e.g. 0.16.0)
 #   --revision <r>      tag suffix for iterating without breaking pinned consumers
-#                       (e.g. --revision r3 → :0.15.2-r3). Empty by default.
+#                       (e.g. --revision r3 → :0.16.0-r3). Empty by default.
 #   --registry <r>      default: ghcr.io/usezombie
 #   --image <name>      alpine | debian-trixie | ubuntu | all (default: all)
 #   --no-push           docker buildx --load instead of --push (single-arch only)
@@ -128,7 +128,7 @@ cmd_fetch_shas() {
   require_tool jq
   local version="${1:-${ZIG_VERSION_OVERRIDE:-}}"
   [ -n "$version" ] || { load_versions 2>/dev/null || true; version="${ZIG_VERSION:-}"; }
-  [ -n "$version" ] || fatal "fetch-shas: pass a version (e.g. fetch-shas 0.15.2)"
+  [ -n "$version" ] || fatal "fetch-shas: pass a version (e.g. fetch-shas 0.16.0)"
   log "fetching SHA256s for Zig $version from ziglang.org/download/index.json"
   local json; json="$(curl -fsSL --max-time 30 https://ziglang.org/download/index.json)"
   local x86 aa x86m aam

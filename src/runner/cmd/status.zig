@@ -10,16 +10,16 @@ const Client = @import("../daemon/control_plane_client.zig");
 const args = @import("args.zig");
 const output = @import("output.zig");
 
-pub fn run(alloc: std.mem.Allocator) u8 {
-    const a = output.audience(args.has(output.FLAG_JSON));
-    const api = (args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
+    const a = output.audience(args.has(argv, output.FLAG_JSON));
+    const api = (args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
         return output.fail(a, alloc, output.ERR_API_URL_UNSET);
     defer alloc.free(api);
-    const token = (args.envOwned(alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
+    const token = (args.envOwned(env_map, alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
         return output.fail(a, alloc, ERR_NO_TOKEN);
     defer alloc.free(token);
 
-    const client = Client{ .base_url = api };
+    const client = Client{ .base_url = api, .io = io };
     const parsed = client.getSelf(alloc, token) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
     defer parsed.deinit();
     var buf: [384]u8 = undefined;

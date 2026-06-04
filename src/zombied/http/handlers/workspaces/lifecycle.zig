@@ -1,4 +1,5 @@
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const logging = @import("log");
@@ -121,7 +122,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = common.setTenantSessionContext(conn, tenant_id);
 
     // Defensive probe: a JWT claim that names an unknown tenant (stale

@@ -8,6 +8,7 @@
 //! construction (`CREATE SCHEMA/TABLE IF NOT EXISTS`).
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const parseUrl = @import("../db/pool.zig").parseUrl;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -28,11 +29,10 @@ const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 const EXPECTED_LEASE_COLUMN_COUNT: i64 = 22;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch return null;
-    defer alloc.free(url);
+    const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
     // parseUrl allocates host/auth strings that must outlive the pool.
     const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = pg.Pool.init(alloc, opts) catch return null;
+    const pool = pg.Pool.init(common.globalIo(), alloc, opts) catch return null;
     errdefer pool.deinit();
     const conn = pool.acquire() catch {
         pool.deinit();

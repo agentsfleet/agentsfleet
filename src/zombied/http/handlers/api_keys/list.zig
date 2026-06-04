@@ -99,7 +99,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
     });
     defer rows_q.deinit();
 
-    var items: std.ArrayListUnmanaged(ListRow) = .{};
+    var items: std.ArrayListUnmanaged(ListRow) = .empty;
     while (rows_q.next() catch null) |row| {
         const id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const key_name = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;

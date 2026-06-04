@@ -53,7 +53,7 @@ pub fn bringUpServer(h: *TestHarness, alloc: std.mem.Allocator, cfg: Config) !u1
     while (true) : (attempt += 1) {
         const port = try test_port.allocFreePort();
         h.bind_failed.store(false, .seq_cst);
-        h.server = try http_server.Server.init(&h.ctx, &h.registry, .{
+        h.server = try http_server.Server.init(h.ctx.io, &h.ctx, &h.registry, .{
             .port = port,
             .threads = 2,
             .workers = 2,
@@ -102,22 +102,22 @@ fn waitForServer(alloc: std.mem.Allocator, port: u16, timeout_ms: u32, bind_fail
         // The server thread lost the bind race → stop waiting so bringUpServer
         // can retry on a fresh port (don't burn the full timeout).
         if (bind_failed.load(.seq_cst)) return error.ServerBindRace;
-        var client: std.http.Client = .{ .allocator = alloc };
+        var client: std.http.Client = .{ .allocator = alloc, .io = @import("common").globalIo() };
         defer client.deinit();
-        var buf: std.ArrayList(u8) = .{};
+        var buf: std.ArrayList(u8) = .empty;
         var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
         const result = client.fetch(.{
             .location = .{ .url = url },
             .method = .GET,
             .response_writer = &writer.writer,
         }) catch {
-            std.Thread.sleep(poll_interval_ms * std.time.ns_per_ms);
+            @import("common").sleepNanos(poll_interval_ms * std.time.ns_per_ms);
             continue;
         };
         const body = writer.toOwnedSlice() catch &.{};
         alloc.free(body);
         if (@intFromEnum(result.status) == 200) return;
-        std.Thread.sleep(poll_interval_ms * std.time.ns_per_ms);
+        @import("common").sleepNanos(poll_interval_ms * std.time.ns_per_ms);
     }
     return error.ServerStartTimeout;
 }

@@ -17,6 +17,7 @@
 //!   <- ExecutionResult
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const nullclaw = @import("nullclaw");
 
@@ -62,6 +63,7 @@ pub const RunnerError = error{
 /// 5. Runs the agent synchronously
 /// 6. Returns an ExecutionResult with content, tokens, wall time
 pub fn execute(
+    env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
     agent_config: ?std.json.Value,
@@ -78,9 +80,9 @@ pub fn execute(
         return .{ .content = "", .exit_ok = false, .failure = .startup_posture };
     };
 
-    const start = std.time.milliTimestamp();
+    const start = clock.nowMillis();
 
-    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd) catch |err| {
+    const result = executeInner(env_map, alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
         log.err("failed", .{
@@ -110,6 +112,7 @@ const InnerResult = struct {
 };
 
 fn executeInner(
+    env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
     agent_config: ?std.json.Value,
@@ -186,7 +189,7 @@ fn executeInner(
     // response-chunk frames stream to the parent; without one, fall back to the
     // env-selected log/noop observer. `writer`/`adapter` are stack-owned here
     // because the Adapter's observer vtable captures `&adapter` for the run.
-    var obs_runtime = runner_observer.init(alloc);
+    var obs_runtime = runner_observer.init(env_map);
     var secrets_list = collectSecrets(agent_config);
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var writer: runner_progress.ProgressWriter = undefined;
@@ -294,7 +297,7 @@ pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
 }
 
 fn elapsedSeconds(start_ms: i64) u64 {
-    const elapsed_ms = std.time.milliTimestamp() - start_ms;
+    const elapsed_ms = clock.nowMillis() - start_ms;
     return @as(u64, @intCast(@max(0, elapsed_ms))) / 1000;
 }
 

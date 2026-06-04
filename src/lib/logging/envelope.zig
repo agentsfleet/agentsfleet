@@ -29,19 +29,18 @@ pub fn writeLogfmtEnvelope(
     scope_str: []const u8,
     body: []const u8,
 ) []const u8 {
-    var fbs = std.io.fixedBufferStream(buf);
-    const w = fbs.writer();
+    var w = std.Io.Writer.fixed(buf);
     w.print("ts_ms={d} level={s} scope={s} ", .{ ts_ms, level_str, scope_str }) catch
-        return fbs.getWritten();
+        return w.buffered();
     for (body) |c| {
         switch (c) {
-            '\n' => w.writeAll("\\n") catch return fbs.getWritten(),
-            '\r' => w.writeAll("\\r") catch return fbs.getWritten(),
-            else => w.writeByte(c) catch return fbs.getWritten(),
+            '\n' => w.writeAll("\\n") catch return w.buffered(),
+            '\r' => w.writeAll("\\r") catch return w.buffered(),
+            else => w.writeByte(c) catch return w.buffered(),
         }
     }
-    w.writeByte('\n') catch return fbs.getWritten();
-    return fbs.getWritten();
+    w.writeByte('\n') catch return w.buffered();
+    return w.buffered();
 }
 
 test "writeLogfmtEnvelope scrubs raw \\n in body to escape sequence" {

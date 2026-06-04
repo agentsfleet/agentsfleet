@@ -71,7 +71,7 @@ fn makeRecorder(comptime name: []const u8, comptime outcome: Outcome) fn (*anyop
 
 test "run() invokes every middleware in order when all return .next" {
     var dummy_anyopaque: u8 = 0;
-    var ctx = TestCtx{ .calls = .{} };
+    var ctx = TestCtx{ .calls = .empty };
     defer ctx.calls.deinit(testing.allocator);
 
     const chain: []const Middleware(TestCtx) = &.{
@@ -92,7 +92,7 @@ test "run() invokes every middleware in order when all return .next" {
 
 test "run() short-circuits and skips remaining middlewares" {
     var dummy_anyopaque: u8 = 0;
-    var ctx = TestCtx{ .calls = .{} };
+    var ctx = TestCtx{ .calls = .empty };
     defer ctx.calls.deinit(testing.allocator);
 
     const chain: []const Middleware(TestCtx) = &.{

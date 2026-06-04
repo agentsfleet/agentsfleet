@@ -14,6 +14,7 @@
 //! Plus `fatalStderr` for pre-init startup output (see its docstring).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const builtin = @import("builtin");
 pub const sinks = @import("sinks.zig");
 
@@ -77,20 +78,19 @@ fn buildLogfmtLine(
     comptime event: []const u8,
     fields: anytype,
 ) []const u8 {
-    var fbs = std.io.fixedBufferStream(buf[0 .. buf.len - TRUNCATION_MARKER.len]);
-    const w = fbs.writer();
+    var w = std.Io.Writer.fixed(buf[0 .. buf.len - TRUNCATION_MARKER.len]);
 
     var truncated = false;
     w.writeAll("event=" ++ event) catch {
         truncated = true;
     };
     if (!truncated) {
-        writeFields(w, fields) catch {
+        writeFields(&w, fields) catch {
             truncated = true;
         };
     }
 
-    var written_len = fbs.getWritten().len;
+    var written_len = w.buffered().len;
     if (truncated) {
         @memcpy(buf[written_len..][0..TRUNCATION_MARKER.len], TRUNCATION_MARKER);
         written_len += TRUNCATION_MARKER.len;
@@ -118,7 +118,7 @@ fn emit(
     // under lock) — the correct test-time behavior.
     if (builtin.is_test) {
         const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
-        sinks.emitToSinks(level, scope_str, std.time.milliTimestamp(), msg);
+        sinks.emitToSinks(level, scope_str, clock.nowMillis(), msg);
         return;
     }
     const log = std.log.scoped(scope);
@@ -240,8 +240,19 @@ pub const formatPretty = pretty.formatPretty;
 pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
     var buf: [2048]u8 = undefined;
     const line = std.fmt.bufPrint(&buf, fmt, args) catch return;
-    const stderr = std.fs.File.stderr();
-    stderr.writeAll(line) catch {};
+    writeStderrLine(line);
+}
+
+/// Write a pre-formatted line to stderr, locked and io-free. Zig 0.16's
+/// `std.Io` reform removed `File`'s io-free `writeAll`; `std.debug.lockStderr`
+/// owns its own io, so `logFn`s (fixed std signature, no io in scope) and the
+/// pre-init fatal path route their stderr emit through here. Best-effort — a
+/// failed write is dropped (the caller is a log sink or already exiting).
+pub fn writeStderrLine(line: []const u8) void {
+    var buf: [64]u8 = undefined;
+    const locked = std.debug.lockStderr(&buf);
+    defer std.debug.unlockStderr();
+    locked.file_writer.interface.writeAll(line) catch {};
 }
 
 // ---------------------------------------------------------------------------
@@ -269,33 +280,33 @@ test "integration: logging helpers operate from catch paths" {
 
 test "writeFields encodes integers and bare strings" {
     var buf: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try writeFields(fbs.writer(), .{ .tool = "bash", .duration_ms = 1240, .ok = true });
-    try std.testing.expectEqualStrings(" tool=bash duration_ms=1240 ok=true", fbs.getWritten());
+    var w = std.Io.Writer.fixed(&buf);
+    try writeFields(&w, .{ .tool = "bash", .duration_ms = 1240, .ok = true });
+    try std.testing.expectEqualStrings(" tool=bash duration_ms=1240 ok=true", w.buffered());
 }
 
 test "writeFields quotes strings with whitespace and escapes special chars" {
     var buf: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try writeFields(fbs.writer(), .{ .msg = "hello world", .raw = "a\"b\\c\n" });
+    var w = std.Io.Writer.fixed(&buf);
+    try writeFields(&w, .{ .msg = "hello world", .raw = "a\"b\\c\n" });
     // " msg=\"hello world\" raw=\"a\\\"b\\\\c\\n\""
-    try std.testing.expectEqualStrings(" msg=\"hello world\" raw=\"a\\\"b\\\\c\\n\"", fbs.getWritten());
+    try std.testing.expectEqualStrings(" msg=\"hello world\" raw=\"a\\\"b\\\\c\\n\"", w.buffered());
 }
 
 test "writeFields omits null optionals (no key=null)" {
     var buf: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
+    var w = std.Io.Writer.fixed(&buf);
     const maybe: ?[]const u8 = null;
-    try writeFields(fbs.writer(), .{ .present = "x", .missing = maybe });
-    try std.testing.expectEqualStrings(" present=x", fbs.getWritten());
+    try writeFields(&w, .{ .present = "x", .missing = maybe });
+    try std.testing.expectEqualStrings(" present=x", w.buffered());
 }
 
 test "writeFields renders enum values via @tagName" {
     const Color = enum { red, green, blue };
     var buf: [64]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try writeFields(fbs.writer(), .{ .color = Color.green });
-    try std.testing.expectEqualStrings(" color=green", fbs.getWritten());
+    var w = std.Io.Writer.fixed(&buf);
+    try writeFields(&w, .{ .color = Color.green });
+    try std.testing.expectEqualStrings(" color=green", w.buffered());
 }
 
 test "buildLogfmtLine fits within budget — no truncation marker" {

@@ -7,6 +7,8 @@
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -32,7 +34,7 @@ const KEY_RANDOM_BYTES: usize = 32;
 /// Returns allocated string owned by alloc. Total length = 4 + 64 = 68 chars.
 fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [KEY_RANDOM_BYTES]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try constants.secureRandomBytes(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ KEY_PREFIX, hex });
 }
@@ -116,7 +118,7 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const desc = body.description orelse "";
 
     _ = conn.exec(
@@ -182,7 +184,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     });
     defer q.deinit();
 
-    var agents: std.ArrayListUnmanaged(AgentRow) = .{};
+    var agents: std.ArrayListUnmanaged(AgentRow) = .empty;
     while (q.next() catch null) |row| {
         const agent_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const zombie_id = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;

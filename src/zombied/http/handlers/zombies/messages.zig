@@ -11,6 +11,7 @@
 // RULE NSQ: schema-qualified SQL (core.zombies).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -92,7 +93,7 @@ pub fn innerZombieMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []cons
         .actor = actor,
         .event_type = .chat,
         .request_json = request_json,
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     };
 
     const event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {

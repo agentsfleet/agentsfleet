@@ -6,7 +6,11 @@
 //! Config: GRAFANA_OTLP_ENDPOINT, GRAFANA_OTLP_INSTANCE_ID, GRAFANA_OTLP_API_KEY.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 const StringBuilder = @import("../util/strings/string_builder.zig");
+
+const EnvMap = common.env.Map;
 
 const OTLP_LOGS_PATH = "/v1/logs";
 const BUFFER_CAPACITY: usize = 2048;
@@ -25,23 +29,23 @@ pub const GrafanaOtlpConfig = struct {
 };
 
 /// Try to load Grafana OTLP config from environment. Returns null when not configured.
-pub fn configFromEnv(alloc: std.mem.Allocator) ?GrafanaOtlpConfig {
-    const endpoint = std.process.getEnvVarOwned(alloc, "GRAFANA_OTLP_ENDPOINT") catch return null;
+pub fn configFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) ?GrafanaOtlpConfig {
+    const endpoint = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_ENDPOINT") catch return null) orelse return null;
     const trimmed = std.mem.trim(u8, endpoint, " \t\r\n");
     if (trimmed.len == 0) {
         alloc.free(endpoint);
         return null;
     }
-    const instance_id = std.process.getEnvVarOwned(alloc, "GRAFANA_OTLP_INSTANCE_ID") catch {
+    const instance_id = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_INSTANCE_ID") catch null) orelse {
         alloc.free(endpoint);
         return null;
     };
-    const api_key = std.process.getEnvVarOwned(alloc, "GRAFANA_OTLP_API_KEY") catch {
+    const api_key = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_API_KEY") catch null) orelse {
         alloc.free(endpoint);
         alloc.free(instance_id);
         return null;
     };
-    const service_name = std.process.getEnvVarOwned(alloc, "OTEL_SERVICE_NAME") catch {
+    const service_name = (common.env.owned(env_map, alloc, "OTEL_SERVICE_NAME") catch null) orelse {
         return .{ .endpoint = endpoint, .instance_id = instance_id, .api_key = api_key };
     };
     return .{ .endpoint = endpoint, .instance_id = instance_id, .api_key = api_key, .service_name = service_name };
@@ -145,7 +149,7 @@ pub fn enqueue(
 
     // SAFETY: written by surrounding init logic before any read of this storage.
     var entry: LogEntry = undefined;
-    entry.timestamp_ns = @intCast(std.time.nanoTimestamp());
+    entry.timestamp_ns = @intCast(clock.nowNanos());
     entry.level_len = @intCast(@min(level.len, 5));
     @memcpy(entry.level[0..entry.level_len], level[0..entry.level_len]);
     entry.scope_len = @intCast(@min(scope.len, 32));
@@ -162,12 +166,12 @@ pub fn enqueue(
 
 fn flushLoop() void {
     while (g_running.load(.acquire)) {
-        std.Thread.sleep(FLUSH_INTERVAL_MS * std.time.ns_per_ms);
+        common.sleepNanos(FLUSH_INTERVAL_MS * std.time.ns_per_ms);
         flushBatch();
     }
     // Drain on shutdown
-    const deadline = std.time.milliTimestamp() + @as(i64, @intCast(SHUTDOWN_DRAIN_TIMEOUT_MS));
-    while (g_ring.len() > 0 and std.time.milliTimestamp() < deadline) {
+    const deadline = clock.nowMillis() + @as(i64, @intCast(SHUTDOWN_DRAIN_TIMEOUT_MS));
+    while (g_ring.len() > 0 and clock.nowMillis() < deadline) {
         flushBatch();
     }
 }
@@ -181,16 +185,15 @@ fn flushBatch() void {
     var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
     const alloc = fba.allocator();
 
-    var entries: std.ArrayList(u8) = .{};
-    const w = entries.writer(alloc);
+    var entries: std.ArrayList(u8) = .empty;
     var first = true;
 
     while (count < FLUSH_BATCH_SIZE) : (count += 1) {
         const entry = g_ring.pop() orelse break;
-        if (!first) w.writeAll(",") catch break;
+        if (!first) entries.appendSlice(alloc, ",") catch break;
         first = false;
 
-        w.print(
+        entries.print(alloc,
             "{{\"timeUnixNano\":\"{d}\",\"severityText\":\"{s}\",\"body\":{{\"stringValue\":\"{f}\"}},\"attributes\":[{{\"key\":\"scope\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}}",
             .{
                 entry.timestamp_ns,
@@ -223,10 +226,12 @@ pub fn postWithBasicAuth(
     path: []const u8,
     payload: []const u8,
 ) !void {
-    var client: std.http.Client = .{ .allocator = alloc };
+    // Background flush thread: a blocking one-shot POST (not an async event
+    // loop), so the process-global blocking io is the correct source.
+    var client: std.http.Client = .{ .allocator = alloc, .io = common.globalIo() };
     defer client.deinit();
 
-    const endpoint = std.mem.trimRight(u8, cfg.endpoint, "/");
+    const endpoint = std.mem.trimEnd(u8, cfg.endpoint, "/");
     const url = std.fmt.allocPrint(alloc, "{s}{s}", .{ endpoint, path }) catch return;
 
     // Basic auth: base64(instance_id:api_key)
@@ -240,7 +245,7 @@ pub fn postWithBasicAuth(
     var auth_header_buf: [1100]u8 = undefined;
     const auth_header = std.fmt.bufPrint(&auth_header_buf, "Basic {s}", .{b64}) catch return;
 
-    var resp_body: std.ArrayList(u8) = .{};
+    var resp_body: std.ArrayList(u8) = .empty;
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &resp_body);
 
     const headers: [2]std.http.Header = .{
@@ -264,17 +269,13 @@ pub fn postWithBasicAuth(
 // ---------------------------------------------------------------------------
 
 test "configFromEnv returns null when GRAFANA_OTLP_ENDPOINT is unset" {
-    // Cannot unsetenv in Zig 0.15 — test relies on env not being set in CI/local
-    // If GRAFANA_OTLP_ENDPOINT happens to be set, skip gracefully
-    if (configFromEnv(std.testing.allocator)) |present| {
-        std.testing.allocator.free(present.endpoint);
-        std.testing.allocator.free(present.instance_id);
-        std.testing.allocator.free(present.api_key);
-        if (!std.mem.eql(u8, present.service_name, "zombied")) std.testing.allocator.free(present.service_name);
-        return; // env is set, skip this test
-    }
-    const cfg = configFromEnv(std.testing.allocator);
-    try std.testing.expect(cfg == null);
+    const alloc = std.testing.allocator;
+    // Zig 0.16 env snapshot: pass a synthetic empty map rather than depending on
+    // the ambient process env. GRAFANA_OTLP_ENDPOINT is unset by construction, so
+    // the unset → null contract is now asserted deterministically.
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    try std.testing.expect(configFromEnv(&env_map, alloc) == null);
 }
 
 test "ring buffer push and pop round-trip" {

@@ -17,16 +17,18 @@ const output = @import("output.zig");
 const ENV_FILE_FLAG = "--env-file";
 const DEFAULT_ENV_FILE = "/etc/default/zombie-runner";
 const DEFAULT_TIER = @tagName(protocol.SandboxTier.dev_none);
+/// 0600 — the env file carries the `zrn_`; owner-only (RULE VLT).
+const ENV_FILE_MODE: std.posix.mode_t = 0o600;
 
-pub fn run(alloc: std.mem.Allocator) u8 {
-    const a = output.audience(args.has(output.FLAG_JSON));
-    const api = (args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, output.ERR_API_URL_UNSET);
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
+    const a = output.audience(args.has(argv, output.FLAG_JSON));
+    const api = (args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, output.ERR_API_URL_UNSET);
     defer alloc.free(api);
-    const jwt = (args.flagOrEnv(alloc, "--token", Config.ENV_ZOMBIE_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_JWT);
+    const jwt = (args.flagOrEnv(env_map, argv, alloc, "--token", Config.ENV_ZOMBIE_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_JWT);
     defer alloc.free(jwt);
-    const host_id = (args.flagOrEnv(alloc, "--host-id", Config.ENV_RUNNER_HOST_ID) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_HOST);
+    const host_id = (args.flagOrEnv(env_map, argv, alloc, "--host-id", Config.ENV_RUNNER_HOST_ID) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_HOST);
     defer alloc.free(host_id);
-    const tier = envOrDefault(alloc, Config.ENV_RUNNER_SANDBOX_TIER, DEFAULT_TIER) orelse return output.fail(a, alloc, output.ERR_OOM);
+    const tier = envOrDefault(env_map, alloc, Config.ENV_RUNNER_SANDBOX_TIER, DEFAULT_TIER) orelse return output.fail(a, alloc, output.ERR_OOM);
     defer alloc.free(tier);
 
     const req = protocol.RegisterRequest{
@@ -34,46 +36,45 @@ pub fn run(alloc: std.mem.Allocator) u8 {
         .sandbox_tier = std.meta.stringToEnum(protocol.SandboxTier, tier) orelse .dev_none,
         .labels = &.{},
     };
-    const client = Client{ .base_url = api };
+    const client = Client{ .base_url = api, .io = io };
     const result = client.register(alloc, jwt, req) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
     switch (result) {
         .rejected => |status| return output.fail(a, alloc, rejectionError(status)),
         .created => |parsed| {
             defer parsed.deinit();
-            const env_file = args.opt(ENV_FILE_FLAG) orelse DEFAULT_ENV_FILE;
-            writeEnvFile(alloc, env_file, api, parsed.value.runner_token, host_id) catch
+            const env_file = args.opt(argv, ENV_FILE_FLAG) orelse DEFAULT_ENV_FILE;
+            writeEnvFile(io, alloc, env_file, api, parsed.value.runner_token, host_id) catch
                 return envWriteFailed(a, alloc, parsed.value.runner_id);
             return emitSuccess(a, alloc, parsed.value.runner_id, env_file);
         },
     }
 }
 
-fn envOrDefault(alloc: std.mem.Allocator, env: []const u8, default: []const u8) ?[]const u8 {
-    return std.process.getEnvVarOwned(alloc, env) catch |err| switch (err) {
-        // Only an unset var falls through to the default; OOM / invalid encoding
-        // must not be masked as "use dev_none" — surface them as null (→ ERR_OOM).
-        error.EnvironmentVariableNotFound => alloc.dupe(u8, default) catch null,
-        else => null,
-    };
+fn envOrDefault(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, env: []const u8, default: []const u8) ?[]const u8 {
+    // Only an unset var falls through to the default; OOM must not be masked as
+    // "use dev_none" — surface it as null (→ ERR_OOM). Zig 0.16 removed
+    // `std.process.getEnvVarOwned`; the env block is threaded as an `Environ.Map`.
+    if (args.envOwned(env_map, alloc, env) catch return null) |v| return v;
+    return alloc.dupe(u8, default) catch null;
 }
 
 /// Write the runner env file deploy.sh consumes (0600 — it carries the `zrn_`).
 /// Keys are single-sourced from Config (RULE UFS).
-fn writeEnvFile(alloc: std.mem.Allocator, path: []const u8, api: []const u8, token: []const u8, host_id: []const u8) !void {
+fn writeEnvFile(io: std.Io, alloc: std.mem.Allocator, path: []const u8, api: []const u8, token: []const u8, host_id: []const u8) !void {
     const content = try std.fmt.allocPrint(alloc, "{s}={s}\n{s}={s}\n{s}={s}\n", .{
         Config.ENV_ZOMBIE_API_URL,    api,
         Config.ENV_ZOMBIE_RUNNER_TOKEN, token,
         Config.ENV_RUNNER_HOST_ID,    host_id,
     });
     defer alloc.free(content);
-    var file = try std.fs.cwd().createFile(path, .{ .mode = 0o600 });
-    defer file.close();
-    // `mode` on createFile only applies when the file is newly created; a
-    // pre-existing env file (e.g. 0644 from a prior tool) keeps its perms and
-    // truncate would write the zrn_ world-readable. chmod the fd so 0600 holds
-    // regardless of prior state (RULE VLT — the "(mode 0600)" claim must be true).
-    try file.chmod(0o600);
-    try file.writeAll(content);
+    var file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
+    // Zig 0.16's CreateFileOptions has no create-time mode, so a new file inherits
+    // umask perms. Set 0600 BEFORE writing — the zrn_ only lands in the final
+    // write, so it is never world-readable — and a pre-existing (e.g. 0644) env
+    // file is tightened too (RULE VLT — the "(mode 0600)" claim must always hold).
+    try file.setPermissions(io, std.Io.File.Permissions.fromMode(ENV_FILE_MODE));
+    try file.writeStreamingAll(io, content);
 }
 
 fn emitSuccess(a: output.Audience, alloc: std.mem.Allocator, runner_id: []const u8, env_file: []const u8) u8 {

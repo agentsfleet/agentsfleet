@@ -155,7 +155,7 @@ pub fn innerListMemories(
     }
     defer h.resetRole(conn);
 
-    var entries: std.ArrayList(MemoryEntry) = .{};
+    var entries: std.ArrayList(MemoryEntry) = .empty;
     defer entries.deinit(hx.alloc);
 
     if (query_text) |qt| {

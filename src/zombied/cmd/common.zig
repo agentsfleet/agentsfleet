@@ -1,7 +1,10 @@
 const db = @import("../db/pool.zig");
 const std = @import("std");
+const common = @import("common");
 const logging = @import("log");
 const log = logging.scoped(.zombied);
+
+const EnvMap = common.env.Map;
 
 pub const MigrationGuardError = error{
     InvalidMigrateOnStart,
@@ -43,8 +46,8 @@ pub fn canonicalMigrations() [21]db.Migration {
     };
 }
 
-pub fn migrateOnStartEnabledFromEnv(alloc: std.mem.Allocator) MigrationGuardError!bool {
-    const raw = std.process.getEnvVarOwned(alloc, "MIGRATE_ON_START") catch return false;
+pub fn migrateOnStartEnabledFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) !bool {
+    const raw = (try common.env.owned(env_map, alloc, "MIGRATE_ON_START")) orelse return false;
     defer alloc.free(raw);
 
     if (std.mem.eql(u8, raw, "1")) return true;

@@ -19,6 +19,7 @@
 //! /proc) — per RULE VLT.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const builtin = @import("builtin");
 const logging = @import("log");
 
@@ -89,6 +90,7 @@ pub const ReadOutcome = struct {
 /// Never errors: every supervision failure maps to a failed `ExecutionResult`
 /// so the caller always has an outcome to report.
 pub fn run(
+    io: std.Io,
     alloc: std.mem.Allocator,
     cfg: Config,
     workspace_path: []const u8,
@@ -100,7 +102,7 @@ pub fn run(
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
+    return supervise(io, alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
@@ -113,6 +115,7 @@ fn failed(class: types.FailureClass) ExecutionResult {
 /// Fork → bind to cgroup → feed lease → read result under a deadline → reap.
 /// `defer` reaps the child and destroys the scope on every path (errors too).
 fn supervise(
+    io: std.Io,
     alloc: std.mem.Allocator,
     cfg: Config,
     workspace_path: []const u8,
@@ -125,7 +128,7 @@ fn supervise(
     // be established, refuse the lease — never run prompt-injectable tool
     // execution unsandboxed.
     const requires_sandbox = !std.mem.eql(u8, cfg.sandbox_tier, SANDBOX_TIER_DEV_NONE);
-    var scope: ?cgroup.CgroupScope = establishSandbox(alloc, requires_sandbox) catch {
+    var scope: ?cgroup.CgroupScope = establishSandbox(io, alloc, requires_sandbox) catch {
         log.err("sandbox_unavailable_fail_closed", .{
             .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
             .lease_id = payload.lease_id,
@@ -137,35 +140,52 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    const child = try child_process.forkExec(alloc, cfg, workspace_path);
+    var child = try child_process.forkExec(io, alloc, cfg, workspace_path);
     var reaped = false;
+    // Zig 0.16 removed raw posix.waitpid/close; the process.Child wrapper is the
+    // only portable reap/close path — `wait` blocks, reaps, and closes any still-
+    // open stdio. The kill switch stays cgroup-atomic (killChild); the wrapper's
+    // kill() would touch only the single pid and let a hostile child's tree escape.
+    // OWNERSHIP CONTRACT: this supervisor is the SOLE reaper — `reaped` gates the one
+    // wait(); never call child.wait() elsewhere (double-reap). Wrapper non-authoritative.
     defer if (!reaped) {
-        _ = std.posix.waitpid(child.pid, 0);
+        // Best-effort terminal reap (the normal path sets `reaped`); the child may
+        // already be gone. Can't propagate from a defer, so log and move on.
+        if (child.wait(io)) |_| {} else |err| {
+            log.warn("reap_wait_failed", .{ .err = @errorName(err) });
+        }
     };
 
-    if (scope) |*s| s.addProcess(child.pid) catch |err|
+    if (scope) |*s| s.addProcess(child.id.?) catch |err|
         log.warn("cgroup_add_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
 
-    // Feed the lease (incl. inline secrets) in, then EOF the child's stdin.
-    child_process.writeAll(child.stdin_w, lease_json) catch |err|
+    // Feed the lease (incl. inline secrets) in, then EOF the child's stdin. Null
+    // the File after closing so the terminal `wait` does not double-close it.
+    child.stdin.?.writeStreamingAll(io, lease_json) catch |err|
         log.warn("lease_write_failed", .{ .err = @errorName(err) });
-    std.posix.close(child.stdin_w);
+    child.stdin.?.close(io);
+    child.stdin = null;
 
-    const outcome = try readResult(alloc, child.stdout_r, payload.lease_expires_at, sink, renew_hook);
+    const outcome = try readResult(alloc, child.stdout.?.handle, payload.lease_expires_at, sink, renew_hook);
     defer alloc.free(outcome.bytes);
-    std.posix.close(child.stdout_r);
+    // child.stdout is closed by the terminal `wait` below — no manual close.
 
     if (outcome.terminated) {
         log.warn("lease_terminated_by_renewal", .{ .lease_id = payload.lease_id });
-        child_process.killChild(child.pid, &scope);
+        child_process.killChild(child.id.?, &scope);
     } else if (outcome.timed_out) {
         log.warn("lease_timed_out", .{ .lease_id = payload.lease_id });
-        child_process.killChild(child.pid, &scope);
+        child_process.killChild(child.id.?, &scope);
     }
 
-    const wait_result = std.posix.waitpid(child.pid, 0);
+    // Claim the reap before wait() so the `!reaped` defer never double-waits
+    // (wait() asserts id != null and nulls it on success).
     reaped = true;
-    return classify(alloc, outcome, wait_result.status, &scope);
+    const term = child.wait(io) catch |err| {
+        log.err("child_wait_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+        return failed(.runner_crash);
+    };
+    return classify(alloc, outcome, term, &scope);
 }
 
 /// Fail-closed sandbox setup (Invariant 7). `dev_none` (requires=false) returns
@@ -174,15 +194,19 @@ fn supervise(
 /// rather than running the agent unsandboxed. (Landlock + netns are applied by
 /// the child before it runs the agent; this sets up the parent-side cgroup
 /// kill/limit domain.)
-pub fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
+pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
     if (!requires) return null;
     // macOS Seatbelt is not yet wired — a required sandbox we cannot apply must
     // fail closed rather than pretend. (Dev on macOS uses the dev_none tier.)
     if (builtin.os.tag != .linux) return error.SandboxUnavailable;
-    // SAFETY: filled by std.crypto.random.bytes on the next line before any read.
+    // Zig 0.16 removed the global std.crypto.random on linux; fill the cgroup
+    // execution id from the kernel CSPRNG (getrandom). Linux-only path (guarded
+    // above); fail-closed on a short/failed read — matches sandbox setup posture.
+    // SAFETY: written in full by getrandom on the next line (length-checked) before any read.
     var exec_id: types.ExecutionId = undefined;
-    std.crypto.random.bytes(&exec_id);
-    return cgroup.CgroupScope.create(alloc, exec_id, .{}) catch error.SandboxUnavailable;
+    if (std.os.linux.getrandom(&exec_id, exec_id.len, 0) != exec_id.len)
+        return error.SandboxUnavailable;
+    return cgroup.CgroupScope.create(io, alloc, exec_id, .{}) catch error.SandboxUnavailable;
 }
 
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
@@ -200,12 +224,12 @@ pub fn readResult(
     var deadline = deadline_ms;
     while (true) {
         const tick_deadline = if (renew_hook) |h|
-            @min(deadline, std.time.milliTimestamp() + h.tick_ms)
+            @min(deadline, clock.nowMillis() + h.tick_ms)
         else
             deadline;
         switch (try pipe_proto.waitReadable(fd, tick_deadline)) {
             .timed_out => {
-                const now = std.time.milliTimestamp();
+                const now = clock.nowMillis();
                 if (now >= deadline) return .{ .timed_out = true };
                 if (applyTick(renew_hook, &deadline, now)) return .{ .terminated = true };
                 continue;
@@ -222,7 +246,7 @@ pub fn readResult(
                     defer alloc.free(f.payload);
                     forwardActivity(alloc, sink, f.payload);
                     // A progress frame attests liveness and is a renewal point too.
-                    if (applyTick(renew_hook, &deadline, std.time.milliTimestamp()))
+                    if (applyTick(renew_hook, &deadline, clock.nowMillis()))
                         return .{ .terminated = true };
                 },
                 .result => return .{ .bytes = f.payload },
@@ -264,14 +288,19 @@ fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []cons
 pub fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
-    status: u32,
+    term: std.process.Child.Term,
     scope: *?cgroup.CgroupScope,
 ) ExecutionResult {
     if (outcome.terminated) return failed(.renewal_terminate);
     if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
-    if (!std.posix.W.IFEXITED(status) or std.posix.W.EXITSTATUS(status) != 0)
-        return failed(.runner_crash);
+    // Zig 0.16 reap returns a typed Term, not a raw wait() status word. A clean
+    // run is a zero exit; a non-zero exit or a signal/stop is a crash.
+    const clean_exit = switch (term) {
+        .exited => |code| code == 0,
+        else => false,
+    };
+    if (!clean_exit) return failed(.runner_crash);
     return parseResult(alloc, outcome.bytes);
 }
 

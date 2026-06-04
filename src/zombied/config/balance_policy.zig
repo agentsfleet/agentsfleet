@@ -2,9 +2,12 @@
 //! tenant whose `billing.tenant_billing.balance_nanos` has hit zero.
 
 const std = @import("std");
+const common = @import("common");
 const logging = @import("log");
 
 const log = logging.scoped(.balance_policy);
+
+const EnvMap = common.env.Map;
 
 const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
@@ -39,9 +42,8 @@ pub fn parse(raw: []const u8) ?Policy {
 }
 
 /// Pure resolution: null/unknown → DEFAULT (with warn log on unknown).
-/// Split out from `resolveFromEnv` so tests can pin every branch without
-/// round-tripping through libc setenv — short env values trigger a SIMD
-/// over-read in `posix.getenv` that valgrind flags as invalid.
+/// Split out from `resolveFromEnv` so tests can pin every branch directly
+/// without constructing an env map.
 pub fn resolve(raw: ?[]const u8) Policy {
     const s = raw orelse return DEFAULT;
     return parse(s) orelse {
@@ -53,14 +55,11 @@ pub fn resolve(raw: ?[]const u8) Policy {
 /// Resolve from env. Absent / unknown values fall back to DEFAULT with a
 /// startup warn log that names the observed value (so operators see why
 /// they didn't get what they typed).
-pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
-    const raw = std.process.getEnvVarOwned(alloc, ENV_VAR_NAME) catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => return resolve(null),
-        else => {
-            log.warn("env_read_failed", .{ .err = @errorName(err), .defaulting = DEFAULT.label() });
-            return DEFAULT;
-        },
-    };
+pub fn resolveFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) Policy {
+    const raw = (common.env.owned(env_map, alloc, ENV_VAR_NAME) catch |err| {
+        log.warn("env_read_failed", .{ .err = @errorName(err), .defaulting = DEFAULT.label() });
+        return DEFAULT;
+    }) orelse return resolve(null);
     defer alloc.free(raw);
     return resolve(raw);
 }
@@ -99,11 +98,9 @@ test "DEFAULT is warn" {
 
 // ── resolve ───────────────────────────────────────────────────────────────
 //
-// resolve() is the pure env→Policy core consumed by worker.zig at startup.
-// Tests exercise it directly; `resolveFromEnv` is a thin libc wrapper whose
-// body is just `getEnvVarOwned + resolve`. Round-tripping through setenv in
-// tests trips a Zig stdlib SIMD over-read inside posix.getenv that valgrind
-// (memleak gate) flags as invalid for short env values.
+// resolve() is the pure env→Policy core read at serve startup. Tests exercise
+// it directly; `resolveFromEnv` is a thin wrapper whose body is just
+// `common.env.owned + resolve`, so the value-mapping branches need no env map.
 
 test "resolve: null raw returns DEFAULT (env-absent branch)" {
     try std.testing.expectEqual(DEFAULT, resolve(null));

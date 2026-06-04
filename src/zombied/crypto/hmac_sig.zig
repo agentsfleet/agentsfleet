@@ -4,6 +4,7 @@
 // primitives replacing prior per-middleware copies.
 
 const std = @import("std");
+const clock = @import("common").clock;
 
 pub const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 pub const MAC_LEN: usize = HmacSha256.mac_length;
@@ -47,7 +48,7 @@ pub fn encodeMacHex(buf: []u8, prefix: []const u8, mac: [MAC_LEN]u8) []const u8 
 pub fn isTimestampFresh(timestamp: []const u8, max_drift: i64) bool {
     const ts = std.fmt.parseInt(i64, timestamp, 10) catch return false;
     if (ts <= 0) return false;
-    const now = std.time.timestamp();
+    const now = clock.nowSeconds();
     if (ts > now + max_drift) return false;
     if (now > ts and now - ts > max_drift) return false;
     return true;
