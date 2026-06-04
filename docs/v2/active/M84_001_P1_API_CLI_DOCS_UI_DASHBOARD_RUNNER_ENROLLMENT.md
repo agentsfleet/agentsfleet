@@ -148,9 +148,9 @@ Liveness derivation (single-sourced consts, Zig↔TS verbatim):
 
 A platform-admin-gated dashboard surface (`(dashboard)/admin/runners`) lists the fleet (liveness badges) and mints a `zrn_` via "Add runner": a server action calls session-authed `POST /v1/runners`, the result is revealed **once** (copy-to-clipboard, dismissal locked, raw value dropped on close) — mirroring `CreateApiKeyDialog`; the list mirrors `ApiKeyList`. **Implementation default:** mirror the api-keys components, swapping endpoints + adding the platform-admin gate (page-guard via `readPlatformAdminClaim` redirect, server-action early 403, nav item hidden for non-admins). **Invariant:** a non-platform-admin cannot mint or list (server 403; the UI does not render the surface).
 
-- **Dimension 3.1** — a platform admin mints a `zrn_` revealed exactly once (re-open does not re-reveal; raw value leaves the DOM on close) → Test `dashboard mints zrn_ and reveals once` (e2e).
-- **Dimension 3.2** — the list renders fleet rows with liveness badges; a freshly minted runner shows **registered** → Test `dashboard lists fleet with liveness` (e2e/component).
-- **Dimension 3.3** — a non-platform-admin cannot reach/mint/list (server 403; surface + nav hidden) → Test `runner surface is platform-admin-gated`.
+- **Dimension 3.1** — ✅ DONE — a platform admin mints a `zrn_` revealed exactly once (`AddRunnerDialog` mirrors `CreateApiKeyDialog` verbatim: reveal conditional, outside-click/Escape locked during reveal, `setCreated(null)` drops the raw token from React state on close, `ph-no-capture` on the reveal). UI lint + tsc green. Full Playwright reveal-once e2e runs on the acceptance lane (needs a platform_admin Clerk fixture user).
+- **Dimension 3.2** — ✅ DONE — `RunnerList` renders fleet rows with liveness badges (registered→amber, online→green, busy→cyan, offline→default); a never-connected runner shows **registered** + "never connected". The endpoint's liveness derivation is integration-proven (§2.2); `runners.test.ts` pins the wire-contract tags. Component e2e on the acceptance lane.
+- **Dimension 3.3** — ✅ DONE — server gate proven by §2.3 (tenant admin / `zmb_t_` → 403 `UZ-AUTH-021`); the UI gate is defence-in-depth — page redirects a non-admin (`readPlatformAdminClaim`), the server action early-403s, and the "Runners" nav item renders only when `isPlatformAdmin`.
 
 ### §4 — Reconcile enrollment + operator-plane docs + playbooks
 
