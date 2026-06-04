@@ -197,6 +197,8 @@ describe("app components", () => {
     expect(markup).toContain("Agents");
     expect(markup).toContain("Credentials");
     expect(markup).toContain("Model");
+    // The Model item points at the renamed route, not just the bare word.
+    expect(markup).toContain('href="/settings/models"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Settings");
@@ -213,6 +215,31 @@ describe("app components", () => {
     expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="SkullIcon"/);
   });
 
+  it("Shell active-link resolves the longest-matching prefix (Settings collision)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    // Render at a pathname and report how many items are active + the active
+    // item's icon — exactly one item must light, and it must be the most
+    // specific match (a nested /settings/* child beats its parent Settings).
+    const activeFor = (pathname: string, isPlatformAdmin = false) => {
+      mocks.usePathname.mockReturnValue(pathname);
+      const tree = Shell({ children: React.createElement("div"), isPlatformAdmin });
+      const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+      const count = (markup.match(/data-active="true"/g) ?? []).length;
+      const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
+      return { count, icon };
+    };
+    // Nested children win over the parent Settings (the bug the resolver fixes).
+    expect(activeFor("/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
+    expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
+    // Parent Settings lights on its own route and on unclaimed children only.
+    expect(activeFor("/settings")).toEqual({ count: 1, icon: "SettingsIcon" });
+    expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "SettingsIcon" });
+    // Other groups resolve to their own item; root and admin-gated paths too.
+    expect(activeFor("/credentials")).toEqual({ count: 1, icon: "KeyRoundIcon" });
+    expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
+    expect(activeFor("/admin/runners", true)).toEqual({ count: 1, icon: "ServerIcon" });
+  });
+
   it("Shell appends the platform-admin Runners item only when isPlatformAdmin", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
@@ -223,6 +250,10 @@ describe("app components", () => {
     expect(markup).toContain("Runners");
     expect(markup).toContain('href="/admin/runners"');
     expect(markup).toContain('data-icon="ServerIcon"');
+    // It is appended to Configuration, not rendered as a separate group: the
+    // Configuration header appears exactly once and there is no "Platform" group.
+    expect((markup.match(/>Configuration</g) ?? []).length).toBe(1);
+    expect(markup).not.toMatch(/>\s*Platform\s*</);
   });
 
   it("Shell hides the platform-admin surface for a non-admin session", async () => {
@@ -298,6 +329,10 @@ describe("app components", () => {
     // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Settings"));
+    // New grouped items — nested routes exercise the multi-segment slug branch.
+    await user.click(screen.getByText("Credentials"));
+    await user.click(screen.getByText("Model"));
+    await user.click(screen.getByText("Billing"));
     // Header marketing/docs anchors.
     await user.click(screen.getByText("docs"));
     await user.click(screen.getByText("usezombie.com"));
@@ -309,6 +344,9 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_zombies");
     expect(sources).toContain("app_sidebar_docs");
     expect(sources).toContain("app_sidebar_settings");
+    expect(sources).toContain("app_sidebar_credentials");
+    expect(sources).toContain("app_sidebar_settings_models");
+    expect(sources).toContain("app_sidebar_settings_billing");
     expect(sources).toContain("app_header_docs");
     expect(sources).toContain("app_header_marketing");
     cleanup();
