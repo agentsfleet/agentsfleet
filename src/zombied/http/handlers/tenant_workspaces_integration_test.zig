@@ -2,6 +2,7 @@
 //! Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../auth/middleware/mod.zig");
 
@@ -90,7 +91,7 @@ test "integration: tenant workspaces — auth, list, scoping" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     cleanupOverride(conn);
     defer cleanupOverride(conn);
     try seedTenant(conn, now_ms);

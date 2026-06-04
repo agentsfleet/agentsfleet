@@ -8,6 +8,7 @@
 // docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness".
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -54,8 +55,8 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'MessagesTest', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, std.time.milliTimestamp() });
-    const now = std.time.milliTimestamp();
+    , .{ TEST_TENANT_ID, clock.nowMillis() });
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
         \\VALUES ($1, $2, $3)

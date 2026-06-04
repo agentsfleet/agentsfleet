@@ -20,6 +20,7 @@
 //! refresher (deferred).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const contract = @import("contract");
 const FailureClass = contract.execution_result.FailureClass;
 const Outcome = contract.protocol.Outcome;
@@ -170,7 +171,7 @@ pub fn observeRunnerExecution(runner_id: []const u8, outcome: Outcome) void {
     const idx = @intFromEnum(outcome);
     if (resolveSlot(runner_id)) |slot| {
         _ = slot.counters.executions[idx].fetchAdd(1, .monotonic); // safe because: independent counter
-        slot.last_seen_ms.store(std.time.milliTimestamp(), .monotonic); // safe because: lone gauge stamp, last-writer-wins
+        slot.last_seen_ms.store(clock.nowMillis(), .monotonic); // safe because: lone gauge stamp, last-writer-wins
     } else {
         _ = g_overflow.executions[idx].fetchAdd(1, .monotonic); // safe because: independent counter
     }
@@ -179,7 +180,7 @@ pub fn observeRunnerExecution(runner_id: []const u8, outcome: Outcome) void {
 /// Stamp liveness for `runner_id` (heartbeat). No-op for overflow runners.
 pub fn touchRunnerSeen(runner_id: []const u8) void {
     if (resolveSlot(runner_id)) |slot| {
-        slot.last_seen_ms.store(std.time.milliTimestamp(), .monotonic); // safe because: lone gauge stamp, last-writer-wins
+        slot.last_seen_ms.store(clock.nowMillis(), .monotonic); // safe because: lone gauge stamp, last-writer-wins
     }
 }
 
@@ -234,7 +235,7 @@ fn renderCounterFamilies(writer: anytype) !void {
 }
 
 fn renderGaugeFamilies(writer: anytype) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n", .{ LAST_SEEN_NAME, LAST_SEEN_HELP, LAST_SEEN_NAME, TYPE_GAUGE });
     for (&g_slots) |*slot| {
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;

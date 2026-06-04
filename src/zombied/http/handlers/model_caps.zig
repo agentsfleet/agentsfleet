@@ -106,7 +106,7 @@ fn buildResponse(
     conn: *pg.Conn,
     model_filter: ?[]const u8,
 ) !ResponseBody {
-    var models: std.ArrayList(ModelCap) = .{};
+    var models: std.ArrayList(ModelCap) = .empty;
     errdefer models.deinit(alloc);
 
     var max_updated_ms: i64 = 0;

@@ -10,6 +10,7 @@
 //! decision=denied   → status=revoked,  revoked_at set
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -188,7 +189,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     };
     defer hx.ctx.pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     if (!applyDecision(hx, conn, body.grant_id, zombie_id, is_approved, now_ms)) return;
 
     const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, zombie_id);

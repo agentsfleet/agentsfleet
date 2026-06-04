@@ -3,6 +3,8 @@
 //! Provider-specific claim extraction lives in claims.zig.
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
 const logging = @import("log");
 
 const log = logging.scoped(.auth);
@@ -32,7 +34,6 @@ pub const Config = struct {
     issuer: ?[]const u8 = null,
     audience: ?[]const u8 = null,
     inline_jwks_json: ?[]const u8 = null,
-    jwks_env_var: ?[]const u8 = null,
     cache_ttl_ms: i64 = 6 * 60 * 60 * 1000,
 };
 
@@ -89,9 +90,8 @@ pub const Verifier = struct {
     issuer: ?[]u8,
     audience: ?[]u8,
     inline_jwks_json: ?[]u8,
-    jwks_env_var: ?[]u8,
     cache_ttl_ms: i64,
-    mutex: std.Thread.Mutex = .{},
+    mutex: common.Mutex = .{},
     cache: ?JwksCache = null,
 
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
@@ -101,7 +101,6 @@ pub const Verifier = struct {
             .issuer = if (cfg.issuer) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
             .audience = if (cfg.audience) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
             .inline_jwks_json = if (cfg.inline_jwks_json) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
-            .jwks_env_var = if (cfg.jwks_env_var) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
             .cache_ttl_ms = cfg.cache_ttl_ms,
         };
     }
@@ -115,7 +114,6 @@ pub const Verifier = struct {
         if (self.issuer) |v| self.alloc.free(v);
         if (self.audience) |v| self.alloc.free(v);
         if (self.inline_jwks_json) |v| self.alloc.free(v);
-        if (self.jwks_env_var) |v| self.alloc.free(v);
     }
 
     /// Verify JWT signature, check standard claims (sub, iss, aud, exp),
@@ -189,7 +187,7 @@ pub const Verifier = struct {
     }
 
     fn refreshCacheLocked(self: *Verifier) !*JwksCache {
-        const now_ms = std.time.milliTimestamp();
+        const now_ms = clock.nowMillis();
         if (self.cache) |*cache| {
             if (now_ms - cache.fetched_at_ms <= self.cache_ttl_ms) {
                 log.debug("jwks_cache_hit", .{ .age_ms = now_ms - cache.fetched_at_ms });
@@ -216,18 +214,14 @@ pub const Verifier = struct {
     fn fetchJwksJson(self: *Verifier) ![]u8 {
         if (self.inline_jwks_json) |raw| return self.alloc.dupe(u8, raw);
 
-        if (self.jwks_env_var) |env_name| {
-            if (std.process.getEnvVarOwned(self.alloc, env_name)) |raw| {
-                return raw;
-            } else |_| {}
-        }
-
         if (self.jwks_url.len == 0) return VerifyError.JwksFetchFailed;
 
-        var client: std.http.Client = .{ .allocator = self.alloc };
+        // JWKS fetch is cached (TTL) so this runs rarely — a blocking one-shot
+        // GET on the process-global io is appropriate.
+        var client: std.http.Client = .{ .allocator = self.alloc, .io = common.globalIo() };
         defer client.deinit();
 
-        var body: std.ArrayList(u8) = .{};
+        var body: std.ArrayList(u8) = .empty;
         var aw: std.Io.Writer.Allocating = .fromArrayList(self.alloc, &body);
 
         const result = client.fetch(.{
@@ -277,7 +271,7 @@ pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
     const parsed = std.json.parseFromSlice(JwkDoc, alloc, raw, .{ .ignore_unknown_fields = true }) catch return VerifyError.JwksParseFailed;
     defer parsed.deinit();
 
-    var keys: std.ArrayList(JwkKey) = .{};
+    var keys: std.ArrayList(JwkKey) = .empty;
     errdefer {
         for (keys.items) |key| {
             alloc.free(key.kid);
@@ -347,7 +341,7 @@ pub fn parseStandardClaims(
     }
 
     const exp = getInt(obj, "exp") orelse return VerifyError.MissingExpiry;
-    const now_s = std.time.timestamp();
+    const now_s = clock.nowSeconds();
     if (exp <= now_s) return VerifyError.TokenExpired;
 
     return .{

@@ -7,9 +7,9 @@ const mr = @import("metrics_runner.zig");
 /// Render into a caller buffer and return the written slice. Sized for the
 /// handful of runners each test creates (overflow test renders its own way).
 fn render(buf: []u8) ![]const u8 {
-    var fbs = std.io.fixedBufferStream(buf);
-    try mr.renderPrometheus(fbs.writer());
-    return fbs.getWritten();
+    var w = std.Io.Writer.fixed(buf);
+    try mr.renderPrometheus(&w);
+    return w.buffered();
 }
 
 fn contains(haystack: []const u8, needle: []const u8) bool {
@@ -103,10 +103,10 @@ test "cardinality overflow routes to _other with the reason preserved" {
     }
     mr.incRunnerFailure("one-too-many", .oom_kill); // overflow
 
-    var out: std.ArrayList(u8) = .{};
-    defer out.deinit(std.testing.allocator);
-    try mr.renderPrometheus(out.writer(std.testing.allocator));
-    const text = out.items;
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    try mr.renderPrometheus(&aw.writer);
+    const text = aw.written();
     try std.testing.expect(contains(text, "zombie_runner_failures_total{runner_id=\"_other\",reason=\"oom_kill\"} 1"));
     try std.testing.expect(contains(text, "zombie_runner_failures_overflow_total 1"));
 }

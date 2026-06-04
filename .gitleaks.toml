@@ -21,6 +21,14 @@ paths = [
   '''(^|/)\.zig-cache/''',
   '''(^|/)zig-out/''',
   '''(^|/)\.tmp/zig-global-cache/''',
+  # Vendored pg.zig upstream test suite (vendor/pg/tests/) — pg.zig's own TLS
+  # fixtures (client.key/crt, root.crt). Not in our build graph: the pg module
+  # roots at vendor/pg/src/pg.zig. Kept byte-identical to upstream rather than
+  # deleted, so allowlist its real-but-unused test PEM.
+  '''(^|/)vendor/pg/tests/.*''',
+  # Vendored pg.zig SASL handshake — line 39 advertises the "SCRAM-SHA-256"
+  # mechanism string (eqlIgnoreCase compare), not a credential. False positive.
+  '''(^|/)vendor/pg/src/proto/authentication_request\.zig$''',
 ]
 regexTarget = "match"
 regexes = [

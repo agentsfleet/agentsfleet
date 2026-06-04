@@ -8,6 +8,8 @@
 //! mode wires it later. See `docs/AUTH.md` (Runner token).
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -33,7 +35,7 @@ const RegisterError = error{ DbError, OperationError };
 /// `runner_bearer` (RULE UFS) so the minter and the validator never drift.
 fn mintRunnerToken(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [TOKEN_RANDOM_BYTES]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try constants.secureRandomBytes(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ runner_bearer.RUNNER_TOKEN_PREFIX, hex });
 }
@@ -72,7 +74,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     const token_hash = api_key.sha256Hex(raw_token);
     const runner_id = id_format.generateRunnerId(hx.alloc) catch return error.OperationError;
     const labels_json = std.json.Stringify.valueAlloc(hx.alloc, body.labels, .{}) catch return error.OperationError;
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     // tenant_id NULL: S0 is trusted-fleet; the per-tenant-scoped mode wires it.
     _ = conn.exec(

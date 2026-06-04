@@ -6,6 +6,7 @@
 //! command set (Invariant 2).
 
 const std = @import("std");
+const globalIo = @import("common").globalIo;
 const args = @import("args.zig");
 const help = @import("help.zig");
 const register = @import("register.zig");
@@ -14,7 +15,7 @@ const doctor = @import("doctor.zig");
 
 pub const Command = enum { register, status, doctor };
 
-const HandlerFn = *const fn (std.mem.Allocator) u8;
+const HandlerFn = *const fn ([]const [:0]const u8, *const std.process.Environ.Map, std.Io, std.mem.Allocator) u8;
 const Spec = struct { handler: HandlerFn, summary: []const u8 };
 
 /// The register table. Summaries are kept short enough that `  <name>  <summary>`
@@ -35,14 +36,20 @@ pub fn summaryFor(cmd: Command) []const u8 {
 /// Dispatch a non-daemon argv head. `--help`/`-h` renders help (exit 0); an
 /// unrecognized token renders help to stderr (exit 2); a known command runs its
 /// handler. Always handles — returns the process exit code.
-pub fn dispatch(alloc: std.mem.Allocator, name: []const u8) u8 {
+pub fn dispatch(
+    argv: []const [:0]const u8,
+    env_map: *const std.process.Environ.Map,
+    io: std.Io,
+    alloc: std.mem.Allocator,
+    name: []const u8,
+) u8 {
     if (std.mem.eql(u8, name, "--help") or std.mem.eql(u8, name, "-h")) return help.run(alloc);
     const cmd = std.meta.stringToEnum(Command, name) orelse return help.runUnknown(alloc, name);
     // `<cmd> --help` shows help instead of running the command — a subcommand must
     // never perform a live action (mint a token, write the env file) when the
     // operator asked for help.
-    if (args.has("--help") or args.has("-h")) return help.run(alloc);
-    return specFor(cmd).handler(alloc);
+    if (args.has(argv, "--help") or args.has(argv, "-h")) return help.run(alloc);
+    return specFor(cmd).handler(argv, env_map, io, alloc);
 }
 
 test "every Command has a non-empty summary (no help drift)" {
@@ -53,5 +60,9 @@ test "every Command has a non-empty summary (no help drift)" {
 
 test "dispatch resolves --help and rejects an unknown command non-zero" {
     // --help is exit 0; an unknown token is exit 2 (writes to stderr).
-    try std.testing.expectEqual(@as(u8, 2), dispatch(std.testing.allocator, "bogus-cmd"));
+    const alloc = std.testing.allocator;
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+    const argv = &[_][:0]const u8{};
+    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, "bogus-cmd"));
 }

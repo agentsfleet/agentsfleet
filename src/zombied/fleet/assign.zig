@@ -88,7 +88,7 @@ fn listCandidates(conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u
         \\ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
     , .{ zombie_config.ZombieStatus.active.toSlice(), runner_id }));
     defer q.deinit();
-    var ids: std.ArrayList([]const u8) = .{};
+    var ids: std.ArrayList([]const u8) = .empty;
     while (try q.next()) |row| {
         try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
     }

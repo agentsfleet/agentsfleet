@@ -81,7 +81,7 @@ fn fetchWorkspaces(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []con
     var q = PgQuery.from(try conn.query(sql, args));
     defer q.deinit();
 
-    var rows: std.ArrayList(WorkspaceRow) = .{};
+    var rows: std.ArrayList(WorkspaceRow) = .empty;
     errdefer {
         for (rows.items) |r| {
             alloc.free(r.id);

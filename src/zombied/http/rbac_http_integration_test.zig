@@ -9,6 +9,7 @@
 // the canonical pattern.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const error_codes = @import("../errors/error_registry.zig");
@@ -51,7 +52,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn setupSeedData(conn: *pg.Conn) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'RBAC Test Tenant', $2, $2)

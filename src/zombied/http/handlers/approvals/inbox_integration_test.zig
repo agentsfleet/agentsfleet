@@ -9,6 +9,7 @@
 // and skip when the harness can't reach it.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -58,7 +59,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'ApprovalsTest', $2, $2)

@@ -5,7 +5,9 @@
 //! reports timed_out rather than spinning forever.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const supervisor = @import("child_supervisor.zig");
+const pipe_proto = @import("pipe_proto.zig");
 const contract = @import("contract");
 
 const ActivityFrame = contract.activity.ActivityFrame;
@@ -32,16 +34,16 @@ test "readResult should exit cleanly when the hook extends to an already-past de
     // fires, the hook "extends" to a past instant. The next wait sees the elapsed
     // deadline → timed_out, loop exits. A far initial deadline proves the timeout
     // came from the past-extend, not the original lease window.
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    defer std.posix.close(fds[1]); // open write end → no EOF, forces ticks
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    defer pipe_proto.osClose(fds[1]); // open write end → no EOF, forces ticks
 
     var hook_state = PastExtendHook{};
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = PastExtendHook.onTick, .tick_ms = 10 };
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
-    const far_dl = std.time.milliTimestamp() + 60_000; // far; the 10ms tick fires first
+    const far_dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
     const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, hook);
     defer std.testing.allocator.free(outcome.bytes);
 

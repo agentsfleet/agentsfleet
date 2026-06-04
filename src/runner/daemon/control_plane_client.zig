@@ -12,6 +12,10 @@ const LoopbackClient = @This();
 
 /// Base origin of the control plane, e.g. `http://127.0.0.1:8080` (no path).
 base_url: []const u8,
+/// Blocking `Io` the outbound `std.http.Client` runs on (Zig 0.16 requires it as
+/// a no-default field). Borrowed from the daemon's `Io.Threaded`; the client
+/// never owns or deinits it — lifetime is the process.
+io: std.Io,
 
 pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
 
@@ -176,7 +180,7 @@ const PostResult = struct { status: u16, body: []u8 };
 
 /// One bearer-authed POST. Returns the status + response body (owned by `alloc`).
 fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8) !PostResult {
-    var client: std.http.Client = .{ .allocator = alloc };
+    var client: std.http.Client = .{ .allocator = alloc, .io = self.io };
     defer client.deinit();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
@@ -186,7 +190,7 @@ fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []cons
 
     // BUFFER GATE: ArrayList for response body — fetch appends as it streams;
     // .items is read once for the JSON parse.
-    var body: std.ArrayList(u8) = .{};
+    var body: std.ArrayList(u8) = .empty;
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
 
     const headers: [2]std.http.Header = .{
@@ -207,7 +211,7 @@ fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []cons
 /// One bearer-authed GET (no body). Returns the status + response body (owned by
 /// `alloc`). Used by the read-only `getSelf` verb.
 fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8) !PostResult {
-    var client: std.http.Client = .{ .allocator = alloc };
+    var client: std.http.Client = .{ .allocator = alloc, .io = self.io };
     defer client.deinit();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
@@ -216,7 +220,7 @@ fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const
     defer alloc.free(auth);
 
     // BUFFER GATE: ArrayList for response body — fetch appends as it streams.
-    var body: std.ArrayList(u8) = .{};
+    var body: std.ArrayList(u8) = .empty;
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
 
     const headers: [1]std.http.Header = .{.{ .name = "authorization", .value = auth }};

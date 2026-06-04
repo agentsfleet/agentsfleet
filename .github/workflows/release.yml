@@ -47,9 +47,9 @@ jobs:
     needs: verify-tag
     runs-on: ubuntu-latest
     container:
-      # Pre-baked: alpine:3.21 + Zig 0.15.2 + apk deps + x86_64-linux-gnu OpenSSL
+      # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/usezombie/ci-zig-alpine:0.15.2
+      image: ghcr.io/usezombie/ci-zig-alpine:0.16.0
     steps:
       - uses: actions/checkout@v6
 
@@ -150,14 +150,14 @@ jobs:
         # Pre-baked image: ci-zig-alpine multi-arch manifest carries linux/arm64,
         # so docker pulls the arm64 variant (no QEMU emulation on the native
         # ubuntu-24.04-arm runner). Image already has openssl-libs-static, the
-        # aarch64-linux-gnu symlinks, and Zig 0.15.2 in /opt/zig on $PATH.
+        # aarch64-linux-gnu symlinks, and Zig 0.16.0 in /opt/zig on $PATH.
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zig-out/bin"
           docker run --rm \
             --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
-            ghcr.io/usezombie/ci-zig-alpine:0.15.2 \
+            ghcr.io/usezombie/ci-zig-alpine:0.16.0 \
             sh -c '
               set -e
               cp -a /src/. /build
@@ -209,7 +209,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Ensure OpenSSL is available (macOS)

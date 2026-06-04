@@ -20,6 +20,7 @@
 //! Allocator: per-request arena (`hx.alloc`); see service.zig's module note.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -110,7 +111,7 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
 /// settle math. Errors propagate so the caller answers 500 (the report is
 /// retryable; an uncommitted attempt leaves the lease `active` to re-claim).
 fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRequest) !renewal_settle.SettleOutcome {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const meter = renewal.buildMeterInputs(
         lease.provider,
         parsePosture(lease.posture),
@@ -197,7 +198,7 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
         .posture = parsePosture(lease.posture),
         .provider = lease.provider,
         .model = lease.model,
-    }, 0, body.tokens, wall_ms, std.time.milliTimestamp() - @as(i64, @intCast(wall_ms)));
+    }, 0, body.tokens, wall_ms, clock.nowMillis() - @as(i64, @intCast(wall_ms)));
     event_rows.checkpointZombieSession(alloc, pool, lease.zombie_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
         log.warn("report_checkpoint_failed", .{ .zombie_id = lease.zombie_id, .err = @errorName(err) });
     };

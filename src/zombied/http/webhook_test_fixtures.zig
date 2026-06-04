@@ -6,16 +6,17 @@
 // pattern where deferred cleanup leaks connections at pool.deinit.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const crypto_store = @import("../secrets/crypto_store.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
 /// Set `ENCRYPTION_MASTER_KEY` so `crypto_store.store/load` can operate.
 /// Safe to call once per test. Value is a fixed test key — not a secret.
 const S_WEBHOOK = "webhook";
 
 pub fn setTestEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 1);
+    crypto_primitives.setTestKek();
 }
 
 pub const Fixture = struct {
@@ -34,7 +35,7 @@ pub fn insertZombie(
     fx: Fixture,
     config_json: []const u8,
 ) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     // Clean any prior state first — rerun resilience.
     try cleanup(conn, fx);

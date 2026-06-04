@@ -23,6 +23,7 @@
 //! event (owned by the Redis client's allocator) before returning.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -33,7 +34,6 @@ const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
-
 const ZombieSession = @import("zombie_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const context_resolve = @import("context_resolve.zig");
@@ -268,9 +268,9 @@ fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_pro
     var secrets_map: ?std.json.Value = null;
     if (session.config.credentials.len > 0) {
         if (secrets_resolve.resolveSecretsMap(alloc, hx.ctx.pool, session.workspace_id, session.config.credentials)) |entries| {
-            var obj = std.json.ObjectMap.init(alloc);
+            var obj: std.json.ObjectMap = .empty;
             for (entries) |entry| {
-                obj.put(entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
+                obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
             }
             secrets_map = .{ .object = obj };
         } else |err| {
@@ -288,7 +288,7 @@ fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_pro
 fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: Billed, lease_id: []const u8) !void {
     const conn = hx.ctx.pool.acquire() catch return error.DbError;
     defer hx.ctx.pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     // Fresh event → reset the per-zombie metering cursor (the slot may carry a
     // prior run's preserved cursor); a reclaim leaves it so the re-leased run
     // meters forward. Fail-closed: a reset error fails issue, never over-charges.

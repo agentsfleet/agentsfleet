@@ -22,6 +22,7 @@
 //! ignores `Last-Event-ID` request headers.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -32,7 +33,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const redis_subscriber = @import("../../../queue/redis_subscriber.zig");
-const redis_types = @import("../../../queue/redis_types.zig");
 
 const log = logging.scoped(.http_zombie_events_stream);
 
@@ -82,7 +82,7 @@ pub fn innerEventsStream(
 
     if (!authorize(hx, workspace_id, zombie_id)) return;
 
-    var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
+    var subscriber = redis_subscriber.connectFromConfig(hx.ctx.io, hx.alloc, hx.ctx.queue.pool.cfg, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
         log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -106,7 +106,7 @@ pub fn innerEventsStream(
         return;
     };
 
-    streamLoop(hx.alloc, &subscriber, stream) catch |err| {
+    streamLoop(hx.ctx.io, hx.alloc, &subscriber, stream) catch |err| {
         // Most "errors" here are client disconnects mid-write (broken pipe).
         // Log at debug — the operator-visible event is the connection close,
         // not the inner write error.
@@ -117,14 +117,15 @@ pub fn innerEventsStream(
 }
 
 fn streamLoop(
+    io: std.Io,
     alloc: std.mem.Allocator,
     subscriber: *redis_subscriber,
-    stream: std.net.Stream,
+    stream: std.Io.net.Stream,
 ) !void {
     var seq: u64 = 0;
-    var w = stream.writer(&.{});
+    var w = stream.writer(io, &.{});
     while (true) {
-        const before_ms = std.time.milliTimestamp();
+        const before_ms = clock.nowMillis();
         if (try subscriber.nextMessage()) |raw| {
             var msg = raw;
             defer msg.deinit(alloc);
@@ -136,7 +137,7 @@ fn streamLoop(
         // null = idle read timeout OR a closed/broken socket; the block time
         // tells them apart. A heartbeat write to a vanished client fails and
         // unwinds the loop, releasing the worker thread + Redis connection.
-        switch (classifyIdle(std.time.milliTimestamp() - before_ms)) {
+        switch (classifyIdle(clock.nowMillis() - before_ms)) {
             .close => return,
             .heartbeat => try w.interface.writeAll(SSE_HEARTBEAT_FRAME),
         }

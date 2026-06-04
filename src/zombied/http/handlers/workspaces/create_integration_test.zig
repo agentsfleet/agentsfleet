@@ -11,6 +11,7 @@
 //! Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -67,7 +68,7 @@ test "integration: POST /v1/workspaces empty body assigns a Heroku-style name" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedTenant(conn, std.time.milliTimestamp());
+    try seedTenant(conn, clock.nowMillis());
 
     const r = try (try (try h.post("/v1/workspaces").bearer(TOKEN_USER)).json("{}")).send();
     defer r.deinit();
@@ -98,7 +99,7 @@ test "integration: two consecutive empty-body POSTs return distinct names" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedTenant(conn, std.time.milliTimestamp());
+    try seedTenant(conn, clock.nowMillis());
 
     const r1 = try (try (try h.post("/v1/workspaces").bearer(TOKEN_USER)).json("{}")).send();
     defer r1.deinit();
@@ -128,11 +129,11 @@ test "integration: POST /v1/workspaces with explicit name stores it verbatim" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedTenant(conn, std.time.milliTimestamp());
+    try seedTenant(conn, clock.nowMillis());
 
     // Use a unique-per-test-run name so re-runs against a persistent DB
     // don't fail on the partial unique index.
-    const ts = std.time.milliTimestamp();
+    const ts = clock.nowMillis();
     const body = try std.fmt.allocPrint(alloc, "{{\"name\":\"explicit-{d}\"}}", .{ts});
     defer alloc.free(body);
 
@@ -155,9 +156,9 @@ test "integration: POST /v1/workspaces rejects duplicate name within tenant" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedTenant(conn, std.time.milliTimestamp());
+    try seedTenant(conn, clock.nowMillis());
 
-    const ts = std.time.milliTimestamp();
+    const ts = clock.nowMillis();
     const body = try std.fmt.allocPrint(alloc, "{{\"name\":\"dup-{d}\"}}", .{ts});
     defer alloc.free(body);
 

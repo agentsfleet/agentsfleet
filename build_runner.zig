@@ -49,6 +49,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/lib/common/constants.zig"),
     });
 
+    // Logging sources its envelope wall-clock from `common.clock` (Zig 0.16
+    // removed std.time.*Timestamp); `common` is pure/datastore-free so the
+    // runner's zero-credential invariant holds and there is no import cycle.
+    log_mod.addImport(S_COMMON, common_mod);
+
     // NullClaw engine dependency — same options as the zombied build graph.
     const nullclaw_dep = b.dependency(S_NULLCLAW, .{
         .target = target,
@@ -64,7 +69,7 @@ pub fn build(b: *std.Build) void {
     // `git_commit` (-Dgit-commit, passed from CI) back `--version` — the same
     // git-commit knob zombied's build.zig exposes (RULE UFS).
     const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
-    const version_raw = b.build_root.handle.readFileAlloc(b.allocator, "VERSION", 64) catch "0.0.0";
+    const version_raw = b.build_root.handle.readFileAlloc(b.graph.io, "VERSION", b.allocator, .limited(64)) catch "0.0.0";
     const version = std.mem.trim(u8, version_raw, " \t\r\n");
     const build_opts = b.addOptions();
     build_opts.addOption([]const u8, "version", version);

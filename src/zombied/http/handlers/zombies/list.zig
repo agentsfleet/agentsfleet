@@ -194,7 +194,7 @@ fn fetchZombiePageAfter(
 }
 
 fn collectZombiePage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !ZombiePage {
-    var rows: std.ArrayList(ZombieListRow) = .{};
+    var rows: std.ArrayList(ZombieListRow) = .empty;
     errdefer {
         for (rows.items) |r| {
             alloc.free(r.id);

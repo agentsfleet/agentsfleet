@@ -21,6 +21,7 @@
 // Requires LIVE_DB=1 + a reachable Redis; skipped when either is missing.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -104,7 +105,7 @@ fn publishFreshEvent(h: *TestHarness) !void {
         .actor = "steer:test-user",
         .event_type = .chat,
         .request_json = "{\"message\":\"ping\"}",
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     });
     h.queue.alloc.free(id);
 }

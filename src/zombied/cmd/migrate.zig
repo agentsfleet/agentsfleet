@@ -1,4 +1,5 @@
 const std = @import("std");
+const constants = @import("common");
 
 const db = @import("../db/pool.zig");
 const common = @import("common.zig");
@@ -8,19 +9,21 @@ const logging = @import("log");
 
 const log = logging.scoped(.zombied);
 
+const EnvMap = constants.env.Map;
+
 const max_migrate_attempts = 3;
 const S_MIGRATOR = "migrator";
 
 const retry_delay_ms: u64 = 2_000;
 
-pub fn run(alloc: std.mem.Allocator) !void {
-    preflight.initOtelLogs(alloc);
+pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
+    preflight.initOtelLogs(env_map, alloc);
     defer preflight.deinitOtelLogs();
 
     var attempt: u32 = 1;
     while (true) {
         log.info("migrate.connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
-        const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
+        const pool = db.initFromEnvForRole(io, env_map, alloc, .migrator) catch |err| {
             if (attempt < max_migrate_attempts and isRetryable(err)) {
                 log.warn("migrate.connect_retry", .{
                     .attempt = attempt,
@@ -28,7 +31,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                     .err = @errorName(err),
                     .delay_ms = retry_delay_ms,
                 });
-                std.Thread.sleep(retry_delay_ms * std.time.ns_per_ms);
+                constants.sleepNanos(retry_delay_ms * std.time.ns_per_ms);
                 attempt += 1;
                 continue;
             }
@@ -51,7 +54,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                     .err = @errorName(err),
                     .delay_ms = retry_delay_ms,
                 });
-                std.Thread.sleep(retry_delay_ms * std.time.ns_per_ms);
+                constants.sleepNanos(retry_delay_ms * std.time.ns_per_ms);
                 attempt += 1;
                 continue;
             }

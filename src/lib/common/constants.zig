@@ -3,6 +3,27 @@
 //! (`build_runner.zig`) imports this without pulling `pg`/`redis`, so the
 //! "runner holds zero datastore credentials" invariant stays structural.
 
+/// Wall-clock helper (`clock.nowMillis`/`nowNanos`), re-exported through the
+/// `common` module so every build graph that already imports `common` reaches
+/// it as `@import("common").clock` — see `clock.zig`.
+pub const clock = @import("clock.zig");
+
+/// Process-wide blocking sync (`common.Mutex`/`Condition`) + their shared `Io`
+/// accessor — Zig 0.16's replacement for `std.Thread.Mutex`. See `sync.zig`.
+const sync = @import("sync.zig");
+pub const Mutex = sync.Mutex;
+pub const Condition = sync.Condition;
+pub const globalIo = sync.globalIo;
+pub const sleepNanos = sync.sleepNanos;
+
+/// Project-facing CSPRNG (`common.secureRandomBytes`) — Zig 0.16's replacement
+/// for `std.crypto.random`/`std.posix.getrandom`. See `random.zig`.
+pub const secureRandomBytes = @import("random.zig").secureRandomBytes;
+
+/// Shared env-var reads over the 0.16 `Environ.Map` both binaries thread from
+/// `std.process.Init` (`common.env.owned`). See `env.zig`.
+pub const env = @import("env.zig");
+
 /// How long an issued lease/affinity claim stays valid before the slot becomes
 /// reclaimable, and the increment each renewal adds. The control plane sets
 /// `leased_until = now + this` and stamps the lease row's `lease_expires_at` to

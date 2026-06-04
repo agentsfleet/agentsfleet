@@ -5,9 +5,11 @@
 //! and an injected `now_ms` keep every branch deterministic — no HTTP, no clock.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const testing = std.testing;
 const client = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
+const pipe_proto = @import("../pipe_proto.zig");
 const renew_driver = @import("renew_driver.zig");
 const contract = @import("contract");
 
@@ -81,14 +83,14 @@ test "readResult should time out when renewal fails transiently on every tick" {
     // ticks fire, and the deadline wins.
     var fake = FakeClient{ .outcome = client.ClientError.RequestFailed };
     var driver = driverWith(&fake, 0); // overwritten below to a live near deadline
-    const near_dl = std.time.milliTimestamp() + 500;
+    const near_dl = clock.nowMillis() + 500;
     driver.deadline_ms = near_dl;
     var hook = driver.hook();
     hook.tick_ms = 100; // 4–5 ticks before the deadline
 
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    defer std.posix.close(fds[1]); // write end open → no EOF; the read blocks to the deadline
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    defer pipe_proto.osClose(fds[1]); // write end open → no EOF; the read blocks to the deadline
 
     const Noop = struct {
         fn forward(_: *anyopaque, _: ActivityFrame) void {}

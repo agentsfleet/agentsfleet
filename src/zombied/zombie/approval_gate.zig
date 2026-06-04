@@ -9,6 +9,8 @@
 // which atomically transitions pending → terminal status and wakes the worker.
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
@@ -165,9 +167,9 @@ pub fn requestApproval(
 
     // JSON-escape user-supplied fields to prevent injection (RULES.md #23).
     const slack = approval_gate_slack;
-    var detail_list: std.ArrayList(u8) = .{};
-    defer detail_list.deinit(alloc);
-    const dw = detail_list.writer(alloc);
+    var detail_aw: std.Io.Writer.Allocating = .init(alloc);
+    defer detail_aw.deinit();
+    const dw = &detail_aw.writer;
     try dw.writeAll("{\"tool\":\"");
     try slack.writeJsonEscaped(dw, detail.tool);
     try dw.writeAll("\",\"action\":\"");
@@ -175,7 +177,7 @@ pub fn requestApproval(
     try dw.writeAll("\",\"summary\":\"");
     try slack.writeJsonEscaped(dw, detail.params_summary);
     try dw.writeAll("\"}");
-    const detail_json = detail_list.items;
+    const detail_json = detail_aw.written();
 
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
 
@@ -199,11 +201,11 @@ pub fn waitForDecision(
         ec.GATE_RESPONSE_KEY_PREFIX, action_id,
     }) catch return .timed_out;
 
-    const start_ms = @as(u64, @intCast(std.time.milliTimestamp()));
+    const start_ms = @as(u64, @intCast(clock.nowMillis()));
     const poll_interval_ns: u64 = 2_000_000_000; // 2 seconds
 
     while (true) {
-        const elapsed = @as(u64, @intCast(std.time.milliTimestamp())) -| start_ms;
+        const elapsed = @as(u64, @intCast(clock.nowMillis())) -| start_ms;
         if (elapsed >= timeout_ms) {
             log.info("timeout", .{ .action_id = action_id, .elapsed_ms = elapsed });
             return .timed_out;
@@ -215,7 +217,7 @@ pub fn waitForDecision(
         };
         if (decision) |d| return d;
 
-        std.Thread.sleep(poll_interval_ns);
+        constants.sleepNanos(poll_interval_ns);
     }
 }
 

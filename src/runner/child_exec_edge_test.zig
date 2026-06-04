@@ -11,6 +11,7 @@
 //! handshake. These tests pin that vocabulary as a regression guard.
 
 const std = @import("std");
+const globalIo = @import("common").globalIo;
 const child_exec = @import("child_exec.zig");
 const sandbox_args = @import("sandbox_args.zig");
 
@@ -57,10 +58,11 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .host_id = "host-edge",
         .sandbox_tier = @tagName(contract.protocol.SandboxTier.dev_none),
         .workspace_base = "/tmp/zombie-runner",
+        .network_policy = .deny_all,
         .alloc = alloc,
     };
     const ws = "/tmp/zombie-ws-childexec";
-    const argv = try sandbox_args.buildArgv(alloc, cfg, ws);
+    const argv = try sandbox_args.buildArgv(globalIo(), alloc, cfg, ws);
     defer sandbox_args.freeArgv(alloc, argv);
 
     const ws_flag = argv[argv.len - 1];

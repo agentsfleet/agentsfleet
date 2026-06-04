@@ -203,7 +203,7 @@ fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     , .{workspace_id}));
     defer q.deinit();
 
-    var rows: std.ArrayList(CredentialListRow) = .{};
+    var rows: std.ArrayList(CredentialListRow) = .empty;
     errdefer {
         for (rows.items) |r| alloc.free(r.name);
         rows.deinit(alloc);

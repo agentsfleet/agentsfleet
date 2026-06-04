@@ -3,10 +3,6 @@ const builtin = @import("builtin");
 const S_T = " \t";
 const S_T_R_N = " \t\r\n";
 
-const c = @cImport({
-    @cInclude("stdlib.h");
-});
-
 const LoadError = error{
     InvalidDotenvLine,
     EmptyDotenvKey,
@@ -20,37 +16,43 @@ const VAL_TRUE = "true";
 const VAL_FALSE = "false";
 const VAL_ONE = "1";
 const VAL_ZERO = "0";
+const DOTENV_MAX_BYTES = 1024 * 1024;
 
-pub fn applyEnvSources(alloc: std.mem.Allocator) !void {
-    if (!shouldLoadDotEnvLocal(alloc)) return;
-    try loadDotEnvLocalNonOverriding(alloc);
+/// Overlay `.env.local` (non-overriding) onto a clone of the process env and
+/// return the merged map for the caller to thread + `deinit`; null when dotenv
+/// loading is off (caller keeps the process `env_map`). Zig 0.16 made the
+/// environment an immutable snapshot from `std.process.Init` — a dotenv value
+/// reaches config only by being merged into the map we thread, not via `setenv`.
+pub fn applyEnvSources(
+    io: std.Io,
+    env_map: *const std.process.Environ.Map,
+    alloc: std.mem.Allocator,
+) !?std.process.Environ.Map {
+    if (!shouldLoadDotEnvLocal(env_map)) return null;
+    var merged = try env_map.clone(alloc);
+    errdefer merged.deinit();
+    try overlayDotEnvLocal(io, &merged, alloc);
+    return merged;
 }
 
-fn shouldLoadDotEnvLocal(alloc: std.mem.Allocator) bool {
-    if (std.process.getEnvVarOwned(alloc, ENV_ZOMBIED_LOAD_DOTENV)) |raw| {
-        defer alloc.free(raw);
+fn shouldLoadDotEnvLocal(env_map: *const std.process.Environ.Map) bool {
+    if (env_map.get(ENV_ZOMBIED_LOAD_DOTENV)) |raw| {
         const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_TRUE) or std.mem.eql(u8, trimmed, VAL_ONE)) return true;
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_FALSE) or std.mem.eql(u8, trimmed, VAL_ZERO)) return false;
-    } else |_| {}
-
-    if (std.process.getEnvVarOwned(alloc, ENV_ZOMBIED_ENV_MODE)) |raw| {
-        defer alloc.free(raw);
+    }
+    if (env_map.get(ENV_ZOMBIED_ENV_MODE)) |raw| {
         const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         return std.ascii.eqlIgnoreCase(trimmed, ENV_MODE_DEV);
-    } else |_| {}
-
+    }
     return builtin.mode == .Debug;
 }
 
-fn loadDotEnvLocalNonOverriding(alloc: std.mem.Allocator) !void {
-    const file = std.fs.cwd().openFile(PATH_DOTENV_LOCAL, .{}) catch |err| switch (err) {
+fn overlayDotEnvLocal(io: std.Io, merged: *std.process.Environ.Map, alloc: std.mem.Allocator) !void {
+    const content = std.Io.Dir.cwd().readFileAlloc(io, PATH_DOTENV_LOCAL, alloc, .limited(DOTENV_MAX_BYTES)) catch |err| switch (err) {
         error.FileNotFound => return,
         else => return err,
     };
-    defer file.close();
-
-    const content = try file.readToEndAlloc(alloc, 1024 * 1024);
     defer alloc.free(content);
 
     var lines = std.mem.splitScalar(u8, content, '\n');
@@ -64,7 +66,8 @@ fn loadDotEnvLocalNonOverriding(alloc: std.mem.Allocator) !void {
 
         const value_raw = std.mem.trim(u8, line[eq_idx + 1 ..], S_T);
         const value = stripOptionalQuotes(value_raw);
-        try setIfMissingEnv(key, value);
+        // Non-overriding: a real env var wins over `.env.local`.
+        if (merged.get(key) == null) try merged.put(key, value);
     }
 }
 
@@ -77,19 +80,6 @@ fn stripOptionalQuotes(raw: []const u8) []const u8 {
         }
     }
     return raw;
-}
-
-fn setIfMissingEnv(key: []const u8, value: []const u8) !void {
-    if (std.posix.getenv(key) != null) return;
-    switch (builtin.os.tag) {
-        .windows => {
-            // NOTE: process-level env fallback for Windows can be added if needed.
-            return;
-        },
-        else => {
-            if (c.setenv(key.ptr, value.ptr, 0) != 0) return error.Unexpected;
-        },
-    }
 }
 
 test "stripOptionalQuotes handles quoted and raw values" {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
@@ -20,7 +21,7 @@ pub fn insertIfAbsent(
     balance_nanos: i64,
     grant_source: []const u8,
 ) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
@@ -44,7 +45,7 @@ pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 /// only fires on the 0-row path, so the happy path stays one round-trip.
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     if (nanos < 0) return error.InvalidDebit;
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     // A successful debit clears `balance_exhausted_at` — the only path
     // there is a prior top-up moving balance_nanos above zero. Keeping
     // this in the same UPDATE keeps the transition atomic so the `stop`
@@ -106,7 +107,7 @@ pub fn loadByTenant(
 /// if currently NULL. Returns true if the transition happened (first call),
 /// false if the row was already marked (idempotent replay).
 pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
         \\UPDATE billing.tenant_billing
         \\SET balance_exhausted_at = $2, updated_at = $2
@@ -125,7 +126,7 @@ pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
 /// going through `debit`, e.g. an admin manual credit. Required so the
 /// `stop` gate is not a one-way door (greptile #3121312916 follow-up).
 pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
         \\UPDATE billing.tenant_billing
         \\SET balance_exhausted_at = NULL, updated_at = $2

@@ -35,9 +35,13 @@ pub const CgroupError = error{
 pub const CgroupScope = struct {
     path: []const u8,
     alloc: std.mem.Allocator,
+    /// Blocking Io for the cgroup's /sys/fs filesystem ops — Zig 0.16 routes fs
+    /// through Io. Borrowed from the daemon's Threaded; never owned/closed here.
+    io: std.Io,
 
     /// Create a transient cgroup scope for the given execution.
     pub fn create(
+        io: std.Io,
         alloc: std.mem.Allocator,
         execution_id: types.ExecutionId,
         limits: types.ResourceLimits,
@@ -49,7 +53,7 @@ pub const CgroupScope = struct {
         errdefer alloc.free(path);
 
         // Ensure base directory exists.
-        std.fs.makeDirAbsolute(CGROUP_BASE) catch |err| {
+        std.Io.Dir.createDirAbsolute(io, CGROUP_BASE, .default_dir) catch |err| {
             if (err != error.PathAlreadyExists) {
                 log.err("base_create_failed", .{ .path = CGROUP_BASE, .err = @errorName(err) });
                 return CgroupError.CgroupCreateFailed;
@@ -57,12 +61,12 @@ pub const CgroupScope = struct {
         };
 
         // Create scope directory.
-        std.fs.makeDirAbsolute(path) catch |err| {
+        std.Io.Dir.createDirAbsolute(io, path, .default_dir) catch |err| {
             log.err("scope_create_failed", .{ .path = path, .err = @errorName(err) });
             return CgroupError.CgroupCreateFailed;
         };
 
-        const scope = CgroupScope{ .path = path, .alloc = alloc };
+        const scope = CgroupScope{ .path = path, .alloc = alloc, .io = io };
 
         // Set memory limit.
         const memory_bytes = limits.memory_limit_mb * 1024 * 1024;
@@ -87,11 +91,11 @@ pub const CgroupScope = struct {
         var buf: [20]u8 = undefined;
         const pid_str = std.fmt.bufPrint(&buf, S_D, .{pid}) catch return CgroupError.CgroupWriteFailed;
 
-        const file = std.fs.openFileAbsolute(procs_path, .{ .mode = .write_only }) catch {
+        const file = std.Io.Dir.openFileAbsolute(self.io, procs_path, .{ .mode = .write_only }) catch {
             return CgroupError.CgroupMoveFailed;
         };
-        defer file.close();
-        file.writeAll(pid_str) catch return CgroupError.CgroupMoveFailed;
+        defer file.close(self.io);
+        file.writeStreamingAll(self.io, pid_str) catch return CgroupError.CgroupMoveFailed;
     }
 
     /// Atomically SIGKILL every process in the scope (bwrap + agent + any
@@ -123,10 +127,11 @@ pub const CgroupScope = struct {
         const stat_path = std.fmt.allocPrint(self.alloc, "{s}/cpu.stat", .{self.path}) catch return 0;
         defer self.alloc.free(stat_path);
 
-        const file = std.fs.openFileAbsolute(stat_path, .{}) catch return 0;
-        defer file.close();
+        const file = std.Io.Dir.openFileAbsolute(self.io, stat_path, .{}) catch return 0;
+        defer file.close(self.io);
+        var fr = file.reader(self.io, &.{});
         var buf: [2048]u8 = undefined;
-        const len = file.readAll(&buf) catch return 0;
+        const len = fr.interface.readSliceShort(&buf) catch return 0;
         const content = buf[0..len];
 
         // Look for "throttled_usec N" in cpu.stat output.
@@ -144,10 +149,11 @@ pub const CgroupScope = struct {
         const events_path = std.fmt.allocPrint(self.alloc, "{s}/memory.events", .{self.path}) catch return false;
         defer self.alloc.free(events_path);
 
-        const file = std.fs.openFileAbsolute(events_path, .{}) catch return false;
-        defer file.close();
+        const file = std.Io.Dir.openFileAbsolute(self.io, events_path, .{}) catch return false;
+        defer file.close(self.io);
+        var fr = file.reader(self.io, &.{});
         var buf: [512]u8 = undefined;
-        const len = file.readAll(&buf) catch return false;
+        const len = fr.interface.readSliceShort(&buf) catch return false;
         const content = buf[0..len];
 
         // Look for "oom_kill N" where N > 0.
@@ -188,7 +194,7 @@ pub const CgroupScope = struct {
         }
 
         // Remove the cgroup directory (must be empty of processes first).
-        std.fs.deleteTreeAbsolute(self.path) catch |err| {
+        std.Io.Dir.cwd().deleteTree(self.io, self.path) catch |err| {
             log.warn("cleanup_failed", .{ .path = self.path, .err = @errorName(err) });
         };
 
@@ -204,11 +210,11 @@ pub const CgroupScope = struct {
         var buf: [20]u8 = undefined;
         const val_str = std.fmt.bufPrint(&buf, S_D, .{value}) catch return CgroupError.CgroupWriteFailed;
 
-        const file = std.fs.openFileAbsolute(control_path, .{ .mode = .write_only }) catch {
+        const file = std.Io.Dir.openFileAbsolute(self.io, control_path, .{ .mode = .write_only }) catch {
             return CgroupError.CgroupWriteFailed;
         };
-        defer file.close();
-        file.writeAll(val_str) catch return CgroupError.CgroupWriteFailed;
+        defer file.close(self.io);
+        file.writeStreamingAll(self.io, val_str) catch return CgroupError.CgroupWriteFailed;
     }
 
     fn writeCpuMax(self: *const CgroupScope, quota: u64, period: u64) !void {
@@ -218,21 +224,22 @@ pub const CgroupScope = struct {
         var buf: [40]u8 = undefined;
         const val_str = std.fmt.bufPrint(&buf, "{d} {d}", .{ quota, period }) catch return CgroupError.CgroupWriteFailed;
 
-        const file = std.fs.openFileAbsolute(control_path, .{ .mode = .write_only }) catch {
+        const file = std.Io.Dir.openFileAbsolute(self.io, control_path, .{ .mode = .write_only }) catch {
             return CgroupError.CgroupWriteFailed;
         };
-        defer file.close();
-        file.writeAll(val_str) catch return CgroupError.CgroupWriteFailed;
+        defer file.close(self.io);
+        file.writeStreamingAll(self.io, val_str) catch return CgroupError.CgroupWriteFailed;
     }
 
     fn readControlValue(self: *const CgroupScope, control_file: []const u8) !u64 {
         const control_path = try std.fmt.allocPrint(self.alloc, S_S_S, .{ self.path, control_file });
         defer self.alloc.free(control_path);
 
-        const file = std.fs.openFileAbsolute(control_path, .{}) catch return CgroupError.CgroupReadFailed;
-        defer file.close();
+        const file = std.Io.Dir.openFileAbsolute(self.io, control_path, .{}) catch return CgroupError.CgroupReadFailed;
+        defer file.close(self.io);
+        var fr = file.reader(self.io, &.{});
         var buf: [64]u8 = undefined;
-        const len = file.readAll(&buf) catch return CgroupError.CgroupReadFailed;
+        const len = fr.interface.readSliceShort(&buf) catch return CgroupError.CgroupReadFailed;
         const trimmed = std.mem.trim(u8, buf[0..len], " \t\r\n");
         return std.fmt.parseInt(u64, trimmed, 10) catch 0;
     }

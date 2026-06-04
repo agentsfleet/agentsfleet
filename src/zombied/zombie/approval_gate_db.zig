@@ -10,6 +10,7 @@
 // and are re-exported here for callers that want a single import.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
@@ -139,7 +140,7 @@ pub const ResolveArgs = struct {
         const conn = try pool.acquire();
         defer pool.release(conn);
 
-        const now_ms = std.time.milliTimestamp();
+        const now_ms = clock.nowMillis();
         var update_q = PgQuery.from(try conn.query(
             \\UPDATE core.zombie_approval_gates
             \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
@@ -187,7 +188,7 @@ fn insertPendingRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const timeout_at = now_ms +| detail.timeout_ms;
     _ = try conn.exec(
         \\INSERT INTO core.zombie_approval_gates

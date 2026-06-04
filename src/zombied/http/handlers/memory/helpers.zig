@@ -2,6 +2,8 @@
 // Split from memory_http.zig for RULE FLL (350-line gate).
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const logging = @import("log");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -124,14 +126,14 @@ pub fn escapeLikePattern(alloc: std.mem.Allocator, input: []const u8) error{OutO
 
 /// Current Unix timestamp as a decimal string, arena-allocated.
 pub fn nowTs(alloc: std.mem.Allocator) []const u8 {
-    return std.fmt.allocPrint(alloc, "{d}", .{std.time.timestamp()}) catch "0";
+    return std.fmt.allocPrint(alloc, "{d}", .{clock.nowSeconds()}) catch "0";
 }
 
 /// Generate a NullClaw-compatible memory entry ID.
 pub fn genId(alloc: std.mem.Allocator) []const u8 {
-    const ts = std.time.nanoTimestamp();
+    const ts = clock.nowNanos();
     var buf: [16]u8 = undefined;
-    std.crypto.random.bytes(&buf);
+    constants.secureRandomBytes(&buf) catch return "fallback-id";
     const hi = std.mem.readInt(u64, buf[0..8], .little);
     const lo = std.mem.readInt(u64, buf[8..16], .little);
     return std.fmt.allocPrint(alloc, "{d}-{x}-{x}", .{ ts, hi, lo }) catch "fallback-id";

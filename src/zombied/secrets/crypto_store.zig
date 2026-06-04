@@ -2,6 +2,8 @@
 //! Depends on crypto_primitives for all crypto operations.
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -23,10 +25,10 @@ pub fn store(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
-    const kek = try cp.loadKek(alloc);
+    const kek = try cp.loadKek();
 
     var dek: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&dek);
+    try constants.secureRandomBytes(&dek);
 
     const wrapped_dek = try cp.encrypt(alloc, dek[0..], &kek);
     defer wrapped_dek.deinit(alloc);
@@ -34,7 +36,7 @@ pub fn store(
     const encrypted_payload = try cp.encrypt(alloc, plaintext, &dek);
     defer encrypted_payload.deinit(alloc);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     const secret_id = try id_format.generateVaultSecretId(alloc);
     defer alloc.free(secret_id);
@@ -116,7 +118,7 @@ pub fn load(
     const dek_copy = try alloc.dupe(u8, encrypted_dek);
     defer alloc.free(dek_copy);
 
-    const kek = try cp.loadKek(alloc);
+    const kek = try cp.loadKek();
 
     const dek_plain = try cp.decrypt(alloc, &dek_nonce, dek_copy, &dek_tag, &kek);
     defer alloc.free(dek_plain);

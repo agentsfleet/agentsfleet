@@ -2,6 +2,7 @@
 //! No pg or id_format dependencies — safe to import anywhere.
 
 const std = @import("std");
+const constants = @import("common");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 
@@ -32,19 +33,41 @@ pub const EncryptedBlob = struct {
     }
 };
 
-/// Load the 32-byte KEK from `ENCRYPTION_MASTER_KEY` env var (64 hex chars).
-pub fn loadKek(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
-    const hex = std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY") catch {
-        log.err("kek_env_not_set", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+/// Process-wide Key-Encryption Key (KEK), resolved ONCE at boot from the
+/// already-validated `ServeConfig.encryption_master_key` (single source of
+/// truth) via `setKekFromHex`. Set before the server accepts traffic and
+/// immutable after, so concurrent request threads read it without locking.
+/// Replaces the prior per-call `ENCRYPTION_MASTER_KEY` env read.
+var g_kek: ?[KEY_LEN]u8 = null;
+
+/// Decode the 64-hex-char master key into the process KEK. Boot-only — call
+/// once from `serve` startup with the config-resolved value.
+pub fn setKekFromHex(hex: []const u8) SecretError!void {
+    if (hex.len != KEY_LEN * 2) return SecretError.InvalidKeyHex;
+    var key: [KEY_LEN]u8 = undefined;
+    _ = std.fmt.hexToBytes(&key, hex) catch return SecretError.InvalidKeyHex;
+    g_kek = key;
+}
+
+/// The boot-resolved 32-byte KEK. Errors if `setKekFromHex` has not run
+/// (operator misconfig or a decrypt path reached before startup completed).
+pub fn loadKek() SecretError![KEY_LEN]u8 {
+    return g_kek orelse {
+        log.err("kek_not_initialized", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
         return SecretError.MissingMasterKey;
     };
-    defer alloc.free(hex);
+}
 
-    if (hex.len != KEY_LEN * 2) return SecretError.InvalidKeyHex;
+/// Deterministic 32-byte test KEK (hex). Single source for every test that
+/// reaches a vault store/load path — UFS one-value home for the key literal.
+pub const TEST_KEK_HEX = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 
-    var key: [KEY_LEN]u8 = undefined;
-    _ = try std.fmt.hexToBytes(&key, hex);
-    return key;
+/// Option-C test convention: seed the process KEK the way `serve.run` does at
+/// boot, replacing the retired `setenv("ENCRYPTION_MASTER_KEY", …)` env hack
+/// (Zig 0.16's env snapshot made that mutation a no-op). The literal is valid
+/// 64-hex, so `setKekFromHex` cannot fail here.
+pub fn setTestKek() void {
+    setKekFromHex(TEST_KEK_HEX) catch |e| std.debug.panic("setTestKek: TEST_KEK_HEX must be valid 64-hex: {}", .{e});
 }
 
 /// Encrypt plaintext to raw binary components (nonce + ciphertext + tag).
@@ -54,7 +77,7 @@ pub fn encrypt(
     key: *const [KEY_LEN]u8,
 ) !EncryptedBlob {
     var nonce: [NONCE_LEN]u8 = undefined;
-    std.crypto.random.bytes(&nonce);
+    try constants.secureRandomBytes(&nonce);
 
     const ciphertext = try alloc.alloc(u8, plaintext.len);
     errdefer alloc.free(ciphertext);
@@ -99,7 +122,7 @@ test "encrypt/decrypt round-trip with raw bytes" {
     const alloc = std.testing.allocator;
 
     var key: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&key);
+    try constants.secureRandomBytes(&key);
 
     const plaintext = "super-secret-api-key-12345";
     const blob = try encrypt(alloc, plaintext, &key);
@@ -115,7 +138,7 @@ test "decrypt fails when tag is tampered" {
     const alloc = std.testing.allocator;
 
     var key: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&key);
+    try constants.secureRandomBytes(&key);
 
     const blob = try encrypt(alloc, "hello", &key);
     defer blob.deinit(alloc);
@@ -129,22 +152,18 @@ test "decrypt fails when tag is tampered" {
     );
 }
 
-test "loadKek reads ENCRYPTION_MASTER_KEY env var" {
-    const alloc = std.testing.allocator;
-
+test "loadKek returns the KEK seeded via setKekFromHex (Option C boot-resolve)" {
     var key_bytes: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&key_bytes);
+    try constants.secureRandomBytes(&key_bytes);
 
     const hex = std.fmt.bytesToHex(key_bytes, .lower);
-    var hex_z: [65]u8 = undefined;
-    @memcpy(hex_z[0..64], &hex);
-    hex_z[64] = 0;
+    try setKekFromHex(&hex);
 
-    const c = @cImport(@cInclude("stdlib.h"));
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &hex_z, 1);
-    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY");
-
-    const loaded = try loadKek(alloc);
+    const loaded = try loadKek();
     try std.testing.expectEqualSlices(u8, &key_bytes, &loaded);
+}
+
+test "setKekFromHex rejects a wrong-length hex (fails closed)" {
+    try std.testing.expectError(SecretError.InvalidKeyHex, setKekFromHex("deadbeef"));
 }
 

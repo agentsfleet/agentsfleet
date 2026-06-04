@@ -11,6 +11,7 @@
 const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
+const common = @import("common");
 
 const log = logging.scoped(.runner_landlock);
 
@@ -136,7 +137,7 @@ pub fn applyPolicy(workspace_path: []const u8) LandlockError!void {
     else
         @as(i32, @intCast(@as(i64, @bitCast(ruleset_fd_raw))));
     if (ruleset_fd < 0) return LandlockError.RulesetCreationFailed;
-    defer std.posix.close(@intCast(ruleset_fd));
+    defer _ = std.os.linux.close(ruleset_fd);
 
     // Add workspace rule (RW).
     try addPathRule(ruleset_fd, workspace_path, WORKSPACE_ACCESS);
@@ -168,7 +169,7 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
     const fd = std.posix.openatZ(std.posix.AT.FDCWD, &path_z, .{ .ACCMODE = .RDONLY }, 0) catch {
         return LandlockError.PathOpenFailed;
     };
-    defer std.posix.close(fd);
+    defer _ = std.os.linux.close(fd);
 
     var rule_attr = LandlockPathBeneathAttr{
         .allowed_access = access,
@@ -199,7 +200,8 @@ pub fn isAvailable() bool {
     if (result > std.math.maxInt(i32)) return false;
     const fd = @as(i32, @intCast(@as(i64, @bitCast(result))));
     if (fd < 0) return false;
-    std.posix.close(@intCast(fd));
+    var ruleset_file: std.Io.File = .{ .handle = @intCast(fd), .flags = .{ .nonblocking = false } };
+    ruleset_file.close(common.globalIo());
     return true;
 }
 

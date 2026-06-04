@@ -26,6 +26,7 @@
 // import everything from this one module.
 
 const std = @import("std");
+const constants = @import("common");
 const pg = @import("pg");
 const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
@@ -94,7 +95,9 @@ pub const TestHarness = struct {
     /// `error.MissingRedisUrl` and the harness escalates to SkipZigTest.
     pub fn connectRedis(self: *TestHarness) !void {
         if (self.has_redis) return;
-        self.queue = try queue_redis.Client.connectFromEnv(self.alloc, .api);
+        var env_map = try constants.env.testLiveSnapshot(self.alloc);
+        defer env_map.deinit();
+        self.queue = try queue_redis.Client.connectFromEnv(constants.globalIo(), &env_map, self.alloc, .api);
         self.has_redis = true;
         // SessionStore holds a pointer to `self.queue`; safe now that the
         // queue handle is initialized. `ctx.auth_sessions` already points
@@ -170,6 +173,16 @@ pub const TestHarness = struct {
             .pool = h.pool,
             .queue = &h.queue,
             .alloc = alloc,
+            // Threaded test io seam (sockets, jwks/SSE dials) — mirrors how
+            // `serve.run` threads the real io onto the production Context.
+            .io = constants.globalIo(),
+            // Boot-resolved secrets default unset; a test that exercises a
+            // secret-gated path sets the field on `&h.ctx` before its request
+            // (Option-C convention — no `setenv`, which the 0.16 env snapshot
+            // ignores). Null here keeps every other handler failing closed.
+            .clerk_webhook_secret = null,
+            .approval_signing_secret = null,
+            .clerk_secret_key = null,
             .oidc = &h.verifier,
             .auth_sessions = &h.session_store,
             .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_LOG_PEPPER),
@@ -212,10 +225,9 @@ pub const TestHarness = struct {
         h.connectRedis() catch |err| switch (err) {
             error.MissingRedisUrl => return error.SkipZigTest,
             else => {
-                if (std.process.getEnvVarOwned(alloc, "CI")) |v| {
-                    defer alloc.free(v);
+                if (constants.env.testLiveValue("CI")) |v| {
                     if (v.len > 0) return error.RedisRequiredForTestHarness;
-                } else |_| {}
+                }
                 return error.SkipZigTest;
             },
         };

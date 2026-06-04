@@ -14,6 +14,8 @@
 // platform_admin}`. `exp` is 4102444800 (2100) so the fixture never ages out.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
 const api_key = @import("../auth/api_key.zig");
@@ -121,7 +123,7 @@ fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTenantAndApiKey(h: *TestHarness) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'Runner Enroll Test Tenant', $2, $2)
@@ -192,8 +194,8 @@ const DEFAULT_RUNNER_BIN = "zig-out/bin/zombie-runner";
 const HOST_ID = "host-enroll-test";
 
 fn runnerBinPath() ?[]const u8 {
-    const p = std.posix.getenv(ENV_RUNNER_BIN) orelse DEFAULT_RUNNER_BIN;
-    std.fs.cwd().access(p, .{}) catch return null;
+    const p = common.env.testLiveValue(ENV_RUNNER_BIN) orelse DEFAULT_RUNNER_BIN;
+    std.Io.Dir.cwd().access(common.globalIo(), p, .{}) catch return null;
     return p;
 }
 
@@ -203,7 +205,7 @@ fn baseUrl(h: *TestHarness) ![]u8 {
 
 fn exitCode(term: std.process.Child.Term) ?u8 {
     return switch (term) {
-        .Exited => |c| c,
+        .exited => |c| c,
         else => null,
     };
 }
@@ -213,7 +215,7 @@ fn exitCode(term: std.process.Child.Term) ?u8 {
 /// value could contain it). The key literal is the env-file contract deploy.sh
 /// reads (pin test: literal is the contract).
 fn readMintedToken(path: []const u8) !?[]u8 {
-    const content = std.fs.cwd().readFileAlloc(ALLOC, path, 4096) catch return null;
+    const content = std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, ALLOC, .limited(4096)) catch return null;
     defer ALLOC.free(content);
     const KEY = "ZOMBIE_RUNNER_TOKEN=";
     var lines = std.mem.splitScalar(u8, content, '\n');
@@ -221,6 +223,18 @@ fn readMintedToken(path: []const u8) !?[]u8 {
         if (std.mem.startsWith(u8, line, KEY)) return try ALLOC.dupe(u8, line[KEY.len..]);
     }
     return null;
+}
+
+// `std.process.run` allocates the pre-fork argv/env buffers from the io's
+// allocator; `common.globalIo()` is the single-threaded blocking seam whose
+// allocator is `.failing`, so a spawn through it always returns
+// error.OutOfMemory. Production spawns via `init.io`; a test stands up its own
+// allocator-backed Threaded io for the call. The returned stdout/stderr are
+// owned by `ALLOC` (the gpa arg), so they outlive `threaded.deinit()`.
+fn runCli(opts: std.process.RunOptions) !std.process.RunResult {
+    var threaded: std.Io.Threaded = .init(ALLOC, .{});
+    defer threaded.deinit();
+    return std.process.run(ALLOC, threaded.io(), opts);
 }
 
 test "operator CLI: register via the binary mints a zrn_ that authenticates" {
@@ -233,11 +247,11 @@ test "operator CLI: register via the binary mints a zrn_ that authenticates" {
     const url = try baseUrl(h);
     defer ALLOC.free(url);
     const env_path = "/tmp/zombie-runner-cli-it.env";
-    std.fs.cwd().deleteFile(env_path) catch {};
-    defer std.fs.cwd().deleteFile(env_path) catch {};
+    std.Io.Dir.cwd().deleteFile(common.globalIo(), env_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(common.globalIo(), env_path) catch {};
 
     // 1) register via the binary (platform-admin JWT) → exit 0.
-    const reg = try std.process.Child.run(.{ .allocator = ALLOC, .argv = &.{
+    const reg = try runCli(.{ .argv = &.{
         bin, "register", "--api", url, "--token", PLATFORM_ADMIN_TOKEN, "--host-id", HOST_ID, "--env-file", env_path, "--json",
     } });
     defer ALLOC.free(reg.stdout);
@@ -252,10 +266,10 @@ test "operator CLI: register via the binary mints a zrn_ that authenticates" {
     // 3) that token authenticates a real runner call through the CLI: `status`
     //    reads ZOMBIE_RUNNER_TOKEN and calls GET /v1/runners/me (getSelf, a
     //    read-only probe — not a heartbeat) → exit 0, registered:true.
-    var env = try std.process.getEnvMap(ALLOC);
+    var env = try common.env.testLiveSnapshot(ALLOC);
     defer env.deinit();
     try env.put("ZOMBIE_RUNNER_TOKEN", token);
-    const st = try std.process.Child.run(.{ .allocator = ALLOC, .env_map = &env, .argv = &.{
+    const st = try runCli(.{ .environ_map = &env, .argv = &.{
         bin, "status", "--api", url, "--json",
     } });
     defer ALLOC.free(st.stdout);
@@ -274,15 +288,15 @@ test "operator CLI: a tenant zmb_t_ caller cannot register (non-zero exit)" {
     const url = try baseUrl(h);
     defer ALLOC.free(url);
     const env_path = "/tmp/zombie-runner-cli-it-forbidden.env";
-    std.fs.cwd().deleteFile(env_path) catch {};
-    defer std.fs.cwd().deleteFile(env_path) catch {};
+    std.Io.Dir.cwd().deleteFile(common.globalIo(), env_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(common.globalIo(), env_path) catch {};
 
-    const reg = try std.process.Child.run(.{ .allocator = ALLOC, .argv = &.{
+    const reg = try runCli(.{ .argv = &.{
         bin, "register", "--api", url, "--token", ZMB_T_KEY, "--host-id", HOST_ID, "--env-file", env_path, "--json",
     } });
     defer ALLOC.free(reg.stdout);
     defer ALLOC.free(reg.stderr);
     // 403 → FORBIDDEN → exit 1; and no token file is written on rejection.
     try std.testing.expect((exitCode(reg.term) orelse 0) != 0);
-    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(env_path, .{}));
+    try std.testing.expectError(error.FileNotFound, std.Io.Dir.cwd().access(common.globalIo(), env_path, .{}));
 }

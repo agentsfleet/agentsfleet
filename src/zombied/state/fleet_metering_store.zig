@@ -53,7 +53,7 @@ pub fn listForEvent(
     var q = PgQuery.from(try conn.query(LIST_FOR_EVENT_SQL, .{ event_id, tenant_id }));
     defer q.deinit();
 
-    var rows: std.ArrayList(MeteringPeriodRow) = .{};
+    var rows: std.ArrayList(MeteringPeriodRow) = .empty;
     errdefer rows.deinit(alloc);
 
     while (try q.next()) |row| {

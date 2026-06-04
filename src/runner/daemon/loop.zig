@@ -6,6 +6,7 @@
 //! that streams live-tail `activity` frames, which the parent forwards on.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const contract = @import("contract");
 const constants = @import("common");
@@ -26,14 +27,14 @@ const HEARTBEAT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
 /// Set by the SIGTERM/SIGINT handler to request a graceful drain. The handler
 /// does nothing but this atomic store (async-signal-safe); the loop reads it at
 /// its boundary, finishes the in-flight lease, then exits.
-var drain_requested = std.atomic.Value(bool).init(false);
+pub var drain_requested = std.atomic.Value(bool).init(false);
 
 /// SIGTERM/SIGINT → request graceful drain. Async-signal-safe: a lone atomic
 /// store, nothing else. `systemctl stop` sends SIGTERM; the loop honors it at its
 /// next boundary. The in-flight child is never interrupted — poll/read/waitpid in
 /// the execute path all retry EINTR — so the leased NullClaw runs to completion
 /// before the runner exits.
-fn requestDrain(_: i32) callconv(.c) void {
+pub fn requestDrain(_: std.posix.SIG) callconv(.c) void {
     drain_requested.store(true, .seq_cst);
 }
 
@@ -51,8 +52,8 @@ pub fn installDrainHandlers() void {
 /// Heartbeat → lease → execute → report loop. Returns on stop or drain signal.
 /// Identity is `cfg.runner_token` (a pre-minted `zrn_`); the loop never
 /// registers — its first contact is a heartbeat.
-pub fn runLoop(alloc: std.mem.Allocator, cfg: Config) void {
-    const cp = client_mod{ .base_url = cfg.control_plane_url };
+pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config) void {
+    const cp = client_mod{ .base_url = cfg.control_plane_url, .io = io };
     const runner_token: []const u8 = cfg.runner_token;
     var draining = false;
     var heartbeat_errors: u32 = 0;
@@ -71,7 +72,7 @@ pub fn runLoop(alloc: std.mem.Allocator, cfg: Config) void {
             heartbeat_errors += 1;
             log.warn("heartbeat_failed", .{ .err = @errorName(err), .consecutive = heartbeat_errors });
             const mult: u64 = if (heartbeat_errors >= HEARTBEAT_MAX_CONSECUTIVE_ERRORS) heartbeat_errors else 1;
-            sleepMs(TRANSPORT_ERROR_BACKOFF_MS * mult);
+            sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS * mult);
             continue :outer;
         };
         heartbeat_errors = 0;
@@ -89,17 +90,17 @@ pub fn runLoop(alloc: std.mem.Allocator, cfg: Config) void {
             .ok => {},
         }
 
-        pollAndProcess(alloc, cp, runner_token, cfg);
+        pollAndProcess(io, alloc, cp, runner_token, cfg);
     }
 }
 
 /// Long-poll one lease; execute + report it when present, else back off the
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration.
-fn pollAndProcess(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config) void {
+fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config) void {
     const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
         log.warn("lease_failed", .{ .err = @errorName(err) });
-        sleepMs(TRANSPORT_ERROR_BACKOFF_MS);
+        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
         return;
     };
     defer lease_parsed.deinit();
@@ -108,11 +109,11 @@ fn pollAndProcess(alloc: std.mem.Allocator, cp: client_mod, runner_token: []cons
     if (lease_resp.lease == null) {
         const wait_ms: u64 = lease_resp.retry_after_ms orelse constants.NO_WORK_RETRY_AFTER_MS;
         log.info("no_work", .{ .retry_after_ms = wait_ms });
-        sleepMs(wait_ms);
+        sleepMs(io, wait_ms);
         return;
     }
 
-    executeAndReport(alloc, cp, runner_token, cfg, lease_resp.lease.?);
+    executeAndReport(io, alloc, cp, runner_token, cfg, lease_resp.lease.?);
 }
 
 /// Forwards each `activity` frame the sandboxed child streams to the control
@@ -133,6 +134,7 @@ const ActivityForwarder = struct {
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 fn executeAndReport(
+    io: std.Io,
     alloc: std.mem.Allocator,
     cp: client_mod,
     runner_token: []const u8,
@@ -145,16 +147,16 @@ fn executeAndReport(
     });
 
     var ws_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const workspace_path = prepareWorkspace(&ws_buf, cfg.workspace_base, payload.lease_id) orelse return;
-    defer cleanupWorkspace(workspace_path);
+    const workspace_path = prepareWorkspace(io, &ws_buf, cfg.workspace_base, payload.lease_id) orelse return;
+    defer cleanupWorkspace(io, workspace_path);
 
     var forwarder = ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id };
     const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = ActivityForwarder.forward };
     var driver = RenewDriver.init(alloc, cp, runner_token, payload);
 
-    const start_ms = std.time.milliTimestamp();
-    const result = child_supervisor.run(alloc, cfg, workspace_path, payload, sink, driver.hook());
-    const wall_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - start_ms));
+    const start_ms = clock.nowMillis();
+    const result = child_supervisor.run(io, alloc, cfg, workspace_path, payload, sink, driver.hook());
+    const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
 
     log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
@@ -180,12 +182,12 @@ fn executeAndReport(
 
 /// Create a per-lease workspace directory. Writes into caller-owned `buf`; returns
 /// a slice into `buf` (valid for caller's stack frame) or null on error.
-fn prepareWorkspace(buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id: []const u8) ?[]const u8 {
+fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id: []const u8) ?[]const u8 {
     const path = std.fmt.bufPrint(buf, "{s}/{s}", .{ base, lease_id }) catch {
         log.err("workspace_path_fmt_failed", .{ .lease_id = lease_id });
         return null;
     };
-    std.fs.makeDirAbsolute(path) catch |err| switch (err) {
+    std.Io.Dir.createDirAbsolute(io, path, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
             log.err("workspace_mkdir_failed", .{ .path = path, .err = @errorName(err) });
@@ -196,151 +198,19 @@ fn prepareWorkspace(buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id:
 }
 
 /// Delete the per-lease workspace directory tree; failure is logged and ignored.
-fn cleanupWorkspace(path: []const u8) void {
-    std.fs.deleteTreeAbsolute(path) catch |err| {
+fn cleanupWorkspace(io: std.Io, path: []const u8) void {
+    std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
         log.warn("workspace_cleanup_failed", .{ .path = path, .err = @errorName(err) });
     };
 }
 
 /// Map a child's clean-exit flag to the reported outcome. A failed execution
 /// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
-fn outcomeFor(exit_ok: bool) protocol.Outcome {
+pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
     return if (exit_ok) .processed else .agent_error;
 }
 
 /// Sleep for `ms` milliseconds.
-fn sleepMs(ms: u64) void {
-    std.Thread.sleep(ms * std.time.ns_per_ms);
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────────
-
-// Records the first request line a one-shot loopback control plane observes, so
-// the boot test can prove the daemon's first contact is a heartbeat (lease-loop
-// entry), never a register call.
-const BootProbe = struct {
-    // SAFETY: written by serveOneStopHeartbeat before line_len is set; only
-    // line_buf[0..line_len] is ever read.
-    line_buf: [256]u8 = undefined,
-    line_len: usize = 0,
-};
-
-// Accept one connection, capture its request line, reply `stop` so `runLoop`
-// exits after a single heartbeat. The `stop` body must parse cleanly or the loop
-// would back off and retry — hence a well-formed fixed HTTP/1.1 response.
-fn serveOneStopHeartbeat(listener: *std.net.Server, probe: *BootProbe) void {
-    const conn = listener.accept() catch return;
-    defer conn.stream.close();
-
-    var buf: [1024]u8 = undefined;
-    var total: usize = 0;
-    while (total < buf.len) {
-        const n = conn.stream.read(buf[total..]) catch break;
-        if (n == 0) break;
-        total += n;
-        if (std.mem.indexOf(u8, buf[0..total], "\r\n\r\n") != null) break;
-    }
-    const line_end = std.mem.indexOf(u8, buf[0..total], "\r\n") orelse total;
-    probe.line_len = @min(line_end, probe.line_buf.len);
-    @memcpy(probe.line_buf[0..probe.line_len], buf[0..probe.line_len]);
-
-    conn.stream.writeAll(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" ++
-            "Content-Length: 17\r\nConnection: close\r\n\r\n{\"status\":\"stop\"}",
-    ) catch {};
-}
-
-/// Upper bound the boot test can wait for the stub to respond. The happy path
-/// completes in well under a second; this only fires if the stub never responds.
-const BOOT_TEST_WATCHDOG_MS: u64 = 5_000;
-
-/// Guarantees the boot test cannot hang. `runLoop`'s control-plane client has no
-/// read timeout (`std.http.Client.fetch`), so if the stub never responds — its
-/// thread exits early, or a sandbox blocks loopback TCP — the heartbeat fetch
-/// would block forever and `join()` would never be reached. On timeout this
-/// requests drain and closes the listener: the blocked client read gets a reset,
-/// the fetch errors, and `runLoop` falls through its heartbeat-error path to the
-/// drain check and exits. A hang becomes a fast, loud failure (empty probe), not
-/// an indefinite stall.
-const BootWatchdog = struct {
-    listener: *std.net.Server,
-    done: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
-    fired: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
-
-    fn run(self: *BootWatchdog) void {
-        var waited_ms: u64 = 0;
-        while (!self.done.load(.seq_cst) and waited_ms < BOOT_TEST_WATCHDOG_MS) {
-            std.Thread.sleep(50 * std.time.ns_per_ms);
-            waited_ms += 50;
-        }
-        if (self.done.load(.seq_cst)) return;
-        self.fired.store(true, .seq_cst);
-        drain_requested.store(true, .seq_cst);
-        // Unblock runLoop's timeout-less read. The stub never accepted, so the
-        // client's connection is queued on the listener; the client is blocked
-        // reading a response that will never come. Closing the *listener* does
-        // NOT reset an established-but-unaccepted connection on macOS/BSD — so
-        // accept the queued connection and close *that* fd, which sends the peer
-        // FIN/RST. The client read returns EOF, the heartbeat fetch errors, and
-        // runLoop falls through to the drain check and exits.
-        if (self.listener.accept()) |conn| conn.stream.close() else |_| {}
-        self.listener.deinit();
-    }
-};
-
-test "runner boots from a zrn_ token straight into the lease loop with no register call" {
-    const alloc = std.testing.allocator;
-    drain_requested.store(false, .seq_cst);
-    defer drain_requested.store(false, .seq_cst);
-
-    const addr = try std.net.Address.parseIp4("127.0.0.1", 0);
-    var listener = try addr.listen(.{ .reuse_address = true });
-    const port = listener.listen_address.getPort();
-
-    var probe: BootProbe = .{};
-    var server_thread = try std.Thread.spawn(.{}, serveOneStopHeartbeat, .{ &listener, &probe });
-    var wd = BootWatchdog{ .listener = &listener };
-    var wd_thread = try std.Thread.spawn(.{}, BootWatchdog.run, .{&wd});
-
-    const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
-    defer alloc.free(url);
-    // Identity is the pre-minted zrn_ — Config is built directly here; the
-    // env → Config parse (incl. the zrn_ prefix gate) is covered in config.zig.
-    const cfg = Config{
-        .control_plane_url = try alloc.dupe(u8, url),
-        .runner_token = try alloc.dupe(u8, "zrn_" ++ "a" ** 64),
-        .host_id = try alloc.dupe(u8, "boot-test-host"),
-        .sandbox_tier = try alloc.dupe(u8, "dev_none"),
-        .workspace_base = try alloc.dupe(u8, "/tmp/zombie-runner-boot-test"),
-        .alloc = alloc,
-    };
-    defer cfg.deinit();
-
-    runLoop(alloc, cfg); // returns on the `stop` heartbeat (or on drain if the watchdog fires)
-    wd.done.store(true, .seq_cst);
-    server_thread.join();
-    wd_thread.join();
-    if (!wd.fired.load(.seq_cst)) listener.deinit(); // watchdog already closed it if it fired
-
-    // First (and only) control-plane contact is the heartbeat — not register.
-    // If the watchdog fired (stub never responded), the probe is empty and this
-    // fails fast rather than hanging.
-    const observed = probe.line_buf[0..probe.line_len];
-    const expected = "POST " ++ protocol.PATH_RUNNER_HEARTBEATS ++ " ";
-    try std.testing.expect(std.mem.startsWith(u8, observed, expected));
-    // The enrollment route is never touched on boot (Option B).
-    try std.testing.expect(std.mem.indexOf(u8, observed, "POST " ++ protocol.PATH_RUNNERS ++ " ") == null);
-}
-
-test "drain signal handler requests a graceful drain" {
-    defer drain_requested.store(false, .seq_cst);
-    drain_requested.store(false, .seq_cst);
-    try std.testing.expect(!drain_requested.load(.seq_cst));
-    requestDrain(std.posix.SIG.TERM);
-    try std.testing.expect(drain_requested.load(.seq_cst));
-}
-
-test "a failed execution reports agent_error; a clean one reports processed" {
-    try std.testing.expectEqual(protocol.Outcome.agent_error, outcomeFor(false)); // the startup_posture path
-    try std.testing.expectEqual(protocol.Outcome.processed, outcomeFor(true));
+fn sleepMs(io: std.Io, ms: u64) void {
+    io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
 }

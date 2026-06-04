@@ -42,7 +42,7 @@ const FLAGS =
 /// Build the full help text. Pure (allocates only the result) so the golden
 /// test can compare it byte-for-byte. Command rows come from the register.
 pub fn render(alloc: std.mem.Allocator) ![]u8 {
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &list);
     const w = &aw.writer;
     try w.writeAll(HEADER);

@@ -7,4 +7,5 @@
 
 test {
     _ = @import("contract/contract.zig");
+    _ = @import("common/clock.zig");
 }

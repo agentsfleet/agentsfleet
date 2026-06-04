@@ -1,4 +1,5 @@
 const std = @import("std");
+const constants = @import("common");
 
 const db = @import("../db/pool.zig");
 const oidc_auth = @import("../auth/oidc.zig");
@@ -8,6 +9,8 @@ const common = @import("common.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.zombied);
+
+const EnvMap = constants.env.Map;
 
 const S_DOCTOR_DB_CONNECT_START = "doctor.db_connect_start";
 const S_DOCTOR_REDIS_CONNECT_START = "doctor.redis_connect_start";
@@ -171,24 +174,22 @@ fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: 
     try stdout.print("]}}\n", .{});
 }
 
-pub fn run(alloc: std.mem.Allocator) !void {
+pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
     // Allocator contract: callers must provide an arena-style allocator; CheckResult.detail slices are retained until renderText/renderJson completes.
     log.info("doctor.start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
-    var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
+    var stdout_w = std.Io.File.stdout().writer(io, &stdout_buf);
     const stdout = &stdout_w.interface;
-    var results: std.ArrayList(CheckResult) = .{};
+    var results: std.ArrayList(CheckResult) = .empty;
     defer results.deinit(alloc);
 
-    var args_it = std.process.args();
-    _ = args_it.next();
-    _ = args_it.next();
-    var extra_args: std.ArrayList([]const u8) = .{};
+    // argv[0]=binary, argv[1]=subcommand; the rest are doctor flags.
+    var extra_args: std.ArrayList([]const u8) = .empty;
     defer extra_args.deinit(alloc);
-    while (args_it.next()) |arg| {
+    if (argv.len > 2) for (argv[2..]) |arg| {
         try extra_args.append(alloc, arg);
-    }
+    };
     const options = parseDoctorArgs(extra_args.items) catch |err| {
         switch (err) {
             DoctorArgError.InvalidDoctorArgument => try stdout.print("fatal: invalid doctor argument\n", .{}),
@@ -199,7 +200,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(2);
     };
 
-    var role_urls = env_vars.loadFromEnv(alloc);
+    var role_urls = try env_vars.loadFromEnv(env_map, alloc);
     defer role_urls.deinit();
     const redis_api_url = role_urls.redis_api;
 
@@ -217,7 +218,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     db_check: {
         log.info(S_DOCTOR_DB_CONNECT_START, .{ .role = S_API });
-        const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
+        const pool = db.initFromEnvForRole(io, env_map, alloc, .api) catch |err| {
             log.err(S_DOCTOR_DB_CONNECT_FAILED, .{ .role = S_API, .err = @errorName(err) });
             try appendCheck(alloc, &results, S_DB_API_CONFIG, false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
@@ -229,7 +230,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     if (options.schema_gate) schema_gate_check: {
         log.info("doctor.schema_gate_start", .{});
-        const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
+        const pool = db.initFromEnvForRole(io, env_map, alloc, .migrator) catch |err| {
             log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "connect", .err = @errorName(err) });
             try appendCheck(alloc, &results, "schema_gate_config", false, "DATABASE_URL_MIGRATOR not set/invalid", &ok);
             break :schema_gate_check;
@@ -271,7 +272,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     redis_api_check: {
         log.info(S_DOCTOR_REDIS_CONNECT_START, .{ .role = S_API });
-        var client = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
+        var client = queue_redis.Client.connectFromEnv(io, env_map, alloc, .api) catch |err| {
             log.err(S_DOCTOR_REDIS_CONNECT_FAILED, .{ .role = S_API, .err = @errorName(err) });
             try appendCheck(alloc, &results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
@@ -298,7 +299,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const key = std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY") catch null;
+        const key: ?[]const u8 = constants.env.owned(env_map, alloc, "ENCRYPTION_MASTER_KEY") catch null;
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
@@ -312,7 +313,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const key = std.process.getEnvVarOwned(alloc, "AUTH_SESSION_CODE_PEPPER") catch null;
+        const key: ?[]const u8 = constants.env.owned(env_map, alloc, "AUTH_SESSION_CODE_PEPPER") catch null;
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
@@ -326,7 +327,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const key = std.process.getEnvVarOwned(alloc, "AUDIT_LOG_PEPPER") catch null;
+        const key: ?[]const u8 = constants.env.owned(env_map, alloc, "AUDIT_LOG_PEPPER") catch null;
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
@@ -340,7 +341,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
+        const oidc_provider_raw: ?[]const u8 = constants.env.owned(env_map, alloc, "OIDC_PROVIDER") catch null;
         defer if (oidc_provider_raw) |v| alloc.free(v);
         const oidc_provider = blk: {
             const raw = oidc_provider_raw orelse break :blk oidc_auth.Provider.clerk;
@@ -352,7 +353,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
         var any_auth_configured = false;
 
-        const jwks_url = std.process.getEnvVarOwned(alloc, "OIDC_JWKS_URL") catch null;
+        const jwks_url: ?[]const u8 = constants.env.owned(env_map, alloc, "OIDC_JWKS_URL") catch null;
         if (jwks_url) |url| {
             defer alloc.free(url);
             any_auth_configured = true;
@@ -417,17 +418,17 @@ test "parseDoctorArgs rejects invalid arguments" {
 }
 
 test "dynamic check details stay valid through render with GPA" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const alloc = gpa.allocator();
     var ok = true;
-    var results: std.ArrayList(CheckResult) = .{};
+    var results: std.ArrayList(CheckResult) = .empty;
     defer results.deinit(alloc);
     try appendFmtCheck(alloc, &results, "schema_gate_compat", false, &ok, "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}", .{ 3, 2, "SCHEMA_BEHIND_BINARY" });
     var output_buf: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output_buf);
-    try renderJson(fbs.writer().any(), results.items, ok);
-    const out = fbs.getWritten();
+    var w = std.Io.Writer.fixed(&output_buf);
+    try renderJson(&w, results.items, ok);
+    const out = w.buffered();
     try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_gate_compat\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "SCHEMA_BEHIND_BINARY") != null);
 }

@@ -10,12 +10,13 @@
 //! Tests register a fake Pool through the same entry point.
 
 const std = @import("std");
+const common = @import("common");
 const Pool = @import("../queue/redis_pool.zig");
 
 pub const PoolStats = Pool.PoolStats;
 
 var g_registered_pool: ?*Pool = null;
-var g_mutex: std.Thread.Mutex = .{};
+var g_mutex: common.Mutex = .{};
 
 pub fn registerPool(pool: *Pool) void {
     g_mutex.lock();

@@ -29,15 +29,15 @@ const SHARE_NET = "--share-net";
 /// Every entry is dup'd into `alloc`; free with `freeArgv`. Errors when a
 /// sandboxed tier has no `bwrap` binary — the caller then fails the lease
 /// closed (Invariant 7) rather than running unsandboxed.
-pub fn buildArgv(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
-    var list: std.ArrayList([]const u8) = .{};
+pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
     errdefer freeList(alloc, &list);
 
-    const self_exe = try std.fs.selfExePathAlloc(alloc);
+    const self_exe = try std.process.executablePathAlloc(io, alloc);
     defer alloc.free(self_exe);
 
     const sandboxed = builtin.os.tag == .linux and !std.mem.eql(u8, cfg.sandbox_tier, DEV_NONE);
-    if (sandboxed) try appendBwrap(alloc, &list, self_exe, workspace_path);
+    if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, cfg.network_policy);
 
     try dup(alloc, &list, self_exe);
     try dup(alloc, &list, child_exec.SUBCOMMAND);
@@ -73,8 +73,8 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 
 /// Append the bubblewrap wrapper: namespaces + ro system + rw workspace + the
 /// runner binary ro-bound (so the sandbox can exec it) + network policy + `--`.
-fn appendBwrap(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8) !void {
-    const bwrap = bwrapPath() orelse return error.BwrapUnavailable;
+fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, net_policy: network.PolicyMode) !void {
+    const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
     const base = [_][]const u8{
         bwrap,    "--die-with-parent", "--unshare-all",
         "--proc", "/proc",             "--dev",
@@ -96,13 +96,13 @@ fn appendBwrap(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_
     try dup(alloc, list, "--chdir");
     try dup(alloc, list, workspace);
     // deny_all is covered by --unshare-all; registry_allowlist re-shares net.
-    if (network.policyFromEnv(alloc) == .registry_allowlist) try dup(alloc, list, SHARE_NET);
+    if (net_policy == .registry_allowlist) try dup(alloc, list, SHARE_NET);
     try dup(alloc, list, "--");
 }
 
-fn bwrapPath() ?[]const u8 {
+fn bwrapPath(io: std.Io) ?[]const u8 {
     for (BWRAP_PATHS) |p| {
-        std.fs.accessAbsolute(p, .{}) catch continue;
+        std.Io.Dir.accessAbsolute(io, p, .{}) catch continue;
         return p;
     }
     return null;

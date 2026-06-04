@@ -7,6 +7,8 @@
 //! for the deleted worker watcher's sweep (out of scope here).
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -110,7 +112,7 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
         common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     insertZombieOnConn(conn, workspace_id, body, parsed, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
@@ -141,11 +143,11 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
         return;
     };
 
-    var webhook_urls = std.json.ObjectMap.init(hx.alloc);
+    var webhook_urls: std.json.ObjectMap = .empty;
     defer {
         var it = webhook_urls.iterator();
         while (it.next()) |entry| hx.alloc.free(entry.value_ptr.string);
-        webhook_urls.deinit();
+        webhook_urls.deinit(hx.alloc);
     }
     populateWebhookUrls(&webhook_urls, hx.alloc, hx.ctx.api_url, zombie_id, parsed.config.triggers) catch {
         common.internalOperationError(hx.res, "webhook_urls generation failed", hx.req_id);
@@ -174,7 +176,7 @@ fn populateWebhookUrls(
         .webhook => |w| {
             const url = try std.fmt.allocPrint(alloc, "{s}/v1/webhooks/{s}/{s}", .{ api_url, zombie_id, w.source });
             errdefer alloc.free(url);
-            try map.put(w.source, .{ .string = url });
+            try map.put(alloc, w.source, .{ .string = url });
         },
         .cron, .api => {},
     };
@@ -234,7 +236,7 @@ fn ensureEventStream(redis: *queue_redis.Client, zombie_id: []const u8) !void {
                 "create_stream_setup_retry",
                 .{ .attempt = attempt + 1, .err = @errorName(err), .zombie_id = zombie_id, .sleep_ms = sleep_ms },
             );
-            std.Thread.sleep(@as(u64, sleep_ms) * std.time.ns_per_ms);
+            constants.sleepNanos(@as(u64, sleep_ms) * std.time.ns_per_ms);
             continue;
         };
         return;

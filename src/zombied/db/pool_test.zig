@@ -1,4 +1,6 @@
 const std = @import("std");
+const clock = @import("common").clock;
+const env = @import("common").env;
 const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -91,13 +93,12 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
     // DB-backed integration tests must be opt-in via TEST_DATABASE_URL.
     // This avoids accidentally running against unrelated DATABASE_URL values
     // in non-DB test lanes (e.g. CI's _test-integration-zombied target).
-    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch return null;
-    defer alloc.free(url);
+    const url = env.testLiveValue("TEST_DATABASE_URL") orelse return null;
 
     // parseUrl allocates host/auth strings that must outlive the pool.
     // Use page_allocator to keep them process-lifetime, matching production.
     const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = pg.Pool.init(alloc, opts) catch return null;
+    const pool = pg.Pool.init(@import("common").globalIo(), alloc, opts) catch return null;
     errdefer pool.deinit();
     const conn = pool.acquire() catch {
         pool.deinit();
@@ -108,12 +109,11 @@ fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, con
 
 test "integration: canary pool acquire + exec + query SELECT 1" {
     const alloc = std.testing.allocator;
-    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return error.SkipZigTest;
-    defer alloc.free(url);
+    const url = env.testLiveValue("TEST_DATABASE_URL") orelse
+        env.testLiveValue("DATABASE_URL") orelse return error.SkipZigTest;
 
     const opts = try parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(alloc, opts);
+    const pool = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
     defer pool.deinit();
 
     const conn = try pool.acquire();
@@ -126,7 +126,7 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
 }
 
 test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -208,7 +208,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
 }
 
 test "T6 integration: UUID CHECK constraint rejects non-v7 ids" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -229,7 +229,7 @@ test "T6 integration: UUID CHECK constraint rejects non-v7 ids" {
 }
 
 test "T6 integration: duplicate UUID PK is rejected" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -257,7 +257,7 @@ test "T6 integration: duplicate UUID PK is rejected" {
 }
 
 test "integration: audit schema exists and contains migration bookkeeping tables" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -309,7 +309,7 @@ test "integration: audit schema exists and contains migration bookkeeping tables
 }
 
 test "integration: db_migrator role exists after migration" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -325,7 +325,7 @@ test "integration: db_migrator role exists after migration" {
 }
 
 test "integration: zero-trust schema segmentation and role matrix are enforced" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -382,7 +382,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
 }
 
 test "integration: runMigrations is idempotent when table exists but migration record is absent" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -436,7 +436,7 @@ test "integration: runMigrations is idempotent when table exists but migration r
 }
 
 test "integration: runMigrations reaps orphan rows for versions no longer in canonical list" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -458,7 +458,7 @@ test "integration: runMigrations reaps orphan rows for versions no longer in can
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_keep_fixture", .{}) catch {};
     _ = try db_ctx.conn.exec(
         "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
-        .{ orphan_version, std.time.milliTimestamp() },
+        .{ orphan_version, clock.nowMillis() },
     );
 
     // Run canonical migrations — the reap step should remove orphan_version.
@@ -487,7 +487,7 @@ test "integration: runMigrations reaps orphan rows for versions no longer in can
 }
 
 test "integration: runMigrations reaps orphan rows in schema_migration_failures (T2/T6)" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -511,7 +511,7 @@ test "integration: runMigrations reaps orphan rows in schema_migration_failures 
     _ = try db_ctx.conn.exec(
         \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
         \\VALUES ($1, $2, 'simulated')
-    , .{ orphan_version, std.time.milliTimestamp() });
+    , .{ orphan_version, clock.nowMillis() });
 
     try pool_mod.runMigrations(db_ctx.pool, &canonical);
 
@@ -527,7 +527,7 @@ test "integration: runMigrations reaps orphan rows in schema_migration_failures 
 }
 
 test "integration: runMigrations reap is a no-op when all applied rows are canonical (T2)" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -575,7 +575,7 @@ test "integration: runMigrations succeeds on empty migrations list (no SQL synta
     // Regression: pre-fix the reap helper built `DELETE … WHERE version NOT
     // IN ()` which Postgres rejects with sqlstate 42601 (`syntax error at
     // or near ")"`). An empty migrations slice must early-return cleanly.
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -586,7 +586,7 @@ test "integration: runMigrations succeeds on empty migrations list (no SQL synta
 }
 
 test "integration: readonly roles cannot read vault.secrets" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -610,7 +610,7 @@ test "integration: readonly roles cannot read vault.secrets" {
 // this proves the grant without a superuser bypass (the real statements are
 // exercised by the fleet integration suite).
 test "integration: api_runtime holds the fleet lease/report write grants" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

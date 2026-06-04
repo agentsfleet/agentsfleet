@@ -18,16 +18,17 @@ test "isResumable: transport-level variants are not resumable" {
     try std.testing.expect(!redis_errors.isResumable(error.BrokenPipe));
     try std.testing.expect(!redis_errors.isResumable(error.ConnectionResetByPeer));
     try std.testing.expect(!redis_errors.isResumable(error.ReadFailed));
+    try std.testing.expect(!redis_errors.isResumable(error.RedisRequestTimeout));
     try std.testing.expect(!redis_errors.isResumable(error.WriteFailed));
     try std.testing.expect(!redis_errors.isResumable(error.RedisProtocolDesync));
 }
 
-test "RedisError surface stays at 8 variants" {
+test "RedisError surface stays at 9 variants" {
     // pin test: literal is the contract. Growing the set requires
     // amending the resumable / non-resumable classification — adding
     // an error name alone is not enough; the spec table updates too.
     const variants = @typeInfo(redis_errors.RedisError).error_set.?;
-    try std.testing.expectEqual(@as(usize, 8), variants.len);
+    try std.testing.expectEqual(@as(usize, 9), variants.len);
 }
 
 // ── Env-parser surface (#16) ────────────────────────────────────────────

@@ -1,0 +1,315 @@
+const std = @import("std");
+const lib = @import("lib.zig");
+
+const openssl = lib.openssl;
+
+const posix = std.posix;
+
+const Conn = lib.Conn;
+const Allocator = std.mem.Allocator;
+const Io = std.Io;
+
+const DEFAULT_HOST = "127.0.0.1";
+
+pub const Stream = if (lib.has_openssl) TLSStream else PlainStream;
+
+const TLSStream = struct {
+    valid: bool,
+    ssl: ?*openssl.SSL,
+    stream: Io.net.Stream,
+    io: Io,
+
+    pub fn connect(io: Io, allocator: Allocator, opts: Conn.Opts, ctx_: ?*openssl.SSL_CTX) !Stream {
+        const plain = try PlainStream.connect(io, allocator, opts, null);
+        errdefer plain.close();
+
+        const stream = plain.stream;
+
+        var ssl: ?*openssl.SSL = null;
+        if (ctx_) |ctx| {
+            // PostgreSQL TLS starts off as a plain connection which we upgrade
+            try writeStream(stream, io, &.{ 0, 0, 0, 8, 4, 210, 22, 47 });
+            var buf = [1]u8{0};
+            _ = try readStream(stream, io, &buf);
+            if (buf[0] != 'S') {
+                return error.SSLNotSupportedByServer;
+            }
+
+            ssl = openssl.SSL_new(ctx) orelse return error.SSLNewFailed;
+            errdefer openssl.SSL_free(ssl);
+
+            if (opts.host) |host| {
+                if (isHostName(host)) {
+                    // don't send this for an ip address
+                    var owned = false;
+                    const h = opts._hostz orelse blk: {
+                        owned = true;
+                        break :blk try allocator.dupeZ(u8, host);
+                    };
+
+                    defer if (owned) {
+                        allocator.free(h);
+                    };
+
+                    if (openssl.SSL_set_tlsext_host_name(ssl, h.ptr) != 1) {
+                        return error.SSLHostNameFailed;
+                    }
+                }
+                switch (opts.tls) {
+                    .verify_full => openssl.SSL_set_verify(ssl, openssl.SSL_VERIFY_PEER, null),
+                    else => {},
+                }
+            }
+
+            if (openssl.SSL_set_fd(ssl, if (@import("builtin").os.tag == .windows) @intCast(@intFromPtr(stream.socket.handle)) else stream.socket.handle) != 1) {
+                return error.SSLSetFdFailed;
+            }
+
+            {
+                const ret = openssl.SSL_connect(ssl);
+                if (ret != 1) {
+                    const verification_code = openssl.SSL_get_verify_result(ssl);
+                    if (comptime lib._stderr_tls) {
+                        lib.printSSLError();
+                    }
+                    if (verification_code != openssl.X509_V_OK) {
+                        if (comptime lib._stderr_tls) {
+                            std.debug.print("ssl verification error: {s}\n", .{openssl.X509_verify_cert_error_string(verification_code)});
+                        }
+                        return error.SSLCertificationVerificationError;
+                    }
+                    return error.SSLConnectFailed;
+                }
+            }
+        }
+
+        return .{
+            .ssl = ssl,
+            .valid = true,
+            .stream = stream,
+            .io = io,
+        };
+    }
+
+    pub fn close(self: *Stream) void {
+        if (self.ssl) |ssl| {
+            if (self.valid) {
+                _ = openssl.SSL_shutdown(ssl);
+                self.valid = false;
+            }
+            openssl.SSL_free(ssl);
+        }
+        self.stream.close(self.io);
+    }
+
+    pub fn shutdown(self: *const Stream, how: ShutdownHow) !void {
+        return sockShutdown(self.stream.socket.handle, how);
+    }
+
+    pub fn writeAll(self: *Stream, data: []const u8) !void {
+        if (self.ssl) |ssl| {
+            const result = openssl.SSL_write(ssl, data.ptr, @intCast(data.len));
+            if (result <= 0) {
+                self.valid = false;
+                return error.SSLWriteFailed;
+            }
+            return;
+        }
+        return writeStream(self.stream, self.io, data);
+    }
+
+    pub fn read(self: *Stream, buf: []u8) !usize {
+        if (self.ssl) |ssl| {
+            var read_len: usize = undefined;
+            const result = openssl.SSL_read_ex(ssl, buf.ptr, @intCast(buf.len), &read_len);
+            if (result <= 0) {
+                self.valid = false;
+                return error.SSLReadFailed;
+            }
+            return read_len;
+        }
+
+        return readStream(self.stream, self.io, buf);
+    }
+};
+
+const PlainStream = struct {
+    io: Io,
+    stream: Io.net.Stream,
+
+    pub fn connect(io: Io, _: Allocator, opts: Conn.Opts, _: anytype) !PlainStream {
+        const host = opts.host orelse DEFAULT_HOST;
+        const is_unix = host.len > 0 and host[0] == '/';
+
+        const stream = try blk: {
+            if (is_unix) {
+                if (comptime Io.net.has_unix_sockets == false or std.posix.AF == void) {
+                    return error.UnixPathNotSupported;
+                }
+                const addr: Io.net.UnixAddress = try .init(host);
+                break :blk addr.connect(io);
+            }
+            const port = opts.port orelse 5432;
+            const hostname: Io.net.HostName = try .init(host);
+            break :blk hostname.connect(io, port, .{ .mode = .stream });
+        };
+        errdefer stream.close(io);
+
+        if (is_unix == false) {
+            try setKeepalive(stream.socket.handle, opts);
+        }
+
+        return .{
+            .io = io,
+            .stream = stream,
+        };
+    }
+
+    pub fn close(self: *const PlainStream) void {
+        self.stream.close(self.io);
+    }
+
+    pub fn shutdown(self: *const PlainStream, how: ShutdownHow) !void {
+        const sock = self.stream.socket.handle;
+        return sockShutdown(sock, how);
+    }
+
+    pub fn writeAll(self: *const PlainStream, data: []const u8) !void {
+        return writeStream(self.stream, self.io, data);
+    }
+
+    pub fn read(self: *const PlainStream, buf: []u8) !usize {
+        return readStream(self.stream, self.io, buf);
+    }
+};
+
+fn setKeepalive(handle: posix.socket_t, opts: Conn.Opts) !void {
+    if (opts.keepalive == false) {
+        return;
+    }
+    const on: c_int = 1;
+    try setsockopt(handle, posix.SOL.SOCKET, posix.SO.KEEPALIVE, std.mem.asBytes(&on));
+
+    const TCP = posix.TCP;
+    const level = posix.IPPROTO.TCP;
+
+    if (opts.keepalive_idle) |idle| {
+        const optname: ?u32 = comptime if (@hasDecl(TCP, "KEEPIDLE"))
+            TCP.KEEPIDLE
+        else if (@hasDecl(TCP, "KEEPALIVE"))
+            TCP.KEEPALIVE
+        else
+            null;
+        if (optname) |name| {
+            const v: c_int = @intCast(idle);
+            setsockopt(handle, level, name, std.mem.asBytes(&v)) catch {};
+        }
+    }
+
+    if (opts.keepalive_interval) |intvl| {
+        if (comptime @hasDecl(TCP, "KEEPINTVL")) {
+            const v: c_int = @intCast(intvl);
+            setsockopt(handle, level, TCP.KEEPINTVL, std.mem.asBytes(&v)) catch {};
+        }
+    }
+
+    if (opts.keepalive_count) |cnt| {
+        if (comptime @hasDecl(TCP, "KEEPCNT")) {
+            const v: c_int = @intCast(cnt);
+            setsockopt(handle, level, TCP.KEEPCNT, std.mem.asBytes(&v)) catch {};
+        }
+    }
+}
+
+fn setsockopt(fd: posix.socket_t, level: i32, optname: u32, opt: []const u8) !void {
+    if (@import("builtin").os.tag != .windows) {
+        return posix.setsockopt(fd, level, optname, opt);
+    }
+
+    const SO = posix.SO;
+    const SOL = posix.SOL;
+    const timeval = posix.timeval;
+
+    var ms_buf: u32 = 0;
+    var opt_ptr: [*]const u8 = opt.ptr;
+    var opt_len: i32 = @intCast(opt.len);
+    if (level == SOL.SOCKET and (optname == SO.RCVTIMEO or optname == SO.SNDTIMEO) and opt.len == @sizeOf(timeval)) {
+        const tv: *const timeval = @ptrCast(@alignCast(opt.ptr));
+        const total_ms = @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
+        ms_buf = if (total_ms < 0) 0 else @intCast(@min(total_ms, std.math.maxInt(u32)));
+        opt_ptr = @ptrCast(&ms_buf);
+        opt_len = @sizeOf(u32);
+    }
+    const rc = windows.ws2_32.setsockopt(fd, level, @intCast(optname), opt_ptr, opt_len);
+    if (rc == windows.ws2_32.SOCKET_ERROR) {
+        switch (windows.ws2_32.WSAGetLastError()) {
+            .WSANOTINITIALISED => unreachable,
+            .WSAENETDOWN => return error.NetworkSubsystemFailed,
+            .WSAEFAULT => unreachable,
+            .WSAENOTSOCK => return error.FileDescriptorNotASocket,
+            .WSAEINVAL => return error.SocketNotBound,
+            else => |err| return windows.unexpectedWSAError(err),
+        }
+    }
+}
+
+const ShutdownHow = enum { recv, send, both };
+fn sockShutdown(sock: posix.socket_t, how: ShutdownHow) !void {
+    if (comptime @import("builtin").os.tag == .windows) {
+        const result = windows.ws2_32.shutdown(sock, switch (how) {
+            .recv => windows.ws2_32.SD_RECEIVE,
+            .send => windows.ws2_32.SD_SEND,
+            .both => windows.ws2_32.SD_BOTH,
+        });
+        if (0 != result) switch (windows.ws2_32.WSAGetLastError()) {
+            .WSAECONNABORTED => return error.ConnectionAborted,
+            .WSAECONNRESET => return error.ConnectionResetByPeer,
+            .WSAEINPROGRESS => return error.BlockingOperationInProgress,
+            .WSAEINVAL => unreachable,
+            .WSAENETDOWN => return error.NetworkSubsystemFailed,
+            .WSAENOTCONN => return error.SocketNotConnected,
+            .WSAENOTSOCK => unreachable,
+            .WSANOTINITIALISED => unreachable,
+            else => |err| return windows.unexpectedWSAError(err),
+        };
+    } else {
+        const rc = posix.system.shutdown(sock, switch (how) {
+            .recv => posix.system.SHUT.RD,
+            .send => posix.system.SHUT.WR,
+            .both => posix.system.SHUT.RDWR,
+        });
+        switch (posix.errno(rc)) {
+            .SUCCESS => return,
+            .BADF => unreachable,
+            .INVAL => unreachable,
+            .NOTCONN => return error.SocketNotConnected,
+            .NOTSOCK => unreachable,
+            .NOBUFS => return error.SystemResources,
+            else => return error.Unexpected,
+        }
+    }
+}
+fn readStream(stream: Io.net.Stream, io: Io, buf: []u8) !usize {
+    var vecs: [1][]u8 = .{buf};
+    var reader = stream.reader(io, &.{});
+    const r = &reader.interface;
+    return try r.readVec(&vecs);
+}
+
+fn writeStream(stream: Io.net.Stream, io: Io, data: []const u8) !void {
+    var buf: [1024]u8 = undefined;
+    var writer = stream.writer(io, &buf);
+    const w = &writer.interface;
+    try w.writeAll(data);
+    try w.flush();
+}
+
+fn isHostName(host: []const u8) bool {
+    if (std.mem.findScalar(u8, host, ':') != null) {
+        // IPv6
+        return false;
+    }
+    return std.mem.findNone(u8, host, "0123456789.") != null;
+}
+
+const windows = @import("windows.zig");
