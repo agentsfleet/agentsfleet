@@ -53,7 +53,7 @@ export type RetryOptions = {
 export function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
     if (err.code === "TIMEOUT") return "timeout";
-    if (err.status && RETRYABLE_STATUSES.has(err.status)) {
+    if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       if (err.status === 429) return "429";
       return "5xx";
     }

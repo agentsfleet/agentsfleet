@@ -303,7 +303,7 @@ Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  zo
    does NOT call register — it authenticates every later call with that zrn_
 ```
 
-`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'` (M84_002, renamed from `status`).
+`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `status='revoked'` (M84_002 renames this column to `admin_state` and adds the cordon/drain states).
 
 ### Validation — a separate middleware, on purpose
 

@@ -384,14 +384,14 @@ The exact and restart-resilient form of the two gauges is a read-only background
                                  thin zombied (direct worker path + sandbox sidecar deleted); TLS transport;
                                  data_flow.md / capabilities.md / scaling.md reconciled here
  ── cutover landed: the runner is the processor; the old direct path is gone ──────────────────
- S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (pending)
+ S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (done)
  S5  M80_005  IDENTITY   DONE — platform_admin gate on enrollment (POST /v1/runners) + Option B host
                                  (operator pre-mints zrn_, no self-register); trust_class +
                                  allowed_workspace_ids + trust-gated placement deferred to M85_001
  S5  M80_006  FLEET      DONE — per-lease renewal (live runner keeps its lease); operator plane +
                                  heartbeat-lapse reassignment carved out → M84_002
  S6  M84_001  ENROLLMENT dashboard "Add runner" mint (retired register --token CLI) + GET
-                         /v1/fleet/runners read + honest derived liveness                          (active)
+                         /v1/fleet/runners read + honest derived liveness                          (done)
  S6  M84_002  OPERATOR   PATCH /v1/fleet/runners cordon/drain/revoke + admin_state + UZ-RUN-009 +
                          fleet.runner_events log + liveness sweeper / reassignment                 (pending)
  S7  M85_001  SCHEDULER  label placement (required_tags ⊆ runner.labels, before the sticky hint) +

@@ -159,13 +159,13 @@ A platform-admin-gated dashboard surface (`(dashboard)/admin/runners`) lists the
 
 `runner_fleet.md`/`roadmap.md`/`AUTH.md`/the bootstrap playbooks describe: minting via the dashboard/API (not the removed CLI), the honest derived liveness, the **read-only** operator-plane list that now exists, and the corrected placement number (`M80_007`→`M85_001`, since M80_007 is the shipped observability spec). **Invariant:** host-bootstrap steps unchanged; cordon/revoke/reassignment still described as deferred.
 
-- **Dimension 4.1** — no live doc/playbook references `zombie-runner register`; placement points at `M85_001`, not the taken `M80_007` → Test `enrollment-doc sweep`.
+- **Dimension 4.1** — ✅ DONE — no live doc/playbook references `zombie-runner register`; placement points at `M85_001`, not the taken `M80_007` → Test `enrollment-doc sweep`.
 
 ### §5 — Author the tag/label scheduler spec (M85_001)
 
 Author `M85_001` (SCHEDULER) via `kishore-spec-new`: runner advertises labels at enrollment (already stored); `zombied` matches `zombie.required_tags ⊆ runner.labels` server-side (runner does not re-send tags per `/leases` poll); reconcile the `runner_fleet.md` "no scheduler" non-goal as *until M85_001*. **PENDING only** — authored + committed in this PR, not implemented. **Invariant:** no scheduler code lands in M84_001.
 
-- **Dimension 5.1** — `M85_001` exists in `docs/v2/pending/`, template-conformant, Status PENDING → Test `scheduler spec authored`.
+- **Dimension 5.1** — ✅ DONE — `M85_001` exists in `docs/v2/pending/`, template-conformant, Status PENDING → Test `scheduler spec authored`.
 
 ---
 

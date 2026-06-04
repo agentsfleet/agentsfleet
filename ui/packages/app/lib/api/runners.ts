@@ -1,13 +1,10 @@
 import { request } from "./client";
 
-// Runner enrollment + the platform-admin fleet read. The minted `zrn_` is the
-// host's machine credential; the operator pastes it into the host's vault/env.
-export const RUNNER_TOKEN_PREFIX = "zrn_";
-
-// host_id is free-form but bounded by the backend (1–256 chars). Keep the form
-// in step with `register.zig`'s MAX_HOST_ID_LEN.
+// host_id is free-form but bounded by the backend; deriving HOST_ID_REGEX from
+// HOST_ID_MAX keeps the form in step with `register.zig`'s MAX_HOST_ID_LEN as a
+// single source — the bound lives in exactly one place.
 export const HOST_ID_MAX = 256;
-export const HOST_ID_REGEX = /^[A-Za-z0-9_.-]{1,256}$/;
+export const HOST_ID_REGEX = new RegExp(`^[A-Za-z0-9_.-]{1,${HOST_ID_MAX}}$`);
 export const LABEL_REGEX = /^[A-Za-z0-9_.-]{1,64}$/;
 
 // Self-reported isolation strength — mirrors `protocol.SandboxTier` verbatim
