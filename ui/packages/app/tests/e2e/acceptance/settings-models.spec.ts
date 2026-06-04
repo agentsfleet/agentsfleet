@@ -1,5 +1,5 @@
 /**
- * settings-provider.spec.ts — /settings/provider renders for an authed user.
+ * settings-models.spec.ts — /settings/models renders for an authed user.
  *
  * Asserts the page resolves the active workspace, calls
  * GET /v1/tenants/me/provider (resolved server-side), and renders the
@@ -16,13 +16,13 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
-test.describe("settings provider page", () => {
-  test("LLM provider settings render for the fixture tenant", async ({ page }) => {
+test.describe("settings model page", () => {
+  test("Model settings render for the fixture tenant", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/settings/provider");
-    await expect(page).toHaveURL(/\/settings\/provider(\?|$)/);
+    await page.goto("/settings/models");
+    await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
 
-    await expect(page.getByRole("heading", { name: /^llm provider$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^model$/i })).toBeVisible();
     await expect(page.getByLabel("Active provider configuration")).toBeVisible();
     await expect(page.getByLabel("Change provider")).toBeVisible();
   });
