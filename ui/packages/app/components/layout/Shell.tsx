@@ -11,6 +11,7 @@ import {
   SkullIcon,
   KeyRoundIcon,
   CheckCircle2Icon,
+  ServerIcon,
   MenuIcon,
 } from "lucide-react";
 import {
@@ -42,16 +43,25 @@ const BOTTOM_NAV = [
   { label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
+// Platform-admin-only surfaces — rendered as a separate nav group, and only
+// when the session carries the platform_admin claim (the backend independently
+// gates the routes, so this is discoverability, not the security boundary).
+const PLATFORM_NAV = [
+  { label: "Runners", href: "/admin/runners", icon: ServerIcon },
+];
+
 type ShellProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
   activeWorkspaceId?: string | null;
+  isPlatformAdmin?: boolean;
 };
 
 export default function Shell({
   children,
   workspaces = [],
   activeWorkspaceId = null,
+  isPlatformAdmin = false,
 }: ShellProps) {
   const pathname = usePathname();
 
@@ -61,7 +71,7 @@ export default function Shell({
   return (
     <div className="grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]">
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
-        <MobileNav isActive={isActive} />
+        <MobileNav isActive={isActive} isPlatformAdmin={isPlatformAdmin} />
 
         <Link
           href="/"
@@ -123,7 +133,7 @@ export default function Shell({
       </header>
 
       <aside className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4">
-        <SidebarNav isActive={isActive} onNavigate={() => {}} />
+        <SidebarNav isActive={isActive} onNavigate={() => {}} isPlatformAdmin={isPlatformAdmin} />
       </aside>
 
       <main className="p-6 md:p-8 overflow-auto">{children}</main>
@@ -131,7 +141,7 @@ export default function Shell({
   );
 }
 
-function MobileNav({ isActive }: { isActive: (href: string) => boolean }) {
+function MobileNav({ isActive, isPlatformAdmin }: { isActive: (href: string) => boolean; isPlatformAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -148,7 +158,7 @@ function MobileNav({ isActive }: { isActive: (href: string) => boolean }) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-xs">
         <DialogTitle className="sr-only">Navigation</DialogTitle>
-        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} />
+        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} isPlatformAdmin={isPlatformAdmin} />
       </DialogContent>
     </Dialog>
   );
@@ -157,11 +167,26 @@ function MobileNav({ isActive }: { isActive: (href: string) => boolean }) {
 type NavProps = {
   isActive: (href: string) => boolean;
   onNavigate: () => void;
+  isPlatformAdmin: boolean;
 };
 
-function SidebarNav({ isActive, onNavigate }: NavProps) {
+function SidebarNav({ isActive, onNavigate, isPlatformAdmin }: NavProps) {
   return (
     <div className="flex flex-col h-full">
+      {isPlatformAdmin ? (
+        <NavGroup label="Platform">
+          {PLATFORM_NAV.map(({ label, href, icon: Icon }) => (
+            <NavItem
+              key={href}
+              href={href}
+              label={label}
+              Icon={Icon}
+              active={isActive(href)}
+              onClick={onNavigate}
+            />
+          ))}
+        </NavGroup>
+      ) : null}
       <NavGroup label="Operations">
         {NAV.map(({ label, href, icon: Icon }) => (
           <NavItem
