@@ -68,7 +68,7 @@ If the model isn't in the public catalogue, the API returns `400 model_not_in_ca
 
 `tenant_providers.tenant_id` is the primary key (one active provider per tenant). Multi-credential tenants are supported in vault — John can store `anthropic-prod` AND `account-fireworks-key` and flip between them with another `tenant provider set --credential <other>` — but only one is active at a time.
 
-The same setup works through the dashboard at `/settings/provider`: a credential dropdown populated from the tenant's vault list, a model override field auto-filled from the picked credential, a Save button.
+The same setup works through the dashboard at `/settings/models`: a credential dropdown populated from the tenant's vault list, a model override field auto-filled from the picked credential, a Save button.
 
 ---
 

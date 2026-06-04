@@ -21,7 +21,7 @@
 1. `docs/architecture/roadmap.md` (the "Fleet operator plane + proactive reassignment" section) — the design study that carved this out: the all-runners-down hold, the reassignment-eligibility problem, why `RUNNER_STATUS_{cordoned,revoked}` + `UZ-RUN-009` were left **unbuilt** so the design wasn't foreclosed. This spec builds them.
 2. `src/zombied/cmd/serve_runner_lookup.zig` — the runner-auth lookup that gates on `status == 'active'`; renaming to `admin_state` + adding `cordoned`/`revoked`/`draining`/`drained` makes this the revoke mechanism (`admin_state != 'active'` → 401).
 3. `src/zombied/http/handlers/runner/{register,heartbeat,lease,report}.zig` + `src/zombied/fleet/{assign,reclaim}.zig` — the existing **writes** the event log hooks (registered / lease_acquired / lease_released / reclaim) and the affinity slot the sweeper expires for reassignment.
-4. `docs/v2/active/M84_001_*` (this PR's sibling) — the derived-liveness model (`registered/online/busy/offline`) + `GET /v1/fleet/runners` this extends with mutation + history; `last_seen_at=0` sentinel.
+4. `docs/v2/done/M84_001_*` (the prior enrollment spec it builds on) — the derived-liveness model (`registered/online/busy/offline`) + `GET /v1/fleet/runners` this extends with mutation + history; `last_seen_at=0` sentinel.
 5. `docs/REST_API_DESIGN_GUIDELINES.md` + `ui/packages/app/app/(dashboard)/settings/api-keys/components/RevokeConfirm.tsx` — the `PATCH` route conventions + the destructive-confirm UI to mirror for cordon/revoke.
 
 ---
