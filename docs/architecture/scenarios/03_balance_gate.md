@@ -1,6 +1,6 @@
 # Scenario 03 — The credit pool, John drains under both postures
 
-**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops zombie cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
+**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops agent cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
 
 > **Rate snapshot.** The cent-and-token arithmetic below was authored against an earlier rate table (M48 era — $0.01 receive, $0.10 run, $10 starter). Under M66 stealth-mode rates the grant is $5, receive is $0 in both postures, and run is posture-dispatched (platform overhead + token cost / flat self-managed fee). The *flow* — gate, two debit points, telemetry rows — is identical to what's shown; only the per-event arithmetic moves. Authoritative current values: see [`billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 (sources of truth). Treat the numbers in this scenario as illustrative.
 

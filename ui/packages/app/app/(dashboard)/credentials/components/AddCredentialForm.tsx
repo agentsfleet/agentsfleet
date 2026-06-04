@@ -112,7 +112,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 <Input placeholder="fly" {...field} />
               </FormControl>
               <FormDescription>
-                Referenced from a zombie&apos;s <code>credentials:</code> list and substituted as
+                Referenced from an agent&apos;s <code>credentials:</code> list and substituted as
                 {" "}
                 <code>{"${secrets.<name>.<field>}"}</code> at the tool bridge.
               </FormDescription>

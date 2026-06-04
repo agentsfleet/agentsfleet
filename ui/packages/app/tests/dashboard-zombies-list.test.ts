@@ -70,7 +70,7 @@ describe("ZombiesList component", () => {
   it("search filters rows down by name (case-insensitive)", async () => {
     const user = userEvent.setup({ delay: null });
     await renderList();
-    await user.type(screen.getByLabelText(/search zombies/i), "ALPHA");
+    await user.type(screen.getByLabelText(/search agents/i), "ALPHA");
     await waitFor(() => expect(screen.queryByText("beta-bot")).toBeNull());
     expect(screen.getByText("alpha-bot")).toBeTruthy();
   });
@@ -78,9 +78,9 @@ describe("ZombiesList component", () => {
   it("search shows empty-match message when nothing matches", async () => {
     const user = userEvent.setup({ delay: null });
     await renderList();
-    await user.type(screen.getByLabelText(/search zombies/i), "zzz-no-match");
+    await user.type(screen.getByLabelText(/search agents/i), "zzz-no-match");
     await waitFor(() =>
-      expect(screen.getByText(/No zombies match/i)).toBeTruthy(),
+      expect(screen.getByText(/No agents match/i)).toBeTruthy(),
     );
   });
 
@@ -141,7 +141,7 @@ describe("ZombiesList component", () => {
     await renderList({ initialCursor: "cursor_1" });
     await user.click(screen.getByRole("button", { name: /load more/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more zombies/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more agents/),
     );
   });
 

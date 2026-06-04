@@ -8,11 +8,11 @@
 
 </div>
 
-**[usezombie](https://usezombie.com)** automates incident investigation. When a deploy fails, a zombie wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
+**[usezombie](https://usezombie.com)** automates incident investigation. When a deploy fails, an agent wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
 
 - **Replayable event logs** — audit every action and decision
 - **Bring your own provider keys** — no vendor lock-in on inference
-- **Runs locally or against production** — same zombie, same evidence
+- **Runs locally or against production** — same agent, same evidence
 
 Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. Open-source runtime, hosted control plane.
 
@@ -25,7 +25,7 @@ bun install -g zombiectl
 zombiectl login
 ```
 
-Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — free to try, no card, under five minutes.
+Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — free to try, no card, under five minutes.
 
 ---
 
@@ -37,7 +37,7 @@ Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on you
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [usezombie.com](https://usezombie.com) |
 | `ui/packages/design-system/` | Shared UI components |
-| `zombiectl/` | CLI — install, manage zombies, tail runs |
+| `zombiectl/` | CLI — install, manage agents, tail runs |
 | `public/openapi/` | OpenAPI spec |
 | `schema/` | Postgres migrations |
 

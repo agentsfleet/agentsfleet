@@ -28,7 +28,7 @@ test.describe("dashboard home", () => {
     // the StatusCard primitive; role=region narrows the FirstInstallCard
     // section and avoids matching its command block label.
     const tiles = page.getByTestId("status-card");
-    const firstInstall = page.getByRole("region", { name: "Install your first zombie" });
+    const firstInstall = page.getByLabel("Install your first agent");
     await expect(tiles.first().or(firstInstall)).toBeVisible({ timeout: 15_000 });
   });
 });

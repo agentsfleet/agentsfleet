@@ -7,7 +7,7 @@ The official Command Line Interface (CLI) for [usezombie](https://usezombie.com)
 [![npm](https://img.shields.io/npm/v/@usezombie/zombiectl?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-Authenticate, manage workspaces, install zombies, tail their events, and operate your usezombie deployment from the terminal.
+Authenticate, manage workspaces, install agents, tail their events, and operate your usezombie deployment from the terminal.
 
 > **Pre-release** — usezombie is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
 
@@ -81,14 +81,14 @@ zombiectl doctor
 
 | Command | Description |
 |---------|-------------|
-| `install --from <path>` | Register a zombie from `<path>` |
-| `list [--cursor C] [--limit N]` | List zombies (paginated) |
-| `status [<zombie_id>]` | Show zombie status |
+| `install --from <path>` | Register an agent from `<path>` |
+| `list [--cursor C] [--limit N]` | List agents (paginated) |
+| `status [<zombie_id>]` | Show agent status |
 | `stop <zombie_id>` | Halt the session (resumable) |
 | `resume <zombie_id>` | Resume from stopped |
 | `kill <zombie_id>` | Mark terminal (irreversible) |
 | `delete <zombie_id>` | Hard-delete (kill first) |
-| `logs <zombie_id>` | Tail zombie activity |
+| `logs <zombie_id>` | Tail agent activity |
 | `events <zombie_id> [opts]` | Page through historical events |
 | `steer <zombie_id> "<msg>"` | Send a message; stream response |
 

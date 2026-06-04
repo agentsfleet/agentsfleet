@@ -73,7 +73,7 @@ test.describe("zombie thread surface", () => {
     const composer = threadCard.getByLabel(COMPOSER_LABEL);
     await expect(composer).toBeVisible();
     const placeholder = composer.getByPlaceholder(
-      /(steer this zombie|zombie is working)/i,
+      /(steer this agent|agent is working)/i,
     );
     await expect(placeholder).toBeVisible();
   });
@@ -151,7 +151,7 @@ test.describe("zombie thread surface", () => {
     await expect(threadCard).toBeVisible({ timeout: 10_000 });
 
     const composer = threadCard.getByLabel(COMPOSER_LABEL);
-    const textarea = composer.getByPlaceholder(/steer this zombie/i);
+    const textarea = composer.getByPlaceholder(/steer this agent/i);
     await expect(textarea).toBeVisible();
     await textarea.fill("acceptance steer probe");
     await composer.getByRole("button", { name: /steer/i }).click();

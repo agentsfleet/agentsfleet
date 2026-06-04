@@ -295,13 +295,13 @@ describe("ZombieThread — composer disabled-while-running", () => {
       { isRunning: true },
     );
     renderThread();
-    expect(screen.getByPlaceholderText(/zombie is working/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/agent is working/i)).toBeTruthy();
   });
 
   it("uses the idle placeholder when not running", () => {
     mockStream([], { isRunning: false });
     renderThread();
-    expect(screen.getByPlaceholderText(/steer this zombie/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/steer this agent/i)).toBeTruthy();
   });
 });
 
@@ -316,7 +316,7 @@ describe("ZombieThread — steer submission", () => {
       data: { event_id: "evt_real_42" },
     });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this zombie/i);
+    const textarea = screen.getByPlaceholderText(/steer this agent/i);
     fireEvent.change(textarea, { target: { value: "deploy the canary" } });
     fireEvent.submit(textarea.closest("form")!);
     await waitFor(() =>
@@ -346,7 +346,7 @@ describe("ZombieThread — steer submission", () => {
       errorCode: "UZ-AUTH-401",
     });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this zombie/i);
+    const textarea = screen.getByPlaceholderText(/steer this agent/i);
     fireEvent.change(textarea, { target: { value: "deploy that fails" } });
     fireEvent.submit(textarea.closest("form")!);
     await waitFor(() =>
@@ -366,7 +366,7 @@ describe("ZombieThread — steer submission", () => {
     mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
     steerZombieActionMock.mockRejectedValueOnce(new Error("RSC transport failed"));
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this zombie/i);
+    const textarea = screen.getByPlaceholderText(/steer this agent/i);
     fireEvent.change(textarea, { target: { value: "offline send" } });
     fireEvent.submit(textarea.closest("form")!);
     await waitFor(() =>
@@ -379,7 +379,7 @@ describe("ZombieThread — steer submission", () => {
     const appendOptimistic = vi.fn();
     mockStream([], { appendOptimistic });
     renderThread();
-    const textarea = screen.getByPlaceholderText(/steer this zombie/i);
+    const textarea = screen.getByPlaceholderText(/steer this agent/i);
     fireEvent.submit(textarea.closest("form")!);
     await new Promise((r) => setTimeout(r, 30));
     expect(steerZombieActionMock).not.toHaveBeenCalled();

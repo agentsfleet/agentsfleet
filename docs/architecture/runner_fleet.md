@@ -86,8 +86,8 @@ Without this fence the design rediscovers three control planes at once (Nomad-li
 
 The pre-cutover runtime ran one `zombied` binary as `serve` (the HTTP API) or `worker` (the orchestration loop), plus a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
 
-1. **The worker was welded to the datastores.** Each per-zombie worker thread opened its own Postgres pool and Redis connections, ran ~15 write patterns on the per-event hot path, and discovered its own work by `XREADGROUP` on `zombie:{id}:events`. It could not run anywhere it could not reach Postgres and Redis directly.
-2. **The connection budget grew with the fleet.** Every per-zombie thread held a dedicated blocking Redis connection; the zombie count was capped by the Redis pool ceiling, not by compute.
+1. **The worker was welded to the datastores.** Each per-agent worker thread opened its own Postgres pool and Redis connections, ran ~15 write patterns on the per-event hot path, and discovered its own work by `XREADGROUP` on `zombie:{id}:events`. It could not run anywhere it could not reach Postgres and Redis directly.
+2. **The connection budget grew with the fleet.** Every per-agent thread held a dedicated blocking Redis connection; the agent count was capped by the Redis pool ceiling, not by compute.
 
 The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**, reaching the platform only over the authenticated `/v1/runners` protocol.
 
@@ -265,7 +265,7 @@ Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a 
 All three are decided by `zombied`, which owns both `core.zombies.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
 
 - **Steer** — a human message. `zombied` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
-- **Pause** — `zombied` sets `status=paused` and stops issuing leases for the zombie. Any in-flight lease runs to completion.
+- **Pause** — `zombied` sets `status=paused` and stops issuing leases for the agent. Any in-flight lease runs to completion.
 - **Kill** — `zombied` sets `status=killed` and marks the in-flight lease revoked. The runner sees the revocation in its next heartbeat reply, kills the sandboxed child, and reports `cancelled`. A late report from a killed runner is rejected by the fencing token.
 
 A dedicated low-latency cancel channel can come later; heartbeat-carried revocation is the S0 mechanism.
@@ -274,11 +274,11 @@ A dedicated low-latency cancel channel can come later; heartbeat-carried revocat
 
 Default is **cold**: every lease forks a fresh sandbox, runs, and tears it down. No pinning, no stale state, no idle cost.
 
-A later, opt-in **warm** mode keeps the sandbox shell alive across leases for the same zombie to skip cold setup. Warm reuses only the sandbox shell — never agent state or config. Two guards make it safe: the lease always carries fresh config + secrets (config is never cached, see below) and the checkpoint is the only carried state; and sticky routing is a *hint*, not ownership — if the warm runner is busy or dead, any eligible runner takes the event, and idle warm children self-evict. A zombie is never stuck waiting for one runner.
+A later, opt-in **warm** mode keeps the sandbox shell alive across leases for the same agent to skip cold setup. Warm reuses only the sandbox shell — never agent state or config. Two guards make it safe: the lease always carries fresh config + secrets (config is never cached, see below) and the checkpoint is the only carried state; and sticky routing is a *hint*, not ownership — if the warm runner is busy or dead, any eligible runner takes the event, and idle warm children self-evict. An agent is never stuck waiting for one runner.
 
 ## Config
 
-A zombie's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.zombies.config_json`. A `PATCH /v1/workspaces/{ws}/zombies/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
+An agent's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.zombies.config_json`. A `PATCH /v1/workspaces/{ws}/zombies/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
 
 `zombied` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `zombie_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
 
@@ -298,9 +298,9 @@ The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting 
 
 | Surface | Before | Now |
 |---|---|---|
-| `zombie:{id}:events` (work stream, group `zombie_workers`) | the per-zombie worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`zombied` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
+| `zombie:{id}:events` (work stream, group `zombie_workers`) | the per-agent worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`zombied` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
 | reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`zombied` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
-| `zombie:control` (control stream) | the watcher consumed `zombie_created` / `zombie_status_changed` / `zombie_config_changed` / `worker_drain_request` to spawn / cancel / reload per-zombie threads | **removed.** There are no per-zombie threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_zombie.ensureZombieConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
+| `zombie:control` (control stream) | the watcher consumed `zombie_created` / `zombie_status_changed` / `zombie_config_changed` / `worker_drain_request` to spawn / cancel / reload per-agent threads | **removed.** There are no per-agent threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_zombie.ensureZombieConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
 | `zombie:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`zombied` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
 
 The reclaim shift is the load-bearing one: moving the processor off-platform means Redis can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
@@ -320,7 +320,7 @@ On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack /
 
 ## Scaling
 
-The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## Observability — runner metrics on `zombied` `/metrics`
 

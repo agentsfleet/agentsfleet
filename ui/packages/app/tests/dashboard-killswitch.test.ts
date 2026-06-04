@@ -145,7 +145,7 @@ describe("KillSwitch component", () => {
     expect(stopZombieMock).not.toHaveBeenCalled();
   });
 
-  it("server action returning empty error string falls back to 'Failed to stop zombie' default", async () => {
+  it("server action returning empty error string falls back to 'Failed to stop agent' default", async () => {
     setZombieStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -156,7 +156,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this zombie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this agent/i),
     );
   });
 
@@ -164,7 +164,7 @@ describe("KillSwitch component", () => {
   // operator-facing sentence reads naturally per action. The Stop case above
   // exercises the Stop verb; the next two pin Resume and Kill so each branch
   // of the static-literal config is hit by patch coverage.
-  it("resume action error path renders 'Couldn't resume this zombie' (WS-G verb literal)", async () => {
+  it("resume action error path renders 'Couldn't resume this agent' (WS-G verb literal)", async () => {
     setZombieStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -175,11 +175,11 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^resume$/i }));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this zombie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this agent/i),
     );
   });
 
-  it("kill action error path renders 'Couldn't kill this zombie' (WS-G verb literal)", async () => {
+  it("kill action error path renders 'Couldn't kill this agent' (WS-G verb literal)", async () => {
     setZombieStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
@@ -190,7 +190,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this zombie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this agent/i),
     );
   });
 

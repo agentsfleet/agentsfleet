@@ -93,7 +93,7 @@ export default function ProviderSelector({
             value={PROVIDER_MODE.platform}
             checked={mode === PROVIDER_MODE.platform}
             label="Platform-managed"
-            description="Zombie credits cover everything. Charged from your tenant balance per event."
+            description="Agent credits cover everything. Charged from your tenant balance per event."
           />
           <ModeRadio
             value={PROVIDER_MODE.self_managed}

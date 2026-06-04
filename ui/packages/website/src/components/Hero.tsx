@@ -105,9 +105,9 @@ export default function Hero() {
         </h1>
 
         <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
-          A long-lived runtime that owns one operational outcome end to end.
-          Wakes on your events. Runs against a durable, replayable log. Posts
-          evidenced answers — never chats.
+          An agent is a long-lived runtime that owns one operational outcome
+          end to end. It wakes on your events, runs against a durable,
+          replayable log, and posts evidenced answers — never chats.
         </p>
 
         <div className="flex flex-col gap-3 max-w-wide">
