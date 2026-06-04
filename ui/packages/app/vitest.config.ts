@@ -41,6 +41,7 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       include: [
         'app/**/*.tsx',
+        'app/**/*.ts',
         'components/analytics/**/*.tsx',
         'components/domain/**/*.tsx',
         'components/layout/**/*.tsx',
@@ -61,10 +62,10 @@ export default defineConfig({
         'tests/**',
       ],
       thresholds: {
-        statements: 97,
-        branches: 97,
-        functions: 97,
-        lines: 97,
+        statements: 99,
+        branches: 99,
+        functions: 99,
+        lines: 99,
       },
     },
   },

@@ -1,20 +1,27 @@
 # Coverage knobs for `bun test --coverage`. Floor pinned per Captain
-# ack: line ≥97%, function ≥96%. The previous 99/99 floor
-# was relaxed when the Effect-TS migration introduced Context.Tag-only
-# .service.ts shapes whose constructors bun cannot exercise, plus
-# pre-existing zombie/* command surface that was deferred to a
-# follow-up coverage spec. coveragePathIgnorePatterns carves out those
-# files; the global floor enforces the rest. Any deviation requires
-# explicit Captain approval and is documented in PR session notes.
+# ack: line ≥99%, function ≥97%.
+#
+# Why the two differ — a measured JSC artefact, not a coverage gap:
+# bun's coverage is JSC-based (not V8) and counts every
+# `class X extends Context.Service<…>()("tag") {}` as a "function" it can
+# never credit. The constructor is synthesised in Effect's base class, so
+# neither `new X()` nor a Layer build maps a hit back to the declaration
+# line — these tag files measure 100% LINES (all real logic runs) yet each
+# reports one uncreditable function. bun 1.3.x has NO line/function ignore
+# (`/* v8 ignore */`, `/* c8 ignore */`, `// istanbul ignore */` are all
+# silently dropped — verified empirically), and c8/v8 cannot attach to JSC.
+# Therefore:
+#   * line ≥99 is the meaningful gate — every behavioural line must execute.
+#   * function ≥97 is a regression gate set just under the artefact ceiling
+#     (every REAL function covered + the phantom Context.Service ctors). A
+#     real function left untested, or a new uncredited service, trips it.
+# Pushing function to 99 would require coverage-gaming (a boilerplate
+# `constructor(){ super() }` plus a `new()` test that asserts nothing) or
+# splitting every tag into an ignored `.service.ts` (the pattern the four
+# services in coveragePathIgnorePatterns below already follow). Captain ack:
+# keep the honest 99/97 gate — no gaming, no architecture change for a number.
 # Enforced by scripts/enforce-coverage.mjs (bun 1.3.x parses but does
 # not enforce the bunfig threshold itself).
-#
-# Known gotcha: bun's per-function coverage counts synthesized fns it
-# cannot easily exercise — Context.Tag class constructors (Layer.succeed
-# registers the shape, never `new`'s the class) and some
-# Data.TaggedError `message` getters that don't surface in the FN table
-# even when asserted. Tests must instantiate the tag classes and call
-# `.message` on every variant explicitly to satisfy the 99% floor.
 #
 # The acceptance suite (`test/acceptance/*.spec.js`) runs under the
 # same `bun:test` runtime as the rest of the suite — Captain
@@ -38,7 +45,7 @@
 # PostHog flush and time out at 5s when the runner is offline.
 preload = ["./test/setup.ts"]
 coverage = true
-coverageThreshold = { line = 0.97, function = 0.96 }
+coverageThreshold = { line = 0.99, function = 0.97 }
 coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"
 coverageSkipTestFiles = true

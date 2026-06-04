@@ -113,6 +113,52 @@ describe("HttpClient", () => {
       expect(fail?._tag).toBe("NetworkError");
     }
   });
+  test("NetworkError (generic branch) when fetch throws a non-fetch-failed error", async () => {
+    // A plain Error that is neither an ApiError nor a TypeError carrying
+    // "fetch failed" falls through to the final generic NetworkError
+    // branch (http-client.ts:78-82), embedding the raw message.
+    setFetch(((async () => {
+      throw new Error("socket hang up");
+    }) as unknown) as unknown as typeof globalThis.fetch);
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const http = yield* HttpClient;
+          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+        }),
+        SUITE_LAYER("https://api.test.local"),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(fail?._tag).toBe("NetworkError");
+      expect(fail?.message).toContain("socket hang up");
+    }
+  });
+  test("NetworkError (generic branch) coerces a non-Error throw via String()", async () => {
+    // Hits the `String(cause)` arm of the generic branch when the thrown
+    // value isn't an Error instance.
+    setFetch(((async () => {
+      // oxlint-disable-next-line no-throw-literal -- fixture: non-Error throw exercises the String(cause) arm
+      throw "plain-string-failure";
+    }) as unknown) as unknown as typeof globalThis.fetch);
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const http = yield* HttpClient;
+          return yield* http.request({ path: "/v1/x", retry: { maxAttempts: 1 } });
+        }),
+        SUITE_LAYER("https://api.test.local"),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(fail?._tag).toBe("NetworkError");
+      expect(fail?.message).toContain("plain-string-failure");
+    }
+  });
   test("buildHeaders includes Bearer when token provided", async () => {
     const captured: { auth?: string } = {};
     setFetch((async (_url: unknown, init: RequestInit | undefined) => {
