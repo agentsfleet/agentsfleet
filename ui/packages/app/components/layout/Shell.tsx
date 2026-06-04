@@ -11,6 +11,8 @@ import {
   SkullIcon,
   KeyRoundIcon,
   CheckCircle2Icon,
+  CpuIcon,
+  CreditCardIcon,
   ServerIcon,
   MenuIcon,
 } from "lucide-react";
@@ -30,25 +32,73 @@ import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
 
-const NAV = [
+type NavEntry = {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ size?: number }>;
+  external?: boolean;
+};
+
+const NAV_SURFACE = "app_sidebar";
+
+// Dashboard sits above the labelled groups as a headerless overview entry.
+const TOP_NAV: NavEntry[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
-  { label: "Zombies", href: "/zombies", icon: SkullIcon },
-  { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
+];
+
+// The live work — what the agents do.
+const OPERATIONS_NAV: NavEntry[] = [
+  { label: "Agents", href: "/zombies", icon: SkullIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-const BOTTOM_NAV = [
-  { label: "Docs", href: "https://docs.usezombie.com", icon: BookOpenIcon, external: true },
-  { label: "Settings", href: "/settings", icon: SettingsIcon },
+// What the agents are wired to — secrets, the model brain, the execution fleet.
+const CONFIGURATION_NAV: NavEntry[] = [
+  { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
+  { label: "Model", href: "/settings/models", icon: CpuIcon },
 ];
 
-// Platform-admin-only surfaces — rendered as a separate nav group, and only
-// when the session carries the platform_admin claim (the backend independently
-// gates the routes, so this is discoverability, not the security boundary).
-const PLATFORM_NAV = [
+// Platform-admin-only — appended to the Configuration group only when the
+// session carries the platform_admin claim (the backend independently gates
+// the routes, so this is discoverability, not the security boundary).
+const PLATFORM_NAV: NavEntry[] = [
   { label: "Runners", href: "/admin/runners", icon: ServerIcon },
 ];
+
+const ORGANIZATION_NAV: NavEntry[] = [
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Billing", href: "/settings/billing", icon: CreditCardIcon },
+];
+
+const BOTTOM_NAV: NavEntry[] = [
+  { label: "Docs", href: "https://docs.usezombie.com", icon: BookOpenIcon, external: true },
+];
+
+// Every internal destination, longest first so a nested route (e.g.
+// /settings/models) resolves to its own item rather than its parent Settings.
+const INTERNAL_HREFS: string[] = [
+  ...TOP_NAV,
+  ...OPERATIONS_NAV,
+  ...CONFIGURATION_NAV,
+  ...PLATFORM_NAV,
+  ...ORGANIZATION_NAV,
+].map((entry) => entry.href);
+
+function resolveActiveHref(pathname: string): string {
+  let active = "";
+  for (const href of INTERNAL_HREFS) {
+    const hit =
+      href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+    if (hit && href.length > active.length) active = href;
+  }
+  return active;
+}
+
+function navSource(href: string, label: string, external?: boolean): string {
+  if (external) return `${NAV_SURFACE}_${label.toLowerCase()}`;
+  return `${NAV_SURFACE}_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`;
+}
 
 type ShellProps = {
   children: React.ReactNode;
@@ -64,9 +114,8 @@ export default function Shell({
   isPlatformAdmin = false,
 }: ShellProps) {
   const pathname = usePathname();
-
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const activeHref = resolveActiveHref(pathname);
+  const isActive = (href: string) => href === activeHref;
 
   return (
     <div className="grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]">
@@ -141,7 +190,13 @@ export default function Shell({
   );
 }
 
-function MobileNav({ isActive, isPlatformAdmin }: { isActive: (href: string) => boolean; isPlatformAdmin: boolean }) {
+function MobileNav({
+  isActive,
+  isPlatformAdmin,
+}: {
+  isActive: (href: string) => boolean;
+  isPlatformAdmin: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -171,74 +226,65 @@ type NavProps = {
 };
 
 function SidebarNav({ isActive, onNavigate, isPlatformAdmin }: NavProps) {
+  const configItems = isPlatformAdmin
+    ? [...CONFIGURATION_NAV, ...PLATFORM_NAV]
+    : CONFIGURATION_NAV;
   return (
     <div className="flex flex-col h-full">
-      {isPlatformAdmin ? (
-        <NavGroup label="Platform">
-          {PLATFORM_NAV.map(({ label, href, icon: Icon }) => (
-            <NavItem
-              key={href}
-              href={href}
-              label={label}
-              Icon={Icon}
-              active={isActive(href)}
-              onClick={onNavigate}
-            />
-          ))}
-        </NavGroup>
-      ) : null}
-      <NavGroup label="Operations">
-        {NAV.map(({ label, href, icon: Icon }) => (
-          <NavItem
-            key={href}
-            href={href}
-            label={label}
-            Icon={Icon}
-            active={isActive(href)}
-            onClick={() => {
-              onNavigate();
-              trackNavigationClicked({
-                source: `app_sidebar_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`,
-                surface: "app_sidebar",
-                target: href,
-              });
-            }}
-          />
-        ))}
-      </NavGroup>
-
+      <NavSection items={TOP_NAV} isActive={isActive} onNavigate={onNavigate} />
+      <NavSection label="Operations" items={OPERATIONS_NAV} isActive={isActive} onNavigate={onNavigate} />
+      <NavSection label="Configuration" items={configItems} isActive={isActive} onNavigate={onNavigate} />
+      <NavSection label="Organization" items={ORGANIZATION_NAV} isActive={isActive} onNavigate={onNavigate} />
       <div className="mt-auto">
-        <NavGroup label="More">
-          {BOTTOM_NAV.map(({ label, href, icon: Icon, external }) => (
-            <NavItem
-              key={href}
-              href={href}
-              label={label}
-              Icon={Icon}
-              external={external}
-              active={external ? false : isActive(href)}
-              onClick={() => {
-                onNavigate();
-                trackNavigationClicked({
-                  source: `app_sidebar_more_${label.toLowerCase().replace(/\s+/g, "_")}`,
-                  surface: "app_sidebar_more",
-                  target: href,
-                });
-              }}
-            />
-          ))}
-        </NavGroup>
+        <NavSection items={BOTTOM_NAV} isActive={isActive} onNavigate={onNavigate} />
       </div>
     </div>
   );
 }
 
-function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function NavSection({
+  label,
+  items,
+  isActive,
+  onNavigate,
+}: {
+  label?: string;
+  items: NavEntry[];
+  isActive: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  return (
+    <NavGroup label={label}>
+      {items.map(({ label: itemLabel, href, icon: Icon, external }) => (
+        <NavItem
+          key={href}
+          href={href}
+          label={itemLabel}
+          Icon={Icon}
+          external={external}
+          active={external ? false : isActive(href)}
+          onClick={() => {
+            onNavigate();
+            trackNavigationClicked({
+              source: navSource(href, itemLabel, external),
+              surface: NAV_SURFACE,
+              target: href,
+            });
+          }}
+        />
+      ))}
+    </NavGroup>
+  );
+}
+
+function NavGroup({ label, children }: { label?: string; children: React.ReactNode }) {
   return (
     <div className="px-3 mb-6">
-      <div className="font-mono text-label uppercase tracking-label text-muted-foreground px-2 mb-2">
-        {label}
-      </div>
+      {label ? (
+        <div className="font-mono text-label uppercase tracking-label text-muted-foreground px-2 mb-2">
+          {label}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-0.5">{children}</div>
     </div>
   );

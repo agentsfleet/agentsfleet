@@ -29,7 +29,7 @@ vi.mock("@/lib/api/zombies", async () => (await import("./helpers/dashboard-app-
 vi.mock("@/app/(dashboard)/zombies/actions", async () => (await import("./helpers/dashboard-app-mocks")).zombieActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
-vi.mock("@/app/(dashboard)/settings/provider/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
+vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
@@ -143,9 +143,9 @@ describe("placeholder pages", () => {
       credential_ref: null,
     });
     listCredentialsMock.mockResolvedValue({ credentials: [] });
-    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("LLM Provider");
+    expect(m).toContain("Model");
     expect(m).toContain(PROVIDER_MODE.platform);
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
@@ -153,14 +153,14 @@ describe("placeholder pages", () => {
   it("provider settings page renders empty-workspace empty-state when no workspace", async () => {
     mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("No workspace yet");
   });
 
   it("provider settings page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
@@ -169,10 +169,10 @@ describe("placeholder pages", () => {
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockRejectedValue(new Error("503"));
     listCredentialsMock.mockResolvedValue({ credentials: [] });
-    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     // The page swallows the error to keep rendering.
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("LLM Provider");
+    expect(m).toContain("Model");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
