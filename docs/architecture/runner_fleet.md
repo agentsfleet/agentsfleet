@@ -270,8 +270,8 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches the lease zombie's prior memory and seeds the child's `:memory:` store at run start |
-| `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory; `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches the **live lease's zombie's full** prior memory and seeds the child's `:memory:` store at run start. No lease id in the path or query — the loop is strictly serial (one live lease), so the server resolves the zombie from the runner's live lease |
+| `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
         ┌──────────────── CONTROL PLANE (zombied) ─────────────────┐
