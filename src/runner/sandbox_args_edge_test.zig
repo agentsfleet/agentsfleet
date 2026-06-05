@@ -99,8 +99,8 @@ test "should fail with BwrapUnavailable when required tier has no bwrap on Linux
     // Only meaningful when this host genuinely lacks bwrap in both standard
     // paths — otherwise the wrapper builds and there is nothing to fail.
     const have_bwrap = blk: {
-        std.fs.accessAbsolute("/usr/bin/bwrap", .{}) catch {
-            std.fs.accessAbsolute("/usr/local/bin/bwrap", .{}) catch break :blk false;
+        std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/bin/bwrap", .{}) catch {
+            std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/local/bin/bwrap", .{}) catch break :blk false;
             break :blk true;
         };
         break :blk true;

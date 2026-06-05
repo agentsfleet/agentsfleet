@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const logging = @import("log");
+const common = @import("common");
 const builtin = @import("builtin");
 const types = @import("types.zig");
 
@@ -248,7 +249,7 @@ pub const CgroupScope = struct {
 /// Check if cgroups v2 is available on the current system.
 pub fn isAvailable() bool {
     if (builtin.os.tag != .linux) return false;
-    std.fs.accessAbsolute("/sys/fs/cgroup/cgroup.controllers", .{}) catch return false;
+    std.Io.Dir.accessAbsolute(common.globalIo(), "/sys/fs/cgroup/cgroup.controllers", .{}) catch return false;
     return true;
 }
 

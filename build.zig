@@ -60,7 +60,10 @@ pub fn build(b: *std.Build) void {
     //   macOS host + macOS target: local dev (Homebrew OpenSSL, native only)
     // Skip for cross-arch (e.g. x86_64 host → aarch64 target: libssl-dev
     // provides x86_64 libs, can't link into aarch64 binary) and cross-OS.
-    const enable_openssl = (host_is_linux and target_os == .linux and same_arch) or (host_is_darwin and target_os == .macos);
+    // -Dopenssl overrides auto-detection: the memleak CI image lacks libc6-dev, so it
+    // passes -Dopenssl=false to select pg's stub and skip the aro translate-c of openssl.h.
+    const openssl_override = b.option(bool, "openssl", "Force pg OpenSSL/TLS on/off (default: host/target auto-detect)");
+    const enable_openssl = openssl_override orelse ((host_is_linux and target_os == .linux and same_arch) or (host_is_darwin and target_os == .macos));
 
     const pg_dep = if (enable_openssl) blk: {
         // Homebrew installs to /opt/homebrew on Apple Silicon, /usr/local on Intel.

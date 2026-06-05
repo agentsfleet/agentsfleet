@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const logging = @import("log");
+const common = @import("common");
 const builtin = @import("builtin");
 
 const policy_config = @import("runner_network_policy.zig");
@@ -79,8 +80,8 @@ pub fn appendBwrapNetworkArgs(
 /// Check if network namespace isolation is available on this host.
 fn isNetworkNamespaceAvailable() bool {
     if (builtin.os.tag != .linux) return false;
-    std.fs.accessAbsolute("/usr/bin/bwrap", .{}) catch {
-        std.fs.accessAbsolute("/usr/local/bin/bwrap", .{}) catch return false;
+    std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/bin/bwrap", .{}) catch {
+        std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/local/bin/bwrap", .{}) catch return false;
     };
     return true;
 }
