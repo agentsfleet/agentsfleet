@@ -35,7 +35,7 @@ fn renderStatus(buf: []u8, a: output.Audience, s: protocol.SelfResponse) []const
     } catch "\n";
 }
 
-const ERR_NO_TOKEN = output.CliError{ .code = "RUNNER_TOKEN_UNSET", .message = "this host has no runner token", .suggestion = "set ZOMBIE_RUNNER_TOKEN — have an operator run `zombie-runner register` first" };
+const ERR_NO_TOKEN = output.CliError{ .code = "RUNNER_TOKEN_UNSET", .message = "this host has no runner token", .suggestion = "set ZOMBIE_RUNNER_TOKEN — ask a platform admin to mint one from the dashboard" };
 
 test "renderStatus reports registration + status in both audiences" {
     var buf: [384]u8 = undefined;

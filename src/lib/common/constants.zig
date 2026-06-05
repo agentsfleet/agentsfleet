@@ -33,12 +33,15 @@ pub const RENEWAL_TICK_MS: i64 = 5_000;
 /// still terminates regardless of progress frames.
 pub const MAX_RUNTIME_MS: i64 = 43_200_000;
 
-// NOTE: the runner-lapse threshold (formerly `HEARTBEAT_LAPSE_MS`) is
-// intentionally NOT defined here. Its only consumer — the lapse-reassignment
-// scan over `last_seen_at` — is a later workstream, and the correct value
-// depends on that scan's design (notably whether actively-renewing leases are
-// in scope). It is reintroduced with its consumer so the threshold is derived
-// from the real detection model rather than guessed ahead of it.
+/// Liveness lapse threshold: a runner whose `last_seen_at` is older than this is
+/// derived `offline` by the fleet read. Reintroduced here with its first
+/// consumer (the derived-liveness display) now that the detection model is
+/// settled: an actively-renewing runner is `busy` (the live-lease check runs
+/// BEFORE this threshold), so a long execution that stops heartbeating is never
+/// falsely offline — exactly the concern that kept this undefined. Three lease
+/// TTLs of silence is unambiguously dead for an idle runner (which heartbeats
+/// every lease cycle). The lapse-reassignment scan reuses/refines this value.
+pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS * 3;
 
 /// Backoff hint handed to a runner when there is no work to lease. The lease
 /// verb is always 200; this rides `retry_after_ms` (no 204).

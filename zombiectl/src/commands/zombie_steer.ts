@@ -203,7 +203,7 @@ const pollEventTerminal = (
     const http = yield* HttpClient;
     const sinceParam = eventIdToSince(eventId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
-    while (Date.now() < deadline && !signal?.aborted) {
+    while (Date.now() < deadline && !signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- clock + external AbortSignal terminate it
       const path = `${wsZombieEventsPath(wsId, zombieId)}?limit=${FALLBACK_POLL_LIMIT}${sinceParam ? `&since=${encodeURIComponent(sinceParam)}` : ""}`;
       const res = yield* http.request<EventsResponse>({ path, token }).pipe(
         Effect.orElseSucceed((): EventsResponse => ({ items: [] })),

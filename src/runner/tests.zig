@@ -24,7 +24,6 @@ test {
     _ = @import("cmd/output.zig");
     _ = @import("cmd/registry.zig");
     _ = @import("cmd/help.zig");
-    _ = @import("cmd/register.zig");
     _ = @import("cmd/status.zig");
     _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");

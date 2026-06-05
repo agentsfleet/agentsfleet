@@ -2,12 +2,12 @@ import { ApiError } from "./errors";
 import { request } from "./client";
 
 /**
- * HTTP retry wrapper mirroring `zombiectl/src/lib/http.js`'s
+ * HTTP retry wrapper mirroring `zombiectl/src/lib/http-retry.ts`'s
  * `apiRequestWithRetry`. Same retryable-status set, same backoff
- * math, same Retry-After honoring, same `onAttempt`/`onRetry` hook
- * surface — so dashboard + CLI behaviour stays consistent for the
- * operator. Bounds + defaults are pinned identical to keep one
- * mental model.
+ * math, same Retry-After honoring, same server-5xx idempotency gate,
+ * same `onAttempt`/`onRetry` hook surface — so dashboard + CLI
+ * behaviour stays consistent for the operator. Bounds + defaults are
+ * pinned identical to keep one mental model.
  */
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -21,8 +21,7 @@ export type RetryReason =
   | "timeout"
   | "429"
   | "5xx"
-  | "network"
-  | "server_marked_retryable";
+  | "network";
 
 export type AttemptInfo = {
   attempt: number;
@@ -54,12 +53,9 @@ export type RetryOptions = {
 export function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
     if (err.code === "TIMEOUT") return "timeout";
-    if (err.status && RETRYABLE_STATUSES.has(err.status)) {
+    if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       if (err.status === 429) return "429";
       return "5xx";
-    }
-    if (typeof err.code === "string" && /^UZ-[A-Z0-9]+-RETRY/.test(err.code)) {
-      return "server_marked_retryable";
     }
     return null;
   }
@@ -82,6 +78,17 @@ export function classifyRetryable(err: unknown): RetryReason | null {
     }
   }
   return null;
+}
+
+/**
+ * HTTP methods safe to replay. A genuine server 5xx (>=500) may have been
+ * processed upstream before the gateway error surfaced, so replaying a
+ * non-idempotent method (POST/PATCH) risks a duplicate mutation. Mirrors the
+ * Supabase CLI's `isRetryableResponse` idempotency gate.
+ */
+export function isIdempotentMethod(method: string): boolean {
+  const m = method.toUpperCase();
+  return m === "GET" || m === "PUT" || m === "DELETE" || m === "HEAD";
 }
 
 export function backoffDelay({
@@ -118,6 +125,86 @@ function isNoRetryEnv(): boolean {
   return v === "1" || v === "true";
 }
 
+type ResolvedRetry = {
+  maxAttempts: number;
+  baseDelayMs: number;
+  capDelayMs: number;
+  sleep: (ms: number) => Promise<void>;
+  randomFn: () => number;
+  onAttempt?: (info: AttemptInfo) => void;
+  onRetry?: (info: RetryInfo) => void;
+};
+
+function resolveRetryConfig(options: RetryOptions): ResolvedRetry {
+  const maxAttemptsRaw = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  if (
+    !Number.isInteger(maxAttemptsRaw) ||
+    maxAttemptsRaw < 1 ||
+    maxAttemptsRaw > MAX_ATTEMPTS_HARD_CAP
+  ) {
+    throw new ApiError(
+      `retry.maxAttempts must be an integer in 1..${MAX_ATTEMPTS_HARD_CAP}`,
+      0,
+      "CONFIG_INVALID",
+    );
+  }
+  return {
+    maxAttempts: isNoRetryEnv() ? 1 : maxAttemptsRaw,
+    baseDelayMs: options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
+    capDelayMs: options.capDelayMs ?? DEFAULT_CAP_DELAY_MS,
+    sleep: options.sleepImpl ?? defaultSleep,
+    randomFn: options.randomFn ?? Math.random,
+    onAttempt: options.onAttempt,
+    onRetry: options.onRetry,
+  };
+}
+
+/** Terminal `onAttempt` telemetry for a finished attempt — success (status
+ * 200) or the failing status on the last try. */
+function emitTerminalAttempt(
+  onAttempt: ((info: AttemptInfo) => void) | undefined,
+  attempt: number,
+  status: number | undefined,
+  durationMs: number,
+): void {
+  if (onAttempt) {
+    onAttempt({ attempt, status, durationMs, retryCount: attempt - 1, terminal: true });
+  }
+}
+
+type AttemptContext = {
+  attempt: number;
+  status: number | undefined;
+  durationMs: number;
+  method: string;
+};
+
+/** Decides whether a failed attempt retries. Returns the backoff delay (and
+ * fires `onRetry`) when it should, else null. The server-5xx idempotency gate
+ * blocks replay of non-idempotent methods. */
+function planRetry(
+  err: unknown,
+  cfg: ResolvedRetry,
+  ctx: AttemptContext,
+): { delayMs: number } | null {
+  const reason = classifyRetryable(err);
+  const isServer5xx = ctx.status !== undefined && ctx.status >= 500;
+  const unsafeReplay = reason === "5xx" && isServer5xx && !isIdempotentMethod(ctx.method);
+  if (reason === null || unsafeReplay || ctx.attempt >= cfg.maxAttempts) return null;
+  if (cfg.onRetry) {
+    cfg.onRetry({ attempt: ctx.attempt, status: ctx.status, durationMs: ctx.durationMs, reason });
+  }
+  const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
+  const delayMs = backoffDelay({
+    attempt: ctx.attempt,
+    baseDelayMs: cfg.baseDelayMs,
+    capDelayMs: cfg.capDelayMs,
+    retryAfterMs,
+    randomFn: cfg.randomFn,
+  });
+  return { delayMs };
+}
+
 /**
  * Wraps `request<T>` with the CLI-parity retry policy. On success the
  * unwrapped body is returned exactly as `request<T>` returns it. On
@@ -130,78 +217,31 @@ export async function requestWithRetry<T>(
   token: string,
   options: RetryOptions = {},
 ): Promise<T> {
-  const maxAttemptsRaw = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  const baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
-  const capDelayMs = options.capDelayMs ?? DEFAULT_CAP_DELAY_MS;
-  if (
-    !Number.isInteger(maxAttemptsRaw) ||
-    maxAttemptsRaw < 1 ||
-    maxAttemptsRaw > MAX_ATTEMPTS_HARD_CAP
-  ) {
-    throw new ApiError(
-      `retry.maxAttempts must be an integer in 1..${MAX_ATTEMPTS_HARD_CAP}`,
-      0,
-      "CONFIG_INVALID",
-    );
-  }
-  const maxAttempts = isNoRetryEnv() ? 1 : maxAttemptsRaw;
-  const sleep = options.sleepImpl ?? defaultSleep;
-  const randomFn = options.randomFn ?? Math.random;
-  const onAttempt = options.onAttempt;
-  const onRetry = options.onRetry;
-
+  const cfg = resolveRetryConfig(options);
+  const method = init.method ?? "GET";
+  // `planRetry` owns the ceiling (`attempt < maxAttempts`); on the final
+  // attempt it returns null, so the loop always exits via return (success)
+  // or throw (failure) — no normal fall-through after the loop.
   let attempt = 0;
-  let lastErr: unknown = null;
-  while (attempt < maxAttempts) {
+  while (true) {
     attempt += 1;
     const startedAt = Date.now();
     try {
       const result = await request<T>(path, init, token);
-      const durationMs = Date.now() - startedAt;
-      if (onAttempt) {
-        onAttempt({
-          attempt,
-          status: 200,
-          durationMs,
-          retryCount: attempt - 1,
-          terminal: true,
-        });
-      }
+      emitTerminalAttempt(cfg.onAttempt, attempt, 200, Date.now() - startedAt);
       return result;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
-      const reason = classifyRetryable(err);
       const status = err instanceof ApiError ? err.status : undefined;
-      const willRetry = reason !== null && attempt < maxAttempts;
-      if (willRetry) {
-        if (onRetry) {
-          onRetry({ attempt, status, durationMs, reason: reason as RetryReason });
-        }
-        const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
-        const delay = backoffDelay({
-          attempt,
-          baseDelayMs,
-          capDelayMs,
-          retryAfterMs,
-          randomFn,
-        });
-        await sleep(delay);
-        lastErr = err;
+      const step = planRetry(err, cfg, { attempt, status, durationMs, method });
+      if (step) {
+        await cfg.sleep(step.delayMs);
         continue;
       }
-      if (onAttempt) {
-        onAttempt({
-          attempt,
-          status,
-          durationMs,
-          retryCount: attempt - 1,
-          terminal: true,
-        });
-      }
+      emitTerminalAttempt(cfg.onAttempt, attempt, status, durationMs);
       throw err;
     }
   }
-  throw lastErr ?? new ApiError("requestWithRetry exhausted", 0, "INTERNAL");
 }
 
 export const RETRY_DEFAULTS = {

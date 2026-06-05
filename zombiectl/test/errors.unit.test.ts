@@ -48,6 +48,10 @@ describe("CliError variants", () => {
     expect(err._tag).toBe("ServerError");
     expect(err.status).toBe(401);
     expect(err.requestId).toBe("req-1");
+    // Hits ServerError's `override get message()` getter (errors/index.ts
+    // lines 48-49) — the existing assertions only read scalar fields.
+    expect(err.message).toContain(detail);
+    expect(err.message).toContain("Suggestion: " + suggestion);
   });
   test("ValidationError shape", () => {
     const err = new ValidationError({ detail, suggestion });
@@ -57,10 +61,16 @@ describe("CliError variants", () => {
   test("ConfigError shape", () => {
     const err = new ConfigError({ detail, suggestion });
     expect(err._tag).toBe("ConfigError");
+    // Hits ConfigError's message getter (errors/index.ts lines 66-67).
+    expect(err.message).toContain(detail);
+    expect(err.message).toContain("Suggestion: " + suggestion);
   });
   test("UnexpectedError shape", () => {
     const err = new UnexpectedError({ detail, suggestion });
     expect(err._tag).toBe("UnexpectedError");
+    // Hits UnexpectedError's message getter (errors/index.ts lines 75-76).
+    expect(err.message).toContain(detail);
+    expect(err.message).toContain("Suggestion: " + suggestion);
   });
 });
 

@@ -104,6 +104,7 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
   const ts = isFinite(created.getTime()) ? created.toISOString() : null;
   const variant = STATUS_VARIANT[row.status] ?? "default";
   const preview = previewText(row.response_text);
+  const fullText = row.response_text ?? undefined;
 
   return (
     <Card asChild className="p-4">
@@ -129,7 +130,7 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
         </CardHeader>
         <CardContent className="p-0">
           {preview ? (
-            <p className="truncate text-sm text-muted-foreground" title={row.response_text ?? undefined}>
+            <p className="truncate text-sm text-muted-foreground" title={fullText}>
               {preview}
             </p>
           ) : row.failure_label ? (

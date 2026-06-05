@@ -6,7 +6,12 @@
 import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
 import { Readable } from "node:stream";
-import { makeLive } from "../src/services/stdin.ts";
+import {
+  makeLive,
+  stdinLayer,
+  stdinFromStreamLayer,
+  Stdin,
+} from "../src/services/stdin.ts";
 
 const readVia = (stream: Readable): Promise<string> =>
   Effect.runPromise(makeLive(stream).readToEnd);
@@ -53,5 +58,43 @@ describe("Stdin.readToEnd (makeLive)", () => {
 
   test("isTTY reflects the underlying stream", () => {
     expect(makeLive(Readable.from([Buffer.from("x")])).isTTY).toBe(false);
+  });
+});
+
+// The two Layer factories (stdinLayer, stdinFromStreamLayer) are wired
+// into runCli in production but bypassed by the login/auth tests, which
+// inject Stdin via Layer.succeed stubs. Resolve each through Effect so
+// the layer-construction closures are counted.
+describe("Stdin layer factories", () => {
+  test("stdinFromStreamLayer threads a custom stream's drain + isTTY", async () => {
+    const stream = Readable.from([Buffer.from("zmb_t_piped\n")]);
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const s = yield* Stdin;
+          const text = yield* s.readToEnd;
+          return { text, isTTY: s.isTTY };
+        }),
+        stdinFromStreamLayer(stream),
+      ),
+    );
+    expect(result.text).toBe("zmb_t_piped\n");
+    expect(result.isTTY).toBe(false);
+  });
+
+  test("stdinLayer (process.stdin default) resolves an isTTY boolean", async () => {
+    // Only read isTTY — draining the real process.stdin would block the
+    // runner. Constructing + resolving the layer is what counts the
+    // makeLive() default-argument closure.
+    const isTTY = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const s = yield* Stdin;
+          return s.isTTY;
+        }),
+        stdinLayer,
+      ),
+    );
+    expect(typeof isTTY).toBe("boolean");
   });
 });

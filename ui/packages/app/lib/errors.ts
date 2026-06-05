@@ -87,6 +87,10 @@ const CODE_MAP = {
     title: "You need operator access for that",
     body: "Ask a tenant operator or admin to manage API keys.",
   },
+  "UZ-AUTH-021": {
+    title: "You need platform-admin access for that",
+    body: "Only a usezombie platform admin can enroll or view runners.",
+  },
   "UZ-REQ-001": {
     title: "That request wasn't valid",
     body: "We reset to the defaults — try again.",
@@ -125,6 +129,7 @@ export const CURATED_ERROR_CODES = Object.keys(CODE_MAP) as ReadonlyArray<keyof 
  */
 export const ERROR_CODE = {
   AUTH_401: "UZ-AUTH-401",
+  PLATFORM_ADMIN_REQUIRED: "UZ-AUTH-021",
 } as const satisfies Record<string, keyof typeof CODE_MAP>;
 
 export function presentError(input: ErrorInput): ErrorPresentation {

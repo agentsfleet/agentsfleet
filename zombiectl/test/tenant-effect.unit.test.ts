@@ -266,6 +266,34 @@ describe("tenantProviderAddEffectFromArgs", () => {
     });
   });
 
+  test("--json mode prints raw response and skips tip prose", async () => {
+    const rec = makeRecorder();
+    const payload = {
+      mode: PROVIDER_MODE.self_managed,
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      credential_ref: "fw-key",
+    };
+    const program = tenantProviderAddEffectFromArgs("fw-key", undefined).pipe(
+      Effect.provide(configLayer({ jsonMode: true })),
+      Effect.provide(credentialsLayer()),
+      Effect.provide(
+        httpClientLayer(
+          () => Effect.succeed(payload) as Effect.Effect<unknown, ServerError>,
+          rec,
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+    const exit = await runWith(program);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout[0]).toBe(JSON.stringify(payload));
+    // The success/tip prose is text-mode only; --json short-circuits before it.
+    expect(rec.stdout.some((line) => /Tip: run a test event/.test(line))).toBe(
+      false,
+    );
+  });
+
   test("missing --credential fails ValidationError without making a request", async () => {
     const rec = makeRecorder();
     const program = tenantProviderAddEffectFromArgs(undefined, undefined).pipe(

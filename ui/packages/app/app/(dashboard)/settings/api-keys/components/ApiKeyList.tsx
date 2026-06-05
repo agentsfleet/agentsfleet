@@ -58,8 +58,8 @@ export default function ApiKeyList({ initial }: { initial: ApiKeyListResponse })
   // invalid sort/page (UZ-REQ-001) resets to the defaults rather than blanking.
   // `retried` guards the reset: if the backend rejects even the defaults
   // (contract drift), self-calling again would loop forever — reset at most once.
-  function loadPage(next: { page?: number; sort?: ApiKeySort }, retried = false) {
-    const nextPage = next.page ?? page;
+  function loadPage(next: { page: number; sort?: ApiKeySort }, retried = false) {
+    const nextPage = next.page;
     const nextSort = next.sort ?? sort;
     startTransition(async () => {
       const r = await listApiKeysAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });

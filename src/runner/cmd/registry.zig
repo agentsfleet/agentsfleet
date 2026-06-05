@@ -8,11 +8,10 @@
 const std = @import("std");
 const args = @import("args.zig");
 const help = @import("help.zig");
-const register = @import("register.zig");
 const status = @import("status.zig");
 const doctor = @import("doctor.zig");
 
-pub const Command = enum { register, status, doctor };
+pub const Command = enum { status, doctor };
 
 const HandlerFn = *const fn (std.mem.Allocator) u8;
 const Spec = struct { handler: HandlerFn, summary: []const u8 };
@@ -21,7 +20,6 @@ const Spec = struct { handler: HandlerFn, summary: []const u8 };
 /// stays ≤80 columns (the help golden enforces it).
 fn specFor(cmd: Command) Spec {
     return switch (cmd) {
-        .register => .{ .handler = register.run, .summary = "register this host (platform-admin); writes its zrn_ token" },
         .status => .{ .handler = status.run, .summary = "show registration + fleet directive" },
         .doctor => .{ .handler = doctor.run, .summary = "preflight env + control-plane reachability" },
     };
@@ -54,4 +52,12 @@ test "every Command has a non-empty summary (no help drift)" {
 test "dispatch resolves --help and rejects an unknown command non-zero" {
     // --help is exit 0; an unknown token is exit 2 (writes to stderr).
     try std.testing.expectEqual(@as(u8, 2), dispatch(std.testing.allocator, "bogus-cmd"));
+}
+
+test "cli rejects the removed register subcommand with unknown-command exit" {
+    // `register` was retired (enrollment moved to the dashboard mint): it now
+    // resolves to no Command, so dispatch falls through to unknown-command help
+    // on stderr with the non-zero exit — never a live action.
+    try std.testing.expect(std.meta.stringToEnum(Command, "register") == null);
+    try std.testing.expectEqual(@as(u8, 2), dispatch(std.testing.allocator, "register"));
 }
