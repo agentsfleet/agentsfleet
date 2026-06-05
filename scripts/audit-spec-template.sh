@@ -1,1 +1,0 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-spec-template.sh
