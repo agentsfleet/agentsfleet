@@ -24,7 +24,7 @@ const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
-const boot_secrets = @import("serve_boot_secrets.zig");
+const env_resolve = @import("../config/env_resolve.zig");
 const clerk_backend = @import("../auth/clerk_backend.zig");
 
 const log = logging.scoped(.zombied);
@@ -51,9 +51,8 @@ fn defaultStopServer() void {
 /// Absent env → default; present-but-malformed → fail loud (env hygiene
 /// matches DATABASE_URL / REDIS_URL validation upstream).
 fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u32 {
-    const raw = (common.env.owned(env_map, alloc, queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV) catch {
+    const raw = env_resolve.config(env_map, alloc, queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV) orelse
         return queue_redis.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
-    }) orelse return queue_redis.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
     defer alloc.free(raw);
     return queue_redis.parseRequestTimeoutMs(raw) catch {
         log.err(S_STARTUP_ENV_CHECK_FAILED, .{
@@ -216,11 +215,11 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
     // middleware borrow these (Context owns them for the process lifetime)
     // instead of re-reading env per request. Null = unset → consumer fails closed.
-    const clerk_webhook_secret = try boot_secrets.resolve(env_map, alloc, boot_secrets.CLERK_WEBHOOK_SECRET_ENV);
+    const clerk_webhook_secret = try env_resolve.secret(env_map, alloc, env_resolve.CLERK_WEBHOOK_SECRET_ENV);
     defer if (clerk_webhook_secret) |s| alloc.free(s);
-    const approval_signing_secret_owned = try boot_secrets.resolve(env_map, alloc, boot_secrets.APPROVAL_SIGNING_SECRET_ENV);
+    const approval_signing_secret_owned = try env_resolve.secret(env_map, alloc, env_resolve.APPROVAL_SIGNING_SECRET_ENV);
     defer if (approval_signing_secret_owned) |s| alloc.free(s);
-    const clerk_secret_key = try boot_secrets.resolve(env_map, alloc, clerk_backend.SECRET_ENV_VAR);
+    const clerk_secret_key = try env_resolve.secret(env_map, alloc, clerk_backend.SECRET_ENV_VAR);
     defer if (clerk_secret_key) |s| alloc.free(s);
 
     var ctx = http_handler.Context{

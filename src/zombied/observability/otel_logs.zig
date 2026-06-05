@@ -9,6 +9,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const StringBuilder = @import("../util/strings/string_builder.zig");
+const env_resolve = @import("../config/env_resolve.zig");
 
 const EnvMap = common.env.Map;
 
@@ -29,22 +30,22 @@ pub const GrafanaOtlpConfig = struct {
 
 /// Try to load Grafana OTLP config from environment. Returns null when not configured.
 pub fn configFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) ?GrafanaOtlpConfig {
-    const endpoint = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_ENDPOINT") catch return null) orelse return null;
+    const endpoint = env_resolve.config(env_map, alloc, "GRAFANA_OTLP_ENDPOINT") orelse return null;
     const trimmed = std.mem.trim(u8, endpoint, " \t\r\n");
     if (trimmed.len == 0) {
         alloc.free(endpoint);
         return null;
     }
-    const instance_id = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_INSTANCE_ID") catch null) orelse {
+    const instance_id = env_resolve.config(env_map, alloc, "GRAFANA_OTLP_INSTANCE_ID") orelse {
         alloc.free(endpoint);
         return null;
     };
-    const api_key = (common.env.owned(env_map, alloc, "GRAFANA_OTLP_API_KEY") catch null) orelse {
+    const api_key = env_resolve.config(env_map, alloc, "GRAFANA_OTLP_API_KEY") orelse {
         alloc.free(endpoint);
         alloc.free(instance_id);
         return null;
     };
-    const service_name = (common.env.owned(env_map, alloc, "OTEL_SERVICE_NAME") catch null) orelse {
+    const service_name = env_resolve.config(env_map, alloc, "OTEL_SERVICE_NAME") orelse {
         return .{ .endpoint = endpoint, .instance_id = instance_id, .api_key = api_key };
     };
     return .{ .endpoint = endpoint, .instance_id = instance_id, .api_key = api_key, .service_name = service_name };

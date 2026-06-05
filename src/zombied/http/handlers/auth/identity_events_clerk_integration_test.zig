@@ -11,7 +11,7 @@ const pg = @import("pg");
 const hs = @import("hmac_sig");
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const boot_secrets = @import("../../../cmd/serve_boot_secrets.zig");
+const env_resolve = @import("../../../config/env_resolve.zig");
 const svix = @import("../../../auth/crypto/svix_verify.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
@@ -178,9 +178,9 @@ test "clerk webhook: a boot-resolved CLERK_WEBHOOK_SECRET authenticates a live w
     // + the fail-closed resolver — instead of the raw literal the other tests
     // pin. Proves the boot-resolved value drives a genuine Svix-signed request
     // through the full middleware → handler → DB chain.
-    var env = try common.env.fromPairs(ALLOC, &.{.{ boot_secrets.CLERK_WEBHOOK_SECRET_ENV, WHSEC_KEY }});
+    var env = try common.env.fromPairs(ALLOC, &.{.{ env_resolve.CLERK_WEBHOOK_SECRET_ENV, WHSEC_KEY }});
     defer env.deinit();
-    const resolved = (try boot_secrets.resolve(&env, ALLOC, boot_secrets.CLERK_WEBHOOK_SECRET_ENV)) orelse
+    const resolved = (try env_resolve.secret(&env, ALLOC, env_resolve.CLERK_WEBHOOK_SECRET_ENV)) orelse
         return error.TestUnexpectedResult;
     defer ALLOC.free(resolved);
     try std.testing.expectEqualStrings(WHSEC_KEY, resolved);

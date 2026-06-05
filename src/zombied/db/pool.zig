@@ -11,6 +11,7 @@ const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 const pool_migrations = @import("pool_migrations.zig");
+const env_resolve = @import("../config/env_resolve.zig");
 const pool_types = @import("pool_types.zig");
 
 const EnvMap = common.env.Map;
@@ -179,7 +180,7 @@ fn parseSizeStr(raw: []const u8) ?u32 {
 
 /// Parse a non-empty u32 env var; null when unset, blank, or unparseable.
 fn parseEnvU32(env_map: *const EnvMap, alloc: std.mem.Allocator, name: []const u8) ?u32 {
-    const raw = (common.env.owned(env_map, alloc, name) catch return null) orelse return null;
+    const raw = env_resolve.config(env_map, alloc, name) orelse return null;
     defer alloc.free(raw);
     return parseSizeStr(raw);
 }
