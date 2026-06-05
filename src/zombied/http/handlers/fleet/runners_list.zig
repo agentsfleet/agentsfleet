@@ -16,6 +16,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const pagination = @import("../pagination.zig");
 const protocol = @import("contract").protocol;
 const constants = @import("common");
 
@@ -25,9 +26,6 @@ const log = logging.scoped(.fleet_runners_list);
 const Hx = hx_mod.Hx;
 
 const S_CREATED_AT_DESC = "r.created_at DESC, r.id DESC";
-
-const DEFAULT_PAGE_SIZE: i32 = 25;
-const MAX_PAGE_SIZE: i32 = 100;
 
 const MSG_OUT_OF_MEMORY = "Out of memory";
 
@@ -45,7 +43,7 @@ const RunnerItem = struct {
 
 const ListQuery = struct {
     page: i32 = 1,
-    page_size: i32 = DEFAULT_PAGE_SIZE,
+    page_size: i32 = pagination.DEFAULT_PAGE_SIZE,
     order_sql: []const u8 = S_CREATED_AT_DESC,
 };
 
@@ -69,15 +67,9 @@ fn sortClauseFor(raw: []const u8) ?[]const u8 {
 }
 
 fn parseListQuery(req: *httpz.Request) ?ListQuery {
-    // Fail closed on any malformed pagination param (non-numeric, out-of-range,
-    // page < 1) so the client gets one consistent 400 instead of a silent
-    // default. Mirrors api_keys/list.zig's parser verbatim.
     const qs = req.query() catch return null;
-    var out: ListQuery = .{};
-    if (qs.get("page")) |v| out.page = std.fmt.parseInt(i32, v, 10) catch return null;
-    if (qs.get("page_size")) |v| out.page_size = std.fmt.parseInt(i32, v, 10) catch return null;
-    if (out.page < 1) return null;
-    if (out.page_size < 1 or out.page_size > MAX_PAGE_SIZE) return null;
+    const pp = pagination.parsePageParams(qs) orelse return null;
+    var out: ListQuery = .{ .page = pp.page, .page_size = pp.page_size };
     if (qs.get("sort")) |s| out.order_sql = sortClauseFor(s) orelse return null;
     return out;
 }
