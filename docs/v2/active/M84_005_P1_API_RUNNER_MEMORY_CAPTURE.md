@@ -4,11 +4,11 @@
 **Milestone:** M84
 **Workstream:** 005
 **Date:** Jun 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator/customer-facing capability (agents remember across runs) **with** a security boundary: the capture path must not put a credential, a control-plane URL, or a database connection inside the untrusted sandboxed agent.
 **Categories:** API
 **Batch:** B1 — runs **in parallel** with M84_003 (security launch slice); disjoint trees (`src/zombied/`+contract+runner memory wiring here vs `src/runner/` process-boundary there), two shared touchpoints to coordinate (`build_runner.zig`, `make/test-integration.mk` — second to land rebases).
-**Branch:** {feat/m84-runner-memory-capture — added at CHORE(open)}
+**Branch:** feat/m84-runner-memory-capture
 **Depends on:** **M84_003 (sandbox env/fd/cap hardening)** — the no-token-leak guarantee requires `ZOMBIE_RUNNER_TOKEN` to be absent from the child (M84_003 §1). Relates to **M84_004 (egress)** — this design needs **no** child egress (the daemon pushes), so it does not depend on the egress allowlist.
 **Provenance:** agent-generated — Indy asked to "ensure the memory of the agent is captured during every run" (Jun 05, 2026); code-grounded in the Orly Chief Technology Officer (CTO) review, decisions locked by Indy (Jun 05, 2026).
 
