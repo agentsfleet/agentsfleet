@@ -12,6 +12,7 @@
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -141,7 +142,7 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         .actor = actor,
         .event_type = .webhook,
         .request_json = data_json,
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
         log.err("enqueue_failed", .{

@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const posix = @import("posix.zig");
 const httpz = @import("httpz.zig");
 const buffer = @import("buffer.zig");
 
@@ -8,11 +9,11 @@ const HTTPConn = @import("worker.zig").HTTPConn;
 const Config = @import("config.zig").Config.Response;
 const StringKeyValue = @import("key_value.zig").StringKeyValue;
 
+const Io = std.Io;
 const mem = std.mem;
-const Stream = std.net.Stream;
+const Writer = Io.Writer;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const Writer = std.Io.Writer;
 
 const Self = @This();
 
@@ -112,7 +113,7 @@ pub const Response = struct {
         self.headers.add(n, v);
     }
 
-    pub fn startEventStream(self: *Response, ctx: anytype, comptime handler: fn (@TypeOf(ctx), std.net.Stream) void) !void {
+    pub fn startEventStream(self: *Response, ctx: anytype, comptime handler: fn (@TypeOf(ctx), Io.net.Stream) void) !void {
         self.content_type = .EVENTS;
         self.headers.add("Cache-Control", "no-cache");
         self.headers.add("Connection", "keep-alive");
@@ -129,7 +130,7 @@ pub const Response = struct {
         thread.detach();
     }
 
-    pub fn startEventStreamSync(self: *Response) !std.net.Stream {
+    pub fn startEventStreamSync(self: *Response) !Io.net.Stream {
         self.content_type = .EVENTS;
         self.headers.add("Cache-Control", "no-cache");
         self.headers.add("Connection", "keep-alive");
@@ -161,7 +162,12 @@ pub const Response = struct {
         buf[len] = '\r';
         buf[len + 1] = '\n';
 
-        var vec = [2][]const u8{ buf[0 .. len + 2], data };
+        const delimiter = buf[0 .. len + 2];
+        var vec = [2]posix.iovec_const{
+            .{ .len = delimiter.len, .base = delimiter.ptr },
+            .{ .len = data.len, .base = data.ptr },
+        };
+
         try conn.writeAllIOVec(&vec);
     }
 
@@ -197,7 +203,11 @@ pub const Response = struct {
         const buffered = self.buffer.writer.buffered();
         const body = if (buffered.len > 0) buffered else self.body;
 
-        var vec = [2][]const u8{ header_buf, body };
+        var vec = [2]posix.iovec_const{
+            .{ .len = header_buf.len, .base = header_buf.ptr },
+            .{ .len = body.len, .base = body.ptr },
+        };
+
         return conn.writeAllIOVec(&vec);
     }
 
@@ -351,7 +361,7 @@ pub fn serializeCookie(arena: Allocator, name: []const u8, value: []const u8, co
     const domain = cookie.domain;
 
     const estimated_len = name.len + value.len + path.len + domain.len + 110;
-    var buf = std.ArrayListUnmanaged(u8){};
+    var buf: std.ArrayList(u8) = .empty;
 
     try buf.ensureTotalCapacity(arena, estimated_len);
     buf.appendSliceAssumeCapacity(name);

@@ -12,6 +12,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const contract = @import("contract");
+const common = @import("common");
 
 const sandbox_args = @import("sandbox_args.zig");
 const child_exec = @import("child_exec.zig");
@@ -32,6 +33,7 @@ fn cfgWithTier(tier: []const u8) Config {
         .host_id = "host-edge",
         .sandbox_tier = tier,
         .workspace_base = "/tmp/zombie-runner",
+        .network_policy = .deny_all,
         .alloc = std.testing.allocator,
     };
 }
@@ -48,7 +50,7 @@ fn indexOfStr(argv: []const []const u8, needle: []const u8) ?usize {
 
 test "should build dev_none argv without bwrap when tier is dev_none" {
     const alloc = std.testing.allocator;
-    const argv = try sandbox_args.buildArgv(alloc, cfgWithTier(DEV_NONE), WORKSPACE);
+    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE);
     defer sandbox_args.freeArgv(alloc, argv);
 
     // dev_none: [ self_exe, __execute, --workspace=<ws> ] — exactly 3 entries,
@@ -68,7 +70,7 @@ test "should build landlock_full argv with bwrap wrapper on Linux when tier is r
     const alloc = std.testing.allocator;
     // On Linux a missing bwrap binary makes buildArgv fail-closed; only assert
     // the wrapper shape when bwrap is actually present on this host.
-    const argv = sandbox_args.buildArgv(alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -97,8 +99,8 @@ test "should fail with BwrapUnavailable when required tier has no bwrap on Linux
     // Only meaningful when this host genuinely lacks bwrap in both standard
     // paths — otherwise the wrapper builds and there is nothing to fail.
     const have_bwrap = blk: {
-        std.fs.accessAbsolute("/usr/bin/bwrap", .{}) catch {
-            std.fs.accessAbsolute("/usr/local/bin/bwrap", .{}) catch break :blk false;
+        std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/bin/bwrap", .{}) catch {
+            std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/local/bin/bwrap", .{}) catch break :blk false;
             break :blk true;
         };
         break :blk true;
@@ -107,7 +109,7 @@ test "should fail with BwrapUnavailable when required tier has no bwrap on Linux
     const alloc = std.testing.allocator;
     try std.testing.expectError(
         error.BwrapUnavailable,
-        sandbox_args.buildArgv(alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE),
+        sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE),
     );
 }
 
@@ -118,7 +120,7 @@ test "should skip bwrap on non-Linux even when tier is required" {
     // argv: bwrap is Linux-only, so no wrapper and no --sandboxed flag are
     // added here. The in-process sandbox is established by child_exec.run, not
     // signalled through this argv on a non-Linux build.
-    const argv = try sandbox_args.buildArgv(alloc, cfgWithTier(CONTAINER_NESTED), WORKSPACE);
+    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(CONTAINER_NESTED), WORKSPACE);
     defer sandbox_args.freeArgv(alloc, argv);
 
     try std.testing.expectEqual(@as(usize, 3), argv.len);
@@ -140,13 +142,12 @@ test "should omit --share-net under the default deny_all network policy on Linux
     // covered deterministically in network.zig against appendBwrapNetworkArgs
     // directly (no env coupling).
     const opted_in = blk: {
-        const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch break :blk false;
-        defer alloc.free(raw);
+        const raw = common.env.testLiveValue("RUNNER_NETWORK_POLICY") orelse break :blk false;
         break :blk std.ascii.eqlIgnoreCase(raw, "registry_allowlist");
     };
     if (opted_in) return error.SkipZigTest;
 
-    const argv = sandbox_args.buildArgv(alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -162,7 +163,7 @@ test "should have no memory leaks freeing dev_none argv over many iterations" {
     // std.testing.allocator panics on any leak; 100 create-free cycles prove
     // every dup'd entry is reclaimed by freeArgv.
     for (0..100) |_| {
-        const argv = try sandbox_args.buildArgv(alloc, cfgWithTier(DEV_NONE), WORKSPACE);
+        const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE);
         sandbox_args.freeArgv(alloc, argv);
     }
 }
@@ -173,7 +174,7 @@ test "should have no memory leaks freeing bwrap argv over many iterations" {
     // The bwrap path allocates many more entries (namespaces + ro binds); prove
     // freeArgv reclaims all of them across 50 cycles. Skip if bwrap is absent.
     for (0..50) |_| {
-        const argv = sandbox_args.buildArgv(alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+        const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
             try std.testing.expectEqual(error.BwrapUnavailable, err);
             return error.SkipZigTest;
         };
@@ -190,7 +191,7 @@ test "should surface OutOfMemory under allocation failure without leaking" {
         std.testing.allocator,
         struct {
             fn run(alloc: std.mem.Allocator) !void {
-                const argv = sandbox_args.buildArgv(alloc, cfgWithTier(DEV_NONE), WORKSPACE) catch |err| {
+                const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE) catch |err| {
                     if (err == error.OutOfMemory) return err;
                     return; // BwrapUnavailable etc. — not an allocation outcome
                 };

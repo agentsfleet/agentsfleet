@@ -83,8 +83,12 @@ pub const ProdBackend = struct {
 };
 
 pub const TestBackend = struct {
-    var ring: [64]?RecordedEvent = [_]?RecordedEvent{null} ** 64;
-    var count: usize = 0;
+    // Thread-local so a harness's server/worker threads (which emit telemetry
+    // through this same backend in test builds) can't pollute the recorded
+    // state a unit test captures and asserts on its own thread. Every assertion
+    // here reads what the asserting thread itself recorded.
+    threadlocal var ring: [64]?RecordedEvent = [_]?RecordedEvent{null} ** 64;
+    threadlocal var count: usize = 0;
 
     pub fn capture(_: *TestBackend, comptime E: type, event: E) void {
         const did = if (@hasField(E, DISTINCT_ID_FIELD)) event.distinct_id else S_SYSTEM;

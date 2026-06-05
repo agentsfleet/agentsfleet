@@ -5,16 +5,22 @@
 //! so piped output and the help golden stay byte-stable.
 
 const std = @import("std");
+const globalIo = @import("common").globalIo;
 
 pub const FLAG_JSON = "--json";
 
 pub const Audience = enum { json, human };
 
 /// Pick the rendering audience: JSON when forced (`--json`) or stdout is piped
-/// (not a TTY), else human. `std.posix.isatty` is the stable TTY probe.
+/// (not a TTY), else human. Zig 0.16 removed `std.posix.isatty`; probe via
+/// `std.Io.File.stdout().isTty` on the process-global blocking io (`common.globalIo`,
+/// the same io-free seam `writeStream` uses — CLI output runs outside the daemon spine).
+/// A canceled probe falls back to `.json` — the safe machine-readable default.
 pub fn audience(force_json: bool) Audience {
     if (force_json) return .json;
-    return if (std.posix.isatty(std.posix.STDOUT_FILENO)) .human else .json;
+    const io = globalIo();
+    const is_tty = std.Io.File.stdout().isTty(io) catch false;
+    return if (is_tty) .human else .json;
 }
 
 /// Machine-stable failure (Pillar 4): what failed (`code`), why (`message`),
@@ -57,12 +63,22 @@ pub const ERR_API_URL_UNSET = CliError{ .code = "API_URL_UNSET", .message = "con
 pub const ERR_UNREACHABLE = CliError{ .code = "CONTROL_PLANE_UNREACHABLE", .message = "could not reach the control plane", .suggestion = "verify --api/ZOMBIE_API_URL and that zombied is up" };
 pub const ERR_OOM = CliError{ .code = "OUT_OF_MEMORY", .message = "out of memory reading configuration", .suggestion = "retry" };
 
+// CLI output runs outside the daemon's io-threaded spine; the process-global
+// blocking io (`common.globalIo`) is the sanctioned io-free path for these writes.
+fn writeStream(file: std.Io.File, s: []const u8) void {
+    const io = globalIo();
+    var buf: [256]u8 = undefined;
+    var w = file.writer(io, &buf);
+    w.interface.writeAll(s) catch return;
+    w.interface.flush() catch return;
+}
+
 pub fn writeOut(s: []const u8) void {
-    std.fs.File.stdout().writeAll(s) catch {};
+    writeStream(std.Io.File.stdout(), s);
 }
 
 pub fn writeErr(s: []const u8) void {
-    std.fs.File.stderr().writeAll(s) catch {};
+    writeStream(std.Io.File.stderr(), s);
 }
 
 test "audience honours --json regardless of TTY" {

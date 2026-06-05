@@ -30,16 +30,16 @@ pub const ServeConfig = struct {
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
-    app_url: []u8,
-    api_url: []u8,
+    app_url: []const u8,
+    api_url: []const u8,
     oidc_enabled: bool,
     oidc_provider: oidc.Provider,
-    oidc_jwks_url: ?[]u8,
-    oidc_issuer: ?[]u8,
-    oidc_audience: ?[]u8,
-    encryption_master_key: []u8,
-    auth_session_code_pepper: []u8,
-    audit_log_pepper: []u8,
+    oidc_jwks_url: ?[]const u8,
+    oidc_issuer: ?[]const u8,
+    oidc_audience: ?[]const u8,
+    encryption_master_key: []const u8,
+    auth_session_code_pepper: []const u8,
+    audit_log_pepper: []const u8,
 
     alloc: std.mem.Allocator,
 
@@ -48,18 +48,18 @@ pub const ServeConfig = struct {
     /// own errdefer chains; this orchestrator threads one errdefer per
     /// heap-owning section so a late failure frees every prior section
     /// (loadSizes returns POD only; loadMisc is last so no errdefer follows).
-    pub fn load(alloc: std.mem.Allocator) !ServeConfig {
-        const sizes = try loader.loadSizes(alloc);
-        const oidc_cfg = try loader.loadOidc(alloc);
+    pub fn load(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator) !ServeConfig {
+        const sizes = try loader.loadSizes(env_map, alloc);
+        const oidc_cfg = try loader.loadOidc(env_map, alloc);
         errdefer loader.freeOidc(alloc, oidc_cfg);
         // M11_006: OIDC is now required — the env-var admin bootstrap was
         // the only non-OIDC auth path and it's gone.
         if (!oidc_cfg.enabled) return ValidationError.OidcRequired;
-        const enc = try loader.loadEncryption(alloc);
+        const enc = try loader.loadEncryption(env_map, alloc);
         errdefer loader.freeEncryption(alloc, enc);
-        const peppers = try loader.loadAuthPeppers(alloc);
+        const peppers = try loader.loadAuthPeppers(env_map, alloc);
         errdefer loader.freeAuthPeppers(alloc, peppers);
-        const misc = try loader.loadMisc(alloc);
+        const misc = try loader.loadMisc(env_map, alloc);
 
         return .{
             .port = sizes.port,

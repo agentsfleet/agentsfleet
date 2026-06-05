@@ -5,11 +5,13 @@
 //! hmac_sig.computeMac, and asserts both the response and the DB post-state.
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const hs = @import("hmac_sig");
-const c = @cImport(@cInclude("stdlib.h"));
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const env_resolve = @import("../../../config/env_resolve.zig");
 const svix = @import("../../../auth/crypto/svix_verify.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
@@ -37,12 +39,9 @@ fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anye
 }
 
 fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
-    _ = c.setenv("CLERK_WEBHOOK_SECRET", WHSEC_KEY.ptr, 1);
-    return TestHarness.start(alloc, .{ .configureRegistry = noopConfigureRegistry });
-}
-
-fn unsetSecret() void {
-    _ = c.unsetenv("CLERK_WEBHOOK_SECRET");
+    const h = try TestHarness.start(alloc, .{ .configureRegistry = noopConfigureRegistry });
+    h.ctx.clerk_webhook_secret = WHSEC_KEY;
+    return h;
 }
 
 fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
@@ -85,7 +84,7 @@ fn signEntry(alloc: std.mem.Allocator, id: []const u8, ts: []const u8, body: []c
 }
 
 fn nowTsAlloc(alloc: std.mem.Allocator) ![]u8 {
-    return std.fmt.allocPrint(alloc, "{d}", .{std.time.timestamp()});
+    return std.fmt.allocPrint(alloc, "{d}", .{clock.nowSeconds()});
 }
 
 fn userCreatedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8, email: []const u8) ![]u8 {
@@ -138,7 +137,6 @@ test "clerk webhook: valid signed user.created bootstraps and returns 200" {
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
@@ -169,13 +167,61 @@ test "clerk webhook: valid signed user.created bootstraps and returns 200" {
     try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, OIDC_HAPPY));
 }
 
+test "clerk webhook: a boot-resolved CLERK_WEBHOOK_SECRET authenticates a live webhook" {
+    const h = startHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Source the secret through the real boot path — the canonical env-name const
+    // + the fail-closed resolver — instead of the raw literal the other tests
+    // pin. Proves the boot-resolved value drives a genuine Svix-signed request
+    // through the full middleware → handler → DB chain.
+    var env = try common.env.fromPairs(ALLOC, &.{.{ env_resolve.CLERK_WEBHOOK_SECRET_ENV, WHSEC_KEY }});
+    defer env.deinit();
+    const resolved = (try env_resolve.secret(&env, ALLOC, env_resolve.CLERK_WEBHOOK_SECRET_ENV)) orelse
+        return error.TestUnexpectedResult;
+    defer ALLOC.free(resolved);
+    try std.testing.expectEqualStrings(WHSEC_KEY, resolved);
+    h.ctx.clerk_webhook_secret = resolved;
+
+    const oidc = "oidc-clerk-http-bootsecret-01";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        cleanupAccount(conn, oidc);
+    }
+
+    const svix_id = "msg_clerk_bootsecret_01";
+    const ts = try nowTsAlloc(ALLOC);
+    defer ALLOC.free(ts);
+    const body = try userCreatedBody(ALLOC, oidc, "bootsecret@acme.test");
+    defer ALLOC.free(body);
+    const sig = try signEntry(ALLOC, svix_id, ts, body);
+    defer ALLOC.free(sig);
+
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
+        .header(svix.SVIX_ID_HEADER, svix_id))
+        .header(svix.SVIX_TS_HEADER, ts))
+        .header(svix.SVIX_SIG_HEADER, sig))
+        .json(body)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("\"created\":true"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAccount(conn, oidc);
+    try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, oidc));
+}
+
 test "clerk webhook: tampered body returns 401 UZ-WH-010 and writes no rows" {
     const h = startHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     const oidc = "oidc-clerk-http-badsig-01";
     {
         const conn = try h.acquireConn();
@@ -215,7 +261,6 @@ test "clerk webhook: stale timestamp returns 401 UZ-WH-011" {
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     const oidc = "oidc-clerk-http-stale-01";
     {
         const conn = try h.acquireConn();
@@ -225,7 +270,7 @@ test "clerk webhook: stale timestamp returns 401 UZ-WH-011" {
 
     const svix_id = "msg_clerk_stale_01";
     // 10 minutes in the past — well outside SVIX_MAX_DRIFT_SECONDS (300).
-    const stale_ts = try std.fmt.allocPrint(ALLOC, "{d}", .{std.time.timestamp() - 600});
+    const stale_ts = try std.fmt.allocPrint(ALLOC, "{d}", .{clock.nowSeconds() - 600});
     defer ALLOC.free(stale_ts);
     const body = try userCreatedBody(ALLOC, oidc, "stale@acme.test");
     defer ALLOC.free(body);
@@ -253,7 +298,6 @@ test "clerk webhook: missing primary email returns 400 UZ-REQ-001" {
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     const oidc = "oidc-clerk-http-noemail-01";
     {
         const conn = try h.acquireConn();
@@ -293,7 +337,6 @@ test "clerk webhook: oversized body returns 413 UZ-REQ-002 and writes no rows" {
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     const oidc = "oidc-clerk-http-toobig-01";
     {
         const conn = try h.acquireConn();
@@ -341,17 +384,15 @@ test "clerk webhook: oversized body returns 413 UZ-REQ-002 and writes no rows" {
 }
 
 test "clerk webhook: missing CLERK_WEBHOOK_SECRET fails closed with 500" {
-    // Start the harness with the env var explicitly unset so the handler's
-    // readSecret() fail-closed path runs. This guards the security invariant
-    // that a misconfigured deploy returns 500 (not 401), denying attackers a
-    // way to enumerate "is this endpoint configured?".
-    _ = c.unsetenv("CLERK_WEBHOOK_SECRET");
+    // Start the harness with ctx.clerk_webhook_secret left at its null default
+    // so the handler's readSecret() fail-closed path runs. This guards the
+    // security invariant that a misconfigured deploy returns 500 (not 401),
+    // denying attackers a way to enumerate "is this endpoint configured?".
     const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopConfigureRegistry }) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     const oidc = "oidc-clerk-http-nosecret-01";
     {
         const conn = try h.acquireConn();
@@ -388,7 +429,6 @@ test "clerk webhook: replay of same user.created returns created:false with no n
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
@@ -440,7 +480,6 @@ test "clerk webhook: user.deleted purges an account that still owns zombies" {
         else => return err,
     };
     defer h.deinit();
-    defer unsetSecret();
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);

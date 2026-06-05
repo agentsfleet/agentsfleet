@@ -45,10 +45,10 @@ pub fn buildScratch(scratch: *RequestScratch, req: *httpz.Request) void {
     scratch.user_agent = req.header(HDR_USER_AGENT) orelse S_USER_AGENT_UNKNOWN;
 }
 
-/// std.net.Address.format yields `"ip:port"` or `"[ipv6]:port"`. We
+/// Io.net.IpAddress.format yields `"ip:port"` or `"[ipv6]:port"`. We
 /// want just the host part for both the audit chain and rate-limit
 /// buckets — strip the port (and brackets when present).
-pub fn formatIpOnly(buf: []u8, addr: std.net.Address) []const u8 {
+pub fn formatIpOnly(buf: []u8, addr: std.Io.net.IpAddress) []const u8 {
     const formatted = std.fmt.bufPrint(buf, "{f}", .{addr}) catch return "";
     if (formatted.len > 0 and formatted[0] == '[') {
         const rb = std.mem.indexOfScalar(u8, formatted, ']') orelse return "";
@@ -237,13 +237,13 @@ const testing = std.testing;
 
 test "formatIpOnly strips port from an IPv4 address" {
     var buf: [IP_BUF_LEN]u8 = undefined;
-    const addr = try std.net.Address.parseIp4("203.0.113.7", 8443);
+    const addr = try std.Io.net.IpAddress.parseIp4("203.0.113.7", 8443);
     try testing.expectEqualStrings("203.0.113.7", formatIpOnly(&buf, addr));
 }
 
 test "formatIpOnly strips brackets + port from an IPv6 address" {
     var buf: [IP_BUF_LEN]u8 = undefined;
-    const addr = try std.net.Address.parseIp6("::1", 8443);
+    const addr = try std.Io.net.IpAddress.parseIp6("::1", 8443);
     try testing.expectEqualStrings("::1", formatIpOnly(&buf, addr));
 }
 

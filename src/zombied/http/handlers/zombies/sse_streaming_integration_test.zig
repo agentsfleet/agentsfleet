@@ -10,9 +10,11 @@
 // test-side publisher converge on it.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const queue_redis = @import("../../../queue/redis_client.zig");
+const queue_redis = @import("../../../queue/redis.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -44,10 +46,9 @@ fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!v
 /// subscriber. `make test-integration` exports both pointing at the same
 /// instance.
 fn requireRedisEnvOrSkip(alloc: std.mem.Allocator) !void {
-    const handler = std.process.getEnvVarOwned(alloc, HANDLER_REDIS_URL_ENV) catch return error.SkipZigTest;
-    alloc.free(handler);
-    const tester = std.process.getEnvVarOwned(alloc, TEST_REDIS_URL_ENV) catch return error.SkipZigTest;
-    alloc.free(tester);
+    _ = alloc;
+    _ = common.env.testLiveValue(HANDLER_REDIS_URL_ENV) orelse return error.SkipZigTest;
+    _ = common.env.testLiveValue(TEST_REDIS_URL_ENV) orelse return error.SkipZigTest;
 }
 
 fn setupHarness(alloc: std.mem.Allocator) !*TestHarness {
@@ -67,7 +68,7 @@ fn setupHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'SseStreamingTest', $2, $2)
@@ -94,9 +95,8 @@ fn cleanupTestData(conn: *pg.Conn) void {
 }
 
 fn connectPublisher(alloc: std.mem.Allocator) !queue_redis.Client {
-    const tls_url = try std.process.getEnvVarOwned(alloc, TEST_REDIS_URL_ENV);
-    defer alloc.free(tls_url);
-    return queue_redis.Client.connectFromUrl(alloc, tls_url);
+    const tls_url = common.env.testLiveValue(TEST_REDIS_URL_ENV) orelse return error.SkipZigTest;
+    return queue_redis.testing.connectFromUrl(common.globalIo(), alloc, tls_url);
 }
 
 fn streamPath(alloc: std.mem.Allocator, zombie_id: []const u8) ![]u8 {
@@ -114,7 +114,7 @@ fn openAndSettle(alloc: std.mem.Allocator, port: u16, zombie_id: []const u8, opt
     const path = try streamPath(alloc, zombie_id);
     defer alloc.free(path);
     const sc = try SseClient.connect(alloc, port, path, opts);
-    std.Thread.sleep(SUBSCRIBE_SETTLE_NS);
+    common.sleepNanos(SUBSCRIBE_SETTLE_NS);
     return sc;
 }
 
@@ -168,11 +168,11 @@ test "integration: SSE publish→receive latency p95 < 200ms over 50 trials" {
 
     var i: usize = 0;
     while (i < N) : (i += 1) {
-        const t_pub = std.time.nanoTimestamp();
+        const t_pub = clock.nowNanos();
         try pub_client.publish(channel, "{\"kind\":\"chunk\",\"event_id\":\"e1\",\"text\":\"x\"}");
         var f = try sc.nextFrame();
         defer f.deinit(ALLOC);
-        const t_recv = std.time.nanoTimestamp();
+        const t_recv = clock.nowNanos();
         latencies[i] = @intCast(@divTrunc(t_recv - t_pub, std.time.ns_per_ms));
     }
 

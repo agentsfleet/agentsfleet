@@ -7,6 +7,7 @@
 //!   migrate    Apply schema migrations and exit
 
 const std = @import("std");
+const clock = @import("common").clock;
 const builtin = @import("builtin");
 const logging = @import("log");
 const log_sinks = logging.sinks;
@@ -41,10 +42,8 @@ fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
     return null;
 }
 
-fn initRuntimeLogLevel(alloc: std.mem.Allocator) void {
-    const level_raw = std.process.getEnvVarOwned(alloc, "LOG_LEVEL") catch return;
-    defer alloc.free(level_raw);
-
+fn initRuntimeLogLevel(env_map: *const std.process.Environ.Map) void {
+    const level_raw = env_map.get("LOG_LEVEL") orelse return;
     if (parseLogLevel(level_raw)) |lvl| {
         runtime_log_level.store(@intFromEnum(lvl), .release);
     }
@@ -64,7 +63,7 @@ fn zombiedLog(
     if (!shouldLog(level)) return;
 
     const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
-    const ts = std.time.milliTimestamp();
+    const ts = clock.nowMillis();
     var msg_buf: [4096]u8 = undefined;
     const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
 
@@ -93,8 +92,7 @@ fn writePreInitStderr(level: std.log.Level, scope_str: []const u8, ts: i64, msg:
         logging.formatPretty(&line_buf, ts, level, scope_str, msg)
     else
         logging.writeLogfmtEnvelope(&line_buf, ts, level_str, scope_str, msg);
-    const stderr = std.fs.File.stderr();
-    stderr.writeAll(line) catch {};
+    logging.writeStderrLine(line);
 }
 
 fn stderrSinkEmit(
@@ -134,16 +132,26 @@ fn registerProductionSinks() void {
     log_sinks.registerSink(.{ .emit = otlpSinkEmit, .ctx = log_sinks.statelessCtx() });
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+pub fn main(init: std.process.Init) void {
+    const io = init.io;
+    const env_map = init.environ_map;
+
+    var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
-    config_load.applyEnvSources(alloc) catch |err| {
+    var dotenv_overlay = config_load.applyEnvSources(io, env_map, alloc) catch |err| {
         logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
         std.process.exit(1);
     };
-    initRuntimeLogLevel(alloc);
-    logging.initPrettyMode(alloc);
+    defer if (dotenv_overlay) |*m| m.deinit();
+    // In dev, `.env.local` overlays the process env; everything downstream reads
+    // the merged map. In prod (no overlay) this is the process env_map as-is.
+    const eff_env: *const std.process.Environ.Map = if (dotenv_overlay) |*m| m else env_map;
+    initRuntimeLogLevel(eff_env);
+    // Borrowed read — initPrettyMode consumes the value during the call only.
+    // Zig 0.16 removed std.posix.isatty; probe the TTY via the threaded io.
+    const stderr_is_tty = std.Io.File.stderr().isTty(io) catch false;
+    logging.initPrettyMode(eff_env.get("ZOMBIE_LOG_PRETTY"), stderr_is_tty);
     // Production log sinks (stderr + OTLP). Until this call, zombiedLog
     // falls through to direct stderr write so the env-load logs above
     // still reach the operator. After this, every emit fans out through
@@ -154,8 +162,12 @@ pub fn main() !void {
         log.warn("startup.debug_build hint=not_for_production", .{});
     }
 
-    const argv = try std.process.argsAlloc(alloc);
-    defer std.process.argsFree(alloc, argv);
+    // Zig 0.16 removed std.process.argsAlloc/std.os.argv; args (and io + the
+    // environment block) arrive through std.process.Init.
+    const argv = init.minimal.args.toSlice(init.arena.allocator()) catch |err| {
+        logging.fatalStderr("zombied: failed reading argv: {}\n", .{err});
+        std.process.exit(1);
+    };
     const cmd = cli_commands.parseSubcommandFromArgv(argv) catch |err| switch (err) {
         error.UnknownSubcommand => {
             // Fail loudly so a stale script invoking a removed subcommand
@@ -169,11 +181,14 @@ pub fn main() !void {
             std.process.exit(1);
         },
     };
-    switch (cmd) {
-        .serve => try cmd_serve.run(alloc),
-        .doctor => try cmd_doctor.run(alloc),
-        .migrate => try cmd_migrate.run(alloc),
-    }
+    (switch (cmd) {
+        .serve => cmd_serve.run(io, eff_env, argv, alloc),
+        .doctor => cmd_doctor.run(io, eff_env, argv, alloc),
+        .migrate => cmd_migrate.run(io, eff_env, alloc),
+    }) catch |err| {
+        logging.fatalStderr("zombied: subcommand failed: {}\n", .{err});
+        std.process.exit(1);
+    };
 }
 
 test "parseLogLevel accepts common values" {

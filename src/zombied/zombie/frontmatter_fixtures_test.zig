@@ -8,6 +8,7 @@
 // to the project root.
 
 const std = @import("std");
+const common = @import("common");
 const config = @import("config.zig");
 
 const FIXTURES_BASE = "samples/fixtures/frontmatter";
@@ -15,7 +16,7 @@ const FIXTURES_BASE = "samples/fixtures/frontmatter";
 fn loadFixture(alloc: std.mem.Allocator, rel_path: []const u8) ![]u8 {
     const path = try std.fs.path.join(alloc, &.{ FIXTURES_BASE, rel_path });
     defer alloc.free(path);
-    return std.fs.cwd().readFileAlloc(alloc, path, 64 * 1024);
+    return std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, alloc, .limited(64 * 1024));
 }
 
 test "fixture skill/minimal.md parses" {
@@ -161,7 +162,7 @@ test "shipped sample samples/platform-ops SKILL.md frontmatter validates" {
     // For M46 we only assert the SKILL.md side validates, which is the
     // half this milestone added.
     const alloc = std.testing.allocator;
-    const skill_md = try std.fs.cwd().readFileAlloc(alloc, "samples/platform-ops/SKILL.md", 64 * 1024);
+    const skill_md = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), "samples/platform-ops/SKILL.md", alloc, .limited(64 * 1024));
     defer alloc.free(skill_md);
     var meta = try config.parseSkillMetadata(alloc, skill_md);
     defer meta.deinit(alloc);

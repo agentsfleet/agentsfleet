@@ -26,6 +26,11 @@ host_id: []const u8,
 sandbox_tier: []const u8,
 /// Base directory under which per-lease workspace subdirs are created.
 workspace_base: []const u8,
+/// Egress policy for sandboxed leases (`RUNNER_NETWORK_POLICY`), resolved once
+/// at load. sandbox_args owns the `--share-net` decision and reads it per-lease
+/// off `cfg`; Zig 0.16 routes the env read through `Environ.Map` at startup,
+/// so the daemon hot path never touches the environment.
+network_policy: network.PolicyMode,
 
 alloc: Allocator,
 
@@ -34,26 +39,26 @@ pub const ConfigError = error{ MissingEnvVar, InvalidRunnerToken, OutOfMemory };
 /// Read configuration from the process environment. Returns
 /// `ConfigError.MissingEnvVar` for required vars that are absent, and
 /// `ConfigError.InvalidRunnerToken` when the token lacks the `zrn_` prefix.
-pub fn load(alloc: Allocator) ConfigError!Config {
-    const url = getRequired(alloc, ENV_ZOMBIE_API_URL) catch
+pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigError!Config {
+    const url = getRequired(env_map, alloc, ENV_ZOMBIE_API_URL) catch
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(url);
 
-    const token = getRequired(alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
+    const token = getRequired(env_map, alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(token);
     try assertRunnerTokenPrefix(token);
 
-    const host_id = getRequired(alloc, ENV_RUNNER_HOST_ID) catch
+    const host_id = getRequired(env_map, alloc, ENV_RUNNER_HOST_ID) catch
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(host_id);
 
-    const tier = std.process.getEnvVarOwned(alloc, ENV_RUNNER_SANDBOX_TIER) catch
-        alloc.dupe(u8, DEFAULT_SANDBOX_TIER) catch return ConfigError.OutOfMemory;
+    const tier = (getOwned(env_map, alloc, ENV_RUNNER_SANDBOX_TIER) catch null) orelse
+        (alloc.dupe(u8, DEFAULT_SANDBOX_TIER) catch return ConfigError.OutOfMemory);
     errdefer alloc.free(tier);
 
-    const workspace_base = std.process.getEnvVarOwned(alloc, ENV_RUNNER_WORKSPACE_BASE) catch
-        alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory;
+    const workspace_base = (getOwned(env_map, alloc, ENV_RUNNER_WORKSPACE_BASE) catch null) orelse
+        (alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory);
     errdefer alloc.free(workspace_base);
 
     return Config{
@@ -62,6 +67,7 @@ pub fn load(alloc: Allocator) ConfigError!Config {
         .host_id = host_id,
         .sandbox_tier = tier,
         .workspace_base = workspace_base,
+        .network_policy = network.policyFromMap(env_map),
         .alloc = alloc,
     };
 }
@@ -82,13 +88,23 @@ fn assertRunnerTokenPrefix(token: []const u8) ConfigError!void {
         return ConfigError.InvalidRunnerToken;
 }
 
-fn getRequired(alloc: Allocator, name: []const u8) ![]u8 {
-    return std.process.getEnvVarOwned(alloc, name) catch error.MissingEnvVar;
+fn getRequired(env_map: *const std.process.Environ.Map, alloc: Allocator, name: []const u8) ![]u8 {
+    return (try getOwned(env_map, alloc, name)) orelse error.MissingEnvVar;
+}
+
+/// Owned copy of env var `name`, or null when unset. Only OOM propagates — a
+/// missing var is null (never an error), so callers choose required-vs-default.
+/// Zig 0.16 removed `std.process.getEnvVarOwned`; the environment block is
+/// handed to `main` via `Init` and threaded here as a pre-built `Environ.Map`.
+fn getOwned(env_map: *const std.process.Environ.Map, alloc: Allocator, name: []const u8) Allocator.Error!?[]u8 {
+    const value = env_map.get(name) orelse return null;
+    return try alloc.dupe(u8, value);
 }
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
+const network = @import("../engine/network.zig");
 
 /// Environment variable names — single-sourced (RULE UFS).
 pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";

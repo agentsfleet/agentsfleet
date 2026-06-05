@@ -18,6 +18,7 @@
 //! `middleware/trusted_client_ip.zig`, then passes the result here.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const audit = @import("audit.zig");
 const trusted_ip = @import("middleware/trusted_client_ip.zig");
@@ -69,7 +70,7 @@ pub fn emitSessionCreated(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_CREATED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .token_name = token_name,
@@ -96,7 +97,7 @@ pub fn emitSessionApproved(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_APPROVED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .clerk_user_id = clerk_user_id,
@@ -124,7 +125,7 @@ pub fn emitSessionVerifyFailed(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_VERIFY_FAILED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .attempt = attempt,
@@ -152,7 +153,7 @@ pub fn emitSessionVerified(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_VERIFIED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .token_name = token_name,
@@ -177,7 +178,7 @@ pub fn emitSessionConsumed(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_CONSUMED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .consumed_client_fingerprint = consumed_client_fingerprint_hex,
@@ -196,7 +197,7 @@ pub fn emitSessionConsumedReplay(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_CONSUMED_REPLAY,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .consumed_client_fingerprint = consumed_client_fingerprint_hex,
@@ -217,7 +218,7 @@ pub fn emitSessionAborted(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_ABORTED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .reason = reason,
@@ -241,7 +242,7 @@ pub fn emitSessionExpired(
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
     audit_log.info("audit_record", .{
         .event = EV_SESSION_EXPIRED,
-        .ts_ms = std.time.milliTimestamp(),
+        .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
         .session_id_prefix = audit.sessionIdPrefix(session_id),
         .expired_at_ms = expired_at_ms,

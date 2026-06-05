@@ -3,6 +3,7 @@
 //! and `audit.schema_migration_failures`. Split from `pool.zig` per RULE FLL.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const logging = @import("log");
 const PgQuery = @import("pg_query.zig").PgQuery;
@@ -89,7 +90,7 @@ fn releaseMigrationLock(conn: *Conn) void {
 }
 
 fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
-    const ts = std.time.milliTimestamp();
+    const ts = clock.nowMillis();
     _ = conn.exec(
         \\INSERT INTO audit.schema_migration_failures (version, failed_at, error_text)
         \\VALUES ($1, $2, $3)
@@ -112,12 +113,11 @@ fn reapOrphanedMigrationRows(allocator: std.mem.Allocator, conn: *Conn, migratio
     // error (sqlstate 42601). A no-migrations boot has nothing to reap.
     if (migrations.len == 0) return;
 
-    var buf = std.ArrayList(u8){};
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(allocator);
-    var writer = buf.writer(allocator);
     for (migrations, 0..) |m, i| {
-        if (i > 0) try writer.writeByte(',');
-        try writer.print("{d}", .{m.version});
+        if (i > 0) try buf.append(allocator, ',');
+        try buf.print(allocator, "{d}", .{m.version});
     }
     const canonical_list = buf.items;
 
@@ -330,7 +330,7 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
 
         _ = conn.exec(
             "INSERT INTO audit.schema_migrations (version, applied_at) VALUES ($1, $2)",
-            .{ migration.version, std.time.milliTimestamp() },
+            .{ migration.version, clock.nowMillis() },
         ) catch |err| {
             rollbackTx(conn);
             if (err == error.PG) logPgErrorContext(conn, "migrate.insert_schema_migrations");

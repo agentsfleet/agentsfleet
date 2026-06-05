@@ -1,10 +1,10 @@
 //! Histogram observation functions — extracted from metrics_counters.zig
 //! for the 350-line gate.
 
-const std = @import("std");
+const common = @import("common");
 const mc = @import("metrics_counters.zig");
 
-var g_histograms_mu: std.Thread.Mutex = .{};
+var g_histograms_mu: common.Mutex = .{};
 var g_agent_duration_seconds = mc.HistogramSnapshot{};
 
 fn observeHistogram(hist: *mc.HistogramSnapshot, value: u64) void {

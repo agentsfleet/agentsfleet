@@ -19,6 +19,9 @@
 /// All seed inserts use ON CONFLICT DO NOTHING — safe to call multiple times
 /// even if a prior test run panicked before teardown.
 const std = @import("std");
+const clock = @import("common").clock;
+const env = @import("common").env;
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const pg = @import("pg");
 const db = @import("pool.zig");
 
@@ -170,7 +173,6 @@ pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
 // helpers set up the minimum config that lets `tenant_provider.resolveActive
 // Provider` succeed for the canonical TEST_TENANT_ID.
 
-const ENCRYPTION_KEY_HEX_TEST = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const TEST_PROVIDER_NAME = "test_fireworks";
 const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 
@@ -178,11 +180,7 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
 /// call from every test that touches the vault.
 pub fn setTestEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    var z: [65]u8 = undefined;
-    @memcpy(z[0..64], ENCRYPTION_KEY_HEX_TEST);
-    z[64] = 0;
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &z, 1);
+    crypto_primitives.setTestKek();
 }
 
 /// Seed the minimum state for `tenant_provider.resolveActiveProvider` to
@@ -223,16 +221,16 @@ pub fn seedPlatformProviderWithKey(
     try model_rate_cache.populate(std.heap.page_allocator, conn);
 
     // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    try obj.put("provider", .{ .string = TEST_PROVIDER_NAME });
-    try obj.put("api_key", .{ .string = api_key });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "provider", .{ .string = TEST_PROVIDER_NAME });
+    try obj.put(alloc, "api_key", .{ .string = api_key });
     try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.
     const key_id = try id_format.generateZombieId(alloc);
     defer alloc.free(key_id);
-    const now_ms: i64 = std.time.milliTimestamp();
+    const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3::uuid, true, $4, $4)
@@ -266,12 +264,11 @@ pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
 /// stores shallow references to host/auth strings — if parsed via an arena that
 /// is freed first, pool.release() crashes on non-idle connections.
 pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
-    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
+    const url = env.testLiveValue("TEST_DATABASE_URL") orelse
+        env.testLiveValue("DATABASE_URL") orelse return null;
 
     const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(alloc, opts);
+    const pool = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
     errdefer pool.deinit();
     const conn = try pool.acquire();
     return .{ .pool = pool, .conn = conn };

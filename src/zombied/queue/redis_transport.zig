@@ -1,8 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const common = @import("common");
 const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const error_codes = @import("../errors/error_registry.zig");
+
+/// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Reader/Writer).
+const net = std.Io.net;
 
 const log = logging.scoped(.redis_queue);
 
@@ -13,8 +17,8 @@ const log = logging.scoped(.redis_queue);
 /// Applied automatically from each transport's init.
 const S_TRANSPORT_CONNECTED = "transport_connected";
 
-fn applyKeepalive(stream: std.net.Stream) void {
-    const sock = stream.handle;
+fn applyKeepalive(stream: net.Stream) void {
+    const sock = stream.socket.handle;
     const enable: c_int = 1;
     std.posix.setsockopt(sock, std.posix.SOL.SOCKET, std.posix.SO.KEEPALIVE, std.mem.asBytes(&enable)) catch |err| {
         log.debug("keepalive_enable_failed", .{ .err = @errorName(err) });
@@ -42,18 +46,68 @@ fn applyKeepalive(stream: std.net.Stream) void {
     }
 }
 
+/// Socket reader that bounds each read by an optional millisecond timeout.
+///
+/// Zig 0.16's `std.Io.net.Stream.Reader` routes reads through `Io.Threaded`,
+/// which treats `EAGAIN` (what `SO_RCVTIMEO` produces on a timed-out read) as a
+/// programmer bug and panics. So the redis transport reads the fd directly: a
+/// blocking `poll(2)` provides the timeout (the socket stays blocking, so
+/// writes are untouched), and a hit deadline sets `timed_out` so the
+/// Connection can surface a distinct `RedisRequestTimeout` instead of an
+/// opaque read failure. Only `stream` is implemented; the buffered
+/// `std.Io.Reader` interface drives it via the default `readVec`.
+const TimeoutReader = struct {
+    interface: std.Io.Reader,
+    fd: std.posix.fd_t,
+    /// Per-read budget in milliseconds; null blocks until data or peer close.
+    timeout_ms: ?u32 = null,
+    /// Set when a read hit its deadline; inspected (and reset) by the
+    /// Connection to tell a timeout apart from any other read failure.
+    timed_out: bool = false,
+
+    fn init(fd: std.posix.fd_t, buffer: []u8) TimeoutReader {
+        return .{
+            .interface = .{
+                .vtable = &.{ .stream = streamRead },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+            .fd = fd,
+        };
+    }
+
+    fn streamRead(io_r: *std.Io.Reader, io_w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
+        const self: *TimeoutReader = @alignCast(@fieldParentPtr("interface", io_r));
+        self.timed_out = false;
+        const dest = limit.slice(try io_w.writableSliceGreedy(1));
+        if (self.timeout_ms) |ms| {
+            var pfds = [_]std.posix.pollfd{.{ .fd = self.fd, .events = std.posix.POLL.IN, .revents = 0 }};
+            const ready = std.posix.poll(&pfds, @intCast(ms)) catch return error.ReadFailed;
+            if (ready == 0) {
+                self.timed_out = true;
+                return error.ReadFailed;
+            }
+        }
+        const n = std.posix.read(self.fd, dest) catch return error.ReadFailed;
+        if (n == 0) return error.EndOfStream;
+        io_w.advance(n);
+        return n;
+    }
+};
+
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PlainTransport = struct {
-    stream: std.net.Stream,
-    stream_reader: std.net.Stream.Reader,
-    stream_writer: std.net.Stream.Writer,
+    stream: net.Stream,
+    stream_reader: TimeoutReader,
+    stream_writer: net.Stream.Writer,
     read_buffer: []u8,
     write_buffer: []u8,
 
-    pub fn init(alloc: std.mem.Allocator, stream: std.net.Stream) !PlainTransport {
+    pub fn init(io: std.Io, alloc: std.mem.Allocator, stream: net.Stream) !PlainTransport {
         // Own the stream on entry — any subsequent failure must close it
         // so callers (incl. dialAndAuth on every reconnect) cannot leak fds.
-        errdefer stream.close();
+        errdefer stream.close(io);
         applyKeepalive(stream);
         const read_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(read_buffer);
@@ -64,21 +118,21 @@ pub const PlainTransport = struct {
 
         return .{
             .stream = stream,
-            .stream_reader = stream.reader(read_buffer),
-            .stream_writer = stream.writer(write_buffer),
+            .stream_reader = TimeoutReader.init(stream.socket.handle, read_buffer),
+            .stream_writer = stream.writer(io, write_buffer),
             .read_buffer = read_buffer,
             .write_buffer = write_buffer,
         };
     }
 
-    pub fn deinit(self: *PlainTransport, alloc: std.mem.Allocator) void {
-        self.stream.close();
+    pub fn deinit(self: *PlainTransport, io: std.Io, alloc: std.mem.Allocator) void {
+        self.stream.close(io);
         alloc.free(self.read_buffer);
         alloc.free(self.write_buffer);
     }
 
     pub fn reader(self: *PlainTransport) *std.Io.Reader {
-        return self.stream_reader.interface();
+        return &self.stream_reader.interface;
     }
 
     pub fn writer(self: *PlainTransport) *std.Io.Writer {
@@ -87,9 +141,9 @@ pub const PlainTransport = struct {
 };
 
 const TlsTransport = struct {
-    stream: std.net.Stream,
-    stream_reader: *std.net.Stream.Reader,
-    stream_writer: *std.net.Stream.Writer,
+    stream: net.Stream,
+    stream_reader: *TimeoutReader,
+    stream_writer: *net.Stream.Writer,
     tls_client: std.crypto.tls.Client,
     socket_read_buffer: []u8,
     socket_write_buffer: []u8,
@@ -97,15 +151,15 @@ const TlsTransport = struct {
     tls_write_buffer: []u8,
     ca_bundle: std.crypto.Certificate.Bundle,
 
-    pub fn initInPlace(self: *TlsTransport, alloc: std.mem.Allocator, stream: std.net.Stream, host: []const u8) !void {
+    pub fn initInPlace(self: *TlsTransport, io: std.Io, alloc: std.mem.Allocator, stream: net.Stream, host: []const u8, ca_file_path: ?[]const u8) !void {
         // Own the stream on entry — any subsequent failure (CA load, buffer
         // alloc, TLS handshake) must close it so callers (incl. dialAndAuth
         // on every reconnect) cannot leak fds.
-        errdefer stream.close();
+        errdefer stream.close(io);
         applyKeepalive(stream);
-        const ca_file = std.process.getEnvVarOwned(alloc, "REDIS_TLS_CA_CERT_FILE") catch null;
-        defer if (ca_file) |v| alloc.free(v);
-        var ca_bundle = try redis_config.loadCaBundle(alloc, ca_file);
+        // `REDIS_TLS_CA_CERT_FILE` is resolved once into the Config (env is a
+        // Zig 0.16 snapshot); the dial path just borrows the resolved path.
+        var ca_bundle = try redis_config.loadCaBundle(io, alloc, ca_file_path);
         errdefer ca_bundle.deinit(alloc);
 
         const socket_read_buffer = try alloc.alloc(u8, std.crypto.tls.Client.min_buffer_len);
@@ -116,12 +170,12 @@ const TlsTransport = struct {
         errdefer alloc.free(tls_read_buffer);
         const tls_write_buffer = try alloc.alloc(u8, std.crypto.tls.Client.min_buffer_len * 8);
         errdefer alloc.free(tls_write_buffer);
-        const stream_reader = try alloc.create(std.net.Stream.Reader);
+        const stream_reader = try alloc.create(TimeoutReader);
         errdefer alloc.destroy(stream_reader);
-        const stream_writer = try alloc.create(std.net.Stream.Writer);
+        const stream_writer = try alloc.create(net.Stream.Writer);
         errdefer alloc.destroy(stream_writer);
-        stream_reader.* = stream.reader(socket_read_buffer);
-        stream_writer.* = stream.writer(tls_write_buffer);
+        stream_reader.* = TimeoutReader.init(stream.socket.handle, socket_read_buffer);
+        stream_writer.* = stream.writer(io, tls_write_buffer);
 
         self.* = .{
             .stream = stream,
@@ -136,14 +190,29 @@ const TlsTransport = struct {
             .ca_bundle = ca_bundle,
         };
 
+        // Zig 0.16 tls.Client.init needs caller-supplied entropy + a wall clock,
+        // and the CA bundle is verified under a lock. Entropy + lock are read
+        // only during this synchronous handshake, so a stack buffer/lock is safe
+        // (Options docs: entropy pointer is not captured).
+        var entropy_buf: [std.crypto.tls.Client.Options.entropy_len]u8 = undefined;
+        try common.secureRandomBytes(&entropy_buf);
+        var ca_lock: std.Io.RwLock = .init;
+
         self.tls_client = std.crypto.tls.Client.init(
-            self.stream_reader.interface(),
+            &self.stream_reader.interface,
             &self.stream_writer.interface,
             .{
                 .host = .{ .explicit = host },
-                .ca = .{ .bundle = self.ca_bundle },
+                .ca = .{ .bundle = .{
+                    .gpa = alloc,
+                    .io = io,
+                    .lock = &ca_lock,
+                    .bundle = &self.ca_bundle,
+                } },
                 .read_buffer = self.tls_read_buffer,
                 .write_buffer = self.socket_write_buffer,
+                .entropy = &entropy_buf,
+                .realtime_now = std.Io.Timestamp.now(io, .real),
                 .allow_truncation_attacks = false,
             },
         ) catch |err| {
@@ -153,8 +222,8 @@ const TlsTransport = struct {
         log.debug(S_TRANSPORT_CONNECTED, .{ .mode = "tls", .host = host });
     }
 
-    pub fn deinit(self: *TlsTransport, alloc: std.mem.Allocator) void {
-        self.stream.close();
+    pub fn deinit(self: *TlsTransport, io: std.Io, alloc: std.mem.Allocator) void {
+        self.stream.close(io);
         self.ca_bundle.deinit(alloc);
         alloc.destroy(self.stream_reader);
         alloc.destroy(self.stream_writer);
@@ -177,10 +246,10 @@ pub const Transport = union(enum) {
     plain: PlainTransport,
     tls: TlsTransport,
 
-    pub fn deinit(self: *Transport, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Transport, io: std.Io, alloc: std.mem.Allocator) void {
         switch (self.*) {
-            .plain => |*p| p.deinit(alloc),
-            .tls => |*t| t.deinit(alloc),
+            .plain => |*p| p.deinit(io, alloc),
+            .tls => |*t| t.deinit(io, alloc),
         }
     }
 
@@ -198,22 +267,25 @@ pub const Transport = union(enum) {
         };
     }
 
-    /// Install (or clear) `SO_RCVTIMEO` on the underlying socket. Non-null
-    /// `ms` makes blocking reads return after that many milliseconds with
-    /// `error.ReadFailed` at the std.Io.Reader layer (Zig 0.15.2 wraps the
-    /// posix `WouldBlock` into `ReadFailed`). Null clears the timeout.
-    /// Caller (Connection / Subscriber) decides how to interpret the error.
+    /// Arm (or clear) the per-read timeout. Non-null `ms` bounds each read by
+    /// a `poll(2)` deadline on the transport's `TimeoutReader`; on expiry the
+    /// read fails and `readTimedOut()` returns true so the Connection surfaces
+    /// a distinct `RedisRequestTimeout`. Null blocks until data or peer close.
+    /// Replaces `SO_RCVTIMEO`, which panics under 0.16's threaded reader.
     pub fn setReadTimeout(self: *Transport, ms: ?u32) void {
-        const fd = switch (self.*) {
-            .plain => |*p| p.stream.handle,
-            .tls => |*t| t.stream.handle,
-        };
-        const timeout: std.posix.timeval = if (ms) |v| .{
-            .sec = @intCast(v / 1000),
-            .usec = @intCast((v % 1000) * 1000),
-        } else .{ .sec = 0, .usec = 0 };
-        std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
-            log.warn("setsockopt_rcvtimeo_failed", .{ .err = @errorName(err) });
+        switch (self.*) {
+            .plain => |*p| p.stream_reader.timeout_ms = ms,
+            .tls => |*t| t.stream_reader.timeout_ms = ms,
+        }
+    }
+
+    /// True if the most recent read on this transport hit its timeout deadline
+    /// (vs a peer drop or other read failure). Lets the Connection map an
+    /// otherwise-opaque `ReadFailed` to a distinct `RedisRequestTimeout`.
+    pub fn readTimedOut(self: *Transport) bool {
+        return switch (self.*) {
+            .plain => |*p| p.stream_reader.timed_out,
+            .tls => |*t| t.stream_reader.timed_out,
         };
     }
 };

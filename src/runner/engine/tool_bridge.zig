@@ -155,13 +155,13 @@ pub fn buildTools(
         .policy = policy,
     };
 
-    var list: std.ArrayList(tools_mod.Tool) = .{};
+    var list: std.ArrayList(tools_mod.Tool) = .empty;
     errdefer {
         for (list.items) |t| t.deinit(alloc);
         list.deinit(alloc);
     }
 
-    var skipped: std.ArrayList([]const u8) = .{};
+    var skipped: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (skipped.items) |s| alloc.free(s);
         skipped.deinit(alloc);
@@ -266,9 +266,9 @@ test "buildTools: unknown tool name skipped and reported" {
     const alloc = std.testing.allocator;
     var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
     defer arr.array.deinit();
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    try obj.put("name", .{ .string = "unknown_future_tool" });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "name", .{ .string = "unknown_future_tool" });
     try arr.array.append(.{ .object = obj });
     const result = try buildTools(alloc, arr, "/tmp", undefined, null);
     defer result.deinit(alloc);
@@ -281,10 +281,10 @@ test "buildTools: disabled tool skipped" {
     const alloc = std.testing.allocator;
     var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
     defer arr.array.deinit();
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    try obj.put("name", .{ .string = "file_read" });
-    try obj.put("enabled", .{ .bool = false });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "name", .{ .string = "file_read" });
+    try obj.put(alloc, "enabled", .{ .bool = false });
     try arr.array.append(.{ .object = obj });
     const result = try buildTools(alloc, arr, "/tmp", undefined, null);
     defer result.deinit(alloc);

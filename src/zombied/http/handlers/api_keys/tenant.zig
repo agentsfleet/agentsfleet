@@ -9,6 +9,8 @@
 //! rollback step 1).
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -55,7 +57,7 @@ fn requireUserId(hx: Hx) ?[]const u8 {
 
 pub fn generateRawKey(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [KEY_RANDOM_BYTES]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try constants.secureRandomBytes(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return std.fmt.allocPrint(alloc, "{s}{s}", .{ KEY_PREFIX, hex });
 }
@@ -124,7 +126,7 @@ fn performCreate(
     const raw_key = generateRawKey(hx.alloc) catch return error.OperationError;
     const key_hash = api_key.sha256Hex(raw_key);
     const id = id_format.allocUuidV7(hx.alloc) catch return error.OperationError;
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     // Atomic insert — rely on api_keys_name_per_tenant_uniq to arbitrate
     // name collisions. Pre-flight SELECT would create a TOCTOU window

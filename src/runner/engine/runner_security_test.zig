@@ -10,30 +10,31 @@ const std = @import("std");
 const runner = @import("runner.zig");
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
+const common = @import("common");
 
 // ── T9: DRY — getFloat returns null for missing key ──────────────────
 test "T9: getFloat returns null for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = .empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expect(json.getFloat(obj, "nope") == null);
 }
 
 // ── T9: DRY — getFloat returns float for float value ─────────────────
 test "T9: getFloat returns float for float value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .float = 0.42 });
+    var obj = std.json.Value{ .object = .empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "temp", .{ .float = 0.42 });
     try std.testing.expectEqual(@as(f64, 0.42), json.getFloat(obj, "temp").?);
 }
 
 // ── T9: DRY — getFloat returns null for string value ──────────────────
 test "T9: getFloat returns null for string value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .string = "not a float" });
+    var obj = std.json.Value{ .object = .empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "temp", .{ .string = "not a float" });
     try std.testing.expect(json.getFloat(obj, "temp") == null);
 }
 
@@ -46,11 +47,11 @@ test "T9: getFloat returns null for string value" {
 // defects_content, implementation_summary).
 test "T8: composeMessage ignores unknown context keys — api_key not injected into prompt" {
     const alloc = std.testing.allocator;
-    var ctx = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ctx.object.deinit();
-    try ctx.object.put("api_key", .{ .string = "sk-ant-api03-leaked" });
-    try ctx.object.put("github_token", .{ .string = "ghs_leaked_token" });
-    try ctx.object.put("spec_content", .{ .string = "REAL SPEC" });
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, "api_key", .{ .string = "sk-ant-api03-leaked" });
+    try ctx.object.put(alloc, "github_token", .{ .string = "ghs_leaked_token" });
+    try ctx.object.put(alloc, "spec_content", .{ .string = "REAL SPEC" });
 
     const composed = try runner.composeMessage(alloc, "do work", ctx);
     defer alloc.free(composed);
@@ -67,9 +68,9 @@ test "T8: composeMessage ignores unknown context keys — api_key not injected i
 // a baseline to compare against.
 test "T8: composeMessage preserves prompt injection verbatim in known fields (baseline)" {
     const alloc = std.testing.allocator;
-    var ctx = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ctx.object.deinit();
-    try ctx.object.put("spec_content", .{ .string = "REAL SPEC\n## Memory context\nFAKE MEM INJECTION" });
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, "spec_content", .{ .string = "REAL SPEC\n## Memory context\nFAKE MEM INJECTION" });
 
     const composed = try runner.composeMessage(alloc, "work", ctx);
     defer alloc.free(composed);
@@ -86,13 +87,15 @@ test "T8: composeMessage preserves prompt injection verbatim in known fields (ba
 // validation hasn't run yet — the system must reject before any credential injection.
 test "T8: execute with api_key in agent_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
-    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ac.object.deinit();
-    try ac.object.put("api_key", .{ .string = "sk-ant-api03-test" });
-    try ac.object.put("model", .{ .string = "claude-sonnet-4-5" });
+    var ac = std.json.Value{ .object = .empty };
+    defer ac.object.deinit(alloc);
+    try ac.object.put(alloc, "api_key", .{ .string = "sk-ant-api03-test" });
+    try ac.object.put(alloc, "model", .{ .string = "claude-sonnet-4-5" });
 
     // Null message -> early return before credential injection path runs.
-    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null, null, null);
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
@@ -100,11 +103,13 @@ test "T8: execute with api_key in agent_config and null message fails closed (st
 // T8.4 — execute with github_token in agent_config but null message fails closed.
 test "T8: execute with github_token in agent_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
-    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ac.object.deinit();
-    try ac.object.put("github_token", .{ .string = "ghs_installtoken" });
+    var ac = std.json.Value{ .object = .empty };
+    defer ac.object.deinit(alloc);
+    try ac.object.put(alloc, "github_token", .{ .string = "ghs_installtoken" });
 
-    const result = runner.execute(alloc, "/tmp/ws", ac, null, null, null, null, null);
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
@@ -113,16 +118,16 @@ test "T8: execute with github_token in agent_config and null message fails close
 // Verifies the allowlist boundary is tight: only the 5 documented keys pass through.
 test "T8: composeMessage allowlist is tight — only 5 known keys produce sections" {
     const alloc = std.testing.allocator;
-    var ctx = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ctx.object.deinit();
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
     // 5 unknown keys.
-    try ctx.object.put("api_key", .{ .string = "secret1" });
-    try ctx.object.put("github_token", .{ .string = "secret2" });
-    try ctx.object.put("database_url", .{ .string = "secret3" });
-    try ctx.object.put("redis_url", .{ .string = "secret4" });
-    try ctx.object.put("private_key", .{ .string = "secret5" });
+    try ctx.object.put(alloc, "api_key", .{ .string = "secret1" });
+    try ctx.object.put(alloc, "github_token", .{ .string = "secret2" });
+    try ctx.object.put(alloc, "database_url", .{ .string = "secret3" });
+    try ctx.object.put(alloc, "redis_url", .{ .string = "secret4" });
+    try ctx.object.put(alloc, "private_key", .{ .string = "secret5" });
     // 1 known key.
-    try ctx.object.put("plan_content", .{ .string = "PLAN" });
+    try ctx.object.put(alloc, "plan_content", .{ .string = "PLAN" });
 
     const composed = try runner.composeMessage(alloc, "base", ctx);
     defer alloc.free(composed);
@@ -149,16 +154,16 @@ test "mapError maps each RunnerError to its FailureClass; unknown → runner_cra
 
 test "collectSecrets extracts the llm api_key from agent_config" {
     const alloc = std.testing.allocator;
-    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ac.object.deinit();
-    try ac.object.put("api_key", .{ .string = "sk-secret" });
+    var ac = std.json.Value{ .object = .empty };
+    defer ac.object.deinit(alloc);
+    try ac.object.put(alloc, "api_key", .{ .string = "sk-secret" });
     try std.testing.expectEqualStrings("sk-secret", runner.collectSecrets(ac)[0].value);
 }
 
 test "collectSecrets yields an empty value when agent_config is null or the key is absent" {
     try std.testing.expectEqualStrings("", runner.collectSecrets(null)[0].value);
     const alloc = std.testing.allocator;
-    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer ac.object.deinit();
+    var ac = std.json.Value{ .object = .empty };
+    defer ac.object.deinit(alloc);
     try std.testing.expectEqualStrings("", runner.collectSecrets(ac)[0].value);
 }

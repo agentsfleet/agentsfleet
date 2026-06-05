@@ -83,7 +83,7 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
 // allocator and torn down explicitly before main() returns. zbench
 // drives this fn with the same allocator across iterations.
 // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-var bench_chunk_scratch: std.io.Writer.Allocating = undefined;
+var bench_chunk_scratch: std.Io.Writer.Allocating = undefined;
 
 fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
     _ = allocator;
@@ -102,7 +102,7 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
 // ── Entry point ───────────────────────────────────────────────────────────
 
 pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
@@ -122,9 +122,6 @@ pub fn main() !void {
     try bench.add("webhook_signature_verify", benchWebhookSignatureVerify, .{});
     try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
 
-    const stdout: std.fs.File = .stdout();
-    var buf: [4096]u8 = undefined;
-    var writer = stdout.writer(&buf);
-    try bench.run(&writer.interface);
-    try writer.interface.flush();
+    // zbench 0.11.2's run writes + flushes to the File directly on the 0.16 io.
+    try bench.run(app.globalIo(), std.Io.File.stdout());
 }

@@ -28,18 +28,18 @@ fn defaultCfg() Config {
 fn specOf(alloc: std.mem.Allocator, names: []const []const u8) !std.json.Value {
     var arr = std.json.Array.init(alloc);
     for (names) |n| {
-        var obj = std.json.ObjectMap.init(alloc);
-        try obj.put("name", .{ .string = n });
+        var obj: std.json.ObjectMap = .empty;
+        try obj.put(alloc, "name", .{ .string = n });
         try arr.append(.{ .object = obj });
     }
     return .{ .array = arr };
 }
 
 /// Free a spec built by `specOf` — each entry's ObjectMap plus the outer array.
-fn freeSpec(spec: std.json.Value) void {
+fn freeSpec(alloc: std.mem.Allocator, spec: std.json.Value) void {
     for (spec.array.items) |item| {
         var o = item.object;
-        o.deinit();
+        o.deinit(alloc);
     }
     var a = spec.array;
     a.deinit();
@@ -74,7 +74,7 @@ test "should skip unknown tool and report UZ-TOOL-005 in buildTools" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
     const spec = try specOf(alloc, &.{ "shell", "unknown_tool" });
-    defer freeSpec(spec);
+    defer freeSpec(alloc, spec);
 
     const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
     defer result.deinit(alloc);
@@ -91,7 +91,7 @@ test "should build http_request plain variant when policy is null" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
     const spec = try specOf(alloc, &.{"http_request"});
-    defer freeSpec(spec);
+    defer freeSpec(alloc, spec);
 
     const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
     defer result.deinit(alloc);
@@ -105,7 +105,7 @@ test "should build http_request policy-aware variant when ExecutionPolicy is pre
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
     const spec = try specOf(alloc, &.{"http_request"});
-    defer freeSpec(spec);
+    defer freeSpec(alloc, spec);
 
     // A policy carrying a network allowlist drives the policy-aware builder.
     const allow = [_][]const u8{ "api.example.com", "registry.npmjs.org" };
@@ -127,13 +127,13 @@ test "should drop a disabled tool without building or skipping it" {
     defer {
         for (arr.items) |item| {
             var o = item.object;
-            o.deinit();
+            o.deinit(alloc);
         }
         arr.deinit();
     }
-    var obj = std.json.ObjectMap.init(alloc);
-    try obj.put("name", .{ .string = "file_read" });
-    try obj.put("enabled", .{ .bool = false });
+    var obj: std.json.ObjectMap = .empty;
+    try obj.put(alloc, "name", .{ .string = "file_read" });
+    try obj.put(alloc, "enabled", .{ .bool = false });
     try arr.append(.{ .object = obj });
 
     const result = try tool_bridge.buildTools(alloc, .{ .array = arr }, WORKSPACE, &cfg, null);
@@ -161,7 +161,7 @@ test "should have no memory leaks when buildTools skips unknown tools repeatedly
     // its dup'd names) are fully freed by BuildResult.deinit each time.
     for (0..50) |_| {
         const spec = try specOf(alloc, &.{ "shell", "ghost_tool", "calculator", "phantom" });
-        defer freeSpec(spec);
+        defer freeSpec(alloc, spec);
         const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null);
         defer result.deinit(alloc);
         try std.testing.expectEqual(@as(usize, 2), result.tools.len);

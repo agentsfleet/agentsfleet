@@ -2,6 +2,8 @@
 //! Bounded queue + background log sink, no persistence/replay yet.
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
 const logging = @import("log");
 
 const log = logging.scoped(.event_bus);
@@ -25,7 +27,7 @@ const BusEvent = struct {
 
     pub fn init(kind: []const u8, run_id: ?[]const u8, detail: []const u8) BusEvent {
         var out = BusEvent{
-            .ts_ms = std.time.milliTimestamp(),
+            .ts_ms = clock.nowMillis(),
         };
         out.kind_len = @intCast(copyTrunc(&out.kind, kind));
         out.run_id_len = @intCast(copyTrunc(&out.run_id, run_id orelse ""));
@@ -47,8 +49,8 @@ const BusEvent = struct {
 };
 
 pub const Bus = struct {
-    mutex: std.Thread.Mutex = .{},
-    cond: std.Thread.Condition = .{},
+    mutex: common.Mutex = .{},
+    cond: common.Condition = .{},
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
     // SAFETY: populated by the owning init/builder before any consumer reads this field.
     queue: [CAPACITY]BusEvent = undefined,
@@ -171,7 +173,7 @@ test "event slices are truncated to bounded limits" {
 test "integration: event bus run thread exits when stopped while idle" {
     var bus = Bus.init();
     const thread = try std.Thread.spawn(.{}, runThread, .{&bus});
-    std.Thread.sleep(5 * std.time.ns_per_ms);
+    @import("common").sleepNanos(5 * std.time.ns_per_ms);
     bus.stop();
     thread.join();
 
@@ -184,7 +186,7 @@ test "integration: event bus drains queued events before shutdown completes" {
 
     bus.publish(BusEvent.init("k1", "run-1", "d1"));
     bus.publish(BusEvent.init("k2", "run-2", "d2"));
-    std.Thread.sleep(5 * std.time.ns_per_ms);
+    @import("common").sleepNanos(5 * std.time.ns_per_ms);
     bus.stop();
     thread.join();
 

@@ -20,6 +20,7 @@
 //! live in tenant_provider_resolver.zig per RULE FLL.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 
@@ -118,7 +119,7 @@ pub fn upsertSelfManaged(
     var probe = try resolver.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
     defer probe.deinit(alloc);
 
-    const now_ms: i64 = std.time.milliTimestamp();
+    const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenant_providers
         \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
@@ -154,7 +155,7 @@ pub fn upsertPlatform(
     var plk = try resolver.loadActivePlatformKey(alloc, conn);
     defer plk.deinit(alloc);
 
-    const now_ms: i64 = std.time.milliTimestamp();
+    const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenant_providers
         \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)

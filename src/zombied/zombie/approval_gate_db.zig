@@ -10,6 +10,7 @@
 // and are re-exported here for callers that want a single import.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
@@ -139,7 +140,7 @@ pub const ResolveArgs = struct {
         const conn = try pool.acquire();
         defer pool.release(conn);
 
-        const now_ms = std.time.milliTimestamp();
+        const now_ms = clock.nowMillis();
         var update_q = PgQuery.from(try conn.query(
             \\UPDATE core.zombie_approval_gates
             \\SET status = $1, detail = $2, resolved_by = $3, updated_at = $4
@@ -187,7 +188,7 @@ fn insertPendingRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const timeout_at = now_ms +| detail.timeout_ms;
     _ = try conn.exec(
         \\INSERT INTO core.zombie_approval_gates
@@ -196,9 +197,9 @@ fn insertPendingRow(
         \\   status, detail, requested_at, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, '', $13, $13)
     , .{
-        gate_id, zombie_id, workspace_id, action_id, detail.tool, detail.action,
-        detail.gate_kind, detail.proposed_action, detail.evidence_json,
-        detail.blast_radius, timeout_at, PENDING_STATUS, now_ms,
+        gate_id,          zombie_id,              workspace_id,         action_id,           detail.tool, detail.action,
+        detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
+        now_ms,
     });
 }
 
@@ -218,10 +219,14 @@ fn readResolvedRow(alloc: Allocator, row: pg.Row) !ResolvedRow {
     const detail = try alloc.dupe(u8, try row.get([]const u8, 7));
 
     return .{
-        .gate_id = gate_id, .action_id = action_id,
-        .workspace_id = workspace_id, .zombie_id = zombie_id,
-        .outcome = parseStatus(status_str), .resolved_at = resolved_at,
-        .resolved_by = resolved_by, .detail = detail,
+        .gate_id = gate_id,
+        .action_id = action_id,
+        .workspace_id = workspace_id,
+        .zombie_id = zombie_id,
+        .outcome = parseStatus(status_str),
+        .resolved_at = resolved_at,
+        .resolved_by = resolved_by,
+        .detail = detail,
     };
 }
 

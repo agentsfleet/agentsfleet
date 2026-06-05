@@ -4,6 +4,7 @@
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -81,7 +82,7 @@ test "integration: zombies list — cursor pagination roundtrip" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
     const ids = try seedZombies(alloc, conn, 5, now_ms);
     defer freeIds(alloc, ids);
@@ -160,7 +161,7 @@ test "integration: zombies list — projects triggers array from config_json" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
     // Seed one zombie with a `triggers[]` array inside `x-usezombie:` — mirrors
@@ -215,7 +216,7 @@ test "integration: install — 201 returns webhook_urls map keyed by source" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
     const body =
@@ -249,7 +250,7 @@ test "integration: install — cron-only trigger returns empty webhook_urls map"
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
     const body =
@@ -278,7 +279,7 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
     // SKILL.md says alpha-zombie; TRIGGER.md says beta-zombie. Both halves

@@ -14,6 +14,7 @@
 //! `svix_verify` module (which itself imports only std + `hmac_sig`).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 
 const chain = @import("chain.zig");
@@ -36,7 +37,7 @@ pub const isTimestampFresh = sv.isTimestampFresh;
 pub const NowSecondsFn = *const fn () i64;
 
 fn defaultNowSeconds() i64 {
-    return std.time.timestamp();
+    return clock.nowSeconds();
 }
 
 const log = logging.scoped(.svix);

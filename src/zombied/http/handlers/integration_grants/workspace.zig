@@ -3,6 +3,7 @@
 //! DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -65,7 +66,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
     });
     defer q.deinit();
 
-    var grants: std.ArrayListUnmanaged(GrantRow) = .{};
+    var grants: std.ArrayListUnmanaged(GrantRow) = .empty;
     while (q.next() catch null) |row| {
         const grant_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const service = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
@@ -113,7 +114,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         return;
     }
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     // Scope UPDATE by workspace_id as defence-in-depth — mirrors the pattern in
     // killZombieOnConn. Even if the app-level zombie-ws match is ever bypassed by
     // a future refactor, the SQL still refuses cross-workspace revocation.
@@ -165,7 +166,7 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     const ws_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd12";
     const zombie_in_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd21";
     const grant_id = "grant_defindep_001";
-    const now: i64 = std.time.milliTimestamp();
+    const now: i64 = clock.nowMillis();
 
     // Seed tenant, two workspaces, a zombie in WS_B, and a pending grant.
     _ = try conn.exec(

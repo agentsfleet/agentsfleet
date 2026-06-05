@@ -76,9 +76,9 @@ pub fn renderPrometheus(
     const s = mc.snapshot();
     const worker_running_gauge: u8 = if (worker_running) 1 else 0;
 
-    var out: std.ArrayList(u8) = .{};
-    errdefer out.deinit(alloc);
-    const writer = out.writer(alloc);
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const writer = &aw.writer;
 
     try appendMetric(writer, "zombie_external_retries_total", S_COUNTER, "Total retry attempts inside external side-effect wrappers.", s.external_retries_total);
     try appendMetric(writer, "zombie_external_retries_rate_limited_total", S_COUNTER, "External retries classified as rate-limited.", s.external_retries_rate_limited_total);
@@ -188,5 +188,5 @@ pub fn renderPrometheus(
 
     try writer.writeAll("\n");
 
-    return out.toOwnedSlice(alloc);
+    return aw.toOwnedSlice();
 }

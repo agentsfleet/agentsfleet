@@ -65,9 +65,8 @@ pub fn innerGetApproval(
     const parsed_evidence = std.json.parseFromSlice(std.json.Value, hx.alloc, row.evidence_json, .{ .ignore_unknown_fields = true }) catch null;
     defer if (parsed_evidence) |p| p.deinit();
 
-    var empty_obj = std.json.ObjectMap.init(hx.alloc);
-    defer empty_obj.deinit();
-    const evidence_value: std.json.Value = if (parsed_evidence) |p| p.value else .{ .object = empty_obj };
+    // Zig 0.16 json.ObjectMap is unmanaged — `.empty` is the no-alloc empty map.
+    const evidence_value: std.json.Value = if (parsed_evidence) |p| p.value else .{ .object = .empty };
 
     hx.ok(.ok, .{
         .gate_id = row.gate_id,

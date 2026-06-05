@@ -97,7 +97,7 @@ fn readRespValueDepth(alloc: std.mem.Allocator, reader: *std.Io.Reader, depth: u
 }
 
 fn readRespLine(alloc: std.mem.Allocator, reader: *std.Io.Reader) ![]u8 {
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
 
     while (true) {

@@ -10,6 +10,7 @@
 // Requires LIVE_DB=1 + a reachable Redis. Skipped when either is missing.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -108,7 +109,7 @@ fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, 
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, runner_id, zombie_id, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, std.time.milliTimestamp() + 60_000 });
+    , .{ lease_id, runner_id, zombie_id, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -129,7 +130,7 @@ fn publishFreshEvent(h: *TestHarness, zombie_id: []const u8) !void {
         .actor = "steer:test-user",
         .event_type = .chat,
         .request_json = "{\"message\":\"ping\"}",
-        .created_at = std.time.milliTimestamp(),
+        .created_at = clock.nowMillis(),
     });
     h.queue.alloc.free(id);
 }
@@ -294,7 +295,7 @@ test "integration: runner control plane — report with a stale fencing token is
     try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
     // The zombie's live fencing seq has advanced past this lease's token, as a
     // reclaim would leave it.
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, std.time.milliTimestamp() + 60_000);
+    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, clock.nowMillis() + 60_000);
 
     const resp = try reportLease(h, RUNNER_A_TOKEN, LEASE_OLD_ID, 1);
     defer resp.deinit();
@@ -417,7 +418,7 @@ test "integration: runner control plane — release is token-guarded: a supersed
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
     // The live holder owns the slot at fencing_seq=2, claim valid into the future.
-    const live_until = std.time.milliTimestamp() + 60_000;
+    const live_until = clock.nowMillis() + 60_000;
     try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, live_until);
 
     // A superseded holder (token 1 < seq 2, as a reclaim would leave it) releases

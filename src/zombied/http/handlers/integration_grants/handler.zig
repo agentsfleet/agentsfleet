@@ -3,6 +3,7 @@
 //! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
@@ -90,7 +91,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
         \\UPDATE core.agent_keys SET last_used_at = $1 WHERE key_hash = $2
-    , .{ std.time.milliTimestamp(), computed_hash }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 
     return .{
         .zombie_id = alloc.dupe(u8, zombie_id) catch return null,
@@ -212,7 +213,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         }
 
         // Revoked/denied: re-request — UPDATE back to pending.
-        const now_ms_reopen = std.time.milliTimestamp();
+        const now_ms_reopen = clock.nowMillis();
         _ = conn.exec(
             \\UPDATE core.integration_grants
             \\SET status = $1, requested_at = $2, requested_reason = $3,
@@ -262,7 +263,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     _ = conn.exec(
         \\INSERT INTO core.integration_grants

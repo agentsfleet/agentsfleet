@@ -6,11 +6,15 @@
 //! `pool.runMigrations(...)` / `pool.inspectMigrationState(...)`.
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 const pool_migrations = @import("pool_migrations.zig");
+const env_resolve = @import("../config/env_resolve.zig");
 const pool_types = @import("pool_types.zig");
+
+const EnvMap = common.env.Map;
 
 const log = logging.scoped(.db);
 
@@ -144,8 +148,8 @@ fn hasSslModeDisable(query: []const u8) bool {
     return false;
 }
 
-fn resolveDatabaseUrl(alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
-    const url = std.process.getEnvVarOwned(alloc, roleEnvVarName(role)) catch return error.MissingDatabaseUrl;
+fn resolveDatabaseUrl(env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
+    const url = (try common.env.owned(env_map, alloc, roleEnvVarName(role))) orelse return error.MissingDatabaseUrl;
     if (std.mem.trim(u8, url, " \t\r\n").len == 0) {
         alloc.free(url);
         return error.MissingDatabaseUrl;
@@ -156,14 +160,14 @@ fn resolveDatabaseUrl(alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
 /// Read a u32 env knob, preferring the role-prefixed override
 /// ("<base>_<ROLE>") over the generic `base`. Absent/blank → `default_value`;
 /// present-but-malformed → `default_value` (caller logs the fallback).
-fn readRoleEnvU32(alloc: std.mem.Allocator, base: []const u8, role: DbRole, default_value: u32) u32 {
+fn readRoleEnvU32(env_map: *const EnvMap, alloc: std.mem.Allocator, base: []const u8, role: DbRole, default_value: u32) u32 {
     var role_buf: [ROLE_TAG_MAX]u8 = undefined;
     const role_upper = std.ascii.upperString(&role_buf, @tagName(role));
 
     var name_buf: [ROLE_ENV_NAME_MAX]u8 = undefined;
     const scoped = std.fmt.bufPrint(&name_buf, "{s}_{s}", .{ base, role_upper }) catch base;
-    if (parseEnvU32(alloc, scoped)) |v| return v;
-    if (parseEnvU32(alloc, base)) |v| return v;
+    if (parseEnvU32(env_map, alloc, scoped)) |v| return v;
+    if (parseEnvU32(env_map, alloc, base)) |v| return v;
     return default_value;
 }
 
@@ -175,8 +179,8 @@ fn parseSizeStr(raw: []const u8) ?u32 {
 }
 
 /// Parse a non-empty u32 env var; null when unset, blank, or unparseable.
-fn parseEnvU32(alloc: std.mem.Allocator, name: []const u8) ?u32 {
-    const raw = std.process.getEnvVarOwned(alloc, name) catch return null;
+fn parseEnvU32(env_map: *const EnvMap, alloc: std.mem.Allocator, name: []const u8) ?u32 {
+    const raw = env_resolve.config(env_map, alloc, name) orelse return null;
     defer alloc.free(raw);
     return parseSizeStr(raw);
 }
@@ -190,15 +194,16 @@ fn clampPoolSize(raw: u32) u16 {
 
 /// Resolve env-tunable pool sizing for a role, clamping pool size to the
 /// u16 connection-count domain. Defaults apply when env knobs are absent.
-fn resolveSizing(alloc: std.mem.Allocator, role: DbRole) struct { size: u16, timeout_ms: u32 } {
-    const size_raw = readRoleEnvU32(alloc, POOL_SIZE_ENV, role, POOL_SIZE_DEFAULT);
-    const timeout_ms = readRoleEnvU32(alloc, ACQUIRE_TIMEOUT_MS_ENV, role, ACQUIRE_TIMEOUT_MS_DEFAULT);
+fn resolveSizing(env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole) struct { size: u16, timeout_ms: u32 } {
+    const size_raw = readRoleEnvU32(env_map, alloc, POOL_SIZE_ENV, role, POOL_SIZE_DEFAULT);
+    const timeout_ms = readRoleEnvU32(env_map, alloc, ACQUIRE_TIMEOUT_MS_ENV, role, ACQUIRE_TIMEOUT_MS_DEFAULT);
     return .{ .size = clampPoolSize(size_raw), .timeout_ms = timeout_ms };
 }
 
-/// Initialize a pool using DATABASE_URL for the selected role.
-pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
-    const url = resolveDatabaseUrl(alloc, role) catch {
+/// Initialize a pool using DATABASE_URL for the selected role. `io` backs the
+/// pg connection/retry loop (Zig 0.16 `pg.Pool.init` takes `Io` first).
+pub fn initFromEnvForRole(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: DbRole) !*Pool {
+    const url = resolveDatabaseUrl(env_map, alloc, role) catch {
         log.err("url_not_set", .{ .role = @tagName(role), .error_code = error_codes.ERR_INTERNAL_DB_UNAVAILABLE });
         return error.MissingDatabaseUrl;
     };
@@ -209,10 +214,10 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     // process-lifetime strings are not tracked by a GPA/arena and do not
     // appear as leaks when the process exits.
     var opts = try parseUrl(std.heap.page_allocator, url);
-    const sizing = resolveSizing(alloc, role);
+    const sizing = resolveSizing(env_map, alloc, role);
     opts.size = sizing.size;
     opts.timeout = sizing.timeout_ms;
-    const pool = try pg.Pool.init(alloc, opts);
+    const pool = try pg.Pool.init(io, alloc, opts);
     log.info("pool_initialized", .{
         .role = @tagName(role),
         .size = opts.size,

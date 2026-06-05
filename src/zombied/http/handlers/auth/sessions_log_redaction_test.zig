@@ -15,6 +15,7 @@
 // to the project root, mirroring frontmatter_fixtures_test.zig.
 
 const std = @import("std");
+const common = @import("common");
 
 const SESSIONS_SRC = "src/zombied/http/handlers/auth/sessions.zig";
 
@@ -49,7 +50,7 @@ fn countRedactedSidLogBindings(src: []const u8) !usize {
 
 test "sessions.zig routes session_id through redactSid in every .auth log emit" {
     const alloc = std.testing.allocator;
-    const src = try std.fs.cwd().readFileAlloc(alloc, SESSIONS_SRC, 256 * 1024);
+    const src = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), SESSIONS_SRC, alloc, .limited(256 * 1024));
     defer alloc.free(src);
 
     const redacted = try countRedactedSidLogBindings(src);

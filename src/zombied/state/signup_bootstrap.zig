@@ -15,6 +15,7 @@
 //! core.platform_llm_keys at LLM-call time (runtime-only).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const id_format = @import("../types/id_format.zig");
 const tenant_billing = @import("tenant_billing.zig");
@@ -135,7 +136,7 @@ pub fn bootstrapTransaction(
         conn.rollback() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     };
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     const tenant_id = try id_format.allocUuidV7(alloc);
     errdefer alloc.free(tenant_id);

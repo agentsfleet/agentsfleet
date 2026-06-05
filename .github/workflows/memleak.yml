@@ -17,7 +17,7 @@ jobs:
     container:
       # Pre-baked: trixie-slim + Zig + valgrind. Trixie's valgrind groks
       # Zig 0.15 DWARF; bookworm's misreads frames.
-      image: ghcr.io/usezombie/ci-zig-debian-trixie:0.15.2
+      image: ghcr.io/usezombie/ci-zig-debian-trixie:0.16.0
       options: --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v6

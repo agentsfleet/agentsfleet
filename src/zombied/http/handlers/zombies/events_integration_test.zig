@@ -8,6 +8,7 @@
 // surface (no-bearer / invalid-bearer 401) runs here without Redis.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -51,7 +52,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'EventsTest', $2, $2)
@@ -343,7 +344,7 @@ test "integration: events GET — since=2h filters by relative duration" {
 
     // Insert one recent event (now - 1h, kept) and one stale event (now - 5h,
     // filtered). Seed events at 1.7e12 ms are far older than now and excluded.
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const recent_ts = now_ms - (60 * 60 * 1000);
     const stale_ts = now_ms - (5 * 60 * 60 * 1000);
     const recent_eid = "1900000000001-0"; // distinct prefix to avoid seed clash

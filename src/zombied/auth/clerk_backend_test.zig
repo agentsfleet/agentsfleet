@@ -110,15 +110,11 @@ test "mapStatus: anything else maps to UnexpectedStatus" {
 }
 
 test "patchUserPublicMetadata: missing CLERK_SECRET_KEY returns MissingSecret" {
-    // Nothing to unset in the test process — if the env var happens to be
-    // populated on the runner, skip rather than risk an outbound call.
-    if (std.process.getEnvVarOwned(std.testing.allocator, cb.SECRET_ENV_VAR)) |v| {
-        std.testing.allocator.free(v);
-        return error.SkipZigTest;
-    } else |_| {}
-
+    // Option C: the secret is a typed argument (Context field), not an env read.
+    // Passing null drives the fail-closed path deterministically — a missing key
+    // must MissingSecret rather than make an unauthenticated outbound call.
     try std.testing.expectError(
         cb.PatchError.MissingSecret,
-        cb.patchUserPublicMetadata(std.testing.allocator, "user_test", "t_abc", "operator"),
+        cb.patchUserPublicMetadata(null, std.testing.allocator, "user_test", "t_abc", "operator"),
     );
 }

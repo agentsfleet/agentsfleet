@@ -22,11 +22,11 @@ const k_url: []const u8 = "url";
 const k_headers: []const u8 = "headers";
 
 fn buildSecretsMap(arena: std.mem.Allocator) !std.json.Value {
-    var fly = std.json.ObjectMap.init(arena);
-    try fly.put("api_token", .{ .string = "FlyTokenXyz" });
-    try fly.put("host", .{ .string = "api.fly.dev" });
-    var top = std.json.ObjectMap.init(arena);
-    try top.put("fly", .{ .object = fly });
+    var fly: std.json.ObjectMap = .empty;
+    try fly.put(arena, "api_token", .{ .string = "FlyTokenXyz" });
+    try fly.put(arena, "host", .{ .string = "api.fly.dev" });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "fly", .{ .object = fly });
     return .{ .object = top };
 }
 
@@ -67,9 +67,9 @@ test "host not in allowlist returns host_not_allowed" {
     const policy = newPolicy(&allow, null);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://evil.com/path" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://evil.com/path" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -85,9 +85,9 @@ test "host in allowlist passes through to inner tool" {
     const policy = newPolicy(&allow, null);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -111,9 +111,9 @@ test "substitution runs before allowlist check" {
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://${secrets.fly.host}/v1/apps" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://${secrets.fly.host}/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -135,9 +135,9 @@ test "substituted host is what the allowlist sees" {
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://${secrets.fly.host}/v1/apps" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://${secrets.fly.host}/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -157,9 +157,9 @@ test "missing secret fails closed before allowlist check" {
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://${secrets.unknown.host}/v1/apps" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://${secrets.unknown.host}/v1/apps" });
 
     try std.testing.expectError(error.SubstFailed, t.execute(alloc, args));
 }
@@ -171,8 +171,8 @@ test "missing url returns descriptive failure" {
     const policy = newPolicy(&allow, null);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -191,14 +191,14 @@ test "header values get substituted (success path reaches inner)" {
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
-    var headers = JsonObjectMap.init(alloc);
-    defer headers.deinit();
-    try headers.put("Authorization", .{ .string = "Bearer ${secrets.fly.api_token}" });
+    var headers: JsonObjectMap = .empty;
+    defer headers.deinit(alloc);
+    try headers.put(alloc, "Authorization", .{ .string = "Bearer ${secrets.fly.api_token}" });
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://api.fly.dev/v1/apps" });
-    try args.put(k_headers, .{ .object = headers });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    try args.put(alloc, k_headers, .{ .object = headers });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -217,14 +217,14 @@ test "header value with missing secret fails closed" {
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
-    var headers = JsonObjectMap.init(alloc);
-    defer headers.deinit();
-    try headers.put("Authorization", .{ .string = "Bearer ${secrets.missing.token}" });
+    var headers: JsonObjectMap = .empty;
+    defer headers.deinit(alloc);
+    try headers.put(alloc, "Authorization", .{ .string = "Bearer ${secrets.missing.token}" });
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://api.fly.dev/v1/apps" });
-    try args.put(k_headers, .{ .object = headers });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    try args.put(alloc, k_headers, .{ .object = headers });
 
     try std.testing.expectError(error.SubstFailed, t.execute(alloc, args));
 }
@@ -236,9 +236,9 @@ test "empty allowlist denies every host" {
     const policy = newPolicy(&allow, null);
     var t = newTool(&policy);
 
-    var args = JsonObjectMap.init(alloc);
-    defer args.deinit();
-    try args.put(k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    var args: JsonObjectMap = .empty;
+    defer args.deinit(alloc);
+    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);

@@ -15,6 +15,7 @@
 // live post-trial.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -125,7 +126,7 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     try exhaustBalance(conn); // 0 balance → under .stop the gate refuses the renewal charge
-    const deadline = std.time.milliTimestamp() + 60_000;
+    const deadline = clock.nowMillis() + 60_000;
     try seedActiveLease(conn, deadline);
     defer teardown(conn);
 
@@ -165,7 +166,7 @@ test "integration: a transient DB fault loading the lease is a retryable 5xx, no
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
-    try seedActiveLease(conn, std.time.milliTimestamp() + 60_000);
+    try seedActiveLease(conn, clock.nowMillis() + 60_000);
     defer teardown(conn);
 
     // Inject a transient-style DB fault on a VALID, owned, active lease: rename a

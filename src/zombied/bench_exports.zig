@@ -16,3 +16,9 @@ pub const keyset_cursor = @import("zombie/keyset_cursor.zig");
 pub const id_format = @import("types/id_format.zig");
 pub const webhook_verify = @import("zombie/webhook_verify.zig");
 pub const queue = @import("queue/redis.zig");
+// Zig 0.16 removed `std.time.nanoTimestamp` / `std.process.getEnvVarOwned`;
+// benches reach the migration's facades through the bridge rather than
+// hand-rolling clock_gettime / environ walks.
+pub const clock = @import("common").clock;
+pub const env = @import("common").env;
+pub const globalIo = @import("common").globalIo;

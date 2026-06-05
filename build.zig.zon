@@ -1,32 +1,37 @@
 .{
     .name = .zombied,
     .version = "0.37.0",
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .fingerprint = 0xc908abec9a0e1bf3,
     .dependencies = .{
         .nullclaw = .{
-            .url = "git+https://github.com/nullclaw/nullclaw.git?ref=v2026.4.9#316ccea67111ba407c5aa8f192da80dfd9f0cb4e",
-            .hash = "nullclaw-2026.4.9-wlZZyXmrLQGfbXV5_BZlUNF5VH7B4KDPg8uyY5nf_4mO",
+            .url = "git+https://github.com/nullclaw/nullclaw.git?ref=v2026.5.29#b25c6eb59f845f4f8cdbb50d6f284cb56d723435",
+            .hash = "nullclaw-2026.5.29-wlZZyaGGRwHMvCfJnfcJBv1If_R-YN6xHG54_y-Kk4l1",
         },
+        // Vendored fork of karlseguin/pg.zig at upstream commit 1aa3e3c (ref master),
+        // patched for a Zig 0.16 pool-acquire regression: upstream `Pool.acquire()`
+        // waits for a free connection via `Io.Select.concurrent` (sleep +
+        // Io.Condition.wait) — an async combinator that returns
+        // `error.ConcurrencyUnavailable` on the threaded `Io` this project runs, so
+        // any pool exhaustion 500s instead of waiting. Patched to block on a plain
+        // `Io.Condition.waitUncancelable` until `release()` signals a freed
+        // connection. See vendor/pg/CHANGES.md. Drop this vendor copy when upstream
+        // offers a threaded-Io timed wait and we re-pin.
         .pg = .{
-            // Pinned to a specific commit (not `#master`) to prevent drift from
-            // upstream pushes breaking CI mid-PR. Bump this SHA + hash together
-            // when you need a new upstream fix; do not track a moving branch.
-            .url = "git+https://github.com/karlseguin/pg.zig?ref=master#a4351154a00488d26740b4378872be03bd562d27",
-            .hash = "pg-0.0.0-Wp_7gdNpBgBWiq6RQguwbekGA0sbYvjgZd4sNG_CyT0f",
+            .path = "vendor/pg",
         },
         .posthog = .{
-            .url = "git+https://github.com/usezombie/posthog-zig.git#v0.1.3",
-            .hash = "posthog-0.1.3-QwvZljuyAQBuzL5fxzbzL7OE1I8J90mB7f7vYckyasfY",
+            .url = "git+https://github.com/usezombie/posthog-zig.git#v0.2.0",
+            .hash = "posthog-0.2.0-QwvZlsuGAgBOvEKmQ-yKf77yaLyP7SeCCPanYW1pRl7X",
         },
-        // zbench pinned to the zig-0.15.1 branch HEAD — the maintained branch for
-        // our Zig 0.15.2 toolchain. v0.12.0+ / main use `@Struct` (Zig master-only).
+        // zbench pinned to the zig-0.16.0 branch HEAD — the maintained branch for
+        // our Zig 0.16.0 toolchain.
         // See https://github.com/hendriknielaender/zBench#compatibility-notes.
         .zbench = .{
-            .url = "git+https://github.com/hendriknielaender/zBench#feaf455d9f8efa7a95b75b52ac3efe0c52549691",
-            .hash = "zbench-0.11.1-YTdc7zkmAQBWI99esNFueJc9GuzK-KaU6Nfr1ZXhNGmc",
+            .url = "git+https://github.com/hendriknielaender/zBench?ref=zig-0.16.0#c24d128bfa80ec6a1b495b84ec827c6a0bec7865",
+            .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
         },
-        // Vendored fork of karlseguin/http.zig at upstream commit 86ec1ae,
+        // Vendored fork of karlseguin/http.zig at upstream commit 40be022 (zig-0.16 branch),
         // patched to fix a shutdown UAF in the non-blocking Worker.deinit:
         // the per-worker thread pool was deinit'd (arena freed) without
         // first being stopped, so pool threads waking from read_cond.wait
@@ -35,9 +40,14 @@
         .httpz = .{
             .path = "vendor/httpz",
         },
+        // Vendored fork of kubkon/zig-yaml at main commit 84d747b (0.3.0-dev).
+        // The library source is Zig 0.16-clean; the vendored build.zig drops the
+        // upstream YAML Test Suite conformance step, whose harness (test/spec.zig)
+        // uses std APIs removed in 0.16 and broke every consumer's build. We only
+        // consume the `yaml` module. See vendor/zig-yaml/CHANGES.md.
+        // Drop this vendor copy once upstream fixes test/spec.zig for 0.16.
         .zig_yaml = .{
-            .url = "git+https://github.com/kubkon/zig-yaml.git?ref=0.2.0#5d16badfb0fa7065b999d344ec9fcd1e94cf8530",
-            .hash = "zig_yaml-0.2.0-C1161pmrAgC_rL9WzjvgNg7HnmyAMwHsG3Sre0F4haPI",
+            .path = "vendor/zig-yaml",
         },
     },
     .paths = .{

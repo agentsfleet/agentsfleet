@@ -4,6 +4,7 @@
 //! handler layer.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const queue_redis = @import("../queue/redis.zig");
 const id_format = @import("../types/id_format.zig");
@@ -71,7 +72,7 @@ pub const SessionStore = struct {
         const session_id = try id_format.allocUuidV7(self.alloc);
         errdefer self.alloc.free(session_id);
 
-        const now_ms = std.time.milliTimestamp();
+        const now_ms = clock.nowMillis();
         const state = SessionState{
             .session_id = session_id,
             .status = .pending,
@@ -135,7 +136,7 @@ pub const SessionStore = struct {
         var ttl_buf: [12]u8 = undefined;
         var now_buf: [24]u8 = undefined;
         const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS}) catch return Error.RedisError;
-        const now_str = std.fmt.bufPrint(&now_buf, "{d}", .{std.time.milliTimestamp()}) catch return Error.RedisError;
+        const now_str = std.fmt.bufPrint(&now_buf, "{d}", .{clock.nowMillis()}) catch return Error.RedisError;
 
         var resp = self.client.command(&.{
             "EVAL",               proto.APPROVE_LUA, "1",     key,
@@ -171,7 +172,7 @@ pub const SessionStore = struct {
         var win_buf: [12]u8 = undefined;
         var att_buf: [4]u8 = undefined;
         var ttl_buf: [12]u8 = undefined;
-        const now_str = try std.fmt.bufPrint(&now_buf, "{d}", .{std.time.milliTimestamp()});
+        const now_str = try std.fmt.bufPrint(&now_buf, "{d}", .{clock.nowMillis()});
         const win_str = try std.fmt.bufPrint(&win_buf, "{d}", .{CONSUME_REPLAY_WINDOW_MS});
         const att_str = try std.fmt.bufPrint(&att_buf, "{d}", .{MAX_VERIFY_ATTEMPTS});
         const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS});

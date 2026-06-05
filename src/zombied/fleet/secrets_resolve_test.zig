@@ -5,17 +5,9 @@ const pg = @import("pg");
 const secrets = @import("secrets_resolve.zig");
 const vault = @import("../state/vault.zig");
 const base = @import("../db/test_fixtures.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
 const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-cd0000000010";
-const ENCRYPTION_KEY_HEX = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-fn setEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    var z: [65]u8 = undefined;
-    @memcpy(z[0..64], ENCRYPTION_KEY_HEX);
-    z[64] = 0;
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &z, 1);
-}
 
 fn cleanupTestRows(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -29,9 +21,9 @@ fn putCredential(
     name: []const u8,
     fields: []const struct { k: []const u8, v: []const u8 },
 ) !void {
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    for (fields) |f| try obj.put(f.k, .{ .string = f.v });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    for (fields) |f| try obj.put(alloc, f.k, .{ .string = f.v });
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
     defer alloc.free(key_name);
     try vault.storeJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj });
@@ -43,7 +35,7 @@ fn putCredential(
 // deadlocks on `pool.acquire`.
 
 test "resolveSecretsMap returns parsed objects in order" {
-    setEncryptionKey();
+    crypto_primitives.setTestKek();
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer handle.pool.deinit();
@@ -82,7 +74,7 @@ test "resolveSecretsMap returns parsed objects in order" {
 }
 
 test "resolveSecretsMap surfaces CredentialNotFound on missing name" {
-    setEncryptionKey();
+    crypto_primitives.setTestKek();
     const alloc = std.testing.allocator;
     const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer handle.pool.deinit();

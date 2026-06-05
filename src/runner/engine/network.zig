@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const logging = @import("log");
+const common = @import("common");
 const builtin = @import("builtin");
 
 const policy_config = @import("runner_network_policy.zig");
@@ -35,13 +36,8 @@ pub const NetworkConfig = struct {
 /// but unrecognized is logged — that is the misconfiguration signal (a typo
 /// otherwise silently loses egress and every dependency install in the sandbox
 /// fails until it is corrected).
-pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
-    const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch |err| {
-        if (err != error.EnvironmentVariableNotFound)
-            log.warn("network_policy_env_unreadable", .{ .fallback = "deny_all" });
-        return .deny_all;
-    };
-    defer alloc.free(raw);
+pub fn policyFromMap(env_map: *const std.process.Environ.Map) PolicyMode {
+    const raw = env_map.get("RUNNER_NETWORK_POLICY") orelse return .deny_all;
     return policyFromSlice(raw);
 }
 
@@ -84,8 +80,8 @@ pub fn appendBwrapNetworkArgs(
 /// Check if network namespace isolation is available on this host.
 fn isNetworkNamespaceAvailable() bool {
     if (builtin.os.tag != .linux) return false;
-    std.fs.accessAbsolute("/usr/bin/bwrap", .{}) catch {
-        std.fs.accessAbsolute("/usr/local/bin/bwrap", .{}) catch return false;
+    std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/bin/bwrap", .{}) catch {
+        std.Io.Dir.accessAbsolute(common.globalIo(), "/usr/local/bin/bwrap", .{}) catch return false;
     };
     return true;
 }
@@ -99,7 +95,7 @@ test "deny_all is default policy" {
 
 test "appendBwrapNetworkArgs with deny_all adds no args" {
     const alloc = std.testing.allocator;
-    var argv = std.ArrayList([]const u8){};
+    var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(alloc);
     try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .deny_all }, "test-exec-id");
     try std.testing.expectEqual(@as(usize, 0), argv.items.len);
@@ -107,7 +103,7 @@ test "appendBwrapNetworkArgs with deny_all adds no args" {
 
 test "appendBwrapNetworkArgs with registry_allowlist adds --share-net" {
     const alloc = std.testing.allocator;
-    var argv = std.ArrayList([]const u8){};
+    var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(alloc);
     try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .registry_allowlist }, "test-exec-id");
     try std.testing.expectEqual(@as(usize, 1), argv.items.len);
@@ -177,7 +173,7 @@ test "policyFromSlice covers all variants and edge inputs" {
 test "appendBwrapNetworkArgs with deny_all ignores execution_id content" {
     // Empty execution_id should still produce no args under deny_all.
     const alloc = std.testing.allocator;
-    var argv = std.ArrayList([]const u8){};
+    var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(alloc);
     try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .deny_all }, "");
     try std.testing.expectEqual(@as(usize, 0), argv.items.len);
@@ -185,7 +181,7 @@ test "appendBwrapNetworkArgs with deny_all ignores execution_id content" {
 
 test "appendBwrapNetworkArgs with registry_allowlist accepts empty execution_id" {
     const alloc = std.testing.allocator;
-    var argv = std.ArrayList([]const u8){};
+    var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(alloc);
     try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .registry_allowlist }, "");
     try std.testing.expectEqual(@as(usize, 1), argv.items.len);
@@ -210,7 +206,7 @@ test "appendBwrapNetworkArgs with registry_allowlist does not leak across multip
     // std.testing.allocator panics on leak.
     const alloc = std.testing.allocator;
     for (0..10) |i| {
-        var argv = std.ArrayList([]const u8){};
+        var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(alloc);
         const exec_id = try std.fmt.allocPrint(alloc, "exec-id-{d}", .{i});
         defer alloc.free(exec_id);
@@ -243,7 +239,7 @@ test "policyFromSlice with injection-like values fails closed to deny_all" {
 // Guards against an execution_id that contains --share-net being interpreted as a flag.
 test "appendBwrapNetworkArgs deny_all ignores execution_id containing flag-like content" {
     const alloc = std.testing.allocator;
-    var argv = std.ArrayList([]const u8){};
+    var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(alloc);
     // execution_id containing what looks like a bwrap flag — must not add args.
     try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .deny_all }, "--share-net");
@@ -261,7 +257,7 @@ test "appendBwrapNetworkArgs registry_allowlist adds exactly one arg regardless 
         "normal-exec-id",
     };
     for (exec_ids) |exec_id| {
-        var argv = std.ArrayList([]const u8){};
+        var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(alloc);
         try appendBwrapNetworkArgs(alloc, &argv, .{ .policy = .registry_allowlist }, exec_id);
         // Exactly one arg must be added — no duplication from exec_id content.

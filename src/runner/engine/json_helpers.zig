@@ -69,7 +69,7 @@ pub fn getArrayParam(obj: std.json.Value, key: []const u8) ?std.json.Value {
 /// Escape a string for embedding inside a JSON string literal.
 /// Caller owns returned slice.
 pub fn escapeAlloc(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
 
     for (input) |c| {
@@ -105,7 +105,7 @@ pub fn escapeAlloc(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
 /// debug allocator's "Invalid free" check when the caller `alloc.free`d.
 pub fn strArray(alloc: std.mem.Allocator, v: std.json.Value) ![]const []const u8 {
     if (v != .array) return &.{};
-    var out: std.ArrayList([]const u8) = .{};
+    var out: std.ArrayList([]const u8) = .empty;
     errdefer out.deinit(alloc);
     for (v.array.items) |item| {
         if (item == .string) try out.append(alloc, item.string);

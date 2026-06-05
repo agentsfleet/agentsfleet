@@ -13,11 +13,11 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test -- --test-filter "finalizeWorkerAllocator"
+	 zig build test -Dopenssl=false -- --test-filter "finalizeWorkerAllocator"
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe; \
+	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe EXTRA_BUILD_FLAGS="-Dopenssl=false"; \
 	    echo "→ [zombied] Running valgrind leak gate..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 \
 	      zig-out/bin/zombied-tests;; \
@@ -112,4 +112,4 @@ _ensure-test-bin:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),) $(if $(OPTIMIZE),-Doptimize=$(OPTIMIZE),) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),)
+	 zig build test-bin $(if $(TARGET),-Dtarget=$(TARGET),) $(if $(OPTIMIZE),-Doptimize=$(OPTIMIZE),) $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) $(EXTRA_BUILD_FLAGS)

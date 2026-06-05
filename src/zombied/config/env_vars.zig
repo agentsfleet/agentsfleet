@@ -1,7 +1,10 @@
 const std = @import("std");
+const common = @import("common");
 
 const db = @import("../db/pool.zig");
 const queue_redis = @import("../queue/redis.zig");
+
+const EnvMap = common.env.Map;
 
 const S_T_R_N = " \t\r\n";
 const PANIC_OOM = "OOM";
@@ -13,8 +16,8 @@ pub const EnvVarsErrors = error{
 };
 
 const EnvVars = struct {
-    db_api: ?[]u8,
-    redis_api: ?[]u8,
+    db_api: ?[]const u8,
+    redis_api: ?[]const u8,
     alloc: std.mem.Allocator,
 
     pub fn deinit(self: *EnvVars) void {
@@ -23,12 +26,11 @@ const EnvVars = struct {
     }
 };
 
-pub fn loadFromEnv(alloc: std.mem.Allocator) EnvVars {
-    return .{
-        .db_api = std.process.getEnvVarOwned(alloc, db.roleEnvVarName(.api)) catch null,
-        .redis_api = std.process.getEnvVarOwned(alloc, queue_redis.roleEnvVarName(.api)) catch null,
-        .alloc = alloc,
-    };
+pub fn loadFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) !EnvVars {
+    const db_api = try common.env.owned(env_map, alloc, db.roleEnvVarName(.api));
+    errdefer if (db_api) |v| alloc.free(v);
+    const redis_api = try common.env.owned(env_map, alloc, queue_redis.roleEnvVarName(.api));
+    return .{ .db_api = db_api, .redis_api = redis_api, .alloc = alloc };
 }
 
 pub fn validateLoaded(urls: EnvVars) EnvVarsErrors!void {
@@ -39,8 +41,8 @@ pub fn validateLoaded(urls: EnvVars) EnvVarsErrors!void {
     if (!std.mem.startsWith(u8, redis_api, "rediss://")) return EnvVarsErrors.RedisApiTlsRequired;
 }
 
-pub fn enforceFromEnv(alloc: std.mem.Allocator) EnvVarsErrors!void {
-    var urls = loadFromEnv(alloc);
+pub fn enforceFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
+    var urls = try loadFromEnv(env_map, alloc);
     defer urls.deinit();
     try validateLoaded(urls);
 }

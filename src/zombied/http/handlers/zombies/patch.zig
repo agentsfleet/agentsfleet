@@ -25,6 +25,7 @@
 //! `updated_at` (BIGINT ms epoch) doubles as config_revision — monotonic.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -248,7 +249,7 @@ fn patchZombieInTxn(
     const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
     const new_name: ?[]const u8 = if (parsed_trigger) |pt| pt.config.name else null;
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const active = zombie_config.ZombieStatus.active.toSlice();
     const stopped = zombie_config.ZombieStatus.stopped.toSlice();
     const killed = zombie_config.ZombieStatus.killed.toSlice();
@@ -318,4 +319,3 @@ fn mapPgErr(conn: *pg.Conn, err: anyerror) anyerror!TxnOutcome {
     }
     return err;
 }
-
