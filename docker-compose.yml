@@ -62,7 +62,10 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - path: .env
+      # zombied's local override file (disambiguated from the app's .env.local and
+      # the runner's .env.runner.local). Optional — the inline `environment:` block
+      # below already satisfies a from-scratch `make up`.
+      - path: .env.zombied.local
         required: false
     environment:
       # Local dev defaults: satisfy role-separated startup checks without
