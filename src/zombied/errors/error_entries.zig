@@ -152,6 +152,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-STARTUP-004", .internal_server_error, "Redis connect failed", "Redis is unreachable. Check that REDIS_URL_API is set " ++
         "and the Redis server accepts connections. Run 'zombied doctor' to verify."),
     e("UZ-STARTUP-005", .internal_server_error, "Migration check failed", "Database migration state could not be verified. Check DB connectivity."),
+    e("UZ-STARTUP-006", .internal_server_error, "Secret resolve failed", "A required environment secret could not be allocated at startup (out of memory). " ++
+        "The server fails closed instead of booting without it — check host memory pressure."),
     e("UZ-STARTUP-007", .internal_server_error, "Redis group creation failed", "Redis connected but consumer group creation failed. " ++
         "Check Redis ACL permissions allow XGROUP CREATE."),
     // ── RUNNER (zombie-runner /v1/runners control contract) ───────────────────

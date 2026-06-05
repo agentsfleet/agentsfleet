@@ -227,6 +227,7 @@ test "startup hints reference 'zombied doctor' or env vars" {
         reg.ERR_STARTUP_ENV_CHECK,
         reg.ERR_STARTUP_CONFIG_LOAD,
         reg.ERR_STARTUP_DB_CONNECT,
+        reg.ERR_STARTUP_SECRET_RESOLVE,
     };
     for (startup_codes) |code| {
         const h = reg.hint(code);

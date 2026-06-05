@@ -24,6 +24,8 @@ const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const boot_secrets = @import("serve_boot_secrets.zig");
+const clerk_backend = @import("../auth/clerk_backend.zig");
 
 const log = logging.scoped(.zombied);
 
@@ -33,7 +35,6 @@ const S_STARTUP_CONFIG_LOAD_FAILED = "startup.config_load_failed";
 const S_STARTUP_MODEL_RATE_CACHE_FAILED = "startup.model_rate_cache_failed";
 const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
 const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
-const S_STARTUP_SECRET_ALLOC_FAILED = "startup.secret_alloc_failed";
 const S_API = "api";
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
@@ -60,15 +61,6 @@ fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u
             .err = queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV ++ " must parse as a non-negative integer (ms)",
         });
         std.process.exit(1);
-    };
-}
-
-// Resolve a boot-time secret, logging (not masking) an allocation failure so an
-// OOM at startup is diagnosable instead of silently presenting as "unset".
-fn bootSecret(env_map: *const EnvMap, alloc: std.mem.Allocator, key: []const u8) ?[]const u8 {
-    return common.env.owned(env_map, alloc, key) catch |e| {
-        log.warn(S_STARTUP_SECRET_ALLOC_FAILED, .{ .key = key, .err = @errorName(e) });
-        return null;
     };
 }
 
@@ -224,11 +216,11 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
     // middleware borrow these (Context owns them for the process lifetime)
     // instead of re-reading env per request. Null = unset → consumer fails closed.
-    const clerk_webhook_secret = bootSecret(env_map, alloc, "CLERK_WEBHOOK_SECRET");
+    const clerk_webhook_secret = try boot_secrets.resolve(env_map, alloc, boot_secrets.CLERK_WEBHOOK_SECRET_ENV);
     defer if (clerk_webhook_secret) |s| alloc.free(s);
-    const approval_signing_secret_owned = bootSecret(env_map, alloc, "APPROVAL_SIGNING_SECRET");
+    const approval_signing_secret_owned = try boot_secrets.resolve(env_map, alloc, boot_secrets.APPROVAL_SIGNING_SECRET_ENV);
     defer if (approval_signing_secret_owned) |s| alloc.free(s);
-    const clerk_secret_key = bootSecret(env_map, alloc, "CLERK_SECRET_KEY");
+    const clerk_secret_key = try boot_secrets.resolve(env_map, alloc, clerk_backend.SECRET_ENV_VAR);
     defer if (clerk_secret_key) |s| alloc.free(s);
 
     var ctx = http_handler.Context{

@@ -65,6 +65,7 @@ test {
     _ = @import("http/handlers/memory/handler_test.zig");
     _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
+    _ = @import("cmd/serve_boot_secrets_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pool_test.zig");
     _ = @import("queue/redis_pool_concurrency_test.zig");

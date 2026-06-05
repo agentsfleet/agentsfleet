@@ -5,11 +5,13 @@
 //! hmac_sig.computeMac, and asserts both the response and the DB post-state.
 
 const std = @import("std");
+const common = @import("common");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const hs = @import("hmac_sig");
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const boot_secrets = @import("../../../cmd/serve_boot_secrets.zig");
 const svix = @import("../../../auth/crypto/svix_verify.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
@@ -163,6 +165,55 @@ test "clerk webhook: valid signed user.created bootstraps and returns 200" {
     defer h.releaseConn(conn);
     defer cleanupAccount(conn, OIDC_HAPPY);
     try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, OIDC_HAPPY));
+}
+
+test "clerk webhook: a boot-resolved CLERK_WEBHOOK_SECRET authenticates a live webhook" {
+    const h = startHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Source the secret through the real boot path — the canonical env-name const
+    // + the fail-closed resolver — instead of the raw literal the other tests
+    // pin. Proves the boot-resolved value drives a genuine Svix-signed request
+    // through the full middleware → handler → DB chain.
+    var env = try common.env.fromPairs(ALLOC, &.{.{ boot_secrets.CLERK_WEBHOOK_SECRET_ENV, WHSEC_KEY }});
+    defer env.deinit();
+    const resolved = (try boot_secrets.resolve(&env, ALLOC, boot_secrets.CLERK_WEBHOOK_SECRET_ENV)) orelse
+        return error.TestUnexpectedResult;
+    defer ALLOC.free(resolved);
+    try std.testing.expectEqualStrings(WHSEC_KEY, resolved);
+    h.ctx.clerk_webhook_secret = resolved;
+
+    const oidc = "oidc-clerk-http-bootsecret-01";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        cleanupAccount(conn, oidc);
+    }
+
+    const svix_id = "msg_clerk_bootsecret_01";
+    const ts = try nowTsAlloc(ALLOC);
+    defer ALLOC.free(ts);
+    const body = try userCreatedBody(ALLOC, oidc, "bootsecret@acme.test");
+    defer ALLOC.free(body);
+    const sig = try signEntry(ALLOC, svix_id, ts, body);
+    defer ALLOC.free(sig);
+
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
+        .header(svix.SVIX_ID_HEADER, svix_id))
+        .header(svix.SVIX_TS_HEADER, ts))
+        .header(svix.SVIX_SIG_HEADER, sig))
+        .json(body)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("\"created\":true"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAccount(conn, oidc);
+    try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, oidc));
 }
 
 test "clerk webhook: tampered body returns 401 UZ-WH-010 and writes no rows" {
