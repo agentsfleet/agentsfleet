@@ -19,6 +19,7 @@
 //! event loop XACKs the event so it isn't redelivered into the same fault.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
@@ -228,7 +229,7 @@ fn debitAndInsert(
         .token_count_input = null,
         .token_count_output = null,
         .wall_ms = null,
-        .recorded_at = std.time.milliTimestamp(),
+        .recorded_at = clock.nowMillis(),
     }) catch |err| {
         conn.rollback() catch |rb_err| log.warn("rollback_fail", .{ .err = @errorName(rb_err) });
         tx_open = false;

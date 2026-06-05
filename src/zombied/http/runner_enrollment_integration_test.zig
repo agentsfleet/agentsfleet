@@ -14,6 +14,7 @@
 // platform_admin}`. `exp` is 4102444800 (2100) so the fixture never ages out.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
 const api_key = @import("../auth/api_key.zig");
@@ -122,7 +123,7 @@ fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTenantAndApiKey(h: *TestHarness) !void {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'Runner Enroll Test Tenant', $2, $2)

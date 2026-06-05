@@ -6,6 +6,8 @@
 //! can implement the same engine API.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 
 /// Opaque handle returned by CreateExecution.
 pub const ExecutionId = [16]u8;
@@ -33,12 +35,12 @@ pub const LeaseState = struct {
     lease_timeout_ms: u64,
 
     pub fn isExpired(self: LeaseState) bool {
-        const now = std.time.milliTimestamp();
+        const now = clock.nowMillis();
         return (now - self.last_heartbeat_ms) > @as(i64, @intCast(self.lease_timeout_ms));
     }
 
     pub fn touch(self: *LeaseState) void {
-        self.last_heartbeat_ms = std.time.milliTimestamp();
+        self.last_heartbeat_ms = clock.nowMillis();
     }
 };
 
@@ -51,7 +53,6 @@ pub const ResourceLimits = struct {
 };
 
 /// Configuration for the runner's sandboxed execution.
-
 /// Per-zombie configuration for durable Postgres-backed memory (M14_001).
 ///
 /// When present, the runner overrides NullClaw's default workspace-SQLite
@@ -132,7 +133,10 @@ pub const MemoryBackendConfig = struct {
 pub fn generateExecutionId() ExecutionId {
     // SAFETY: written by surrounding init logic before any read of this storage.
     var id: ExecutionId = undefined;
-    std.crypto.random.bytes(&id);
+    // Infallible by contract (callers don't handle entropy errors); degrade to
+    // a zeroed id only on catastrophic CSPRNG failure, matching the host's
+    // other infallible id paths (e.g. observability trace ids).
+    common.secureRandomBytes(&id) catch @memset(&id, 0);
     return id;
 }
 
@@ -157,7 +161,7 @@ test "generateExecutionId produces unique ids" {
 test "LeaseState.isExpired detects stale leases" {
     var lease = LeaseState{
         .execution_id = generateExecutionId(),
-        .last_heartbeat_ms = std.time.milliTimestamp() - 60_000,
+        .last_heartbeat_ms = clock.nowMillis() - 60_000,
         .lease_timeout_ms = 30_000,
     };
     try std.testing.expect(lease.isExpired());
@@ -246,4 +250,3 @@ test "MemoryBackendConfig defaults are sane" {
     try std.testing.expectEqual(@as(u32, 100_000), cfg.max_entries);
     try std.testing.expectEqual(@as(u32, 72), cfg.daily_retention_hours);
 }
-

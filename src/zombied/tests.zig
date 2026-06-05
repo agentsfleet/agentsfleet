@@ -34,7 +34,7 @@ test {
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
-    _ = @import("http/runner_register_integration_test.zig");
+    _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
@@ -65,8 +65,10 @@ test {
     _ = @import("http/handlers/memory/handler_test.zig");
     _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
+    _ = @import("config/env_resolve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pool_test.zig");
+    _ = @import("queue/redis_pool_concurrency_test.zig");
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");

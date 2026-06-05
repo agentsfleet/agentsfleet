@@ -13,6 +13,7 @@
 // unique IDs within a run prevent PK collisions.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -114,7 +115,7 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
     try seedZombies(conn, alloc, fx, now_ms);
 

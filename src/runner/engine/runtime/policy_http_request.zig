@@ -77,13 +77,13 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
         return ToolResult{ .success = false, .output = "", .error_msg = msg };
     }
 
-    var subst_args = JsonObjectMap.init(arena);
-    try subst_args.put(arg_url, .{ .string = subst_url });
-    if (args.get(arg_method)) |m| try subst_args.put(arg_method, m);
+    var subst_args: JsonObjectMap = .empty;
+    try subst_args.put(arena, arg_url, .{ .string = subst_url });
+    if (args.get(arg_method)) |m| try subst_args.put(arena, arg_method, m);
 
     if (args.get(arg_headers)) |hv| {
         if (hv == .object) {
-            var subst_headers = JsonObjectMap.init(arena);
+            var subst_headers: JsonObjectMap = .empty;
             var it = hv.object.iterator();
             while (it.next()) |e| {
                 const v = e.value_ptr.*;
@@ -96,11 +96,11 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
                     },
                     else => v,
                 };
-                try subst_headers.put(e.key_ptr.*, replaced);
+                try subst_headers.put(arena, e.key_ptr.*, replaced);
             }
-            try subst_args.put(arg_headers, .{ .object = subst_headers });
+            try subst_args.put(arena, arg_headers, .{ .object = subst_headers });
         } else {
-            try subst_args.put(arg_headers, hv);
+            try subst_args.put(arena, arg_headers, hv);
         }
     }
 
@@ -114,7 +114,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
             },
             else => bv,
         };
-        try subst_args.put(arg_body, replaced);
+        try subst_args.put(arena, arg_body, replaced);
     }
 
     return self.inner.execute(allocator, subst_args);

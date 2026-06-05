@@ -5,6 +5,7 @@
 // here — keep it next to the verify logic.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 const wv = @import("webhook_verify.zig");
 const verifySignature = wv.verifySignature;
@@ -106,14 +107,14 @@ test "short hex rejected" {
 
 test "isTimestampFresh: recent accepted" {
     var buf: [20]u8 = undefined;
-    const now = std.time.timestamp();
+    const now = clock.nowSeconds();
     const s = std.fmt.bufPrint(&buf, "{d}", .{now}) catch unreachable;
     try std.testing.expect(isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: old rejected" {
     var buf: [20]u8 = undefined;
-    const old = std.time.timestamp() - 600;
+    const old = clock.nowSeconds() - 600;
     const s = std.fmt.bufPrint(&buf, "{d}", .{old}) catch unreachable;
     try std.testing.expect(!isTimestampFresh(s, 300));
 }
@@ -131,42 +132,42 @@ test "isTimestampFresh: negative timestamp rejected (overflow protection)" {
 
 test "isTimestampFresh: far-future timestamp rejected (no pre-signed requests)" {
     var buf: [20]u8 = undefined;
-    const future = std.time.timestamp() + 3600;
+    const future = clock.nowSeconds() + 3600;
     const s = std.fmt.bufPrint(&buf, "{d}", .{future}) catch unreachable;
     try std.testing.expect(!isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: small forward clock skew accepted (within max_drift)" {
     var buf: [20]u8 = undefined;
-    const slightly_future = std.time.timestamp() + 10;
+    const slightly_future = clock.nowSeconds() + 10;
     const s = std.fmt.bufPrint(&buf, "{d}", .{slightly_future}) catch unreachable;
     try std.testing.expect(isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: at exactly max_drift seconds old is accepted" {
     var buf: [20]u8 = undefined;
-    const at_boundary = std.time.timestamp() - 300;
+    const at_boundary = clock.nowSeconds() - 300;
     const s = std.fmt.bufPrint(&buf, "{d}", .{at_boundary}) catch unreachable;
     try std.testing.expect(isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: at max_drift + 1 seconds old is rejected" {
     var buf: [20]u8 = undefined;
-    const just_outside = std.time.timestamp() - 301;
+    const just_outside = clock.nowSeconds() - 301;
     const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside}) catch unreachable;
     try std.testing.expect(!isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: at exactly max_drift seconds ahead is accepted (clock skew)" {
     var buf: [20]u8 = undefined;
-    const at_forward_boundary = std.time.timestamp() + 300;
+    const at_forward_boundary = clock.nowSeconds() + 300;
     const s = std.fmt.bufPrint(&buf, "{d}", .{at_forward_boundary}) catch unreachable;
     try std.testing.expect(isTimestampFresh(s, 300));
 }
 
 test "isTimestampFresh: at max_drift + 1 seconds ahead is rejected (pre-sign attack)" {
     var buf: [20]u8 = undefined;
-    const just_outside_future = std.time.timestamp() + 301;
+    const just_outside_future = clock.nowSeconds() + 301;
     const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside_future}) catch unreachable;
     try std.testing.expect(!isTimestampFresh(s, 300));
 }

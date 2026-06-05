@@ -17,9 +17,13 @@ verbose_observer: observability.VerboseObserver = .{},
 
 pub const ObserverBackend = enum { log_backend, noop, verbose };
 
-pub fn init(alloc: std.mem.Allocator) ObserverRuntime {
-    const raw = std.process.getEnvVarOwned(alloc, "NULLCLAW_OBSERVER") catch return .{ .backend = .log_backend };
-    defer alloc.free(raw);
+const ENV_NULLCLAW_OBSERVER = "NULLCLAW_OBSERVER";
+
+/// Zig 0.16 removed `std.process.getEnvVarOwned`; the env block is threaded as an
+/// `Environ.Map` from `main`. `get` borrows from the map (no alloc, no free) —
+/// we only read it to pick the backend enum.
+pub fn init(env_map: *const std.process.Environ.Map) ObserverRuntime {
+    const raw = env_map.get(ENV_NULLCLAW_OBSERVER) orelse return .{ .backend = .log_backend };
     return .{ .backend = parseBackend(raw) };
 }
 

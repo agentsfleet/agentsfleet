@@ -118,7 +118,7 @@ fn acquireRetry(h: *TestHarness) ?*pg.Conn {
     var attempt: usize = 0;
     while (attempt < 30) : (attempt += 1) {
         return h.acquireConn() catch {
-            std.Thread.sleep(20 * std.time.ns_per_ms);
+            @import("common").sleepNanos(20 * std.time.ns_per_ms);
             continue;
         };
     }

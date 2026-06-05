@@ -13,15 +13,15 @@ const output = @import("output.zig");
 
 const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
-pub fn run(alloc: std.mem.Allocator) u8 {
-    const a = output.audience(args.has(output.FLAG_JSON));
-    const api = args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
+    const a = output.audience(args.has(argv, output.FLAG_JSON));
+    const api = args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (api) |v| alloc.free(v);
-    const token = args.envOwned(alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM);
+    const token = args.envOwned(env_map, alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (token) |v| alloc.free(v);
 
     const env = envChecks(api, token);
-    const checks = [_]Check{ env[0], env[1], reachCheck(alloc, api, token) };
+    const checks = [_]Check{ env[0], env[1], reachCheck(io, alloc, api, token) };
     return emit(a, alloc, &checks);
 }
 
@@ -39,9 +39,9 @@ fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
 
 /// Reachability + token validity in one heartbeat probe (skipped if either
 /// input is unset, so the env checks own that failure).
-fn reachCheck(alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
+fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
     if (api == null or token == null) return .{ .name = "control_plane", .ok = false, .detail = "skipped — api/token unset" };
-    const client = Client{ .base_url = api.? };
+    const client = Client{ .base_url = api.?, .io = io };
     _ = client.heartbeat(alloc, token.?) catch
         return .{ .name = "control_plane", .ok = false, .detail = "unreachable or token rejected" };
     return .{ .name = "control_plane", .ok = true, .detail = "reachable; token valid" };

@@ -27,6 +27,7 @@
 //!     removal in-flight set, not the global emit load.
 
 const std = @import("std");
+const common = @import("common");
 
 /// Sink fn signature. Sinks receive the post-fmt body (logfmt body, no
 /// envelope) plus level/scope/ts_ms so each sink owns its own format
@@ -51,7 +52,7 @@ const MAX_SINKS: usize = 4;
 
 var sinks_buf: [MAX_SINKS]Sink = undefined;
 var sinks_len: usize = 0;
-var sinks_mutex: std.Thread.Mutex = .{};
+var sinks_mutex: common.Mutex = .{};
 // Monotonic emit tickets. Bumped under sinks_mutex at snapshot time;
 // drained when fan-out returns. unregisterByCtx snapshots `started`
 // after compaction and waits for `completed` to catch up, bounding
@@ -144,8 +145,8 @@ pub fn emitToSinks(
 /// `registerSink(bs.sink())` and drain via `snapshot()`.
 pub const BufferedSink = struct {
     alloc: std.mem.Allocator,
-    buf: std.ArrayList(u8) = .{},
-    mutex: std.Thread.Mutex = .{},
+    buf: std.ArrayList(u8) = .empty,
+    mutex: common.Mutex = .{},
 
     pub fn init(alloc: std.mem.Allocator) BufferedSink {
         return .{ .alloc = alloc };

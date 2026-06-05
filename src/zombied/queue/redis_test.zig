@@ -1,5 +1,10 @@
 const std = @import("std");
+const common = @import("common");
 const redis = @import("redis.zig");
+
+/// Zig 0.16 moved sockets under `std.Io.net` (io-threaded Stream/Server).
+const net = std.Io.net;
+const test_port = @import("../http/test_port.zig");
 
 test "parseRedisUrl handles redis URL variants" {
     const alloc = std.testing.allocator;
@@ -38,17 +43,16 @@ test "parseRedisUrl rejects invalid scheme and invalid port" {
 }
 
 test "loadCaBundle rejects relative custom CA path" {
-    try std.testing.expectError(error.RedisTlsCaFileMustBeAbsolute, redis.testing.loadCaBundle(std.testing.allocator, "docker/redis/tls/ca.crt"));
+    try std.testing.expectError(error.RedisTlsCaFileMustBeAbsolute, redis.testing.loadCaBundle(common.globalIo(), std.testing.allocator, "docker/redis/tls/ca.crt"));
 }
 
 test "integration: rediss ping via TEST_REDIS_TLS_URL" {
     const alloc = std.testing.allocator;
-    const tls_url = std.process.getEnvVarOwned(alloc, "TEST_REDIS_TLS_URL") catch return error.SkipZigTest;
-    defer alloc.free(tls_url);
+    const tls_url = common.env.testLiveValue("TEST_REDIS_TLS_URL") orelse return error.SkipZigTest;
 
     if (!std.mem.startsWith(u8, tls_url, "rediss://")) return error.SkipZigTest;
 
-    var client = try redis.testing.connectFromUrl(alloc, tls_url);
+    var client = try redis.testing.connectFromUrl(common.globalIo(), alloc, tls_url);
     defer client.deinit();
     try client.ping();
 }
@@ -78,7 +82,6 @@ test "queue constants: consumer prefix is stable" {
 test "queue constants: zombie consumer group reflects the lease path" {
     try std.testing.expectEqualStrings("zombie_lease", queue_consts.zombie_consumer_group);
 }
-
 
 test "queue constants: XAUTOCLAIM cursor seed and batch size" {
     try std.testing.expectEqualStrings("0-0", queue_consts.xautoclaim_start);
@@ -123,58 +126,71 @@ const redis_transport = @import("redis_transport.zig");
 /// Spawning a detached handler per accept decouples the conns at the
 /// cost of one short-lived thread per dial — fine for a test fake.
 const PingFake = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     accept_thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
     fn start(self: *PingFake) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const io = common.globalIo();
+        const lp = try test_port.listenLoopback(io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.accept_thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
     }
 
     fn shutdown(self: *PingFake) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
         // Wake the accept() by dialing ourselves; ignore failure (the
         // listener may already be torn down by the loop on error paths).
-        const addr = self.addr;
-        if (std.net.tcpConnectToAddress(addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4("127.0.0.1", self.port) catch return;
+        if (addr.connect(io, .{ .mode = .stream })) |s| s.close(io) else |_| {}
         self.accept_thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn acceptLoop(self: *PingFake) void {
+        const io = common.globalIo();
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            const stream = self.server.accept(io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                stream.close(io);
                 return;
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
-            const t = std.Thread.spawn(.{}, handleConn, .{conn.stream}) catch {
-                conn.stream.close();
+            const t = std.Thread.spawn(.{}, handleConn, .{stream}) catch {
+                stream.close(io);
                 continue;
             };
             t.detach();
         }
     }
 
-    fn handleConn(stream: std.net.Stream) void {
-        defer stream.close();
-        var buf: [256]u8 = undefined;
-        const n = stream.read(&buf) catch 0;
+    fn handleConn(stream: net.Stream) void {
+        const io = common.globalIo();
+        defer stream.close(io);
+        var read_buf: [256]u8 = undefined;
+        var reader = stream.reader(io, &read_buf);
+        var dest: [256]u8 = undefined;
+        // Single read: `readSliceShort` loops until the buffer fills or EOF,
+        // which deadlocks against a client that sends one short command then
+        // waits for the reply. One `readVec` drains what's there.
+        var dest_vec: [1][]u8 = .{&dest};
+        const n = reader.interface.readVec(&dest_vec) catch 0;
         if (n == 0) return;
-        stream.writeAll("+PONG\r\n") catch {};
+        var write_buf: [64]u8 = undefined;
+        var writer = stream.writer(io, &write_buf);
+        writer.interface.writeAll("+PONG\r\n") catch return;
+        writer.interface.flush() catch return;
         // Drop the connection — emulates Upstash idle-drop / restart.
     }
 
     fn url(self: *PingFake, alloc: std.mem.Allocator) ![]u8 {
-        return std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.addr.in.getPort()});
+        return std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.port});
     }
 };
 
@@ -183,21 +199,24 @@ test "PlainTransport.init enables SO_KEEPALIVE on its socket" {
     // keepalive bit is exercised through the same path the real client uses.
     // SO_KEEPALIVE on the underlying fd is observable via getsockopt; the
     // per-OS keep-idle knobs are best-effort and not asserted.
-    const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-    var listener = try loopback.listen(.{ .reuse_address = true });
-    defer listener.deinit();
+    const io = common.globalIo();
+    var lp = try test_port.listenLoopback(io);
+    defer lp.server.deinit(io);
 
-    const stream = try std.net.tcpConnectToAddress(listener.listen_address);
-    var t = try redis_transport.PlainTransport.init(std.testing.allocator, stream);
-    defer t.deinit(std.testing.allocator);
+    var caddr = try net.IpAddress.parseIp4("127.0.0.1", lp.port);
+    const stream = try caddr.connect(io, .{ .mode = .stream });
+    var t = try redis_transport.PlainTransport.init(io, std.testing.allocator, stream);
+    defer t.deinit(io, std.testing.allocator);
 
     var enabled: c_int = 0;
-    try std.posix.getsockopt(
-        t.stream.handle,
+    var olen: std.posix.socklen_t = @sizeOf(c_int);
+    if (std.c.getsockopt(
+        t.stream.socket.handle,
         std.posix.SOL.SOCKET,
         std.posix.SO.KEEPALIVE,
-        std.mem.asBytes(&enabled),
-    );
+        &enabled,
+        &olen,
+    ) != 0) return error.GetSockOptFailed;
     try std.testing.expect(enabled != 0);
 }
 
@@ -209,27 +228,28 @@ test "PlainTransport.init closes the stream on allocation failure (no fd leak)" 
     // We force the failure by giving init a failing allocator and assert
     // that the second alloc call (write_buffer) gets a free()'d read_buffer
     // without the test allocator complaining about the leaked stream.
-    const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-    var listener = try loopback.listen(.{ .reuse_address = true });
-    defer listener.deinit();
+    const io = common.globalIo();
+    var lp = try test_port.listenLoopback(io);
+    defer lp.server.deinit(io);
 
-    const stream = try std.net.tcpConnectToAddress(listener.listen_address);
-    const fd_before = stream.handle;
+    var caddr = try net.IpAddress.parseIp4("127.0.0.1", lp.port);
+    const stream = try caddr.connect(io, .{ .mode = .stream });
+    const fd_before = stream.socket.handle;
 
     // FailingAllocator that errors on the 2nd allocation — read_buffer
     // succeeds (so init progresses past the first errdefer), write_buffer
     // fails (so init returns an error and our errdefer stream.close() must fire).
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
-    const result = redis_transport.PlainTransport.init(failing.allocator(), stream);
+    const result = redis_transport.PlainTransport.init(io, failing.allocator(), stream);
     try std.testing.expectError(error.OutOfMemory, result);
 
-    // Confirm the fd is no longer open. read() on a closed fd returns
-    // EBADF, which Zig maps to error.NotOpenForReading — unlike fcntl
-    // which panics on EBADF in 0.15.2. Proves the errdefer stream.close()
-    // in init actually fired (otherwise we'd block waiting for a byte).
+    // Confirm the fd is no longer open. read() on a closed fd returns EBADF,
+    // which Zig 0.16's `std.posix.read` maps to `error.Unexpected` (it treats
+    // a bad fd as use-after-free). Proves the errdefer stream.close() in init
+    // actually fired (otherwise we'd block waiting for a byte).
     var probe: [1]u8 = undefined;
     const probe_result = std.posix.read(fd_before, &probe);
-    try std.testing.expectError(error.NotOpenForReading, probe_result);
+    try std.testing.expectError(error.Unexpected, probe_result);
 }
 
 test "Client.readyCheck self-heals when the server drops the connection" {
@@ -242,7 +262,7 @@ test "Client.readyCheck self-heals when the server drops the connection" {
     const url = try fake.url(alloc);
     defer alloc.free(url);
 
-    var client = try redis.testing.connectFromUrl(alloc, url);
+    var client = try redis.testing.connectFromUrl(common.globalIo(), alloc, url);
     defer client.deinit();
 
     // Two consecutive readyChecks against a fake that drops after every
@@ -261,4 +281,3 @@ test "Client.readyCheck self-heals when the server drops the connection" {
     // single-threaded accept loop and the pool's parallel dials.
     try std.testing.expect(fake.accepts.load(.monotonic) >= 2);
 }
-

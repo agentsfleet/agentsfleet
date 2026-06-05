@@ -14,6 +14,8 @@
 //! deadline so a stuck child cannot block the parent past `lease_expires_at`.
 
 const std = @import("std");
+const clock = @import("common").clock;
+const globalIo = @import("common").globalIo;
 
 /// Header byte selecting the message class. Values are ASCII so a stray frame is
 /// legible in a hexdump; the enum is the single source (RULE UFS).
@@ -23,6 +25,14 @@ pub const FrameType = enum(u8) {
 };
 
 const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
+
+/// Create an anonymous pipe via libc (`std.posix.pipe` was removed in Zig 0.16;
+/// the runner links -lc). Returns `[read_fd, write_fd]`.
+pub fn osPipe() error{PipeFailed}![2]std.posix.fd_t {
+    var fds: [2]std.posix.fd_t = undefined;
+    if (std.c.pipe(&fds) != 0) return error.PipeFailed;
+    return fds;
+}
 
 /// One decoded frame. `payload` is owned by the caller's allocator.
 pub const Frame = struct {
@@ -66,7 +76,7 @@ pub fn readFrame(
         .full => {},
     }
 
-    const ftype = std.meta.intToEnum(FrameType, header[0]) catch return error.UnknownFrameType;
+    const ftype = std.enums.fromInt(FrameType, header[0]) orelse return error.UnknownFrameType;
     const len: usize = std.mem.readInt(u32, header[1..5], .big);
     if (len > max_payload) return error.FrameTooLarge;
 
@@ -93,7 +103,7 @@ pub const ReadyState = enum { readable, timed_out };
 /// would consume and discard partial bytes, desyncing the stream), so the frame
 /// read itself always runs at the full lease deadline once data is present.
 pub fn waitReadable(fd: std.posix.fd_t, deadline_ms: i64) !ReadyState {
-    const remaining = deadline_ms - std.time.milliTimestamp();
+    const remaining = deadline_ms - clock.nowMillis();
     if (remaining <= 0) return .timed_out;
     var fds = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
     const ready = try std.posix.poll(&fds, @intCast(@min(remaining, std.math.maxInt(i32))));
@@ -107,7 +117,7 @@ const FillState = union(enum) { full, eof: usize, timed_out };
 fn readExact(fd: std.posix.fd_t, buf: []u8, deadline_ms: i64) !FillState {
     var off: usize = 0;
     while (off < buf.len) {
-        const remaining = deadline_ms - std.time.milliTimestamp();
+        const remaining = deadline_ms - clock.nowMillis();
         if (remaining <= 0) return .timed_out;
         var fds = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
         const ready = try std.posix.poll(&fds, @intCast(@min(remaining, std.math.maxInt(i32))));
@@ -119,21 +129,32 @@ fn readExact(fd: std.posix.fd_t, buf: []u8, deadline_ms: i64) !FillState {
     return .full;
 }
 
+pub fn osClose(fd: std.posix.fd_t) void {
+    // Zig 0.16 removed std.posix.close; raw-fd close routes through Io.File on
+    // the process-global blocking io (paired with `osPipe`).
+    var file: std.Io.File = .{ .handle = fd, .flags = .{ .nonblocking = false } };
+    file.close(globalIo());
+}
+
 fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
-    var off: usize = 0;
-    while (off < bytes.len) off += try std.posix.write(fd, bytes[off..]);
+    // Zig 0.16 removed std.posix.write; raw-fd writes route through Io.File on
+    // the process-global blocking io (`common.globalIo`) — the io-free path for
+    // the forked child, outside the daemon's threaded io spine.
+    const io = globalIo();
+    var file: std.Io.File = .{ .handle = fd, .flags = .{ .nonblocking = false } };
+    try file.writeStreamingAll(io, bytes);
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 test "writeFrame/readFrame round-trip an activity frame then EOF" {
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
+    const fds = try osPipe();
+    defer osClose(fds[0]);
 
     try writeFrame(fds[1], .activity, "{\"hello\":1}");
-    std.posix.close(fds[1]); // EOF after one frame
+    osClose(fds[1]); // EOF after one frame
 
-    const far_deadline = std.time.milliTimestamp() + 5_000;
+    const far_deadline = clock.nowMillis() + 5_000;
     const out = try readFrame(std.testing.allocator, fds[0], far_deadline, 1024);
     try std.testing.expect(out == .frame);
     try std.testing.expectEqual(FrameType.activity, out.frame.ftype);
@@ -145,13 +166,13 @@ test "writeFrame/readFrame round-trip an activity frame then EOF" {
 }
 
 test "readFrame distinguishes activity from result frames in order" {
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
+    const fds = try osPipe();
+    defer osClose(fds[0]);
     try writeFrame(fds[1], .activity, "a");
     try writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    std.posix.close(fds[1]);
+    osClose(fds[1]);
 
-    const dl = std.time.milliTimestamp() + 5_000;
+    const dl = clock.nowMillis() + 5_000;
     const f1 = try readFrame(std.testing.allocator, fds[0], dl, 1024);
     try std.testing.expectEqual(FrameType.activity, f1.frame.ftype);
     std.testing.allocator.free(f1.frame.payload);
@@ -162,19 +183,19 @@ test "readFrame distinguishes activity from result frames in order" {
 }
 
 test "readFrame returns timed_out when the deadline is already past" {
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    defer std.posix.close(fds[1]);
+    const fds = try osPipe();
+    defer osClose(fds[0]);
+    defer osClose(fds[1]);
     // No bytes written; a past deadline must not block.
-    const out = try readFrame(std.testing.allocator, fds[0], std.time.milliTimestamp() - 1, 1024);
+    const out = try readFrame(std.testing.allocator, fds[0], clock.nowMillis() - 1, 1024);
     try std.testing.expect(out == .timed_out);
 }
 
 test "readFrame rejects a frame larger than max_payload" {
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    defer std.posix.close(fds[1]);
+    const fds = try osPipe();
+    defer osClose(fds[0]);
+    defer osClose(fds[1]);
     try writeFrame(fds[1], .activity, "0123456789");
-    const dl = std.time.milliTimestamp() + 5_000;
+    const dl = clock.nowMillis() + 5_000;
     try std.testing.expectError(error.FrameTooLarge, readFrame(std.testing.allocator, fds[0], dl, 4));
 }

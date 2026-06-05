@@ -1,22 +1,27 @@
 # An HTTP/1.1 server for Zig.
 
+## Zig Version
+This is for Zig 0.16.0. Use the [zig-0.15](https://github.com/karlseguin/http.zig/tree/zig-0.15) branch for Zig 0.15 or the [dev](https://github.com/karlseguin/http.zig/tree/dev) branch which may or may not be up to date with zig dev.
+
+This ZIG 0.16 version is not well tested. Like Zig 0.16 itself, consider it experimental!
+
+## Example
 ```zig
 const std = @import("std");
 const httpz = @import("httpz");
 
-pub fn main() !void {
-  var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-  const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+  const allocator = init.gpa;
 
-  // More advance cases will use a custom "Handler" instead of "void".
-  // The last parameter is our handler instance, since we have a "void"
+  // More advanced cases will use a custom "Handler" instead of "void".
+  // The last parameter is our handler instance; since we have a "void"
   // handler, we passed a void ({}) value.
-  var server = try httpz.Server(void).init(allocator, .{
+  var server = try httpz.Server(void).init(init.io, allocator, .{
     // use .all(5882) to bind to all interfaces, i.e. 0.0.0.0
     .address = .localhost(5882),
   }, {});
   defer {
-    // clean shutdown, finishes serving any live request
+    // clean shutdown, finishes serving any live requests
     server.stop();
     server.deinit();
   }
@@ -59,7 +64,7 @@ fn getUser(req: *httpz.Request, res: *httpz.Response) !void {
 
 # Versions
 
-The `master` branch targets the latest stable of Zig (0.15.1). The `dev` branch targets the latest version of Zig. If you're looking for an older version, look for an zig-X.YZ branches.
+The `master` branch targets the latest **stable** release of Zig; the `dev` branch targets the latest version of Zig. If you're looking for an older version, look for `zig-X.YY` branches.
 
 # Examples
 
@@ -73,24 +78,22 @@ listening http://localhost:8800/
 # Installation
 
 1. Add http.zig as a dependency in your `build.zig.zon`:
-
-```bash
-zig fetch --save "git+https://github.com/karlseguin/http.zig#master"
-```
+   ```bash
+   zig fetch --save "git+https://github.com/karlseguin/http.zig#master"
+   ```
+   The library will track Zig master. If you're using a specific version of Zig, use the appropriate branch.
 
 2. In your `build.zig`, add the `httpz` module as a dependency to your program:
+   ```zig
+   const httpz = b.dependency("httpz", .{
+       .target = target,
+       .optimize = optimize,
+   });
+   
+   // the executable from your call to b.addExecutable(...)
+   exe.root_module.addImport("httpz", httpz.module("httpz"));
+   ```
 
-```zig
-const httpz = b.dependency("httpz", .{
-    .target = target,
-    .optimize = optimize,
-});
-
-// the executable from your call to b.addExecutable(...)
-exe.root_module.addImport("httpz", httpz.module("httpz"));
-```
-
-The library tracks Zig master. If you're using a specific version of Zig, use the appropriate branch.
 
 # Alternatives
 
@@ -115,11 +118,10 @@ const pg = @import("pg");
 const std = @import("std");
 const httpz = @import("httpz");
 
-pub fn main() !void {
-  var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-  const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+  const allocator = init.gpa;
 
-  var db = try pg.Pool.init(allocator, .{
+  var db = try pg.Pool.init(init.io, allocator, .{
     .connect = .{ .port = 5432, .host = "localhost"},
     .auth = .{.username = "user", .database = "db", .password = "pass"}
   });
@@ -129,7 +131,7 @@ pub fn main() !void {
     .db = db,
   };
 
-  var server = try httpz.Server(*App).init(allocator, .{.address = .localhost(5882)}, &app);
+  var server = try httpz.Server(*App).init(init.io, allocator, .{.address = .localhost(5882)}, &app);
   var router = try server.router(.{});
   router.get("/api/user/:id", getUser, .{});
   try server.listen();
@@ -232,7 +234,7 @@ const App = struct {
 
 ## Error Handler
 
-If your handler has a public `uncaughtError` method, it will be called whenever there's an unhandled error. This could be due to some internal httpz bug, or because your action return an error.
+If your handler has a public `uncaughtError` method, it will be called whenever there's an unhandled error. This could be due to some internal httpz bug, or because your action returns an error.
 
 ```zig
 const App = struct {
@@ -248,7 +250,7 @@ Notice that, unlike `notFound` and other normal actions, the `uncaughtError` met
 
 ## Takeover
 
-For the most control, you can define a `handle` method. This circumvents most of Httpz's dispatching, including routing. Frameworks like JetZig hook use `handle` in order to provide their own routing and dispatching. When you define a `handle` method, then any `dispatch`, `notFound` and `uncaughtError` methods are ignored by httpz.
+For the most control, you can define a `handle` method. This circumvents most of Httpz's dispatching, including routing. Frameworks like JetZig hook `handle` in order to provide their own routing and dispatching. When you define a `handle` method, then any `dispatch`, `notFound` and `uncaughtError` methods are ignored by httpz.
 
 ```zig
 const App = struct {
@@ -258,18 +260,16 @@ const App = struct {
 };
 ```
 
-The behavior `httpz.Server(H)` is controlled by
 The library supports both simple and complex use cases. A simple use case is shown below. It's initiated by the call to `httpz.Server()`:
 
 ```zig
 const std = @import("std");
 const httpz = @import("httpz");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var server = try httpz.Server(void).init(allocator, .{.address = .localhost(5882)}, {});
+    var server = try httpz.Server(void).init(init.io, allocator, .{.address = .localhost(5882)}, {});
 
     // overwrite the default notFound handler
     server.notFound(notFound);
@@ -334,9 +334,9 @@ fn writerExample(req: *httpz.Request, res: *httpz.Response) !void {
 
 Alternatively, you can explicitly call `res.write()`. Once `res.write()` returns, the response is sent and your action can cleanup/release any resources.
 
-`res.arena` is actually a configurable-sized thread-local buffer that fallsback to an `std.heap.ArenaAllocator`. In other words, it's fast so it should be your first option for data that needs to live only until your action exits.
+`res.arena` is actually a configurable-sized thread-local buffer that falls back to an `std.heap.ArenaAllocator`. In other words, it's fast so it should be your first option for data that needs to live only until your action exits.
 
-To align the `Response.writer()` with the new `*std.Io.Writer` interface (Zig 0.15) , a buffer must be provided. For the most part, you should pass in an empty buffer (`&.{}`) as httpz does its own buffer (as I expect most network applications would do). Still, it appears that some parts of std require a writer buffer. This seems like a really bad design to me, but if you find yourself using code that requires a writer buffer, then, of course, you'll have to provide one when creating the `response.writer(...)`.
+To align the `Response.writer()` with the new `*std.Io.Writer` interface (Zig 0.15), a buffer must be provided. For the most part, you should pass in an empty buffer (`&.{}`) as httpz does its own buffering (as I expect most network applications would do). Still, it appears that some parts of std require a writer buffer. This seems like a really bad design to me, but if you find yourself using code that requires a writer buffer, then, of course, you'll have to provide one when creating the `response.writer(...)`.
 
 # httpz.Request
 
@@ -344,7 +344,7 @@ The following fields are the most useful:
 
 - `method` - httpz.Method enum
 - `method_string` - Only set if `method == .OTHER`, else empty. Used when using custom methods.
-- `arena` - A fast thread-local buffer that fallsback to an ArenaAllocator, same as `res.arena`.
+- `arena` - A fast thread-local buffer that falls back to an ArenaAllocator, same as `res.arena`.
 - `url.path` - the path of the request (`[]const u8`)
 - `address` - the std.net.Address of the client
 
@@ -415,7 +415,7 @@ if (query.get("search")) |search| {
 };
 ```
 
-On first call, the `query` function attempts to parse the querystring. This requires memory allocations to unescape encoded values. The parsed value is internally cached, so subsequent calls to `query()` are fast and cannot fail.
+On first call, the `query` function attempts to parse the query string. This requires memory allocations to unescape encoded values. The parsed value is internally cached, so subsequent calls to `query()` are fast and cannot fail.
 
 The original casing of both the key and the name are preserved.
 
@@ -469,7 +469,7 @@ if (try req.jsonObject()) |t| {
 
 ### Form Data
 
-The body of the request, if any, can be parsed as a "x-www-form-urlencoded "value using `req.formData()`. The `request.max_form_count` configuration value must be set to the maximum number of form fields to support. This defaults to 0.
+The body of the request, if any, can be parsed as a `x-www-form-urlencoded` value using `req.formData()`. The `request.max_form_count` configuration value must be set to the maximum number of form fields to support. This defaults to 0.
 
 This behaves similarly to `query()`.
 
@@ -491,7 +491,7 @@ Once this function is called, `req.multiFormData()` will no longer work (because
 
 ### Multi Part Form Data
 
-Similar to the above, `req.multiFormData()` can be called to parse requests with a "multipart/form-data" content type. The `request.max_multiform_count` configuration value must be set to the maximum number of form fields to support. This defaults to 0.
+Similar to the above, `req.multiFormData()` can be called to parse requests with a `multipart/form-data` content type. The `request.max_multiform_count` configuration value must be set to the maximum number of form fields to support. This defaults to 0.
 
 This is a different API than `formData` because the return type is different. Rather than a simple string=>value type, the multi part form data value consists of a `value: []const u8` and a `filename: ?[]const u8`.
 
@@ -558,7 +558,7 @@ The following fields are the most useful:
 
 - `status` - set the status code, by default, each response starts off with a 200 status code
 - `content_type` - an httpz.ContentType enum value. This is a convenience and optimization over using the `res.header` function.
-- `arena` - A fast thread-local buffer that fallsback to an ArenaAllocator, same as `req.arena`.
+- `arena` - A fast thread-local buffer that falls back to an ArenaAllocator, same as `req.arena`.
 
 The `status` field is a `u16`. You can alternatively use `res.setStatus(.ok)` if you prefer to use the `std.http.Status` enum.
 
@@ -644,7 +644,7 @@ if (cookies.get("auth")) |auth| {
 
 ## Writing
 
-By default, httpz will automatically flush your response. In more advance cases, you can use `res.write()` to explicitly flush it. This is useful in cases where you have resources that need to be freed/released only after the response is written. For example, my [LRU cache](https://github.com/karlseguin/cache.zig) uses atomic referencing counting to safely allow concurrent access to cached data. This requires callers to "release" the cached entry:
+By default, httpz will automatically flush your response. In more advanced cases, you can use `res.write()` to explicitly flush it. This is useful in cases where you have resources that need to be freed/released only after the response is written. For example, my [LRU cache](https://github.com/karlseguin/cache.zig) uses atomic referencing counting to safely allow concurrent access to cached data. This requires callers to "release" the cached entry:
 
 ```zig
 pub fn info(app: *MyApp, _: *httpz.Request, res: *httpz.Response) !void {
@@ -676,18 +676,18 @@ router.get("/", index, .{});
 router.tryGet("/", index, .{});
 ```
 
-The 3rd parameter is a route configuration. It allows you to speficy a different `handler` and/or `dispatch` method and/or `middleware`.
+The 3rd parameter is a route configuration. It allows you to specify a different `handler` and/or `dispatch` method and/or `middleware`.
 
 ```zig
 // this can panic if it fails to create the route
 router.get("/", index, .{
-  .dispatcher = Handler.dispathAuth,
+  .dispatcher = Handler.dispatchAuth,
   .handler = &auth_handler,
   .middlewares = &.{cors_middleware},
 });
 ```
 
-## Configuration
+## Router Configuration
 
 The last parameter to the various `router` methods is a route configuration. In many cases, you'll probably use an empty configuration (`.{}`). The route configuration has three fields:
 
@@ -700,7 +700,7 @@ The last parameter to the various `router` methods is a route configuration. In 
 You can specify a separate configuration for each route. To change the configuration for a group of routes, you have two options. The first, is to directly change the router's `handler`, `dispatcher` and `middlewares` field. Any subsequent routes will use these values:
 
 ```zig
-var server = try httpz.Server(Handler).init(allocator, .{.address = .localhost(5882)}, &handler);
+var server = try httpz.Server(Handler).init(io, allocator, .{.address = .localhost(5882)}, &handler);
 
 var router = try server.router(.{});
 
@@ -708,13 +708,13 @@ var router = try server.router(.{});
 // No middleware
 router.get("/route1", route1, .{});
 
-router.dispatcher = Handler.dispathAuth;
+router.dispatcher = Handler.dispatchAuth;
 // uses the new dispatcher
 router.get("/route2", route2, .{});
 
 router.handler = &Handler{.public = true};
 // uses the new dispatcher + new handler
-router.get("/route3", route3, .{.handler = Handler.dispathAuth});
+router.get("/route3", route3, .{.handler = Handler.dispatchAuth});
 ```
 
 This approach is error prone though. New routes need to be carefully added in the correct order so that the desired handler, dispatcher and middlewares are used.
@@ -728,7 +728,7 @@ Defining a custom dispatcher or custom global data on each route can be tedious.
 ```zig
 var admin_routes = router.group("/admin", .{
   .handler = &auth_handler,
-  .dispatcher = Handler.dispathAuth,
+  .dispatcher = Handler.dispatchAuth,
   .middlewares = &.{cors_middleware},
 });
 admin_routes.get("/users", listUsers, .{});
@@ -772,7 +772,7 @@ You can use the `method` function to route a custom method:
 router.method("TEA", "/", teaList, .{});
 ```
 
-In such cases, `request.method` will be `.OTHER` and you can use the `reqeust.method_string` for the string value. The method name, `TEA` above, is cloned by the router and does not need to exist beyond the function call. The method name should only be uppercase ASCII letters.
+In such cases, `request.method` will be `.OTHER` and you can use the `request.method_string` for the string value. The method name, `TEA` above, is cloned by the router and does not need to exist beyond the function call. The method name should only be uppercase ASCII letters.
 
 The `router.all` method **does not** route to custom methods.
 
@@ -803,7 +803,7 @@ A middleware is a struct which exposes a nested `Config` type, a public `init` f
 A middleware instance is created using `server.middleware()` and can then be used with the router:
 
 ```zig
-var server = try httpz.Server(void).init(allocator, .{.address = .localhost(5882)}, {});
+var server = try httpz.Server(void).init(io, allocator, .{.address = .localhost(5882)}, {});
 
 // the middleware method takes the struct name and its configuration
 const cors = try server.middleware(httpz.middleware.Cors, .{
@@ -814,7 +814,7 @@ const cors = try server.middleware(httpz.middleware.Cors, .{
 // explicitly opts out)
 var router = try server.router(.{.middlewares = &.{cors}});
 
-// or we could add middleware on a route-per-route bassis
+// or we could add middleware on a route-per-route basis
 router.get("/v1/users", user, .{.middlewares = &.{cors}});
 
 // by default, middlewares on a route are appended to the global middlewares
@@ -915,7 +915,7 @@ There are many configuration options.
 
 `request.buffer_size` must be large enough to fit the request header. Any extra space might be used to read the body. However, there can be up to `workers.count * workers.max_conn` pending requests, so a large `request.buffer_size` can take up a lot of memory. Instead, consider keeping `request.buffer_size` only large enough for the header (plus a bit of overhead for decoding URL-escape values) and set `workers.large_buffer_size` to a reasonable size for your incoming request bodies. This will take `workers.count * workers.large_buffer_count * workers.large_buffer_size` memory.
 
-Buffers for request bodies larger than `workers.large_buffer_size` but smaller than `request.max_body_size` will be dynamic allocated.
+Buffers for request bodies larger than `workers.large_buffer_size` but smaller than `request.max_body_size` will be dynamically allocated.
 
 In addition to a bit of overhead, at a minimum, httpz will use:
 
@@ -975,13 +975,13 @@ try httpz.listen(allocator, &router, .{
     // configures the threadpool which processes requests. The threadpool is
     // where your application code runs.
     .thread_pool = .{
-        // Number threads. If you're handlers are doing a lot of i/o, a higher
+        // Number threads. If your handlers are doing a lot of i/o, a higher
         // number might provide better throughput
         // (blocking mode: handled differently)
         .count = 32,
 
         // The maximum number of pending requests that the thread pool will accept
-        // This applies back pressure to the above workers and ensures that, under load
+        // This applies back pressure to the above workers and ensures that, under load,
         // pending requests get precedence over processing new requests.
         .backlog = 500,
 
@@ -1172,7 +1172,7 @@ test "search: missing parameter" {
 
 ## Building the test Request
 
-The testing structure returns from <code>httpz.testing.init</code> exposes helper functions to set param, query and query values as well as the body:
+The testing structure returned from <code>httpz.testing.init</code> exposes helper functions to set param, query and header values as well as the body:
 
 ```zig
 var web_test = ht.init(.{});
@@ -1276,7 +1276,7 @@ const Handler = struct {
   pub const WebsocketHandler = struct {
     conn: *websocket.Conn,
 
-    // ctx is arbitrary data you passs to httpz.upgradeWebsocket
+    // ctx is arbitrary data you pass to httpz.upgradeWebsocket
     pub fn init(conn: *websocket.Conn, _: WebsocketContext) {
       return .{
         .conn =  conn,

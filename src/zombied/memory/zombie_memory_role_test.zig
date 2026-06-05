@@ -9,13 +9,14 @@
 //! The test user (usezombie) is a superuser in local dev, so SET ROLE succeeds.
 
 const std = @import("std");
+const common = @import("common");
 const base = @import("../db/test_fixtures.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 // ─── negative: core.* is forbidden ──────────────────────────────────────────
 
 test "integration: memory_runtime has no access to core.zombies (RULE CTX)" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (common.env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
     const db_ctx = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
@@ -41,7 +42,7 @@ test "integration: memory_runtime has no access to core.zombies (RULE CTX)" {
 // ─── positive: memory.memory_entries is accessible ───────────────────────────
 
 test "integration: memory_runtime can SELECT from memory.memory_entries (RULE CTX)" {
-    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    if (common.env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
     // Use a fresh pool — the negative test leaves its connection in a pg-error state.

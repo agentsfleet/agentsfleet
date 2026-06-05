@@ -457,4 +457,3 @@ test "runner activity route extracts the lease_id path param" {
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc/unknown", .POST) == null);
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc", .POST) == null);
 }
-

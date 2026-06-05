@@ -74,9 +74,9 @@ pub const Request = struct {
             hdrs[i] = .{ .name = self.hdr_names[i], .value = self.hdr_values[i] };
         }
 
-        var client: std.http.Client = .{ .allocator = alloc };
+        var client: std.http.Client = .{ .allocator = alloc, .io = @import("common").globalIo() };
         defer client.deinit();
-        var buf: std.ArrayList(u8) = .{};
+        var buf: std.ArrayList(u8) = .empty;
         var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
         const result = try client.fetch(.{
             .location = .{ .url = url },

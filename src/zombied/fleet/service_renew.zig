@@ -22,6 +22,7 @@
 //! Allocator: per-request arena (`hx.alloc`).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -143,7 +144,7 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
 }
 
 fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, body: protocol.RenewRequest) !renewal.RenewOutcome {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const meter = buildMeter(lease, body, now_ms);
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
@@ -190,7 +191,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
 fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = conn.exec(
         \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
     , .{ runner_id, now_ms }) catch |err| {

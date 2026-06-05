@@ -39,7 +39,7 @@ fn mergeAllowlists(
     var seen = std.StringHashMap(void).init(alloc);
     defer seen.deinit();
 
-    var result: std.ArrayList([]const u8) = .{};
+    var result: std.ArrayList([]const u8) = .empty;
     errdefer result.deinit(alloc);
 
     // Add static registry hosts first

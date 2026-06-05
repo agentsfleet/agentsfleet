@@ -86,7 +86,7 @@ pub fn innerListFleetRunners(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = constants.clock.nowMillis();
     const items = fetchPage(hx, conn, q, now_ms) orelse return;
     const total = fetchTotal(hx, conn) orelse return;
 
@@ -102,8 +102,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql is from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc,
-        "SELECT r.id::text, r.host_id, r.sandbox_tier, r.labels::text, r.last_seen_at, r.created_at, " ++
+    const list_sql = std.fmt.allocPrint(hx.alloc, "SELECT r.id::text, r.host_id, r.sandbox_tier, r.labels::text, r.last_seen_at, r.created_at, " ++
         "EXISTS (SELECT 1 FROM fleet.runner_leases l WHERE l.runner_id = r.id " ++
         "AND l.status = $1 AND l.lease_expires_at > $2) " ++
         "FROM fleet.runners r ORDER BY {s} LIMIT $3 OFFSET $4", .{q.order_sql}) catch {
@@ -136,7 +135,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
 /// caller-owned request arena, so partial items on the error path are reclaimed
 /// when that arena is released.
 fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) ![]RunnerItem {
-    var items: std.ArrayListUnmanaged(RunnerItem) = .{};
+    var items: std.ArrayListUnmanaged(RunnerItem) = .empty;
     errdefer items.deinit(alloc);
     while (try rows.next()) |row| {
         const item = readItem(alloc, row, now_ms) catch |err| {

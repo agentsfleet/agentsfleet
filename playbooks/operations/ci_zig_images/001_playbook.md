@@ -43,7 +43,7 @@ The three images this playbook publishes are:
 ## 0. fetch-shas — refresh `versions.env` (only when bumping Zig)
 
 ```bash
-./playbooks/operations/ci_zig_images/build_and_push.sh fetch-shas 0.15.2
+./playbooks/operations/ci_zig_images/build_and_push.sh fetch-shas 0.16.0
 ```
 
 Pulls `https://ziglang.org/download/index.json`, extracts the four
@@ -83,9 +83,9 @@ gh auth refresh -h github.com -s write:packages
 Tags produced:
 
 ```
-ghcr.io/usezombie/ci-zig-alpine:0.15.2          (linux/amd64 + linux/arm64 manifest)
-ghcr.io/usezombie/ci-zig-debian-trixie:0.15.2   (linux/amd64)
-ghcr.io/usezombie/ci-zig-ubuntu:0.15.2          (linux/amd64)
+ghcr.io/usezombie/ci-zig-alpine:0.16.0          (linux/amd64 + linux/arm64 manifest)
+ghcr.io/usezombie/ci-zig-debian-trixie:0.16.0   (linux/amd64)
+ghcr.io/usezombie/ci-zig-ubuntu:0.16.0          (linux/amd64)
 ```
 
 ### Iterating without breaking pinned consumers
@@ -96,7 +96,7 @@ pin to the new tag explicitly:
 
 ```bash
 ./build_and_push.sh build --revision r2
-# → ghcr.io/usezombie/ci-zig-alpine:0.15.2-r2  (and the other two)
+# → ghcr.io/usezombie/ci-zig-alpine:0.16.0-r2  (and the other two)
 ```
 
 Consumers (workflow YAMLs) should always pin to the full `<version>[-<rev>]`
@@ -156,7 +156,7 @@ docker run --rm \
   sh -c 'zig version && dpkg -s libssl-dev | head -2 && docker --version'
 ```
 
-All three commands should print `0.15.2` (or whatever `versions.env` says) and exit 0.
+All three commands should print `0.16.0` (or whatever `versions.env` says) and exit 0.
 
 ---
 

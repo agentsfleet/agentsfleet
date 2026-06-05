@@ -13,6 +13,7 @@
 //! when the request ends — see service.zig's module note.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const protocol = @import("contract").protocol;
@@ -42,7 +43,7 @@ pub const PriorLease = struct {
 /// `affinity.claim` won, so the row found here is unambiguously the reclaimed
 /// holder. All slices arena-dup'd before drain.
 pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8) !?PriorLease {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
         \\UPDATE fleet.runner_leases AS l
         \\SET status = $3, updated_at = $4

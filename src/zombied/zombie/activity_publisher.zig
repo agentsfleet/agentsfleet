@@ -30,9 +30,9 @@ pub const KIND_EVENT_COMPLETE = "event_complete";
 
 /// Reusable encode buffer. One per worker / per event lifetime — the
 /// single-publisher invariant means callers never share these across
-/// threads. Construct with `std.io.Writer.Allocating.init(alloc)` and
+/// threads. Construct with `std.Io.Writer.Allocating.init(alloc)` and
 /// `defer scratch.deinit()`.
-pub const Scratch = std.io.Writer.Allocating;
+pub const Scratch = std.Io.Writer.Allocating;
 
 fn buildChannel(buf: []u8, zombie_id: []const u8) ![]const u8 {
     return std.fmt.bufPrint(buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix });

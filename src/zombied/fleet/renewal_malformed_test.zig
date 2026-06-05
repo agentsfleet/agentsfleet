@@ -15,6 +15,7 @@
 // Redis; skipped via TestHarness.start when either is missing.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
@@ -71,7 +72,7 @@ fn seedActiveLease(conn: *pg.Conn, runner_id: []const u8) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, runner_id, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, std.time.milliTimestamp() + 60_000 });
+    , .{ LEASE_ID, runner_id, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, clock.nowMillis() + 60_000 });
 }
 
 fn renewPath(alloc: std.mem.Allocator, lease_id: []const u8) ![]const u8 {

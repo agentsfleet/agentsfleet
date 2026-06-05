@@ -5,6 +5,7 @@
 //!   span_id:  8 bytes (16 hex chars)
 
 const std = @import("std");
+const constants = @import("common");
 
 pub const TRACE_ID_HEX_LEN = 32;
 pub const SPAN_ID_HEX_LEN = 16;
@@ -81,7 +82,9 @@ pub const TraceContext = struct {
 
 fn randomHex(comptime len: usize) [len]u8 {
     var raw: [len / 2]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    // Trace/span IDs stay infallible (generate/child are called per-request).
+    // CSPRNG normally; degrade to zero-id only on catastrophic entropy failure.
+    constants.secureRandomBytes(&raw) catch @memset(&raw, 0);
     return std.fmt.bytesToHex(raw, .lower);
 }
 

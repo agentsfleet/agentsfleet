@@ -5,6 +5,7 @@
 //! one, drop the playbook reference.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -61,7 +62,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         common.internalOperationError(hx.res, "Failed to generate platform key id", hx.req_id);
         return;
     };
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -128,7 +129,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
 
     _ = conn.exec(
         "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
-        .{ std.time.milliTimestamp(), provider },
+        .{ clock.nowMillis(), provider },
     ) catch {
         common.internalOperationError(hx.res, "Failed to deactivate platform key", hx.req_id);
         return;
@@ -165,7 +166,7 @@ pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     });
     defer q.deinit();
 
-    var rows: std.ArrayList(PlatformKeyRow) = .{};
+    var rows: std.ArrayList(PlatformKeyRow) = .empty;
 
     while (true) {
         const maybe_row = q.next() catch |e| {

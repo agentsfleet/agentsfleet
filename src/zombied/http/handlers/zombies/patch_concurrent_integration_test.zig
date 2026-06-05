@@ -26,6 +26,7 @@
 // path), proving fail-fast.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -177,7 +178,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedFixture(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'PatchConcurrentTest', $2, $2)
@@ -245,7 +246,7 @@ const Worker = struct {
     fn run(h: *TestHarness, body: []const u8, zid: []const u8, slot: *Outcome) void {
         const url = patchUrl(zid) catch return;
         defer ALLOC.free(url);
-        const t0 = std.time.milliTimestamp();
+        const t0 = clock.nowMillis();
         const r_req = h.request(.PATCH, url).bearer(TOKEN_OPERATOR) catch return;
         const r_json = r_req.json(body) catch return;
         const r = r_json.send() catch return;
@@ -253,21 +254,21 @@ const Worker = struct {
         slot.* = .{
             .status = r.status,
             .body = ALLOC.dupe(u8, r.body) catch null,
-            .elapsed_ms = std.time.milliTimestamp() - t0,
+            .elapsed_ms = clock.nowMillis() - t0,
         };
     }
 
     fn runDelete(h: *TestHarness, zid: []const u8, slot: *Outcome) void {
         const url = patchUrl(zid) catch return;
         defer ALLOC.free(url);
-        const t0 = std.time.milliTimestamp();
+        const t0 = clock.nowMillis();
         const r_req = h.request(.DELETE, url).bearer(TOKEN_OPERATOR) catch return;
         const r = r_req.send() catch return;
         defer r.deinit();
         slot.* = .{
             .status = r.status,
             .body = ALLOC.dupe(u8, r.body) catch null,
-            .elapsed_ms = std.time.milliTimestamp() - t0,
+            .elapsed_ms = clock.nowMillis() - t0,
         };
     }
 
@@ -279,13 +280,13 @@ const Worker = struct {
     // for the test to assert against; status=200 = exec OK, status=500
     // = exec returned an error.
     fn runInsertEvent(h: *TestHarness, zid: []const u8, event_id: []const u8, slot: *Outcome) void {
-        const t0 = std.time.milliTimestamp();
+        const t0 = clock.nowMillis();
         const conn = h.acquireConn() catch |err| {
-            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };
         defer h.releaseConn(conn);
-        const now = std.time.milliTimestamp();
+        const now = clock.nowMillis();
         _ = conn.exec(
             \\INSERT INTO core.zombie_events
             \\  (zombie_id, event_id, workspace_id, actor, event_type, status,
@@ -293,10 +294,10 @@ const Worker = struct {
             \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'message', 'received',
             \\        '{}'::jsonb, $4, $4)
         , .{ zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
-            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };
-        slot.* = .{ .status = 200, .body = null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+        slot.* = .{ .status = 200, .body = null, .elapsed_ms = clock.nowMillis() - t0 };
     }
 };
 
@@ -488,12 +489,12 @@ test "integration: concurrent PATCH on different zombies — parallel, sub-linea
     var outcomes: [2]Outcome = .{ .{}, .{} };
     defer freeOutcomes(&outcomes);
 
-    const t0 = std.time.milliTimestamp();
+    const t0 = clock.nowMillis();
     var threads: [2]std.Thread = undefined;
     threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, ZOMBIE_A, &outcomes[0] });
     threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, ZOMBIE_B, &outcomes[1] });
     for (threads) |t| t.join();
-    const parallel_ms = std.time.milliTimestamp() - t0;
+    const parallel_ms = clock.nowMillis() - t0;
 
     try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
     try std.testing.expectEqual(@as(u16, 200), outcomes[1].status);
@@ -525,7 +526,7 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     // the handler's 5s lock_timeout, so the contending PATCH must fail
     // fast with 503, not hang for the full 7s.
     const Holder = struct {
-        fn run(harness: *TestHarness, started: *std.Thread.ResetEvent) void {
+        fn run(harness: *TestHarness, started: *std.atomic.Value(bool)) void {
             const c = harness.pool.acquire() catch return;
             defer harness.pool.release(c);
             _ = c.exec("BEGIN", .{}) catch return;
@@ -534,23 +535,30 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
                 "SELECT id FROM core.zombies WHERE id = $1::uuid FOR UPDATE",
                 .{ZOMBIE_A},
             ) catch return;
-            started.set();
-            std.Thread.sleep(7 * std.time.ns_per_s);
+            started.store(true, .release);
+            @import("common").sleepNanos(7 * std.time.ns_per_s);
         }
     };
 
-    var started = std.Thread.ResetEvent{};
+    var started = std.atomic.Value(bool).init(false);
     const holder = try std.Thread.spawn(.{}, Holder.run, .{ h, &started });
     defer holder.join();
-    // Wait up to 2s for the holder's SELECT FOR UPDATE to grab the lock.
-    started.timedWait(2 * std.time.ns_per_s) catch return error.HolderLockSetupTimeout;
+    // Wait up to 2s for the holder's SELECT FOR UPDATE to grab the lock. Zig 0.16
+    // removed Thread.ResetEvent.timedWait, so this is a bounded poll (200 × 10ms).
+    {
+        var waited: usize = 0;
+        while (!started.load(.acquire)) : (waited += 1) {
+            if (waited >= 200) return error.HolderLockSetupTimeout;
+            @import("common").sleepNanos(10 * std.time.ns_per_ms);
+        }
+    }
 
     const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
     var outcome: Outcome = .{};
     defer if (outcome.body) |b| ALLOC.free(b);
-    const t0 = std.time.milliTimestamp();
+    const t0 = clock.nowMillis();
     Worker.run(h, body, ZOMBIE_A, &outcome);
-    const elapsed = std.time.milliTimestamp() - t0;
+    const elapsed = clock.nowMillis() - t0;
 
     // Fail-fast: should return well before holder's 7s sleep completes.
     try std.testing.expect(elapsed < 5_500);

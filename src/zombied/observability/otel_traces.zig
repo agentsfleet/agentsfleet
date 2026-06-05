@@ -6,6 +6,8 @@
 //! Config: reuses GRAFANA_OTLP_ENDPOINT, GRAFANA_OTLP_INSTANCE_ID, GRAFANA_OTLP_API_KEY.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 const otel_logs = @import("otel_logs.zig");
 const trace = @import("trace.zig");
 const StringBuilder = @import("../util/strings/string_builder.zig");
@@ -15,7 +17,6 @@ const BUFFER_CAPACITY: usize = 1024;
 const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
-
 
 const logging = @import("log");
 const log = logging.scoped(.otel_traces);
@@ -173,12 +174,12 @@ pub fn addAttr(entry: *SpanEntry, key: []const u8, val: []const u8) bool {
 
 fn flushLoop() void {
     while (g_running.load(.acquire)) {
-        std.Thread.sleep(FLUSH_INTERVAL_MS * std.time.ns_per_ms);
+        common.sleepNanos(FLUSH_INTERVAL_MS * std.time.ns_per_ms);
         flushBatch();
     }
     // Drain on shutdown
-    const deadline = std.time.milliTimestamp() + @as(i64, @intCast(SHUTDOWN_DRAIN_TIMEOUT_MS));
-    while (g_ring.len() > 0 and std.time.milliTimestamp() < deadline) {
+    const deadline = clock.nowMillis() + @as(i64, @intCast(SHUTDOWN_DRAIN_TIMEOUT_MS));
+    while (g_ring.len() > 0 and clock.nowMillis() < deadline) {
         flushBatch();
     }
 }
@@ -191,26 +192,27 @@ fn flushBatch() void {
     var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
     const alloc = fba.allocator();
 
-    var spans_json: std.ArrayList(u8) = .{};
-    const w = spans_json.writer(alloc);
+    var spans_json: std.ArrayList(u8) = .empty;
     var first = true;
 
     while (count < FLUSH_BATCH_SIZE) : (count += 1) {
         const entry = g_ring.pop() orelse break;
-        if (!first) w.writeAll(",") catch break;
+        if (!first) spans_json.appendSlice(alloc, ",") catch break;
         first = false;
 
         // Span JSON
-        w.print(
+        spans_json.print(
+            alloc,
             "{{\"traceId\":\"{s}\",\"spanId\":\"{s}\"",
             .{ entry.trace_id, entry.span_id },
         ) catch break;
 
         if (entry.has_parent) {
-            w.print(",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id}) catch break;
+            spans_json.print(alloc, ",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id}) catch break;
         }
 
-        w.print(
+        spans_json.print(
+            alloc,
             ",\"name\":\"{f}\",\"kind\":1,\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
             .{
                 std.json.fmt(entry.name[0..entry.name_len], .{}),
@@ -221,11 +223,12 @@ fn flushBatch() void {
 
         // Attributes
         if (entry.attr_count > 0) {
-            w.writeAll(",\"attributes\":[") catch break;
+            spans_json.appendSlice(alloc, ",\"attributes\":[") catch break;
             var ai: u8 = 0;
             while (ai < entry.attr_count) : (ai += 1) {
-                if (ai > 0) w.writeAll(",") catch break;
-                w.print(
+                if (ai > 0) spans_json.appendSlice(alloc, ",") catch break;
+                spans_json.print(
+                    alloc,
                     "{{\"key\":\"{f}\",\"value\":{{\"stringValue\":\"{f}\"}}}}",
                     .{
                         std.json.fmt(entry.attrs[ai].key[0..entry.attrs[ai].key_len], .{}),
@@ -233,10 +236,10 @@ fn flushBatch() void {
                     },
                 ) catch break;
             }
-            w.writeAll("]") catch break;
+            spans_json.appendSlice(alloc, "]") catch break;
         }
 
-        w.writeAll("}") catch break;
+        spans_json.appendSlice(alloc, "}") catch break;
     }
 
     if (count == 0) return;

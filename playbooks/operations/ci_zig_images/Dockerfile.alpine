@@ -9,11 +9,11 @@
 # Build:
 #   docker buildx build \
 #     --platform linux/amd64,linux/arm64 \
-#     --build-arg ZIG_VERSION=0.15.2 \
+#     --build-arg ZIG_VERSION=0.16.0 \
 #     --build-arg ZIG_SHA256_X86_64_LINUX=... \
 #     --build-arg ZIG_SHA256_AARCH64_LINUX=... \
 #     -f Dockerfile.alpine \
-#     -t ghcr.io/usezombie/ci-zig-alpine:0.15.2 \
+#     -t ghcr.io/usezombie/ci-zig-alpine:0.16.0 \
 #     --push .
 
 FROM mirror.gcr.io/library/alpine:3.21

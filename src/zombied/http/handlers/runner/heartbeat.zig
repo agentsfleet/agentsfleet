@@ -5,7 +5,7 @@
 //! with the fleet-failover slice. Side effect: bump `fleet.runners.last_seen_at`
 //! (liveness is written here, not on every authed call, per docs/AUTH.md).
 
-const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 
@@ -36,7 +36,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         return;
     };
     defer hx.ctx.pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = conn.exec(
         \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
     , .{ runner_id, now_ms }) catch |err| {

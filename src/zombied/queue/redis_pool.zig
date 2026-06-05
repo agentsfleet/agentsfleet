@@ -26,6 +26,12 @@ const max_active_unbounded: usize = 0;
 /// blocks an acquirer up to this long before surfacing `AcquireTimeout`.
 const default_acquire_timeout_ms: u32 = 5_000;
 
+/// Bounded-poll slice for `waitForActiveSlot`. Zig 0.16 dropped `timedWait`
+/// from the Io sync primitives, so a saturated acquirer sleeps in short
+/// slices (re-checking the predicate each wake) instead of blocking on a
+/// timed condvar. ~2ms keeps wakeup latency low without busy-spinning.
+const POLL_INTERVAL_NS: u64 = 2 * std.time.ns_per_ms;
+
 pub const InitOptions = struct {
     max_idle: usize = 8,
     eager_min: usize = 2,
@@ -67,6 +73,9 @@ pub const PoolStats = struct {
 // === Fields ===
 
 alloc: std.mem.Allocator,
+/// Backs the bounded-poll sleep in `waitForActiveSlot` (Zig 0.16 has no
+/// `timedWait`). Set in `init`, never mutated.
+io: std.Io,
 cfg: redis_config.Config,
 max_idle: usize,
 /// Hard ceiling on `active_count`; `max_active_unbounded` disables it.
@@ -78,10 +87,10 @@ read_timeout_ms: ?u32,
 idle: std.SinglyLinkedList = .{},
 idle_count: usize = 0,
 active_count: usize = 0,
-mutex: std.Thread.Mutex = .{},
+mutex: common.Mutex = .{},
 /// Signalled by `release` whenever `active_count` drops, waking an acquirer
 /// that is blocked on a full `max_active` ceiling. Paired with `mutex`.
-not_full: std.Thread.Condition = .{},
+not_full: common.Condition = .{},
 
 // Counters (cumulative across the pool's lifetime).
 dials_total: u64 = 0,
@@ -95,10 +104,12 @@ acquire_timeouts_total: u64 = 0,
 
 // === Lifecycle ===
 
-/// Pool takes ownership of `cfg` and frees it in `deinit`.
-pub fn init(alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Pool {
+/// Pool takes ownership of `cfg` and frees it in `deinit`. `io` backs the
+/// bounded-poll acquire wait.
+pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Pool {
     var pool: Pool = .{
         .alloc = alloc,
+        .io = io,
         .cfg = cfg,
         .max_idle = options.max_idle,
         .max_active = options.max_active,
@@ -119,7 +130,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOpt
     while (dialed < options.eager_min) : (dialed += 1) {
         const conn = try alloc.create(Connection);
         errdefer alloc.destroy(conn);
-        conn.* = try Connection.init(alloc, &pool.cfg, .pooled);
+        conn.* = try Connection.init(io, alloc, &pool.cfg, .pooled);
         conn.applyReadTimeout(pool.read_timeout_ms);
         pool.idle.prepend(&conn.node);
         pool.idle_count += 1;
@@ -178,7 +189,7 @@ pub fn acquire(self: *Pool) !*Connection {
 
     const conn = try self.alloc.create(Connection);
     errdefer self.alloc.destroy(conn);
-    conn.* = try Connection.init(self.alloc, &self.cfg, .pooled);
+    conn.* = try Connection.init(self.io, self.alloc, &self.cfg, .pooled);
     conn.applyReadTimeout(self.read_timeout_ms);
     dial_ok = true;
 
@@ -217,20 +228,28 @@ fn reserveActiveSlot(self: *Pool) error{AcquireTimeout}!SlotReservation {
 /// fixed up front so spurious wakes can't extend the budget.
 fn waitForActiveSlot(self: *Pool) error{AcquireTimeout}!?*Connection {
     const budget_ns = @as(u64, self.acquire_timeout_ms) * std.time.ns_per_ms;
-    const deadline_ns = std.time.nanoTimestamp() + @as(i128, budget_ns);
+    const deadline_ns = clock.nowNanos() + @as(i128, budget_ns);
     while (self.active_count >= self.max_active and self.idle_count == 0) {
-        const now_ns = std.time.nanoTimestamp();
+        const now_ns = clock.nowNanos();
         if (now_ns >= deadline_ns) {
             self.acquire_timeouts_total += 1;
             return error.AcquireTimeout;
         }
         const remaining_ns = @as(u64, @intCast(deadline_ns - now_ns));
-        // Timeout is expected: the while-condition re-checks the deadline and the
-        // active/idle predicate on the next iteration, so a timed-out wait simply
-        // loops. timedWait's only error is Timeout, so this handles it exhaustively.
-        self.not_full.timedWait(&self.mutex, remaining_ns) catch |err| switch (err) {
-            error.Timeout => {},
+        // Bounded poll: Zig 0.16 has no `timedWait`, so drop the lock, sleep a
+        // short slice (capped by the remaining budget), then re-take and let the
+        // while-condition re-check the deadline + active/idle predicate. `release`
+        // still signals `not_full` (inert here) so a real timed condvar wait can
+        // be restored verbatim once an Io exposes one.
+        const slice_ns = @min(remaining_ns, POLL_INTERVAL_NS);
+        self.mutex.unlock();
+        std.Io.sleep(self.io, std.Io.Duration.fromNanoseconds(@intCast(slice_ns)), .awake) catch {
+            // Cancellation (shutdown) aborts the acquire; re-lock to honor the
+            // held-mutex contract before surfacing the timeout.
+            self.mutex.lock();
+            return error.AcquireTimeout;
         };
+        self.mutex.lock();
     }
     if (self.idle.popFirst()) |node| {
         self.idle_count -= 1;
@@ -250,7 +269,9 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
         self.mutex.lock();
         if (conn.state == .poisoned) self.poisoned_connections_total += 1;
         self.active_count -= 1;
-        // Freed an active slot — wake one acquirer blocked on max_active.
+        // Freed an active slot. The `not_full.signal()` below is inert — nothing waits
+        // on `not_full` (waitForActiveSlot poll-sleeps; Zig 0.16 has no timed condvar
+        // wait). Kept for the timed-wait restore — do not prune the condvar.
         self.not_full.signal();
         self.mutex.unlock();
         conn.deinit();
@@ -262,7 +283,7 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
     if (self.idle_count >= self.max_idle) {
         self.forced_closes_total += 1;
         self.active_count -= 1;
-        self.not_full.signal();
+        self.not_full.signal(); // inert — see the active-slot note above
         self.mutex.unlock();
         conn.deinit();
         self.alloc.destroy(conn);
@@ -271,8 +292,8 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
     self.idle.prepend(&conn.node);
     self.idle_count += 1;
     self.active_count -= 1;
-    // Slot freed and an idle conn is now parked — a blocked acquirer can
-    // either reuse the idle conn or take the freed active slot.
+    // Slot freed and an idle conn is now parked. `not_full.signal()` is inert —
+    // see the active-slot note above; kept for the timed-wait restore.
     self.not_full.signal();
     self.mutex.unlock();
 }
@@ -307,5 +328,7 @@ pub fn stats(self: *Pool) PoolStats {
 // === Imports ===
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");

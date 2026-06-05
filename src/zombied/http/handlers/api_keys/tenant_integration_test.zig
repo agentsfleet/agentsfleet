@@ -15,6 +15,7 @@
 // key rotation in that test updates both at once — do NOT regenerate here.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const api_key_lookup = @import("../../../cmd/api_key_lookup.zig");
@@ -67,7 +68,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'ApiKeysTest', $2, $2)

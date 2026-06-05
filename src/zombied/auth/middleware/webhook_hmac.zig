@@ -17,6 +17,7 @@
 //! the approval-domain code that's been in production since M8.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 
 const chain = @import("chain.zig");
@@ -33,7 +34,7 @@ pub const SIGNATURE_VERSION: []const u8 = "v0";
 const NowMsFn = *const fn () i64;
 
 fn defaultNowMs() i64 {
-    return std.time.milliTimestamp();
+    return clock.nowMillis();
 }
 
 pub const WebhookHmac = struct {

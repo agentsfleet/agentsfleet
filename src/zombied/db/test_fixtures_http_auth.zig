@@ -17,7 +17,6 @@
 ///
 /// `cleanup` removes both workspaces and the tenant in FK-safe order and is
 /// idempotent — safe to call before seeding as a "reset previous run" bookend.
-
 const std = @import("std");
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");

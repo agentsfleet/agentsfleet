@@ -7,6 +7,7 @@
 //! set by `authorizeWorkspaceAndSetTenantContext`).
 
 const std = @import("std");
+const clock = @import("common").clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 
@@ -113,7 +114,7 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
 fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.Filter {
     var since_ms: ?i64 = null;
     if (params.since_raw) |raw| {
-        since_ms = events_store.parseSince(raw, std.time.milliTimestamp()) catch {
+        since_ms = events_store.parseSince(raw, clock.nowMillis()) catch {
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid_since_format: use Go-style duration (15s, 30m, 2h, 7d) or RFC 3339 (YYYY-MM-DDTHH:MM:SSZ)");
             return error.Failed;
         };
@@ -145,7 +146,7 @@ fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.F
 /// for hoisting into events_store; if a third endpoint grows it, lift it
 /// then.)
 fn prefixToLike(alloc: std.mem.Allocator, prefix: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .{};
+    var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     for (prefix) |b| switch (b) {
         '%', '_' => {

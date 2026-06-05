@@ -44,9 +44,9 @@ jobs:
     needs: check-credentials
     runs-on: ubuntu-latest
     container:
-      # Pre-baked: alpine:3.21 + Zig 0.15.2 + apk deps + x86_64-linux-gnu OpenSSL
+      # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/usezombie/ci-zig-alpine:0.15.2
+      image: ghcr.io/usezombie/ci-zig-alpine:0.16.0
     steps:
       - uses: actions/checkout@v6
 

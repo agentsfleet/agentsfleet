@@ -43,8 +43,8 @@ const READ_CHUNK: usize = 64 * 1024;
 
 /// Child entry. Returns the process exit code (main calls `std.process.exit`
 /// with it); never returns an error — every failure maps to an exit code.
-pub fn run(alloc: std.mem.Allocator) u8 {
-    const workspace = flagValue(WORKSPACE_FLAG_PREFIX) orelse {
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator) u8 {
+    const workspace = flagValue(argv, WORKSPACE_FLAG_PREFIX) orelse {
         log.err("no_workspace_flag", .{});
         return SANDBOX_FAIL_EXIT;
     };
@@ -53,7 +53,7 @@ pub fn run(alloc: std.mem.Allocator) u8 {
     // Landlock policy MUST apply before we read the lease or run the agent — a
     // sandbox we cannot establish aborts, never running tool execution
     // unsandboxed.
-    if (hasFlag(SANDBOXED_FLAG)) landlock.applyPolicy(workspace) catch |err| {
+    if (hasFlag(argv, SANDBOXED_FLAG)) landlock.applyPolicy(workspace) catch |err| {
         log.err("landlock_failed_fail_closed", .{ .err = @errorName(err) });
         return SANDBOX_FAIL_EXIT;
     };
@@ -74,7 +74,7 @@ pub fn run(alloc: std.mem.Allocator) u8 {
 
     // The process exits immediately after writing; the engine result's content
     // is reclaimed by exit (no free needed on this single-shot path).
-    const result = runEngine(alloc, workspace, parsed.value);
+    const result = runEngine(env_map, alloc, workspace, parsed.value);
     writeResult(alloc, result) catch |err| {
         log.err("result_write_failed", .{ .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
@@ -85,11 +85,11 @@ pub fn run(alloc: std.mem.Allocator) u8 {
 /// Map the lease to engine args and run NullClaw in this child's address space.
 /// stdout is the progress sink: the engine streams `activity` frames there
 /// (`pipe_proto`) while running, then `writeResult` appends the terminal frame.
-fn runEngine(alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload) types.ExecutionResult {
+fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload) types.ExecutionResult {
     var args = buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
-    return engine.execute(alloc, workspace, args.agent_config, args.tools_spec, args.message, null, &ep, std.posix.STDOUT_FILENO);
+    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, null, &ep, std.posix.STDOUT_FILENO);
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were
@@ -104,7 +104,7 @@ fn writeResult(alloc: std.mem.Allocator, result: types.ExecutionResult) !void {
 // BUFFER GATE: ArrayList(u8) for the stdin accumulator — read-to-EOF, size
 // unknown up front, need one contiguous slice to JSON-parse.
 fn readStdin(alloc: std.mem.Allocator) ![]u8 {
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
     var chunk: [READ_CHUNK]u8 = undefined;
     while (true) {
@@ -117,17 +117,16 @@ fn readStdin(alloc: std.mem.Allocator) ![]u8 {
 }
 
 /// Value of the first `prefix…` argv entry, or null. argv is not secret.
-fn flagValue(prefix: []const u8) ?[]const u8 {
-    for (std.os.argv) |arg| {
-        const a = std.mem.span(arg);
-        if (std.mem.startsWith(u8, a, prefix)) return a[prefix.len..];
+fn flagValue(argv: []const [:0]const u8, prefix: []const u8) ?[]const u8 {
+    for (argv) |arg| {
+        if (std.mem.startsWith(u8, arg, prefix)) return arg[prefix.len..];
     }
     return null;
 }
 
-fn hasFlag(name: []const u8) bool {
-    for (std.os.argv) |arg| {
-        if (std.mem.eql(u8, std.mem.span(arg), name)) return true;
+fn hasFlag(argv: []const [:0]const u8, name: []const u8) bool {
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, name)) return true;
     }
     return false;
 }
@@ -143,9 +142,8 @@ const CallArgs = struct {
     req_parsed: ?std.json.Parsed(std.json.Value),
 
     fn deinit(self: CallArgs, alloc: std.mem.Allocator) void {
-        _ = alloc;
         var a = self.agent_obj;
-        a.deinit();
+        a.deinit(alloc);
         var t = self.tools_arr;
         t.deinit();
         if (self.req_parsed) |p| p.deinit();
@@ -155,9 +153,9 @@ const CallArgs = struct {
 /// Build engine args from the leased policy + event. Agent-config keys reuse
 /// the `wire` constants the engine reads them back with (RULE UFS).
 fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
-    var agent_obj = std.json.ObjectMap.init(alloc);
+    var agent_obj: std.json.ObjectMap = .empty;
     if (payload.policy.context.model.len > 0)
-        agent_obj.put(wire.model, .{ .string = payload.policy.context.model }) catch |err| log.warn("agent_model_arg_dropped", .{ .err = @errorName(err) });
+        agent_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model }) catch |err| log.warn("agent_model_arg_dropped", .{ .err = @errorName(err) });
     // Provider + key are the authoritative resolved values delivered on the
     // lease (the key the tenant is billed for) — atomic: the resolver always
     // produces both or neither. A half-populated pair is a malformed lease; we
@@ -165,8 +163,8 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
     // running against the wrong provider. `secrets_map` carries tool credentials
     // only — a tool secret named "llm" is NOT the provider key.
     if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
-        agent_obj.put(wire.provider, .{ .string = payload.policy.provider }) catch |err| log.warn("agent_provider_arg_dropped", .{ .err = @errorName(err) });
-        agent_obj.put(wire.api_key, .{ .string = payload.policy.api_key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
+        agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider }) catch |err| log.warn("agent_provider_arg_dropped", .{ .err = @errorName(err) });
+        agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
         log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0 });
     }

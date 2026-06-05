@@ -12,6 +12,7 @@ test {
     _ = @import("daemon/control_plane_client_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
+    _ = @import("daemon/loop_test.zig");
     _ = @import("daemon/renew_driver.zig");
     _ = @import("daemon/renew_driver_test.zig");
     _ = @import("common");

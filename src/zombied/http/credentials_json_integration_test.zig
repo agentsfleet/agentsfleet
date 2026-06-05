@@ -13,9 +13,12 @@
 // (not via defer) per the harness contract.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const error_codes = @import("../errors/error_registry.zig");
+
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -47,12 +50,11 @@ fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn setTestEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 1);
+    crypto_primitives.setTestKek();
 }
 
 fn setupSeedData(conn: *pg.Conn) !void {
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     _ = try conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID});
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
@@ -259,4 +261,3 @@ test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     defer h.releaseConn(conn);
     cleanupRows(conn);
 }
-

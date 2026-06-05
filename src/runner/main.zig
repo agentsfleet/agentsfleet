@@ -6,6 +6,7 @@
 //! startup gate, and handing off to the loop.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const builtin = @import("builtin");
 const logging = @import("log");
 const contract = @import("contract");
@@ -34,21 +35,33 @@ fn runnerLog(
     var msg_buf: [2048]u8 = undefined;
     const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
     var line_buf: [4096]u8 = undefined;
-    const line = logging.writeLogfmtEnvelope(&line_buf, std.time.milliTimestamp(), @tagName(level), scope_str, msg);
-    std.fs.File.stderr().writeAll(line) catch {};
+    const line = logging.writeLogfmtEnvelope(&line_buf, clock.nowMillis(), @tagName(level), scope_str, msg);
+    logging.writeStderrLine(line);
 }
 
-pub fn main() void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+pub fn main(init: std.process.Init) void {
+    const io = init.io;
+    const env_map = init.environ_map;
+
+    var gpa: std.heap.DebugAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+
+    // argv is resolved once into the process arena (cleaned automatically on
+    // exit); operator subcommands and the child-execute dispatch read this
+    // slice. Zig 0.16 removed `std.os.argv` — the entrypoint hands args in via
+    // `Init`, alongside the `io` and environment block.
+    const argv = init.minimal.args.toSlice(init.arena.allocator()) catch |err| {
+        log.err("argv_read_failed", .{ .err = @errorName(err) });
+        std.process.exit(1);
+    };
 
     // A CLI subcommand/flag (child-execute mode, --version, …) short-circuits
     // the daemon; a bare invocation (how the systemd unit starts us) returns
     // null and falls through to the loop.
-    if (dispatchCli(alloc)) |code| std.process.exit(code);
+    if (dispatchCli(argv, env_map, io, alloc)) |code| std.process.exit(code);
 
-    const cfg = Config.load(alloc) catch |err| {
+    const cfg = Config.load(env_map, alloc) catch |err| {
         log.err("config_load_failed", .{ .err = @errorName(err) });
         std.process.exit(1);
     };
@@ -68,7 +81,7 @@ pub fn main() void {
         std.process.exit(1);
     }
 
-    std.fs.makeDirAbsolute(cfg.workspace_base) catch |err| switch (err) {
+    std.Io.Dir.createDirAbsolute(io, cfg.workspace_base, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
             log.err("workspace_base_mkdir_failed", .{ .path = cfg.workspace_base, .err = @errorName(err) });
@@ -79,7 +92,7 @@ pub fn main() void {
     // Option B: the env-supplied `zrn_` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
-    loop.runLoop(alloc, cfg);
+    loop.runLoop(io, alloc, cfg);
     log.info("runner_exit", .{});
 }
 
@@ -88,15 +101,15 @@ pub fn main() void {
 /// invocation — how the `zombie-runner.service` unit starts the runner). The
 /// single dispatch seam: operator subcommands (register/status/doctor) and
 /// `--help` attach here alongside `__execute` and `--version`.
-fn dispatchCli(alloc: std.mem.Allocator) ?u8 {
-    if (std.os.argv.len <= 1) return null;
-    const a1 = std.mem.span(std.os.argv[1]);
+fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) ?u8 {
+    if (argv.len <= 1) return null;
+    const a1 = argv[1];
     // The forked child re-execs us with `__execute` — run one lease from stdin
     // and exit (no daemon loop, no env config). Hot path, checked first.
-    if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(alloc);
+    if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(argv, env_map, alloc);
     if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
     // register / status / doctor / --help, and unknown → help + non-zero.
-    return registry.dispatch(alloc, a1);
+    return registry.dispatch(argv, env_map, io, alloc, a1);
 }
 
 /// Parse sandbox tier from env string; defaults to `.dev_none` for unknown

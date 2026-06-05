@@ -4,11 +4,13 @@
 // upsert + delete entry points (real DB + vault). Skips when no DB.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const tenant_provider = @import("tenant_provider.zig");
 const vault = @import("vault.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 
@@ -24,14 +26,8 @@ const WS_TP_SELF_MANAGED = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
 // rows isolated from other integration tests.
 const TP_TEST_PROVIDER = "tenant_provider_test_fireworks";
 
-const ENCRYPTION_KEY_HEX = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
 fn setEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    var z: [65]u8 = undefined;
-    @memcpy(z[0..64], ENCRYPTION_KEY_HEX);
-    z[64] = 0;
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &z, 1);
+    crypto_primitives.setTestKek();
 }
 
 fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
@@ -43,10 +39,10 @@ fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
 
 fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u8, provider: []const u8, api_key: []const u8) !void {
     // Vault row at (ws_id, provider) — same M45 storage path self-managed uses.
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    try obj.put("provider", .{ .string = provider });
-    try obj.put("api_key", .{ .string = api_key });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "provider", .{ .string = provider });
+    try obj.put(alloc, "api_key", .{ .string = api_key });
     const value = std.json.Value{ .object = obj };
     try vault.storeJson(alloc, conn, ws_id, provider, value);
 
@@ -54,7 +50,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     const id_format = @import("../types/id_format.zig");
     const key_id = try id_format.generateZombieId(alloc);
     defer alloc.free(key_id);
-    const now_ms: i64 = std.time.milliTimestamp();
+    const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3::uuid, true, $4, $4)
@@ -72,11 +68,11 @@ fn seedSelfManagedCredential(
     api_key: []const u8,
     model: []const u8,
 ) !void {
-    var obj = std.json.ObjectMap.init(alloc);
-    defer obj.deinit();
-    try obj.put("provider", .{ .string = provider });
-    try obj.put("api_key", .{ .string = api_key });
-    try obj.put("model", .{ .string = model });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "provider", .{ .string = provider });
+    try obj.put(alloc, "api_key", .{ .string = api_key });
+    try obj.put(alloc, "model", .{ .string = model });
     const value = std.json.Value{ .object = obj };
     try vault.storeJson(alloc, conn, ws_id, name, value);
 }
@@ -217,10 +213,10 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
     // Seed a malformed credential first (missing api_key); upsertSelfManaged must reject it.
-    var obj = std.json.ObjectMap.init(ALLOC);
-    defer obj.deinit();
-    try obj.put("provider", .{ .string = TP_TEST_PROVIDER });
-    try obj.put("model", .{ .string = "any-model" });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(ALLOC);
+    try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
+    try obj.put(ALLOC, "model", .{ .string = "any-model" });
     try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
 
     try std.testing.expectError(
@@ -270,4 +266,3 @@ test "upsertPlatform writes mode=platform with NULL credential_ref" {
     try std.testing.expectEqual(@as(i32, @intCast(tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS)), try row.get(i32, 3));
     try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 4));
 }
-

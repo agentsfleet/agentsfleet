@@ -85,7 +85,9 @@ test "M14_001 T2: genId format has exactly two hyphens (ts-hi-lo)" {
     defer arena.deinit();
     const id = h.genId(arena.allocator());
     var count: usize = 0;
-    for (id) |c| if (c == '-') { count += 1; };
+    for (id) |c| if (c == '-') {
+        count += 1;
+    };
     try std.testing.expectEqual(@as(usize, 2), count);
 }
 

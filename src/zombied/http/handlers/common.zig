@@ -1,4 +1,5 @@
 const std = @import("std");
+const constants = @import("common");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
@@ -33,6 +34,16 @@ pub const Context = struct {
     pool: *pg.Pool,
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
+    /// Io threaded from `main` → `serve.run` (Zig 0.16 DI seam). Handlers that
+    /// dial sockets (SSE subscriber, jwks fetch) borrow it; testable via a
+    /// loopback io.
+    io: std.Io,
+    /// Webhook/backend secrets resolved ONCE at boot from the env snapshot and
+    /// owned for the process lifetime — handlers borrow them read-only instead
+    /// of re-reading env per request. Null = unset → the handler fails closed.
+    clerk_webhook_secret: ?[]const u8,
+    approval_signing_secret: ?[]const u8,
+    clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
     auth_sessions: *session_store_redis.SessionStore,
     audit_ctx: audit_events.AuditCtx,
@@ -147,7 +158,7 @@ pub fn checkBodySize(req: *httpz.Request, res: *httpz.Response, body: []const u8
 
 pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     var id: [16]u8 = undefined;
-    std.crypto.random.bytes(&id);
+    constants.secureRandomBytes(&id) catch return "req_unknown";
     const hex = std.fmt.bytesToHex(id, .lower);
     return std.fmt.allocPrint(alloc, "req_{s}", .{hex[0..12]}) catch "req_unknown";
 }
@@ -393,15 +404,14 @@ fn endApiRequest(ctx: *Context) void {
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
     // check-pg-drain: ok — no conn.query() here; checker misattributes test-block queries
-    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch
-        std.process.getEnvVarOwned(alloc, "DATABASE_URL") catch return null;
-    defer alloc.free(url);
+    const url = constants.env.testLiveValue("TEST_DATABASE_URL") orelse
+        constants.env.testLiveValue("DATABASE_URL") orelse return null;
     // Use page_allocator for opts strings so they outlive the pool. pg.Pool stores
     // shallow references to connect.host/auth strings — if the arena they come from
     // is freed first, pool.release() crashes when it calls newConnection() on a
     // non-idle conn (e.g. after an internal query failure in the test body).
     const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(alloc, opts);
+    const pool = try pg.Pool.init(constants.globalIo(), alloc, opts);
     errdefer pool.deinit();
     const conn = try pool.acquire();
     return .{ .pool = pool, .conn = conn };
@@ -508,7 +518,7 @@ test "integration: RLS policy enforces tenant session isolation" {
     // docker image user is a superuser, and superusers bypass RLS even with
     // FORCE ROW LEVEL SECURITY. Set HANDLER_DB_TEST_NONSUPERUSER=1 when running
     // against a non-superuser test role to enable this assertion.
-    if (!std.process.hasEnvVarConstant("HANDLER_DB_TEST_NONSUPERUSER")) return error.SkipZigTest;
+    if (constants.env.testLiveValue("HANDLER_DB_TEST_NONSUPERUSER") == null) return error.SkipZigTest;
     const db_ctx = (try openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -614,12 +624,12 @@ test "parsePaginationParams: float limit '50.5' returns default 50" {
 // ── derivePaginationResult tests ──────────────────────────────────────────
 
 test "derivePaginationResult: items fewer than limit returns no more" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("id", .{ .string = "aaa" });
-    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj2.put("id", .{ .string = "bbb" });
-    defer obj1.deinit();
-    defer obj2.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "id", .{ .string = "aaa" });
+    var obj2: std.json.ObjectMap = .empty;
+    try obj2.put(std.testing.allocator, "id", .{ .string = "bbb" });
+    defer obj1.deinit(std.testing.allocator);
+    defer obj2.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
     const result = derivePaginationResult(items, 5, "id");
@@ -629,12 +639,12 @@ test "derivePaginationResult: items fewer than limit returns no more" {
 }
 
 test "derivePaginationResult: items equal to limit returns no more" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("id", .{ .string = "aaa" });
-    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj2.put("id", .{ .string = "bbb" });
-    defer obj1.deinit();
-    defer obj2.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "id", .{ .string = "aaa" });
+    var obj2: std.json.ObjectMap = .empty;
+    try obj2.put(std.testing.allocator, "id", .{ .string = "bbb" });
+    defer obj1.deinit(std.testing.allocator);
+    defer obj2.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
     const result = derivePaginationResult(items, 2, "id");
@@ -644,15 +654,15 @@ test "derivePaginationResult: items equal to limit returns no more" {
 }
 
 test "derivePaginationResult: items equal to limit+1 returns has_more with cursor" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("id", .{ .string = "aaa" });
-    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj2.put("id", .{ .string = "bbb" });
-    var obj3 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj3.put("id", .{ .string = "ccc" });
-    defer obj1.deinit();
-    defer obj2.deinit();
-    defer obj3.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "id", .{ .string = "aaa" });
+    var obj2: std.json.ObjectMap = .empty;
+    try obj2.put(std.testing.allocator, "id", .{ .string = "bbb" });
+    var obj3: std.json.ObjectMap = .empty;
+    try obj3.put(std.testing.allocator, "id", .{ .string = "ccc" });
+    defer obj1.deinit(std.testing.allocator);
+    defer obj2.deinit(std.testing.allocator);
+    defer obj3.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 }, .{ .object = obj3 } };
     const result = derivePaginationResult(items, 2, "id");
@@ -670,9 +680,9 @@ test "derivePaginationResult: empty items returns no more and empty data" {
 }
 
 test "derivePaginationResult: single item with limit 1 returns no more" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("id", .{ .string = "only" });
-    defer obj1.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "id", .{ .string = "only" });
+    defer obj1.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{.{ .object = obj1 }};
     const result = derivePaginationResult(items, 1, "id");
@@ -682,12 +692,12 @@ test "derivePaginationResult: single item with limit 1 returns no more" {
 }
 
 test "derivePaginationResult: 2 items with limit 1 returns has_more with cursor" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("id", .{ .string = "first" });
-    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj2.put("id", .{ .string = "second" });
-    defer obj1.deinit();
-    defer obj2.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "id", .{ .string = "first" });
+    var obj2: std.json.ObjectMap = .empty;
+    try obj2.put(std.testing.allocator, "id", .{ .string = "second" });
+    defer obj1.deinit(std.testing.allocator);
+    defer obj2.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
     const result = derivePaginationResult(items, 1, "id");
@@ -697,12 +707,12 @@ test "derivePaginationResult: 2 items with limit 1 returns has_more with cursor"
 }
 
 test "derivePaginationResult: missing id_field returns has_more true but cursor null" {
-    var obj1 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj1.put("name", .{ .string = "no_id" });
-    var obj2 = std.json.ObjectMap.init(std.testing.allocator);
-    try obj2.put("name", .{ .string = "also_no_id" });
-    defer obj1.deinit();
-    defer obj2.deinit();
+    var obj1: std.json.ObjectMap = .empty;
+    try obj1.put(std.testing.allocator, "name", .{ .string = "no_id" });
+    var obj2: std.json.ObjectMap = .empty;
+    try obj2.put(std.testing.allocator, "name", .{ .string = "also_no_id" });
+    defer obj1.deinit(std.testing.allocator);
+    defer obj2.deinit(std.testing.allocator);
 
     const items = &[_]std.json.Value{ .{ .object = obj1 }, .{ .object = obj2 } };
     const result = derivePaginationResult(items, 1, "id");
@@ -757,19 +767,19 @@ test "pagination constants: max_page_limit is 100" {
 // ── T11: Performance — large result set ─────────────────────────────────────
 
 test "derivePaginationResult: 101 items with limit 100 returns has_more and 100 data items" {
-    var items_list: std.ArrayList(std.json.Value) = .{};
+    var items_list: std.ArrayList(std.json.Value) = .empty;
     defer items_list.deinit(std.testing.allocator);
 
     // Build 101 items (limit+1)
     var maps: [101]std.json.ObjectMap = undefined;
     for (&maps, 0..) |*m, i| {
-        m.* = std.json.ObjectMap.init(std.testing.allocator);
+        m.* = .empty;
         var buf: [8]u8 = undefined;
         const id_str = std.fmt.bufPrint(&buf, "id_{d:0>3}", .{i}) catch unreachable;
-        m.*.put("id", .{ .string = id_str }) catch unreachable;
+        m.*.put(std.testing.allocator, "id", .{ .string = id_str }) catch unreachable;
         try items_list.append(std.testing.allocator, .{ .object = m.* });
     }
-    defer for (&maps) |*m| m.deinit();
+    defer for (&maps) |*m| m.deinit(std.testing.allocator);
 
     const result = derivePaginationResult(items_list.items, 100, "id");
     try std.testing.expectEqual(@as(usize, 100), result.data.len);
@@ -780,9 +790,9 @@ test "derivePaginationResult: 101 items with limit 100 returns has_more and 100 
 // ── T7: Regression — response envelope shape ────────────────────────────────
 
 test "derivePaginationResult: return struct has expected field types" {
-    var obj = std.json.ObjectMap.init(std.testing.allocator);
-    defer obj.deinit();
-    obj.put("id", .{ .string = "abc" }) catch unreachable;
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(std.testing.allocator);
+    obj.put(std.testing.allocator, "id", .{ .string = "abc" }) catch unreachable;
     const items = &[_]std.json.Value{.{ .object = obj }};
     const result = derivePaginationResult(items, 10, "id");
     // Compile-time check: all three expected fields exist and have correct types

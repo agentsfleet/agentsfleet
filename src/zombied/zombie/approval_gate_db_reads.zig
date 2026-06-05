@@ -100,11 +100,11 @@ pub fn listPending(
         \\LIMIT $8
     , .{
         filter.workspace_id, status_param, zombie_param, kind_param,
-        has_cursor, cursor_ts, cursor_id, @as(i64, @intCast(limit)),
+        has_cursor,          cursor_ts,    cursor_id,    @as(i64, @intCast(limit)),
     }));
     defer q.deinit();
 
-    var items: std.ArrayList(PendingRow) = .{};
+    var items: std.ArrayList(PendingRow) = .empty;
     errdefer {
         for (items.items) |*r| r.deinit(alloc);
         items.deinit(alloc);
@@ -148,7 +148,7 @@ pub fn getByGateId(
 }
 
 fn readPendingRow(alloc: Allocator, row: pg.Row) !PendingRow {
-    var owned: std.ArrayList([]const u8) = .{};
+    var owned: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (owned.items) |s| alloc.free(s);
         owned.deinit(alloc);
@@ -174,14 +174,23 @@ fn readPendingRow(alloc: Allocator, row: pg.Row) !PendingRow {
 
     owned.deinit(alloc);
     return .{
-        .gate_id = gate_id, .zombie_id = zombie_id, .zombie_name = zombie_name,
-        .workspace_id = workspace_id, .action_id = action_id,
-        .tool_name = tool_name, .action_name = action_name,
-        .gate_kind = gate_kind, .proposed_action = proposed_action,
-        .evidence_json = evidence_json, .blast_radius = blast_radius,
-        .status = status, .detail = detail,
-        .requested_at = requested_at, .timeout_at = timeout_at,
-        .updated_at = updated_at, .resolved_by = resolved_by,
+        .gate_id = gate_id,
+        .zombie_id = zombie_id,
+        .zombie_name = zombie_name,
+        .workspace_id = workspace_id,
+        .action_id = action_id,
+        .tool_name = tool_name,
+        .action_name = action_name,
+        .gate_kind = gate_kind,
+        .proposed_action = proposed_action,
+        .evidence_json = evidence_json,
+        .blast_radius = blast_radius,
+        .status = status,
+        .detail = detail,
+        .requested_at = requested_at,
+        .timeout_at = timeout_at,
+        .updated_at = updated_at,
+        .resolved_by = resolved_by,
     };
 }
 

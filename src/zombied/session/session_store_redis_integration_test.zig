@@ -9,6 +9,8 @@
 //! does not enforce.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
 const queue_redis = @import("../queue/redis.zig");
 const session_store_redis = @import("session_store_redis.zig");
 const session_state = @import("../auth/session_state.zig");
@@ -18,7 +20,7 @@ const SessionStore = session_store_redis.SessionStore;
 const VerifyOutcome = session_store_redis.VerifyOutcome;
 const SessionStatus = session_state.SessionStatus;
 
-const TEST_REDIS_URL_ENV: []const u8 = "TEST_REDIS_TLS_URL";
+const TEST_REDIS_URL_ENV: [:0]const u8 = "TEST_REDIS_TLS_URL";
 
 // Stable across the file so HMAC outputs are deterministic test-to-test.
 // Real prod peppers come from boot-time env loaders; the values here are
@@ -41,9 +43,8 @@ const FP_A: []const u8 = "a" ** 64;
 const FP_B: []const u8 = "b" ** 64;
 
 fn connectRedisOrSkip(alloc: std.mem.Allocator) !queue_redis.Client {
-    const url = std.process.getEnvVarOwned(alloc, TEST_REDIS_URL_ENV) catch return error.SkipZigTest;
-    defer alloc.free(url);
-    return queue_redis.Client.connectFromUrl(alloc, url);
+    const url = common.env.testLiveValue(TEST_REDIS_URL_ENV) orelse return error.SkipZigTest;
+    return queue_redis.testing.connectFromUrl(common.globalIo(), alloc, url);
 }
 
 fn delSessionKey(client: *queue_redis.Client, alloc: std.mem.Allocator, session_id: []const u8) void {
@@ -85,7 +86,7 @@ fn expireReplayWindow(
     var parsed = (try store.get(session_id)) orelse return error.SessionGone;
     defer parsed.deinit();
     var mutated = parsed.value;
-    mutated.consume_payload_expires_at_ms = std.time.milliTimestamp() - 1;
+    mutated.consume_payload_expires_at_ms = clock.nowMillis() - 1;
     const blob = try session_state.encode(store.alloc, mutated);
     defer store.alloc.free(blob);
     var key_buf: [session_store_redis.SESSION_KEY_PREFIX.len + 36]u8 = undefined;

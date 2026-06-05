@@ -35,7 +35,7 @@ pub fn resolveSecretsMap(
     workspace_id: []const u8,
     names: []const []const u8,
 ) ![]ResolvedSecret {
-    var out: std.ArrayList(ResolvedSecret) = .{};
+    var out: std.ArrayList(ResolvedSecret) = .empty;
     errdefer freeBuilder(alloc, &out);
 
     const conn = try pool.acquire();

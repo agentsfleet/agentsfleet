@@ -1,4 +1,6 @@
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 
 pub fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
@@ -55,9 +57,9 @@ pub fn isUuidV7(id: []const u8) bool {
 
 pub fn allocUuidV7(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [16]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try constants.secureRandomBytes(&raw);
 
-    const ts_ms: u64 = @intCast(std.time.milliTimestamp());
+    const ts_ms: u64 = @intCast(clock.nowMillis());
     raw[0] = @intCast((ts_ms >> 40) & 0xff);
     raw[1] = @intCast((ts_ms >> 32) & 0xff);
     raw[2] = @intCast((ts_ms >> 24) & 0xff);

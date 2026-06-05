@@ -16,6 +16,8 @@
 //! 401 — responding 401 would leak "no secret configured" to attackers.
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const httpz = @import("httpz");
 const logging = @import("log");
 
@@ -60,7 +62,6 @@ const ClerkEvent = struct {
 
 pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
     const secret = readSecret(hx) orelse return;
-    defer std.heap.page_allocator.free(secret);
 
     const svix_id = req.header(svix_verify.SVIX_ID_HEADER) orelse {
         rejectBadSig(hx, "missing svix-id header");
@@ -87,7 +88,7 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
         svix_ts,
         svix_sig,
         body,
-        std.time.timestamp(),
+        clock.nowSeconds(),
         svix_verify.SVIX_MAX_DRIFT_SECONDS,
     );
     switch (verify_result) {
@@ -166,13 +167,13 @@ fn rejectMissingEmail(hx: Hx, detail: []const u8) void {
 
 /// Missing or empty CLERK_WEBHOOK_SECRET → 500 (operator misconfig, not 401 —
 /// we don't want to confirm to attackers that the endpoint has no secret
-/// configured). Uses page_allocator so the slice can outlive arenas.
-fn readSecret(hx: Hx) ?[]u8 {
+/// configured). Borrows the boot-resolved Context secret (no per-request read).
+fn readSecret(hx: Hx) ?[]const u8 {
     // Log at warn so the negative-path test doesn't trip "logged errors" test
     // gates. The user-visible signal is the 500 response + 5xx-rate Prometheus
-    // alerting on /v1/auth/identity-events/clerk — the log line is supporting context, not
-    // the primary alert.
-    const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "CLERK_WEBHOOK_SECRET") catch {
+    // alerting on /v1/auth/identity-events/clerk — the log line is supporting
+    // context, not the primary alert.
+    const secret = hx.ctx.clerk_webhook_secret orelse {
         log.warn("secret_missing", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .req_id = hx.req_id,
@@ -181,7 +182,6 @@ fn readSecret(hx: Hx) ?[]u8 {
         return null;
     };
     if (secret.len == 0) {
-        std.heap.page_allocator.free(secret);
         log.warn("secret_empty", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .req_id = hx.req_id,
@@ -273,7 +273,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
 }
 
 fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
-    clerk_backend.patchUserPublicMetadata(hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_ROLE) catch |err| {
+    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_ROLE) catch |err| {
         log.warn(
             "metadata_writeback_failed",
             .{

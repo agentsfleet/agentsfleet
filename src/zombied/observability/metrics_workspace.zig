@@ -191,9 +191,9 @@ test "renderPrometheus outputs both labels" {
     addTokens("ws-render-test", "zombie-42", 42);
 
     var buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try renderPrometheus(fbs.writer());
-    const output = fbs.getWritten();
+    var w = std.Io.Writer.fixed(&buf);
+    try renderPrometheus(&w);
+    const output = w.buffered();
 
     try std.testing.expect(std.mem.containsAtLeast(u8, output, 1, "zombie_agent_tokens_by_workspace_total"));
     try std.testing.expect(std.mem.containsAtLeast(u8, output, 1, "workspace_id=\"ws-render-test\""));
@@ -259,9 +259,9 @@ test "renderPrometheus skips slots with ready=0" {
     g_slot_count.store(2, .release);
 
     var buf: [8192]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try renderPrometheus(fbs.writer());
-    const output = fbs.getWritten();
+    var w = std.Io.Writer.fixed(&buf);
+    try renderPrometheus(&w);
+    const output = w.buffered();
 
     try std.testing.expect(std.mem.containsAtLeast(u8, output, 1, "ws-visible"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, output, 1, "ws-ghost"));

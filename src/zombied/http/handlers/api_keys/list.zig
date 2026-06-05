@@ -78,8 +78,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql comes from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc,
-        "SELECT id::text, key_name, active, " ++
+    const list_sql = std.fmt.allocPrint(hx.alloc, "SELECT id::text, key_name, active, " ++
         "(EXTRACT(EPOCH FROM created_at) * 1000)::bigint, " ++
         "(EXTRACT(EPOCH FROM last_used_at) * 1000)::bigint, " ++
         "(EXTRACT(EPOCH FROM revoked_at) * 1000)::bigint " ++
@@ -94,7 +93,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
     });
     defer rows_q.deinit();
 
-    var items: std.ArrayListUnmanaged(ListRow) = .{};
+    var items: std.ArrayListUnmanaged(ListRow) = .empty;
     while (rows_q.next() catch null) |row| {
         const id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const key_name = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;

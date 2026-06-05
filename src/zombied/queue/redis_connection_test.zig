@@ -4,6 +4,10 @@
 //! the Pool level live in `redis_pool_test.zig`.
 
 const std = @import("std");
+const common = @import("common");
+const clock = @import("common").clock;
+const net = std.Io.net;
+const test_port = @import("../http/test_port.zig");
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");
 const log_sinks = @import("log").sinks;
@@ -24,45 +28,70 @@ const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
 // of the test's configured budget, e.g. half of 200ms).
 const RCVTIMEO_CEILING_NS = 5 * std.time.ns_per_s;
 
+// Read whatever the client sent (one underlying read), returning the count of
+// buffered request bytes. Zig 0.16 `net.Stream` exposes no direct `read`; go
+// through a `Stream.Reader` and `fillMore` (one read syscall; EOF on peer
+// close). Returns 0 on EOF/error so callers gate the reply on `n > 0` exactly
+// as the pre-0.16 `stream.read(&buf) catch 0` did.
+fn fakeReadOnce(io: std.Io, stream: net.Stream) usize {
+    var rbuf: [256]u8 = undefined;
+    var r = stream.reader(io, &rbuf);
+    r.interface.fillMore() catch return 0;
+    return r.interface.bufferedLen();
+}
+
+// Write `bytes` to the accepted stream. Zig 0.16 `net.Stream` exposes no direct
+// `writeAll`; go through a `Stream.Writer` and flush. Best-effort, matching the
+// pre-0.16 `stream.writeAll(...) catch {}`.
+fn fakeWriteAll(io: std.Io, stream: net.Stream, bytes: []const u8) void {
+    var wbuf: [256]u8 = undefined;
+    var w = stream.writer(io, &wbuf);
+    w.interface.writeAll(bytes) catch return;
+    w.interface.flush() catch return;
+}
+
 const PongOnce = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    io: std.Io,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
 
     fn start(self: *PongOnce) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        self.io = common.globalIo();
+        const lp = try test_port.listenLoopback(self.io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *PongOnce) void {
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4("127.0.0.1", self.port) catch |e|
+            std.debug.panic("loopback parseIp4 must not fail: {}", .{e});
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(self.io);
     }
 
     fn loop(self: *PongOnce) void {
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            const conn = self.server.accept(self.io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                conn.close(self.io);
                 return;
             }
-            var buf: [256]u8 = undefined;
-            const n = conn.stream.read(&buf) catch 0;
-            if (n > 0) conn.stream.writeAll("+PONG\r\n") catch {};
-            while (!self.stop.load(.acquire)) std.Thread.sleep(5 * std.time.ns_per_ms);
-            conn.stream.close();
+            const n = fakeReadOnce(self.io, conn);
+            if (n > 0) fakeWriteAll(self.io, conn, "+PONG\r\n");
+            while (!self.stop.load(.acquire)) common.sleepNanos(5 * std.time.ns_per_ms);
+            conn.close(self.io);
         }
     }
 
     fn config(self: *PongOnce, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, "127.0.0.1");
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -74,7 +103,7 @@ test "init(.blocking_consumer) yields a live fd; deinit zeros it" {
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .blocking_consumer);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .blocking_consumer);
     try std.testing.expectEqual(Connection.Role.blocking_consumer, conn.role);
     try std.testing.expect(conn.fd != Connection.INVALID_FD);
     conn.deinit();
@@ -89,7 +118,7 @@ test "init(.subscriber) sets role and dials cleanly" {
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .subscriber);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .subscriber);
     defer conn.deinit();
     try std.testing.expectEqual(Connection.Role.subscriber, conn.role);
 }
@@ -102,7 +131,7 @@ test "command round-trips a single RESP reply" {
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     defer conn.deinit();
 
     var resp = try conn.command(&.{"PING"});
@@ -125,7 +154,7 @@ test "post-deinit Connection has INVALID_FD and .closed state — IO call paths 
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     try std.testing.expect(conn.fd != Connection.INVALID_FD);
     try std.testing.expect(conn.state == .active);
 
@@ -152,7 +181,7 @@ test "post-deinit Connection has .closed state — double-deinit asserts in debu
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     try std.testing.expect(conn.state == .active);
 
     conn.deinit();
@@ -167,34 +196,37 @@ test "post-deinit Connection has .closed state — double-deinit asserts in debu
 // that flushed bytes past the expected reply boundary. Used to prove the
 // residual-byte poison check at `commandAllowError`.
 const ResidualBytesAfterReply = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    io: std.Io,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
 
     fn start(self: *ResidualBytesAfterReply) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        self.io = common.globalIo();
+        const lp = try test_port.listenLoopback(self.io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *ResidualBytesAfterReply) void {
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4(LOOPBACK_IPV4, self.port) catch |e|
+            std.debug.panic("loopback parseIp4 must not fail: {}", .{e});
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(self.io);
     }
 
     fn loop(self: *ResidualBytesAfterReply) void {
-        const conn = self.server.accept() catch return;
+        const conn = self.server.accept(self.io) catch return;
         if (self.stop.load(.acquire)) {
-            conn.stream.close();
+            conn.close(self.io);
             return;
         }
-        var buf: [256]u8 = undefined;
-        const n = conn.stream.read(&buf) catch 0;
+        const n = fakeReadOnce(self.io, conn);
         // One writeAll → kernel coalesces into a single TCP segment on
         // loopback; the std.Io.Reader pulls both frames into its buffer
         // in one read syscall. Parser consumes `+PONG\r\n`; `+EXTRA\r\n`
@@ -203,14 +235,14 @@ const ResidualBytesAfterReply = struct {
         // `+PONG\r\n` and leave the trailing 8 bytes (`+EXTRA\r\n`)
         // buffered. Any rewrite that changes the byte boundary breaks
         // the residual-byte check the production code asserts on.
-        if (n > 0) conn.stream.writeAll("+PONG\r\n+EXTRA\r\n") catch {};
-        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
-        conn.stream.close();
+        if (n > 0) fakeWriteAll(self.io, conn, "+PONG\r\n+EXTRA\r\n");
+        while (!self.stop.load(.acquire)) common.sleepNanos(FAKE_SHUTDOWN_POLL_NS);
+        conn.close(self.io);
     }
 
     fn config(self: *ResidualBytesAfterReply, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, LOOPBACK_IPV4);
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -220,51 +252,54 @@ const ResidualBytesAfterReply = struct {
 // returns EAGAIN, which surfaces as `error.ReadFailed`. Proves the
 // partial-frame timeout path poisons the conn (spec §protocol-desync).
 const PartialFrameThenHang = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    io: std.Io,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
 
     fn start(self: *PartialFrameThenHang) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        self.io = common.globalIo();
+        const lp = try test_port.listenLoopback(self.io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *PartialFrameThenHang) void {
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4(LOOPBACK_IPV4, self.port) catch |e|
+            std.debug.panic("loopback parseIp4 must not fail: {}", .{e});
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(self.io);
     }
 
     fn loop(self: *PartialFrameThenHang) void {
-        const conn = self.server.accept() catch return;
+        const conn = self.server.accept(self.io) catch return;
         if (self.stop.load(.acquire)) {
-            conn.stream.close();
+            conn.close(self.io);
             return;
         }
-        var buf: [256]u8 = undefined;
-        const n = conn.stream.read(&buf) catch 0;
+        const n = fakeReadOnce(self.io, conn);
         // pin test: literal is the contract — `$5\r\n` announces a
         // 5-byte body; never send it. The parser consumes the length
         // header, then blocks on body read until `SO_RCVTIMEO` fires.
         // Rewriting the header (e.g. `$10\r\n`) shifts the parser state
         // and changes which assertion the test is making.
-        if (n > 0) conn.stream.writeAll("$5\r\n") catch {};
-        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
-        conn.stream.close();
+        if (n > 0) fakeWriteAll(self.io, conn, "$5\r\n");
+        while (!self.stop.load(.acquire)) common.sleepNanos(FAKE_SHUTDOWN_POLL_NS);
+        conn.close(self.io);
     }
 
     fn config(self: *PartialFrameThenHang, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, LOOPBACK_IPV4);
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
-test "commandAllowError: partial RESP frame past SO_RCVTIMEO surfaces ReadFailed and poisons conn" {
+test "commandAllowError: partial RESP frame past read timeout surfaces RedisRequestTimeout and poisons conn" {
     var srv: PartialFrameThenHang = undefined;
     try srv.start();
     defer srv.shutdown();
@@ -272,20 +307,20 @@ test "commandAllowError: partial RESP frame past SO_RCVTIMEO surfaces ReadFailed
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     defer conn.deinit();
 
     // Arm the read timeout BEFORE issuing the command — the fake hangs
-    // after writing `$5\r\n`, so without SO_RCVTIMEO the parser would
+    // after writing `$5\r\n`, so without the timeout the parser would
     // block forever on the missing body. 200ms keeps the test fast while
-    // remaining well above kernel granularity.
+    // remaining well above poll(2) granularity.
     conn.applyReadTimeout(200);
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const result = conn.commandAllowError(&.{"PING"});
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
-    try std.testing.expectError(error.ReadFailed, result);
+    try std.testing.expectError(error.RedisRequestTimeout, result);
 
     // Load-bearing assertions:
     //   1. Partial-frame parser failure poisons the conn — Pool.release
@@ -305,7 +340,7 @@ test "commandAllowError: residual bytes after parsed reply poison the conn and s
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     defer conn.deinit();
 
     const result = conn.commandAllowError(&.{"PING"});
@@ -328,46 +363,49 @@ test "commandAllowError: residual bytes after parsed reply poison the conn and s
 // log carries the server's error text — pre-sink-refactor this surface
 // was impossible to assert on (zombiedLog hardcoded stderr.writeAll).
 const WrongtypeErrReply = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    io: std.Io,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
 
     fn start(self: *WrongtypeErrReply) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        self.io = common.globalIo();
+        const lp = try test_port.listenLoopback(self.io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *WrongtypeErrReply) void {
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4(LOOPBACK_IPV4, self.port) catch |e|
+            std.debug.panic("loopback parseIp4 must not fail: {}", .{e});
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(self.io);
     }
 
     fn loop(self: *WrongtypeErrReply) void {
-        const conn = self.server.accept() catch return;
+        const conn = self.server.accept(self.io) catch return;
         if (self.stop.load(.acquire)) {
-            conn.stream.close();
+            conn.close(self.io);
             return;
         }
-        var buf: [256]u8 = undefined;
-        const n = conn.stream.read(&buf) catch 0;
+        const n = fakeReadOnce(self.io, conn);
         // pin test: literal is the contract — RESP `-WRONGTYPE` is the
         // canonical resumable error for a type-mismatched op. The leading
         // `-` plus the trailing CRLF make this a complete RESP frame so
         // the parser returns `.err`; anything else would short-read.
-        if (n > 0) conn.stream.writeAll("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n") catch {};
-        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
-        conn.stream.close();
+        if (n > 0) fakeWriteAll(self.io, conn, "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n");
+        while (!self.stop.load(.acquire)) common.sleepNanos(FAKE_SHUTDOWN_POLL_NS);
+        conn.close(self.io);
     }
 
     fn config(self: *WrongtypeErrReply, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, LOOPBACK_IPV4);
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -387,7 +425,7 @@ test "command on resumable .err reply emits redis_command_err_reply warn carryin
     defer log_sinks.clearSinks();
     log_sinks.registerSink(bs.sink());
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     defer conn.deinit();
 
     const result = conn.command(&.{ "LPUSH", "any-key", "v" });
@@ -420,48 +458,51 @@ test "command on resumable .err reply emits redis_command_err_reply warn carryin
 // where parsing fails inside std.crypto.tls; we assert the init returns
 // SOMETHING (not specific code) plus a clean leak audit.
 const TlsGarbageHandshake = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    io: std.Io,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
 
     fn start(self: *TlsGarbageHandshake) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        self.io = common.globalIo();
+        const lp = try test_port.listenLoopback(self.io);
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *TlsGarbageHandshake) void {
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        var addr = net.IpAddress.parseIp4(LOOPBACK_IPV4, self.port) catch |e|
+            std.debug.panic("loopback parseIp4 must not fail: {}", .{e});
+        if (addr.connect(self.io, .{ .mode = .stream })) |s| s.close(self.io) else |_| {}
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(self.io);
     }
 
     fn loop(self: *TlsGarbageHandshake) void {
-        const conn = self.server.accept() catch return;
+        const conn = self.server.accept(self.io) catch return;
         if (self.stop.load(.acquire)) {
-            conn.stream.close();
+            conn.close(self.io);
             return;
         }
         // Drain whatever ClientHello bytes the client sent, then reply
         // with 64 bytes of garbage — not a TLS record header, not even
         // a coherent protocol. std.crypto.tls's record parser will
         // reject this during the first read of the ServerHello.
-        var buf: [4096]u8 = undefined;
         // Drain ClientHello; partial reads / EOF are expected on a fake
         // that returns garbage — we want the WRITE below to fire regardless.
-        if (conn.stream.read(&buf)) |_| {} else |_| {}
+        _ = fakeReadOnce(self.io, conn);
         const garbage = "GARBAGE-NOT-A-TLS-SERVERHELLO-FRAME-AT-ALL-NO-RECORD-LAYER-XYZ\n";
-        if (conn.stream.writeAll(garbage)) |_| {} else |_| {}
+        fakeWriteAll(self.io, conn, garbage);
         // Close IMMEDIATELY after the garbage. Without this, `std.crypto.tls`
         // can block forever on a subsequent record read (it's reading
         // length-prefixed records and the partial garbage doesn't terminate
         // a valid record). Closing forces EOF on the next read, which the
         // TLS client surfaces as a hard error — the behavior under test.
-        conn.stream.close();
+        conn.close(self.io);
     }
 
     fn config(self: *TlsGarbageHandshake, alloc: std.mem.Allocator) !redis_config.Config {
@@ -470,7 +511,7 @@ const TlsGarbageHandshake = struct {
         // handshake path, which is the surface under test. The host
         // string doesn't need to match a real cert SNI — the handshake
         // fails on the server's malformed reply long before name check.
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = true };
+        return .{ .host = host, .port = self.port, .use_tls = true };
     }
 };
 
@@ -493,7 +534,7 @@ test "Connection.init: TLS handshake against garbage server errors cleanly with 
     // bytes on shutdown. We accept ANY error (the specific variant
     // depends on std.crypto.tls internals and isn't load-bearing); the
     // load-bearing assertion is the leak audit.
-    const result = Connection.init(std.testing.allocator, &cfg, .pooled);
+    const result = Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     try std.testing.expect(std.meta.isError(result));
     // If init succeeded somehow (unexpected), deinit to avoid leaking.
     if (result) |*c| {
@@ -509,7 +550,7 @@ test "commandAllowError: OOM during RESP read propagates and poisons the connect
     const cfg = try srv.config(std.testing.allocator);
     defer redis_config.deinitConfig(std.testing.allocator, cfg);
 
-    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
     // Restore the real allocator before deinit so transport cleanup uses
     // the same allocator that init dialed with.
     defer {

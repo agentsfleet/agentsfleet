@@ -30,10 +30,10 @@ pub fn buildSlackApprovalMessage(
 
     _ = callback_url;
 
-    // Build via ArrayList writer with JSON-escaped strings for safety
-    var buf: std.ArrayList(u8) = .{};
-    errdefer buf.deinit(alloc);
-    const w = buf.writer(alloc);
+    // Build via a growable Io.Writer with JSON-escaped strings for safety.
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const w = &aw.writer;
 
     try w.writeAll("{\"blocks\":[{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"");
     try writeJsonEscaped(w, desc);
@@ -47,7 +47,7 @@ pub fn buildSlackApprovalMessage(
     try writeJsonEscaped(w, fallback);
     try w.writeAll("\"}");
 
-    return buf.toOwnedSlice(alloc);
+    return aw.toOwnedSlice();
 }
 
 /// Write a string with JSON-unsafe characters escaped (for embedding in JSON keys).

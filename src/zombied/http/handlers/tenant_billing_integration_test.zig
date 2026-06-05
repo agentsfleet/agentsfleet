@@ -7,6 +7,7 @@
 // Requires TEST_DATABASE_URL — skipped gracefully when unset.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../auth/middleware/mod.zig");
 
@@ -75,8 +76,6 @@ fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-
-
 // ── stop-policy pre-claim balance gate ────────────────────────────────────
 
 test "integration: balanceCoversEstimate honours policy and tenant balance" {
@@ -85,7 +84,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
     defer teardown(db_ctx.conn, TEST_TENANT_ID);
 
@@ -159,7 +158,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
     defer teardown(conn, TOKEN_TENANT_ID);
 
@@ -190,7 +189,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
     defer teardown(conn, TOKEN_TENANT_ID);
 
@@ -223,7 +222,7 @@ test "integration(m11_006): concurrent markExhausted calls — exactly one trans
     const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     {
         try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
         try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
@@ -317,7 +316,7 @@ test "integration: GET /billing/charges with no cursor returns 200 + empty items
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
     defer teardown(conn, TOKEN_TENANT_ID);
 
@@ -338,7 +337,7 @@ test "integration: GET /billing/charges with empty ?cursor= is treated as no-cur
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
     defer teardown(conn, TOKEN_TENANT_ID);
 
@@ -358,7 +357,7 @@ test "integration: GET /billing/charges with malformed cursor returns 400 invali
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
     defer teardown(conn, TOKEN_TENANT_ID);
 

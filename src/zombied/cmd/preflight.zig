@@ -3,9 +3,12 @@
 //! exit policy and PostHog tracking.
 
 const std = @import("std");
+const constants = @import("common");
 const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
+
+const EnvMap = constants.env.Map;
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 const otel_logs = @import("../observability/otel_logs.zig");
@@ -32,11 +35,11 @@ pub const PostHogResult = struct {
     }
 };
 
-pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
-    const api_key = std.process.getEnvVarOwned(alloc, "POSTHOG_API_KEY") catch null;
+pub fn initPostHog(env_map: *const EnvMap, alloc: std.mem.Allocator) PostHogResult {
+    const api_key: ?[]const u8 = constants.env.owned(env_map, alloc, "POSTHOG_API_KEY") catch null;
     if (api_key == null) return .{ .client = null, .api_key_owned = null };
 
-    const client = posthog.init(alloc, .{
+    const client = posthog.init(alloc, constants.globalIo(), .{
         .api_key = api_key.?,
         .host = "https://us.i.posthog.com",
         .flush_interval_ms = 10_000,
@@ -65,8 +68,8 @@ const TelemetryResult = struct {
     }
 };
 
-pub fn initTelemetry(alloc: std.mem.Allocator) TelemetryResult {
-    const ph = initPostHog(alloc);
+pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) TelemetryResult {
+    const ph = initPostHog(env_map, alloc);
     return .{ .telemetry = telemetry_mod.Telemetry.initProd(ph.client), .ph = ph };
 }
 
@@ -74,8 +77,8 @@ pub fn initTelemetry(alloc: std.mem.Allocator) TelemetryResult {
 // OTLP log exporter
 // ---------------------------------------------------------------------------
 
-pub fn initOtelLogs(alloc: std.mem.Allocator) void {
-    if (otel_logs.configFromEnv(alloc)) |cfg| {
+pub fn initOtelLogs(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+    if (otel_logs.configFromEnv(env_map, alloc)) |cfg| {
         otel_logs.install(cfg);
         log.info("startup.otel_logs_ok", .{});
     }
@@ -91,8 +94,8 @@ pub fn deinitOtelLogs() void {
 // OTLP trace exporter
 // ---------------------------------------------------------------------------
 
-pub fn initOtelTraces(alloc: std.mem.Allocator) void {
-    if (otel_logs.configFromEnv(alloc)) |cfg| {
+pub fn initOtelTraces(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+    if (otel_logs.configFromEnv(env_map, alloc)) |cfg| {
         otel_traces.install(cfg);
         log.info("startup.otel_traces_ok", .{});
     }
@@ -108,9 +111,9 @@ pub fn deinitOtelTraces() void {
 // Database pool
 // ---------------------------------------------------------------------------
 
-pub fn connectDbPool(alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
+pub fn connectDbPool(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
     log.info("startup.db_connect_start", .{ .role = @tagName(role) });
-    const pool = db.initFromEnvForRole(alloc, role) catch |err| {
+    const pool = db.initFromEnvForRole(io, env_map, alloc, role) catch |err| {
         log.err("startup.db_connect_failed", .{
             .role = @tagName(role),
             .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
@@ -161,8 +164,8 @@ pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
     log.info("startup.migration_check_ok", .{});
 }
 
-pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
-    return common.migrateOnStartEnabledFromEnv(alloc) catch |err| {
+pub fn parseMigrateOnStart(env_map: *const EnvMap, alloc: std.mem.Allocator) !bool {
+    return common.migrateOnStartEnabledFromEnv(env_map, alloc) catch |err| {
         log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
             .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
             .reason = "invalid_MIGRATE_ON_START",
@@ -176,7 +179,7 @@ pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
 // Signal handlers
 // ---------------------------------------------------------------------------
 
-pub fn installSignalHandlers(handler: *const fn (i32) callconv(.c) void) void {
+pub fn installSignalHandlers(handler: *const fn (std.posix.SIG) callconv(.c) void) void {
     const action = std.posix.Sigaction{
         .handler = .{ .handler = handler },
         .mask = std.posix.sigemptyset(),

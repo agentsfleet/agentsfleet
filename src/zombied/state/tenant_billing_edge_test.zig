@@ -10,6 +10,7 @@
 // only fire post-trial — exactly the pattern in metering_test.zig.
 
 const std = @import("std");
+const clock = @import("common").clock;
 
 const tenant_billing = @import("tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
@@ -140,7 +141,7 @@ test "should report the free trial active just before the cutoff and inactive at
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
 
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     const expected_active = now_ms < row.free_trial_ends_at_ms;
     try std.testing.expectEqual(expected_active, row.free_trial_active);
     // The cutoff is a fixed forward instant, never zero/negative.

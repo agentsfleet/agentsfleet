@@ -12,7 +12,9 @@
 // deinit).
 
 const std = @import("std");
+const common = @import("common");
 const Allocator = std.mem.Allocator;
+const EnvMap = common.env.Map;
 const oidc = @import("../auth/oidc.zig");
 
 const runtime_types = @import("runtime_types.zig");
@@ -33,14 +35,14 @@ const SizesConfig = struct {
     ready_max_queue_age_ms: ?i64,
 };
 
-pub fn loadSizes(alloc: Allocator) !SizesConfig {
-    const port = try env.parseU16Env(alloc, "PORT", 3000, ValidationError.InvalidPort);
-    const threads = try env.parseI16Env(alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
-    const workers = try env.parseI16Env(alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
-    const max_clients = try env.parseU32Env(alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
-    const max_inflight = try env.parseU32Env(alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
-    const queue_depth = try env.parseOptionalI64Env(alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
-    const queue_age = try env.parseOptionalI64Env(alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
+pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
+    const port = try env.parseU16Env(env_map, alloc, "PORT", 3000, ValidationError.InvalidPort);
+    const threads = try env.parseI16Env(env_map, alloc, "API_HTTP_THREADS", 1, ValidationError.InvalidApiHttpThreads);
+    const workers = try env.parseI16Env(env_map, alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
+    const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
+    const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
+    const queue_depth = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
+    const queue_age = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
 
     if (threads <= 0) return ValidationError.InvalidApiHttpThreads;
     if (workers <= 0) return ValidationError.InvalidApiHttpWorkers;
@@ -63,19 +65,19 @@ pub fn loadSizes(alloc: Allocator) !SizesConfig {
 const OidcConfig = struct {
     enabled: bool,
     provider: oidc.Provider,
-    jwks_url: ?[]u8,
-    issuer: ?[]u8,
-    audience: ?[]u8,
+    jwks_url: ?[]const u8,
+    issuer: ?[]const u8,
+    audience: ?[]const u8,
 };
 
-pub fn loadOidc(alloc: Allocator) !OidcConfig {
-    const jwks_url = std.process.getEnvVarOwned(alloc, "OIDC_JWKS_URL") catch null;
+pub fn loadOidc(env_map: *const EnvMap, alloc: Allocator) !OidcConfig {
+    const jwks_url = try common.env.owned(env_map, alloc, "OIDC_JWKS_URL");
     errdefer if (jwks_url) |v| alloc.free(v);
-    const issuer = std.process.getEnvVarOwned(alloc, "OIDC_ISSUER") catch null;
+    const issuer = try common.env.owned(env_map, alloc, "OIDC_ISSUER");
     errdefer if (issuer) |v| alloc.free(v);
-    const audience = std.process.getEnvVarOwned(alloc, "OIDC_AUDIENCE") catch null;
+    const audience = try common.env.owned(env_map, alloc, "OIDC_AUDIENCE");
     errdefer if (audience) |v| alloc.free(v);
-    const provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
+    const provider_raw = try common.env.owned(env_map, alloc, "OIDC_PROVIDER");
     defer if (provider_raw) |v| alloc.free(v);
 
     const requested = jwks_url != null or issuer != null or audience != null or provider_raw != null;
@@ -97,11 +99,11 @@ pub fn freeOidc(alloc: Allocator, cfg: OidcConfig) void {
 }
 
 const EncryptionConfig = struct {
-    master_key: []u8,
+    master_key: []const u8,
 };
 
-pub fn loadEncryption(alloc: Allocator) !EncryptionConfig {
-    const master_key = try env.requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
+pub fn loadEncryption(env_map: *const EnvMap, alloc: Allocator) !EncryptionConfig {
+    const master_key = try env.requiredEnvOwned(env_map, alloc, "ENCRYPTION_MASTER_KEY", ValidationError.MissingEncryptionMasterKey);
     errdefer alloc.free(master_key);
     if (master_key.len != 64 or !validate.isHexString(master_key)) return ValidationError.InvalidEncryptionMasterKey;
 
@@ -113,8 +115,8 @@ pub fn freeEncryption(alloc: Allocator, cfg: EncryptionConfig) void {
 }
 
 const AuthPeppersConfig = struct {
-    session_code_pepper: []u8,
-    audit_log_pepper: []u8,
+    session_code_pepper: []const u8,
+    audit_log_pepper: []const u8,
 };
 
 /// Two independent HMAC peppers loaded at boot. Both share the same shape as
@@ -128,12 +130,12 @@ const AuthPeppersConfig = struct {
 ///   AUDIT_LOG_PEPPER         — keyed HMAC for `session_id` in the
 ///                              `.auth_audit` log scope (pseudonymization
 ///                              across audit events).
-pub fn loadAuthPeppers(alloc: Allocator) !AuthPeppersConfig {
-    const session_code = try env.requiredEnvOwned(alloc, "AUTH_SESSION_CODE_PEPPER", ValidationError.MissingAuthSessionCodePepper);
+pub fn loadAuthPeppers(env_map: *const EnvMap, alloc: Allocator) !AuthPeppersConfig {
+    const session_code = try env.requiredEnvOwned(env_map, alloc, "AUTH_SESSION_CODE_PEPPER", ValidationError.MissingAuthSessionCodePepper);
     errdefer alloc.free(session_code);
     if (session_code.len != 64 or !validate.isHexString(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
 
-    const audit_log = try env.requiredEnvOwned(alloc, "AUDIT_LOG_PEPPER", ValidationError.MissingAuditLogPepper);
+    const audit_log = try env.requiredEnvOwned(env_map, alloc, "AUDIT_LOG_PEPPER", ValidationError.MissingAuditLogPepper);
     errdefer alloc.free(audit_log);
     if (audit_log.len != 64 or !validate.isHexString(audit_log)) return ValidationError.InvalidAuditLogPepper;
 
@@ -146,13 +148,13 @@ pub fn freeAuthPeppers(alloc: Allocator, cfg: AuthPeppersConfig) void {
 }
 
 const MiscConfig = struct {
-    app_url: []u8,
-    api_url: []u8,
+    app_url: []const u8,
+    api_url: []const u8,
 };
 
-pub fn loadMisc(alloc: Allocator) !MiscConfig {
-    const app_url = try env.envOrDefaultOwned(alloc, "APP_URL", "https://app.usezombie.com");
+pub fn loadMisc(env_map: *const EnvMap, alloc: Allocator) !MiscConfig {
+    const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.usezombie.com");
     errdefer alloc.free(app_url);
-    const api_url = try env.envOrDefaultOwned(alloc, "API_URL", "https://api.usezombie.com");
+    const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.usezombie.com");
     return .{ .app_url = app_url, .api_url = api_url };
 }

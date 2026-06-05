@@ -7,13 +7,28 @@
 //! Slice 9 layers full integration tests on top of this.
 
 const std = @import("std");
+const common = @import("common");
+const clock = common.clock;
+const net = std.Io.net;
+const test_port = @import("../http/test_port.zig");
 const Pool = @import("redis_pool.zig");
 const Connection = @import("redis_connection.zig");
+const redis = @import("redis.zig");
 const redis_config = @import("redis_config.zig");
 
+// Shared in-process fake-server scaffolding (PingFake + socket helpers) lives
+// in `redis_pool_test_support.zig` so `redis_pool_concurrency_test.zig` reuses
+// the same deterministic PING fake without duplicating it — and both files
+// stay under the file-length budget.
+const support = @import("redis_pool_test_support.zig");
+const streamReadOnce = support.streamReadOnce;
+const streamWriteAll = support.streamWriteAll;
+const pokeAccept = support.pokeAccept;
+const PingFake = support.PingFake;
+
 // Loopback host shared across every in-process fake server below.
-// `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
-// the same literal — extracting prevents drift.
+// `test_port.listenLoopback` binds the listener and `alloc.dupe` fills
+// `Config.host` with the same literal — extracting prevents drift.
 const LOOPBACK_IPV4 = "127.0.0.1";
 
 // Shutdown-loop poll tick for fake servers. Pre-existing sites in
@@ -21,81 +36,13 @@ const LOOPBACK_IPV4 = "127.0.0.1";
 // new fakes don't drift to 5ms or 100ms by copy-paste.
 const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
 
-const PingFake = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
-    thread: std.Thread,
-    stop: std.atomic.Value(bool),
-    accepts: std.atomic.Value(u32),
-    keep_open: bool,
-
-    fn start(self: *PingFake, keep_open: bool) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
-        self.stop = std.atomic.Value(bool).init(false);
-        self.accepts = std.atomic.Value(u32).init(0);
-        self.keep_open = keep_open;
-        self.thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
-    }
-
-    fn shutdown(self: *PingFake) void {
-        self.stop.store(true, .release);
-        const addr = self.addr;
-        if (std.net.tcpConnectToAddress(addr)) |s| s.close() else |_| {}
-        self.thread.join();
-        self.server.deinit();
-    }
-
-    fn acceptLoop(self: *PingFake) void {
-        while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
-            if (self.stop.load(.acquire)) {
-                conn.stream.close();
-                return;
-            }
-            _ = self.accepts.fetchAdd(1, .monotonic);
-
-            var buf: [256]u8 = undefined;
-            if (self.keep_open) {
-                // Repeat-serve PONG for every command issued on this
-                // socket. Earlier behavior served exactly ONE PONG then
-                // parked in Thread.sleep — that left the fd open but
-                // unable to answer a follow-up command, deadlocking any
-                // test that reused a parked conn (Pool's `release(ok=true)`
-                // → `acquire` cycle hits this). Loop until peer-close,
-                // shutdown signal, or short-read EOF.
-                while (!self.stop.load(.acquire)) {
-                    const n = conn.stream.read(&buf) catch break;
-                    if (n == 0) break;
-                    conn.stream.writeAll("+PONG\r\n") catch break;
-                }
-            } else {
-                // Single-shot: read one command, write one reply, close.
-                const n = conn.stream.read(&buf) catch 0;
-                if (n > 0) conn.stream.writeAll("+PONG\r\n") catch {};
-            }
-            conn.stream.close();
-        }
-    }
-
-    fn config(self: *PingFake, alloc: std.mem.Allocator) !redis_config.Config {
-        const host = try alloc.dupe(u8, "127.0.0.1");
-        return .{
-            .host = host,
-            .port = self.addr.in.getPort(),
-            .use_tls = false,
-        };
-    }
-};
-
 test "Pool.init with eager_min=0 dials nothing; deinit is a no-op" {
     const alloc = std.testing.allocator;
 
     const host = try alloc.dupe(u8, "127.0.0.1");
     const cfg: redis_config.Config = .{ .host = host, .port = 1, .use_tls = false };
 
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 0 });
     defer pool.deinit();
 
     const s = pool.stats();
@@ -112,7 +59,7 @@ test "Pool.init with eager_min=N preconnects N connections" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 2 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 2 });
     defer pool.deinit();
 
     const s = pool.stats();
@@ -128,7 +75,7 @@ test "Pool.acquire reuses idle, release(ok=true) parks back" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
     defer pool.deinit();
 
     const conn = try pool.acquire();
@@ -150,7 +97,7 @@ test "Pool.release(ok=false) closes the connection" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
     defer pool.deinit();
 
     const conn = try pool.acquire();
@@ -169,7 +116,7 @@ test "Pool.release(ok=true) over max_idle increments forced_closes_total" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
     defer pool.deinit();
 
     // Two concurrent acquires push active above max_idle: first release
@@ -204,7 +151,7 @@ test "Pool.release 16-cycle stress at max_idle=8 holds idle==8 steady-state with
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 8, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 8, .eager_min = 0 });
     defer pool.deinit();
 
     var conns: [16]*@import("redis_connection.zig") = undefined;
@@ -253,7 +200,7 @@ test "Pool.acquire OOM during create does not leak active_count" {
     const host = try alloc.dupe(u8, "127.0.0.1");
     const cfg: redis_config.Config = .{ .host = host, .port = 1, .use_tls = false };
 
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
     // Restore the real allocator before deinit so cfg.host frees through the
     // same allocator it was duped with.
     defer {
@@ -282,7 +229,7 @@ test "Pool.release of poisoned conn increments poisoned counter" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 1 });
     defer pool.deinit();
 
     const conn = try pool.acquire();
@@ -304,7 +251,7 @@ test "Pool.stats surfaces every PoolStats field" {
     const alloc = std.testing.allocator;
     const host = try alloc.dupe(u8, "127.0.0.1");
     const cfg: redis_config.Config = .{ .host = host, .port = 1, .use_tls = false };
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
     defer pool.deinit();
 
     const s = pool.stats();
@@ -323,6 +270,10 @@ test "Pool.stats surfaces every PoolStats field" {
 // instead of the 5s production default. Named so the two cap tests below
 // can't drift apart.
 const SHORT_ACQUIRE_TIMEOUT_MS = 50;
+// Upper-bound slack over the acquire budget: the bounded poll wakes within
+// POLL_INTERVAL (~2ms) of the deadline, so a hit must land well under this.
+// Catches a recompute bug that would re-sleep the full budget each iteration.
+const ACQUIRE_TIMEOUT_OVERSHOOT_MS = 20;
 
 test "Pool hard max_active cap times out a saturated acquire and bumps acquire_timeouts_total" {
     // Finding witness: with a hard ceiling set, an acquire that would push
@@ -337,7 +288,7 @@ test "Pool hard max_active cap times out a saturated acquire and bumps acquire_t
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{
         .max_idle = 4, // deliberately > max_active to prove the cap check is
         .max_active = 2, // separated from max_idle (Finding 1): the ceiling is
         .eager_min = 0, // max_active, not max_idle.
@@ -352,14 +303,17 @@ test "Pool hard max_active cap times out a saturated acquire and bumps acquire_t
 
     // Third acquire has no idle conn and active == max_active, so it blocks
     // for the whole budget (nobody releases) and surfaces AcquireTimeout.
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const blocked = pool.acquire();
-    const waited_ns = std.time.nanoTimestamp() - start;
+    const waited_ns = clock.nowNanos() - start;
     try std.testing.expectError(error.AcquireTimeout, blocked);
 
     // The wait actually consumed the budget (not an instant fail-fast) and
     // the timeout counter now has a real, non-zero value.
     try std.testing.expect(waited_ns >= @as(i128, SHORT_ACQUIRE_TIMEOUT_MS) * std.time.ns_per_ms);
+    // Upper bound: the bounded poll must not overshoot the budget — a hit lands
+    // within one poll tick of the deadline, never re-sleeping the full budget.
+    try std.testing.expect(waited_ns < @as(i128, SHORT_ACQUIRE_TIMEOUT_MS + ACQUIRE_TIMEOUT_OVERSHOOT_MS) * std.time.ns_per_ms);
     try std.testing.expectEqual(@as(u64, 1), pool.stats().acquire_timeouts_total);
     // The failed acquire left active_count untouched at the ceiling — no
     // phantom slot was reserved.
@@ -392,7 +346,7 @@ test "Pool hard max_active cap: release unblocks a waiting acquire without timin
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{
         .max_idle = 2,
         .max_active = 1, // single-slot ceiling: the waiter MUST block.
         .eager_min = 0,
@@ -410,7 +364,7 @@ test "Pool hard max_active cap: release unblocks a waiting acquire without timin
     // Give the waiter time to reach the blocked condvar wait, then free the
     // slot. release() signals not_full → the waiter wakes, reuses the parked
     // idle conn, and completes.
-    std.Thread.sleep(20 * std.time.ns_per_ms);
+    common.sleepNanos(20 * std.time.ns_per_ms);
     pool.release(held, true);
     waiter.join();
 
@@ -433,7 +387,7 @@ test "Pool unbounded max_active default never blocks; overflow stays metric-only
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
     defer pool.deinit();
 
     // Acquire 3 with max_idle=1 and no hard ceiling: active climbs to 3 with
@@ -456,27 +410,25 @@ test "Pool unbounded max_active default never blocks; overflow stays metric-only
 // when the env var is unset so unit-test runs in CI / dev stay deterministic
 // without a live broker. Exercises behaviors that only a real RESP server
 // can prove: PING round-trip through the pool, over-`max_idle` dial path,
-// and `SO_RCVTIMEO`-triggered `ReadFailed` surfacing after MAX_ATTEMPTS.
+// and timeout-triggered `RedisRequestTimeout` surfacing after MAX_ATTEMPTS.
 
-const TLS_URL_ENV = "TEST_REDIS_TLS_URL";
+const TLS_URL_ENV: [:0]const u8 = "TEST_REDIS_TLS_URL";
 const REDISS_SCHEME = "rediss://";
 
-fn tlsUrlOrSkip(alloc: std.mem.Allocator) ![]u8 {
-    const url = std.process.getEnvVarOwned(alloc, TLS_URL_ENV) catch return error.SkipZigTest;
-    if (!std.mem.startsWith(u8, url, REDISS_SCHEME)) {
-        alloc.free(url);
-        return error.SkipZigTest;
-    }
+// Borrowed env read (libc): the returned slice is owned by the process
+// environment — callers must NOT free it.
+fn tlsUrlOrSkip() ![]const u8 {
+    const url = common.env.testLiveValue(TLS_URL_ENV) orelse return error.SkipZigTest;
+    if (!std.mem.startsWith(u8, url, REDISS_SCHEME)) return error.SkipZigTest;
     return url;
 }
 
 test "integration: pool acquires, parks idle, and over-cap dial increments overflow_dials_total" {
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    const tls_url = try tlsUrlOrSkip();
 
-    const cfg = try redis_config.parseRedisUrl(alloc, tls_url);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 1 });
+    const cfg = try redis.testing.poolConfigFromUrl(alloc, tls_url);
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 1 });
     defer pool.deinit();
 
     // Happy path: one acquire, one real PING round-trip, release(ok=true).
@@ -521,15 +473,14 @@ test "integration: client.command on real WRONGTYPE reply recycles conn (no reco
     // was parked back in idle and reused. `reconnects_total` stays at 0
     // (resumable doesn't redial).
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    const tls_url = try tlsUrlOrSkip();
 
-    var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 5000 });
+    var client = try redis.testing.connectFromUrlWithOptions(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = 5000 });
     defer client.deinit();
 
     // Unique key per run keeps tests state-isolated across parallel CI runs.
     var key_buf: [64]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "uz:m69:wrongtype:{d}", .{std.time.nanoTimestamp()});
+    const key = try std.fmt.bufPrint(&key_buf, "uz:m69:wrongtype:{d}", .{clock.nowNanos()});
 
     var set_resp = try client.command(&.{ "SET", key, "v" });
     set_resp.deinit(alloc);
@@ -547,27 +498,25 @@ test "integration: client.command on real WRONGTYPE reply recycles conn (no reco
     try std.testing.expectEqual(@as(u64, 0), client.pool.stats().reconnects_total);
 }
 
-test "integration: request timeout surfaces ReadFailed on a hanging BLPOP" {
+test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLPOP" {
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    const tls_url = try tlsUrlOrSkip();
 
-    // `read_timeout_ms = 100` arms `SO_RCVTIMEO` on every pooled Connection.
-    // BLPOP with a 5s server-side wait on a never-populated key holds the
-    // socket idle past the budget; the kernel returns EAGAIN, std.Io.Reader
-    // surfaces `error.ReadFailed`, and `Connection.mapReadError` keeps it
-    // as `error.ReadFailed` (no separate timeout variant — std.Io.Reader
-    // doesn't expose the underlying errno so we'd misattribute peer-side
-    // drops as timeouts). Pool retry dials a fresh conn for attempt 2 —
-    // it also times out — so the error surfaces after MAX_ATTEMPTS.
-    var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 100 });
+    // `read_timeout_ms = 100` arms the poll(2) read deadline on every pooled
+    // Connection. BLPOP with a 5s server-side wait on a never-populated key
+    // holds the socket idle past the budget; the read poll expires and
+    // `Connection.mapReadError` maps the hit to a distinct
+    // `error.RedisRequestTimeout` (the TimeoutReader's `timed_out` flag tells
+    // a deadline apart from a peer drop). Pool retry dials a fresh conn for
+    // attempt 2 — it also times out — so the error surfaces after MAX_ATTEMPTS.
+    var client = try redis.testing.connectFromUrlWithOptions(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = 100 });
     defer client.deinit();
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     const result = client.command(&.{ "BLPOP", "test:blpop:never-populated", "5" });
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
-    try std.testing.expectError(error.ReadFailed, result);
+    try std.testing.expectError(error.RedisRequestTimeout, result);
     // Sanity bound: two ~100ms timeouts + one redial fit well under 5s. If
     // this assertion ever trips, the retry loop is hanging — not just slow.
     try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
@@ -577,33 +526,35 @@ test "integration: request timeout surfaces ReadFailed on a hanging BLPOP" {
 // transport error (`error.ReadFailed` via `mapReadError`) into the Client's
 // retry loop — exercises greptile Issue 3 (reconnects_total never incremented).
 const CloseOnCmd = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
     fn start(self: *CloseOnCmd) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const lp = try test_port.listenLoopback(common.globalIo());
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *CloseOnCmd) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        pokeAccept(io, self.port);
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn loop(self: *CloseOnCmd) void {
+        const io = common.globalIo();
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            var stream = self.server.accept(io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                stream.close(io);
                 return;
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
@@ -611,18 +562,19 @@ const CloseOnCmd = struct {
             // close. The client's response read returns EOF → ReadFailed →
             // non-resumable. The Pool retry layer redials a fresh conn for
             // attempt 2; this loop accepts that too and closes the same way.
-            var buf: [256]u8 = undefined;
+            var rbuf: [256]u8 = undefined;
+            var sr = stream.reader(io, &rbuf);
             // Drain command bytes; peer-side read errors expected when the
             // client is mid-failover. The close() below is the load-bearing
             // behavior, not the read result.
-            if (conn.stream.read(&buf)) |_| {} else |_| {}
-            conn.stream.close();
+            _ = streamReadOnce(&sr.interface);
+            stream.close(io);
         }
     }
 
     fn config(self: *CloseOnCmd, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, "127.0.0.1");
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -631,60 +583,65 @@ const CloseOnCmd = struct {
 // `.err` reply leaves the connection parked back in idle and the caller's
 // follow-up `acquire` reuses it (no redial, no recordReconnect).
 const ErrThenPongOnSameSocket = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
     fn start(self: *ErrThenPongOnSameSocket) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const lp = try test_port.listenLoopback(common.globalIo());
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *ErrThenPongOnSameSocket) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        pokeAccept(io, self.port);
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn loop(self: *ErrThenPongOnSameSocket) void {
+        const io = common.globalIo();
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            var stream = self.server.accept(io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                stream.close(io);
                 return;
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
 
-            var buf: [256]u8 = undefined;
+            var rbuf: [256]u8 = undefined;
+            var wbuf: [64]u8 = undefined;
+            var sr = stream.reader(io, &rbuf);
+            var sw = stream.writer(io, &wbuf);
+            const r = &sr.interface;
+            const w = &sw.interface;
             // Cmd 1 → -ERR (resumable: protocol frame is whole).
-            const n1 = conn.stream.read(&buf) catch 0;
             // pin test: literal is the contract — RESP `-ERR <msg>\r\n`
             // is the resumable error frame the Client retry layer
             // classifies via `isResumable`. The exact message text isn't
             // load-bearing, but the leading `-` and trailing CRLF are.
-            if (n1 > 0) conn.stream.writeAll("-ERR fake_error\r\n") catch {};
+            if (streamReadOnce(r) > 0) streamWriteAll(w, "-ERR fake_error\r\n");
             // Cmd 2 → +PONG on the SAME socket. Blocks until the test
             // issues its follow-up command after release(ok=true).
-            const n2 = conn.stream.read(&buf) catch 0;
             // pin test: literal is the contract — RESP simple-string OK
             // reply. Changing the prefix breaks the protocol parser, not
             // just this test.
-            if (n2 > 0) conn.stream.writeAll("+PONG\r\n") catch {};
-            while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
-            conn.stream.close();
+            if (streamReadOnce(r) > 0) streamWriteAll(w, "+PONG\r\n");
+            while (!self.stop.load(.acquire)) common.sleepNanos(FAKE_SHUTDOWN_POLL_NS);
+            stream.close(io);
         }
     }
 
     fn config(self: *ErrThenPongOnSameSocket, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, LOOPBACK_IPV4);
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -702,7 +659,7 @@ test "Client.command on resumable .err reply parks conn back; follow-up reuses s
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    const pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    const pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
     var client: Client = .{ .alloc = alloc, .pool = pool };
     defer client.deinit();
 
@@ -743,7 +700,7 @@ test "Client.command bumps reconnects_total on non-resumable transport error" {
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    const pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    const pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
     var client: Client = .{ .alloc = alloc, .pool = pool };
     defer client.deinit();
 
@@ -786,7 +743,7 @@ test "metrics: registerPool + activity renders all 8 zombie_redis_pool_* lines i
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
     defer pool.deinit();
 
     // Register on the singleton; clear on the way out so subsequent tests
@@ -848,39 +805,43 @@ test "metrics: registerPool + activity renders all 8 zombie_redis_pool_* lines i
 // 100 dedicated workers redialing; total wall time must be < 5s and
 // reconnects_total must equal 100 (each retry bumps the counter once).
 const ReadonlyThenPongOnNewSocket = struct {
-    server: std.net.Server,
-    addr: std.net.Address,
+    server: net.Server,
+    port: u16,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
     fn start(self: *ReadonlyThenPongOnNewSocket) !void {
-        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
-        self.server = try loopback.listen(.{ .reuse_address = true });
-        self.addr = self.server.listen_address;
+        const lp = try test_port.listenLoopback(common.globalIo());
+        self.server = lp.server;
+        self.port = lp.port;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
     fn shutdown(self: *ReadonlyThenPongOnNewSocket) void {
+        const io = common.globalIo();
         self.stop.store(true, .release);
-        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        pokeAccept(io, self.port);
         self.thread.join();
-        self.server.deinit();
+        self.server.deinit(io);
     }
 
     fn loop(self: *ReadonlyThenPongOnNewSocket) void {
+        const io = common.globalIo();
         while (!self.stop.load(.acquire)) {
-            const conn = self.server.accept() catch return;
+            var stream = self.server.accept(io) catch return;
             if (self.stop.load(.acquire)) {
-                conn.stream.close();
+                stream.close(io);
                 return;
             }
             const n = self.accepts.fetchAdd(1, .monotonic);
-            var buf: [256]u8 = undefined;
-            const r = conn.stream.read(&buf) catch 0;
-            if (r > 0) {
+            var rbuf: [256]u8 = undefined;
+            var wbuf: [64]u8 = undefined;
+            var sr = stream.reader(io, &rbuf);
+            var sw = stream.writer(io, &wbuf);
+            if (streamReadOnce(&sr.interface) > 0) {
                 // `n` is the value `fetchAdd` returned BEFORE incrementing —
                 // 0-indexed accept counter. `n % 2 == 0` fires on n=0, 2, 4…
                 // which are the 1st, 3rd, 5th accepts. Those return
@@ -891,18 +852,18 @@ const ReadonlyThenPongOnNewSocket = struct {
                     // pin test: literal is the contract — RESP error frame
                     // for primary-swap. The leading `-READONLY` is what
                     // Upstash/AWS ElastiCache send on a primary demotion.
-                    conn.stream.writeAll("-READONLY You can't write against a read only replica.\r\n") catch {};
+                    streamWriteAll(&sw.interface, "-READONLY You can't write against a read only replica.\r\n");
                 } else {
-                    conn.stream.writeAll("+PONG\r\n") catch {};
+                    streamWriteAll(&sw.interface, "+PONG\r\n");
                 }
             }
-            conn.stream.close();
+            stream.close(io);
         }
     }
 
     fn config(self: *ReadonlyThenPongOnNewSocket, alloc: std.mem.Allocator) !redis_config.Config {
         const host = try alloc.dupe(u8, LOOPBACK_IPV4);
-        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+        return .{ .host = host, .port = self.port, .use_tls = false };
     }
 };
 
@@ -922,11 +883,11 @@ test "Client.command failover flood: 50 READONLY-then-pong cycles all complete u
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    const pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    const pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
     var client: Client = .{ .alloc = alloc, .pool = pool };
     defer client.deinit();
 
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     var done: u32 = 0;
     while (done < 50) : (done += 1) {
         const r = client.command(&.{"PING"});
@@ -945,7 +906,7 @@ test "Client.command failover flood: 50 READONLY-then-pong cycles all complete u
             try std.testing.expect(err == error.RedisCommandError or err == error.ReadFailed);
         }
     }
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
     // Load-bearing assertion: the flood completes under 5s. A retry
     // loop that hangs or busy-spins would blow the budget. The bound
@@ -997,7 +958,7 @@ test "Pool burst: 32 threads × 16 cycles each — no starvation, overflow track
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 4, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 4, .eager_min = 0 });
     defer pool.deinit();
 
     var stop_flag = std.atomic.Value(bool).init(false);
@@ -1017,10 +978,10 @@ test "Pool burst: 32 threads × 16 cycles each — no starvation, overflow track
 
     // 5s budget; on hang, set stop_flag and bail (threads see flag,
     // exit cleanly). Avoids the test runner hanging indefinitely.
-    const deadline = std.time.nanoTimestamp() + 5 * std.time.ns_per_s;
+    const deadline = clock.nowNanos() + 5 * std.time.ns_per_s;
     var joined: usize = 0;
     while (joined < threads.len) : (joined += 1) {
-        if (std.time.nanoTimestamp() > deadline) {
+        if (clock.nowNanos() > deadline) {
             stop_flag.store(true, .release);
         }
         threads[joined].join();
@@ -1054,7 +1015,7 @@ const SigtermCtx = struct {
         // Hold the conn while the main thread initiates teardown. The
         // sleep simulates a slow command — the pool should not be able
         // to deinit until this thread releases.
-        while (self.keep_going.load(.acquire)) std.Thread.sleep(5 * std.time.ns_per_ms);
+        while (self.keep_going.load(.acquire)) common.sleepNanos(5 * std.time.ns_per_ms);
         self.pool.release(c, true);
     }
 };
@@ -1073,7 +1034,7 @@ test "Pool: deinit cleans up idle connections after in-flight workers have relea
     defer fake.shutdown();
 
     const cfg = try fake.config(alloc);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
 
     var started = std.atomic.Value(bool).init(false);
     var keep_going = std.atomic.Value(bool).init(true);
@@ -1086,7 +1047,7 @@ test "Pool: deinit cleans up idle connections after in-flight workers have relea
     const worker_thread = try std.Thread.spawn(.{}, SigtermCtx.worker, .{&ctx});
 
     // Wait for worker to have acquired before we begin teardown.
-    while (!started.load(.acquire)) std.Thread.sleep(1 * std.time.ns_per_ms);
+    while (!started.load(.acquire)) common.sleepNanos(1 * std.time.ns_per_ms);
 
     // Signal worker, join it, THEN deinit. The join is what makes deinit
     // safe — deinit itself does not wait for in-flight workers.
@@ -1118,7 +1079,7 @@ const DedicatedWorkerCtx = struct {
     iterations: u32,
 
     fn worker(self: *DedicatedWorkerCtx) void {
-        var conn = Connection.init(self.alloc, self.cfg, .blocking_consumer) catch return;
+        var conn = Connection.init(common.globalIo(), self.alloc, self.cfg, .blocking_consumer) catch return;
         defer conn.deinit();
         var i: u32 = 0;
         while (i < self.iterations and !self.stop.load(.acquire)) : (i += 1) {
@@ -1130,11 +1091,10 @@ const DedicatedWorkerCtx = struct {
 
 test "integration: dedicated Connections do NOT consume Pool slots (no pool starvation)" {
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    const tls_url = try tlsUrlOrSkip();
 
-    const cfg = try redis_config.parseRedisUrl(alloc, tls_url);
-    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 1 });
+    const cfg = try redis.testing.poolConfigFromUrl(alloc, tls_url);
+    var pool = try Pool.init(common.globalIo(), alloc, cfg, .{ .max_idle = 2, .eager_min = 1 });
     defer pool.deinit();
 
     // Spawn 8 dedicated workers, each owning its own Connection on a
@@ -1153,7 +1113,7 @@ test "integration: dedicated Connections do NOT consume Pool slots (no pool star
     // Pool work in parallel: 50 acquire/PING/release cycles. The
     // dedicated workers shouldn't impede this — pool.stats().active
     // and idle never reflect their sockets.
-    const start = std.time.nanoTimestamp();
+    const start = clock.nowNanos();
     var i: u32 = 0;
     while (i < 50) : (i += 1) {
         const c = try pool.acquire();
@@ -1161,7 +1121,7 @@ test "integration: dedicated Connections do NOT consume Pool slots (no pool star
         resp.deinit(alloc);
         pool.release(c, true);
     }
-    const elapsed_ns = std.time.nanoTimestamp() - start;
+    const elapsed_ns = clock.nowNanos() - start;
 
     stop_flag.store(true, .release);
     for (threads) |t| t.join();
@@ -1181,31 +1141,44 @@ test "integration: dedicated Connections do NOT consume Pool slots (no pool star
 // lane wires this up via `_ensure-test-infra`). The defer block tries
 // to re-start Redis if anything fails so the next test isn't blocked
 // by a stopped container.
+// `std.process.run` builds the pre-fork argv/env buffers from the io's
+// allocator; `common.globalIo()`'s is `.failing` (single-threaded blocking
+// seam), so a spawn through it always returns OutOfMemory. Stand up a real
+// allocator-backed Threaded io for the call — stdout/stderr are owned by
+// `alloc` and outlive `threaded.deinit()`.
+fn runProc(alloc: std.mem.Allocator, opts: std.process.RunOptions) !std.process.RunResult {
+    var threaded: std.Io.Threaded = .init(alloc, .{});
+    defer threaded.deinit();
+    return std.process.run(alloc, threaded.io(), opts);
+}
+
 fn dockerRedisCommand(alloc: std.mem.Allocator, subcommand: []const u8) !void {
     const argv: []const []const u8 = &.{ "docker", "compose", subcommand, "redis" };
-    var child = std.process.Child.init(argv, alloc);
-    child.stdout_behavior = .Ignore;
-    child.stderr_behavior = .Ignore;
-    const term = try child.spawnAndWait();
-    if (term != .Exited or term.Exited != 0) return error.DockerCommandFailed;
+    // Zig 0.16: Child.init/spawnAndWait gone; runProc captures + reaps on a real io.
+    const result = try runProc(alloc, .{ .argv = argv });
+    alloc.free(result.stdout);
+    alloc.free(result.stderr);
+    if (result.term != .exited or result.term.exited != 0) return error.DockerCommandFailed;
 }
 
 test "integration: Redis restart mid-PING — Client reconnects within 30s window" {
     const alloc = std.testing.allocator;
-    const tls_url = try tlsUrlOrSkip(alloc);
-    defer alloc.free(tls_url);
+    const tls_url = try tlsUrlOrSkip();
 
     // Skip if docker isn't available — the test-integration lane
     // brings Docker up, but a developer running this file directly
     // without `make test-integration` should see a skip, not a fail.
     const docker_check_argv: []const []const u8 = &.{ "docker", "info" };
-    var docker_check = std.process.Child.init(docker_check_argv, alloc);
-    docker_check.stdout_behavior = .Ignore;
-    docker_check.stderr_behavior = .Ignore;
-    const check_term = docker_check.spawnAndWait() catch return error.SkipZigTest;
-    if (check_term != .Exited or check_term.Exited != 0) return error.SkipZigTest;
+    // Zig 0.16 removed Child.init/spawnAndWait; runProc captures + reaps in one
+    // call (it allocates stdout/stderr — free them; we only need the term). A
+    // spawn error here means docker is genuinely absent → skip, not fail.
+    const docker_check = runProc(alloc, .{ .argv = docker_check_argv }) catch return error.SkipZigTest;
+    alloc.free(docker_check.stdout);
+    alloc.free(docker_check.stderr);
+    const check_term = docker_check.term;
+    if (check_term != .exited or check_term.exited != 0) return error.SkipZigTest;
 
-    var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 5000 });
+    var client = try redis.testing.connectFromUrlWithOptions(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = 5000 });
     defer client.deinit();
 
     // Baseline PING — confirms connectivity before chaos.
@@ -1225,9 +1198,9 @@ test "integration: Redis restart mid-PING — Client reconnects within 30s windo
     // because `docker compose restart` + Redis healthcheck on a loaded
     // CI runner can take 25-40s by itself, leaving the original 30s
     // budget partly consumed by the restart, not our reconnect loop.
-    const deadline = std.time.nanoTimestamp() + 60 * std.time.ns_per_s;
+    const deadline = clock.nowNanos() + 60 * std.time.ns_per_s;
     var recovered = false;
-    while (std.time.nanoTimestamp() < deadline) {
+    while (clock.nowNanos() < deadline) {
         const r = client.command(&.{"PING"});
         if (r) |val| {
             var v = val;
@@ -1235,7 +1208,7 @@ test "integration: Redis restart mid-PING — Client reconnects within 30s windo
             recovered = true;
             break;
         } else |_| {
-            std.Thread.sleep(500 * std.time.ns_per_ms);
+            common.sleepNanos(500 * std.time.ns_per_ms);
         }
     }
 

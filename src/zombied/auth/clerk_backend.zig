@@ -15,6 +15,7 @@
 //! operator can repair publicMetadata via the Clerk Dashboard.
 
 const std = @import("std");
+const constants = @import("common");
 const logging = @import("log");
 
 const log = logging.scoped(.clerk_backend);
@@ -49,18 +50,16 @@ pub const PatchError = error{
 /// metadata, so sibling keys unknown to us (e.g. fields set by a future
 /// admin dashboard) survive.
 pub fn patchUserPublicMetadata(
+    secret: ?[]const u8,
     alloc: std.mem.Allocator,
     user_id: []const u8,
     tenant_id: ?[]const u8,
     role: ?[]const u8,
 ) PatchError!void {
-    const secret = std.process.getEnvVarOwned(alloc, SECRET_ENV_VAR) catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => return PatchError.MissingSecret,
-        error.OutOfMemory => return PatchError.OutOfMemory,
-        else => return PatchError.RequestFailed,
-    };
-    defer alloc.free(secret);
-    if (std.mem.trim(u8, secret, " \t\r\n").len == 0) return PatchError.MissingSecret;
+    // Borrowed from the boot-resolved Context secret (CLERK_SECRET_KEY) — no
+    // per-request env read, no free here.
+    const clerk_secret = secret orelse return PatchError.MissingSecret;
+    if (std.mem.trim(u8, clerk_secret, " \t\r\n").len == 0) return PatchError.MissingSecret;
 
     const payload = try renderMetadataPayload(alloc, tenant_id, role);
     defer alloc.free(payload);
@@ -68,7 +67,7 @@ pub fn patchUserPublicMetadata(
     const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ API_BASE, user_id });
     defer alloc.free(url);
 
-    const auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{secret});
+    const auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{clerk_secret});
     defer alloc.free(auth_header);
 
     return postMetadataMerge(alloc, url, auth_header, payload);
@@ -80,20 +79,20 @@ pub fn renderMetadataPayload(
     tenant_id: ?[]const u8,
     role: ?[]const u8,
 ) PatchError![]u8 {
-    var buf: std.ArrayList(u8) = .{};
-    defer buf.deinit(alloc);
-    var w = buf.writer(alloc);
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    defer aw.deinit();
+    const w = &aw.writer;
 
     w.writeAll("{\"public_metadata\":{") catch return PatchError.SerializationFailed;
     var first = true;
     if (tenant_id) |v| {
-        writeJsonKeyValue(&w, &first, "tenant_id", v) catch return PatchError.SerializationFailed;
+        writeJsonKeyValue(w, &first, "tenant_id", v) catch return PatchError.SerializationFailed;
     }
     if (role) |v| {
-        writeJsonKeyValue(&w, &first, "role", v) catch return PatchError.SerializationFailed;
+        writeJsonKeyValue(w, &first, "role", v) catch return PatchError.SerializationFailed;
     }
     w.writeAll("}}") catch return PatchError.SerializationFailed;
-    return buf.toOwnedSlice(alloc) catch return PatchError.OutOfMemory;
+    return aw.toOwnedSlice() catch return PatchError.OutOfMemory;
 }
 
 fn writeJsonKeyValue(w: anytype, first: *bool, key: []const u8, value: []const u8) !void {
@@ -227,10 +226,12 @@ fn runFetchBlocking(
     auth_header: []const u8,
     payload: []const u8,
 ) PatchError!void {
-    var client: std.http.Client = .{ .allocator = alloc };
+    // Outbound metadata PATCH from a webhook handler — a blocking one-shot
+    // request, so the process-global blocking io is the correct source.
+    var client: std.http.Client = .{ .allocator = alloc, .io = constants.globalIo() };
     defer client.deinit();
 
-    var body: std.ArrayList(u8) = .{};
+    var body: std.ArrayList(u8) = .empty;
     defer body.deinit(alloc);
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
 

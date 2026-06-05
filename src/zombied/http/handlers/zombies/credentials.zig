@@ -96,7 +96,6 @@ fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
     return true;
 }
 
-
 fn storeCredentialJsonOnConn(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -203,7 +202,7 @@ fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     , .{workspace_id}));
     defer q.deinit();
 
-    var rows: std.ArrayList(CredentialListRow) = .{};
+    var rows: std.ArrayList(CredentialListRow) = .empty;
     errdefer {
         for (rows.items) |r| alloc.free(r.name);
         rows.deinit(alloc);

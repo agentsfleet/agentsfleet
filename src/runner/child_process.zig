@@ -18,41 +18,27 @@ const Config = @import("daemon/config.zig");
 
 const log = logging.scoped(.runner_supervisor);
 
-/// A forked child and the parent ends of its stdio pipes.
-pub const Child = struct {
-    pid: std.posix.pid_t,
-    stdin_w: std.posix.fd_t,
-    stdout_r: std.posix.fd_t,
-};
-
-/// Fork and, in the child, dup the pipes onto stdin/stdout, lead a new process
-/// group (so the parent can signal the whole group on the dev path), and exec
-/// the sandbox wrapper. Returns the child pid + parent pipe ends.
-pub fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !Child {
-    const in_pipe = try std.posix.pipe(); // [0]=read (child), [1]=write (parent)
-    const out_pipe = try std.posix.pipe(); // [0]=read (parent), [1]=write (child)
-
-    const argv = try sandbox.buildArgv(alloc, cfg, workspace_path);
+/// Spawn the sandboxed child. Zig 0.16 removed raw fork/pipe/dup2/close/waitpid,
+/// so std.process.spawn does pipe → fork → dup2 → setpgid(0,0) → execvpe, and the
+/// returned `process.Child` is the only portable reap/close path (child_supervisor
+/// drives wait()/close). `pgid = 0` keeps the child its own process-group leader
+/// (killChild's `kill(-pgid)` fallback). Containment stays cgroup-centric — the
+/// wrapper's kill() is never called: it touches only the single pid, letting a
+/// hostile child's descendants outlive the lease; scope.kill reaps the whole tree
+/// atomically.
+pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !std.process.Child {
+    const argv = try sandbox.buildArgv(io, alloc, cfg, workspace_path);
     defer sandbox.freeArgv(alloc, argv);
-
-    const pid = try std.posix.fork();
-    if (pid == 0) {
-        // ── child ──
-        std.posix.dup2(in_pipe[0], std.posix.STDIN_FILENO) catch std.posix.exit(127);
-        std.posix.dup2(out_pipe[1], std.posix.STDOUT_FILENO) catch std.posix.exit(127);
-        std.posix.close(in_pipe[0]);
-        std.posix.close(in_pipe[1]);
-        std.posix.close(out_pipe[0]);
-        std.posix.close(out_pipe[1]);
-        std.posix.setpgid(0, 0) catch |err| log.warn("child_setpgid_failed", .{ .err = @errorName(err) });
-        const err = std.process.execv(alloc, argv);
-        log.err("child_execv_failed", .{ .err = @errorName(err) });
-        std.posix.exit(127);
-    }
-    // ── parent ──
-    std.posix.close(in_pipe[0]);
-    std.posix.close(out_pipe[1]);
-    return .{ .pid = pid, .stdin_w = in_pipe[1], .stdout_r = out_pipe[0] };
+    return std.process.spawn(io, .{
+        .argv = argv,
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .stderr = .inherit,
+        .pgid = 0,
+    }) catch |err| {
+        log.err("child_spawn_failed", .{ .err = @errorName(err) });
+        return err;
+    };
 }
 
 /// Kill the whole child tree. On Linux the cgroup is the atomic kill domain;
@@ -66,10 +52,4 @@ pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
         return;
     }
     std.posix.kill(-pid, std.posix.SIG.KILL) catch |err| log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
-}
-
-/// Write `bytes` to `fd` in full, looping over partial writes.
-pub fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
-    var off: usize = 0;
-    while (off < bytes.len) off += try std.posix.write(fd, bytes[off..]);
 }

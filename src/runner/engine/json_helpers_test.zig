@@ -10,27 +10,26 @@ const getFloat = json.getFloat;
 const getBool = json.getBool;
 const strArray = json.strArray;
 
-
 test "getStr returns null for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expect(getStr(obj, "missing") == null);
 }
 
 test "getStr returns null for non-string value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("key", .{ .integer = 42 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "key", .{ .integer = 42 });
     try std.testing.expect(getStr(obj, "key") == null);
 }
 
 test "getStr returns string value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("key", .{ .string = "value" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "key", .{ .string = "value" });
     try std.testing.expectEqualStrings("value", getStr(obj, "key").?);
 }
 
@@ -40,62 +39,62 @@ test "getStr returns null for non-object" {
 
 test "getIntOrZero returns 0 for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "missing"));
 }
 
 test "getIntOrZero returns 0 for negative integer" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("val", .{ .integer = -5 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "val", .{ .integer = -5 });
     try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "val"));
 }
 
 test "getIntOrZero returns value for valid integer" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("count", .{ .integer = 42 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "count", .{ .integer = 42 });
     try std.testing.expectEqual(@as(u64, 42), getIntOrZero(obj, "count"));
 }
 
 test "getFloat returns null for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expect(getFloat(obj, "nope") == null);
 }
 
 test "getFloat returns float for float value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .float = 0.42 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "temp", .{ .float = 0.42 });
     try std.testing.expectEqual(@as(f64, 0.42), getFloat(obj, "temp").?);
 }
 
 test "getFloat returns float for integer value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("temp", .{ .integer = 1 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "temp", .{ .integer = 1 });
     try std.testing.expectEqual(@as(f64, 1.0), getFloat(obj, "temp").?);
 }
 
 test "getBool returns false for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expect(!getBool(obj, "missing"));
 }
 
 test "getBool returns value for bool field" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("ok", .{ .bool = true });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "ok", .{ .bool = true });
     try std.testing.expect(getBool(obj, "ok"));
 }
 
@@ -150,9 +149,9 @@ test "strArray returns empty slice for empty array" {
 
 test "getBoolField returns false for non-bool value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("flag", .{ .string = "true" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "flag", .{ .string = "true" });
     try std.testing.expect(!getBool(obj, "flag"));
 }
 
@@ -166,24 +165,24 @@ test "getStringField returns null for non-object input" {
 
 test "getInt returns null for missing key" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
     try std.testing.expect(getInt(obj, "nope") == null);
 }
 
 test "getInt returns value for integer" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("n", .{ .integer = -42 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "n", .{ .integer = -42 });
     try std.testing.expectEqual(@as(i64, -42), getInt(obj, "n").?);
 }
 
 test "getInt returns null for non-integer value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("n", .{ .string = "42" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "n", .{ .string = "42" });
     try std.testing.expect(getInt(obj, "n") == null);
 }
 
@@ -196,9 +195,9 @@ test "getInt returns null for non-object input" {
 
 test "getIntOrZero returns 0 for non-integer value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("n", .{ .string = "not a number" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "n", .{ .string = "not a number" });
     try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "n"));
 }
 
@@ -211,9 +210,9 @@ test "getIntOrZero returns 0 for non-object input" {
 
 test "getFloat returns null for non-numeric value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("f", .{ .string = "not a float" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "f", .{ .string = "not a float" });
     try std.testing.expect(getFloat(obj, "f") == null);
 }
 
@@ -231,9 +230,9 @@ test "getBool returns false for non-object input" {
 
 test "getBool returns false for non-bool string value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("flag", .{ .string = "true" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "flag", .{ .string = "true" });
     try std.testing.expect(!getBool(obj, "flag"));
 }
 
@@ -241,17 +240,17 @@ test "getBool returns false for non-bool string value" {
 
 test "getStr returns unicode multibyte string" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("name", .{ .string = "日本語テスト 🚀" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "name", .{ .string = "日本語テスト 🚀" });
     try std.testing.expectEqualStrings("日本語テスト 🚀", getStr(obj, "name").?);
 }
 
 test "getStr returns empty string (distinct from missing)" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("empty", .{ .string = "" });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "empty", .{ .string = "" });
     const result = getStr(obj, "empty");
     try std.testing.expect(result != null);
     try std.testing.expectEqualStrings("", result.?);
@@ -261,33 +260,33 @@ test "getStr returns empty string (distinct from missing)" {
 
 test "getInt returns zero for zero value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("n", .{ .integer = 0 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "n", .{ .integer = 0 });
     try std.testing.expectEqual(@as(i64, 0), getInt(obj, "n").?);
 }
 
 test "getIntOrZero returns 0 for zero value" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("n", .{ .integer = 0 });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "n", .{ .integer = 0 });
     try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "n"));
 }
 
 test "getInt returns max i64" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("big", .{ .integer = std.math.maxInt(i64) });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "big", .{ .integer = std.math.maxInt(i64) });
     try std.testing.expectEqual(std.math.maxInt(i64), getInt(obj, "big").?);
 }
 
 test "getFloat returns null for bool input" {
     const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer obj.object.deinit();
-    try obj.object.put("f", .{ .bool = true });
+    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+    defer obj.object.deinit(alloc);
+    try obj.object.put(alloc, "f", .{ .bool = true });
     try std.testing.expect(getFloat(obj, "f") == null);
 }
 
@@ -296,11 +295,11 @@ test "getFloat returns null for bool input" {
 test "json helpers 100 iterations no leak" {
     const alloc = std.testing.allocator;
     for (0..100) |_| {
-        var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-        try obj.object.put("s", .{ .string = "val" });
-        try obj.object.put("i", .{ .integer = 42 });
-        try obj.object.put("f", .{ .float = 3.14 });
-        try obj.object.put("b", .{ .bool = true });
+        var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
+        try obj.object.put(alloc, "s", .{ .string = "val" });
+        try obj.object.put(alloc, "i", .{ .integer = 42 });
+        try obj.object.put(alloc, "f", .{ .float = 3.14 });
+        try obj.object.put(alloc, "b", .{ .bool = true });
 
         _ = getStr(obj, "s");
         _ = getInt(obj, "i");
@@ -310,6 +309,6 @@ test "json helpers 100 iterations no leak" {
         _ = getStr(obj, "missing");
         _ = getInt(obj, "missing");
 
-        obj.object.deinit();
+        obj.object.deinit(alloc);
     }
 }

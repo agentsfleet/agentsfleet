@@ -9,6 +9,7 @@
 // and skip when the harness can't reach it.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -58,7 +59,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
-    const now = std.time.milliTimestamp();
+    const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'ApprovalsTest', $2, $2)
@@ -120,9 +121,8 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\        'pending', '', $12, $12)
         \\ON CONFLICT (id) DO NOTHING
     , .{
-        g.gate_id, g.zombie_id, g.workspace_id, g.action_id, g.tool_name, g.action_name,
-        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at,
-        g.requested_at,
+        g.gate_id,   g.zombie_id,       g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,
+        g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.requested_at,
     });
 }
 
@@ -261,7 +261,8 @@ test "integration: approvals GET — cursor pagination yields next_cursor" {
         const aid = try std.fmt.allocPrint(ALLOC, "act-pg-{d}", .{i});
         defer ALLOC.free(aid);
         try insertGate(conn, .{
-            .gate_id = gid, .action_id = aid,
+            .gate_id = gid,
+            .action_id = aid,
             .requested_at = 1_700_000_000_000 + @as(i64, i),
         });
     }
@@ -466,7 +467,11 @@ test "integration: worker self-timeout writes resolved_by=system:timeout" {
 
     const resolver = @import("../../../zombie/approval_gate_resolver.zig");
     @import("../../../zombie/approval_gate.zig").resolveGateDecision(
-        h.pool, action_id, .timed_out, resolver.SYSTEM_TIMEOUT, "",
+        h.pool,
+        action_id,
+        .timed_out,
+        resolver.SYSTEM_TIMEOUT,
+        "",
     );
 
     var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(

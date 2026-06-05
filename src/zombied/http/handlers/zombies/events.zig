@@ -7,6 +7,7 @@
 //! 400 with `since_and_cursor_mutually_exclusive`.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const logging = @import("log");
 
@@ -102,7 +103,7 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
 fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.Filter {
     var since_ms: ?i64 = null;
     if (params.since_raw) |raw| {
-        since_ms = events_store.parseSince(raw, std.time.milliTimestamp()) catch {
+        since_ms = events_store.parseSince(raw, clock.nowMillis()) catch {
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid_since_format: use Go-style duration (15s, 30m, 2h, 7d) or RFC 3339 (YYYY-MM-DDTHH:MM:SSZ)");
             return error.Failed;
         };
@@ -155,7 +156,7 @@ test "prefixToLike: empty prefix returns just %" {
 /// `*`-to-`%` translation — under prefix mode the literal `*` matches a
 /// literal `*`, never a wildcard.
 fn prefixToLike(alloc: std.mem.Allocator, prefix: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .{};
+    var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(alloc);
     for (prefix) |b| switch (b) {
         '%', '_' => {

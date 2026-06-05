@@ -37,6 +37,10 @@ const Error = error{
     BrokenPipe,
     ConnectionResetByPeer,
     ReadFailed,
+    /// A read hit its armed timeout deadline (poll(2) on the transport's
+    /// TimeoutReader expired) — distinct from a peer drop so the retry layer
+    /// and observability attribute timeouts honestly. Non-resumable.
+    RedisRequestTimeout,
     WriteFailed,
     RedisCommandError,
     /// Server flushed bytes past the parsed RESP reply — the transport
@@ -60,17 +64,19 @@ state: ConnectionState,
 fd: std.posix.fd_t,
 transport: redis_transport.Transport,
 alloc: std.mem.Allocator,
+/// Io that backs this connection's socket (Zig 0.16 Stream close/read/write
+/// all take Io). Borrowed from the owning Pool / spawning thread.
+io: std.Io,
 /// Borrowed from the owning Pool (pooled role) or the spawning thread
 /// (dedicated / subscriber roles). Caller guarantees lifetime ≥ Connection's.
 cfg: *const redis_config.Config,
 /// Embedded link node — only attached when `role == .pooled` and the
 /// connection sits on Pool.idle. Inert for other roles.
 node: std.SinglyLinkedList.Node = .{},
-/// `SO_RCVTIMEO` value installed via `applyReadTimeout`. When armed, a
-/// kernel-triggered read timeout surfaces as `error.ReadFailed` (same as
-/// any other peer-side read failure — `std.Io.Reader` doesn't expose the
-/// underlying errno). Both stay non-resumable; the Pool / Client retry
-/// layer treats them identically (spec §6).
+/// Per-read timeout (ms) installed via `applyReadTimeout`. When armed, a read
+/// that hits the deadline surfaces as a distinct `RedisRequestTimeout` — the
+/// transport's `TimeoutReader` poll-gates each read and records the hit.
+/// Non-resumable; the Pool / Client retry layer dials fresh (spec §6).
 read_timeout_ms: ?u32 = null,
 
 // === Constructor ===
@@ -79,15 +85,16 @@ read_timeout_ms: ?u32 = null,
 /// `role` is `const` for the connection's lifetime — boundary code
 /// (`Pool.release`, `Subscriber.connect`) asserts it; nothing in this file
 /// mutates `self.role` after init.
-pub fn init(alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Role) !Connection {
-    var transport = try dialAndAuth(alloc, cfg.*);
-    errdefer transport.deinit(alloc);
+pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Role) !Connection {
+    var transport = try dialAndAuth(io, alloc, cfg.*);
+    errdefer transport.deinit(io, alloc);
     return .{
         .role = role,
         .state = .active,
         .fd = transportFd(&transport),
         .transport = transport,
         .alloc = alloc,
+        .io = io,
         .cfg = cfg,
     };
 }
@@ -97,8 +104,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Rol
 /// Install (or clear) the request-path read timeout on this connection.
 /// Pool calls this after `init` for pooled connections so every dial picks
 /// up the configured `REDIS_REQUEST_TIMEOUT_MS`. Setting back to `null`
-/// clears the field — the underlying socket option is best-effort cleared
-/// via `Transport.setReadTimeout(null)`.
+/// clears the deadline so reads block until data or peer close.
 pub fn applyReadTimeout(self: *Connection, ms: ?u32) void {
     self.transport.setReadTimeout(ms);
     self.read_timeout_ms = ms;
@@ -113,7 +119,7 @@ pub fn deinit(self: *Connection) void {
         .closing => {},
         .closed => std.debug.assert(false),
     }
-    self.transport.deinit(self.alloc);
+    self.transport.deinit(self.io, self.alloc);
     self.fd = INVALID_FD;
     self.transitionTo(.closed);
 }
@@ -187,7 +193,7 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
             return error.OutOfMemory;
         }
         self.transitionTo(.poisoned);
-        return mapReadError(err);
+        return self.mapReadError(err);
     };
 
     // Defense against a dirty server: pooled connections follow strict
@@ -214,17 +220,17 @@ fn mapWriteError(err: anyerror) Error {
     };
 }
 
-// SO_RCVTIMEO and peer-side drops both surface as opaque `error.ReadFailed`
-// at the std.Io.Reader layer — the underlying errno (EAGAIN vs ECONNRESET vs
-// EOF) isn't exposed. Earlier code re-tagged ReadFailed as
-// `RedisRequestTimeout` whenever read_timeout_ms was armed; that conflated
-// real timeouts with peer-side connection drops in metric attribution.
-// Both stay non-resumable, so retry behavior is identical; we surface as
-// `ReadFailed` uniformly and let observability live with one bucket.
-fn mapReadError(err: anyerror) Error {
+// A read timeout and a peer drop both reach the std.Io.Reader as a generic
+// `error.ReadFailed`, but the transport's `TimeoutReader` records WHICH on its
+// `timed_out` flag — so a timed-out read surfaces as a distinct
+// `RedisRequestTimeout` (honest observability + retry attribution) instead of
+// the opaque single bucket the 0.15 `SO_RCVTIMEO` path was stuck with. Both
+// are non-resumable; the retry layer closes and dials fresh either way.
+fn mapReadError(self: *Connection, err: anyerror) Error {
     return switch (err) {
         error.BrokenPipe => error.BrokenPipe,
         error.ConnectionResetByPeer => error.ConnectionResetByPeer,
+        error.ReadFailed => if (self.transport.readTimedOut()) error.RedisRequestTimeout else error.ReadFailed,
         else => error.ReadFailed,
     };
 }
@@ -233,13 +239,16 @@ fn mapReadError(err: anyerror) Error {
 
 fn transportFd(transport: *redis_transport.Transport) std.posix.fd_t {
     return switch (transport.*) {
-        .plain => |*p| p.stream.handle,
-        .tls => |*t| t.stream.handle,
+        .plain => |*p| p.stream.socket.handle,
+        .tls => |*t| t.stream.socket.handle,
     };
 }
 
-fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
-    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
+fn dialAndAuth(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
+    // Zig 0.16 dropped `std.net.tcpConnectToHost`; resolve the host (DNS) and
+    // dial via `std.Io.net.HostName` over the threaded io.
+    const hostname = try std.Io.net.HostName.init(cfg.host);
+    const stream = try hostname.connect(io, cfg.port, .{ .mode = .stream });
 
     // SAFETY: assigned in the branch below before any reader observes it.
     var transport: redis_transport.Transport = undefined;
@@ -247,11 +256,11 @@ fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transp
         // SAFETY: `initInPlace` writes the tls field on the next line
         // before any caller reads through `transport.tls`.
         transport = .{ .tls = undefined };
-        try transport.tls.initInPlace(alloc, stream, cfg.host);
+        try transport.tls.initInPlace(io, alloc, stream, cfg.host, cfg.ca_cert_file);
     } else {
-        transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
+        transport = .{ .plain = try redis_transport.PlainTransport.init(io, alloc, stream) };
     }
-    errdefer transport.deinit(alloc);
+    errdefer transport.deinit(io, alloc);
 
     if (cfg.password) |pwd| {
         const argv: []const []const u8 = if (cfg.username) |usr|

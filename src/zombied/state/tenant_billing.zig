@@ -1,4 +1,5 @@
 const std = @import("std");
+const clock = @import("common").clock;
 const pg = @import("pg");
 const store = @import("tenant_billing_store.zig");
 const tenant_provider = @import("tenant_provider.zig");
@@ -113,7 +114,7 @@ pub fn computeStageCharge(
     cached_input_tokens: u32,
     output_tokens: u32,
 ) i64 {
-    return computeStageChargeAt(provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
+    return computeStageChargeAt(provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, clock.nowMillis());
 }
 
 /// The four per-unit rates a renewal/settle slice meters at. Resolved once in
@@ -217,7 +218,7 @@ pub fn getBilling(
     tenant_id: []const u8,
 ) !?Billing {
     const row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
-    const now_ms = std.time.milliTimestamp();
+    const now_ms = clock.nowMillis();
     return .{
         .balance_nanos = row.balance_nanos,
         .grant_source = row.grant_source,

@@ -25,47 +25,70 @@ const Hx = hx_mod.Hx;
 
 pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_register.innerRegisterRunner(hx.*, req);
 }
 
 pub fn invokeFleetRunnersList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     fleet_runners_list.innerListFleetRunners(hx.*, req);
 }
 
 pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_self.innerRunnerSelf(hx.*, req);
 }
 
 pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_heartbeat.innerRunnerHeartbeat(hx.*, req);
 }
 
 pub fn invokeRunnerLease(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_lease.innerRunnerLease(hx.*, req);
 }
 
 pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_report.innerRunnerReport(hx.*, req);
 }
 
 pub fn invokeRunnerActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_activity.innerRunnerActivity(hx.*, req, route.runner_activity);
 }
 
 pub fn invokeRunnerRenew(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     runner_renew.innerRunnerRenew(hx.*, req, route.runner_renew);
 }
-

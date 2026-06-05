@@ -15,7 +15,8 @@ pub const SseClient = @This();
 const S_R_N_R_N = "\r\n\r\n";
 
 alloc: Allocator,
-stream: std.net.Stream,
+io: std.Io,
+stream: std.Io.net.Stream,
 buf: std.ArrayList(u8),
 closed: bool = false,
 
@@ -42,15 +43,17 @@ pub const Frame = struct {
 };
 
 pub fn connect(alloc: Allocator, port: u16, path: []const u8, opts: ConnectOptions) !SseClient {
-    const addr = try std.net.Address.parseIp4("127.0.0.1", port);
-    const stream = try std.net.tcpConnectToAddress(addr);
+    const io = common.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
+    const stream = try addr.connect(io, .{ .mode = .stream });
     var sc = SseClient{
         .alloc = alloc,
+        .io = io,
         .stream = stream,
-        .buf = std.ArrayList(u8){},
+        .buf = .empty,
     };
     errdefer sc.deinit();
-    setReadTimeout(stream.handle, opts.deadline_ms);
+    setReadTimeout(stream.socket.handle, opts.deadline_ms);
     try sc.sendRequest(port, path, opts);
     try sc.consumeResponseHeaders();
     return sc;
@@ -58,7 +61,7 @@ pub fn connect(alloc: Allocator, port: u16, path: []const u8, opts: ConnectOptio
 
 pub fn deinit(self: *SseClient) void {
     if (!self.closed) {
-        self.stream.close();
+        self.stream.close(self.io);
         self.closed = true;
     }
     self.buf.deinit(self.alloc);
@@ -72,8 +75,8 @@ pub fn deinit(self: *SseClient) void {
 /// though the production-side subscriber loop has no read timeout.
 pub fn closeStream(self: *SseClient) void {
     if (self.closed) return;
-    forceRstOnClose(self.stream.handle);
-    self.stream.close();
+    forceRstOnClose(self.stream.socket.handle);
+    self.stream.close(self.io);
     self.closed = true;
 }
 
@@ -95,7 +98,11 @@ pub fn nextFrame(self: *SseClient) !Frame {
 fn sendRequest(self: *SseClient, port: u16, path: []const u8, opts: ConnectOptions) !void {
     var req_buf: [2048]u8 = undefined;
     const req = if (opts.last_event_id) |leid| try std.fmt.bufPrint(&req_buf, "GET {s} HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nAccept: text/event-stream\r\nLast-Event-ID: {s}\r\nConnection: keep-alive\r\n\r\n", .{ path, port, opts.bearer, leid }) else try std.fmt.bufPrint(&req_buf, "GET {s} HTTP/1.1\r\nHost: 127.0.0.1:{d}\r\nAuthorization: Bearer {s}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n", .{ path, port, opts.bearer });
-    try self.stream.writeAll(req);
+    // Zig 0.16 net.Stream has no writeAll; stage through a Stream.Writer.
+    var wbuf: [2048]u8 = undefined;
+    var w = self.stream.writer(self.io, &wbuf);
+    try w.interface.writeAll(req);
+    try w.interface.flush();
 }
 
 fn consumeResponseHeaders(self: *SseClient) !void {
@@ -115,7 +122,10 @@ fn consumeResponseHeaders(self: *SseClient) !void {
 
 fn fill(self: *SseClient) !void {
     var tmp: [4096]u8 = undefined;
-    const n = self.stream.read(&tmp) catch |err| switch (err) {
+    // SO_RCVTIMEO drives the deadline: a stalled read returns EAGAIN → WouldBlock.
+    // Raw posix.read on the handle preserves that exact one-recv semantics (the
+    // 0.16 net.Stream reader buffers, which would mask the per-read timeout).
+    const n = std.posix.read(self.stream.socket.handle, &tmp) catch |err| switch (err) {
         error.WouldBlock => return error.SseFrameTimeout,
         else => return err,
     };
@@ -182,6 +192,7 @@ fn forceRstOnClose(fd: std.posix.fd_t) void {
 }
 
 const std = @import("std");
+const common = @import("common");
 const Allocator = std.mem.Allocator;
 
 // ── Tests ───────────────────────────────────────────────────────────────────

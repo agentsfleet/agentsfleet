@@ -11,6 +11,8 @@
 // runs. The inline signature check below stays as defense in depth.
 
 const std = @import("std");
+const constants = @import("common");
+const clock = constants.clock;
 const httpz = @import("httpz");
 const logging = @import("log");
 const common = @import("../common.zig");
@@ -165,7 +167,7 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
 /// Signing secret is read from APPROVAL_SIGNING_SECRET env var.
 /// If no signing secret is configured, rejects all requests (fail-closed).
 fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
-    const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "APPROVAL_SIGNING_SECRET") catch {
+    const secret = hx.ctx.approval_signing_secret orelse {
         // No signing secret configured — reject (fail-closed, no insecure fallback)
         log.warn("no_signing_secret_configured", .{
             .error_code = ec.ERR_APPROVAL_INVALID_SIGNATURE,
@@ -174,7 +176,6 @@ fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
         hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Signing secret not configured");
         return false;
     };
-    defer std.heap.page_allocator.free(secret);
 
     const timestamp = req.header("x-signature-timestamp") orelse {
         hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature timestamp");
@@ -191,7 +192,7 @@ fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
         hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid timestamp");
         return false;
     };
-    const now_s = @divTrunc(std.time.milliTimestamp(), 1000);
+    const now_s = @divTrunc(clock.nowMillis(), 1000);
     if (@abs(now_s - ts) > SIGNATURE_MAX_AGE_S) {
         log.warn("timestamp_too_old", .{
             .error_code = ec.ERR_APPROVAL_INVALID_SIGNATURE,

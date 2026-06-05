@@ -1,5 +1,8 @@
 const std = @import("std");
+const common = @import("common");
 const redis_types = @import("redis_types.zig");
+
+const EnvMap = common.env.Map;
 
 pub const Config = struct {
     host: []const u8,
@@ -7,30 +10,45 @@ pub const Config = struct {
     username: ?[]const u8 = null,
     password: ?[]const u8 = null,
     use_tls: bool = false,
+    /// Absolute path to a custom TLS CA bundle (`REDIS_TLS_CA_CERT_FILE`),
+    /// resolved once from the env snapshot at connect and owned by the Config.
+    /// Null → system trust store. Zig 0.16's env is a snapshot, so this is
+    /// read at connect time (not per-dial).
+    ca_cert_file: ?[]const u8 = null,
 };
+
+/// Env var naming the custom TLS CA bundle path; resolved into `Config.ca_cert_file`
+/// by the env-map connect paths and the test connect helpers.
+pub const CA_CERT_FILE_ENV = "REDIS_TLS_CA_CERT_FILE";
 
 pub fn deinitConfig(alloc: std.mem.Allocator, cfg: Config) void {
     alloc.free(cfg.host);
     if (cfg.username) |v| alloc.free(v);
     if (cfg.password) |v| alloc.free(v);
+    if (cfg.ca_cert_file) |v| alloc.free(v);
 }
 
-pub fn loadCaBundle(alloc: std.mem.Allocator, ca_file_path: ?[]const u8) !std.crypto.Certificate.Bundle {
-    var ca_bundle: std.crypto.Certificate.Bundle = .{};
+pub fn loadCaBundle(io: std.Io, alloc: std.mem.Allocator, ca_file_path: ?[]const u8) !std.crypto.Certificate.Bundle {
+    var ca_bundle: std.crypto.Certificate.Bundle = .empty;
     errdefer ca_bundle.deinit(alloc);
 
+    // Zig 0.16 Bundle cert loading is io-based and timestamp-validated. Cert
+    // validity (notBefore/notAfter) is wall-clock, so use `.real` — `.awake` is
+    // CLOCK_MONOTONIC (seconds since boot), which reads as ≪ any epoch notBefore
+    // and rejects every cert as CertificateNotYetValid.
+    const now = std.Io.Timestamp.now(io, .real);
     if (ca_file_path) |path| {
         if (!std.fs.path.isAbsolute(path)) return error.RedisTlsCaFileMustBeAbsolute;
-        try ca_bundle.addCertsFromFilePathAbsolute(alloc, path);
+        try ca_bundle.addCertsFromFilePathAbsolute(alloc, io, now, path);
     } else {
-        try ca_bundle.rescan(alloc);
+        try ca_bundle.rescan(alloc, io, now);
     }
 
     return ca_bundle;
 }
 
-pub fn resolveRedisUrl(alloc: std.mem.Allocator, role: redis_types.RedisRole) ![]u8 {
-    const url = std.process.getEnvVarOwned(alloc, redis_types.roleEnvVarName(role)) catch return error.MissingRedisUrl;
+pub fn resolveRedisUrl(env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole) ![]const u8 {
+    const url = (try common.env.owned(env_map, alloc, redis_types.roleEnvVarName(role))) orelse return error.MissingRedisUrl;
     if (std.mem.trim(u8, url, " \t\r\n").len == 0) {
         alloc.free(url);
         return error.MissingRedisUrl;

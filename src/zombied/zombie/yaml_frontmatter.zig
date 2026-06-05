@@ -29,17 +29,19 @@ pub fn yamlFrontmatterToJson(alloc: Allocator, source: []const u8) (Allocator.Er
         else => return error.ParseFailure,
     };
 
-    var buf: std.ArrayList(u8) = .{};
-    errdefer buf.deinit(alloc);
-    const w = buf.writer(alloc);
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const w = &aw.writer;
 
+    // The Allocating writer surfaces failure as Io.Writer's `WriteFailed`, but
+    // its only real failure mode is OOM — map it back into the declared set.
     if (doc.docs.items.len == 0) {
-        try w.writeAll("{}");
+        w.writeAll("{}") catch return error.OutOfMemory;
     } else {
-        try writeJsonValue(w, doc.docs.items[0]);
+        writeJsonValue(w, doc.docs.items[0]) catch return error.OutOfMemory;
     }
 
-    return buf.toOwnedSlice(alloc);
+    return aw.toOwnedSlice();
 }
 
 fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {

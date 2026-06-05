@@ -7,9 +7,10 @@
 //! No quiet "did I update the list?" at review time.
 //!
 //! Consumed by the Client retry layer (recycle vs close on error) and by
-//! the typed XADD/XACK error variants in the Client façade. Read timeouts
-//! (SO_RCVTIMEO) surface as opaque `ReadFailed` — std.Io.Reader doesn't
-//! expose errno, so we don't pretend to distinguish.
+//! the typed XADD/XACK error variants in the Client façade. A read that hits
+//! its armed timeout surfaces as the distinct `RedisRequestTimeout` (the
+//! transport's poll-gated reader records the deadline hit), not an opaque
+//! `ReadFailed`.
 
 /// Transport- and server-level errors the Redis client can surface.
 ///
@@ -25,6 +26,9 @@ pub const RedisError = error{
     BrokenPipe,
     ConnectionResetByPeer,
     ReadFailed,
+    /// A read hit its armed timeout deadline — distinct from a peer drop so
+    /// observability and retry attribution stay honest. Non-resumable.
+    RedisRequestTimeout,
     WriteFailed,
     /// Server flushed bytes past the parsed RESP reply — the transport
     /// buffer is in protocol desync. The next read on this conn would
@@ -40,6 +44,6 @@ pub const RedisError = error{
 pub fn isResumable(err: RedisError) bool {
     return switch (err) {
         error.RedisCommandError, error.RedisXaddFailed, error.RedisXackFailed => true,
-        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.WriteFailed, error.RedisProtocolDesync => false,
+        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.RedisRequestTimeout, error.WriteFailed, error.RedisProtocolDesync => false,
     };
 }

@@ -159,7 +159,7 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
     var q = PgQuery.from(try conn.query(sql, params));
     defer q.deinit();
 
-    var rows: std.ArrayList(TelemetryRow) = .{};
+    var rows: std.ArrayList(TelemetryRow) = .empty;
     errdefer {
         for (rows.items) |*r| r.deinit(alloc);
         rows.deinit(alloc);

@@ -7,6 +7,7 @@
 //! Consumer: Slack/Discord plugin reads and POSTs to workspace channels.
 
 const std = @import("std");
+const constants = @import("common");
 const logging = @import("log");
 const pg = @import("pg");
 const queue_redis = @import("../../queue/redis.zig");
@@ -23,9 +24,11 @@ const GRANT_NONCE_KEY_PREFIX = "grant:nonce:";
 // ── Nonce generation ───────────────────────────────────────────────────────
 
 /// Generate a 32-char lowercase hex nonce from 16 random bytes. Stack-allocated.
-fn generateNonce() [32]u8 {
+fn generateNonce() ![32]u8 {
     var raw: [16]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    // Webhook-verification nonce — propagate entropy failure rather than emit a
+    // weak nonce; the caller skips the notification (best-effort fan-out).
+    try constants.secureRandomBytes(&raw);
     return std.fmt.bytesToHex(raw, .lower);
 }
 
@@ -60,9 +63,9 @@ fn buildGrantSlackMessage(
     grant_id: []const u8,
     nonce: []const u8,
 ) ![]const u8 {
-    var buf: std.ArrayList(u8) = .{};
-    errdefer buf.deinit(alloc);
-    const w = buf.writer(alloc);
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    errdefer aw.deinit();
+    const w = &aw.writer;
 
     const header = try std.fmt.allocPrint(alloc, "\u{1F510} *{s}* is requesting *{s}* access", .{ zombie_name, service });
     defer alloc.free(header);
@@ -96,7 +99,7 @@ fn buildGrantSlackMessage(
     try approval_slack.writeJsonEscaped(w, header);
     try w.writeAll("\"}");
 
-    return buf.toOwnedSlice(alloc);
+    return aw.toOwnedSlice();
 }
 
 // ── Redis store ────────────────────────────────────────────────────────────
@@ -152,7 +155,11 @@ pub fn notifyGrantRequest(
     service: []const u8,
     reason: []const u8,
 ) void {
-    const nonce_arr = generateNonce();
+    const nonce_arr = generateNonce() catch {
+        log.warn("nonce_entropy_fail", .{ .grant_id = grant_id });
+        logDashboard(pool, alloc, zombie_id, workspace_id, grant_id, service);
+        return;
+    };
     const nonce: []const u8 = nonce_arr[0..];
     storeNonceToRedis(queue, grant_id, nonce);
 
@@ -208,7 +215,7 @@ test "buildGrantSlackMessage: escapes backslash in zombie_name" {
 }
 
 test "generateNonce: produces 32-char hex string" {
-    const n = generateNonce();
+    const n = try generateNonce();
     try std.testing.expect(n.len == 32);
     for (n) |c| {
         try std.testing.expect((c >= '0' and c <= '9') or (c >= 'a' and c <= 'f'));
@@ -217,8 +224,8 @@ test "generateNonce: produces 32-char hex string" {
 
 test "generateNonce: two calls produce different values (probabilistic)" {
     // Fails with probability 2^-128 — acceptable for test uniqueness check.
-    const n1 = generateNonce();
-    const n2 = generateNonce();
+    const n1 = try generateNonce();
+    const n2 = try generateNonce();
     try std.testing.expect(!std.mem.eql(u8, n1[0..], n2[0..]));
 }
 

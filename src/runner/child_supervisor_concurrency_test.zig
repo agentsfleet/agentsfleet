@@ -6,6 +6,7 @@
 //! outcome is `terminated`, and no frame queued AFTER termination is processed.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const supervisor = @import("child_supervisor.zig");
 const pipe_proto = @import("pipe_proto.zig");
 const contract = @import("contract");
@@ -61,9 +62,9 @@ test "readResult should forward frames in order then honor terminate without pro
     // runs after each forwarded frame, so frames 1–3 are delivered in order and
     // the terminate fires right after frame 3 — frame 4 (the result) is left
     // unread in the pipe. A far deadline proves the stop came from the hook.
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    defer std.posix.close(fds[1]); // keep write end open → no spurious EOF
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    defer pipe_proto.osClose(fds[1]); // keep write end open → no spurious EOF
 
     try writeToolCall(fds[1], "alpha");
     try writeToolCall(fds[1], "bravo");
@@ -75,7 +76,7 @@ test "readResult should forward frames in order then honor terminate without pro
     var cap: OrderedCap = .{};
     const sink = ActivitySink{ .ctx = &cap, .forward = OrderedCap.forward };
 
-    const far_dl = std.time.milliTimestamp() + 60_000;
+    const far_dl = clock.nowMillis() + 60_000;
     const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, hook);
     defer std.testing.allocator.free(outcome.bytes);
 

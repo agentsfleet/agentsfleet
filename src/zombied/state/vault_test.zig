@@ -8,6 +8,7 @@ const std = @import("std");
 const pg = @import("pg");
 const vault = @import("vault.zig");
 const base = @import("../db/test_fixtures.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
 // ── shape gate (pure) ──────────────────────────────────────────────────────
 
@@ -30,16 +31,16 @@ test "validateObject rejects integers and bools and nulls" {
 }
 
 test "validateObject rejects empty object" {
-    var obj = std.json.ObjectMap.init(std.testing.allocator);
-    defer obj.deinit();
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(std.testing.allocator);
     const v = std.json.Value{ .object = obj };
     try std.testing.expectError(vault.Error.EmptyObject, vault.validateObject(v));
 }
 
 test "validateObject accepts non-empty object" {
-    var obj = std.json.ObjectMap.init(std.testing.allocator);
-    defer obj.deinit();
-    try obj.put("host", .{ .string = "api.machines.dev" });
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(std.testing.allocator);
+    try obj.put(std.testing.allocator, "host", .{ .string = "api.machines.dev" });
     const v = std.json.Value{ .object = obj };
     try vault.validateObject(v);
 }
@@ -52,14 +53,9 @@ test "validateObject accepts non-empty object" {
 // test can race with pool teardown (see signup_bootstrap_test.zig comments).
 
 const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-cd0000000001";
-const ENCRYPTION_KEY_HEX = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn setEncryptionKey() void {
-    const c = @cImport(@cInclude("stdlib.h"));
-    var z: [65]u8 = undefined;
-    @memcpy(z[0..64], ENCRYPTION_KEY_HEX);
-    z[64] = 0;
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &z, 1);
+    crypto_primitives.setTestKek();
 }
 
 fn cleanupTestRows(conn: *pg.Conn) void {
@@ -74,9 +70,9 @@ fn seedWorkspaceForVault(conn: *pg.Conn) !void {
 }
 
 fn buildFlyCredential(alloc: std.mem.Allocator) !std.json.Value {
-    var obj = std.json.ObjectMap.init(alloc);
-    try obj.put("host", .{ .string = "api.machines.dev" });
-    try obj.put("api_token", .{ .string = "FLY_API_TOKEN_xyz" });
+    var obj: std.json.ObjectMap = .empty;
+    try obj.put(alloc, "host", .{ .string = "api.machines.dev" });
+    try obj.put(alloc, "api_token", .{ .string = "FLY_API_TOKEN_xyz" });
     return .{ .object = obj };
 }
 
@@ -92,7 +88,7 @@ test "storeJson + loadJson round-trip preserves nested object" {
     defer cleanupTestRows(handle.conn);
 
     var stored = try buildFlyCredential(alloc);
-    defer stored.object.deinit();
+    defer stored.object.deinit(alloc);
 
     try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", stored);
 
@@ -124,10 +120,10 @@ test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bool
     // Nested object with every JSON shape the parser supports — guards against
     // a future "stringify only handles strings" regression in storeJson and
     // proves loadJson reconstructs the same shape after KMS roundtrip.
-    var nested = std.json.ObjectMap.init(alloc);
-    defer nested.deinit();
-    try nested.put("inner_str", .{ .string = "deep" });
-    try nested.put("inner_num", .{ .integer = 42 });
+    var nested: std.json.ObjectMap = .empty;
+    defer nested.deinit(alloc);
+    try nested.put(alloc, "inner_str", .{ .string = "deep" });
+    try nested.put(alloc, "inner_num", .{ .integer = 42 });
 
     var arr = std.json.Array.init(alloc);
     defer arr.deinit();
@@ -135,16 +131,16 @@ test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bool
     try arr.append(.{ .string = "two" });
     try arr.append(.{ .bool = true });
 
-    var top = std.json.ObjectMap.init(alloc);
-    defer top.deinit();
-    try top.put("str", .{ .string = "FLY_TOKEN_xyz" });
-    try top.put("num_int", .{ .integer = 31415 });
-    try top.put("num_neg", .{ .integer = -7 });
-    try top.put("bool_t", .{ .bool = true });
-    try top.put("bool_f", .{ .bool = false });
-    try top.put("null_field", .null);
-    try top.put("nested", .{ .object = nested });
-    try top.put("arr", .{ .array = arr });
+    var top: std.json.ObjectMap = .empty;
+    defer top.deinit(alloc);
+    try top.put(alloc, "str", .{ .string = "FLY_TOKEN_xyz" });
+    try top.put(alloc, "num_int", .{ .integer = 31415 });
+    try top.put(alloc, "num_neg", .{ .integer = -7 });
+    try top.put(alloc, "bool_t", .{ .bool = true });
+    try top.put(alloc, "bool_f", .{ .bool = false });
+    try top.put(alloc, "null_field", .null);
+    try top.put(alloc, "nested", .{ .object = nested });
+    try top.put(alloc, "arr", .{ .array = arr });
 
     try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top });
 
@@ -183,7 +179,7 @@ test "deleteCredential reports true on existing row, false on missing" {
     defer cleanupTestRows(handle.conn);
 
     var v = try buildFlyCredential(alloc);
-    defer v.object.deinit();
+    defer v.object.deinit(alloc);
     try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", v);
 
     try std.testing.expect(try vault.deleteCredential(handle.conn, TEST_WS_ID, "zombie:fly"));
