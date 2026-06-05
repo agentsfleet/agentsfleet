@@ -135,4 +135,3 @@ pub fn load(
     log.info("retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
     return plaintext_result;
 }
-

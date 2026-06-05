@@ -11,14 +11,14 @@ const std = @import("std");
 const constants = @import("common");
 
 pub const ADJECTIVES = [_][]const u8{
-    "jolly",   "bright",  "swift",   "calm",
-    "lively",  "bold",    "silent",  "happy",
-    "gentle",  "brave",   "sunny",   "mellow",
-    "eager",   "keen",    "plucky",  "hardy",
-    "dandy",   "spry",    "nimble",  "zesty",
-    "peppy",   "witty",   "hearty",  "cosy",
-    "dreamy",  "fuzzy",   "rustic",  "mossy",
-    "breezy",  "tidy",    "stellar", "cozy",
+    "jolly",  "bright", "swift",   "calm",
+    "lively", "bold",   "silent",  "happy",
+    "gentle", "brave",  "sunny",   "mellow",
+    "eager",  "keen",   "plucky",  "hardy",
+    "dandy",  "spry",   "nimble",  "zesty",
+    "peppy",  "witty",  "hearty",  "cosy",
+    "dreamy", "fuzzy",  "rustic",  "mossy",
+    "breezy", "tidy",   "stellar", "cozy",
 };
 
 pub const NOUNS = [_][]const u8{

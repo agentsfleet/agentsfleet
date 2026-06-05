@@ -24,12 +24,15 @@ pub fn nowSeconds() i64 {
 /// Wall-clock nanoseconds since the Unix epoch. Drop-in replacement for the
 /// `std.time.nanoTimestamp()` removed in Zig 0.16.
 pub fn nowNanos() i128 {
-    // SAFETY: clock_gettime fully populates ts before sec/nsec are read; on the
-    // error path ts is untouched and the switch returns 0 without reading it.
+    // SAFETY: clock_gettime fully populates ts before sec/nsec are read.
     var ts: std.posix.timespec = undefined;
     return switch (std.posix.errno(std.posix.system.clock_gettime(.REALTIME, &ts))) {
         .SUCCESS => @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec,
-        else => 0,
+        // CLOCK_REALTIME can only fail with EFAULT/EINVAL — both programmer
+        // errors given the stack `timespec` + hard-coded clock id. Fail closed:
+        // a silent epoch-0 return would corrupt UUIDv7 monotonicity and make the
+        // redis pool's acquire deadline never fire (it loops forever).
+        else => |err| std.debug.panic("clock_gettime(CLOCK_REALTIME) failed: {s}", .{@tagName(err)}),
     };
 }
 

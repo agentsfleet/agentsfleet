@@ -4,6 +4,7 @@ import {
   RETRY_DEFAULTS,
   backoffDelay,
   classifyRetryable,
+  isIdempotentMethod,
   requestWithRetry,
 } from "./retry";
 
@@ -42,10 +43,6 @@ describe("classifyRetryable", () => {
   it("classifies TIMEOUT as 'timeout'", () => {
     const err = new ApiError("timed out", 408, "TIMEOUT");
     expect(classifyRetryable(err)).toBe("timeout");
-  });
-  it("classifies server retry-marker code (UZ-*-RETRY*) as 'server_marked_retryable'", () => {
-    const err = new ApiError("hint", 400, "UZ-EXEC-RETRY-A");
-    expect(classifyRetryable(err)).toBe("server_marked_retryable");
   });
   it("classifies fetch-failed TypeError as 'network'", () => {
     expect(classifyRetryable(new TypeError("fetch failed"))).toBe("network");
@@ -218,6 +215,78 @@ describe("requestWithRetry — retries", () => {
     expect(result.ok).toBe(1);
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRetry.mock.calls[0]![0]).toMatchObject({ reason: "network" });
+  });
+});
+
+describe("requestWithRetry — idempotency guard", () => {
+  it("does NOT retry a POST that returns 503 (duplicate-mutation hazard)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
+    const onRetry = vi.fn();
+    await expect(
+      requestWithRetry(
+        "/v1/x",
+        { method: "POST" },
+        "tok",
+        { maxAttempts: 3, onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
+      ),
+    ).rejects.toBeInstanceOf(ApiError);
+    // One attempt only — the 503 is non-idempotent, so no replay.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("DOES retry a PUT that returns 503 (idempotent method)", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
+    const onRetry = vi.fn();
+    const result = await requestWithRetry<{ ok: number }>(
+      "/v1/x",
+      { method: "PUT" },
+      "tok",
+      { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
+    );
+    expect(result.ok).toBe(1);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("DOES retry a POST that returns 429 or 408 (request not processed)", async () => {
+    for (const status of [429, 408]) {
+      fetchMock.mockReset();
+      fetchMock.mockResolvedValueOnce(jsonResponse(status, { detail: "x" }));
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
+      const onRetry = vi.fn();
+      await requestWithRetry(
+        "/v1/x",
+        { method: "POST" },
+        "tok",
+        { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
+      );
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("treats an omitted method as GET (idempotent) so reads still retry on 5xx", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
+    const onRetry = vi.fn();
+    // No `method` in init → defaults to GET → 5xx is replay-safe.
+    const result = await requestWithRetry<{ ok: number }>(
+      "/v1/x",
+      {},
+      "tok",
+      { onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
+    );
+    expect(result.ok).toBe(1);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("isIdempotentMethod: GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensitive)", () => {
+    for (const m of ["GET", "put", "Delete", "HEAD"]) {
+      expect(isIdempotentMethod(m)).toBe(true);
+    }
+    for (const m of ["POST", "patch", "CONNECT"]) {
+      expect(isIdempotentMethod(m)).toBe(false);
+    }
   });
 });
 

@@ -166,4 +166,3 @@ test "loadKek returns the KEK seeded via setKekFromHex (Option C boot-resolve)" 
 test "setKekFromHex rejects a wrong-length hex (fails closed)" {
     try std.testing.expectError(SecretError.InvalidKeyHex, setKekFromHex("deadbeef"));
 }
-

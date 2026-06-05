@@ -83,7 +83,6 @@ test "queue constants: zombie consumer group reflects the lease path" {
     try std.testing.expectEqualStrings("zombie_lease", queue_consts.zombie_consumer_group);
 }
 
-
 test "queue constants: XAUTOCLAIM cursor seed and batch size" {
     try std.testing.expectEqualStrings("0-0", queue_consts.xautoclaim_start);
     try std.testing.expectEqualStrings("1", queue_consts.xautoclaim_count);
@@ -282,4 +281,3 @@ test "Client.readyCheck self-heals when the server drops the connection" {
     // single-threaded accept loop and the pool's parallel dials.
     try std.testing.expect(fake.accepts.load(.monotonic) >= 2);
 }
-

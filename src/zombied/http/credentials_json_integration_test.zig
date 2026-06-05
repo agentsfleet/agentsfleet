@@ -261,4 +261,3 @@ test "integration: cross-workspace DELETE is rejected (IDOR guard)" {
     defer h.releaseConn(conn);
     cleanupRows(conn);
 }
-

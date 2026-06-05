@@ -118,5 +118,3 @@ test "insert_receive_has_null_tokens_and_wall_ms" {
     try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 1));
     try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 2));
 }
-
-

@@ -154,4 +154,3 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         .request_id = hx.req_id,
     });
 }
-

@@ -48,8 +48,8 @@ pub const ExecutionResult = struct {
 
 test "FailureClass.label returns the tag name for every variant" {
     const variants = [_]FailureClass{
-        .startup_posture, .policy_deny,    .timeout_kill,      .oom_kill,
-        .resource_kill,   .runner_crash, .transport_loss,    .landlock_deny,
+        .startup_posture, .policy_deny,       .timeout_kill,   .oom_kill,
+        .resource_kill,   .runner_crash,      .transport_loss, .landlock_deny,
         .lease_expired,   .renewal_terminate,
     };
     for (variants) |fc| try std.testing.expect(fc.label().len > 0);

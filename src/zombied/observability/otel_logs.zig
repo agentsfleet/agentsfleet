@@ -18,7 +18,6 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
-
 const logging = @import("log");
 const log = logging.scoped(.otel_logs);
 pub const GrafanaOtlpConfig = struct {
@@ -193,7 +192,8 @@ fn flushBatch() void {
         if (!first) entries.appendSlice(alloc, ",") catch break;
         first = false;
 
-        entries.print(alloc,
+        entries.print(
+            alloc,
             "{{\"timeUnixNano\":\"{d}\",\"severityText\":\"{s}\",\"body\":{{\"stringValue\":\"{f}\"}},\"attributes\":[{{\"key\":\"scope\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}}",
             .{
                 entry.timestamp_ns,

@@ -29,12 +29,12 @@ export default async function ProviderSettingsPage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>LLM Provider</PageTitle>
+          <PageTitle>Model</PageTitle>
         </PageHeader>
         <EmptyState
           icon={<ZapIcon size={32} />}
           title="No workspace yet"
-          description="Create a workspace before configuring your LLM provider."
+          description="Create a workspace before configuring your model."
         />
       </div>
     );
@@ -48,7 +48,7 @@ export default async function ProviderSettingsPage() {
   return (
     <div>
       <PageHeader>
-        <PageTitle>LLM Provider</PageTitle>
+        <PageTitle>Model</PageTitle>
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
         Choose between platform-managed credits (we handle the billing) and

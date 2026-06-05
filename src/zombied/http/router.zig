@@ -6,107 +6,7 @@ const runner_protocol = @import("contract").protocol;
 
 const S_EVENTS = "events";
 
-pub const Route = union(enum) {
-    healthz,
-    readyz,
-    metrics,
-    // Public, unauthenticated model→cap catalogue served at a cryptic path
-    // prefix (handlers/model_caps.zig). Both the install-skill and
-    // `zombiectl provider set` consume this once at provisioning time.
-    model_caps,
-    create_auth_session,
-    /// GET /v1/auth/sessions/{session_id} — CLI polls for status + (post-
-    /// approve) the public material it needs for the verify call. Never
-    /// returns ciphertext (Invariant 1).
-    poll_auth_session: []const u8,
-    /// PATCH /v1/auth/sessions/{session_id}/approve — dashboard submits
-    /// the ECDH ciphertext + verification code after the user clicks
-    /// Approve. Clerk-authenticated.
-    approve_auth_session: []const u8,
-    /// POST /v1/auth/sessions/{session_id}/verify — CLI submits the 6-digit
-    /// code; on success returns the encrypted JWT payload. Atomic Lua-EVAL
-    /// transition verification_pending → consumed. No bearer auth — the
-    /// code is the auth.
-    verify_auth_session: []const u8,
-    /// DELETE /v1/auth/sessions/{session_id} — explicit cancel by the
-    /// session's owning Clerk user.
-    delete_auth_session: []const u8,
-    /// DELETE /v1/auth/sessions/all — abort every in-flight login session
-    /// for the calling Clerk user.
-    delete_all_auth_sessions,
-    create_workspace,
-    // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
-    get_tenant_billing,
-    // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
-    get_tenant_billing_charges,
-    // Per-renewal slice breakdown behind one charge — carries {event_id}.
-    // GET /v1/tenants/me/billing/charges/{event_id}/metering-periods
-    get_tenant_metering_periods: []const u8,
-    // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
-    list_tenant_workspaces,
-    // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
-    tenant_provider,
-    /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
-    /// HMAC-only via webhook_sig middleware; secret resolved from the
-    /// workspace credential keyed by the matching `triggers[].source`.
-    receive_webhook: []const u8,
-    // Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
-    receive_svix_webhook: []const u8,
-    // Clerk user.created signup event — /v1/auth/identity-events/clerk.
-    // Internal auth-plane endpoint (no zombie_id), kept out of /v1/webhooks/.
-    auth_identity_event_clerk,
-    // Zombie approval gate callback
-    approval_webhook: []const u8,
-    // Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
-    grant_approval_webhook: []const u8,
-    /// POST /v1/webhooks/{zombie_id}/github — GitHub Actions ingest. HMAC via
-    /// the workspace's `zombie:github` credential; handler filters to
-    /// workflow_run/failure and XADDs the M42 envelope.
-    github_webhook: []const u8,
-    // Admin platform key management
-    admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
-    delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
-    // Zombie CRUD + activity + credentials (workspace-scoped)
-    workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
-    patch_workspace_zombie: matchers.WorkspaceZombieRoute, // PATCH /v1/workspaces/{ws}/zombies/{id} (config_json + status:killed)
-    workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
-    delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
-    // Chat ingress — POST /v1/workspaces/{ws}/zombies/{id}/messages
-    workspace_zombie_messages: matchers.WorkspaceZombieRoute,
-    // Per-zombie event history + SSE live tail
-    workspace_zombie_events: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events
-    workspace_zombie_events_stream: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events/stream (SSE)
-    // Workspace-aggregate event history
-    workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
-    // Approval inbox (workspace-scoped pending-gate surface)
-    workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
-    workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
-    workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // External-agent memory API — workspace-scoped resource collection.
-    workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search) + POST (store)
-    workspace_zombie_memory: matchers.WorkspaceZombieMemoryRoute, // DELETE /memories/{key}
-    // Integration grant CRUD (workspace-scoped)
-    request_integration_grant: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
-    list_integration_grants: matchers.WorkspaceZombieRoute, // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
-    revoke_integration_grant: matchers.WorkspaceZombieGrantRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{grant_id}
-    // Workspace agent-key management
-    agent_keys: []const u8, // POST|GET /v1/workspaces/{ws}/agent-keys
-    delete_agent_key: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_id}
-    // Tenant API key CRUD.
-    tenant_api_keys, // POST|GET /v1/api-keys
-    tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}
-    // Runner control plane — POST-only, identity from the Bearer token. register
-    // is admin-gated; the self-plane verbs (heartbeat/lease/report/activity) are
-    // gated by runnerBearer. `activity` is the only one with a path param
-    // ({lease_id}); the rest resolve `me` from the token (no runner_id in path).
-    register_runner, // POST /v1/runners
-    runner_self, // GET /v1/runners/me (read-only — no last_seen bump)
-    runner_heartbeat, // POST /v1/runners/me/heartbeats
-    runner_lease, // POST /v1/runners/me/leases
-    runner_report, // POST /v1/runners/me/reports
-    runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
-    runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
-};
+pub const Route = @import("routes.zig").Route;
 
 pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // Static-string paths — no parse needed.
@@ -127,6 +27,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // Runner control plane — static exact-match paths (method-agnostic here;
     // the invoke fn enforces POST). `me` resolves from the Bearer token.
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNERS)) return .register_runner;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_FLEET_RUNNERS)) return .fleet_runners_list;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_SELF)) return .runner_self;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;

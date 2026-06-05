@@ -86,39 +86,6 @@ pub fn activity(
     alloc.free(res.body); // 202 expected; status ignored (best-effort, no ack).
 }
 
-/// Outcome of `register`: a created runner (caller deinits the parsed value) or
-/// a server rejection carrying the HTTP status so the CLI can map it to a
-/// precise message (403 platform-admin, 401 bad JWT, …). A transport failure
-/// surfaces as `ClientError.RequestFailed` instead.
-pub const RegisterResult = union(enum) {
-    created: std.json.Parsed(protocol.RegisterResponse),
-    rejected: u16,
-};
-
-/// POST /v1/runners with a platform-admin Clerk JWT (NOT a `zrn_`) — the
-/// operator-run register path (Option B; the daemon never calls this). Mints a
-/// `zrn_` server-side and returns it once. See docs/AUTH.md (Runner token →
-/// Provisioning).
-pub fn register(
-    self: LoopbackClient,
-    alloc: Allocator,
-    admin_jwt: []const u8,
-    req: protocol.RegisterRequest,
-) !RegisterResult {
-    const payload = std.json.Stringify.valueAlloc(alloc, req, .{}) catch return ClientError.RequestFailed;
-    defer alloc.free(payload);
-    const res = try self.post(alloc, protocol.PATH_RUNNERS, admin_jwt, payload);
-    defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return .{ .rejected = res.status };
-    // `.alloc_always`: the parsed value must own its strings (runner_id +
-    // runner_token) — `res.body` is freed above on return, and the caller reads
-    // `parsed.value` after that. Without this the strings dangle into freed
-    // memory (use-after-free), since the minted token needs no unescaping.
-    const parsed = std.json.parseFromSlice(protocol.RegisterResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
-        return ClientError.MalformedResponse;
-    return .{ .created = parsed };
-}
-
 /// Outcome of a renewal attempt the caller can act on without re-parsing.
 pub const RenewResult = union(enum) {
     /// 2xx — the authoritative new kill deadline (epoch ms). Retarget the child.

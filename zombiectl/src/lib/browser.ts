@@ -19,6 +19,11 @@ export type BrowserResolution = BrowserResolutionOk | BrowserResolutionBlocked;
 export interface OpenUrlOptions {
   env?: NodeJS.ProcessEnv | undefined;
   platform?: NodeJS.Platform | undefined;
+  // Injectable spawner. Defaults to node:child_process spawn; tests pass a
+  // stub so the spawn path is exercised WITHOUT shelling out to the OS opener
+  // (`open <url>` on macOS launches a real browser tab otherwise). Mirrors the
+  // env/platform injection above and the fetchImpl/sleepImpl seams elsewhere.
+  spawnImpl?: typeof spawn | undefined;
 }
 
 function browserDisabled(env: NodeJS.ProcessEnv): boolean {
@@ -112,7 +117,8 @@ export async function openUrl(url: string, opts: OpenUrlOptions = {}): Promise<b
       resolve(false);
       return;
     }
-    const child = spawn(head, argv.slice(1), {
+    const doSpawn = opts.spawnImpl ?? spawn;
+    const child = doSpawn(head, argv.slice(1), {
       detached: true,
       stdio: "ignore",
       windowsVerbatimArguments: resolved.quoteUrl === true,

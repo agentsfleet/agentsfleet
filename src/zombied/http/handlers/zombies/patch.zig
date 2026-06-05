@@ -319,4 +319,3 @@ fn mapPgErr(conn: *pg.Conn, err: anyerror) anyerror!TxnOutcome {
     }
     return err;
 }
-

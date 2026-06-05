@@ -8,7 +8,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
 
-
 pub const GateBehavior = enum { approve, auto_kill };
 
 pub const GateRule = struct {
