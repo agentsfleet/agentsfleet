@@ -20,6 +20,7 @@ const common = @import("common");
 const clock = common.clock;
 
 const child_process = @import("child_process.zig");
+const child_supervisor = @import("child_supervisor.zig");
 const cgroup = @import("engine/cgroup.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
@@ -77,44 +78,73 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=/home/zombie-runner") != null);
 }
 
-test "killChild reaps a forking child's whole process-group tree" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
-    const io = common.globalIo();
-
-    // sh backgrounds two long sleeps (grandchildren that inherit the stdout
-    // pipe), prints `ready` so the test knows they are running, then waits.
-    // pgid=0 makes sh its own process-group leader — killChild's kill(-pgid)
-    // target.
+/// Spawn `sh -c <script>` as its own process-group leader (pgid=0) with a piped
+/// stdout, blocking until it prints `ready` — the script must `echo ready` once
+/// its backgrounded sleeps are running and holding that pipe. Returns the Child.
+fn spawnReadyGroup(io: std.Io, script: []const u8) !std.process.Child {
     var child = try std.process.spawn(io, .{
-        .argv = &.{ SH, "-c", "sleep 60 & sleep 60 & echo ready; wait" },
+        .argv = &.{ SH, "-c", script },
         .stdin = .ignore,
         .stdout = .pipe,
         .stderr = .ignore,
         .pgid = 0,
     });
-    const fd = child.stdout.?.handle;
-
-    // Wait for `ready` — the sleeps are now backgrounded and holding the pipe.
-    try std.testing.expectEqual(
-        pipe_proto.ReadyState.readable,
-        try pipe_proto.waitReadable(fd, clock.nowMillis() + WAIT_BUDGET_MS),
-    );
+    errdefer if (child.wait(io)) |_| {} else |_| {};
+    if ((try pipe_proto.waitReadable(child.stdout.?.handle, clock.nowMillis() + WAIT_BUDGET_MS)) != .readable)
+        return error.ChildNeverReady;
     var rb: [16]u8 = undefined;
-    _ = try std.posix.read(fd, &rb);
+    _ = try std.posix.read(child.stdout.?.handle, &rb);
+    return child;
+}
+
+/// Assert the child's stdout pipe reaches EOF within the budget — the sleeps
+/// held it open, so EOF ⟺ every descendant was reaped. A survivor keeps the
+/// write end open and the wait times out.
+fn expectReapedViaEof(fd: std.posix.fd_t) !void {
+    switch (try pipe_proto.waitReadable(fd, clock.nowMillis() + WAIT_BUDGET_MS)) {
+        .readable => {
+            var rb: [16]u8 = undefined;
+            try std.testing.expectEqual(@as(usize, 0), try std.posix.read(fd, &rb));
+        },
+        .timed_out => return error.DescendantsSurvivedKill,
+    }
+}
+
+test "killChild reaps a forking child's whole process-group tree" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = common.globalIo();
+
+    // sh backgrounds two sleeps (grandchildren holding the stdout pipe).
+    var child = try spawnReadyGroup(io, "sleep 60 & sleep 60 & echo ready; wait");
 
     // Kill the whole group (scope=null → the pure pgroup-signal path).
     var scope: ?cgroup.CgroupScope = null;
     child_process.killChild(child.id.?, &scope);
+    try expectReapedViaEof(child.stdout.?.handle); // EOF ⟺ both sleeps reaped
+    _ = child.wait(io) catch {};
+}
 
-    // EOF on the pipe ⟺ every descendant that held it is dead. If the group kill
-    // missed the grandchildren, they keep the write end open for 60s and the
-    // wait times out — proving a leak rather than a reap.
-    switch (try pipe_proto.waitReadable(fd, clock.nowMillis() + WAIT_BUDGET_MS)) {
-        .readable => {
-            const n = try std.posix.read(fd, &rb);
-            try std.testing.expectEqual(@as(usize, 0), n); // EOF — tree reaped
-        },
-        .timed_out => return error.DescendantsSurvivedGroupKill,
-    }
+test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollment failure" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = common.globalIo();
+
+    var child = try spawnReadyGroup(io, "sleep 60 & echo ready; wait");
+
+    // A scope whose cgroup dir does not exist → addProcess (open cgroup.procs)
+    // fails deterministically — the exact enrollment failure the fail-closed
+    // path guards, with no root or real cgroup needed.
+    var scope: ?cgroup.CgroupScope = .{
+        .path = "/sys/fs/cgroup/zombie-runner-no-such-scope/exec-enrolltest",
+        .alloc = std.testing.allocator,
+        .io = io,
+    };
+
+    // Fix A: the lease is refused (error) AND the child is killed — routed
+    // through the Fix-B killChild, since scope.kill no-ops on the missing cgroup.
+    try std.testing.expectError(
+        error.CgroupEnrollFailed,
+        child_supervisor.enrollOrFail(&scope, child.id.?, "enroll-test-lease"),
+    );
+    try expectReapedViaEof(child.stdout.?.handle); // not a silently-empty kill domain
     _ = child.wait(io) catch {};
 }

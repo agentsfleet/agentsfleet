@@ -218,7 +218,7 @@ pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?
 /// with an empty exec-cgroup, so refuse the lease: kill it (via `killChild`,
 /// which also signals the pgroup — `scope.kill` alone no-ops on the empty
 /// cgroup) and surface the error. Null scope (`dev_none`) has nothing to enroll.
-fn enrollOrFail(scope: *?cgroup.CgroupScope, child_id: std.posix.pid_t, lease_id: []const u8) error{CgroupEnrollFailed}!void {
+pub fn enrollOrFail(scope: *?cgroup.CgroupScope, child_id: std.posix.pid_t, lease_id: []const u8) error{CgroupEnrollFailed}!void {
     const s = if (scope.*) |*sc| sc else return;
     s.addProcess(child_id) catch |err| {
         log.err("cgroup_enroll_failed_fail_closed", .{
