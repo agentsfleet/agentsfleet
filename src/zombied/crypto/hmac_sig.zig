@@ -43,13 +43,20 @@ pub fn encodeMacHex(buf: []u8, prefix: []const u8, mac: [MAC_LEN]u8) []const u8 
     return buf[0 .. prefix.len + hex.len];
 }
 
-/// Freshness check over unix-seconds timestamp strings. Accepts values in
-/// `[now - max_drift, now + max_drift]`; rejects pre-signed requests.
-pub fn isTimestampFresh(timestamp: []const u8, max_drift: i64) bool {
+/// Pure freshness decision against an explicit `now` (unix seconds); accepts
+/// `[now - max_drift, now + max_drift]`, rejects pre-signed requests. `now` is
+/// caller-injectable so boundary tests don't race two live-clock reads (fatal
+/// at an exact ±max_drift edge, routine under valgrind). Mirrors the svix seam.
+pub fn isTimestampFreshAt(timestamp: []const u8, now: i64, max_drift: i64) bool {
     const ts = std.fmt.parseInt(i64, timestamp, 10) catch return false;
     if (ts <= 0) return false;
-    const now = clock.nowSeconds();
     if (ts > now + max_drift) return false;
     if (now > ts and now - ts > max_drift) return false;
     return true;
+}
+
+/// Freshness check over unix-seconds timestamp strings against the live wall
+/// clock. Production entry point; defers the decision to `isTimestampFreshAt`.
+pub fn isTimestampFresh(timestamp: []const u8, max_drift: i64) bool {
+    return isTimestampFreshAt(timestamp, clock.nowSeconds(), max_drift);
 }
