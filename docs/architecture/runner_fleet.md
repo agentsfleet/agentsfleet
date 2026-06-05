@@ -318,6 +318,19 @@ A runner reports its isolation strength at registration. Assignment (and later t
 
 On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
 
+> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (filesystem / syscall / process) — it is **orthogonal** to network egress. `landlock_full` does not constrain which hosts the child reaches (Landlock governs the filesystem; its recent network support is TCP *port* binding/connect only, not host allowlisting). `container_nested` gives a ready net-namespace boundary that the egress model can build on, but still needs the allowlist. So none of the tiers substitutes for the egress model below.
+
+## Egress model — outbound is the only network surface
+
+The runner box is **outbound-only**: it runs no inbound listener (the daemon dials the control plane via an outbound `std.http.Client`; see §Datastore role model), and holds no co-located datastore. So the network threat is entirely **outbound secret exfiltration** — the sandboxed agent legitimately holds the lease's inference `api_key` and tool secrets (e.g. a GitHub token), and the agent's *only* required egress is its inference endpoint (or a gateway) plus operator-declared `allow_hosts` for tools.
+
+Two network policies:
+
+- **`deny_all` (default)** — empty net namespace (`--unshare-all`); the child reaches nothing. Correct for non-network agents.
+- **network-enabled** — the child keeps its **own** net namespace whose only next hop is a **default-deny DNS-pinning egress proxy** that allows the configured inference endpoint/gateway + the operator's declared `allow_hosts`, and drops everything else (arbitrary exfil targets, raw IPs, link-local, private ranges). The operator's declared allowlist becomes a real boundary, not a log line.
+
+**Durable memory rides the trusted plane, never the agent.** The runner is built `base,sqlite` (no Postgres engine), so the sandboxed child holds no datastore credential and opens no DB socket; per-run agent memory is captured through the control plane's authenticated channel and written to `memory.memory_entries` server-side. The untrusted child never connects to Postgres.
+
 ## Scaling
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
