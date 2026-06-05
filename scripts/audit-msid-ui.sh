@@ -1,1 +1,0 @@
-../../dotfiles/scripts/audit-msid-ui.sh
