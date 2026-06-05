@@ -4,7 +4,8 @@
 # vars the runner daemon requires (see deploy/baremetal/zombie-runner.service):
 #   ZOMBIE_API_URL       — control-plane base URL (literal for dev)
 #   ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (Option B; vault: runner-token)
-#   RUNNER_HOST_ID       — stable machine identifier (vault: hostname)
+#   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
+#                          (vault: tailscale-hostname = zombie-…-worker-ant)
 #
 # Pre-Option-B, the daemon self-registered with a zmb_t_ API key and minted
 # its own zrn_. Post-Option-B (commit c1ac7343), the platform admin pre-mints
@@ -80,7 +81,6 @@ echo "-- checking vault refs in: $vault_dev"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/deploy-user"
-require_ref "op://$vault_dev/zombie-dev-worker-ant/hostname"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/runner-token"
 
 if [ "$missing" -gt 0 ]; then
@@ -95,7 +95,12 @@ fi
 ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key")"
 ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname")"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user")"
-host_id="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/hostname")"
+# RUNNER_HOST_ID must equal the fleet host_id the admin minted (POST /v1/runners):
+# the tailscale hostname (zombie-…-worker-ant). Reuse ssh_host rather than the
+# provider-DNS `hostname` field — the daemon's copy is local-only (host_id never
+# crosses the wire; the heartbeat is identified by the token), but matching keeps
+# the host's logs and the dashboard fleet list naming the runner the same way.
+host_id="$ssh_host"
 runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner-token")"
 
 # Fail loud on a stale pre-Option-B token so a wrong shape is caught here, not
