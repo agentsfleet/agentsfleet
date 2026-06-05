@@ -10,6 +10,7 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 const wv = @import("webhook_verify.zig");
 const verifySignature = wv.verifySignature;
 const isTimestampFresh = wv.isTimestampFresh;
+const isTimestampFreshAt = wv.isTimestampFreshAt;
 const detectProvider = wv.detectProvider;
 const NoHeaders = wv.NoHeaders;
 const SLACK = wv.SLACK;
@@ -144,32 +145,24 @@ test "isTimestampFresh: small forward clock skew accepted (within max_drift)" {
     try std.testing.expect(isTimestampFresh(s, 300));
 }
 
+// Exact-edge cases assert against an injected `now` (isTimestampFreshAt) so they
+// pin the ±max_drift boundary without racing two live-clock reads: the test reads
+// the clock, then isTimestampFresh reads it again, and a second tick between them
+// shifts the edge — fatal at an exact boundary and routine under valgrind.
 test "isTimestampFresh: at exactly max_drift seconds old is accepted" {
-    var buf: [20]u8 = undefined;
-    const at_boundary = clock.nowSeconds() - 300;
-    const s = std.fmt.bufPrint(&buf, "{d}", .{at_boundary}) catch unreachable;
-    try std.testing.expect(isTimestampFresh(s, 300));
+    try std.testing.expect(isTimestampFreshAt("1699999700", 1700000000, 300));
 }
 
 test "isTimestampFresh: at max_drift + 1 seconds old is rejected" {
-    var buf: [20]u8 = undefined;
-    const just_outside = clock.nowSeconds() - 301;
-    const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside}) catch unreachable;
-    try std.testing.expect(!isTimestampFresh(s, 300));
+    try std.testing.expect(!isTimestampFreshAt("1699999699", 1700000000, 300));
 }
 
 test "isTimestampFresh: at exactly max_drift seconds ahead is accepted (clock skew)" {
-    var buf: [20]u8 = undefined;
-    const at_forward_boundary = clock.nowSeconds() + 300;
-    const s = std.fmt.bufPrint(&buf, "{d}", .{at_forward_boundary}) catch unreachable;
-    try std.testing.expect(isTimestampFresh(s, 300));
+    try std.testing.expect(isTimestampFreshAt("1700000300", 1700000000, 300));
 }
 
 test "isTimestampFresh: at max_drift + 1 seconds ahead is rejected (pre-sign attack)" {
-    var buf: [20]u8 = undefined;
-    const just_outside_future = clock.nowSeconds() + 301;
-    const s = std.fmt.bufPrint(&buf, "{d}", .{just_outside_future}) catch unreachable;
-    try std.testing.expect(!isTimestampFresh(s, 300));
+    try std.testing.expect(!isTimestampFreshAt("1700000301", 1700000000, 300));
 }
 
 // constantTimeEql tests live in src/crypto/hmac_sig_test.zig (canonical source).
