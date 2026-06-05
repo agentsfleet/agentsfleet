@@ -164,7 +164,13 @@ pub const Pool = struct {
                 if (waited_ns >= self._timeout) return error.Timeout;
                 const slice_ns = @min(POOL_ACQUIRE_POLL_NS, self._timeout - waited_ns);
                 self._mutex.unlock(io);
-                Io.sleep(io, .fromNanoseconds(slice_ns), .awake) catch {};
+                Io.sleep(io, .fromNanoseconds(slice_ns), .awake) catch {
+                    // Cancellation (shutdown) aborts the acquire — re-lock to honor the
+                    // errdefer's held-mutex contract, then surface the timeout immediately
+                    // so in-flight acquirers drain on shutdown instead of polling to _timeout.
+                    self._mutex.lockUncancelable(io);
+                    return error.Timeout;
+                };
                 waited_ns += slice_ns;
                 self._mutex.lockUncancelable(io);
                 continue;

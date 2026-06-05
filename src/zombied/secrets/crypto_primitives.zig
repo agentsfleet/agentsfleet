@@ -60,13 +60,14 @@ pub fn loadKek() SecretError![KEY_LEN]u8 {
 
 /// Deterministic 32-byte test KEK (hex). Single source for every test that
 /// reaches a vault store/load path — UFS one-value home for the key literal.
-pub const TEST_KEK_HEX = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+const TEST_KEK_HEX = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 
 /// Option-C test convention: seed the process KEK the way `serve.run` does at
 /// boot, replacing the retired `setenv("ENCRYPTION_MASTER_KEY", …)` env hack
 /// (Zig 0.16's env snapshot made that mutation a no-op). The literal is valid
 /// 64-hex, so `setKekFromHex` cannot fail here.
 pub fn setTestKek() void {
+    if (!@import("builtin").is_test) @compileError("setTestKek is test-only — never call it from the production build");
     setKekFromHex(TEST_KEK_HEX) catch |e| std.debug.panic("setTestKek: TEST_KEK_HEX must be valid 64-hex: {}", .{e});
 }
 

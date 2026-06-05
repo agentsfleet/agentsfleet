@@ -29,6 +29,9 @@ wait is bounded by the per-acquire `_timeout` and returns `error.Timeout` instea
 blocking forever when a connection is leaked or a query wedges. `release()` still signals
 `_cond` (inert while polling), so a real timed wait can be restored verbatim once an `Io`
 exposes one. This restores graceful wait-under-load **and** the acquire deadline.
+On `Io.sleep` cancellation (server shutdown) the branch re-locks and returns
+`error.Timeout` immediately, so in-flight acquirers drain at once instead of
+polling out the full `_timeout` — matching the redis pool's `waitForActiveSlot`.
 
 **Trade-off.** Wakeup latency is up to one poll slice (~2 ms) rather than immediate on
 `release()`, and the summed-slice clock slightly over-counts (it ignores time spent
