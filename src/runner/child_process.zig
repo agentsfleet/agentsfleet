@@ -74,11 +74,12 @@ fn requireAbsoluteArgv0(argv: []const []const u8) error{SandboxArgvNotAbsolute}!
 pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.process.Environ.Map) !std.process.Environ.Map {
     var env: std.process.Environ.Map = .init(alloc);
     errdefer env.deinit();
-    for (sandbox.ENV_PASSTHROUGH_ALLOWLIST) |name| {
+    inline for (sandbox.ENV_PASSTHROUGH_ALLOWLIST) |name| {
         // Defense-in-depth: the deny-prefix must never be allowlisted, so a
         // daemon secret can never reach the child no matter how the allowlist is
-        // edited. Debug-only; the child environ is built solely from these names.
-        std.debug.assert(!std.mem.startsWith(u8, name, sandbox.ENV_DENY_PREFIX));
+        // edited. Comptime — validated at every build, release included, at zero
+        // runtime cost; an offending allowlist edit fails compilation, not Debug.
+        comptime std.debug.assert(!std.mem.startsWith(u8, name, sandbox.ENV_DENY_PREFIX));
         if (daemon_env.get(name)) |value| try env.put(name, value);
     }
     return env;
