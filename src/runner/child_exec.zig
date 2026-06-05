@@ -12,6 +12,7 @@
 //! (a path, not a secret).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const logging = @import("log");
 const contract = @import("contract");
 
@@ -50,13 +51,21 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     };
 
     // FAIL-CLOSED (Invariant 7): on a sandboxed tier the mandatory in-child
-    // Landlock policy MUST apply before we read the lease or run the agent — a
-    // sandbox we cannot establish aborts, never running tool execution
-    // unsandboxed.
-    if (hasFlag(argv, SANDBOXED_FLAG)) landlock.applyPolicy(workspace) catch |err| {
-        log.err("landlock_failed_fail_closed", .{ .err = @errorName(err) });
-        return SANDBOX_FAIL_EXIT;
-    };
+    // hardening MUST apply before we read the lease or run the agent — a sandbox
+    // we cannot establish aborts, never running tool execution unsandboxed.
+    // no_new_privs is set BEFORE Landlock: it defangs setuid binaries in the RO
+    // mounts and is the precondition landlock_restrict_self will rely on once a
+    // later cap-drop removes the userns CAP_SYS_ADMIN it rides today.
+    if (hasFlag(argv, SANDBOXED_FLAG)) {
+        applyNoNewPrivs() catch |err| {
+            log.err("no_new_privs_failed_fail_closed", .{ .err = @errorName(err) });
+            return SANDBOX_FAIL_EXIT;
+        };
+        landlock.applyPolicy(workspace) catch |err| {
+            log.err("landlock_failed_fail_closed", .{ .err = @errorName(err) });
+            return SANDBOX_FAIL_EXIT;
+        };
+    }
 
     const lease_json = readStdin(alloc) catch |err| {
         log.err("lease_read_failed", .{ .err = @errorName(err) });
@@ -129,6 +138,20 @@ fn hasFlag(argv: []const [:0]const u8, name: []const u8) bool {
         if (std.mem.eql(u8, arg, name)) return true;
     }
     return false;
+}
+
+/// Set `PR_SET_NO_NEW_PRIVS`: after this, no exec in this child or any
+/// descendant can gain privilege via a setuid/setgid binary — the setuid helpers
+/// in the RO-bound /usr,/bin,/sbin become inert. It is additive (does NOT remove
+/// the userns CAP_SYS_ADMIN that Landlock rides today, so Landlock keeps working)
+/// and must run BEFORE landlock_restrict_self. Linux-only: the `--sandboxed` flag
+/// is set only on Linux tiers (the parent's establishSandbox fail-closes any
+/// other host), so the non-Linux branch is just compile-portability.
+fn applyNoNewPrivs() error{NoNewPrivsFailed}!void {
+    if (builtin.os.tag != .linux) return;
+    // prctl(PR_SET_NO_NEW_PRIVS=38, 1=set, 0,0,0) → 0 on success.
+    if (std.os.linux.prctl(@intFromEnum(std.os.linux.PR.SET_NO_NEW_PRIVS), 1, 0, 0, 0) != 0)
+        return error.NoNewPrivsFailed;
 }
 
 /// Engine-call args resolved from the lease. `deinit` releases the two JSON

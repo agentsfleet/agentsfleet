@@ -363,6 +363,19 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
   3. **Inherited stderr (fd 2)** — the child's fd 2 is the daemon's real stderr (`.stderr = .inherit`); in-child engine logs interleave into the operator stream. Low severity (log noise / weak per-lease attribution), not a secret capability. Out of strict scope; note only.
   4. **Unbounded activity-frame flood on fd 1** — the child controls the frame protocol on its own stdout; `readResult` caps total result bytes (`MAX_RESULT_BYTES`) but not activity-frame count/rate. Frame-protocol hardening, out of strict M84 scope; note for a follow-up.
 - **PLAN decisions to bank** — the final env passthrough allowlist (verified enumeration); confirm §2 stays proof-only after the PLAN fd-audit; confirm no `NULLCLAW_*` is daemon-static-via-env and relied upon. **`RUNNER_NETWORK_POLICY` is a PARENT-only read (`config.zig:70`) and must NOT be in the child allowlist.** Verify the Zig 0.16 `prctl` enum coercion (`@intFromEnum`), the `SpawnOptions.progress_node` field name, and `bwrap --cap-drop` support before authoring those lines.
+
+- **PLAN handshake — completed (Jun 05, 2026, Orly, code-grounded against the worktree + the fetched NullClaw `v2026.5.29` source):**
+  - **Intent restated:** an untrusted sandboxed child never inherits the daemon's `ZOMBIE_RUNNER_TOKEN` (or any daemon-only var), holds `NoNewPrivs:1`, has no controlling terminal, cannot influence `argv[0]` resolution, and its whole process tree is reaped on revocation/timeout even when cgroup enrollment fails.
+  - **Env-read enumeration (verified, not illustrative).** The runner threads ONE `std.process.Environ.Map` built in `main` from the real process environ (`init.minimal.environ`); NullClaw reads the *same* environ via `compat/shared.zig` `process_environ` ← `init.environ`. So filtering at the `spawn` boundary (parent → child via `SpawnOptions.environ_map`) is authoritative for BOTH our `env_map.get` reads AND NullClaw's `getEnvVarOwned`/`std.c.getenv`. Child-path reads found:
+    - `HOME` — **load-bearing** (NullClaw `platform.zig:54` → `error.HomeDirNotFound`).
+    - `PATH` — **load-bearing** for tool/exec resolution (NullClaw `runtime.zig:530` wasmtime, `codex_support.zig:306`).
+    - `NULLCLAW_OBSERVER` — optional observer-backend selector, read in the child path (`runner_observer.zig:26`); safe default (`log_backend`).
+    - `SSL_CERT_FILE` / `SSL_CERT_DIR`, `LANG` / `LC_ALL` — **pass-through-if-set** (non-secret paths/locale; the filter only forwards a var the daemon actually has set, so absence is harmless and the RO `/etc` bind still supplies the default trust store).
+  - **Locked allowlist:** `{ HOME, PATH, NULLCLAW_OBSERVER, SSL_CERT_FILE, SSL_CERT_DIR, LANG, LC_ALL }`. **Excluded deliberately:** all `ZOMBIE_*` (control-plane creds — the leak) and all `RUNNER_*` (daemon-only: `RUNNER_HOST_ID`/`RUNNER_SANDBOX_TIER`/`RUNNER_WORKSPACE_BASE`, and `RUNNER_NETWORK_POLICY` which is parent-only `config.zig:70`); `NULLCLAW_PROVIDER`/`NULLCLAW_MODEL`/`NULLCLAW_*` config (provider/model/api_key arrive on the lease `agent_config`, never env — `child_exec.zig:155-174`, `runner.zig:136-138`); `TMPDIR` (sandbox provides `--tmpfs /tmp`; a daemon `TMPDIR` could point outside the mount); HTTP(S)/NO_PROXY (`http_util.zig` `buildProxyEnvMapFromProcess` — proxy URLs can embed creds; egress-via-proxy is M84_004's deliberate concern). Deny-prefix asserted absent regardless: `ZOMBIE_`.
+  - **Plumbing decision (routine choice point):** thread `env_map: *const std.process.Environ.Map` explicitly from `runLoop` → `pollAndProcess` → `processLease` → `child_supervisor.run`/`supervise` → `child_process.forkExec`, then filter via `sandbox.ENV_PASSTHROUGH_ALLOWLIST` in `forkExec`. Rejected stashing the environ on `Config`: it violates Config's documented "datastore-free string-slices / hot path never touches env" contract and couples the struct to a process-lifetime borrowed pointer. Explicit threading matches the existing env-threading pattern (main→config, main→dispatchCli→registry→child_exec).
+  - **Zig 0.16 API verified:** `SpawnOptions.environ_map: ?*const Environ.Map` (`std/process.zig:368`); `Environ.Map.init/put/get/deinit`; `spawn` consumes `environ_map` during the call (the filtered map is `defer`-freed after `spawn` returns — the `Child` does not retain it); `prctl(option: i32, arg2..5: usize) usize`, `PR.SET_NO_NEW_PRIVS = 38` (`enum(i32)` → `@intFromEnum`, success == 0); `std.fs.path.isAbsolute([]const u8) bool`. `progress_node` is defaulted (`.none`) — not set. `bwrap --cap-drop` not authored here (re-homed to M84_006).
+  - **§1.5 placement:** `applyNoNewPrivs()` runs in `child_exec.run`'s sandboxed fail-closed block BEFORE `landlock.applyPolicy` (which calls `landlock_restrict_self` at `landlock.zig:154`) — satisfies the NNP-before-restrict_self ordering; guarded `builtin.os.tag == .linux` for cross-compile (the sandboxed flag is Linux-only by `establishSandbox` fail-close).
+  - **§4 LENGTH:** `supervise` is `child_supervisor.zig:117-189` (73 lines, at the fn cap) and the file is 326/350. Fix A extracts an `enrollOrFail` helper so the fail-closed branch lands OUTSIDE `supervise` (net-neutral/▼ on the fn). Fix B rewrites `killChild` shorter (drops the early `return`; cgroup-kill then ALWAYS `kill(-pgid)`), and `enrollOrFail`'s fail-closed kill routes through the Fix-B-corrected `killChild` so it does not hit the empty-`scope.kill()` no-op.
 - **Consults** — {Architecture / Legacy-Design / gate-flag triage: question + Indy's decision, as they arise.}
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
 - **Deferrals** — every "deferred to follow-up" needs an Indy-acked verbatim quote here (seatbelt above is acked; the stderr + frame-flood items are *noted, not deferred-from-scope* — they were never in scope).
@@ -375,16 +388,29 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 | After tests pass, before CHORE(close) | `/review` | Adversarial diff review vs `docs/AUTH.md`, `dispatch/write_zig.md`, Failure Modes, Invariants (esp. deny-prefix completeness, the allowlist enumeration, the both-fix kill domain). | Clean OR every finding dispositioned. |
 | After `gh pr create` | `/review-pr` | Review-comments the open PR against the immutable diff. | Comments addressed before human review/merge. |
 
+## Implementation Status (checkpoint — Jun 05, 2026)
+
+**Landed (production code + unit/golden coverage):**
+- **§1 env isolation** — `forkExec` filters the daemon environ to `ENV_PASSTHROUGH_ALLOWLIST` via `environ_map` (`buildChildEnviron`); `env_map` threaded `runLoop`→`forkExec`. Dims 1.1/1.2 unit-tested (`child_process.zig`).
+- **§1.5 no_new_privs** — `applyNoNewPrivs` in `child_exec.run`'s sandboxed block before `landlock.applyPolicy` (Linux-guarded). Code landed; runtime proof (Dim 1.5) is on the integration lane.
+- **§1.6 --new-session** — emitted in `appendBwrap`; Dims 1.6/1.7 golden-argv tested (`sandbox_args_edge_test.zig`, Linux-gated).
+- **§3 argv[0] guard** — `requireAbsoluteArgv0` before spawn; Dim 3.1 unit-tested.
+- **§4 kill-domain** — Fix B (`killChild` always also `kill(-pgid)`) + Fix A (`enrollOrFail` fail-closed enrollment, routed through the Fix-B `killChild`). Code landed; runtime proofs (Dims 4.1/4.2) on the integration lane.
+
+**Pending (next commit — shares `build_runner.zig` + `make/test-integration.mk` with M84_005; second to land rebases):**
+- The `test-integration-runner` lane (Linux-only fork tests: planted-token 1.3, NoNewPrivs 1.5, no-tty 1.6b, kill-tree 4.1, enrollment-fail 4.2) + `build_runner.zig` `test-integration` step + the make lane + the TEST-graph cross-compile proof.
+- `docs/AUTH.md` note; CHORE(close) (spec→done/, changelog).
+
 ## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Runner unit | `make test-unit-zigrunner` | {paste snippet} | |
-| App suite (regression) | `make test` | {paste snippet} | |
-| Runner integration (token + caps + NNP + fd + kill-tree + net/fs) | `make test-integration-runner` | {paste snippet} | |
-| Lint | `make lint` | {paste snippet} | |
-| Cross-compile (prod + TEST graph) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && zig build --build-file build_runner.zig test-integration -Dtarget=x86_64-linux` | {paste snippet} | |
-| Gitleaks | `gitleaks detect` | {paste snippet} | |
+| Runner unit | `make test-unit-zigrunner` | 233 pass, 6 skip (239 total); +3 pass (env filter / deny-prefix / argv guard) +2 Linux-gated skips (new-session goldens) over baseline | ✅ |
+| Lint | `make lint-zig` | fmt + ZLint (0 errors/0 warnings, 396 files) + pg-drain + test-depth + line-limit (`child_supervisor.zig` 348/350) + role/legacy guards | ✅ |
+| Cross-compile (prod, both targets) | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | both exit 0 — compile-checks the Linux `prctl`/`environ_map`/`killChild`/`enrollOrFail` paths | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found (2403 commits scanned) | ✅ |
+| Runner integration (token + NNP + kill-tree) | `make test-integration-runner` | {pending — lane not yet wired} | ⏳ |
+| App suite (regression) | `make test` | {pending — run at CHORE(close)} | ⏳ |
 
 ---
 

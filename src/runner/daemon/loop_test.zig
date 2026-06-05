@@ -13,6 +13,9 @@ const loop = @import("loop.zig");
 
 const protocol = contract.protocol;
 
+/// Scratch buffer for reading the stub control plane's one request line.
+const HEARTBEAT_REQ_BUF_BYTES: usize = 1024;
+
 // Records the first request line a one-shot loopback control plane observes, so
 // the boot test can prove the daemon's first contact is a heartbeat (lease-loop
 // entry), never a register call.
@@ -42,7 +45,7 @@ fn serveOneStopHeartbeat(listener: *std.Io.net.Server, io: std.Io, probe: *BootP
     const conn = listener.accept(io) catch return;
     defer conn.close(io);
 
-    var buf: [1024]u8 = undefined;
+    var buf: [HEARTBEAT_REQ_BUF_BYTES]u8 = undefined;
     var total: usize = 0;
     while (total < buf.len) {
         // SO_RCVTIMEO not set here; raw posix.read mirrors the prior one-recv loop.
@@ -133,7 +136,11 @@ test "runner boots from a zrn_ token straight into the lease loop with no regist
     };
     defer cfg.deinit();
 
-    loop.runLoop(io, alloc, cfg); // returns on the `stop` heartbeat (or on drain if the watchdog fires)
+    // dev_none never forks a child, so the env block is unused here — an empty
+    // map satisfies the threaded `runLoop` signature.
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+    loop.runLoop(io, alloc, cfg, &env_map); // returns on the `stop` heartbeat (or on drain if the watchdog fires)
     wd.done.store(true, .seq_cst);
     server_thread.join();
     wd_thread.join();

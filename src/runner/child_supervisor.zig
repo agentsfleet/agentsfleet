@@ -93,6 +93,7 @@ pub fn run(
     io: std.Io,
     alloc: std.mem.Allocator,
     cfg: Config,
+    env_map: *const std.process.Environ.Map,
     workspace_path: []const u8,
     payload: LeasePayload,
     sink: ActivitySink,
@@ -102,7 +103,7 @@ pub fn run(
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(io, alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
+    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
@@ -118,6 +119,7 @@ fn supervise(
     io: std.Io,
     alloc: std.mem.Allocator,
     cfg: Config,
+    env_map: *const std.process.Environ.Map,
     workspace_path: []const u8,
     payload: LeasePayload,
     lease_json: []const u8,
@@ -140,7 +142,7 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    var child = try child_process.forkExec(io, alloc, cfg, workspace_path);
+    var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path);
     var reaped = false;
     // Zig 0.16 removed raw posix.waitpid/close; the process.Child wrapper is the
     // only portable reap/close path — `wait` blocks, reaps, and closes any still-
@@ -156,8 +158,10 @@ fn supervise(
         }
     };
 
-    if (scope) |*s| s.addProcess(child.id.?) catch |err|
-        log.warn("cgroup_add_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+    // FAIL-CLOSED: if the child cannot be enrolled in the cgroup kill
+    // domain, refuse the lease — it would otherwise run unmetered in the daemon's
+    // cgroup AND leave the exec-cgroup empty (a later scope.kill would no-op).
+    enrollOrFail(&scope, child.id.?, payload.lease_id) catch return failed(.startup_posture);
 
     // Feed the lease (incl. inline secrets) in, then EOF the child's stdin. Null
     // the File after closing so the terminal `wait` does not double-close it.
@@ -207,6 +211,24 @@ pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?
     if (std.os.linux.getrandom(&exec_id, exec_id.len, 0) != exec_id.len)
         return error.SandboxUnavailable;
     return cgroup.CgroupScope.create(io, alloc, exec_id, .{}) catch error.SandboxUnavailable;
+}
+
+/// Bind the just-forked child to the cgroup kill/limit domain — FAIL-CLOSED.
+/// On failure the child would run unmetered in the daemon's cgroup
+/// with an empty exec-cgroup, so refuse the lease: kill it (via `killChild`,
+/// which also signals the pgroup — `scope.kill` alone no-ops on the empty
+/// cgroup) and surface the error. Null scope (`dev_none`) has nothing to enroll.
+fn enrollOrFail(scope: *?cgroup.CgroupScope, child_id: std.posix.pid_t, lease_id: []const u8) error{CgroupEnrollFailed}!void {
+    const s = if (scope.*) |*sc| sc else return;
+    s.addProcess(child_id) catch |err| {
+        log.err("cgroup_enroll_failed_fail_closed", .{
+            .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
+            .lease_id = lease_id,
+            .err = @errorName(err),
+        });
+        child_process.killChild(child_id, scope);
+        return error.CgroupEnrollFailed;
+    };
 }
 
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
