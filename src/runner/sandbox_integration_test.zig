@@ -36,7 +36,7 @@ fn readToEnd(alloc: std.mem.Allocator, fd: std.posix.fd_t, cap: usize) ![]u8 {
     errdefer buf.deinit(alloc);
     var chunk: [4096]u8 = undefined;
     while (buf.items.len < cap) {
-        const n = std.posix.read(fd, &chunk) catch break;
+        const n = try std.posix.read(fd, &chunk); // surface I/O errors, not a silent truncation
         if (n == 0) break; // EOF
         try buf.appendSlice(alloc, chunk[0..n]);
     }
@@ -92,8 +92,16 @@ fn spawnReadyGroup(io: std.Io, script: []const u8) !std.process.Child {
     errdefer if (child.wait(io)) |_| {} else |_| {};
     if ((try pipe_proto.waitReadable(child.stdout.?.handle, clock.nowMillis() + WAIT_BUDGET_MS)) != .readable)
         return error.ChildNeverReady;
-    var rb: [16]u8 = undefined;
-    _ = try std.posix.read(child.stdout.?.handle, &rb);
+    // Drain the whole "ready\n" marker — POSIX read may deliver it in pieces;
+    // residual bytes would later masquerade as non-EOF in expectReapedViaEof.
+    const MARKER = "ready\n";
+    var rb: [MARKER.len]u8 = undefined;
+    var drained: usize = 0;
+    while (drained < MARKER.len) {
+        const n = try std.posix.read(child.stdout.?.handle, rb[drained..]);
+        if (n == 0) break; // unexpected EOF before the full marker
+        drained += n;
+    }
     return child;
 }
 
