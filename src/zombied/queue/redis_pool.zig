@@ -269,7 +269,9 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
         self.mutex.lock();
         if (conn.state == .poisoned) self.poisoned_connections_total += 1;
         self.active_count -= 1;
-        // Freed an active slot — wake one acquirer blocked on max_active.
+        // Freed an active slot. The `not_full.signal()` below is inert — nothing waits
+        // on `not_full` (waitForActiveSlot poll-sleeps; Zig 0.16 has no timed condvar
+        // wait). Kept for the timed-wait restore — do not prune the condvar.
         self.not_full.signal();
         self.mutex.unlock();
         conn.deinit();
@@ -281,7 +283,7 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
     if (self.idle_count >= self.max_idle) {
         self.forced_closes_total += 1;
         self.active_count -= 1;
-        self.not_full.signal();
+        self.not_full.signal(); // inert — see the active-slot note above
         self.mutex.unlock();
         conn.deinit();
         self.alloc.destroy(conn);
@@ -290,8 +292,8 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
     self.idle.prepend(&conn.node);
     self.idle_count += 1;
     self.active_count -= 1;
-    // Slot freed and an idle conn is now parked — a blocked acquirer can
-    // either reuse the idle conn or take the freed active slot.
+    // Slot freed and an idle conn is now parked. `not_full.signal()` is inert —
+    // see the active-slot note above; kept for the timed-wait restore.
     self.not_full.signal();
     self.mutex.unlock();
 }

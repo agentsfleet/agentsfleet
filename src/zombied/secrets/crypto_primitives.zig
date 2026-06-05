@@ -2,7 +2,7 @@
 //! No pg or id_format dependencies — safe to import anywhere.
 
 const std = @import("std");
-const constants = @import("common");
+const common = @import("common");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 
@@ -77,7 +77,7 @@ pub fn encrypt(
     key: *const [KEY_LEN]u8,
 ) !EncryptedBlob {
     var nonce: [NONCE_LEN]u8 = undefined;
-    try constants.secureRandomBytes(&nonce);
+    try common.secureRandomBytes(&nonce);
 
     const ciphertext = try alloc.alloc(u8, plaintext.len);
     errdefer alloc.free(ciphertext);
@@ -122,7 +122,7 @@ test "encrypt/decrypt round-trip with raw bytes" {
     const alloc = std.testing.allocator;
 
     var key: [KEY_LEN]u8 = undefined;
-    try constants.secureRandomBytes(&key);
+    try common.secureRandomBytes(&key);
 
     const plaintext = "super-secret-api-key-12345";
     const blob = try encrypt(alloc, plaintext, &key);
@@ -138,7 +138,7 @@ test "decrypt fails when tag is tampered" {
     const alloc = std.testing.allocator;
 
     var key: [KEY_LEN]u8 = undefined;
-    try constants.secureRandomBytes(&key);
+    try common.secureRandomBytes(&key);
 
     const blob = try encrypt(alloc, "hello", &key);
     defer blob.deinit(alloc);
@@ -154,7 +154,7 @@ test "decrypt fails when tag is tampered" {
 
 test "loadKek returns the KEK seeded via setKekFromHex (Option C boot-resolve)" {
     var key_bytes: [KEY_LEN]u8 = undefined;
-    try constants.secureRandomBytes(&key_bytes);
+    try common.secureRandomBytes(&key_bytes);
 
     const hex = std.fmt.bytesToHex(key_bytes, .lower);
     try setKekFromHex(&hex);
