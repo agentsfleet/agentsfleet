@@ -4,11 +4,11 @@
 **Milestone:** M84
 **Workstream:** 003
 **Date:** Jun 03, 2026 (amended Jun 05, 2026 after plan-eng-review)
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — security boundary. Closes a daemon-credential / file-descriptor exfiltration path open to an untrusted sandboxed agent, and pins the containment kill domain. No customer-facing behaviour change; gates untrusted/local-runner General Availability (GA).
 **Categories:** API
 **Batch:** B1 — runs **in parallel** with M84_005 (memory); disjoint trees (`src/runner/` here vs `src/zombied/`+contract there), two shared touchpoints to coordinate (`build_runner.zig`, `make/test-integration.mk` — second to land rebases).
-**Branch:** {feat/m84-runner-sandbox-hardening — added at CHORE(open)}
+**Branch:** feat/m84-runner-sandbox-hardening
 **Renumber note (Jun 05, 2026):** filed originally as `M84_001` — that ID is already owned by the shipped `M84_001_..._DASHBOARD_RUNNER_ENROLLMENT` (`docs/v2/done/`, PR #365), and `M84_002` by the pending fleet-operator-plane spec. Renumbered to **M84_003** at plan-eng-review to remove the collision.
 **Depends on:** **M82_001 — DONE (merged #366); `std.process.spawn` is on `main` today.** No sequencing wait and no rebase risk: this workstream edits the post-0.16 `forkExec` / `appendBwrap` that already exist. (The original "sequence after M82" framing is obsolete now that M82 has landed.)
 **Provenance:** agent-surfaced during the M82_001 `forkExec → process.spawn` Chief Technology Officer (CTO) / threat-model review (Jun 03, 2026), corroborated by an independent CTO review (ChatGPT), then **scope-reviewed by `plan-eng-review` (Jun 05, 2026)** which code-grounded every claim with a 36-agent adversarial workflow. All process-boundary findings are **pre-existing** (the manual fork-exec path had them too) and confirmed by code reading, **not** introduced by M82 — M82 is behaviour-preserving and explicitly does not touch them (M82 Discovery, "Sandbox-hardening" entry, Indy-acked).
