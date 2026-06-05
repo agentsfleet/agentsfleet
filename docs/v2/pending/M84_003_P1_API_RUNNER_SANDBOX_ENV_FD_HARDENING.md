@@ -7,7 +7,7 @@
 **Status:** PENDING
 **Priority:** P1 — security boundary. Closes a daemon-credential / file-descriptor exfiltration path open to an untrusted sandboxed agent, and pins the containment kill domain. No customer-facing behaviour change; gates untrusted/local-runner General Availability (GA).
 **Categories:** API
-**Batch:** B1 — standalone security hardening; no concurrent workstream.
+**Batch:** B1 — runs **in parallel** with M84_005 (memory); disjoint trees (`src/runner/` here vs `src/zombied/`+contract there), two shared touchpoints to coordinate (`build_runner.zig`, `make/test-integration.mk` — second to land rebases).
 **Branch:** {feat/m84-runner-sandbox-hardening — added at CHORE(open)}
 **Renumber note (Jun 05, 2026):** filed originally as `M84_001` — that ID is already owned by the shipped `M84_001_..._DASHBOARD_RUNNER_ENROLLMENT` (`docs/v2/done/`, PR #365), and `M84_002` by the pending fleet-operator-plane spec. Renumbered to **M84_003** at plan-eng-review to remove the collision.
 **Depends on:** **M82_001 — DONE (merged #366); `std.process.spawn` is on `main` today.** No sequencing wait and no rebase risk: this workstream edits the post-0.16 `forkExec` / `appendBwrap` that already exist. (The original "sequence after M82" framing is obsolete now that M82 has landed.)
@@ -26,7 +26,9 @@
 This spec ships in **two slices**:
 
 - **Launch Slice (ship now — this PR):** **§1 env isolation via filtered `environ_map`** (the live credential leak) + **§1.5 `no_new_privs`** (cheap, additive — defangs setuid; does not touch Landlock) + **§1.6 `--new-session`** (one harmless bwrap flag) + **§3 `argv[0]` absolute guard** (one-line) + **§4 kill-domain** (Fix A + Fix B — a real correctness bug: a forking agent survives revocation). Small, high-value, low-risk.
-- **Deferred Slice (behind the untrusted-runner GA trigger):** **§1.4 `--cap-drop ALL`** (the coupled, landlock-risky one — it removes the userns `CAP_SYS_ADMIN` Landlock relies on, so it needs `no_new_privs` ordered first and can break every lease if mis-wired; defer until untrusted GA when it earns its risk), **§2** (fd CLOEXEC proof — cut to a code comment + backlog; it asserts a non-bug), and **§5** (containment verification — relates to the deferred [`M84_004`](./M84_004_P1_API_RUNNER_EGRESS_ALLOWLIST.md) egress work). Keep these sections here as the unlock plan; do not build them for launch.
+- **Deferred Slice — RE-HOMED to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md) (P2, behind untrusted-runner GA):** `--cap-drop ALL`, the fd CLOEXEC proof, and the network/fs containment verification now live in **M84_006** (which depends on this spec's `no_new_privs`). **Do not implement those from this file** — the old §1.4 dimension is removed and §2/§5 below are stubs pointing to M84_006. M84_003 is now physically just the launch slice.
+
+> **Parallelism:** M84_003 (this spec) and **[`M84_005`](./M84_005_P1_API_RUNNER_MEMORY_CAPTURE.md)** (memory) can be implemented **in parallel** (separate worktrees). They touch largely disjoint trees — 003 is `src/runner/` process-boundary; 005 is `src/zombied/` + `src/lib/contract` + runner memory wiring. **Two shared touchpoints to coordinate:** `build_runner.zig` (003 adds the `test-integration-runner` step; 005 changes `.engines`) and `make/test-integration.mk` (003 creates the runner lane; 005 may register on it) — whoever lands second rebases.
 
 > **Compensating control for the deferred egress/exfil risk (Indy):** the default LLM provider keys are **$-capped** — a rogue/prompt-injected agent that exfiltrates the provider key cannot spend beyond the cap, and usezombie absorbs that cut. This bounds the **LLM-spend** exfil vector for launch, which is what buys the right to defer the egress proxy ([`M84_004`](./M84_004_P1_API_RUNNER_EGRESS_ALLOWLIST.md)). **CTO caveat:** the $-cap does **not** bound a stolen **tool secret** (e.g. a GitHub Personal Access Token) — that has non-$ blast radius — so pair the cap with **least-privilege / short-lived tool secrets** so both vectors are bounded at launch.
 
@@ -107,12 +109,12 @@ None is introduced by M82 (behaviour-preserving) — all pre-exist.
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/runner/sandbox_args.zig` | EDIT | `appendBwrap`: emit `--cap-drop ALL` (§1.4) + `--new-session` (§1.6); host the allowlist + deny-prefix constants. **No `--clearenv`/`--setenv`** — env isolation is `environ_map` (below). |
+| `src/runner/sandbox_args.zig` | EDIT | `appendBwrap`: emit `--new-session` (§1.6); host the allowlist + deny-prefix constants. **No `--clearenv`/`--setenv`** — env isolation is `environ_map` (below). (`--cap-drop ALL` re-homed to M84_006.) |
 | `src/runner/child_process.zig` (env) | EDIT | `forkExec`: build a filtered `Environ.Map` (the allowlist) and pass it to `std.process.spawn` via `environ_map` (§1.1/1.2). |
 | `src/runner/child_exec.zig` | EDIT | Set `PR_SET_NO_NEW_PRIVS` in the sandboxed fail-closed block, adjacent to `landlock.applyPolicy` (§1.5). |
 | `src/runner/child_process.zig` | EDIT | `forkExec`: assert `argv[0]` absolute before `spawn` (§3); `killChild`: **always also** `kill(-pgid)` even on cgroup-kill success (§4). |
 | `src/runner/child_supervisor.zig` | EDIT | `supervise`: **fail-closed** when `addProcess` enrollment fails — refuse the lease (kill the just-forked child, return a sandbox-establish failure) instead of warn-and-continue (§4). |
-| `src/runner/sandbox_args_edge_test.zig` (+ a runner integration aggregator `*_test.zig`) | EDIT (exists) / CREATE (aggregator) | `sandbox_args_edge_test.zig` already exists — EDIT it for unit golden-argv tests; CREATE the **Linux-only integration** aggregator (planted-token, caps=0, NoNewPrivs=1, no-tty, marker/stray fd, relative argv[0], kill-tree, enrollment-fail kill, network/fs containment) registered on the new runner integration step. |
+| `src/runner/sandbox_args_edge_test.zig` (+ a runner integration aggregator `*_test.zig`) | EDIT (exists) / CREATE (aggregator) | `sandbox_args_edge_test.zig` already exists — EDIT it for unit golden-argv tests; CREATE the **Linux-only integration** aggregator (planted-token, NoNewPrivs=1, no-tty, relative argv[0], kill-tree, enrollment-fail kill) registered on the new runner integration step. (caps=0, marker/stray fd, network/fs containment → M84_006.) |
 | `build_runner.zig` | EDIT | Add a `test-integration` step (separate from the `test` unit step), rooted at the runner integration aggregator. |
 | `make/test-integration.mk` | EDIT | Add the `test-integration-runner` lane (drives `zig build --build-file build_runner.zig test-integration`); distinct from the app `test-integration` (Docker/Postgres/Redis). |
 | `docs/AUTH.md` | EDIT (small) | Note the runner token is `environ_map`-isolated (filtered allowlist) from the sandboxed child. |
@@ -138,24 +140,14 @@ None is introduced by M82 (behaviour-preserving) — all pre-exist.
 - **Dimension 1.1** — `forkExec` passes a filtered `environ_map` (the allowlist) to `std.process.spawn`; the child's environ contains only allowlisted vars → Test `test_child_env_filtered_to_allowlist`
 - **Dimension 1.2** — the filtered map contains only the **verified allowlist**; the daemon deny-prefix (`ZOMBIE_*`) is never in the child's environ regardless of allowlist contents → Test `test_child_env_omits_daemon_secrets`. **The allowlist is derived at PLAN from a verified enumeration of every in-child env read** (engine config **and** tool subprocesses), not the illustrative list. *Known reads (Jun 05 sweep):* `HOME` (**load-bearing** — NullClaw config-dir → `error.HomeDirNotFound`); `NULLCLAW_OBSERVER` (`runner_observer.zig:26`, optional — safe default); the `NULLCLAW_*` config set (`config.zig applyEnvOverrides`, optional-with-defaults; provider/model come via the lease `agent_config` (`child_exec.zig:155-174`), not env). **No engine read of `PATH`/`TMPDIR`** was found, but tool subprocesses (`git`/`gh`) need `PATH` and Transport Layer Security needs the Certificate Authority bundle (RO `/etc` bind covers `/etc/ssl/certs`; some distros use `SSL_CERT_FILE`) — PLAN must confirm the tool-subprocess env, not just engine config reads. No in-child code reads `ZOMBIE_*` (deny-prefix is safe).
 - **Dimension 1.3** — a token planted in the daemon environment does not reach the child's environment, proven via **both** the child's `/proc/self/environ` **and** a `getenv(ZOMBIE_RUNNER_TOKEN)` call inside `__execute` (the agent's real read path) → Test `test_planted_token_absent_from_child_env`
-- **Dimension 1.4 (NEW)** — `appendBwrap` emits `--cap-drop ALL`, so the child holds no capabilities even inside its own user namespace → Test `test_bwrap_argv_cap_drop_all` (golden argv) + `test_child_has_no_caps` (child reads `/proc/self/status` → `CapEff: 0000000000000000`). **Coupled to Dim 1.5:** dropping caps removes the userns `CAP_SYS_ADMIN` that `landlock_restrict_self` relies on today, so **1.5 (NNP) must land first** or Landlock fails closed. `--cap-drop` is bwrap-version-gated (~0.4.0+); a build whose bwrap lacks it errors out → lease fails closed (Failure Modes). PLAN must `bwrap --cap-drop` live-probe on the Linux lane.
-- **Dimension 1.5 (NEW)** — `child_exec` sets `PR_SET_NO_NEW_PRIVS` (prctl 38) in the sandboxed fail-closed block **before** `landlock.applyPolicy`, making the guarantee structural rather than bwrap-version-dependent AND restoring `landlock_restrict_self`'s precondition once Dim 1.4 drops `CAP_SYS_ADMIN`; setuid binaries in the RO mounts are permanently defanged → Test `test_child_no_new_privs` (child reads `/proc/self/status` → `NoNewPrivs: 1`). *NNP also disables any in-sandbox tool that needs a setuid helper (`ping`/`sudo`) — acceptable by design (agents get no escalation); PLAN enumerates whether any engine-invoked tool relies on one.*
+- *(cap-drop ALL re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md) §1 — depends on Dim 1.5 below shipping first.)*
+- **Dimension 1.5 (NEW)** — `child_exec` sets `PR_SET_NO_NEW_PRIVS` (prctl 38) in the sandboxed fail-closed block **before** `landlock.applyPolicy`. It is **additive and safe to ship alone** (it does not remove the userns `CAP_SYS_ADMIN` Landlock currently uses, so Landlock keeps working); it permanently defangs setuid binaries in the RO mounts AND pre-establishes `landlock_restrict_self`'s precondition for when M84_006's `--cap-drop ALL` later removes `CAP_SYS_ADMIN`. → Test `test_child_no_new_privs` (child reads `/proc/self/status` → `NoNewPrivs: 1`). *NNP also disables any in-sandbox tool that needs a setuid helper (`ping`/`sudo`) — acceptable by design; PLAN enumerates whether any engine-invoked tool relies on one.*
 - **Dimension 1.6 (NEW)** — `appendBwrap` emits `--new-session`, detaching the controlling terminal (closes the TIOCSTI terminal-input-injection vector if a tty is ever attached) → Test `test_bwrap_argv_new_session` (golden argv) + `test_child_no_controlling_tty` (child run from a pty-allocated parent cannot `ioctl(TIOCSTI)` into the parent's terminal)
-- **Dimension 1.7 (tier coverage, F6)** — the `environ_map` filter is applied in `forkExec` for **every** sandboxed tier (it is not bwrap-gated, so it cannot be skipped per-tier); the `--cap-drop ALL`/`--new-session` bwrap flags must likewise be emitted on every sandboxed tier including `registry_allowlist` (a tier that skipped them under the open-net policy would weaken containment — see §5.1). → asserted under both `deny_all` and `registry_allowlist` (env filter via the child-env test; flags via golden argv)
+- **Dimension 1.7 (tier coverage, F6)** — the `environ_map` filter is applied in `forkExec` for **every** sandboxed tier (it is not bwrap-gated, so it cannot be skipped per-tier); the `--new-session` bwrap flag must likewise be emitted on every sandboxed tier including `registry_allowlist`. → asserted under both `deny_all` and `registry_allowlist` (env filter via the child-env test; flag via golden argv)
 
-### §2 — File-descriptor hygiene (proof only — RULE NDC)
+### §2 — File-descriptor hygiene (proof only) — RE-HOMED to M84_006
 
-`process.spawn` wires the configured stdio but does **not** close arbitrary parent fds; any non-`CLOEXEC` descriptor the daemon holds would be inherited. The classic sandbox escape is **inheriting an already-open capability across `exec`** — a unix socket, a db connection, a control pipe, a cgroup fd, an eventfd.
-
-**Verified at plan-eng-review (Jun 05): the daemon holds no such fd.** `std.process.spawn` makes pipes `pipe2(CLOEXEC)`; only fd 0/1/2 cross via `dup2`; the control-plane `http.Client` is created/`deinit`'d per call; cgroup control fds are `defer`-closed within their function; the supervisor reaps before the next fork. So **§2 is invariant proof + regression sweep, NOT a production patch** — adding a runtime "guard" would be a RULE NDC no-op.
-
-- **Dimension 2.1** — Discovery enumerates every daemon open site (cgroup control files, control-plane `http.Client`, lease pipes, log sinks) and records each as already-`CLOEXEC` (Zig default) — an **assertion table**, not a code change → recorded in Discovery
-- **Dimension 2.2** — a marker capability fd opened by the daemon is **not** accessible in the spawned child (`fcntl(N, F_GETFD)` → `EBADF`) → Test `test_marker_fd_not_inherited_by_child`
-- **Dimension 2.3** — the spawned child sees no unexpected open fd ≥ 3 beyond its wired stdio → Test `test_no_stray_fds_in_child`
-- **Dimension 2.4** — `forkExec` leaves `process.spawn`'s `progress_node = .none`, so std's `prog_fileno = 3` path never `dup2`s a fourth fd across `exec`; the Dim 2.3 sweep asserts fd 3 absent and `forkExec` asserts `progress_node == .none`. If live progress streaming is ever wired into the runner spawn, fd-inheritance is re-reviewed here. → Test `test_no_stray_fds_in_child` (fd-3 case) + the call-site assertion
-- **Dimension 2.5** — regression: an assertion that the control-plane `http.Client`'s transient socket carries `FD_CLOEXEC`, so a future keep-alive/pooled client cannot silently re-open the inheritance vector → Test `test_control_plane_socket_is_cloexec`
-
-> **Honest framing for the PR:** §2 is the cheapest finding here, not the strongest. The strongest *live* fix is §1 (the credential leak); the strongest *latent* fix is §4 (the kill-domain bug).
+> Moved to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md) §2. The fd CLOEXEC proof asserts a non-bug (already closed by Zig defaults) and is not launch-blocking. **Do not implement from this file.**
 
 ### §3 — `argv[0]` absolute guard
 
@@ -187,13 +179,9 @@ killChild() → ALWAYS also kill(-pgid, SIGKILL), regardless of cgroup.kill succ
 - **Dimension 4.1** — `kill(-child_pid, SIGKILL)` reaps a child that forked a grandchild and great-grandchild, **including an adversarial child that calls `setsid()`/`setpgid()` before forking**, with no escapee left running → Test `test_pgroup_kill_reaps_descendant_tree`
 - **Dimension 4.2** — cgroup enrollment failure cannot silently disable the kill domain: inject an `addProcess` failure → the lease is **refused fail-closed** (Fix A) and, on the success-then-race path, `killChild` **always** also signals the process group (Fix B). The kill domain is never silently empty. → Test `test_kill_survives_cgroup_enrollment_failure`
 
-### §5 — Sandbox containment verification (defense-in-depth — covers ChatGPT #2 network, #4 filesystem)
+### §5 — Sandbox containment verification — RE-HOMED to M84_006
 
-> **Ownership boundary (kept in M84 per Indy, Jun 05; framing tightened).** The **mechanisms** (network namespace, bwrap mounts, Landlock) are owned by the M80 runner-fleet specs and the network-policy roadmap. M84 owns **only the acceptance proof** that containment holds — characterization/regression tests that **pass at M84 start** and must stay green. They do **not** change any mechanism. If one of these tests ever fails, it is a regression in the *owning* spec's mechanism; M84's role is to pin it.
-
-- **Dimension 5.1** — network egress (ChatGPT #2). On a sandboxed tier under the default `deny_all` policy, the child cannot reach the network: a `connect()` to an external host fails at the kernel — `--unshare-all` (`sandbox_args.zig:79`) gives an empty network namespace. → Test `test_sandboxed_child_network_denied`
-  - **Known gap, pinned not closed here — owned by [`M84_004` (runner egress allowlist)](./M84_004_P1_API_RUNNER_EGRESS_ALLOWLIST.md):** under the `registry_allowlist` opt-in, `--share-net` re-joins the host netns and the allowlist is **log-only** (`runner_network_policy.zig`) — no kernel egress restriction today, so the child has **full host-network egress**. **Scope correction (Orly CTO adverse review, Jun 05):** the `environ_map` filter removes only the **daemon's** `ZOMBIE_RUNNER_TOKEN`; it does **nothing** for the **tenant's own** secrets (the resolved inference `api_key`, tool secrets like a GitHub PAT) that ride the lease and live in the child's address space — those remain exfiltratable over the open net. Do **not** read this row as "the tenant's secrets are protected under `registry_allowlist`" — they are not, until M84_004 lands. (On the actual baremetal deployment there is no cloud metadata service and no co-located datastore, so the residual is *outbound secret exfiltration*, not lateral movement — see M84_004 Discovery.) A characterization test pins the current behaviour so the assertion flips when M84_004 enforces the allowlist. → Test `test_registry_allowlist_egress_unrestricted_today`
-- **Dimension 5.2** — filesystem exposure (ChatGPT #4). The sandboxed child cannot read host `/home` / `/var` / `/root` (never bound) and cannot write `/etc` (RO bind); only the lease workspace and the `/tmp` tmpfs are writable. (Landlock is genuinely wired — `landlock.zig:124`, real `landlock_restrict_self`.) → Test `test_sandboxed_child_fs_isolation`
+> Moved to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md) §3 (network egress + filesystem isolation characterization, incl. the `registry_allowlist` gap pin that flips when [`M84_004`](./M84_004_P1_API_RUNNER_EGRESS_ALLOWLIST.md) lands). Proof-only, not launch-blocking. **Do not implement from this file.** The launch-relevant note survives in §1.7 / the launch-re-cut banner: under `registry_allowlist` the tenant's own secrets remain exfiltratable until M84_004 — covered at launch by the $-capped provider keys + least-privilege tool secrets.
 
 ---
 
@@ -247,11 +235,9 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 |------|-------|--------------------------------------------------------|
 | Allowlist too tight | a var the engine/tools need is omitted | tool execution fails inside the sandbox; caught by the integration smoke test that runs a `PATH`-needing tool under the filtered `environ_map`; allowlist widened deliberately at PLAN |
 | Allowlist too loose | a secret-bearing var slips into the allowlist | `test_bwrap_argv_omits_daemon_secrets` asserts the `ZOMBIE_*` deny-prefix is absent regardless of allowlist contents |
-| cap-drop/new-session on a non-bwrap tier | bwrap flags where there is no bwrap (`dev_none`) | the bwrap flags are gated on `sandboxed`; `dev_none` unchanged (out of scope, trusted-dev). The `environ_map` filter is tier-uniform and harmless on `dev_none` (still scoped out per Out of Scope). |
+| `--new-session` on a non-bwrap tier | bwrap flag where there is no bwrap (`dev_none`) | gated on `sandboxed`; `dev_none` unchanged (out of scope, trusted-dev). The `environ_map` filter is tier-uniform and harmless on `dev_none`. |
 | `no_new_privs` prctl fails | kernel rejects the prctl | `child_exec` returns `SANDBOX_FAIL_EXIT` (fail-closed, Invariant 7) — the lease is classified a sandbox failure, never run |
-| `--cap-drop` unsupported | bwrap older than ~0.4.0 on the runner image | bwrap errors out on the unknown flag → `forkExec` spawn fails → lease fails closed. PLAN live-probes `bwrap --cap-drop` on the Linux lane |
 | Tool needs a setuid helper | `ping`/`sudo`/`mount` post-`no_new_privs` | the helper fails inside the sandbox — **acceptable by design** (untrusted agents get no privilege escalation); PLAN enumerates whether any engine-invoked tool relies on one |
-| Stray capability fd inherited | a daemon open site forgets `CLOEXEC` | `test_marker_fd_not_inherited_by_child` + `test_no_stray_fds_in_child` fail the build before merge |
 | Relative `argv[0]` reaches spawn | a future `buildArgv` change emits a relative path | `test_relative_argv0_rejected` + the runtime guard fail-close the lease |
 | cgroup enrollment fails | transient `/sys/fs/cgroup` write error | **Fix A** refuses the lease fail-closed (kills the child); the kill domain is never silently empty, and the child never runs unmetered |
 | Group-kill misses a descendant | child re-parents / breaks its own pgroup | `test_pgroup_kill_reaps_descendant_tree` (incl. adversarial `setsid`) fails; cgroup tree-kill remains the primary domain regardless |
@@ -261,9 +247,9 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 ## Invariants
 
 1. **No daemon secret in the child environment** — `ZOMBIE_*` (incl. `ZOMBIE_RUNNER_TOKEN`) never appears in the child's environ or argv, on every sandboxed tier incl. `registry_allowlist`. Enforced by `test_bwrap_argv_omits_daemon_secrets` + `test_planted_token_absent_from_child_env`.
-2. **Child holds no capabilities and cannot gain privilege** — `CapEff: 0` (Dim 1.4) and `NoNewPrivs: 1` (Dim 1.5) inside `__execute`. Setuid binaries in the RO mounts are inert.
+2. **Child cannot gain privilege** — `NoNewPrivs: 1` (Dim 1.5) inside `__execute`; setuid binaries in the RO mounts are inert. (`CapEff: 0` via `--cap-drop ALL` is re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md).)
 3. **No controlling terminal** — `--new-session` detaches it (Dim 1.6); TIOCSTI injection is closed.
-4. **Every daemon fd is `CLOEXEC`** — *all*, not most; no unexpected fd ≥ 3 reaches the child. Enforced by the assertion table (Dim 2.1) + `test_marker_fd_not_inherited_by_child` + `test_no_stray_fds_in_child` + `test_control_plane_socket_is_cloexec`. Spawn's `progress_node` stays `.none` (Dim 2.4). **Proof, not patch.**
+4. **Every daemon fd is `CLOEXEC`** — re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md) §2 (proof-only; already closed by Zig defaults).
 5. **`argv[0]` is always absolute** — runtime guard + `test_relative_argv0_rejected`.
 6. **Kill domain is never silently empty** — enrollment failure refuses the lease fail-closed (Fix A); `killChild` always also signals the process group (Fix B). Enforced by `test_kill_survives_cgroup_enrollment_failure` + `test_pgroup_kill_reaps_descendant_tree`.
 7. **Legitimate path unchanged** — the allowlisted env + absolute argv[0] + enrolled case produces an identical observable outcome; a golden-argv test pins the argv shape (now incl. the new flags).
@@ -280,21 +266,14 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 | 1.1 | unit | `test_child_env_filtered_to_allowlist` | the `environ_map` passed to `spawn` contains exactly the allowlist (no other daemon vars) |
 | 1.2 | unit | `test_child_env_omits_daemon_secrets` | the child's environ contains no `ZOMBIE_*` var regardless of allowlist contents |
 | 1.3 | integration-runner | `test_planted_token_absent_from_child_env` | daemon env has `ZOMBIE_RUNNER_TOKEN=probe`; child's `/proc/self/environ` AND in-child `getenv` lack `probe` |
-| 1.4 | unit + integration-runner | `test_bwrap_argv_cap_drop_all` / `test_child_has_no_caps` | argv contains `--cap-drop ALL`; child `/proc/self/status` → `CapEff: 0000000000000000` |
 | 1.5 | integration-runner | `test_child_no_new_privs` | child `/proc/self/status` → `NoNewPrivs: 1` |
 | 1.6 | unit + integration-runner | `test_bwrap_argv_new_session` / `test_child_no_controlling_tty` | argv contains `--new-session`; child from a pty parent cannot `TIOCSTI`-inject |
-| 1.7 | unit | `test_env_filter_and_flags_under_registry_allowlist` | filtered `environ_map` applied AND `--cap-drop ALL`/`--new-session` present under BOTH `deny_all` AND `registry_allowlist` (load-bearing given §5.1's open-net gap) |
-| 2.1 | (assertion) | Discovery table | each audited daemon open returns an fd with `FD_CLOEXEC` set (no code change) |
-| 2.2 | integration-runner | `test_marker_fd_not_inherited_by_child` | daemon opens marker fd N; child `fcntl(N, F_GETFD)` → `EBADF` |
-| 2.3 | integration-runner | `test_no_stray_fds_in_child` | child enumerates `/proc/self/fd`; only wired stdio (0/1/2) present |
-| 2.4 | unit + integration-runner | `test_forkexec_progress_node_none` (+ fd-3 case in `test_no_stray_fds_in_child`) | `forkExec` asserts `progress_node == .none` (PLAN: verify the field name on 0.16 `SpawnOptions`); child `/proc/self/fd` has no fd 3 |
-| 2.5 | unit | `test_control_plane_socket_is_cloexec` | control-plane client's socket has `FD_CLOEXEC` set |
+| 1.7 | unit | `test_env_filter_and_new_session_under_registry_allowlist` | filtered `environ_map` applied AND `--new-session` present under BOTH `deny_all` AND `registry_allowlist` |
 | 3.1 | unit | `test_relative_argv0_rejected` | `forkExec` with a relative `argv[0]` → `error.SandboxArgvNotAbsolute`, no spawn |
 | 4.1 | integration-runner | `test_pgroup_kill_reaps_descendant_tree` | child (incl. one that `setsid`s) forks grandchild+great-grandchild; `kill(-pid)` → all reaped |
 | 4.2 | integration-runner | `test_kill_survives_cgroup_enrollment_failure` | inject `addProcess` failure → lease refused fail-closed (Fix A); success-then-race → pgroup also signalled (Fix B) |
-| 5.1 | integration-runner | `test_sandboxed_child_network_denied` | sandboxed child under `deny_all` → `connect()` to external host fails at the kernel (empty netns) |
-| 5.1-gap | integration-runner | `test_registry_allowlist_egress_unrestricted_today` | `registry_allowlist` tier → child reaches an external host (pins the current no-kernel-egress gap; flips when nftables lands) |
-| 5.2 | integration-runner | `test_sandboxed_child_fs_isolation` | child: write `/etc/<x>` → denied (RO); `/home`/`/var`/`/root` absent; write lease workspace → ok |
+
+> Tests for cap-drop (old 1.4), fd-proof (old 2.x), and containment (old 5.x) moved to **[`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md)**.
 
 - **Regression:** the existing runner suite (`make test-unit-zigrunner`) + the app `make test` must pass unchanged — the legitimate sandboxed lease still runs end-to-end.
 - **Idempotency/replay:** N/A.
@@ -306,14 +285,12 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 - [ ] Filtered `environ_map` passed to `spawn`; child environ is allowlist-only; `ZOMBIE_*` absent — verify: `test_child_env_filtered_to_allowlist` + `test_child_env_omits_daemon_secrets`
 - [ ] Allowlist derived from a verified in-child env-read enumeration (engine + tool subprocesses, not the illustrative list); a `PATH`-needing tool runs under the filter — verify: integration smoke + the PLAN enumeration recorded in Discovery
 - [ ] Planted-token integration test green — verify: `make test-integration-runner` (`test_planted_token_absent_from_child_env`)
-- [ ] Child has no capabilities and `NoNewPrivs:1` — verify: `test_child_has_no_caps` + `test_child_no_new_privs`
-- [ ] All §1 flags present under BOTH `deny_all` and `registry_allowlist` (tier-gating, Dim 1.7) — verify: `test_bwrap_argv_flags_under_registry_allowlist`
+- [ ] Child has `NoNewPrivs:1` — verify: `test_child_no_new_privs`
+- [ ] `--new-session` present under BOTH `deny_all` and `registry_allowlist` (Dim 1.7) — verify: `test_env_filter_and_new_session_under_registry_allowlist`
 - [ ] Child has no controlling terminal — verify: `test_child_no_controlling_tty`
-- [ ] No non-CLOEXEC / stray fd inherited (proof + sweep) — verify: `test_marker_fd_not_inherited_by_child` + `test_no_stray_fds_in_child` + `test_control_plane_socket_is_cloexec`
 - [ ] Relative `argv[0]` rejected fail-closed — verify: `test_relative_argv0_rejected`
 - [ ] Kill domain never silently empty (both fixes) — verify: `test_kill_survives_cgroup_enrollment_failure` + `test_pgroup_kill_reaps_descendant_tree`
-- [ ] Sandboxed child cannot reach the network under `deny_all`; `registry_allowlist` egress gap pinned — verify: `test_sandboxed_child_network_denied` + `test_registry_allowlist_egress_unrestricted_today`
-- [ ] Sandboxed child cannot read host `/home`/`/var` or write `/etc` — verify: `test_sandboxed_child_fs_isolation`
+- [ ] (cap-drop `CapEff:0`, fd-proof, network/fs containment → re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md))
 - [ ] New `test-integration-runner` lane wired (`build_runner.zig` step + `make/test-integration.mk`); runner TEST graph cross-compiles for both linux targets
 - [ ] `make lint` clean · `make test-unit-zigrunner` + `make test-integration-runner` pass · cross-compile both linux targets
 - [ ] `gitleaks detect` clean · no file over 350 lines added
@@ -324,8 +301,8 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 ## Eval Commands (post-implementation)
 
 ```bash
-# E1: env-filter + cap-drop/new-session present, secrets absent (unit)
-zig build --build-file build_runner.zig test 2>&1 | grep -E "env_filtered_to_allowlist|omits_daemon_secrets|cap_drop_all|new_session"
+# E1: env-filter + new-session present, secrets absent (unit)
+zig build --build-file build_runner.zig test 2>&1 | grep -E "env_filtered_to_allowlist|omits_daemon_secrets|new_session|no_new_privs"
 # E2: runner unit + app suites (legitimate path unchanged)
 make test-unit-zigrunner 2>&1 | tail -5 && make test 2>&1 | tail -5
 # E3: runner integration lane (planted token + caps + NNP + no-tty + fd + kill-tree + net/fs)
