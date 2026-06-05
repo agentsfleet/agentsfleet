@@ -69,8 +69,9 @@ fn requireAbsoluteArgv0(argv: []const []const u8) error{SandboxArgvNotAbsolute}!
 /// that are actually set (`sandbox.ENV_PASSTHROUGH_ALLOWLIST`, RULE UFS).
 /// Fail-closed — anything off the allowlist (incl. the `ZOMBIE_` control-plane
 /// credentials) is simply never copied in. Caller owns the map and must `deinit`
-/// it after the spawn consumes it.
-fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.process.Environ.Map) !std.process.Environ.Map {
+/// it after the spawn consumes it. Pub so the integration lane can spawn a real
+/// child with the filtered map and prove the daemon environ never crosses.
+pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.process.Environ.Map) !std.process.Environ.Map {
     var env: std.process.Environ.Map = .init(alloc);
     errdefer env.deinit();
     for (sandbox.ENV_PASSTHROUGH_ALLOWLIST) |name| {

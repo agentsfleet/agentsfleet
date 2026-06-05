@@ -2,7 +2,22 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis _test-integration-zombied _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-runner _test-integration-zombied _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+
+# zombie-runner integration tests — real-process sandbox proofs (fork/spawn at
+# the environ_map boundary, kill(-pgid) tree reap). Its own build graph
+# (build_runner.zig), no datastore and NO docker infra: it forks real children
+# and reads /proc, a distinct privileged-Linux execution environment from both
+# the app integration lane (Postgres/Redis below) and the fast unit lane. The
+# bodies are Linux-gated (SkipZigTest elsewhere); on macOS this compiles only.
+test-integration-runner:  ## Run zombie-runner integration tests (real-process sandbox proofs; Linux, no datastore)
+	@echo "→ [zombie-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build --build-file build_runner.zig test-integration --summary all
+	@echo "✓ [zombie-runner] Integration tests passed (Linux real-process proofs)"
+
 TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
