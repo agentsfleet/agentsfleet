@@ -76,9 +76,8 @@ pub fn formatPretty(
         buf,
         "{s}{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}{s}  {s}{s}{s}  {s}{s:<18}{s}  {s}\n",
         .{
-            ansi.grey,         hours, minutes,    seconds, ms,        ansi.reset,
-            level_color,       level_label,       ansi.reset,
-            ansi.cyan,         scope,             ansi.reset,
+            ansi.grey,   hours,       minutes,    seconds,   ms,    ansi.reset,
+            level_color, level_label, ansi.reset, ansi.cyan, scope, ansi.reset,
             msg,
         },
     ) catch buf[0..0];

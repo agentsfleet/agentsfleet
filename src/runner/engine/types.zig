@@ -53,7 +53,6 @@ pub const ResourceLimits = struct {
 };
 
 /// Configuration for the runner's sandboxed execution.
-
 /// Per-zombie configuration for durable Postgres-backed memory (M14_001).
 ///
 /// When present, the runner overrides NullClaw's default workspace-SQLite
@@ -251,4 +250,3 @@ test "MemoryBackendConfig defaults are sane" {
     try std.testing.expectEqual(@as(u32, 100_000), cfg.max_entries);
     try std.testing.expectEqual(@as(u32, 72), cfg.daily_retention_hours);
 }
-

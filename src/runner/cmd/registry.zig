@@ -9,11 +9,10 @@ const std = @import("std");
 const globalIo = @import("common").globalIo;
 const args = @import("args.zig");
 const help = @import("help.zig");
-const register = @import("register.zig");
 const status = @import("status.zig");
 const doctor = @import("doctor.zig");
 
-pub const Command = enum { register, status, doctor };
+pub const Command = enum { status, doctor };
 
 const HandlerFn = *const fn ([]const [:0]const u8, *const std.process.Environ.Map, std.Io, std.mem.Allocator) u8;
 const Spec = struct { handler: HandlerFn, summary: []const u8 };
@@ -22,7 +21,6 @@ const Spec = struct { handler: HandlerFn, summary: []const u8 };
 /// stays ≤80 columns (the help golden enforces it).
 fn specFor(cmd: Command) Spec {
     return switch (cmd) {
-        .register => .{ .handler = register.run, .summary = "register this host (platform-admin); writes its zrn_ token" },
         .status => .{ .handler = status.run, .summary = "show registration + fleet directive" },
         .doctor => .{ .handler = doctor.run, .summary = "preflight env + control-plane reachability" },
     };
@@ -65,4 +63,16 @@ test "dispatch resolves --help and rejects an unknown command non-zero" {
     defer env_map.deinit();
     const argv = &[_][:0]const u8{};
     try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, "bogus-cmd"));
+}
+
+test "cli rejects the removed register subcommand with unknown-command exit" {
+    // `register` was retired (enrollment moved to the dashboard mint): it now
+    // resolves to no Command, so dispatch falls through to unknown-command help
+    // on stderr with the non-zero exit — never a live action.
+    try std.testing.expect(std.meta.stringToEnum(Command, "register") == null);
+    const alloc = std.testing.allocator;
+    var env_map: std.process.Environ.Map = .init(alloc);
+    defer env_map.deinit();
+    const argv = &[_][:0]const u8{};
+    try std.testing.expectEqual(@as(u8, 2), dispatch(argv, &env_map, globalIo(), alloc, "register"));
 }

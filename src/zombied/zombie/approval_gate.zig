@@ -182,7 +182,10 @@ pub fn requestApproval(
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
 
     log.info("requested", .{
-        .zombie_id = zombie_id, .action_id = action_id, .tool = detail.tool, .action = detail.action,
+        .zombie_id = zombie_id,
+        .action_id = action_id,
+        .tool = detail.tool,
+        .action = detail.action,
     });
 
     return action_id;

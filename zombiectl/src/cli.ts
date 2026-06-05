@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { type Command, CommanderError, InvalidArgumentError } from "commander";
+import { type Command, CommanderError } from "commander";
 
 import { openUrl } from "./lib/browser.ts";
 import {
@@ -259,11 +259,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   if (!parseResult.ok) {
     const err = parseResult.commanderError ?? parseResult.otherError;
     if (err instanceof CommanderError) {
+      // InvalidArgumentError is a CommanderError subclass, so it is caught
+      // here too; its commander.invalidArgument code maps to exit 2 via the
+      // usage-code set. No separate branch is reachable below.
       return exitFromCommanderError(err, state);
-    }
-    if (err instanceof InvalidArgumentError) {
-      writeLine(stderr, ui.err(`error: ${err.message}`));
-      return 2;
     }
     const message = errMessage(err);
     if (ctx.jsonMode) {

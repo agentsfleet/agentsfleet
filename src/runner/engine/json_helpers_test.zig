@@ -10,7 +10,6 @@ const getFloat = json.getFloat;
 const getBool = json.getBool;
 const strArray = json.strArray;
 
-
 test "getStr returns null for missing key" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = std.json.ObjectMap.empty };

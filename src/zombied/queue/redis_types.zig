@@ -1,4 +1,3 @@
-
 pub const RedisRole = enum {
     default,
     api,
@@ -10,4 +9,3 @@ pub fn roleEnvVarName(role: RedisRole) []const u8 {
         .default => "REDIS_URL",
     };
 }
-

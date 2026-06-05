@@ -106,4 +106,3 @@ pub fn verifySignature(
 }
 
 pub const isTimestampFresh = hs.isTimestampFresh;
-

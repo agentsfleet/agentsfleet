@@ -183,7 +183,10 @@ fn bindAndWaitReady(alloc: std.mem.Allocator, srv: *TestServer) !void {
                 LISTEN_OTHER_ERR => return error.ListenFailed,
                 else => {},
             }
-            const r = sendReq(alloc, health_url, .GET, null, null) catch { @import("common").sleepNanos(25_000_000); continue; };
+            const r = sendReq(alloc, health_url, .GET, null, null) catch {
+                @import("common").sleepNanos(25_000_000);
+                continue;
+            };
             defer r.deinit(alloc);
             if (r.status == 200) return;
             @import("common").sleepNanos(25_000_000);
@@ -303,7 +306,10 @@ fn urlJoin(alloc: std.mem.Allocator, port: u16, comptime path_fmt: []const u8, a
 test "IDOR: GET /workspaces/{foreign}/zombies returns 403" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -320,7 +326,10 @@ test "IDOR: GET /workspaces/{foreign}/zombies returns 403" {
 test "IDOR: PATCH /workspaces/{my}/zombies/{foreign} status=killed returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -340,7 +349,10 @@ test "IDOR: PATCH /workspaces/{my}/zombies/{foreign} status=killed returns 404" 
 test "IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -357,7 +369,10 @@ test "IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404" {
 test "IDOR: GET /workspaces/{foreign}/credentials returns 403" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -373,7 +388,10 @@ test "IDOR: GET /workspaces/{foreign}/credentials returns 403" {
 test "IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -389,7 +407,10 @@ test "IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants returns 40
 test "IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants/{g} returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -407,7 +428,10 @@ test "IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants/{g} ret
 test "IDOR: GET activity for nonexistent zombie returns 404 (getZombieWorkspaceId orelse branch)" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -447,7 +471,10 @@ fn bodyHasTopLevelKey(body: []const u8, key: []const u8) bool {
 test "envelope: GET /workspaces/{my}/zombies body has items+total, no zombies key" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -467,7 +494,10 @@ test "envelope: GET /workspaces/{my}/zombies body has items+total, no zombies ke
 test "envelope: GET /workspaces/{my}/agent-keys body has items+total, no agents key" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -486,7 +516,10 @@ test "envelope: GET /workspaces/{my}/agent-keys body has items+total, no agents 
 test "memories: GET with malformed zombie_id in path returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -504,7 +537,10 @@ test "memories: GET with malformed zombie_id in path returns 400" {
 test "no-content: DELETE agent-key returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -543,11 +579,13 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
     try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 
-
 test "no-content: DELETE integration-grant returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -589,7 +627,10 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
 test "memories: GET with limit=0 returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }
@@ -607,7 +648,10 @@ test "memories: GET with limit=0 returns 400" {
 test "memories: GET with non-numeric limit returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
+        if (srv.pool.acquire()) |c| {
+            cleanupTestData(c);
+            srv.pool.release(c);
+        } else |_| {}
         srv.deinit();
         ALLOC.destroy(srv);
     }

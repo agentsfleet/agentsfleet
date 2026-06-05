@@ -108,6 +108,16 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the design-system gallery at /_design-system", async () => {
+    // Exercises the lazy() factory for the gallery chunk — the only route
+    // whose code-split import arrow was never fired by the suite, leaving
+    // App.tsx one function short of full coverage.
+    renderApp("/_design-system");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /design system gallery/i }),
+    ).toBeInTheDocument();
+  });
+
   it("renders footer on all routes", () => {
     renderApp("/");
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();

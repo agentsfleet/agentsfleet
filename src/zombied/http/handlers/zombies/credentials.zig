@@ -96,7 +96,6 @@ fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
     return true;
 }
 
-
 fn storeCredentialJsonOnConn(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,

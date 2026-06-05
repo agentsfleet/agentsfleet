@@ -21,14 +21,19 @@ This project runs the **threaded** `Io` (`Io.Threaded` via `common.globalIo()`,
 "Option A, threaded-not-async"), which cannot perform a concurrent select and
 returns `error.ConcurrencyUnavailable`.
 
-**Fix.** `Io.Condition` exposes no timed wait, so the exhaustion branch now blocks
-on a plain `self._cond.waitUncancelable(io, &self._mutex)` until `release()` signals
-a freed connection. This restores graceful wait-under-load.
+**Fix.** `Io.Condition` exposes no timed wait, so the exhaustion branch **bounded-polls**:
+it drops the mutex, sleeps a short slice (`POOL_ACQUIRE_POLL_NS` ≈ 2 ms, capped by the
+remaining `_timeout` budget), re-takes the mutex, and re-checks the predicate. Elapsed
+time is summed from the slept slices (no wall-clock `Io` primitive is needed), so the
+wait is bounded by the per-acquire `_timeout` and returns `error.Timeout` instead of
+blocking forever when a connection is leaked or a query wedges. `release()` still signals
+`_cond` (inert while polling), so a real timed wait can be restored verbatim once an `Io`
+exposes one. This restores graceful wait-under-load **and** the acquire deadline.
 
-**Trade-off.** The per-acquire `_timeout` is no longer enforced in `acquire()`
-(it required the removed async select). A wedged query is still bounded by the
-connection-level statement/read timeouts, which release the connection and wake a
-waiter. If a hard acquire deadline is needed later, reintroduce it via a threaded
-timed wait (`std.Thread.Condition.timedWait`) rather than the async `Io.Select`.
+**Trade-off.** Wakeup latency is up to one poll slice (~2 ms) rather than immediate on
+`release()`, and the summed-slice clock slightly over-counts (it ignores time spent
+re-checking), so the effective deadline is `_timeout` rounded up by at most one slice.
+Both are acceptable for a pool acquire; a wedged query is additionally bounded by the
+connection-level statement/read timeouts.
 
 Only `Pool.acquire()` is changed; the rest of the library is upstream-verbatim.

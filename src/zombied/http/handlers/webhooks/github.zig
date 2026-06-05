@@ -126,7 +126,10 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     };
     defer parsed.deinit();
-    const root: ?std.json.ObjectMap = switch (parsed.value) { .object => |o| o, else => null };
+    const root: ?std.json.ObjectMap = switch (parsed.value) {
+        .object => |o| o,
+        else => null,
+    };
     const decision = if (root) |r| filter.filterParsedRoot(r) else null;
     if (decision == null) {
         log.warn("malformed_payload", .{

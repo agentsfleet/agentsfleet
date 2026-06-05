@@ -266,4 +266,3 @@ test "upsertPlatform writes mode=platform with NULL credential_ref" {
     try std.testing.expectEqual(@as(i32, @intCast(tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS)), try row.get(i32, 3));
     try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 4));
 }
-

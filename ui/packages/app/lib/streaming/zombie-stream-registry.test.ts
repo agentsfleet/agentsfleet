@@ -175,6 +175,43 @@ describe("zombie-stream-registry — refcount + idle release", () => {
     a();
     b();
   });
+
+  it("clears both a pending reconnect timer and idle timer on teardown", () => {
+    // Drive the entry into RECONNECTING (schedules a reconnect timer) and then
+    // release its only subscriber (schedules an idle timer). Tearing down while
+    // BOTH timers are still pending exercises the two clearTimeout guards in
+    // teardown — the reconnecting-then-abandoned tab path.
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const es = FakeEventSource.instances[0]!;
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    a();
+    clearSpy.mockClear();
+    // __resetRegistryForTests runs teardown directly without advancing timers,
+    // so both the reconnect timer and the idle timer are still live.
+    __resetRegistryForTests();
+    expect(clearSpy).toHaveBeenCalledTimes(2);
+    expect(FakeEventSource.instances[0]!.closed).toBe(true);
+    clearSpy.mockRestore();
+  });
+
+  it("tears down a still-subscribed reconnecting entry, clearing only the reconnect timer", () => {
+    // RECONNECTING but with a live subscriber: refCount stays > 0 so no idle
+    // timer is scheduled. Teardown must clear the reconnect timer and skip the
+    // (null) idle timer — the no-idle-timer side of the teardown guard.
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const es = FakeEventSource.instances[0]!;
+    es.onerror?.call(es as unknown as EventSource, {} as Event);
+    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
+    clearSpy.mockClear();
+    __resetRegistryForTests();
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.instances[0]!.closed).toBe(true);
+    clearSpy.mockRestore();
+    a();
+  });
 });
 
 describe("zombie-stream-registry — optimistic mutations", () => {

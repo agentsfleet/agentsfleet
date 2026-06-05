@@ -15,7 +15,7 @@ const {
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
 }));
-vi.mock("@/app/(dashboard)/settings/provider/actions", () => ({
+vi.mock("@/app/(dashboard)/settings/models/actions", () => ({
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
   resetProviderAction: resetProviderActionMock,
 }));
@@ -24,9 +24,9 @@ vi.mock("lucide-react", () => ({
     React.createElement("svg", { ...p, "data-icon": "Loader2Icon" }),
 }));
 
-import ModeRadio from "@/app/(dashboard)/settings/provider/components/ModeRadio";
-import ProviderKeyFields from "@/app/(dashboard)/settings/provider/components/ProviderKeyFields";
-import ProviderSelector from "@/app/(dashboard)/settings/provider/components/ProviderSelector";
+import ModeRadio from "@/app/(dashboard)/settings/models/components/ModeRadio";
+import ProviderKeyFields from "@/app/(dashboard)/settings/models/components/ProviderKeyFields";
+import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
 import { RadioGroup } from "@usezombie/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
 

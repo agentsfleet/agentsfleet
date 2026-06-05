@@ -77,11 +77,14 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     const now_ms = clock.nowMillis();
 
     // tenant_id NULL: S0 is trusted-fleet; the per-tenant-scoped mode wires it.
+    // last_seen_at = RUNNER_LAST_SEEN_NEVER: the runner is minted but has not
+    // connected, so the fleet read derives `registered` (not a fake `online`)
+    // until its first heartbeat moves last_seen forward. created/updated = now.
     _ = conn.exec(
         \\INSERT INTO fleet.runners
         \\  (id, host_id, token_hash, sandbox_tier, status, labels, tenant_id,
         \\   last_seen_at, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, NULL, $7, $7, $7)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, NULL, $7, $8, $8)
     , .{
         runner_id,
         body.host_id,
@@ -89,6 +92,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
         @tagName(body.sandbox_tier),
         protocol.RUNNER_STATUS_ACTIVE,
         labels_json,
+        protocol.RUNNER_LAST_SEEN_NEVER,
         now_ms,
     }) catch return error.DbError;
 

@@ -37,7 +37,7 @@ const S_APPROVED = "approved";
 const GrantApprovalBody = struct {
     grant_id: []const u8,
     decision: []const u8, // S_APPROVED | S_DENIED
-    nonce: []const u8,    // single-use, verified against Redis
+    nonce: []const u8, // single-use, verified against Redis
 };
 
 /// Atomically verify and consume the stored nonce for a grant using a Lua script.
@@ -157,7 +157,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
         return;
     }
     const is_approved = std.mem.eql(u8, body.decision, S_APPROVED);
-    const is_denied   = std.mem.eql(u8, body.decision, S_DENIED);
+    const is_denied = std.mem.eql(u8, body.decision, S_DENIED);
     if (!is_approved and !is_denied) {
         log.warn("invalid_decision", .{
             .error_code = ec.ERR_INVALID_REQUEST,
@@ -204,7 +204,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     });
 
     hx.ok(.ok, .{
-        .status   = "ok",
+        .status = "ok",
         .grant_id = body.grant_id,
         .decision = body.decision,
     });
@@ -274,9 +274,9 @@ test "nonce mismatch detection: verifyAndConsumeNonce contract — wrong nonce m
     // This test documents the expected equality semantics the Lua script enforces.
     const stored = "abcd1234abcd1234abcd1234abcd1234";
     const correct = "abcd1234abcd1234abcd1234abcd1234";
-    const wrong   = "xxxx1234abcd1234abcd1234abcd1234";
-    try std.testing.expect(std.mem.eql(u8, stored, correct));  // Lua: s==ARGV[1] → DEL → return 1
-    try std.testing.expect(!std.mem.eql(u8, stored, wrong));   // Lua: s!=ARGV[1] → no DEL → return 0
+    const wrong = "xxxx1234abcd1234abcd1234abcd1234";
+    try std.testing.expect(std.mem.eql(u8, stored, correct)); // Lua: s==ARGV[1] → DEL → return 1
+    try std.testing.expect(!std.mem.eql(u8, stored, wrong)); // Lua: s!=ARGV[1] → no DEL → return 0
 }
 
 test "verifyAndConsumeNonce: Lua script contains GET, DEL, and ARGV comparison" {

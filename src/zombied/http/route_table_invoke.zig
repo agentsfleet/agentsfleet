@@ -18,10 +18,6 @@ const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
-const webhooks = @import("handlers/webhooks/zombie.zig");
-const approval = @import("handlers/webhooks/approval.zig");
-const grant_approval = @import("handlers/webhooks/grant_approval.zig");
-const github_webhook_h = @import("handlers/webhooks/github.zig");
 const memory = @import("handlers/memory/handler.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
@@ -30,15 +26,7 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
-const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
-const runner_register = @import("handlers/runner/register.zig");
-const runner_self = @import("handlers/runner/self.zig");
-const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
-const runner_lease = @import("handlers/runner/lease.zig");
-const runner_report = @import("handlers/runner/report.zig");
-const runner_activity = @import("handlers/runner/activity.zig");
-const runner_renew = @import("handlers/runner/renew.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const events_invokes = @import("route_table_invoke_events.zig");
@@ -80,33 +68,51 @@ pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 
 pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerCreateAuthSession(hx.*, req);
 }
 
 pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerPollAuthSession(hx.*, route.poll_auth_session);
 }
 
 pub fn invokeApproveAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .PATCH) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerApproveAuthSession(hx.*, req, route.approve_auth_session);
 }
 
 pub fn invokeVerifyAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerVerifyAuthSession(hx.*, req, route.verify_auth_session);
 }
 
 pub fn invokeDeleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerDeleteAuthSession(hx.*, req, route.delete_auth_session);
 }
 
 pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     auth_sessions.innerDeleteAllAuthSessions(hx.*, req);
 }
 
@@ -114,30 +120,45 @@ pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.R
 
 pub fn invokeCreateWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     ws_lifecycle.innerCreateWorkspace(hx.*, req);
 }
 
 pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     tenant_billing_h.innerGetTenantBilling(hx.*, req);
 }
 
 pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
 }
 
 pub fn invokeGetTenantMeteringPeriods(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     tenant_billing_h.innerGetTenantMeteringPeriods(hx.*, req, route.get_tenant_metering_periods);
 }
 
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     tenant_workspaces_h.innerListTenantWorkspaces(hx.*, req);
 }
 
@@ -163,46 +184,21 @@ pub fn invokeAdminPlatformKeys(hx: *Hx, req: *httpz.Request, route: router.Route
 }
 
 pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     admin_keys.innerDeleteAdminPlatformKey(hx.*, req, route.delete_admin_platform_key);
 }
 
-// ── Webhooks ──────────────────────────────────────────────────────────────
-
-pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    webhooks.innerReceiveWebhook(hx.*, req, route.receive_webhook);
-}
-
-pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
-}
-
-// Clerk user.created auth-plane event. No middleware — handler verifies
-// Svix signature inline against env CLERK_WEBHOOK_SECRET. Fn name kept as
-// `invokeClerkWebhook` (path-rename only; PUB GATE intent is "don't grow
-// the pub surface" and a rename is symmetric).
-pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    clerk_webhook_h.innerClerkWebhook(hx.*, req);
-}
-
-pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    approval.innerApprovalCallback(hx.*, req, route.approval_webhook);
-}
-
-pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    grant_approval.innerGrantApproval(hx.*, req, route.grant_approval_webhook);
-}
-
-pub fn invokeGithubWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    github_webhook_h.innerInvokeGithubWebhook(hx.*, req, route.github_webhook);
-}
+// ── Webhooks — split to route_table_invoke_webhooks.zig (RULE FLL) ──────────
+const webhooks_invokes = @import("route_table_invoke_webhooks.zig");
+pub const invokeReceiveWebhook = webhooks_invokes.invokeReceiveWebhook;
+pub const invokeReceiveSvixWebhook = webhooks_invokes.invokeReceiveSvixWebhook;
+pub const invokeClerkWebhook = webhooks_invokes.invokeClerkWebhook;
+pub const invokeApprovalWebhook = webhooks_invokes.invokeApprovalWebhook;
+pub const invokeGrantApprovalWebhook = webhooks_invokes.invokeGrantApprovalWebhook;
+pub const invokeGithubWebhook = webhooks_invokes.invokeGithubWebhook;
 
 // ── Zombie CRUD ───────────────────────────────────────────────────────────
 
@@ -234,7 +230,10 @@ pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Ro
 }
 
 pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.delete_workspace_credential;
     zombie_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
@@ -242,7 +241,10 @@ pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: rout
 // ── Zombie messages (chat ingress) ────────────────────────────────────────
 
 pub fn invokeZombieMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.workspace_zombie_messages;
     zombie_messages.innerZombieMessagesPost(hx.*, req, r.workspace_id, r.zombie_id);
 }
@@ -261,7 +263,10 @@ pub fn invokeZombieMemoriesCollection(hx: *Hx, req: *httpz.Request, route: route
 }
 
 pub fn invokeZombieMemoryByKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.workspace_zombie_memory;
     memory.innerDeleteMemory(hx.*, r.workspace_id, r.zombie_id, r.memory_key);
 }
@@ -269,19 +274,28 @@ pub fn invokeZombieMemoryByKey(hx: *Hx, req: *httpz.Request, route: router.Route
 // ── Integration grants ────────────────────────────────────────────────────
 
 pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.request_integration_grant;
     grants.innerRequestGrant(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.list_integration_grants;
     grants_ws.innerListGrants(hx.*, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.revoke_integration_grant;
     grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.zombie_id, r.grant_id);
 }
@@ -297,52 +311,21 @@ pub fn invokeAgentKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 }
 
 pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    if (req.method != .DELETE) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
     const r = route.delete_agent_key;
     agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
 }
 
-// ── Runner control plane ──────────────────────────────────────────────────
-// POST-only; wrong methods get 405. Each invoke delegates to the real handler
-// (register mints + persists; heartbeat/lease/report drive the control plane).
-
-pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_register.innerRegisterRunner(hx.*, req);
-}
-
-pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_self.innerRunnerSelf(hx.*, req);
-}
-
-pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_heartbeat.innerRunnerHeartbeat(hx.*, req);
-}
-
-pub fn invokeRunnerLease(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_lease.innerRunnerLease(hx.*, req);
-}
-
-pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_report.innerRunnerReport(hx.*, req);
-}
-
-pub fn invokeRunnerActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_activity.innerRunnerActivity(hx.*, req, route.runner_activity);
-}
-
-pub fn invokeRunnerRenew(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    runner_renew.innerRunnerRenew(hx.*, req, route.runner_renew);
-}
-
+// ── Runner control plane — split to route_table_invoke_runner.zig (RULE FLL) ──
+const runner_invokes = @import("route_table_invoke_runner.zig");
+pub const invokeRegisterRunner = runner_invokes.invokeRegisterRunner;
+pub const invokeFleetRunnersList = runner_invokes.invokeFleetRunnersList;
+pub const invokeRunnerSelf = runner_invokes.invokeRunnerSelf;
+pub const invokeRunnerHeartbeat = runner_invokes.invokeRunnerHeartbeat;
+pub const invokeRunnerLease = runner_invokes.invokeRunnerLease;
+pub const invokeRunnerReport = runner_invokes.invokeRunnerReport;
+pub const invokeRunnerActivity = runner_invokes.invokeRunnerActivity;
+pub const invokeRunnerRenew = runner_invokes.invokeRunnerRenew;

@@ -197,9 +197,9 @@ fn insertPendingRow(
         \\   status, detail, requested_at, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, '', $13, $13)
     , .{
-        gate_id, zombie_id, workspace_id, action_id, detail.tool, detail.action,
-        detail.gate_kind, detail.proposed_action, detail.evidence_json,
-        detail.blast_radius, timeout_at, PENDING_STATUS, now_ms,
+        gate_id,          zombie_id,              workspace_id,         action_id,           detail.tool, detail.action,
+        detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
+        now_ms,
     });
 }
 
@@ -219,10 +219,14 @@ fn readResolvedRow(alloc: Allocator, row: pg.Row) !ResolvedRow {
     const detail = try alloc.dupe(u8, try row.get([]const u8, 7));
 
     return .{
-        .gate_id = gate_id, .action_id = action_id,
-        .workspace_id = workspace_id, .zombie_id = zombie_id,
-        .outcome = parseStatus(status_str), .resolved_at = resolved_at,
-        .resolved_by = resolved_by, .detail = detail,
+        .gate_id = gate_id,
+        .action_id = action_id,
+        .workspace_id = workspace_id,
+        .zombie_id = zombie_id,
+        .outcome = parseStatus(status_str),
+        .resolved_at = resolved_at,
+        .resolved_by = resolved_by,
+        .detail = detail,
     };
 }
 

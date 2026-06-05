@@ -143,7 +143,7 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
         S_TRIGGERS, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
+        S_GATES,    S_SKILL, S_MODEL,       S_CONTEXT,
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -298,7 +298,7 @@ fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieConte
 /// runtime back to a misspelled key in frontmatter.
 fn ensureKnownContextKeys(ctx: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        S_CONTEXT_CAP_TOKENS, S_TOOL_WINDOW,
+        S_CONTEXT_CAP_TOKENS,      S_TOOL_WINDOW,
         S_MEMORY_CHECKPOINT_EVERY, S_STAGE_CHUNK_THRESHOLD,
     };
     var it = ctx.iterator();

@@ -135,9 +135,7 @@ test "substitute replaces a single placeholder" {
     const arena = arena_state.allocator();
 
     const sm = try buildSecrets(arena);
-    const out = try substitute(std.testing.allocator,
-        "Authorization: Bearer ${secrets.fly.api_token}",
-        sm);
+    const out = try substitute(std.testing.allocator, "Authorization: Bearer ${secrets.fly.api_token}", sm);
     defer std.testing.allocator.free(out);
     try std.testing.expectEqualStrings("Authorization: Bearer FlyTokenXyz", out);
     try std.testing.expect(assertNoLeftover(out));
@@ -149,9 +147,7 @@ test "substitute handles multiple placeholders in one pass" {
     const arena = arena_state.allocator();
 
     const sm = try buildSecrets(arena);
-    const out = try substitute(std.testing.allocator,
-        "fly=${secrets.fly.api_token},slack=${secrets.slack.bot_token}",
-        sm);
+    const out = try substitute(std.testing.allocator, "fly=${secrets.fly.api_token},slack=${secrets.slack.bot_token}", sm);
     defer std.testing.allocator.free(out);
     try std.testing.expectEqualStrings("fly=FlyTokenXyz,slack=xoxb-AAA", out);
 }
@@ -164,24 +160,21 @@ test "substitute leaves non-placeholder text untouched" {
 }
 
 test "substitute fails closed when secrets_map is null" {
-    try std.testing.expectError(error.MissingSecret,
-        substitute(std.testing.allocator, "${secrets.fly.api_token}", null));
+    try std.testing.expectError(error.MissingSecret, substitute(std.testing.allocator, "${secrets.fly.api_token}", null));
 }
 
 test "substitute fails closed on missing credential name" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
-    try std.testing.expectError(error.MissingSecret,
-        substitute(std.testing.allocator, "${secrets.unknown.x}", sm));
+    try std.testing.expectError(error.MissingSecret, substitute(std.testing.allocator, "${secrets.unknown.x}", sm));
 }
 
 test "substitute fails closed on missing field" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
-    try std.testing.expectError(error.MissingField,
-        substitute(std.testing.allocator, "${secrets.fly.unknown_field}", sm));
+    try std.testing.expectError(error.MissingField, substitute(std.testing.allocator, "${secrets.fly.unknown_field}", sm));
 }
 
 test "substitute fails closed on non-string field" {
@@ -195,32 +188,28 @@ test "substitute fails closed on non-string field" {
     try top.put(arena, "fly", .{ .object = fly });
     const sm: std.json.Value = .{ .object = top };
 
-    try std.testing.expectError(error.NotAString,
-        substitute(std.testing.allocator, "${secrets.fly.api_token}", sm));
+    try std.testing.expectError(error.NotAString, substitute(std.testing.allocator, "${secrets.fly.api_token}", sm));
 }
 
 test "substitute rejects malformed placeholder (no field separator)" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
-    try std.testing.expectError(error.MalformedPlaceholder,
-        substitute(std.testing.allocator, "${secrets.fly}", sm));
+    try std.testing.expectError(error.MalformedPlaceholder, substitute(std.testing.allocator, "${secrets.fly}", sm));
 }
 
 test "substitute rejects unterminated placeholder" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
-    try std.testing.expectError(error.MalformedPlaceholder,
-        substitute(std.testing.allocator, "${secrets.fly.api_token nope", sm));
+    try std.testing.expectError(error.MalformedPlaceholder, substitute(std.testing.allocator, "${secrets.fly.api_token nope", sm));
 }
 
 test "substitute rejects identifier with hyphen" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
-    try std.testing.expectError(error.MalformedPlaceholder,
-        substitute(std.testing.allocator, "${secrets.fly-prod.api_token}", sm));
+    try std.testing.expectError(error.MalformedPlaceholder, substitute(std.testing.allocator, "${secrets.fly-prod.api_token}", sm));
 }
 
 test "assertNoLeftover catches partial substitution" {
@@ -234,9 +223,7 @@ test "substitute produces output safe for the no-leftover assert" {
     defer arena_state.deinit();
     const sm = try buildSecrets(arena_state.allocator());
 
-    const out = try substitute(std.testing.allocator,
-        "${secrets.fly.api_token} and ${secrets.slack.bot_token}",
-        sm);
+    const out = try substitute(std.testing.allocator, "${secrets.fly.api_token} and ${secrets.slack.bot_token}", sm);
     defer std.testing.allocator.free(out);
     try std.testing.expect(assertNoLeftover(out));
 }

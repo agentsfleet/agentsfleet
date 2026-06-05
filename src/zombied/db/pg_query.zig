@@ -19,7 +19,6 @@
 const std = @import("std");
 const pg = @import("pg");
 
-
 const logging = @import("log");
 const log = logging.scoped(.pg_query);
 pub const PgQuery = struct {

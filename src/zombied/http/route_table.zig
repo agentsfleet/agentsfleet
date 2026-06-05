@@ -127,6 +127,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // route and a tenant/user token can't satisfy a runner route, enforced
         // by which middleware guards the route.
         .register_runner => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeRegisterRunner },
+        // Operator-plane read — same platform-admin gate as enrollment (a tenant
+        // admin / `zmb_t_` is rejected 403); never the runnerBearer plane.
+        .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
         .runner_self => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerSelf },
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },

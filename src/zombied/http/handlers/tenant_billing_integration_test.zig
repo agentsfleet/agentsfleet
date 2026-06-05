@@ -76,8 +76,6 @@ fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-
-
 // ── stop-policy pre-claim balance gate ────────────────────────────────────
 
 test "integration: balanceCoversEstimate honours policy and tenant balance" {

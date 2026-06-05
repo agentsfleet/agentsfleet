@@ -53,4 +53,3 @@ pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
     }
     std.posix.kill(-pid, std.posix.SIG.KILL) catch |err| log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
 }
-

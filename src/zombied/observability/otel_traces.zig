@@ -18,7 +18,6 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
-
 const logging = @import("log");
 const log = logging.scoped(.otel_traces);
 // ---------------------------------------------------------------------------
@@ -198,20 +197,22 @@ fn flushBatch() void {
 
     while (count < FLUSH_BATCH_SIZE) : (count += 1) {
         const entry = g_ring.pop() orelse break;
-        if (!first) spans_json.appendSlice(alloc,",") catch break;
+        if (!first) spans_json.appendSlice(alloc, ",") catch break;
         first = false;
 
         // Span JSON
-        spans_json.print(alloc,
+        spans_json.print(
+            alloc,
             "{{\"traceId\":\"{s}\",\"spanId\":\"{s}\"",
             .{ entry.trace_id, entry.span_id },
         ) catch break;
 
         if (entry.has_parent) {
-            spans_json.print(alloc,",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id}) catch break;
+            spans_json.print(alloc, ",\"parentSpanId\":\"{s}\"", .{entry.parent_span_id}) catch break;
         }
 
-        spans_json.print(alloc,
+        spans_json.print(
+            alloc,
             ",\"name\":\"{f}\",\"kind\":1,\"startTimeUnixNano\":\"{d}\",\"endTimeUnixNano\":\"{d}\"",
             .{
                 std.json.fmt(entry.name[0..entry.name_len], .{}),
@@ -222,11 +223,12 @@ fn flushBatch() void {
 
         // Attributes
         if (entry.attr_count > 0) {
-            spans_json.appendSlice(alloc,",\"attributes\":[") catch break;
+            spans_json.appendSlice(alloc, ",\"attributes\":[") catch break;
             var ai: u8 = 0;
             while (ai < entry.attr_count) : (ai += 1) {
-                if (ai > 0) spans_json.appendSlice(alloc,",") catch break;
-                spans_json.print(alloc,
+                if (ai > 0) spans_json.appendSlice(alloc, ",") catch break;
+                spans_json.print(
+                    alloc,
                     "{{\"key\":\"{f}\",\"value\":{{\"stringValue\":\"{f}\"}}}}",
                     .{
                         std.json.fmt(entry.attrs[ai].key[0..entry.attrs[ai].key_len], .{}),
@@ -234,10 +236,10 @@ fn flushBatch() void {
                     },
                 ) catch break;
             }
-            spans_json.appendSlice(alloc,"]") catch break;
+            spans_json.appendSlice(alloc, "]") catch break;
         }
 
-        spans_json.appendSlice(alloc,"}") catch break;
+        spans_json.appendSlice(alloc, "}") catch break;
     }
 
     if (count == 0) return;

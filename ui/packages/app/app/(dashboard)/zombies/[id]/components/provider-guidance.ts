@@ -187,5 +187,5 @@ export function guidanceFor(source: string): GuidanceCard | null {
   // (e.g. `constructor`) and resolve to a non-GuidanceCard function,
   // crashing the GuidedTriggerCard render path.
   if (!Object.hasOwn(PROVIDER_GUIDANCE, source)) return null;
-  return (PROVIDER_GUIDANCE as Record<string, GuidanceCard>)[source] ?? null;
+  return PROVIDER_GUIDANCE[source as keyof typeof PROVIDER_GUIDANCE];
 }

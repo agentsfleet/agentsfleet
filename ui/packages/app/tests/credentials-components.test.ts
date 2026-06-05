@@ -124,6 +124,16 @@ describe("CredentialsList component", () => {
     expect(deleteCredentialActionMock).not.toHaveBeenCalled();
   });
 
+  it("confirm on an empty-named credential is a no-op (guards the falsy-target branch)", async () => {
+    const user = userEvent.setup();
+    await renderList([{ name: "", created_at: "2026-04-26T00:00:02Z" }]);
+    await user.click(screen.getByLabelText(/^Delete credential\s*$/i));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^delete$/i })).toBeTruthy());
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
+  });
+
   it("error from a previous attempt clears when reopening for another credential", async () => {
     deleteCredentialActionMock.mockResolvedValueOnce({ ok: false, error: "boom" });
     const user = userEvent.setup();
@@ -137,6 +147,26 @@ describe("CredentialsList component", () => {
     await user.click(screen.getByLabelText(/Delete credential slack/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+// ── jsonParseErrorMessage ──────────────────────────────────────────────────
+
+describe("jsonParseErrorMessage", () => {
+  it("returns the message of a thrown Error (the JSON.parse SyntaxError path)", async () => {
+    const { jsonParseErrorMessage } = await import(
+      "../app/(dashboard)/credentials/components/AddCredentialForm"
+    );
+    expect(jsonParseErrorMessage(new SyntaxError("Unexpected token x"))).toBe(
+      "Unexpected token x",
+    );
+  });
+
+  it("falls back to a fixed label for a non-Error throw value", async () => {
+    const { jsonParseErrorMessage } = await import(
+      "../app/(dashboard)/credentials/components/AddCredentialForm"
+    );
+    expect(jsonParseErrorMessage("not-an-error")).toBe("Invalid JSON");
   });
 });
 
