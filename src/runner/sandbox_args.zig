@@ -1,11 +1,16 @@
-//! sandbox_args.zig — argv for a forked child's exec.
+//! sandbox_args.zig — argv + environment policy for a forked child's exec.
 //!
 //! `dev_none`: exec the runner's `__execute` mode directly. Sandboxed tiers
 //! wrap it in bubblewrap — `--unshare-all` (user/pid/net/ipc/uts/cgroup ns),
-//! read-only system paths, read-write workspace, `--die-with-parent` (the
-//! sandbox dies if the runner does), and network per `RUNNER_NETWORK_POLICY`.
-//! Every argv entry is dup'd into the caller's allocator; the caller frees via
-//! `freeArgv` after the fork.
+//! `--new-session` (detach the controlling terminal), read-only system paths,
+//! read-write workspace, `--die-with-parent` (the sandbox dies if the runner
+//! does), and network per `RUNNER_NETWORK_POLICY`. Every argv entry is dup'd
+//! into the caller's allocator; the caller frees via `freeArgv` after the fork.
+//!
+//! It also single-sources the child-environment policy (`ENV_PASSTHROUGH_ALLOWLIST`
+//! + `ENV_DENY_PREFIX`) that `child_process.forkExec` applies at the spawn
+//! boundary — the daemon environ (incl. `ZOMBIE_RUNNER_TOKEN`) never reaches the
+//! sandboxed child; it inherits only the allowlist.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -24,6 +29,30 @@ const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin"
 /// literal spelling IS bwrap's CLI contract.
 const RO_BIND = "--ro-bind";
 const SHARE_NET = "--share-net";
+
+/// Daemon env-var prefix that must NEVER reach a sandboxed child — the
+/// control-plane credentials live here (incl. `ZOMBIE_RUNNER_TOKEN`). The
+/// allowlist below already excludes it by omission; `forkExec` asserts it absent
+/// from the child's environ regardless of allowlist contents (defense-in-depth).
+pub const ENV_DENY_PREFIX = "ZOMBIE_";
+
+/// The ONLY environment variables forwarded into a sandboxed child's environ
+/// (RULE UFS — single source, referenced by `child_process.forkExec` + tests).
+/// Fail-closed: the child inherits EXACTLY these (each only when the daemon has
+/// it set) and nothing else, so the daemon environ never leaks. Derived from a
+/// verified enumeration of every in-child env read (our `runner_observer`, the
+/// NullClaw engine, and tool subprocesses). `RUNNER_*` (parent-only daemon
+/// config) and `NULLCLAW_PROVIDER`/`NULLCLAW_MODEL` (delivered on the lease, not
+/// env) are deliberately excluded.
+pub const ENV_PASSTHROUGH_ALLOWLIST = [_][]const u8{
+    "HOME", // NullClaw config dir; absence → error.HomeDirNotFound (load-bearing)
+    "PATH", // tool subprocess + wasmtime executable resolution (load-bearing)
+    "NULLCLAW_OBSERVER", // optional observer-backend selector (safe default: log)
+    "SSL_CERT_FILE", // TLS CA bundle override — pass-through-if-set
+    "SSL_CERT_DIR", // TLS CA directory override — pass-through-if-set
+    "LANG", // locale — pass-through-if-set
+    "LC_ALL", // locale — pass-through-if-set
+};
 
 /// Build the child's exec argv. Sandboxed tiers prepend a bubblewrap wrapper.
 /// Every entry is dup'd into `alloc`; free with `freeArgv`. Errors when a
@@ -75,11 +104,15 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 /// runner binary ro-bound (so the sandbox can exec it) + network policy + `--`.
 fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, net_policy: network.PolicyMode) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
+    // `--new-session` detaches the controlling terminal (no TIOCSTI input
+    // injection if a tty is ever attached); it sits with the other namespace
+    // flags so every sandboxed tier gets it.
     const base = [_][]const u8{
-        bwrap,    "--die-with-parent", "--unshare-all",
-        "--proc", "/proc",             "--dev",
-        "/dev",   "--tmpfs",           "/tmp",
-        RO_BIND,  "/usr",              "/usr",
+        bwrap,           "--die-with-parent", "--unshare-all",
+        "--new-session", "--proc",            "/proc",
+        "--dev",         "/dev",              "--tmpfs",
+        "/tmp",          RO_BIND,             "/usr",
+        "/usr",
     };
     for (base) |a| try dup(alloc, list, a);
     for (RO_SYSTEM_PATHS) |p| {

@@ -158,6 +158,46 @@ test "should omit --share-net under the default deny_all network policy on Linux
     try std.testing.expect(indexOfStr(argv, "--share-net") == null);
 }
 
+/// Like `cfgWithTier` but re-shares the network (registry_allowlist) — used to
+/// prove the tty-detach flag is emitted on every sandboxed tier, not just deny_all.
+fn cfgRegistryAllowlist(tier: []const u8) Config {
+    var c = cfgWithTier(tier);
+    c.network_policy = .registry_allowlist;
+    return c;
+}
+
+test "should detach the controlling terminal with --new-session in the bwrap prefix on Linux" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // --new-session sits among the namespace flags, BEFORE the bwrap `--`
+    // separator, so the agent has no controlling terminal (no TIOCSTI vector).
+    const ns = indexOfStr(argv, "--new-session");
+    try std.testing.expect(ns != null);
+    const sep = indexOfStr(argv, "--").?;
+    try std.testing.expect(ns.? < sep);
+}
+
+test "should emit --new-session under registry_allowlist as well as deny_all on Linux" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // registry_allowlist re-shares the net (--share-net) but the tty stays
+    // detached — the flag is not gated on the network policy.
+    try std.testing.expect(indexOfStr(argv, "--share-net") != null);
+    try std.testing.expect(indexOfStr(argv, "--new-session") != null);
+}
+
 test "should have no memory leaks freeing dev_none argv over many iterations" {
     const alloc = std.testing.allocator;
     // std.testing.allocator panics on any leak; 100 create-free cycles prove
