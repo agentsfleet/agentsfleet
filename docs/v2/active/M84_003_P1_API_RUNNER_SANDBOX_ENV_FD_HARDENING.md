@@ -397,9 +397,13 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 - **§3 argv[0] guard** — `requireAbsoluteArgv0` before spawn; Dim 3.1 unit-tested.
 - **§4 kill-domain** — Fix B (`killChild` always also `kill(-pgid)`) + Fix A (`enrollOrFail` fail-closed enrollment, routed through the Fix-B `killChild`). Code landed; runtime proofs (Dims 4.1/4.2) on the integration lane.
 
-**Pending (next commit — shares `build_runner.zig` + `make/test-integration.mk` with M84_005; second to land rebases):**
-- The `test-integration-runner` lane (Linux-only fork tests: planted-token 1.3, NoNewPrivs 1.5, no-tty 1.6b, kill-tree 4.1, enrollment-fail 4.2) + `build_runner.zig` `test-integration` step + the make lane + the TEST-graph cross-compile proof.
-- `docs/AUTH.md` note; CHORE(close) (spec→done/, changelog).
+**Lane landed (`test-integration-runner` — shares `build_runner.zig` + `make/test-integration.mk` with M84_005; second to land rebases):**
+- `build_runner.zig` `test-integration` step (separate root from the unit `test` step) + `make test-integration-runner` lane (no datastore/docker — a distinct privileged-Linux execution environment). Native macOS run compiles + skips both (`SkipZigTest`); both linux targets compile (the run step can't cross-exec on macOS, as designed).
+- **Authored real-process proofs** (`sandbox_integration_test.zig`, Linux-gated, no bwrap/root needed): **Dim 1.3** planted-token — spawns a real child with the live `buildChildEnviron` filter, reads its `/proc/self/environ`, asserts the planted `ZOMBIE_RUNNER_TOKEN` absent + `HOME` present; **Dim 4.1** kill-tree — `sh` backgrounds two sleeps holding a piped stdout, `killChild` signals the pgroup, the pipe hitting EOF proves every descendant was reaped (a survivor would hold the pipe open → bounded-wait timeout = fail).
+
+**Pending (privileged CI-runtime authoring — need the `__execute`-stub child / pty / cgroup-fault harness; NOT authorable blind on macOS):**
+- **Dim 1.5** NoNewPrivs:1, **Dim 1.6b** no controlling tty (pty parent), **Dim 4.2** cgroup-enrollment-fault fail-closed. Their *logic* is unit-covered (`enrollOrFail`/`killChild`/`applyNoNewPrivs` paths); the end-to-end runtime proofs require a Linux host with the stub harness.
+- `docs/AUTH.md` note; optional `docs/architecture/runner_fleet.md` process-boundary subsection (pending Indy); CHORE(close) (spec→done/, changelog).
 
 ## Verification Evidence
 
@@ -409,7 +413,7 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 | Lint | `make lint-zig` | fmt + ZLint (0 errors/0 warnings, 396 files) + pg-drain + test-depth + line-limit (`child_supervisor.zig` 348/350) + role/legacy guards | ✅ |
 | Cross-compile (prod, both targets) | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | both exit 0 — compile-checks the Linux `prctl`/`environ_map`/`killChild`/`enrollOrFail` paths | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found (2403 commits scanned) | ✅ |
-| Runner integration (token + NNP + kill-tree) | `make test-integration-runner` | {pending — lane not yet wired} | ⏳ |
+| Runner integration lane | `make test-integration-runner` | lane wired; native macOS: 2 tests skip (Linux-gated) + compile clean; both linux targets compile (run step cross-exec n/a on macOS) | ✅ (lane) / ⏳ (CI run) |
 | App suite (regression) | `make test` | {pending — run at CHORE(close)} | ⏳ |
 
 ---
