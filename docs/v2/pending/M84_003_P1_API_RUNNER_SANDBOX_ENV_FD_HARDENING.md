@@ -27,7 +27,7 @@
 4. `src/runner/child_supervisor.zig` — `supervise` (the `addProcess` enrollment), `establishSandbox`; §4 (fail-closed enrollment) lands here.
 5. `src/runner/child_exec.zig` — the in-child `__execute` entry; the `no-new-privs` prctl (§1, Dim 1.5) lands here next to `landlock.applyPolicy`. Documents the "secrets ride stdin, never argv/env" contract this workstream extends to the daemon's own token.
 6. `src/runner/engine/landlock.zig` — context for Dim 1.5: `applyPolicy` calls `landlock_restrict_self` **without** setting `no_new_privs` (succeeds via the userns `CAP_SYS_ADMIN` path), so `no-new-privs` is *not* guaranteed by our code today.
-7. `docs/ZIG_RULES.md` — all `*.zig` edits.
+7. `dispatch/write_zig.md` — all `*.zig` edits.
 
 ---
 
@@ -45,7 +45,7 @@
   - **RULE UFS** — the env passthrough allowlist (var names), the daemon deny-prefix, and bwrap flag literals (`--clearenv`, `--setenv`, `--cap-drop`, `--new-session`) are single-sourced named constants, referenced from both `appendBwrap` and its tests — never re-spelled.
   - **RULE NLG** — pre-2.0: no "legacy"/"compat" framing for the hardened path; the unhardened behaviour is simply replaced, not shimmed.
   - **RULE NDC / NLR** — no dead code; **§2 is proof-only** (Zig opens are `CLOEXEC` by default and no daemon fd ≥ 3 is open at spawn — see §2), so §2 adds *assertions + regression tests*, never a no-op production "guard".
-- **`docs/ZIG_RULES.md`** — all `*.zig` edits (tagged-union results, `errdefer`, cross-compile both linux targets).
+- **`dispatch/write_zig.md`** — all `*.zig` edits (tagged-union results, `errdefer`, cross-compile both linux targets).
 - **`docs/AUTH.md`** — `ZOMBIE_RUNNER_TOKEN` handling; the env-allowlist change is auth-boundary and must not alter how the daemon *itself* reads or sends the token, only what the child inherits.
 - **`docs/LOGGING_STANDARD.md`** — any new "env_cleared"/"caps_dropped"/"fd_audit" emit follows the logfmt envelope; never log the token or a full environ dump.
 
@@ -53,7 +53,7 @@
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | **yes** — `*.zig` edits | Read `docs/ZIG_RULES.md`; cross-compile both linux targets before commit. |
+| ZIG GATE | **yes** — `*.zig` edits | Read `dispatch/write_zig.md`; cross-compile both linux targets before commit. |
 | UFS | **yes** — allowlist + deny-prefix + bwrap flags | Named constants in `sandbox_args.zig`, reused in tests (`// pin test` only where the literal IS the bwrap contract). |
 | LENGTH (≤350/≤50/≤70) | **yes** — two hotspots | (1) `appendBwrap` grows (clearenv + setenv loop + cap-drop + new-session): extract an env/cap emit helper so it stays ≤50 lines. (2) **`child_supervisor.zig` is 326/350 today** — Fix A (fail-closed enrollment) adds a branch + error path and is the single most likely 350-line **file-cap** trip: extract an `enrollOrFail` helper (or sibling-file move). Confirmed by Orly CTO review. |
 | LOGGING | **maybe** — new audit emit | Envelope unchanged; never log secret values. |
@@ -366,7 +366,7 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
 | After implementation, before CHORE(close) | `/write-unit-test` | Audits the negative/regression-test coverage vs this Test Specification (the eight invariants). | Clean. Iteration count + coverage in Discovery. |
-| After tests pass, before CHORE(close) | `/review` | Adversarial diff review vs `docs/AUTH.md`, `docs/ZIG_RULES.md`, Failure Modes, Invariants (esp. deny-prefix completeness, the allowlist enumeration, the both-fix kill domain). | Clean OR every finding dispositioned. |
+| After tests pass, before CHORE(close) | `/review` | Adversarial diff review vs `docs/AUTH.md`, `dispatch/write_zig.md`, Failure Modes, Invariants (esp. deny-prefix completeness, the allowlist enumeration, the both-fix kill domain). | Clean OR every finding dispositioned. |
 | After `gh pr create` | `/review-pr` | Review-comments the open PR against the immutable diff. | Comments addressed before human review/merge. |
 
 ## Verification Evidence
