@@ -74,9 +74,9 @@ export default async function SettingsPage({
             <SectionLabel>More settings</SectionLabel>
             <List variant="plain" className="mt-3">
               <SettingsLink
-                href="/settings/provider"
+                href="/settings/models"
                 icon={<ZapIcon size={16} />}
-                label="LLM Provider"
+                label="Model"
                 description="Platform-managed credits or Bring-Your-Own-Key."
               />
               <SettingsLink

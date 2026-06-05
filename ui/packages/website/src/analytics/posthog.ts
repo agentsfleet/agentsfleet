@@ -87,7 +87,9 @@ function sanitizeProps(properties: AnalyticsProps): AnalyticsProps {
 }
 
 async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
-  if (posthogModule) return;
+  // No posthogModule re-entry guard: ensureLoader gates the single call via
+  // `loadPromise`, so this runs exactly once per init cycle (module still
+  // unloaded). A guard here would be unreachable defensive code.
   const mod = await import("posthog-js");
   posthogModule = mod.default;
   posthogModule.init(cfg.key, {
@@ -111,9 +113,10 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
     capture_pageleave: true,
     persistence: "localStorage",
   });
-  while (pendingEvents.length > 0) {
-    const next = pendingEvents.shift();
-    if (next) posthogModule.capture(next[0], next[1]);
+  // Drain buffered events in arrival order; splice(0) empties the queue and
+  // hands back every entry, so there is no partial-shift undefined to guard.
+  for (const [event, props] of pendingEvents.splice(0)) {
+    posthogModule.capture(event, props);
   }
 }
 

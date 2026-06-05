@@ -4,11 +4,12 @@
 // test so concurrent runs don't share files.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Option, Redacted } from "effect";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
+import { UnexpectedError } from "../src/errors/index.ts";
 
 let tempDir: string;
 let originalStateDir: string | undefined;
@@ -108,5 +109,30 @@ describe("Credentials service", () => {
       }),
     );
     expect(result).toBeNull();
+  });
+  // Deterministic load-error path: a directory where credentials.json is
+  // expected makes readFile throw EISDIR (non-ENOENT, non-SyntaxError),
+  // propagating through to the `unexpected("load")` inner closure
+  // (credentials.ts:38-43) on every uid — unlike chmod, which root/CI can
+  // still read past.
+  test("getAccessToken surfaces UnexpectedError when credentials.json is a directory", async () => {
+    mkdirSync(join(tempDir, "credentials.json"));
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(
+        Effect.gen(function* () {
+          const c = yield* Credentials;
+          return yield* c.getAccessToken;
+        }),
+        credentialsLayer,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const err = Option.getOrNull(Cause.findErrorOption(exit.cause));
+      expect(err).toBeInstanceOf(UnexpectedError);
+      const ue = err as UnexpectedError;
+      expect(ue.detail).toMatch(/credentials load failed/);
+      expect(ue.suggestion).toMatch(/permissions/);
+    }
   });
 });

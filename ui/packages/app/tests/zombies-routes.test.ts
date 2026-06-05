@@ -222,6 +222,49 @@ describe("zombies routes", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
+  it("zombies detail page pulses the WakePulse dot when the zombie is active", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    // mockFetchBilling returns a zombie with status "active" — exercises the
+    // truthy arm of the status===ACTIVE ternary (renders <WakePulse live />).
+    mockFetchBilling(happyBilling);
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    expect(markup).toContain("data-live");
+  });
+
+  it("zombies detail page omits the WakePulse dot when the zombie is not active", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          // A paused zombie hits the null arm of the status===ACTIVE ternary —
+          // no WakePulse is rendered, so the live dot is absent.
+          items: [{ id: "zom_1", name: "platform-ops", status: "paused", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    expect(markup).toContain("paused");
+    expect(markup).not.toContain("data-live");
+  });
+
   it("zombies detail page renders pending-approvals badge + 50+ label when next_cursor set", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
@@ -255,6 +298,49 @@ describe("zombies routes", () => {
       await Page({ params: Promise.resolve({ id: "zom_1" }) }),
     );
     expect(markup).toMatch(/1\+ pending approval/i);
+    // Exactly one pending → singular ("") arm of the plural ternary.
+    expect(markup).toContain("1+ pending approval");
+    expect(markup).not.toMatch(/pending approvals/);
+  });
+
+  it("zombies detail page pluralizes the pending-approvals badge with more than one pending", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return {
+          ok: true,
+          status: 200,
+          // Two pending, no next_cursor → exact-count label "2" and the
+          // plural "s" arm of the `length === 1 ? "" : "s"` ternary.
+          json: async () => ({
+            items: [
+              { gate_id: "g1", zombie_id: "zom_1", zombie_name: "platform-ops" },
+              { gate_id: "g2", zombie_id: "zom_1", zombie_name: "platform-ops" },
+            ],
+            next_cursor: null,
+          }),
+        };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    expect(markup).toContain("2 pending approvals");
   });
 
   it("zombies detail page handles billing fetch failure gracefully (catch branch)", async () => {

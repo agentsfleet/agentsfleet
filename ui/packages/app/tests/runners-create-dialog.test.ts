@@ -1,0 +1,177 @@
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+// ── Shared mocks ───────────────────────────────────────────────────────────
+// Only the server-action module is stubbed; lib/api/runners (HOST_ID_REGEX,
+// SANDBOX_TIERS, parseLabels) and lib/errors stay real so the form's own
+// client-side validation + error voice are exercised, not faked.
+
+const createRunnerActionMock = vi.fn();
+
+vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
+  listRunnersAction: vi.fn(),
+  createRunnerAction: createRunnerActionMock,
+}));
+
+// happy-dom ships a real (no-op) navigator.clipboard.writeText; defining a fresh
+// object on the instance does not shadow it, so spy on the live method instead.
+function stubClipboardWriteText() {
+  if (!navigator.clipboard) {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: async () => {} },
+      configurable: true,
+    });
+  }
+  return vi.spyOn(navigator.clipboard, "writeText");
+}
+
+const MINTED = { ok: true, data: { runner_id: "r1", runner_token: "zrn_deadbeef" } };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("AddRunnerDialog component", () => {
+  async function openDialog(onCreated = vi.fn()) {
+    const { default: AddRunnerDialog } = await import(
+      "../app/(dashboard)/admin/runners/components/AddRunnerDialog"
+    );
+    const user = userEvent.setup({ delay: null });
+    render(React.createElement(AddRunnerDialog, { onCreated } as never));
+    await user.click(screen.getByRole("button", { name: /add runner/i }));
+    await waitFor(() => expect(screen.getByLabelText(/host id/i)).toBeTruthy());
+    return { user, onCreated };
+  }
+
+  async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
+    createRunnerActionMock.mockResolvedValue(MINTED);
+    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await screen.findByLabelText("Runner token");
+  }
+
+  it("client-side rejects an invalid host id and never calls the action", async () => {
+    const { user } = await openDialog();
+    await user.type(screen.getByLabelText(/host id/i), "bad host!");
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await waitFor(() => expect(screen.getByText(/letters, digits, dot, hyphen, underscore/i)).toBeTruthy());
+    expect(createRunnerActionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed label before the round-trip, naming the offender", async () => {
+    const { user } = await openDialog();
+    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.type(screen.getByLabelText(/labels/i), "gpu, bad label!");
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await waitFor(() => expect(screen.getByText(/must be 1.64 chars/i)).toBeTruthy());
+    expect(screen.getByText(/bad label!/)).toBeTruthy();
+    expect(createRunnerActionMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: mints with the trimmed host + parsed labels, reveals once, then discards on close", async () => {
+    createRunnerActionMock.mockResolvedValue(MINTED);
+    const { user, onCreated } = await openDialog();
+    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.type(screen.getByLabelText(/labels/i), "gpu, us-east, gpu");
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+
+    const field = await screen.findByLabelText("Runner token");
+    expect((field as HTMLInputElement).value).toBe("zrn_deadbeef");
+    // host trimmed, labels deduped + parsed, default tier passed through.
+    expect(createRunnerActionMock).toHaveBeenCalledWith({
+      host_id: "web-prod-1",
+      sandbox_tier: "landlock_full",
+      labels: ["gpu", "us-east"],
+    });
+
+    await user.click(screen.getByRole("button", { name: /stored it/i }));
+    await waitFor(() => expect(screen.queryByDisplayValue("zrn_deadbeef")).toBeNull());
+    expect(onCreated).toHaveBeenCalled();
+  });
+
+  it("a server 403 keeps the dialog open, reveals no token, and does not signal onCreated", async () => {
+    createRunnerActionMock.mockResolvedValue({
+      ok: false,
+      error: "platform admin required",
+      errorCode: "UZ-AUTH-021",
+    });
+    const { user, onCreated } = await openDialog();
+    await user.type(screen.getByLabelText(/host id/i), "web-prod-1");
+    await user.click(screen.getByRole("button", { name: /create runner/i }));
+    await waitFor(() => expect(screen.getByText(/platform-admin access/i)).toBeTruthy());
+    expect(screen.queryByLabelText("Runner token")).toBeNull();
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("copies the raw token to the clipboard on demand", async () => {
+    const writeText = stubClipboardWriteText().mockResolvedValue(undefined);
+    const { user } = await openDialog();
+    await reachReveal(user);
+    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("zrn_deadbeef"));
+    // findByRole (not sync getByRole) — the "Copied" label flips one microtask
+    // after writeText resolves; sync querying races the re-render under load.
+    expect(await screen.findByRole("button", { name: /^copied$/i })).toBeTruthy();
+  });
+
+  it("falls back to manual selection when the clipboard API is blocked", async () => {
+    stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
+    const { user } = await openDialog();
+    await reachReveal(user);
+    await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
+    await waitFor(() => expect(screen.getByText(/copy failed — select the value/i)).toBeTruthy());
+    // The reveal stays intact so the operator can still grab the value by hand.
+    expect((screen.getByLabelText("Runner token") as HTMLInputElement).value).toBe("zrn_deadbeef");
+  });
+
+  it("selects the whole token on focus so it can be copied manually", async () => {
+    const { user } = await openDialog();
+    await reachReveal(user);
+    const input = screen.getByLabelText("Runner token") as HTMLInputElement;
+    const select = vi.spyOn(input, "select");
+    fireEvent.focus(input);
+    expect(select).toHaveBeenCalled();
+  });
+
+  it("keeps the dialog open on Escape while the one-time token is revealed", async () => {
+    const { user } = await openDialog();
+    await reachReveal(user);
+    await user.keyboard("{Escape}");
+    // The reveal must survive Escape — the token is shown exactly once.
+    expect(screen.getByLabelText("Runner token")).toBeTruthy();
+  });
+
+  it("keeps the dialog open on an outside click while the token is revealed", async () => {
+    const { user } = await openDialog();
+    await reachReveal(user);
+    // Radix fires onInteractOutside on a pointerdown outside the content; the
+    // overlay-lock must preventDefault so the one-time token isn't lost.
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    expect(screen.getByLabelText("Runner token")).toBeTruthy();
+  });
+
+  it("closes on Escape before a token is minted (no overlay lock yet)", async () => {
+    const { user, onCreated } = await openDialog();
+    await screen.findByLabelText(/host id/i);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByLabelText(/host id/i)).toBeNull());
+    // Closing before a mint must not fire the parent's refresh.
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("closes on an outside click before a token is minted (no overlay lock yet)", async () => {
+    await openDialog();
+    await screen.findByLabelText(/host id/i);
+    // created is still null → onInteractOutside does NOT preventDefault → closes.
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByLabelText(/host id/i)).toBeNull());
+  });
+});

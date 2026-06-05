@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({
@@ -57,6 +57,9 @@ vi.mock("lucide-react", () => ({
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
+  ServerIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ServerIcon" }),
+  CpuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CpuIcon" }),
+  CreditCardIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CreditCardIcon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
   SunIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SunIcon" }),
   MoonIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MoonIcon" }),
@@ -185,13 +188,21 @@ describe("app components", () => {
     // Brand-mark always-alive contract.
     expect(markup).toContain("data-live");
     expect(markup).toContain("usezombie");
-    // Sidebar nav rendered with all 5 operational routes + 2 in More.
+    // Sidebar nav rendered across the Operations / Configuration / Organization
+    // groups, plus the Dashboard overview entry and the Docs footer link.
+    expect(markup).toContain("Operations");
+    expect(markup).toContain("Configuration");
+    expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Agents");
     expect(markup).toContain("Credentials");
+    expect(markup).toContain("Model");
+    // The Model item points at the renamed route, not just the bare word.
+    expect(markup).toContain('href="/settings/models"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Settings");
+    expect(markup).toContain("Billing");
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
@@ -202,6 +213,58 @@ describe("app components", () => {
     // The active link gets data-active="true" — the sidebar's surface-3 fill
     // is driven from this attribute (no coloured bar per spec).
     expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="SkullIcon"/);
+  });
+
+  it("Shell active-link resolves the longest-matching prefix (Settings collision)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    // Render at a pathname and report how many items are active + the active
+    // item's icon — exactly one item must light, and it must be the most
+    // specific match (a nested /settings/* child beats its parent Settings).
+    const activeFor = (pathname: string, isPlatformAdmin = false) => {
+      mocks.usePathname.mockReturnValue(pathname);
+      const tree = Shell({ children: React.createElement("div"), isPlatformAdmin });
+      const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+      const count = (markup.match(/data-active="true"/g) ?? []).length;
+      const icon = markup.match(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="([^"]+)"/)?.[1] ?? null;
+      return { count, icon };
+    };
+    // Nested children win over the parent Settings (the bug the resolver fixes).
+    expect(activeFor("/settings/models")).toEqual({ count: 1, icon: "CpuIcon" });
+    expect(activeFor("/settings/billing")).toEqual({ count: 1, icon: "CreditCardIcon" });
+    // Parent Settings lights on its own route and on unclaimed children only.
+    expect(activeFor("/settings")).toEqual({ count: 1, icon: "SettingsIcon" });
+    expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "SettingsIcon" });
+    // Other groups resolve to their own item; root and admin-gated paths too.
+    expect(activeFor("/credentials")).toEqual({ count: 1, icon: "KeyRoundIcon" });
+    expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
+    expect(activeFor("/admin/runners", true)).toEqual({ count: 1, icon: "ServerIcon" });
+  });
+
+  it("Shell appends the platform-admin Runners item only when isPlatformAdmin", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const tree = Shell({ children: React.createElement("div"), isPlatformAdmin: true });
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    // Runners joins the Configuration group with its link + ServerIcon glyph.
+    expect(markup).toContain("Configuration");
+    expect(markup).toContain("Runners");
+    expect(markup).toContain('href="/admin/runners"');
+    expect(markup).toContain('data-icon="ServerIcon"');
+    // It is appended to Configuration, not rendered as a separate group: the
+    // Configuration header appears exactly once and there is no "Platform" group.
+    expect((markup.match(/>Configuration</g) ?? []).length).toBe(1);
+    expect(markup).not.toMatch(/>\s*Platform\s*</);
+  });
+
+  it("Shell hides the platform-admin surface for a non-admin session", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    // Default (no isPlatformAdmin prop) → the Platform nav group is absent. This
+    // is discoverability only; the backend independently gates the route.
+    const tree = Shell({ children: React.createElement("div") });
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    expect(markup).not.toContain('href="/admin/runners"');
+    expect(markup).not.toContain('data-icon="ServerIcon"');
   });
 
   it("Shell mobile-nav: hamburger button is present (md:hidden)", async () => {
@@ -236,6 +299,22 @@ describe("app components", () => {
     cleanup();
   });
 
+  it("Shell mobile-nav: clicking a link inside the dialog closes it", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/zombies");
+    const user = userEvent.setup();
+    render(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
+    await user.click(screen.getByRole("button", { name: /open navigation/i }));
+    const dialog = await screen.findByRole("dialog");
+    // Clicking a nav link fires the dialog instance's onNavigate (setOpen(false)),
+    // collapsing the mobile sheet — the desktop sidebar passes a no-op instead.
+    await user.click(within(dialog).getByRole("link", { name: /dashboard/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    cleanup();
+  });
+
   it("emits navigation analytics from sidebar, bottom-nav, and header links", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
@@ -244,12 +323,16 @@ describe("app components", () => {
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
     // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
-    // 'Zombies' exercises the path-to-slug replaceAll branch.
+    // 'Agents' (href /zombies) exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
     await user.click(screen.getByText("Agents"));
-    // Bottom group: 'Docs' is external (anchor branch), 'Settings' internal.
+    // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Settings"));
+    // New grouped items — nested routes exercise the multi-segment slug branch.
+    await user.click(screen.getByText("Credentials"));
+    await user.click(screen.getByText("Model"));
+    await user.click(screen.getByText("Billing"));
     // Header marketing/docs anchors.
     await user.click(screen.getByText("docs"));
     await user.click(screen.getByText("usezombie.com"));
@@ -259,8 +342,11 @@ describe("app components", () => {
     );
     expect(sources).toContain("app_sidebar_root");
     expect(sources).toContain("app_sidebar_zombies");
-    expect(sources).toContain("app_sidebar_more_docs");
-    expect(sources).toContain("app_sidebar_more_settings");
+    expect(sources).toContain("app_sidebar_docs");
+    expect(sources).toContain("app_sidebar_settings");
+    expect(sources).toContain("app_sidebar_credentials");
+    expect(sources).toContain("app_sidebar_settings_models");
+    expect(sources).toContain("app_sidebar_settings_billing");
     expect(sources).toContain("app_header_docs");
     expect(sources).toContain("app_header_marketing");
     cleanup();

@@ -57,6 +57,7 @@ describe("steer — SSE error path (lines 139-141)", () => {
 
   test("streamGet throwing non-Error is caught and stringified (line 141)", async () => {
     const rec = makeRecorder();
+    // oxlint-disable-next-line no-throw-literal -- fixture: simulate a non-Error rejection from the stream
     const throwingStream = async (): Promise<void> => { throw "raw string error"; };
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (input.method === POST) return { event_id: EVENT_ID } as T;

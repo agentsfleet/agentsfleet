@@ -111,6 +111,27 @@ describe("ConfirmDialog", () => {
     await waitFor(() => expect(onError).toHaveBeenCalledWith(boom));
   });
 
+  it("swallows a rejected onConfirm when no onError is provided", async () => {
+    // The catch's `if (onError)` FALSE arm: with no onError, the rejection is
+    // dropped (React drops async event-handler rejections in production), and
+    // the finally still clears `pending` so the dialog returns to rest.
+    const onConfirm = vi.fn().mockRejectedValue(new Error("boom"));
+    render(
+      <ConfirmDialog
+        open
+        onOpenChange={() => {}}
+        title="X"
+        confirmLabel="Do it"
+        onConfirm={onConfirm}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Do it" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Do it" })).not.toHaveAttribute("aria-busy"),
+    );
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it("routes the Radix close affordance through onOpenChange when idle", () => {
     // The Dialog's X close button fires Radix's onOpenChange(false), which
     // the ConfirmDialog wrapper forwards because `pending` is false (the

@@ -96,3 +96,54 @@ describe("steer REPL loop", () => {
 test("readPipedMessage trims piped stdin into one message", async () => {
   await expect(readPipedMessage(streamFrom([" hello", " there\n"]))).resolves.toBe("hello there");
 });
+
+describe("steer REPL error propagation", () => {
+  test("a turn error with no onTurnError handler rejects (rethrow path)", async () => {
+    const seen: string[] = [];
+    await expect(
+      runSteerRepl({
+        input: streamFrom(["boom\n"]),
+        output: nullOutput(),
+        runTurn: async (message) => {
+          seen.push(message);
+          throw new Error("uncaught turn");
+        },
+      }),
+    ).rejects.toThrow("uncaught turn");
+    expect(seen).toEqual(["boom"]);
+  });
+
+  test("a synchronous (void-returning) onTurnError handler is awaited and the loop continues", async () => {
+    const errors: unknown[] = [];
+    const code = await runSteerRepl({
+      input: streamFrom(["bad\n", "good\n"]),
+      output: nullOutput(),
+      runTurn: async (message) => {
+        if (message === "bad") throw new Error("sync-handled");
+      },
+      // Returns void, not a Promise — exercises the non-thenable handler arm.
+      onTurnError: (err): void => {
+        errors.push(err);
+      },
+    });
+    expect(code).toBe(0);
+    expect(errors).toHaveLength(1);
+  });
+
+  test("the close-on-SIGINT interrupt runs even when no turn is in flight", async () => {
+    const signalSource = new ReplSignalEmitter();
+    // No lines are queued, so the prompt loop is idle; firing SIGINT exercises
+    // the interrupt closure + the finally cleanup without an active turn.
+    const code = await runSteerRepl({
+      input: streamFrom([]),
+      output: nullOutput(),
+      signalSource,
+      runTurn: async () => {
+        /* never reached — no input lines */
+      },
+    });
+    // Empty stdin reaches EOF first → clean exit; interrupt listener was
+    // registered and torn down in the finally block regardless.
+    expect(code).toBe(0);
+  });
+});

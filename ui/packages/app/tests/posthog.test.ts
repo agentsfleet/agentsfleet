@@ -184,6 +184,22 @@ describe("app analytics", () => {
     });
   });
 
+  it("identifies the current user when email is absent", async () => {
+    const { mod, client } = await loadModule({
+      env: {
+        NEXT_PUBLIC_POSTHOG_KEY: "phc_live",
+      },
+    });
+
+    await mod.initAnalytics();
+    mod.identifyAnalyticsUser({ id: "user_789", email: null });
+
+    expect(client.identify).toHaveBeenCalledTimes(1);
+    expect(client.identify).toHaveBeenCalledWith("user_789", {
+      user_id: "user_789",
+    });
+  });
+
   it("skips identify when the client has no identify method and handles null email", async () => {
     const { mod, client } = await loadModule({
       client: {
@@ -223,6 +239,22 @@ describe("app analytics", () => {
       surface: "workspace_detail",
       workspace_id: "ws_123",
       has_error: false,
+      path: "/workspaces/ws_123",
+    });
+  });
+
+  it("captures app events when no properties are supplied", async () => {
+    const { mod, client } = await loadModule({
+      pathname: "/workspaces/ws_123",
+      env: {
+        NEXT_PUBLIC_POSTHOG_KEY: "phc_live",
+      },
+    });
+
+    await mod.initAnalytics();
+    mod.trackAppEvent("heartbeat");
+
+    expect(client.capture).toHaveBeenCalledWith("heartbeat", {
       path: "/workspaces/ws_123",
     });
   });

@@ -44,4 +44,35 @@ describe("parseSseFrame", () => {
     const data = ev?.data as { event_id?: string } | undefined;
     expect(data?.event_id).toBe("x");
   });
+
+  it("handles a `data:` line with no space after the colon", () => {
+    // Per SSE spec the space after `data:` is optional. The no-space
+    // branch trimStart()s the remainder, so `data:hi` yields `hi`.
+    const ev = parseSseFrame("event: raw\ndata:hello");
+    expect(ev).toEqual({ id: null, type: "raw", data: "hello" });
+  });
+
+  it("preserves a `data:` payload that has no leading space", () => {
+    // A spaceless `data:` line whose first char is non-space takes the
+    // no-space branch directly (line 128); trimStart() is a no-op here.
+    const ev = parseSseFrame("event: raw\ndata:tight");
+    expect(ev).toEqual({ id: null, type: "raw", data: "tight" });
+  });
+
+  it("parses JSON delivered through the spaceless `data:` branch", () => {
+    const ev = parseSseFrame("event: chunk\ndata:{\"event_id\":\"z\",\"text\":\"q\"}");
+    expect(ev?.type).toBe("chunk");
+    const data = ev?.data as { event_id?: string; text?: string } | undefined;
+    expect(data?.event_id).toBe("z");
+    expect(data?.text).toBe("q");
+  });
+
+  it("joins a spaceless `data:` continuation onto a prior data line", () => {
+    // Exercises the `data.length > 0` true arm of the no-space branch:
+    // a `data: ` line seeds content, then `data:` (no space) appends.
+    const frame = "event: raw\ndata: first\ndata:second";
+    const ev = parseSseFrame(frame);
+    expect(ev?.type).toBe("raw");
+    expect(ev?.data).toBe("first\nsecond");
+  });
 });

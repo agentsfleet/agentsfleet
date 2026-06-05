@@ -79,6 +79,13 @@ describe("PROVIDER_GUIDANCE", () => {
       expect(parsed.query).toContain("resourceTypes: [Issue, Comment]");
     });
 
+    it("labels multiple resources comma-joined and falls back to Issue when empty", () => {
+      expect(PROVIDER_GUIDANCE.linear.eventsLabel(["Issue", "Comment"])).toBe(
+        "On Issue, Comment",
+      );
+      expect(PROVIDER_GUIDANCE.linear.eventsLabel([])).toBe("On Issue");
+    });
+
     it("deep-links to the Linear API settings", () => {
       expect(PROVIDER_GUIDANCE.linear.webUiDeepLink({})).toBe(
         "https://linear.app/settings/api",
@@ -100,6 +107,16 @@ describe("PROVIDER_GUIDANCE", () => {
       expect(out).toContain(`"events":["jira:issue_created"]`);
     });
 
+    it("labels multiple events comma-joined and falls back to jira:issue_created when empty", () => {
+      expect(
+        PROVIDER_GUIDANCE.jira.eventsLabel([
+          "jira:issue_created",
+          "jira:issue_updated",
+        ]),
+      ).toBe("On jira:issue_created, jira:issue_updated");
+      expect(PROVIDER_GUIDANCE.jira.eventsLabel([])).toBe("On jira:issue_created");
+    });
+
     it("deep-links to the workspace's webhooks plugin page", () => {
       expect(PROVIDER_GUIDANCE.jira.webUiDeepLink({ WORKSPACE: "your-org" })).toBe(
         "https://your-org.atlassian.net/plugins/servlet/webhooks",
@@ -118,6 +135,13 @@ describe("PROVIDER_GUIDANCE", () => {
         `curl -X POST https://ops-grafana.grafana.net/api/v1/provisioning/contact-points`,
       );
       expect(out).toContain(`"settings":{"url":"${WEBHOOK}/grafana"}`);
+    });
+
+    it("labels multiple events comma-joined and falls back to alert when empty", () => {
+      expect(PROVIDER_GUIDANCE.grafana.eventsLabel(["alert", "resolved"])).toBe(
+        "On alert, resolved",
+      );
+      expect(PROVIDER_GUIDANCE.grafana.eventsLabel([])).toBe("On alert");
     });
 
     it("deep-links to the stack's alerting notifications page", () => {
@@ -158,6 +182,13 @@ describe("PROVIDER_GUIDANCE", () => {
       );
       expect(out).toContain(`"url":"${WEBHOOK}/agentmail"`);
       expect(out).toContain(`"events":["inbound"]`);
+    });
+
+    it("labels multiple events comma-joined and falls back to inbound when empty", () => {
+      expect(
+        PROVIDER_GUIDANCE.agentmail.eventsLabel(["inbound", "bounced"]),
+      ).toBe("On inbound, bounced");
+      expect(PROVIDER_GUIDANCE.agentmail.eventsLabel([])).toBe("On inbound");
     });
 
     it("deep-links to the inbox's webhooks page in the AgentMail console", () => {
