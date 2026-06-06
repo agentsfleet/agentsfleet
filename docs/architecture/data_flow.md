@@ -679,7 +679,7 @@ Failure mode: if the runner holding a lease dies, no other runner can claim that
 
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the SKILL.md and TRIGGER.md grant it)
-- Never escapes the sandbox — Landlock + cgroups + a network namespace (via bwrap) enforce egress, filesystem, and process limits inside the runner's child
+- Never escapes the sandbox — Landlock (filesystem) + cgroups (process/memory kill domain) bound the runner's child. **Network egress** is fully blocked on the `deny_all` policy (empty net namespace via `--unshare-all`) and, on the network-enabled policy, constrained to an operator-declared host allowlist by the **runner egress model** (own net namespace + default-deny DNS-pinning proxy — see [`runner_fleet.md` §Egress model](./runner_fleet.md)). Note the network-enabled policy historically shared the host net namespace (`--share-net`, allowlist log-only) with no kernel egress restriction; that is the gap the egress model closes.
 - Never holds a datastore credential — the runner reaches the platform only over the `/v1/runners` protocol
 
 ## The install failure scenario, visually
