@@ -210,30 +210,32 @@ test "a daemon-opened marker fd does not cross exec into a real spawned child" {
     try std.testing.expectEqualStrings("ok absent", out);
 }
 
-test "a real spawned child inherits only wired stdio — no daemon fd >= 3" {
+test "the spawn path introduces no file descriptor the parent did not already hold" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var threaded: std.Io.Threaded = undefined;
     const io = spawnIo(&threaded);
     defer threaded.deinit();
 
-    // Spawn via std.process.spawn — the syscall path forkExec uses — wiring
-    // stdio and leaving progress_node default (.none), so std opens no fd 3.
-    // The child probes fds 3..63 for any open descriptor: there must be none —
-    // every daemon fd (the control-plane socket, cgroup handles) is CLOEXEC or
-    // closed before fork, so only 0/1/2 cross. We probe a bounded window with
-    // `[ -L ]` (which opens no fd) rather than enumerating /proc/self/fd,
-    // because opendir() on that dir would itself open a transient fd and
-    // pollute the listing. 63 covers any realistic fork-time fd table (the
-    // daemon holds no live fd >= 3 at spawn per the open-site audit).
+    // std.process.spawn (the syscall path forkExec uses) wires stdio but does
+    // NOT close other inherited fds — production forkExec closes them via the
+    // bwrap wrapper (sandbox_args.appendBwrap); this raw-spawn test has no
+    // bwrap, so the test harness's own non-CLOEXEC fds (the zig test-runner
+    // --listen pipe, the Threaded io eventfd) legitimately cross. The proof is
+    // therefore RELATIVE: every fd the child holds must already be open in the
+    // parent (inherited), never one the spawn path newly introduced — e.g. a
+    // progress fd 3 (forkExec leaves progress_node .none). Credential CLOEXEC
+    // safety is proven by the marker test above. The probe is self-validating:
+    // if /proc is unreadable it prints `probe_broken`, not a vacuous clean set.
     const script =
+        \\[ -L /proc/self/fd/1 ] || { printf 'probe_broken'; exit 0; }
         \\S=
         \\n=3
         \\while [ "$n" -le 63 ]; do
         \\  if [ -L /proc/self/fd/$n ]; then S="$S $n"; fi
         \\  n=$((n+1))
         \\done
-        \\printf 'stray:[%s]' "$S"
+        \\printf '%s' "$S"
     ;
     var child = try std.process.spawn(io, .{
         .argv = &.{ SH, "-c", script },
@@ -245,5 +247,17 @@ test "a real spawned child inherits only wired stdio — no daemon fd >= 3" {
     defer alloc.free(out);
     _ = child.wait(io) catch {};
 
-    try std.testing.expectEqualStrings("stray:[]", out);
+    try std.testing.expect(!std.mem.eql(u8, out, "probe_broken"));
+    // Each fd the child reported must resolve to an open fd in the parent too:
+    // readlink of /proc/self/fd/N succeeds (inherited) or ENOENTs (the spawn
+    // path introduced an fd the parent never had — a real leak). readlink reads
+    // the symlink without opening its target, so the check perturbs no fd.
+    var link_buf: [256]u8 = undefined;
+    var path_buf: [64]u8 = undefined;
+    var it = std.mem.tokenizeScalar(u8, out, ' ');
+    while (it.next()) |tok| {
+        const fd = try std.fmt.parseInt(u32, tok, 10);
+        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fd});
+        _ = std.Io.Dir.readLinkAbsolute(io, path, &link_buf) catch return error.SpawnIntroducedStrayFd;
+    }
 }

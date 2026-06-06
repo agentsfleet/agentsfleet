@@ -101,7 +101,7 @@
 A child spawned the way `forkExec` spawns inherits only the deliberately-wired stdio. Prove it three ways (real-process marker, real-process enumeration, structural client assertion) and record the daemon open-site audit.
 
 - **Dimension 1.1** — a marker fd opened by the parent (default flags) is not accessible in the spawned child → Test `test_marker_fd_not_inherited_by_child` (child `fcntl(N, F_GETFD)` → `EBADF`)
-- **Dimension 1.2** — the child sees no unexpected open fd ≥ 3 beyond wired stdio → Test `test_no_stray_fds_in_child` (child `/proc/self/fd` lists only `0/1/2`; this subsumes any `progress_node` fd-3 path, which `forkExec` leaves at `.none`)
+- **Dimension 1.2** — the spawn path introduces no descriptor the parent did not already hold → Test "the spawn path introduces no file descriptor the parent did not already hold". The test asserts a **relative** property (child fds ⊆ parent fds), not the absolute "only 0/1/2": production sandboxed tiers wrap the child in `bwrap` (`sandbox_args.appendBwrap`), which closes all non-passed fds, but the test spawns `/bin/sh` directly via `std.process.spawn` with no bwrap, so the test harness's own non-`CLOEXEC` fds (the zig test-runner `--listen` pipe, the `Threaded` io eventfd) legitimately cross. The relative check still catches a `progress_node` fd-3 regression — a fd the spawn path *newly* opens, absent from the parent — which `forkExec` avoids by leaving `progress_node` at `.none`.
 - **Dimension 1.3** — the control-plane client holds no persistent socket: `LoopbackClient` has only `base_url` + `io`; every `std.http.Client` is per-call and freed before any fork → Test `test_control_plane_client_holds_no_persistent_fd` (structural / `comptime`)
 - **Dimension 1.4** — Discovery enumerates every daemon open site (control-plane socket, cgroup fds, lease pipes) and records each as `CLOEXEC`-by-default or `defer`-closed-before-fork → assertion table in Discovery
 
@@ -129,14 +129,14 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 |------|-------|--------------------------------------------------------|
 | A daemon open site forgets `CLOEXEC` | future code adds a non-`CLOEXEC` open before fork | `test_marker_fd_not_inherited_by_child` + `test_no_stray_fds_in_child` fail the build before merge. |
 | A pooled / persistent control-plane client is introduced | a refactor adds a long-lived socket field to `LoopbackClient` | `test_control_plane_client_holds_no_persistent_fd` fails — the structural invariant breaks at compile/test time. |
-| `std` default flips to set a progress fd | toolchain bump re-introduces an fd-3 progress sink | `test_no_stray_fds_in_child` catches the unexpected fd 3. |
-| Test runs on macOS | no `/proc`, no real netns | Linux-gated (`SkipZigTest`); macOS proof = cross-compile the runner TEST graph for both linux targets. |
+| `std` default flips to set a progress fd | toolchain bump re-introduces an fd-3 progress sink | the spawn-path test catches the new fd-3 (present in the child, absent from the parent → `error.SpawnIntroducedStrayFd`). |
+| Test runs on macOS | no `/proc`, no real netns | Linux-gated (`SkipZigTest`); macOS proof = cross-compile the runner TEST graph for both linux targets, then run the emitted aarch64 binary in a **native** arm64 Linux container (qemu-emulated x86_64 is an unfaithful oracle — its fork emulation breaks even passing tests). |
 
 ---
 
 ## Invariants
 
-1. **Only wired stdio crosses `exec`** — a child spawned via the `forkExec` path lists exactly fds `0/1/2`; no daemon fd ≥ 3 is inherited. Enforced by `test_no_stray_fds_in_child`.
+1. **The spawn path adds no descriptor** — in production the bwrap-wrapped child lists exactly fds `0/1/2` (bwrap closes all non-passed fds); the integration test, which has no bwrap, enforces the syscall-layer half: the spawned child gains no fd the parent did not already hold, so `std.process.spawn` itself never introduces a stray descriptor (e.g. a progress fd 3). Enforced by "the spawn path introduces no file descriptor the parent did not already hold".
 2. **Daemon-opened fds are `CLOEXEC`** — a parent marker fd is `EBADF` in the child. Enforced by `test_marker_fd_not_inherited_by_child`.
 3. **The control-plane client is fd-stateless** — `LoopbackClient` holds no persistent socket/fd field; every credential-bearing socket is per-call and freed before any fork, so none is live at spawn. The structural test is a build-time tripwire: it pins the struct to exactly `{base_url, io}` and raises `@compileError` on any added field, so a future pooled/persistent-socket field cannot land unreviewed. It asserts struct *shape*, not transitive fd-ownership — a refactor that made an existing field fd-bearing would still need human review (the `@compileError` message names that obligation).
 
@@ -149,7 +149,7 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration-runner | `test_marker_fd_not_inherited_by_child` | parent opens marker fd N (default flags); child `fcntl(N, F_GETFD)` → `EBADF` |
-| 1.2 | integration-runner | `test_no_stray_fds_in_child` | child enumerates `/proc/self/fd` → only `0`, `1`, `2` present (no fd ≥ 3) |
+| 1.2 | integration-runner | "the spawn path introduces no file descriptor the parent did not already hold" | child probes fds 3..63 (`[ -L ]`, self-validating via a `probe_broken` guard); every fd it reports must readlink-resolve in the parent too (inherited), so the spawn path adds none |
 | 1.3 | unit | `test_control_plane_client_holds_no_persistent_fd` | `LoopbackClient` fields ⊆ `{ base_url, io }`; no socket/fd-bearing field (structural / `comptime`) |
 | 1.4 | (assertion) | Discovery table | each daemon open site recorded `CLOEXEC`-by-default or `defer`-closed-before-fork |
 
@@ -173,7 +173,7 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 
 ```bash
 # E1: the fd proofs are present and named (TST-NAM clean — prose names, no milestone IDs)
-git grep -nE 'marker fd does not cross exec|inherits only wired stdio|holds no persistent file descriptor' src/runner
+git grep -nE 'marker fd does not cross exec|spawn path introduces no file descriptor|holds no persistent file descriptor' src/runner
 # E2: runner unit graph (structural assertion) — runs on macOS too
 make test-unit-zigrunner 2>&1 | tail -5
 # E3: integration lane (marker fd + stray-fd enumeration) — Linux
@@ -213,8 +213,10 @@ gitleaks detect 2>&1 | tail -3
 - **Review outcomes (Jun 06, 2026):**
   - `/write-unit-test` — clean; the three proofs map 1:1 to the Test Specification + the §1.4 audit table. The marker test carries a positive control (`ok` proves the probe sees a live fd), so it is not vacuous.
   - `/review` (adversarial, fresh-context) — two findings dispositioned: (a) the no-stray-fd test scanned a hardcoded `3..20` window → **fixed**, widened to a `3..63` `[ -L ]` loop (directory enumeration is avoided because `opendir()` on `/proc/self/fd` adds a transient entry); (b) both integration tests spawn via `std.process.spawn` (the syscall path `forkExec` uses) rather than calling `forkExec` directly → **accepted as a deliberate limitation**, consistent with the existing planted-token env test in this file: `forkExec` needs bwrap/sandbox scaffolding that the test lane cannot stand up, and the property under test (CLOEXEC + stdio wiring at the syscall layer) is faithfully exercised. The structural test's claim was softened from "proof of fd-statelessness" to "build-time tripwire on struct shape" (Invariant 3).
+  - **CI finding (Jun 06, 2026) — the absolute fd assertion was wrong, fixed in-PR.** The first push's `no-stray-fd` test asserted the child lists *only* `0/1/2` and **failed on the `test-integration-runner` Linux lane** (`stray:[ 5]`): the test spawns `/bin/sh` directly via `std.process.spawn` with no `bwrap`, so the zig test-runner's own `--listen` IPC fd (fd 5) crossed `exec`. That absolute property only holds in production, where `bwrap` closes non-passed fds — the test never had bwrap. The macOS dev loop missed it because the Linux body is `SkipZigTest`-gated and only *compiled* locally; the run executes for the first time on CI. **Fix:** the test now asserts the **relative** property (child fds ⊆ parent fds via per-fd `readLinkAbsolute`), which is true for the bwrap-less spawn path and still catches a spawn-introduced fd (progress fd-3). Validated by running the cross-compiled **aarch64** integration binary in a **native arm64** Linux container (12 pass / 1 skip / 0 fail) — the faithful oracle, after a qemu-emulated x86_64 run gave false failures (emulated fork breaks even the passing marker test). `kishore-babysit-prs` caught the red lane on the first poll.
+  - **Greptile (PR #374, 2× P2) — both addressed.** (1) "stray-fd test lacks its own positive control" → added a `[ -L /proc/self/fd/1 ] || printf 'probe_broken'` self-validating guard so an unreadable `/proc` can no longer pass vacuously. (2) "structural test guards field names, not types" → added a call-site comment that a type change to `base_url`/`io` (vs a new field) is not caught and must be reviewed.
 - **Deferrals** — none. Any "deferred to follow-up" needs an Indy-acked verbatim quote here.
-- **Skill chain outcomes** — `/write-unit-test`: clean. `/review`: 2 findings, both dispositioned (1 fixed, 1 accepted limitation). `/review-pr` + `kishore-babysit-prs`: run post-PR.
+- **Skill chain outcomes** — `/write-unit-test`: clean. `/review`: 2 findings, both dispositioned (1 fixed, 1 accepted limitation). `kishore-babysit-prs`: caught the CI-red lane + 2 greptile P2s, all fixed in-PR.
 
 ## Skill-Driven Review Chain (mandatory)
 
