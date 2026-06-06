@@ -17,7 +17,7 @@ Provisions the one global admin user (`usezombie-admin`) in Clerk for a given en
 |------|-------|------|
 | 0.0 | Agent | Resolve environment; load credentials from vault |
 | 1.0 | Human | Sign up at the website with the admin email + password |
-| 2.0 | Human | Flip `publicMetadata.role` from `operator` to `admin` in Clerk Dashboard |
+| 2.0 | Human | Set `publicMetadata.role=admin` **and** `platform_admin=true` in Clerk Dashboard |
 | 3.0 | Agent | Verify the admin JWT carries `role=admin` by calling an admin-gated endpoint |
 | 4.0 | Agent | Mint a `zmb_t_` tenant API key via `POST /v1/api-keys` |
 | 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/usezombie-admin` field `api_key` |
@@ -82,27 +82,39 @@ curl -s -H "Authorization: Bearer $(op read op://$VAULT/clerk/secret-key)" \
 
 ---
 
-## 2.0 Human: Promote to admin in Clerk Dashboard
+## 2.0 Human: Promote to admin + platform admin in Clerk Dashboard
 
-**Goal:** flip `publicMetadata.role` from `"operator"` to `"admin"` for the one global admin user. No other user in the environment receives this change.
+**Goal:** for the one global admin user, set `publicMetadata.role = "admin"` **and**
+`publicMetadata.platform_admin = true`. These are two **independent** authorization
+axes:
+
+- `role=admin` → the tenant-admin surface (`/v1/admin/*`, api-keys, platform keys).
+- `platform_admin=true` → the **fleet/runner-enrollment** surface: the dashboard's
+  **Configuration → Runners** item, `POST /v1/runners` (mint), and
+  `GET /v1/fleet/runners`. `role=admin` does **not** grant it, and the dashboard
+  **hides** the Runners item unless `platform_admin === true`.
+
+No other user in the environment receives either change.
 
 1. Open https://dashboard.clerk.com
-2. Pick the application for this environment (dev or prod).
-3. Users → search for `$ADMIN_EMAIL` → open the user.
-4. Metadata tab → Public metadata → edit:
+2. Pick the application for this environment — dev is the `*_test_…` instance whose
+   keys `api-dev` trusts (prod is the `*_live_…` instance).
+3. Users → search for `$ADMIN_EMAIL` (`nkishore@megam.io`) → open the user.
+4. Metadata tab → Public metadata → edit (keep `tenant_id` as-is):
    ```json
-   { "tenant_id": "...<leave as-is>...", "role": "admin" }
+   { "tenant_id": "...<leave as-is>...", "role": "admin", "platform_admin": true }
    ```
 5. Save.
-6. **Do NOT touch any other user's metadata.** This is the only account that gets `role=admin`.
+6. **Do NOT touch any other user's metadata.** This is the only account that gets
+   `role=admin` or `platform_admin=true`.
 
 ### Acceptance
 
-```bash
-curl -s -H "Authorization: Bearer $(op read op://$VAULT/clerk/secret-key)" \
-  "https://api.clerk.com/v1/users?email_address=$ADMIN_EMAIL" | jq '.[0].public_metadata.role'
-# Expect: "admin"
-```
+- `role=admin` is confirmed by step 3.0 below (an admin-gated endpoint returns 200).
+- `platform_admin=true` is confirmed behaviorally: a fresh dashboard session for
+  `$ADMIN_EMAIL` shows **Configuration → Runners**, and that surface can mint a
+  `zrn_` — see `operations/runner_onboarding/001_playbook.md`. A non-platform-admin
+  session 403s (`UZ-AUTH-021`) and the nav item is hidden.
 
 ---
 
