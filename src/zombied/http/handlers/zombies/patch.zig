@@ -243,15 +243,15 @@ fn patchZombieInTxn(
     var skill_meta: ?zombie_config.SkillMetadata = null;
     defer if (skill_meta) |*sm| sm.deinit(alloc);
     // Re-derived placement tags when source_markdown is reparsed; NULL ⇒ the
-    // UPDATE's COALESCE keeps the existing required_tags. Freed after the UPDATE.
-    var new_required_tags_json: ?[]const u8 = null;
-    defer if (new_required_tags_json) |j| alloc.free(j);
+    // UPDATE's COALESCE keeps the existing required_tags. Borrowed from skill_meta
+    // (alive for the txn) and passed straight through as a TEXT[] param.
+    var new_required_tags: ?[]const []const u8 = null;
     if (body.source_markdown) |sm| {
         skill_meta = zombie_config.parseSkillMetadata(alloc, sm) catch return TxnOutcome{ .invalid_source_markdown = {} };
         const target_name = if (parsed_trigger) |pt| pt.config.name else current.?.name;
         if (!std.mem.eql(u8, skill_meta.?.name, target_name)) return TxnOutcome{ .name_mismatch = {} };
         if (!zombie_config.validRequiredTags(skill_meta.?.tags)) return TxnOutcome{ .invalid_required_tags = {} };
-        new_required_tags_json = try std.json.Stringify.valueAlloc(alloc, skill_meta.?.tags, .{});
+        new_required_tags = skill_meta.?.tags;
     }
 
     const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
@@ -271,7 +271,7 @@ fn patchZombieInTxn(
             \\    trigger_markdown = COALESCE($11,       trigger_markdown),
             \\    source_markdown  = COALESCE($12,       source_markdown),
             \\    name             = COALESCE($13,       name),
-            \\    required_tags    = COALESCE($14::jsonb, required_tags),
+            \\    required_tags    = COALESCE($14::text[], required_tags),
             \\    updated_at       = $3
             \\WHERE id = $4::uuid
             \\  AND workspace_id = $5::uuid
@@ -297,7 +297,7 @@ fn patchZombieInTxn(
             body.trigger_markdown,
             body.source_markdown,
             new_name,
-            new_required_tags_json,
+            new_required_tags,
         }) catch |err| return mapPgErr(conn, err));
         defer upd_q.deinit();
         if (try upd_q.next()) |row| break :blk try row.get(i64, 0);
