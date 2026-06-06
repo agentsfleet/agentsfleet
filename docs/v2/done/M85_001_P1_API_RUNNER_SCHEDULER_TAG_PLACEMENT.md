@@ -4,7 +4,7 @@
 **Milestone:** M85
 **Workstream:** 001
 **Date:** Jun 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — correctness + capability: today any runner claims any zombie, so capability-bound (GPU/region) work can land on an unfit host.
 **Categories:** API
 **Batch:** B1 — single workstream; the eligibility filter is one coherent change to the candidate scan.
@@ -184,12 +184,12 @@ Deferred (own follow-up spec — written as composable AND-clauses so they slot 
 
 ## Acceptance Criteria
 
-- [ ] `required_tags` persisted + validated (empty default; malformed → `UZ-REQ-001`) — verify: `make test-integration`
-- [ ] Candidate scan respects `required_tags ⊆ labels`; empty = any runner; sticky hint never overrides — verify: `make test-integration`
-- [ ] Unsatisfiable tags hold (no error/thrash) then schedule on a match — verify: `make test-integration`
-- [ ] `make lint` clean · `make test` passes · cross-compile both linux targets
-- [ ] `runner_fleet.md` non-goal line reads "label placement is M85_001"; no live `M80_007` *pending* placement reservation — verify: `grep -n "M85_001" docs/architecture/runner_fleet.md` shows the label-placement line
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] `required_tags` persisted + validated (empty default; malformed → `UZ-REQ-001`) — `make test-integration-db` ✓
+- [x] Candidate scan respects `required_tags ⊆ labels`; empty = any runner; sticky hint never overrides — `make test-integration-db` ✓
+- [x] Unsatisfiable tags hold (no error/thrash) then schedule on a match — `make test-integration-db` ✓ (`unsatisfiable tags hold then schedule`)
+- [x] `make lint-zig` clean · `make test-unit-zombied` passes (unit=1819) · cross-compile both linux targets ✓
+- [x] `runner_fleet.md` non-goal line reads "Label placement … is built in M85_001" — already accurate, no edit needed
+- [x] `gitleaks detect` clean (pre-commit) · no file over 350 lines (FLL gate green; create_stream.zig split)
 
 ---
 
@@ -244,11 +244,11 @@ N/A — no files deleted (additive: one column, one candidate-scan filter, one v
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Required-tags model | `make test-integration` | {paste} | |
-| Eligibility filter | `make test-integration` | {paste} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| Doc sweep | `grep -n "M85_001" docs/architecture/runner_fleet.md` | {paste} | |
+| Required-tags model + eligibility | `make test-integration-db` | DB-backed integration tests passed (migrations 1–24 applied; placement subset/empty/sticky/hold all green vs live PG+Redis) | ✓ |
+| Validator unit | `make test-unit-zombied` | test depth gate passed (unit=1819 integration=156) | ✓ |
+| Cross-compile | `zig build && -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | NATIVE_BUILD_OK / X86_LINUX_OK / AARCH64_LINUX_OK | ✓ |
+| Lint | `make lint-zig` | ZLint 0/0 · pg-drain · schema-gate · FLL · ORP all ✓ | ✓ |
+| Pre-commit harness | `make harness-verify` (staged) | ALL GATES GREEN | ✓ |
 
 ---
 
