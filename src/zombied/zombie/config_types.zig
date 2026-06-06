@@ -167,10 +167,12 @@ comptime {
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's
 /// top-level keys). Required: `name`, `description`, `version`. Optional
-/// pass-through fields (`tags`, `author`, `model`, `when_to_use`) are
-/// parsed but not interpreted by the runtime — they exist for skill-host
-/// portability and ecosystem use. Cross-file invariant enforced upstream:
-/// `SkillMetadata.name == ZombieConfig.name`.
+/// pass-through fields (`author`, `model`, `when_to_use`) are parsed but not
+/// interpreted by the runtime — they exist for skill-host portability. `tags`
+/// IS interpreted: it persists to `core.zombies.required_tags` and gates
+/// placement (a runner claims the zombie only when `tags ⊆ runner.labels`;
+/// see `validRequiredTags` + `fleet.assign.listCandidates`). Cross-file
+/// invariant enforced upstream: `SkillMetadata.name == ZombieConfig.name`.
 pub const SkillMetadata = struct {
     name: []const u8,
     description: []const u8,
@@ -196,6 +198,23 @@ pub fn freeStringSlice(alloc: Allocator, slice: []const []const u8) void {
     alloc.free(slice);
 }
 
+/// Placement-tag bounds for core.zombies.required_tags (derived from
+/// SkillMetadata.tags, matched ⊆ runner.labels at lease time): bounded count +
+/// per-tag length, so a runaway manifest cannot store an unbounded array.
+const MAX_REQUIRED_TAGS: usize = 32;
+const MAX_TAG_LEN: usize = 64;
+
+/// True when `tags` is a storable placement set: bounded count, each tag
+/// non-empty and within MAX_TAG_LEN. Char-class is intentionally unchecked —
+/// runner labels are not validated either and the match is exact-string, so a
+/// bad-char tag simply never matches rather than corrupting anything. Callers
+/// map false → UZ-REQ-001 (create/patch).
+pub fn validRequiredTags(tags: []const []const u8) bool {
+    if (tags.len > MAX_REQUIRED_TAGS) return false;
+    for (tags) |t| if (t.len == 0 or t.len > MAX_TAG_LEN) return false;
+    return true;
+}
+
 pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
     switch (t) {
         .webhook => |w| {
@@ -215,4 +234,29 @@ pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
         .cron => |c| alloc.free(c.schedule),
         .api => {},
     }
+}
+
+test "validRequiredTags: accepts empty/normal sets, rejects over-count and bad lengths" {
+    // Empty set is the any-runner identity — must be valid.
+    try std.testing.expect(validRequiredTags(&.{}));
+    // A normal small capability set.
+    try std.testing.expect(validRequiredTags(&.{ "gpu", "us-east" }));
+
+    // Empty-string tag rejected (would store a meaningless label).
+    try std.testing.expect(!validRequiredTags(&.{""}));
+    try std.testing.expect(!validRequiredTags(&.{ "gpu", "" }));
+
+    // Per-tag length boundary: exactly MAX is accepted, one over is rejected.
+    const tag_at_max = "a" ** 64;
+    const tag_over_max = "a" ** 65;
+    try std.testing.expect(validRequiredTags(&.{tag_at_max}));
+    try std.testing.expect(!validRequiredTags(&.{tag_over_max}));
+
+    // Count boundary: exactly MAX accepted, one over rejected.
+    var at_max: [32][]const u8 = undefined;
+    for (&at_max) |*t| t.* = "x";
+    try std.testing.expect(validRequiredTags(&at_max));
+    var over_max: [33][]const u8 = undefined;
+    for (&over_max) |*t| t.* = "x";
+    try std.testing.expect(!validRequiredTags(&over_max));
 }

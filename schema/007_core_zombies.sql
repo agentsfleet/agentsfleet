@@ -7,6 +7,11 @@
 -- table holds no secret pointers.
 -- Status transitions: active → paused → active | active → stopped (terminal)
 -- Status values enforced in application code (error_codes.ZOMBIE_STATUS_*)
+-- required_tags: capability tags this zombie needs to be placed (GitLab-tags /
+--   GitHub-labels model). A runner may claim it only when required_tags is a
+--   subset of the runner's fleet.runners.labels (fleet.assign.listCandidates).
+--   Empty set = any runner (today's behaviour). App-supplied, deduped, validated
+--   on create/config (UZ-REQ-001 on malformed).
 
 CREATE TABLE IF NOT EXISTS core.zombies (
     id              UUID PRIMARY KEY,
@@ -17,6 +22,13 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
     status          TEXT NOT NULL,
+    -- The empty array is the only valid initial value (the any-runner identity),
+    -- so it carries a structural DEFAULT — same exception class as
+    -- fleet.runner_affinity.meter_slice_seq's DEFAULT 0, NOT an STS enum-value
+    -- default that mirrors a code constant. The create path always writes the
+    -- validated set explicitly; the default keeps unrelated inserts from
+    -- re-stating it.
+    required_tags   JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
     CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name)
