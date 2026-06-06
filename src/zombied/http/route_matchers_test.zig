@@ -87,16 +87,6 @@ test "matchWorkspaceZombieGrant: ws_id, zombie_id, grant_id" {
     try std.testing.expect(matchers.matchWorkspaceZombieGrant(parse("/v1/workspaces/ws1/zombies/z1/x/integration-grants/g1", &buf)) == null);
 }
 
-test "matchWorkspaceZombieMemoryByKey: ws_id, zombie_id, memory_key" {
-    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceZombieMemoryByKey(parse("/v1/workspaces/ws1/zombies/z1/memories/incident:42", &buf)).?;
-    try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("z1", r.zombie_id);
-    try std.testing.expectEqualStrings("incident:42", r.memory_key);
-    try std.testing.expect(matchers.matchWorkspaceZombieMemoryByKey(parse("/v1/workspaces/ws1/zombies/z1/memories/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceZombieMemoryByKey(parse("/v1/workspaces/ws1/zombies/z1/memories", &buf)) == null);
-}
-
 test "matchWorkspaceZombie: workspace_id and zombie_id extracted" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const r = matchers.matchWorkspaceZombie(parse("/v1/workspaces/ws_1/zombies/z_1", &buf)).?;

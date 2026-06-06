@@ -42,6 +42,20 @@ const LAST_SEEN_NAME = "zombie_runner_last_seen_seconds";
 const LAST_SEEN_HELP = "Seconds since a runner was last seen (report or heartbeat); computed at render.";
 const ACTIVE_LEASES_NAME = "zombie_runner_active_leases";
 const ACTIVE_LEASES_HELP = "Leases a runner currently holds (best-effort; abandoned leases self-heal on restart).";
+// Memory-capture families are GLOBAL (unlabelled): per-zombie labels would explode
+// cardinality. The zombie scope rides the structured log line, never a metric label.
+const MEM_CAPTURED_NAME = "zombie_memory_entries_captured_total";
+const MEM_CAPTURED_HELP = "Durable memory entries persisted via the runner-plane capture push.";
+const MEM_PUSH_FAIL_NAME = "zombie_memory_push_failures_total";
+const MEM_PUSH_FAIL_HELP = "Memory capture pushes that failed to persist (ERR_MEM_UNAVAILABLE).";
+const MEM_HYDRATION_NAME = "zombie_memory_hydration_window_entries";
+const MEM_HYDRATION_HELP = "Entry count in the most recent hydration window served to a runner.";
+// Prometheus exposition format strings — single-sourced (RULE UFS). The format arg
+// to writer.print must be comptime; a container-level const satisfies that.
+const FMT_HELP_TYPE = "# HELP {s} {s}\n# TYPE {s} {s}\n";
+const FMT_HELP_TYPE_VALUE = "# HELP {s} {s}\n# TYPE {s} {s}\n{s} {d}\n";
+const FMT_SERIES_2LABEL = "{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n";
+const FMT_SERIES_1LABEL = "{s}{{{s}=\"{s}\"}} {d}\n";
 const LABEL_RUNNER = "runner_id";
 const LABEL_REASON = "reason";
 const LABEL_OUTCOME = "outcome";
@@ -92,6 +106,11 @@ var g_overflow: Counters = .{};
 /// Total failure overflow increments, surfaced as an explicit counter.
 var g_overflow_total = std.atomic.Value(u64).init(0);
 var g_slot_count = std.atomic.Value(u32).init(0);
+
+/// Global memory-capture telemetry (low cardinality, no per-zombie label).
+var g_memory_captured_total = std.atomic.Value(u64).init(0);
+var g_memory_push_failures_total = std.atomic.Value(u64).init(0);
+var g_memory_hydration_entries = std.atomic.Value(i64).init(0);
 
 fn bucketIndex(reason: ?FailureClass) usize {
     return if (reason) |r| @intFromEnum(r) else UNKNOWN_IDX;
@@ -199,13 +218,29 @@ pub fn decRunnerActiveLeases(runner_id: []const u8) void {
     }
 }
 
+/// `n` memory entries were persisted by a capture push. Global counter (no label).
+pub fn incMemoryCaptured(n: usize) void {
+    if (n == 0) return;
+    _ = g_memory_captured_total.fetchAdd(@intCast(n), .monotonic); // safe because: independent counter
+}
+
+/// A memory capture push failed to persist (ERR_MEM_UNAVAILABLE). Global counter.
+pub fn incMemoryPushFailure() void {
+    _ = g_memory_push_failures_total.fetchAdd(1, .monotonic); // safe because: independent counter
+}
+
+/// Record the entry count of the most recent hydration window (gauge, last-writer-wins).
+pub fn setMemoryHydrationEntries(n: usize) void {
+    g_memory_hydration_entries.store(@intCast(n), .monotonic); // safe because: lone gauge, last-writer-wins
+}
+
 // ── Prometheus rendering (in-memory; called by metrics_render) ───────────────
 
 fn renderFailureSeries(writer: anytype, runner: []const u8, c: *const Counters) !void {
     for (&c.failures, 0..) |*v, idx| {
         const val = v.load(.acquire); // safe because: pairs with the fetchAdd in incRunnerFailure
         if (val == 0) continue;
-        try writer.print("{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n", .{ FAILURES_NAME, LABEL_RUNNER, runner, LABEL_REASON, REASON_LABELS[idx], val });
+        try writer.print(FMT_SERIES_2LABEL, .{ FAILURES_NAME, LABEL_RUNNER, runner, LABEL_REASON, REASON_LABELS[idx], val });
     }
 }
 
@@ -213,20 +248,20 @@ fn renderExecutionSeries(writer: anytype, runner: []const u8, c: *const Counters
     for (&c.executions, 0..) |*v, idx| {
         const val = v.load(.acquire); // safe because: pairs with the fetchAdd in observeRunnerExecution
         if (val == 0) continue;
-        try writer.print("{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n", .{ EXECUTIONS_NAME, LABEL_RUNNER, runner, LABEL_OUTCOME, OUTCOME_LABELS[idx], val });
+        try writer.print(FMT_SERIES_2LABEL, .{ EXECUTIONS_NAME, LABEL_RUNNER, runner, LABEL_OUTCOME, OUTCOME_LABELS[idx], val });
     }
 }
 
 fn renderCounterFamilies(writer: anytype) !void {
-    try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n", .{ FAILURES_NAME, FAILURES_HELP, FAILURES_NAME, TYPE_COUNTER });
+    try writer.print(FMT_HELP_TYPE, .{ FAILURES_NAME, FAILURES_HELP, FAILURES_NAME, TYPE_COUNTER });
     for (&g_slots) |*slot| {
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         try renderFailureSeries(writer, slot.runner_id[0..slot.runner_id_len], &slot.counters);
     }
     try renderFailureSeries(writer, ID_OTHER, &g_overflow);
-    try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n{s} {d}\n", .{ FAILURES_OVERFLOW_NAME, FAILURES_OVERFLOW_HELP, FAILURES_OVERFLOW_NAME, TYPE_COUNTER, FAILURES_OVERFLOW_NAME, g_overflow_total.load(.acquire) });
+    try writer.print(FMT_HELP_TYPE_VALUE, .{ FAILURES_OVERFLOW_NAME, FAILURES_OVERFLOW_HELP, FAILURES_OVERFLOW_NAME, TYPE_COUNTER, FAILURES_OVERFLOW_NAME, g_overflow_total.load(.acquire) });
 
-    try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n", .{ EXECUTIONS_NAME, EXECUTIONS_HELP, EXECUTIONS_NAME, TYPE_COUNTER });
+    try writer.print(FMT_HELP_TYPE, .{ EXECUTIONS_NAME, EXECUTIONS_HELP, EXECUTIONS_NAME, TYPE_COUNTER });
     for (&g_slots) |*slot| {
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         try renderExecutionSeries(writer, slot.runner_id[0..slot.runner_id_len], &slot.counters);
@@ -236,29 +271,40 @@ fn renderCounterFamilies(writer: anytype) !void {
 
 fn renderGaugeFamilies(writer: anytype) !void {
     const now_ms = clock.nowMillis();
-    try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n", .{ LAST_SEEN_NAME, LAST_SEEN_HELP, LAST_SEEN_NAME, TYPE_GAUGE });
+    try writer.print(FMT_HELP_TYPE, .{ LAST_SEEN_NAME, LAST_SEEN_HELP, LAST_SEEN_NAME, TYPE_GAUGE });
     for (&g_slots) |*slot| {
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         const seen = slot.last_seen_ms.load(.acquire); // safe because: pairs with the store in observe/touch
         if (seen == 0) continue;
         const age_s = @divFloor(@max(0, now_ms - seen), MS_PER_S);
-        try writer.print("{s}{{{s}=\"{s}\"}} {d}\n", .{ LAST_SEEN_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], age_s });
+        try writer.print(FMT_SERIES_1LABEL, .{ LAST_SEEN_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], age_s });
     }
 
-    try writer.print("# HELP {s} {s}\n# TYPE {s} {s}\n", .{ ACTIVE_LEASES_NAME, ACTIVE_LEASES_HELP, ACTIVE_LEASES_NAME, TYPE_GAUGE });
+    try writer.print(FMT_HELP_TYPE, .{ ACTIVE_LEASES_NAME, ACTIVE_LEASES_HELP, ACTIVE_LEASES_NAME, TYPE_GAUGE });
     for (&g_slots) |*slot| {
         if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
         const held = @max(0, slot.active_leases.load(.acquire)); // safe because: best-effort gauge; clamp transient <0
         if (held == 0) continue;
-        try writer.print("{s}{{{s}=\"{s}\"}} {d}\n", .{ ACTIVE_LEASES_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], held });
+        try writer.print(FMT_SERIES_1LABEL, .{ ACTIVE_LEASES_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], held });
     }
 }
 
-/// Render every per-runner family. Emits nothing until a runner has been seen.
+/// Global memory-capture families (unlabelled, low cardinality). Counters render
+/// even at 0 once any runner/memory activity exists; the gauge clamps transient <0.
+fn renderMemoryFamilies(writer: anytype) !void {
+    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_CAPTURED_NAME, MEM_CAPTURED_HELP, MEM_CAPTURED_NAME, TYPE_COUNTER, MEM_CAPTURED_NAME, g_memory_captured_total.load(.acquire) });
+    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_PUSH_FAIL_NAME, MEM_PUSH_FAIL_HELP, MEM_PUSH_FAIL_NAME, TYPE_COUNTER, MEM_PUSH_FAIL_NAME, g_memory_push_failures_total.load(.acquire) });
+    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_HYDRATION_NAME, MEM_HYDRATION_HELP, MEM_HYDRATION_NAME, TYPE_GAUGE, MEM_HYDRATION_NAME, @max(0, g_memory_hydration_entries.load(.acquire)) });
+}
+
+/// Render every per-runner family. Emits nothing until a runner has been seen or a
+/// memory capture has occurred.
 pub fn renderPrometheus(writer: anytype) !void {
-    if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0) return;
+    const mem_active = g_memory_captured_total.load(.acquire) != 0 or g_memory_push_failures_total.load(.acquire) != 0;
+    if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0 and !mem_active) return;
     try renderCounterFamilies(writer);
     try renderGaugeFamilies(writer);
+    try renderMemoryFamilies(writer);
 }
 
 // Test-only reset, consumed by metrics_runner_test.zig.
@@ -267,4 +313,7 @@ pub fn resetForTest() void {
     g_overflow = .{};
     g_overflow_total.store(0, .release);
     g_slot_count.store(0, .release);
+    g_memory_captured_total.store(0, .release);
+    g_memory_push_failures_total.store(0, .release);
+    g_memory_hydration_entries.store(0, .release);
 }

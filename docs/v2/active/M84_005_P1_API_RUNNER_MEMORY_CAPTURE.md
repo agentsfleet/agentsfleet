@@ -24,7 +24,7 @@
 
 1. `src/lib/contract/protocol.zig` — the `/v1/runners/me/*` path constants + `ReportRequest`/fencing shape; this workstream adds a sibling `/v1/runners/me/memory` path + request type.
 2. `src/zombied/http/handlers/runner/report.zig` + `src/zombied/fleet/service_report.zig` — the existing `zrn_`-authenticated runner handler with fencing verification (`UZ-RUN-005`); the new memory handler mirrors its auth + fencing, then persists.
-3. `src/zombied/http/handlers/memory/handler.zig` + `helpers.zig` — `innerStoreMemory` (`INSERT … memory.memory_entries ON CONFLICT (key, instance_id)`), `setMemoryRole`, `resolveZombieInWorkspace` (builds `instance_id`); the write extracts into the shared adapter.
+3. `src/zombied/http/handlers/memory/handler.zig` + `helpers.zig` — `innerStoreMemory` (`INSERT … memory.memory_entries ON CONFLICT (key, zombie_id)`), `setMemoryRole`, `resolveZombieInWorkspace` (builds `instance_id`); the write extracts into the shared adapter.
 4. `src/runner/daemon/loop.zig` — where the daemon drives a lease; the memory push is issued here (daemon-side, holds the `zrn_` token).
 5. `src/runner/engine/runner.zig` (§4 memory) + `src/runner/engine/zombie_memory.zig` + `build_runner.zig` — the **inert** in-child direct-Postgres path AND the **ephemeral-SQLite-as-default** backend; both are sunset by this workstream.
 6. `dispatch/write_zig.md` · `dispatch/write_sql.md` (if the write touches schema) · `docs/AUTH.md` (the `zrn_` runner-plane auth boundary).
@@ -42,14 +42,14 @@
 **Intent restated:** durable agent memory is the **control plane's** job, never the agent's. The runner **parent** (it holds the `zrn_` token) hydrates a run's prior memory in and captures the run's memory out, both over the existing `/v1/runners` plane; the sandboxed child holds no token, URL, or Data Source Name (DSN) and keeps no durable on-disk memory.
 
 **Mechanisms resolved (the two `[?]`):**
-- **(a) Delta extraction → read the run's working store.** The runner owns the `MemoryRuntime` it builds for the child, so at the push cadence it enumerates that store directly (`Memory.list(alloc, category=null, session_id=null)`) and surfaces the entries to the parent over the stdout pipe. No `remember`-tool hook. The push carries the **full current entry set** (not a computed diff) — `ON CONFLICT (key, instance_id) DO UPDATE` makes that idempotent — byte-capped per push.
+- **(a) Delta extraction → read the run's working store.** The runner owns the `MemoryRuntime` it builds for the child, so at the push cadence it enumerates that store directly (`Memory.list(alloc, category=null, session_id=null)`) and surfaces the entries to the parent over the stdout pipe. No `remember`-tool hook. The push carries the **full current entry set** (not a computed diff) — `ON CONFLICT (key, zombie_id) DO UPDATE` makes that idempotent — byte-capped per push.
 - **(b) In-run store + hydration → reuse SQLite in `:memory:` mode, hydrated via a parent GET.** The in-run working store is NullClaw's **SQLite engine run file-less (`db_path = ":memory:"`)** — reused, *not* a new in-memory backend (`base,sqlite` stays in `build_runner.zig`; only the path changes). It is non-durable: seeded at run start and discarded at run end. Prior memory reaches the child through the **runner parent**, which issues `GET /v1/runners/me/memory` with its `zrn_` token and pipes the result down stdin; the child seeds its `:memory:` store from it. The child makes **no** network call and holds **no** credential.
 
 **`ASSUMPTIONS I'M MAKING:`**
 1. NullClaw `v2026.5.29` exposes `Memory.list` (enumerate), `Memory.store` (seed), and an `:memory:` SQLite path via the registry `db_path` field — verified against `~/Projects/oss/nullclaw` at PLAN; re-confirm against the pinned hash at EXECUTE.
 2. The lease→child stdin channel that already carries `secrets_map` can carry a hydrated-memory blob the same way (parent-built, not child-fetched).
 3. The run-end push completes before `report`, so a continuation run hydrates the snapshot the previous run stored (ordering documented in `runner_fleet.md` §Memory continuity).
-4. `instance_id = "zmb:" + lease.zombie_id` is the only scope; a client-supplied scope is ignored (server-authoritative).
+4. `zombie_id` (UUIDv7, no `zmb:` prefix) is the only scope, server-derived from the path + verified lease; a client-supplied scope is ignored (server-authoritative). *(Ratified Jun 06 — supersedes the earlier `"zmb:"`-prefixed `instance_id` form; see Discovery.)*
 
 **Decisions banked from this session (see Discovery for verbatim quotes):** hydration is a dedicated runner-plane **`GET /v1/runners/me/memory`** (not lease-embed — lease size constraint); push cadence is **run-end + mid-run** on `memory_checkpoint_every`; in-run store is **SQLite `:memory:`** (reuse, not LRU); v1 hydrates the **full** memory set, with a dedicated scalable store as the post-launch direction; **robust unit + integration tests** on the loop (Indy directive). The architecture + diagrams are recorded in `docs/architecture/runner_fleet.md` §Memory continuity.
 
@@ -71,7 +71,7 @@
 |------|--------|-----------------------|
 | ZIG GATE | **yes** — `*.zig` edits | Read `dispatch/write_zig.md`; cross-compile both linux targets. |
 | UFS | **yes** — new path + fields + `instance_id` prefix shared both sides | Named constants in `contract`, reused runner + control plane. |
-| LENGTH | **maybe** — new handler + adapter | Memory persist lives in the shared adapter (`src/memory/zombie_memory.zig`), not inline in the handler. |
+| LENGTH | **maybe** — new handler + adapter | Memory persist lives in the shared adapter (`src/zombied/memory/zombie_memory.zig`), not inline in the handler. |
 | LOGGING | **yes** — `memory_captured` emit | Envelope unchanged; count + `instance_id`, never the memory content. |
 | LIFECYCLE / SCHEMA | **yes** — pg-drain on the write path | `conn.query().drain()` before `deinit` (`make check-pg-drain`); reuse `memory.memory_entries` (no DDL). |
 | ERROR REGISTRY | **maybe** — fencing/capture-failure codes | Reuse `UZ-RUN-005` (fencing) + `ERR_MEM_UNAVAILABLE`, or register a distinct memory-push code. |
@@ -91,7 +91,7 @@
 ## Prior-Art / Reference Implementations
 
 - **`/v1/runners/me/reports`** (`runner/report.zig` → `service_report.report`) is the known-good `zrn_`-authenticated, fencing-verified runner ingestion path; `/v1/runners/me/memory` mirrors its auth + fencing.
-- **The tenant memory write** (`memory/handler.zig:innerStoreMemory` + `helpers.zig`: `INSERT … ON CONFLICT (key, instance_id)` under `SET ROLE memory_runtime` with the IDOR-guarded `instance_id`) is the known-good SQL. Extract it into a shared `src/memory/zombie_memory.zig` adapter used by **both** the tenant handler and the new runner-memory handler — don't fork the SQL.
+- **The tenant memory write** (`memory/handler.zig:innerStoreMemory` + `helpers.zig`: `INSERT … ON CONFLICT (key, zombie_id)` under `SET ROLE memory_runtime` with the IDOR-guarded `instance_id`) is the known-good SQL. Extract it into a shared `src/zombied/memory/zombie_memory.zig` adapter used by **both** the tenant handler and the new runner-memory handler — don't fork the SQL.
 
 ---
 
@@ -102,7 +102,8 @@
 | `src/lib/contract/protocol.zig` | EDIT | Add `PATH_RUNNER_MEMORY` (`/v1/runners/me/memory`) + `MemoryDelta { key, content, category }`, `MemoryPushRequest { lease_id, fencing_token, memory: []MemoryDelta }` (POST), and `MemoryHydrateResponse { memory: []MemoryEntry }` (GET) (UFS field names). |
 | `src/zombied/http/handlers/runner/memory.zig` | CREATE | New `zrn_` handlers: **GET** resolves the runner's live lease → returns the zombie's full memory; **POST** verifies `lease_id` fencing (like `/reports`) → persists deltas via the shared adapter with server-derived `instance_id`. |
 | `src/zombied/http/{router,route_table,route_table_invoke}.zig` | EDIT | Wire `GET` + `POST /v1/runners/me/memory` → the new handlers (runner-plane middleware, not bearer): `GET` hydrates the lease zombie's prior memory, `POST` captures the run's memory. |
-| `src/memory/zombie_memory.zig` | CREATE | Shared write adapter (`setMemoryRole` + `instance_id` + `INSERT … ON CONFLICT`) reused by tenant handler + runner-memory handler; plus the scoped read backing the hydration `GET`. |
+| `src/zombied/memory/zombie_memory.zig` | CREATE | The single durable write path: `storeEntry` (`INSERT … ON CONFLICT (key, zombie_id)`) with per-zombie cap eviction (§6); `listAll` scoped read backing the hydration `GET`; the `Compactor` (real `.recency_window` arm, §8). `setMemoryRole`/`resetRole` stay in the tenant `helpers.zig` (caller switches role). |
+| `src/zombied/observability/metrics_runner.zig` | EDIT | Capture observability (§7): captured-entries + push-failure counters, hydration set-size gauge; rendered via the existing `renderPrometheus`. |
 | `src/zombied/http/handlers/memory/handler.zig` | EDIT | **Remove** `innerStoreMemory` (POST) + `innerDeleteMemory` (DELETE); keep `innerListMemories` (GET). The runner-memory handler is the only writer (via the shared adapter). |
 | `src/zombied/http/{router,route_table,route_table_invoke,route_matchers,routes}.zig` | EDIT | Drop the tenant memory **POST** dispatch and the **`workspace_zombie_memory`** by-key (DELETE) route + `matchWorkspaceZombieMemoryByKey`; keep the collection **GET**. Retired verbs 404/405 (pre-v2, no shim). |
 | `src/runner/engine/runner.zig` (+ result frame) | EDIT | Seed the in-run store from the hydration blob; surface the run's memory to the parent over the pipe; **switch the in-run store to SQLite `:memory:`** and **remove the direct-Postgres memory branch**. |
@@ -160,39 +161,65 @@ The agent recalls/remembers **during** the run against a **non-durable** in-run 
 
 - **Dimension 5.1** — at run start the agent can recall prior memory hydrated through the trusted plane (no child network call) → Test `test_prior_memory_hydrated_to_child`
 - **Dimension 5.3** — the hydration `GET /v1/runners/me/memory` is `zrn_`-authenticated + fencing-verified: a held lease returns the zombie's prior entries; an unheld lease is rejected `UZ-RUN-005` → Test `test_hydrate_get_fencing`
-- **Dimension 5.2** — recalled memory is treated as untrusted input (never auto-executed); poisoning is bounded to the agent's own `instance_id` → recorded in Discovery + Failure Modes
+- **Dimension 5.2** — recalled memory is treated as untrusted input (never auto-executed); poisoning is bounded to the agent's own `zombie_id` scope → recorded in Discovery + Failure Modes
+
+### §6 — Per-zombie durable-set cap (accepted, Indy Jun 06 — SELECTIVE EXPANSION)
+
+The per-push byte cap (`MAX_MEMORY_PUSH_BYTES`, 256 KiB) bounds one push; it does **not** bound the durable set a long-lived (or adversarial) zombie accumulates across runs. With full-set/windowed hydration, an unbounded set inflates every run's hydration cost. The store enforces a per-zombie ceiling (`MAX_MEMORY_ENTRIES_PER_ZOMBIE`): on `storeEntry`, evict the coldest (`ORDER BY updated_at ASC`) beyond the ceiling, server-side, in the same `memory_runtime` transaction. Stable-key overwrite (`ON CONFLICT`) + `memory_forget` remain the agent's own bounds; this is the hard backstop.
+
+- **Dimension 6.1** — storing past the ceiling evicts the coldest entries, never exceeding the cap → Test `test_memory_cap_evicts_coldest`
+- **Dimension 6.2** — an upsert to an existing key does not count against fresh-entry growth (overwrite, not insert) → Test `test_memory_cap_upsert_no_growth`
+
+### §7 — Capture observability (accepted, Indy Jun 06 — SELECTIVE EXPANSION)
+
+Memory capture is operable from day one, not log-line-only. Following the `metrics_runner.zig` Prometheus pattern: a captured-entries counter, a push-failure counter (`ERR_MEM_UNAVAILABLE`), and a hydration set-size gauge. Content is never a label — only counts + scope (`zombie_id`).
+
+- **Dimension 7.1** — a successful capture increments the captured-entries counter by the stored count → Test `test_memory_metrics_capture_count`
+- **Dimension 7.2** — a store failure increments the push-failure counter → Test `test_memory_metrics_push_failure`
+
+### §8 — Hydration compaction (accepted, Indy Jun 06 — real compaction IN this PR)
+
+The `Compactor` seam ships a **real** arm, not passthrough: deterministic **recency + byte-budget windowing** (`.recency_window`) — the hydrate returns the top entries by `updated_at DESC` under `HYDRATE_WINDOW_BYTES`, dropping the cold tail from the hydration payload. **Eviction is from the payload, not the database** — cold entries stay durable in Postgres, so there is **no fact loss**; a later `memory_recall` of a cold key still reaches it via a future selective-hydration arm behind the same seam. **Deterministic, in `zombied`, no LLM** — summarisation belongs on the executor plane (the control plane has no model), explicitly out of scope here.
+
+- **Dimension 8.1** — a set exceeding the byte budget hydrates only the newest entries within budget; the cold tail is omitted but still present in `memory.memory_entries` → Test `test_compaction_recency_window`
+- **Dimension 8.2** — a set within budget hydrates verbatim (window is a ceiling, not a floor) → Test `test_compaction_under_budget_passthrough`
 
 ---
 
 ## Interfaces
 
 > **Illustrative — exact shapes verified at PLAN.** Contract, not implementation.
+>
+> **Terminology (ratified Jun 06):** the durable scope key is `zombie_id` (UUIDv7) everywhere — path, wire, code, and the `memory.memory_entries` column. Older prose in this spec that says `instance_id` / `zmb:` predates the migration (`schema/013`); a full prose sweep lands at CHORE(close). See Discovery (Jun 06).
 
 ```
-# NEW runner-plane endpoints — top-level resources (siblings of /reports), zrn_ auth + fencing.
-# Memory is keyed by the durable ZOMBIE (instance_id), never by the ephemeral lease, so neither
-# verb carries lease_id in the path or query. The runner loop is strictly serial (one live lease
-# at a time — loop.zig), so the server resolves the zombie from the runner's live lease.
+# NEW runner-plane endpoints — siblings of /reports, zrn_ auth + fencing. The runner NAMES the
+# zombie in the path ({zombie_id}, UUIDv7); the server verifies the runner holds a LIVE lease for
+# it (IDOR guard) and scopes every query WHERE zombie_id = $1 at the database. Memory is keyed by
+# the durable ZOMBIE (zombie_id), never the ephemeral lease, so run 3's GET returns run 1 + run 2
+# (all wrote under the same zombie_id). Explicit-naming over infer-from-session: the runner already
+# holds the zombie_id in its LeasePayload, and it does not depend on a "one live lease" invariant.
 #
-#   GET  /v1/runners/me/memory                 -> MemoryHydrateResponse { memory: []MemoryEntry }
-#        # Bearer zrn_ only; no path/query param. Returns the FULL memory set for the live lease's
-#        # zombie (the union of every prior run — they all wrote under the same instance_id).
-#   POST /v1/runners/me/memory                 MemoryPushRequest { lease_id, fencing_token, memory: []MemoryDelta }
+#   GET  /v1/runners/me/memory/{zombie_id}  -> MemoryHydrateResponse { memory: []MemoryDelta }
+#        # Bearer zrn_. Returns a COMPACTED hydration window (recency + byte budget) of the zombie's
+#        # durable set — the cold tail stays in Postgres, unhydrated (see §8 compaction).
+#   POST /v1/runners/me/memory/{zombie_id}  MemoryPushRequest { lease_id, fencing_token, memory: []MemoryDelta }
 #        # lease_id + fencing_token ride the BODY (like ReportRequest) — a write must be fenced.
-#   MemoryDelta { key, content, category }      # NO instance_id from client
+#   MemoryDelta { key, content, category }   # NO zombie_id from client (server-derived: path + lease)
 #
 # Server-side (control plane / zombied), both verbs:
-#   resolve the runner's live lease (GET) / verify lease_id is held + fencing (POST) else UZ-RUN-005
-#   instance_id := derive("zmb:" + lease.zombie_id)   # server-derived, NOT client-supplied
-#   GET : SELECT … memory.memory_entries WHERE instance_id = $1     (full set; zombie-scoped)
-#   POST: SET ROLE memory_runtime; INSERT … ON CONFLICT (key, instance_id) DO UPDATE
+#   GET : verify the runner holds a live lease for {zombie_id}, else UZ-RUN-005 / ERR_RUN_LEASE_NOT_FOUND
+#   POST: load body.lease_id (like /reports), verify the runner owns it AND lease.zombie_id == {zombie_id}
+#         AND fencing_token is current (else UZ-RUN-005); a reclaimed holder writes nothing
+#   SET ROLE memory_runtime; INSERT … memory.memory_entries ON CONFLICT (key, zombie_id) DO UPDATE
+#   the store enforces the per-zombie durable-set cap (§6); GET passes rows through the Compactor (§8)
 # The sandboxed child:
 #   - holds NO zrn_ token, NO control-plane URL, NO DSN, NO durable on-disk memory
 #   - recall/remember operate on a NON-DURABLE in-run store (SQLite :memory:), hydrated via the
 #     parent's GET, flushed via the POST
 ```
 
-Contract: the tenant memory API (`/v1/workspaces/.../memories`) is observably unchanged (it delegates its write to the shared adapter); run-capture is server-authoritative for `instance_id`.
+Contract: run-capture is server-authoritative for `zombie_id` (derived from the path + the verified lease, never client-supplied). The tenant memory API (`/v1/workspaces/.../memories`) becomes **read-only** (GET) — its write verbs are retired (§4.3); the shared read adapter backs both planes.
 
 ---
 
@@ -206,7 +233,7 @@ Contract: the tenant memory API (`/v1/workspaces/.../memories`) is observably un
 | Client-supplied `instance_id` | a tampered push targets another zombie | ignored — `instance_id` is server-derived from the lease (`test_memory_push_cross_zombie_isolation`) |
 | Hydration unavailable | control plane can't supply prior memory at run start | run proceeds with empty memory (degrade, logged); never blocks the run on a recall miss |
 | Token/URL-in-child regression | a refactor leaks `zrn_`/the control-plane URL into the agent | `test_no_token_or_url_in_child` fails the build (links M84_003 §1) |
-| Duplicate push | push retried | `ON CONFLICT (key, instance_id) DO UPDATE` makes the write idempotent |
+| Duplicate push | push retried | `ON CONFLICT (key, zombie_id) DO UPDATE` makes the write idempotent |
 
 ---
 
@@ -237,8 +264,14 @@ Contract: the tenant memory API (`/v1/workspaces/.../memories`) is observably un
 | 4.2 | integration | `test_no_default_sqlite_memory_file` | `:memory:` mode → no on-disk SQLite memory file exists during or after a run; durability is Postgres |
 | 4.3 | integration | `test_tenant_memory_write_verbs_retired` | tenant `POST /memories` + `DELETE /memories/{key}` → 404/405 (no shim); `GET` still 200 |
 | 5.1 | integration | `test_prior_memory_hydrated_to_child` | agent recalls prior memory hydrated via the daemon (no child network call) |
-| 5.3 | integration | `test_hydrate_get_fencing` | `GET /me/memory` held lease → prior entries; unheld/reclaimed lease → `UZ-RUN-005` |
-| — | integration | `test_memory_push_idempotent` | the same push twice → one row per `(key, instance_id)` |
+| 5.3 | integration | `test_hydrate_get_fencing` | `GET /me/memory/{zombie_id}` held lease → entries; unheld/reclaimed → `UZ-RUN-005`/404 |
+| — | integration | `test_memory_push_idempotent` | the same push twice → one row per `(key, zombie_id)` |
+| 6.1 | integration | `test_memory_cap_evicts_coldest` | storing past `MAX_MEMORY_ENTRIES_PER_ZOMBIE` → coldest evicted, count ≤ cap |
+| 6.2 | unit | `test_memory_cap_upsert_no_growth` | upsert to an existing key → row count unchanged |
+| 7.1 | unit | `test_memory_metrics_capture_count` | capture of N → captured-entries counter += N |
+| 7.2 | unit | `test_memory_metrics_push_failure` | store error → push-failure counter += 1 |
+| 8.1 | unit | `test_compaction_recency_window` | set over budget → only newest within `HYDRATE_WINDOW_BYTES`; tail still in DB |
+| 8.2 | unit | `test_compaction_under_budget_passthrough` | set under budget → hydrated verbatim |
 
 - **Regression:** the tenant memory API (`/v1/workspaces/.../memories` POST/GET/DELETE) behaves identically after the adapter extraction; `make test` + `make test-integration` pass.
 - **Idempotency/replay:** `test_memory_push_idempotent`.
@@ -255,6 +288,9 @@ Contract: the tenant memory API (`/v1/workspaces/.../memories`) is observably un
 - [ ] In-child direct-Postgres path removed; in-run store is SQLite `:memory:` (no on-disk file) — verify: Dead Code Sweep + `git grep -n 'zombie_memory' src/runner`
 - [ ] Tenant memory write verbs (POST/DELETE) retired, GET kept — verify: `test_tenant_memory_write_verbs_retired`
 - [ ] Single shared write adapter (tenant + runner) — verify: `test_single_write_adapter`; tenant API unchanged: `make test-integration`
+- [ ] Per-zombie durable-set cap evicts coldest past the ceiling — verify: `test_memory_cap_evicts_coldest`
+- [ ] Capture metrics emitted (count, push-failure, hydration gauge) — verify: `test_memory_metrics_capture_count` + `test_memory_metrics_push_failure`
+- [ ] Real compaction hydrates a recency+byte window; cold tail stays in DB — verify: `test_compaction_recency_window`
 - [ ] `make lint` clean · `make check-pg-drain` clean · cross-compile both linux targets
 - [ ] `gitleaks detect` clean · no file over 350 lines added
 
@@ -302,7 +338,7 @@ make check-pg-drain 2>&1 | tail -3 && zig build -Dtarget=x86_64-linux 2>&1 | tai
 - **Origin (Jun 05, 2026):** Indy — _"ensure the memory of the agent is captured during every run"_.
 - **Code-grounded facts (Jun 05, 2026):**
   - `/v1/runners/me/reports` exists (`protocol.zig:40`), `zrn_`-authenticated, fencing-verified (`service_report.report`). The new `/v1/runners/me/memory` mirrors it.
-  - DB write is `memory/handler.zig:innerStoreMemory` (`INSERT … memory.memory_entries ON CONFLICT (key, instance_id)`) + `helpers.zig` (`setMemoryRole`, IDOR `resolveZombieInWorkspace`) — the reusable adapter. **`src/memory/` is empty today** (the shared adapter is created here).
+  - DB write is `memory/handler.zig:innerStoreMemory` (`INSERT … memory.memory_entries ON CONFLICT (key, zombie_id)`) + `helpers.zig` (`setMemoryRole`, IDOR `resolveZombieInWorkspace`) — the reusable SQL. **`src/zombied/memory/` is new** (the shared adapter is created here; the write SQL moves out of the tenant handler).
   - `{ws}`/`{zid}` come from the lease/event envelope (`event_envelope.zig:22-23`), set by `zombied` at lease issue — not child config. The collection POST has **no path `{key}`** (key rides the body).
   - Runner is `base,sqlite` (`build_runner.zig`); `runner/engine/zombie_memory.zig` inert; capture currently **only signalled** (`runner_progress.zig` logs `memory_checkpoint_due`). No UI/CLI calls `/v1/workspaces/.../memories` — it is an external-agent API (bearer).
 - **Indy decisions (verbatim, Jun 05, 2026):**
@@ -320,6 +356,12 @@ make check-pg-drain 2>&1 | tail -3 && zig build -Dtarget=x86_64-linux 2>&1 | tai
   - _"consider adding unit test, integration test robust on these"_ → robust unit + integration coverage on the loop (§Test Specification, plus `/write-unit-test` gate).
 - **Known v1 limitation (Indy: _"how will nullclaw take this? since there is no compaction? which can be fixed later though"_):** NullClaw stores/recalls verbatim — **no compaction/summarisation**. Within a run the `:memory:` store is bounded (hydrated set + writes, discarded at end); the durable per-zombie set can grow over a long-lived zombie's life, and v1 hydrates it **in full** each run. Bounded in practice by stable-key overwrite (`ON CONFLICT … DO UPDATE`) + the agent's `memory_forget`; the real fix (selective hydration + compaction/eviction) lands with the **separate memory store** post-testing, behind the same `GET` seam — **no NullClaw/agent change**. Recorded so it is not silently carried.
 - **PLAN decisions BANKED (Jun 05, 2026):** delta extraction = read the run's working store (`Memory.list`); in-run store = SQLite `:memory:`; hydration = parent `GET` piped to child; cadence = run-end + mid-run; per-push byte cap retained (Failure Modes); `build_runner.zig` stays `base,sqlite` (path → `:memory:`).
+- **API shape + scope decisions BANKED (Jun 06, 2026 — `/plan-ceo-review`, Indy live):**
+  - **Endpoint shape → zombie-in-path.** Both verbs are `/v1/runners/me/memory/{zombie_id}` (UUIDv7). This **supersedes** the Jun 05 "top-level, server-resolves-from-the-single-live-lease" banked decision. The serial-loop premise still holds (`loop.zig` is strictly serial — verified Jun 06), but the runner already holds the `zombie_id` in its `LeasePayload`, so explicit naming is more robust and does not depend on a "one live lease" invariant. Indy ratified Jun 06 ("Keep zombie-in-path"). `"donot use query param"` is honored — a path segment is not a query param.
+  - **POST fence → explicit `lease_id`.** The POST body carries `lease_id` + `fencing_token` and the server loads that exact lease (mirroring `service_report.loadLease`), cross-checks `lease.zombie_id == {zombie_id}`, and fences — instead of *inferring* the live lease from `(runner_id, zombie_id)`. One fencing pattern in the codebase, not two (Indy: _"what if we changed via the lease_id?"_).
+  - **`instance_id` → `zombie_id` (UUID).** Confirmed: the durable column + every wire/code path uses `zombie_id` (UUIDv7, no `zmb:` prefix); `schema/013` is the teardown-rebuild. The `"zmb:"` form is gone with the in-child Postgres path.
+  - **Premise validated (why this is needed):** the product **already sells** durable cross-event memory (`docs/memory.mdx`, `changelog.mdx` "Persistent agent memory — persists in Postgres", website `FAQ.tsx`, tools catalogue) but the M80 runner-split regressed it (`runner_progress.zig` only logs `memory_checkpoint_due`; the runner store is an ephemeral workspace SQLite file deleted at run end). M84_005 restores an advertised capability over the trusted plane.
+  - **SELECTIVE EXPANSION accepted (all three IN this PR):** §6 per-zombie durable-set cap; §7 capture metrics; §8 **real** compaction — _"in the real compaction in this PR as well"_. Compaction is **deterministic recency + byte-budget windowing in `zombied`, NOT LLM summarisation** (the control plane has no model; summarisation belongs on the executor plane — explicitly out of scope). Eviction is from the hydration payload, not the database, so no fact loss.
 - **Deferrals** — none (any "deferred" needs an Indy-acked verbatim quote here).
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr`.}
 
