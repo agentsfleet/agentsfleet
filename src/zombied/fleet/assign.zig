@@ -77,14 +77,21 @@ fn selectInner(hx: Hx, runner_id: []const u8) !?Acquired {
     return null;
 }
 
-/// Active zombies, sticky-first: the runner's affinity matches sort to the
+/// Eligible active zombies, sticky-first. Eligibility is a single label gate:
+/// a zombie is a candidate for this runner only when its `required_tags` are a
+/// subset of the runner's advertised `labels` (`required_tags <@ r.labels`;
+/// empty tags ⊆ any labels ⇒ any runner — today's behaviour). The match filters
+/// the candidate set here; the per-zombie slot claim (affinity.claim) is
+/// unchanged. Within the eligible set the runner's own affinity sorts to the
 /// front (DESC on the boolean), then oldest-created. Sticky is ordering only.
 fn listCandidates(conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u8) ![][]const u8 {
     var q = PgQuery.from(try conn.query(
         \\SELECT z.id::text
         \\FROM core.zombies z
+        \\JOIN fleet.runners r ON r.id = $2::uuid
         \\LEFT JOIN fleet.runner_affinity a ON a.zombie_id = z.id
         \\WHERE z.status = $1
+        \\  AND z.required_tags <@ r.labels
         \\ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
     , .{ zombie_config.ZombieStatus.active.toSlice(), runner_id }));
     defer q.deinit();

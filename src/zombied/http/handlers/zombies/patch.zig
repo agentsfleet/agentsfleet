@@ -60,6 +60,7 @@ const TxnOutcome = union(enum) {
     invalid_transition,
     invalid_trigger_markdown,
     invalid_source_markdown,
+    invalid_required_tags, // SKILL.md `tags:` outside placement bounds (UZ-REQ-001)
     name_mismatch,
     lock_timeout,
 };
@@ -123,6 +124,7 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
         .not_found => return hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND),
         .invalid_transition => return hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Status transition not allowed from current state"),
         .invalid_trigger_markdown, .invalid_source_markdown => return hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG),
+        .invalid_required_tags => return hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
         .name_mismatch => return hx.fail(ec.ERR_ZOMBIE_NAME_MISMATCH, ec.MSG_ZOMBIE_NAME_MISMATCH),
         .lock_timeout => {
             log.warn("patch_lock_timeout", .{ .zombie_id = zombie_id, .req_id = hx.req_id });
@@ -240,10 +242,16 @@ fn patchZombieInTxn(
 
     var skill_meta: ?zombie_config.SkillMetadata = null;
     defer if (skill_meta) |*sm| sm.deinit(alloc);
+    // Re-derived placement tags when source_markdown is reparsed; NULL ⇒ the
+    // UPDATE's COALESCE keeps the existing required_tags. Freed after the UPDATE.
+    var new_required_tags_json: ?[]const u8 = null;
+    defer if (new_required_tags_json) |j| alloc.free(j);
     if (body.source_markdown) |sm| {
         skill_meta = zombie_config.parseSkillMetadata(alloc, sm) catch return TxnOutcome{ .invalid_source_markdown = {} };
         const target_name = if (parsed_trigger) |pt| pt.config.name else current.?.name;
         if (!std.mem.eql(u8, skill_meta.?.name, target_name)) return TxnOutcome{ .name_mismatch = {} };
+        if (!zombie_config.validRequiredTags(skill_meta.?.tags)) return TxnOutcome{ .invalid_required_tags = {} };
+        new_required_tags_json = try std.json.Stringify.valueAlloc(alloc, skill_meta.?.tags, .{});
     }
 
     const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
@@ -263,6 +271,7 @@ fn patchZombieInTxn(
             \\    trigger_markdown = COALESCE($11,       trigger_markdown),
             \\    source_markdown  = COALESCE($12,       source_markdown),
             \\    name             = COALESCE($13,       name),
+            \\    required_tags    = COALESCE($14::jsonb, required_tags),
             \\    updated_at       = $3
             \\WHERE id = $4::uuid
             \\  AND workspace_id = $5::uuid
@@ -288,6 +297,7 @@ fn patchZombieInTxn(
             body.trigger_markdown,
             body.source_markdown,
             new_name,
+            new_required_tags_json,
         }) catch |err| return mapPgErr(conn, err));
         defer upd_q.deinit();
         if (try upd_q.next()) |row| break :blk try row.get(i64, 0);
