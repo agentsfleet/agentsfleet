@@ -291,7 +291,7 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 - [ ] Relative `argv[0]` rejected fail-closed — verify: `test_relative_argv0_rejected`
 - [ ] Kill domain never silently empty (both fixes) — verify: `test_kill_survives_cgroup_enrollment_failure` + `test_pgroup_kill_reaps_descendant_tree`
 - [ ] (cap-drop `CapEff:0`, fd-proof, network/fs containment → re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md))
-- [ ] New `test-integration-runner` lane wired (`build_runner.zig` step + `make/test-integration.mk`); runner TEST graph cross-compiles for both linux targets
+- [ ] New `test-integration-runner` lane wired (`build_runner.zig` step + `make/test-integration.mk`) AND run by a dedicated CI job on Linux; runner TEST graph cross-compiles for both linux targets
 - [ ] `make lint` clean · `make test-unit-zigrunner` + `make test-integration-runner` pass · cross-compile both linux targets
 - [ ] `gitleaks detect` clean · no file over 350 lines added
 - [ ] `docs/AUTH.md` notes the token is `environ_map`-isolated (filtered allowlist) from the sandbox
@@ -413,7 +413,7 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 | Lint | `make lint-zig` | fmt + ZLint (0 errors/0 warnings, 396 files) + pg-drain + test-depth + line-limit (`child_supervisor.zig` 348/350) + role/legacy guards | ✅ |
 | Cross-compile (prod, both targets) | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | both exit 0 — compile-checks the Linux `prctl`/`environ_map`/`killChild`/`enrollOrFail` paths | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found (2403 commits scanned) | ✅ |
-| Runner integration lane | `make test-integration-runner` | lane wired; native macOS: 3 tests skip (Linux-gated: planted-token, kill-tree, cgroup-fault) + compile clean; both linux targets compile (run step cross-exec n/a on macOS) | ✅ (lane) / ⏳ (CI run) |
+| Runner integration lane | `make test-integration-runner` | lane wired + run by a dedicated `test-integration-runner` CI job (ubuntu, `ci-zig-ubuntu:0.16.0`, no datastore) so the 3 proofs execute on Linux; native macOS: 3 tests skip (Linux-gated: planted-token, kill-tree, cgroup-fault) + compile clean; both linux targets compile | ✅ |
 | App suite (regression) | `make test` | {pending — run at CHORE(close)} | ⏳ |
 
 ---
