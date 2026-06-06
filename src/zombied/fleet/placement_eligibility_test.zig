@@ -28,6 +28,7 @@ const TestHarness = harness_mod.TestHarness;
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
+const id_format = @import("../types/id_format.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -39,9 +40,18 @@ const PLAIN_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0b01";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0d01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0e01";
+// Second zombie + an arm runner for the complex two-zombie routing test.
+const ZOMBIE2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
+const SESSION2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1001";
+const ARM_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1101";
 
 const GPU_TOKEN = "zrn_" ++ "a" ** 64;
 const PLAIN_TOKEN = "zrn_" ++ "b" ** 64;
+const ARM_TOKEN = "zrn_" ++ "c" ** 64;
+
+// Concurrent racers are generated at runtime with this host prefix so cleanup
+// can delete them by LIKE without tracking each id.
+const CONC_HOST_PREFIX = "plc-conc-";
 
 // Ample balance so per-lease billing never exhausts mid-test.
 const LARGE_BALANCE_NANOS: i64 = 1_000_000_000_000;
@@ -122,11 +132,11 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
 }
 
-fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, ZOMBIE_ID);
+fn publishEventFor(h: *TestHarness, zombie_id: []const u8) !void {
+    try redis_zombie.ensureZombieConsumerGroup(&h.queue, zombie_id);
     const id = try h.queue.xaddZombieEvent(.{
         .event_id = "",
-        .zombie_id = ZOMBIE_ID,
+        .zombie_id = zombie_id,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -135,6 +145,44 @@ fn publishFreshEvent(h: *TestHarness) !void {
     });
     h.queue.alloc.free(id);
 }
+
+/// Seed a second tagged zombie (ZOMBIE2_ID) + its session + a fresh event, for
+/// the two-zombie routing test. `tags_literal` is a TEXT[] literal.
+fn seedSecondZombie(h: *TestHarness, conn: *pg.Conn, name: []const u8, tags_literal: []const u8) !void {
+    try base.seedZombie(conn, ZOMBIE2_ID, WORKSPACE_ID, name, CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedZombieSession(conn, SESSION2_ID, ZOMBIE2_ID, "{}");
+    _ = try conn.exec(
+        "UPDATE core.zombies SET required_tags = $1::text[] WHERE id = $2::uuid",
+        .{ tags_literal, ZOMBIE2_ID },
+    );
+    try publishEventFor(h, ZOMBIE2_ID);
+}
+
+/// Seed a runtime-generated racer with the `CONC_HOST_PREFIX` host so cleanup
+/// can sweep by prefix. Returns the owned bearer token (caller frees).
+fn seedConcurrentRunner(conn: *pg.Conn, idx: usize, gpu: bool) ![]const u8 {
+    const rid = try id_format.generateRunnerId(ALLOC);
+    defer ALLOC.free(rid);
+    const host = try std.fmt.allocPrint(ALLOC, CONC_HOST_PREFIX ++ "{d}", .{idx});
+    defer ALLOC.free(host);
+    const token = try std.fmt.allocPrint(ALLOC, "zrn_{s}{d:0>60}", .{ if (gpu) "gpu" else "pln", idx });
+    errdefer ALLOC.free(token);
+    try seedRunnerWithLabels(conn, rid, host, token, if (gpu) "[\"gpu\"]" else "[]");
+    return token;
+}
+
+/// One racer's outcome: 0 = errored, 1 = got a lease, 2 = no lease.
+const LeaseSlot = struct { code: u8 = 0 };
+
+const Racer = struct {
+    fn run(h: *TestHarness, token: []const u8, slot: *LeaseSlot) void {
+        const present = leasePresent(h, token) catch {
+            slot.* = .{ .code = 0 };
+            return;
+        };
+        slot.* = .{ .code = if (present) 1 else 2 };
+    }
+};
 
 /// Common seed for every test: tenant, workspace, platform provider, balance,
 /// the zombie carrying `tags_json`, and one fresh event. Runners are seeded
@@ -145,7 +193,7 @@ fn seedBase(h: *TestHarness, conn: *pg.Conn, tags_json: []const u8) !void {
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedZombieWithTags(conn, tags_json);
-    try publishFreshEvent(h);
+    try publishEventFor(h, ZOMBIE_ID);
 }
 
 // ── Lease helper ────────────────────────────────────────────────────────────
@@ -174,10 +222,12 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "zombie:" ++ ZOMBIE_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ GPU_RUNNER_ID, PLAIN_RUNNER_ID });
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    delStream(h, "zombie:" ++ ZOMBIE2_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
+    execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ GPU_RUNNER_ID, PLAIN_RUNNER_ID, ARM_RUNNER_ID });
+    execIgnore(conn, "DELETE FROM fleet.runners WHERE host_id LIKE 'plc-conc-%'", .{});
+    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownZombies(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -266,4 +316,142 @@ test "unsatisfiable tags hold then schedule once a matching runner enrolls" {
     // event survived the hold because the plain poll never consumed it.)
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try std.testing.expect(try leasePresent(h, GPU_TOKEN));
+}
+
+// ── Edge cases ────────────────────────────────────────────────────────────────
+
+test "edge: a runner missing one of two required tags is ineligible" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try seedBase(h, conn, "{gpu,us-east}");
+    // Partial: has gpu but not us-east → {gpu,us-east} ⊄ {gpu}.
+    try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-partial", PLAIN_TOKEN, "[\"gpu\"]");
+    // Full: has both.
+    try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-full", GPU_TOKEN, "[\"gpu\",\"us-east\"]");
+
+    try std.testing.expect(!try leasePresent(h, PLAIN_TOKEN));
+    try std.testing.expect(try leasePresent(h, GPU_TOKEN));
+}
+
+test "edge: a runner whose labels are a superset of the required tags is eligible" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try seedBase(h, conn, "{gpu}");
+    // More labels than required — still a superset of {gpu}.
+    try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-super", GPU_TOKEN, "[\"gpu\",\"us-east\",\"arm64\"]");
+
+    try std.testing.expect(try leasePresent(h, GPU_TOKEN));
+}
+
+test "edge: tag matching is exact-string (case-sensitive) — GPU does not satisfy gpu" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try seedBase(h, conn, "{GPU}"); // upper-case required tag
+    // Lower-case label does NOT match the upper-case requirement.
+    try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-lower", PLAIN_TOKEN, "[\"gpu\"]");
+    // Exact-case label does.
+    try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-exact", GPU_TOKEN, "[\"GPU\"]");
+
+    try std.testing.expect(!try leasePresent(h, PLAIN_TOKEN));
+    try std.testing.expect(try leasePresent(h, GPU_TOKEN));
+}
+
+// ── Concurrency ─────────────────────────────────────────────────────────────────
+
+test "concurrent: eligible runners race one tagged zombie — exactly one wins, ineligible never do" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    // One [gpu] zombie carrying exactly ONE event.
+    try seedBase(h, conn, "{gpu}");
+
+    const N_GPU = 3;
+    const N = 6; // first N_GPU are gpu (eligible), the rest plain (ineligible)
+    var tokens: [N][]const u8 = undefined;
+    var seeded: usize = 0;
+    defer for (tokens[0..seeded]) |t| ALLOC.free(t);
+    for (0..N) |i| {
+        tokens[i] = try seedConcurrentRunner(conn, i, i < N_GPU);
+        seeded += 1;
+    }
+
+    // All six poll the lease endpoint simultaneously.
+    var slots: [N]LeaseSlot = @splat(LeaseSlot{});
+    var threads: [N]std.Thread = undefined;
+    for (&threads, 0..) |*t, i| {
+        t.* = try std.Thread.spawn(.{}, Racer.run, .{ h, tokens[i], &slots[i] });
+    }
+    for (threads) |t| t.join();
+
+    var present: usize = 0;
+    var winner: usize = N;
+    for (slots, 0..) |s, i| switch (s.code) {
+        0 => return error.RacerErrored,
+        1 => {
+            present += 1;
+            winner = i;
+        },
+        else => {},
+    };
+    // One event ⇒ exactly one lease, even under the 6-way race; the slot claim
+    // admits a single winner and the ineligible plain runners never compete.
+    try std.testing.expectEqual(@as(usize, 1), present);
+    // And the winner is one of the eligible (gpu) runners — never a plain one.
+    try std.testing.expect(winner < N_GPU);
+}
+
+// ── Complex routing ─────────────────────────────────────────────────────────────
+
+test "complex: two tagged zombies route only to their matching runner" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    // Z_GPU [gpu] (the default ZOMBIE_ID) + Z_ARM [arm64] (ZOMBIE2_ID), each
+    // with its own event; one gpu runner and one arm runner.
+    try seedBase(h, conn, "{gpu}");
+    try seedSecondZombie(h, conn, "placement-arm-bot", "{arm64}");
+    try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
+    try seedRunnerWithLabels(conn, ARM_RUNNER_ID, "plc-arm", ARM_TOKEN, "[\"arm64\"]");
+
+    // The gpu runner gets its zombie...
+    try std.testing.expect(try leasePresent(h, GPU_TOKEN));
+    // ...and a second poll yields nothing: Z_ARM is ineligible to it and Z_GPU's
+    // event is consumed. So the gpu runner is bounded to its own tag.
+    try std.testing.expect(!try leasePresent(h, GPU_TOKEN));
+    // The arm runner still gets Z_ARM — proving the gpu runner never reached
+    // across to consume the other zombie's event.
+    try std.testing.expect(try leasePresent(h, ARM_TOKEN));
 }
