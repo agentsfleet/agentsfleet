@@ -38,6 +38,16 @@ pub const RUNNER_TOKEN_PREFIX = "zrn_";
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
 pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
+/// GET + POST /v1/runners/me/memory/{zombie_id} — durable agent-memory hydrate +
+/// capture, keyed by the zombie. The runner names the zombie because it may hold
+/// several concurrent leases; the server authorizes by verifying the runner holds
+/// a live lease for that zombie (IDOR-safe — the client never reaches a zombie it
+/// does not lease). The POST fences the write via `fencing_token` in the body,
+/// like `/reports`. (`zombie_id` is our identifier end to end; its `zmb:`-prefixed
+/// storage form is internal to `zombied`'s memory adapter.) This is the collection
+/// prefix; the router appends the `{zombie_id}` segment. See
+/// `docs/architecture/runner_fleet.md` §Memory continuity.
+pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
 /// GET /v1/runners/me — read-only self status (`me` resolves from the token).
 /// Distinct from the heartbeat: a pure read, it does NOT bump `last_seen_at`, so
 /// an operator's `status` check can never mask a dead runner's liveness.
@@ -239,4 +249,56 @@ pub const ReportRequest = struct {
 /// `zombied` lease/report logic.
 pub const ReportResponse = struct {
     ok: bool,
+};
+
+/// Upper bound on the total memory bytes (sum of key+content+category over every
+/// delta) one push may carry. The runner caps what it surfaces; the control plane
+/// rejects beyond this. Oversized memory is truncated + logged, never silently
+/// dropped whole. Single-sourced (RULE UFS) — both build graphs key off it.
+pub const MAX_MEMORY_PUSH_BYTES: usize = 256 * 1024; // 256 KiB
+
+/// Hard ceiling on the durable memory entries one zombie may accumulate across all
+/// its runs. The per-push cap bounds a single push; this bounds the unbounded
+/// growth a long-lived (or adversarial) zombie would otherwise build up — `storeEntry`
+/// evicts the coldest (`updated_at ASC`) beyond it, server-side. A backstop, not the
+/// primary bound (stable-key overwrite + `memory_forget` are the agent's own).
+pub const MAX_MEMORY_ENTRIES_PER_ZOMBIE: usize = 1000;
+
+/// Byte budget for one hydration window. The `GET` Compactor returns the newest
+/// entries (`updated_at DESC`) whose cumulative key+content+category bytes fit under
+/// this; the cold tail stays durable in Postgres, unhydrated. Bounds the payload a
+/// run seeds into the child regardless of how large the durable set has grown.
+pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
+
+/// One durable agent-memory item on the wire — the unit of both capture (POST
+/// body) and hydrate (GET response). Carries no scope: the zombie is the
+/// `{zombie_id}` path segment, server-validated against the runner's live lease.
+/// One shape for a memory item, shared zombied <-> runner (RULE UFS).
+pub const MemoryDelta = struct {
+    key: []const u8,
+    content: []const u8,
+    category: []const u8,
+};
+
+/// POST /v1/runners/me/memory/{zombie_id} (Bearer runner_token) — capture the
+/// run's memory for the path's zombie. `lease_id` + `fencing_token` ride the body
+/// exactly like `ReportRequest`: the control plane loads that lease, verifies the
+/// runner owns it, cross-checks `lease.zombie_id == {zombie_id}`, and fences the
+/// write — a reclaimed holder (token below the zombie's live fencing seq) is
+/// rejected UZ-RUN-005. The scope (`zombie_id`) is server-derived; each delta is
+/// upserted (`ON CONFLICT (key, zombie_id) DO UPDATE`), so a retried push is idempotent.
+pub const MemoryPushRequest = struct {
+    lease_id: []const u8,
+    fencing_token: u64,
+    memory: []const MemoryDelta,
+};
+
+/// GET /v1/runners/me/memory/{zombie_id} reply — a compacted hydration window of
+/// the path zombie's durable memory (newest entries under `HYDRATE_WINDOW_BYTES`;
+/// the cold tail stays in Postgres), which the runner parent seeds into the child's
+/// in-run store at run start. The runner names the zombie it holds in its
+/// `LeasePayload`; the server returns memory only for a zombie the runner holds a
+/// live lease for.
+pub const MemoryHydrateResponse = struct {
+    memory: []const MemoryDelta,
 };

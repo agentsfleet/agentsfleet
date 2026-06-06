@@ -52,6 +52,11 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // the parse; only `…/leases/{lease_id}/activity` needs segment extraction.
     if (matchers.matchRunnerLeaseActivity(p)) |lease_id| return .{ .runner_activity = lease_id };
     if (matchers.matchRunnerLeaseRenew(p)) |lease_id| return .{ .runner_renew = lease_id };
+    // `…/memory/{zombie_id}`: GET hydrates, POST captures (other methods 405 in invoke).
+    if (matchers.matchRunnerMemory(p)) |zombie_id| return switch (method) {
+        .GET => .{ .runner_memory_hydrate = zombie_id },
+        else => .{ .runner_memory_capture = zombie_id },
+    };
 
     // ── Tenant billing: per-charge metering-period drill-down ─────────────
     if (matchers.matchTenantMeteringPeriods(p)) |event_id| return .{ .get_tenant_metering_periods = event_id };
@@ -82,7 +87,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Workspace + zombie + leaf-id sub-resources ────────────────────────
     if (matchers.matchWorkspaceZombieGrant(p)) |r| return .{ .revoke_integration_grant = r };
-    if (matchers.matchWorkspaceZombieMemoryByKey(p)) |r| return .{ .workspace_zombie_memory = r };
 
     // ── Workspace + zombie + action ───────────────────────────────────────
     if (matchers.matchWorkspaceZombieAction(p, S_EVENTS)) |r| return .{ .workspace_zombie_events = r };
@@ -222,17 +226,6 @@ test "match resolves zombie memories collection (GET/POST)" {
         .workspace_zombie_memories => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
             try std.testing.expectEqualStrings(zid, r.zombie_id);
-        },
-        else => return error.TestExpectedEqual,
-    }
-}
-
-test "match resolves zombie memory by key (DELETE)" {
-    switch (match("/v1/workspaces/ws_abc/zombies/z_xyz/memories/incident:42", .DELETE).?) {
-        .workspace_zombie_memory => |r| {
-            try std.testing.expectEqualStrings("ws_abc", r.workspace_id);
-            try std.testing.expectEqualStrings("z_xyz", r.zombie_id);
-            try std.testing.expectEqualStrings("incident:42", r.memory_key);
         },
         else => return error.TestExpectedEqual,
     }

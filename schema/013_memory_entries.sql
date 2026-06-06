@@ -1,15 +1,21 @@
 -- Zombie agent memory — schema, role, table DDL, and grants.
 -- Survives workspace destruction. Isolated from core.* via the memory_runtime role.
 -- Confused-deputy mitigation per RULE CTX: memory lives behind a process boundary
--- (Postgres role with no grants on core.*), NOT a shared filesystem.
+-- (Postgres role with no grants on core.*), NOT a shared filesystem. The table
+-- deliberately carries NO foreign key to core.zombies — the role isolation is the
+-- boundary, and a cross-schema FK would couple memory to core.
 --
--- Row-level isolation: memory_runtime connects with instance_id="zmb:{uuid}"
--- (set by zombie_memory.zig). All queries scope by instance_id.
+-- Scope: every row belongs to one zombie (zombie_id). zombied's runner-memory
+-- adapter derives zombie_id from the lease it issued and scopes every query
+-- WHERE zombie_id = $1 (never a fetch-all + in-memory filter). zombied fully owns
+-- this table — the in-child NullClaw Postgres memory path is retired, so the
+-- column layout no longer has to mirror NullClaw's PostgresMemory schema.
 
--- memory_runtime role is created in schema/004_vault_schema.sql.
--- This migration scopes it to the memory schema and grants it CREATE
--- so NullClaw can run its own idempotent DDL on first runner connect.
-GRANT USAGE, CREATE ON SCHEMA memory TO memory_runtime;
+-- memory_runtime role is created in the vault schema (002_vault_schema.sql).
+-- This migration scopes it to the memory schema. USAGE only: zombied owns the
+-- table DDL, so the role no longer needs CREATE (the in-child NullClaw self-DDL
+-- on first runner connect is gone).
+GRANT USAGE ON SCHEMA memory TO memory_runtime;
 
 -- Allow api_runtime to SET ROLE memory_runtime in HTTP handlers.
 -- RULE CTX: api_runtime still has zero direct grants on memory.*
@@ -21,30 +27,29 @@ GRANT memory_runtime TO api_runtime;
 ALTER ROLE memory_runtime SET search_path = memory, public;
 
 -- memory_entries: primary store for zombie persistent memory.
--- Column layout matches NullClaw's PostgresMemory schema exactly so NullClaw's
--- own CREATE TABLE IF NOT EXISTS / CREATE UNIQUE INDEX IF NOT EXISTS are no-ops.
--- id: "{nanoseconds}-{hex64}-{hex64}" (same format as NullClaw's generateId)
--- created_at / updated_at: decimal Unix epoch as TEXT (same as NullClaw's getNowTimestamp)
+-- id: "{nanoseconds}-{hex64}-{hex64}" (NullClaw generateId format, retained).
+-- created_at / updated_at: decimal Unix epoch as TEXT (NullClaw format, retained).
+-- zombie_id: the owning zombie (UUID) — our identifier end to end, no "zmb:" form.
 CREATE TABLE IF NOT EXISTS memory.memory_entries (
     id          TEXT PRIMARY KEY,
     key         TEXT NOT NULL,
     content     TEXT NOT NULL,
     category    TEXT NOT NULL DEFAULT 'core',
     session_id  TEXT,
-    instance_id TEXT NOT NULL DEFAULT '',
+    zombie_id   UUID NOT NULL,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
 
--- Required for ON CONFLICT (key, instance_id) upserts in memory_http.zig.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_entries_key_instance
-    ON memory.memory_entries(key, instance_id);
+-- Required for ON CONFLICT (key, zombie_id) upserts in the runner-memory adapter.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_entries_key_zombie
+    ON memory.memory_entries(key, zombie_id);
 
 CREATE INDEX IF NOT EXISTS idx_memory_entries_category
     ON memory.memory_entries(category);
 
-CREATE INDEX IF NOT EXISTS idx_memory_entries_instance
-    ON memory.memory_entries(instance_id);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_zombie
+    ON memory.memory_entries(zombie_id);
 
 -- Explicit grants now that we own the table DDL.
 GRANT SELECT, INSERT, UPDATE, DELETE ON memory.memory_entries TO memory_runtime;

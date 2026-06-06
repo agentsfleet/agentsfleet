@@ -100,10 +100,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
         .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },
         .workspace_approval_resolve => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalResolve },
-        // External-agent memory API — workspace-scoped collection (GET/POST)
-        // and per-key DELETE (idempotent 204).
+        // External-agent memory API — workspace-scoped collection, GET-only
+        // (write verbs retired; capture flows through the runner plane).
         .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },
-        .workspace_zombie_memory => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoryByKey },
 
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
@@ -136,6 +135,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .runner_report => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerReport },
         .runner_activity => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerActivity },
         .runner_renew => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerRenew },
+        .runner_memory_hydrate => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryHydrate },
+        .runner_memory_capture => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryCapture },
     };
 }
 
@@ -176,7 +177,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombie_memory = .{ .workspace_id = "ws1", .zombie_id = "z1", .memory_key = "k1" } }, &reg) != null);
     try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
