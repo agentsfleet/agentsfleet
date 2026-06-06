@@ -188,7 +188,8 @@ fn flushBatch() void {
     const cfg = g_config orelse return;
     var count: usize = 0;
 
-    var payload_buf: [256 * 1024]u8 = undefined;
+    const OTLP_PAYLOAD_BUF_BYTES = 256 * 1024;
+    var payload_buf: [OTLP_PAYLOAD_BUF_BYTES]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
     const alloc = fba.allocator();
 
@@ -255,7 +256,7 @@ fn flushBatch() void {
     sb.allocate(alloc) catch return;
     const body = sb.fmt(envelope_fmt, envelope_args);
 
-    otel_logs.postWithBasicAuth(alloc, cfg, OTLP_TRACES_PATH, body) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    otel_logs.postWithBasicAuth(alloc, cfg, OTLP_TRACES_PATH, body) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +270,7 @@ test "ring buffer push and pop round-trip" {
     ring.* = .{};
 
     const ctx = trace.TraceContext.generate();
+    // pin test: literal is the contract
     var entry = buildSpan(ctx, "test.span", 1000, 2000);
     try std.testing.expect(addAttr(&entry, "key1", "val1"));
 
@@ -277,6 +279,7 @@ test "ring buffer push and pop round-trip" {
 
     const popped = ring.pop();
     try std.testing.expect(popped != null);
+    // pin test: literal is the contract
     try std.testing.expectEqual(@as(u64, 1000), popped.?.start_ns);
     try std.testing.expectEqual(@as(u64, 2000), popped.?.end_ns);
     try std.testing.expectEqualStrings("test.span", popped.?.name[0..popped.?.name_len]);

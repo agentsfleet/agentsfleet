@@ -37,7 +37,7 @@ tags:
   x-mintlify:
     navigation: Zombies
 - name: Memory
-  description: Persistent zombie memory — store, recall, list, and forget key-value entries scoped to a zombie
+  description: Persistent zombie memory — list and search key-value entries scoped to a zombie (read-only; entries are written by the runner plane, not this API)
   x-mintlify:
     navigation: Memory
 - name: Credentials
@@ -96,8 +96,6 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1all
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}:
-    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories~1{memory_key}
   /v1/auth/identity-events/clerk:
     $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
   /v1/webhooks/svix/{zombie_id}:

@@ -30,5 +30,3 @@ pub const temperature = "temperature";
 pub const max_tokens = "max_tokens";
 pub const api_key = "api_key";
 pub const message = "message";
-pub const memory_connection = "memory_connection";
-pub const memory_namespace = "memory_namespace";

@@ -173,5 +173,5 @@ fn writeAlreadyResolved(hx: hx_mod.Hx, r: approval_gate_db.ResolvedRow) void {
         .outcome = r.outcome.toSlice(),
         .resolved_at = r.resolved_at,
         .resolved_by = r.resolved_by,
-    }, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    }, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }

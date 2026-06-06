@@ -262,6 +262,67 @@ trigger event E0 ─► RUN 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 
 
 Durable state across runs is the checkpoint in `zombied`, never runner-local — which is why a different runner can pick up run 2. A chain hard-stops at 10 continuations (escalates to a human). Sticky routing (below) prefers the runner that ran the previous run, but correctness never depends on it.
 
+## Memory continuity — durable agent memory rides the trusted plane
+
+Memory is the **second** kind of cross-run state, and it obeys the same law as the checkpoint above: **durable agent memory lives only in `zombied`'s Postgres, never in the runner and never in the agent.** The checkpoint carries *run-continuity* (where a chunked incident left off); memory carries the *agent's learned knowledge* — the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
+
+The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected agent cannot be talked into "reach your memory endpoint": none exists inside it. The agent's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `zrn_` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
+
+| Verb | Path | Direction | What |
+|------|------|-----------|------|
+| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches the **live lease's zombie's full** prior memory and seeds the child's `:memory:` store at run start. No lease id in the path or query — the loop is strictly serial (one live lease), so the server resolves the zombie from the runner's live lease |
+| `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+
+```
+        ┌──────────────── CONTROL PLANE (zombied) ─────────────────┐
+        │  Postgres · memory.memory_entries  ← ONLY durable store    │
+        │  written under SET ROLE memory_runtime (datastore role)    │
+        └──────────▲───────────────────────────────▲────────────────┘
+          GET /v1/runners/me/memory      POST /v1/runners/me/memory
+          (hydrate prior memory)         (capture run memory)
+          [zrn_ + fencing]               [zrn_ + fencing]
+                   │                             │
+        ┌──────────┴─────────────────────────────┴────────────┐
+        │  zombie-runner PARENT (trusted) — holds the zrn_      │
+        └──────────┬─────────────────────────────▲────────────┘
+            pipe ↓ prior memory (stdin)     pipe ↑ memory frame (stdout)
+        ╔══════════▼═════════════════════════════╧════════════╗  ← SANDBOX
+        ║  sandboxed child (NullClaw) — NO token, URL, or DSN  ║     BOUNDARY
+        ║  in-run store = SQLite :memory:  (no disk file)      ║
+        ║  agent calls memory_recall() / memory_store()        ║
+        ╚══════════════════════════════════════════════════════╝
+```
+
+**The carry-over — one zombie, two runs:**
+
+```
+RUN 1  (first ever for zombie A)
+  lease{ zombie=A, fence=7 } → runner parent
+  parent ─GET /me/memory─►  []                 (empty: nothing stored yet)
+  parent ─pipe─►  child seeds an EMPTY :memory: store
+  agent:  memory_store("todo", "step 3 of 5"),  memory_store("prefs", …)
+  run-end  +  every memory_checkpoint_every:
+     runner lists its :memory: store → deltas ─pipe─► parent
+     parent ─POST /me/memory─►  zombied INSERTs rows   (instance_id = "zmb:A")
+  child exits → :memory: store vanishes (no disk artifact)
+
+  Postgres now holds:   zmb:A · todo · "step 3 of 5"    |    zmb:A · prefs · …
+
+RUN 2  (next run, same zombie A)                          ◄── THE CARRY-OVER
+  lease{ zombie=A, fence=8 } → runner parent
+  parent ─GET /me/memory─►  [todo, prefs]      (run 1's memory)
+  parent ─pipe─►  child seeds :memory: WITH those entries
+  agent:  memory_recall("todo") → "step 3 of 5"   → continues from step 3
+          memory_store("todo", "step 5 of 5")     (same key → UPDATE)
+  push → zombied UPDATEs (todo, zmb:A) + INSERTs any new keys (idempotent)
+```
+
+**Data model.** Scope is the **zombie**, not the workspace: `instance_id = "zmb:" + zombie_id`, derived **server-side** from the lease `zombied` issued — a client-supplied scope is ignored. Within a zombie each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the zombie to read its memory via the tenant `GET`); two zombies never share a memory namespace.
+
+**Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
+
+**v1 scope.** Hydration seeds the **full** prior memory set each run — the simplest correct model, where the agent always has everything. A dedicated, scalable memory store with selective hydration is the post-launch direction once this loop is proven; the `GET` endpoint is the seam it swaps in behind, with no change to the agent.
+
 ## Live activity (the SSE tail)
 
 NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames: `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly); the parent forwards each `A` frame to `zombied` over the `activity` verb, and `zombied`'s `fleet/service_activity.zig` translates it to the `PUBLISH` on `zombie:{id}:activity`. Downstream Server-Sent Events (SSE) is unchanged.

@@ -79,12 +79,14 @@ playbooks/
         │   ├── 02_teardown.sh
         │   ├── 03_verify.sh
         │   └── teardown.sql
-        └── redis/
-            ├── 001_playbook.md
-            ├── 00_gate.sh
-            ├── 01_credential_check.sh
-            ├── 02_teardown.sh
-            └── 03_verify.sh
+        ├── redis/
+        │   ├── 001_playbook.md
+        │   ├── 00_gate.sh
+        │   ├── 01_credential_check.sh
+        │   ├── 02_teardown.sh
+        │   └── 03_verify.sh
+        └── user/                      ← DEV: delete a Clerk user (webhook purges the tenant)
+            └── 001_playbook.md
 ```
 
 > The directory tree above is asserted against disk by `make check-playbooks` — adding or removing a playbook directory without updating this README fails the gate.

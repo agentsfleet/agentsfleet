@@ -110,3 +110,34 @@ test "cardinality overflow routes to _other with the reason preserved" {
     try std.testing.expect(contains(text, "zombie_runner_failures_total{runner_id=\"_other\",reason=\"oom_kill\"} 1"));
     try std.testing.expect(contains(text, "zombie_runner_failures_overflow_total 1"));
 }
+
+test "memory capture counter accumulates and renders" {
+    mr.resetForTest();
+    mr.incMemoryCaptured(3);
+    mr.incMemoryCaptured(2);
+    var buf: [4096]u8 = undefined;
+    try std.testing.expect(contains(try render(&buf), "zombie_memory_entries_captured_total 5"));
+}
+
+test "memory push-failure counter renders" {
+    mr.resetForTest();
+    mr.incMemoryPushFailure();
+    mr.incMemoryPushFailure();
+    var buf: [4096]u8 = undefined;
+    try std.testing.expect(contains(try render(&buf), "zombie_memory_push_failures_total 2"));
+}
+
+test "hydration window gauge reflects the last set size" {
+    mr.resetForTest();
+    mr.incMemoryCaptured(1); // a counter must be non-zero for the family to render
+    mr.setMemoryHydrationEntries(7);
+    var buf: [4096]u8 = undefined;
+    try std.testing.expect(contains(try render(&buf), "zombie_memory_hydration_window_entries 7"));
+}
+
+test "incMemoryCaptured(0) is a no-op and does not force render" {
+    mr.resetForTest();
+    mr.incMemoryCaptured(0);
+    var buf: [256]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 0), (try render(&buf)).len);
+}

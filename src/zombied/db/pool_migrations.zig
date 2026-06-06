@@ -97,11 +97,11 @@ fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
         \\ON CONFLICT (version) DO UPDATE
         \\SET failed_at = EXCLUDED.failed_at,
         \\    error_text = EXCLUDED.error_text
-    , .{ version, ts, @errorName(err) }) catch |xerr| log.warn("ignored_error", .{ .err = @errorName(xerr) });
+    , .{ version, ts, @errorName(err) }) catch |xerr| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(xerr) });
 }
 
 fn clearMigrationFailure(conn: *Conn, version: i32) void {
-    _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 /// Delete rows in audit.schema_migrations + schema_migration_failures whose
@@ -217,7 +217,7 @@ fn commitTx(conn: *Conn) !void {
 fn rollbackTx(conn: *Conn) void {
     // conn.rollback() handles the FAIL-state case where exec("ROLLBACK")
     // would silently no-op and leave the session in an aborted tx.
-    conn.rollback() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {

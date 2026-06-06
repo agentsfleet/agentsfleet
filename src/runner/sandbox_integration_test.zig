@@ -172,3 +172,92 @@ test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollme
     try expectReapedViaEof(child.stdout.?.handle); // not a silently-empty kill domain
     _ = child.wait(io) catch {};
 }
+
+test "a daemon-opened marker fd does not cross exec into a real spawned child" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // The daemon opens a fd the std way — O_CLOEXEC by default. /dev/null is a
+    // generic credential-like marker; if the CLOEXEC default ever regressed it
+    // would survive exec and appear in the child's /proc/self/fd.
+    const marker = try std.Io.Dir.openFileAbsolute(io, "/dev/null", .{});
+    defer marker.close(io);
+
+    // The child proves (a) it can see its own wired stdout symlink (probe is
+    // live) and (b) the parent's marker fd number is absent — CLOEXEC closed it
+    // on exec. `[ -L ]` matches the /proc/self/fd symlink regardless of target
+    // type and opens no fd, so the check never perturbs the table.
+    const script = try std.fmt.allocPrint(alloc,
+        \\if [ -L /proc/self/fd/1 ]; then P=ok; else P=broken; fi
+        \\if [ -L /proc/self/fd/{d} ]; then M=LEAKED; else M=absent; fi
+        \\printf '%s %s' "$P" "$M"
+    , .{marker.handle});
+    defer alloc.free(script);
+
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ SH, "-c", script },
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    try std.testing.expectEqualStrings("ok absent", out);
+}
+
+test "the spawn path introduces no file descriptor the parent did not already hold" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // std.process.spawn (the syscall path forkExec uses) wires stdio but does
+    // NOT close other inherited fds — production forkExec closes them via the
+    // bwrap wrapper (sandbox_args.appendBwrap); this raw-spawn test has no
+    // bwrap, so the test harness's own non-CLOEXEC fds (the zig test-runner
+    // --listen pipe, the Threaded io eventfd) legitimately cross. The proof is
+    // therefore RELATIVE: every fd the child holds must already be open in the
+    // parent (inherited), never one the spawn path newly introduced — e.g. a
+    // progress fd 3 (forkExec leaves progress_node .none). Credential CLOEXEC
+    // safety is proven by the marker test above. The probe is self-validating:
+    // if /proc is unreadable it prints `probe_broken`, not a vacuous clean set.
+    const script =
+        \\[ -L /proc/self/fd/1 ] || { printf 'probe_broken'; exit 0; }
+        \\S=
+        \\n=3
+        \\while [ "$n" -le 63 ]; do
+        \\  if [ -L /proc/self/fd/$n ]; then S="$S $n"; fi
+        \\  n=$((n+1))
+        \\done
+        \\printf '%s' "$S"
+    ;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ SH, "-c", script },
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    try std.testing.expect(!std.mem.eql(u8, out, "probe_broken"));
+    // Each fd the child reported must resolve to an open fd in the parent too:
+    // readlink of /proc/self/fd/N succeeds (inherited) or ENOENTs (the spawn
+    // path introduced an fd the parent never had — a real leak). readlink reads
+    // the symlink without opening its target, so the check perturbs no fd.
+    var link_buf: [256]u8 = undefined;
+    var path_buf: [64]u8 = undefined;
+    var it = std.mem.tokenizeScalar(u8, out, ' ');
+    while (it.next()) |tok| {
+        const fd = try std.fmt.parseInt(u32, tok, 10);
+        const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fd});
+        _ = std.Io.Dir.readLinkAbsolute(io, path, &link_buf) catch return error.SpawnIntroducedStrayFd;
+    }
+}

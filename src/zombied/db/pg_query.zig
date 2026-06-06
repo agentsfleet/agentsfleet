@@ -56,7 +56,7 @@ pub const PgQuery = struct {
     /// caller already touches indirectly.
     pub fn drain(self: *PgQuery) void {
         if (self.inner._conn._state != .query) return;
-        self.inner.drain() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        self.inner.drain() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
 
     /// Drain remaining rows then release the result. Always call via defer.

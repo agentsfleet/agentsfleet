@@ -51,6 +51,8 @@ test {
     _ = @import("observability/otel_logs.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
+    _ = @import("state/account_teardown.zig");
+    _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");
     _ = @import("state/signup_bootstrap.zig");
@@ -72,8 +74,9 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
-    // Persistent Zombie Memory — role isolation tests.
+    // Persistent Zombie Memory — role isolation + adapter write-path tests.
     _ = @import("memory/zombie_memory_role_test.zig");
+    _ = @import("memory/zombie_memory_integration_test.zig");
     // Zombie CRUD, activity, router
     _ = @import("http/handlers/zombies/api.zig");
     _ = @import("http/handlers/zombies/api_integration_test.zig");
@@ -110,6 +113,7 @@ test {
     // Chat ingress — POST /v1/.../zombies/{id}/messages
     _ = @import("http/handlers/zombies/messages_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
+    _ = @import("http/handlers/runner/memory_fencing_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
@@ -134,4 +138,5 @@ test {
     _ = @import("fleet/concurrency_renew_test.zig");
     _ = @import("fleet/integration_roundtrip_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
+    _ = @import("fleet/placement_eligibility_test.zig");
 }

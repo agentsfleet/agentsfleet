@@ -27,6 +27,8 @@ const pipe_proto = @import("pipe_proto.zig");
 const log = logging.scoped(.runner_exec);
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 const LeasePayload = contract.protocol.LeasePayload;
+const RunnerChildInput = contract.protocol.RunnerChildInput;
+const MemoryDelta = contract.protocol.MemoryDelta;
 
 /// argv subcommand selecting child-execute mode (vs the daemon loop).
 pub const SUBCOMMAND = "__execute";
@@ -67,13 +69,16 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
         };
     }
 
-    const lease_json = readStdin(alloc) catch |err| {
+    const input_json = readStdin(alloc) catch |err| {
         log.err("lease_read_failed", .{ .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
-    defer alloc.free(lease_json);
+    defer alloc.free(input_json);
 
-    const parsed = std.json.parseFromSlice(LeasePayload, alloc, lease_json, .{
+    // The parent pipes a RunnerChildInput { lease, hydrated_memory } — the lease
+    // to run plus the prior memory it hydrated over the trusted plane. The child
+    // never fetches memory itself, so it holds no token, URL, or DSN (RULE VLT).
+    const parsed = std.json.parseFromSlice(RunnerChildInput, alloc, input_json, .{
         .ignore_unknown_fields = true,
     }) catch |err| {
         log.err("lease_parse_failed", .{ .err = @errorName(err) });
@@ -83,7 +88,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
 
     // The process exits immediately after writing; the engine result's content
     // is reclaimed by exit (no free needed on this single-shot path).
-    const result = runEngine(env_map, alloc, workspace, parsed.value);
+    const result = runEngine(env_map, alloc, workspace, parsed.value.lease, parsed.value.hydrated_memory);
     writeResult(alloc, result) catch |err| {
         log.err("result_write_failed", .{ .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
@@ -94,11 +99,11 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
 /// Map the lease to engine args and run NullClaw in this child's address space.
 /// stdout is the progress sink: the engine streams `activity` frames there
 /// (`pipe_proto`) while running, then `writeResult` appends the terminal frame.
-fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload) types.ExecutionResult {
+fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload, hydrated_memory: []const MemoryDelta) types.ExecutionResult {
     var args = buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
-    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, null, &ep, std.posix.STDOUT_FILENO);
+    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, null, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were

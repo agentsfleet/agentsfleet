@@ -10,7 +10,7 @@
 //!   - core.agent_keys              — FK ON DELETE CASCADE (auto)
 //!   - core.zombie_sessions         — no FK cascade; explicit DELETE
 //!   - core.zombie_approval_gates   — no FK cascade; explicit DELETE
-//!   - memory.memory_entries        — keyed by instance_id (no FK); explicit
+//!   - memory.memory_entries        — keyed by zombie_id (UUID, no FK); explicit
 //!   - zombie_execution_telemetry   — keyed by zombie_id (no FK); explicit
 //!   - zombie:{id}:events Redis stream — best-effort DEL after PG commit
 //!
@@ -108,14 +108,14 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     }
 
     _ = try conn.exec("BEGIN", .{});
-    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 
     _ = try conn.exec(
         "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",
         .{ workspace_id, zombie_id },
     );
     _ = try conn.exec(
-        "DELETE FROM memory.memory_entries WHERE instance_id = $1",
+        "DELETE FROM memory.memory_entries WHERE zombie_id = $1::uuid",
         .{zombie_id},
     );
     _ = try conn.exec(
@@ -145,7 +145,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
         break :blk (try del.next()) != null;
     };
     if (!purged) {
-        _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
         return .not_killed;
     }
     _ = try conn.exec("COMMIT", .{});

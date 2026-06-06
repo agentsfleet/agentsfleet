@@ -30,7 +30,8 @@ const observability = nullclaw.observability;
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const types = @import("types.zig");
-const zombie_memory = @import("zombie_memory.zig");
+const inrun_memory = @import("inrun_memory.zig");
+const protocol = @import("contract").protocol;
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
 const runner_observer = @import("runner_observer.zig");
@@ -74,6 +75,9 @@ pub fn execute(
     /// fd to stream live-tail `activity` frames on (`pipe_proto`), or null to
     /// fall back to the env-selected log/noop observer (tests, non-streaming).
     progress_fd: ?std.posix.fd_t,
+    /// Prior memory the parent hydrated over the trusted plane; the in-run store
+    /// is seeded from it at run start. Empty when there is no prior memory.
+    hydrated_memory: []const protocol.MemoryDelta,
 ) types.ExecutionResult {
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
@@ -82,7 +86,7 @@ pub fn execute(
 
     const start = clock.nowMillis();
 
-    const result = executeInner(env_map, alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd) catch |err| {
+    const result = executeInner(env_map, alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
         log.err("failed", .{
@@ -121,6 +125,7 @@ fn executeInner(
     context: ?std.json.Value,
     policy: ?*const context_budget.ExecutionPolicy,
     progress_fd: ?std.posix.fd_t,
+    hydrated_memory: []const protocol.MemoryDelta,
 ) !InnerResult {
     // 1. Build config from env defaults + agent_config overrides.
     var cfg = Config.load(alloc) catch {
@@ -156,33 +161,20 @@ fn executeInner(
     };
     defer tools_mod.deinitTools(alloc, tools);
 
-    // 4. Initialize memory runtime.
-    // M14_001: If agent_config carries memory_connection + memory_namespace,
-    // use the per-zombie postgres backend (zombie_memory.zig) which sets
-    // instance_id correctly for row-level isolation. Otherwise fall back to
-    // NullClaw's default ephemeral workspace SQLite.
-    var mem_rt: ?memory_mod.MemoryRuntime = blk: {
-        if (agent_config) |ac| {
-            const mem_conn = json.getStr(ac, wire.memory_connection) orelse "";
-            const mem_ns = json.getStr(ac, wire.memory_namespace) orelse "";
-            if (mem_conn.len > 0 and mem_ns.len > 0) {
-                const mem_cfg = types.MemoryBackendConfig{
-                    .backend = "postgres",
-                    .connection = mem_conn,
-                    .namespace = mem_ns,
-                };
-                mem_cfg.validate() catch |err| {
-                    log.warn("memory_config_invalid", .{ .err = @errorName(err), .falling_back = "ephemeral" });
-                    break :blk memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
-                };
-                break :blk zombie_memory.initRuntime(alloc, &mem_cfg, workspace_path);
-            }
-        }
-        break :blk memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
-    };
+    // 4. Build the NON-durable in-run store (SQLite `:memory:`) and seed it with
+    // the memory the parent hydrated over the trusted plane. Durable memory is
+    // the control plane's Postgres, written via the parent's runner push — the
+    // child holds no DB connection, DSN, or on-disk memory file.
+    var mem_rt: ?memory_mod.MemoryRuntime = inrun_memory.initRuntime(alloc, workspace_path);
     defer if (mem_rt) |*rt| rt.deinit();
     const mem_opt: ?memory_mod.Memory = if (mem_rt) |rt| rt.memory else null;
+    if (mem_opt) |m| inrun_memory.seed(m, hydrated_memory);
     tools_mod.bindMemoryTools(tools, mem_opt);
+
+    // The capturer flushes the in-run store back to the parent (mid-run on the
+    // checkpoint cadence + once at run end). Only meaningful with a progress fd
+    // and a live store; null otherwise (tests / non-streaming) → capture no-ops.
+    var capturer = makeCapturer(progress_fd, mem_opt, alloc);
 
     // 5. Observer + live-tail sink. With a progress fd, the redacting Adapter
     // is the agent's observer AND per-token stream callback so tool-call and
@@ -196,6 +188,12 @@ fn executeInner(
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var adapter: runner_progress.Adapter = undefined;
     const obs = selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, &secrets_list);
+    // With a live observer, drive mid-run capture off the checkpoint cadence the
+    // lease carries (`adapter` is only initialized on the progress-fd path).
+    if (progress_fd != null) {
+        if (capturer) |*c| adapter.memory_capturer = c;
+        if (policy) |p| adapter.memory_checkpoint_every = p.context.memory_checkpoint_every;
+    }
 
     // 6. Create agent.
     var agent = Agent.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
@@ -223,10 +221,27 @@ fn executeInner(
     };
     const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.AgentRunFailed;
 
+    // Run-end capture: flush the final memory state so a run that wrote memory
+    // without crossing a mid-run checkpoint is still persisted by the parent.
+    if (capturer) |*c| c.capture();
+
     return .{
         .content = owned,
         .token_count = agent.tokensUsed(),
     };
+}
+
+/// Build the in-run memory capturer iff there is both a progress fd to write the
+/// `.memory` frame on and a live store to read. Null otherwise — capture is a
+/// no-op on the non-streaming/test path and when the store failed to build.
+fn makeCapturer(
+    progress_fd: ?std.posix.fd_t,
+    mem_opt: ?memory_mod.Memory,
+    alloc: std.mem.Allocator,
+) ?inrun_memory.MemoryCapturer {
+    const fd = progress_fd orelse return null;
+    const mem = mem_opt orelse return null;
+    return .{ .mem = mem, .fd = fd, .alloc = alloc };
 }
 
 /// Pick the agent's observer. With a progress fd, init the caller-owned
@@ -298,7 +313,7 @@ pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
 
 fn elapsedSeconds(start_ms: i64) u64 {
     const elapsed_ms = clock.nowMillis() - start_ms;
-    return @as(u64, @intCast(@max(0, elapsed_ms))) / 1000;
+    return @as(u64, @intCast(@max(0, elapsed_ms))) / std.time.ms_per_s;
 }
 
 // Engine test aggregator — these sibling suites are reachable only through
@@ -307,4 +322,6 @@ fn elapsedSeconds(start_ms: i64) u64 {
 test {
     _ = @import("runner_security_test.zig");
     _ = @import("runner_progress_redact_test.zig");
+    _ = @import("inrun_memory.zig");
+    _ = @import("runner_progress_memory_test.zig");
 }

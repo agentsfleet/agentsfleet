@@ -64,6 +64,12 @@ pub inline fn scoped(comptime scope: @TypeOf(.enum_literal)) type {
     };
 }
 
+/// Well-known event name for an error that was caught and deliberately
+/// swallowed — best-effort cleanup (rollback, drain, stream DEL) whose
+/// failure must not mask the caller's primary outcome. Shared so the ~20
+/// `log.warn(..)` sites that report this stay a single comptime contract.
+pub const EVENT_IGNORED_ERROR = "ignored_error";
+
 // Reserved tail marker. On overflow we still emit the partial line plus
 // this suffix so operators see *that* truncation happened — `error_code=`
 // fields silently dropped past the 4 KiB cap would otherwise be invisible.

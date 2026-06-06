@@ -30,6 +30,7 @@ const Config = @import("daemon/config.zig");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
 const child_process = @import("child_process.zig");
+const result_mod = @import("child_supervisor_result.zig");
 
 const log = logging.scoped(.runner_supervisor);
 
@@ -44,6 +45,15 @@ const ActivityFrame = contract.activity.ActivityFrame;
 pub const ActivitySink = struct {
     ctx: *anyopaque,
     forward: *const fn (ctx: *anyopaque, frame: ActivityFrame) void,
+};
+
+/// Best-effort sink for the child's `.memory` capture frames. `payload` is the
+/// raw frame bytes (a JSON array of `MemoryDelta`); the daemon parses + POSTs
+/// them. A dropped frame is recoverable (the next capture re-sends the full
+/// set), so `forward` returns void and never fails the lease.
+pub const MemorySink = struct {
+    ctx: *anyopaque,
+    forward: *const fn (ctx: *anyopaque, payload: []const u8) void,
 };
 
 /// What the read loop should do after a renewal tick or a progress frame.
@@ -74,17 +84,12 @@ const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 /// default.
 const SANDBOX_TIER_DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 
-/// What the parent observed reading the child's stdout.
-pub const ReadOutcome = struct {
-    /// Result bytes the child wrote (alloc-owned; empty on timeout/crash).
-    bytes: []u8 = &.{},
-    /// The wall-clock lease deadline (possibly extended by renewals) elapsed
-    /// before the child produced a result.
-    timed_out: bool = false,
-    /// A renewal hook returned `.terminate` (lease lost / capped / no credits) —
-    /// the child must be killed even though the deadline has not elapsed.
-    terminated: bool = false,
-};
+// The terminal result mapping (ReadOutcome + classify + parseResult) lives in
+// child_supervisor_result.zig to keep this file under the line budget; re-exported
+// here so callers and tests keep using `child_supervisor.{ReadOutcome,classify}`.
+pub const ReadOutcome = result_mod.ReadOutcome;
+pub const classify = result_mod.classify;
+const failed = result_mod.failed;
 
 /// Run one leased event in a forked, sandboxed child and return its result.
 /// Never errors: every supervision failure maps to a failed `ExecutionResult`
@@ -96,21 +101,22 @@ pub fn run(
     env_map: *const std.process.Environ.Map,
     workspace_path: []const u8,
     payload: LeasePayload,
+    /// Prior memory the parent hydrated; piped to the child (no child fetch).
+    hydrated_memory: []const contract.protocol.MemoryDelta,
     sink: ActivitySink,
+    /// Receives the child's `.memory` capture frames for the parent to POST.
+    mem_sink: MemorySink,
     renew_hook: ?RenewHook,
 ) ExecutionResult {
-    const lease_json = std.json.Stringify.valueAlloc(alloc, payload, .{}) catch
+    const input = contract.protocol.RunnerChildInput{ .lease = payload, .hydrated_memory = hydrated_memory };
+    const lease_json = std.json.Stringify.valueAlloc(alloc, input, .{}) catch
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
+    return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
-}
-
-fn failed(class: types.FailureClass) ExecutionResult {
-    return .{ .exit_ok = false, .failure = class };
 }
 
 /// Fork → bind to cgroup → feed lease → read result under a deadline → reap.
@@ -124,6 +130,7 @@ fn supervise(
     payload: LeasePayload,
     lease_json: []const u8,
     sink: ActivitySink,
+    mem_sink: MemorySink,
     renew_hook: ?RenewHook,
 ) !ExecutionResult {
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
@@ -170,7 +177,7 @@ fn supervise(
     child.stdin.?.close(io);
     child.stdin = null;
 
-    const outcome = try readResult(alloc, child.stdout.?.handle, payload.lease_expires_at, sink, renew_hook);
+    const outcome = try readResult(alloc, child.stdout.?.handle, payload.lease_expires_at, sink, mem_sink, renew_hook);
     defer alloc.free(outcome.bytes);
     // child.stdout is closed by the terminal `wait` below — no manual close.
 
@@ -241,6 +248,7 @@ pub fn readResult(
     fd: std.posix.fd_t,
     deadline_ms: i64,
     sink: ActivitySink,
+    mem_sink: MemorySink,
     renew_hook: ?RenewHook,
 ) !ReadOutcome {
     var deadline = deadline_ms;
@@ -271,6 +279,13 @@ pub fn readResult(
                     if (applyTick(renew_hook, &deadline, clock.nowMillis()))
                         return .{ .terminated = true };
                 },
+                .memory => {
+                    defer alloc.free(f.payload);
+                    // Parent POSTs the capture bytes; the frame also attests liveness.
+                    mem_sink.forward(mem_sink.ctx, f.payload);
+                    if (applyTick(renew_hook, &deadline, clock.nowMillis()))
+                        return .{ .terminated = true };
+                },
                 .result => return .{ .bytes = f.payload },
             },
         }
@@ -298,50 +313,6 @@ fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []cons
     defer arena.deinit();
     const frame = std.json.parseFromSliceLeaky(ActivityFrame, arena.allocator(), payload, .{}) catch return;
     sink.forward(sink.ctx, frame);
-}
-
-/// Map the child's exit status + read outcome to an `ExecutionResult`.
-/// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → clean exit
-/// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
-/// lost / capped / no credits) is `renewal_terminate` — a policy stop, kept
-/// distinct from `timeout_kill` (the wall-clock deadline) so triage and billing
-/// can tell a policy kill from a clock kill. Terminate wins over a co-occurring
-/// timeout: the policy reason is the more actionable cause.
-pub fn classify(
-    alloc: std.mem.Allocator,
-    outcome: ReadOutcome,
-    term: std.process.Child.Term,
-    scope: *?cgroup.CgroupScope,
-) ExecutionResult {
-    if (outcome.terminated) return failed(.renewal_terminate);
-    if (outcome.timed_out) return failed(.timeout_kill);
-    if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
-    // Zig 0.16 reap returns a typed Term, not a raw wait() status word. A clean
-    // run is a zero exit; a non-zero exit or a signal/stop is a crash.
-    const clean_exit = switch (term) {
-        .exited => |code| code == 0,
-        else => false,
-    };
-    if (!clean_exit) return failed(.runner_crash);
-    return parseResult(alloc, outcome.bytes);
-}
-
-/// Parse the child's serialized `ExecutionResult`; content is dup'd into the
-/// caller's allocator (the caller frees it), the parse arena is released here.
-fn parseResult(alloc: std.mem.Allocator, bytes: []const u8) ExecutionResult {
-    const parsed = std.json.parseFromSlice(ExecutionResult, alloc, bytes, .{
-        .ignore_unknown_fields = true,
-    }) catch return failed(.transport_loss);
-    defer parsed.deinit();
-    const v = parsed.value;
-    const content = alloc.dupe(u8, v.content) catch "";
-    return .{
-        .content = content,
-        .token_count = v.token_count,
-        .wall_seconds = v.wall_seconds,
-        .exit_ok = v.exit_ok,
-        .failure = v.failure,
-    };
 }
 
 // Tests live in child_supervisor_test.zig (sibling) to keep this file within

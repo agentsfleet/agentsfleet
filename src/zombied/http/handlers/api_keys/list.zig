@@ -77,11 +77,18 @@ pub fn innerListApiKeys(hx: Hx, req: *httpz.Request) void {
 fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]ListRow {
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
+    // EXTRACT(EPOCH) yields seconds; the ×1000 multiplier gives the millis
+    // the API surfaces. Named so the magic number lives on a const line.
+    const SEC_TO_MILLIS = 1000;
+    const epoch_ms_cols = std.fmt.comptimePrint(
+        "(EXTRACT(EPOCH FROM created_at) * {0d})::bigint, " ++
+            "(EXTRACT(EPOCH FROM last_used_at) * {0d})::bigint, " ++
+            "(EXTRACT(EPOCH FROM revoked_at) * {0d})::bigint ",
+        .{SEC_TO_MILLIS},
+    );
     // order_sql comes from sortClauseFor's fixed allowlist, never user input.
     const list_sql = std.fmt.allocPrint(hx.alloc, "SELECT id::text, key_name, active, " ++
-        "(EXTRACT(EPOCH FROM created_at) * 1000)::bigint, " ++
-        "(EXTRACT(EPOCH FROM last_used_at) * 1000)::bigint, " ++
-        "(EXTRACT(EPOCH FROM revoked_at) * 1000)::bigint " ++
+        epoch_ms_cols ++
         "FROM core.api_keys WHERE tenant_id = $1::uuid " ++
         "ORDER BY {s} LIMIT $2 OFFSET $3", .{q.order_sql}) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
@@ -104,7 +111,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
             .created_at = row.get(i64, 3) catch continue,
             .last_used_at = row.get(i64, 4) catch null,
             .revoked_at = row.get(i64, 5) catch null,
-        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
     return items.toOwnedSlice(hx.alloc) catch &[_]ListRow{};
 }
