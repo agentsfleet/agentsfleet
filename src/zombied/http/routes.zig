@@ -81,9 +81,8 @@ pub const Route = union(enum) {
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // External-agent memory API — workspace-scoped resource collection.
-    workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search) + POST (store)
-    workspace_zombie_memory: matchers.WorkspaceZombieMemoryRoute, // DELETE /memories/{key}
+    // External-agent memory API — workspace-scoped resource collection (read-only).
+    workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search); write verbs retired
     // Integration grant CRUD (workspace-scoped)
     request_integration_grant: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceZombieRoute, // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
@@ -106,4 +105,6 @@ pub const Route = union(enum) {
     runner_report, // POST /v1/runners/me/reports
     runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
     runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
+    runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{zombie_id}
+    runner_memory_capture: []const u8, // POST /v1/runners/me/memory/{zombie_id}
 };

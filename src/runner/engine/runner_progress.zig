@@ -20,6 +20,7 @@ const observability = nullclaw.observability;
 const providers = nullclaw.providers;
 const contract = @import("contract");
 const pipe_proto = @import("../pipe_proto.zig");
+const inrun_memory = @import("inrun_memory.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 
@@ -63,6 +64,11 @@ pub const Adapter = struct {
     /// SKILL.md "snapshot every N tools" cadence is being prompted.
     /// 0 disables the cadence (tests + non-streaming paths).
     memory_checkpoint_every: u32 = 0,
+    /// Flushes the in-run store to the parent on each checkpoint-due tick (and
+    /// the engine calls it once more at run end). Null in non-streaming/test
+    /// paths or when the in-run store could not be built — capture is then a
+    /// no-op, never a hard error. Borrowed; the engine owns its lifetime.
+    memory_capturer: ?*inrun_memory.MemoryCapturer = null,
     /// L2 context-lifecycle: once the cumulative completed-tool count
     /// crosses this threshold, log a `tool_window_exceeded` line each
     /// subsequent call. SKILL.md prose tells the agent to compact
@@ -173,6 +179,10 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                     .every = self.memory_checkpoint_every,
                     .nudges_emitted = self.nudges_emitted,
                 });
+                // Flush the in-run store to the parent so a long run's learned
+                // memory is durable before it finishes (run-end is not the only
+                // capture point). Best-effort — a blip never disturbs the run.
+                if (self.memory_capturer) |c| c.capture();
             }
             // L2 window: once the cumulative count crosses the window
             // threshold, every subsequent call emits a structured line

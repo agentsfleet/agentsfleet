@@ -53,7 +53,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
     e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets a zombie that belongs to a different workspace. " ++
-        "Each zombie's memory is scoped to its own instance_id; cross-zombie access is not permitted."),
+        "Each zombie's memory is scoped to its own zombie_id; cross-zombie access is not permitted."),
     e("UZ-MEM-002", .not_found, "Zombie not found for memory op", "The zombie_id does not exist or does not belong to the requesting workspace. " ++
         "Verify the zombie_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++

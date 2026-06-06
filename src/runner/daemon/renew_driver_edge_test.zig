@@ -16,6 +16,15 @@ const contract = @import("contract");
 const RenewDecision = child_supervisor.RenewDecision;
 const ActivitySink = child_supervisor.ActivitySink;
 const ActivityFrame = contract.activity.ActivityFrame;
+
+// No-op memory sink — capture forwarding is out of scope for this read-loop test.
+const NoopMem = struct {
+    var dummy: u8 = 0;
+    fn forward(_: *anyopaque, _: []const u8) void {}
+    fn sink() child_supervisor.MemorySink {
+        return .{ .ctx = &dummy, .forward = forward };
+    }
+};
 const Driver = renew_driver.RenewDriver(*FakeClient);
 
 const NOW_MS: i64 = 1_900_000_000_000;
@@ -48,7 +57,7 @@ test "onTick should treat a server deadline at or before now_ms as fail-safe at 
     // silently advances PAST it — an at/before-now deadline can only shrink the
     // window, never extend a lease the server is trying to end.
     var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS } };
-    var driver = driverWith(&fake, NOW_MS + 1_000); // inside the window
+    var driver = driverWith(&fake, NOW_MS + std.time.ms_per_s); // inside the window (1s ahead)
     const h = driver.hook();
 
     const decision = h.onTick(h.ctx, NOW_MS);
@@ -98,7 +107,7 @@ test "readResult should time out when renewal fails transiently on every tick" {
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
 
-    const outcome = try child_supervisor.readResult(testing.allocator, fds[0], near_dl, sink, hook);
+    const outcome = try child_supervisor.readResult(testing.allocator, fds[0], near_dl, sink, NoopMem.sink(), hook);
     defer testing.allocator.free(outcome.bytes);
 
     try testing.expect(outcome.timed_out);

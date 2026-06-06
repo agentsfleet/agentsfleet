@@ -25,6 +25,7 @@ const S_VERIFY = "verify";
 const S_RUNNERS = "runners";
 const S_ME = "me";
 const S_LEASES = "leases";
+const S_MEMORY = "memory";
 
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
@@ -241,16 +242,6 @@ pub fn matchWorkspaceZombieGrant(p: Path) ?WorkspaceZombieGrantRoute {
     return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .grant_id = v.leaf };
 }
 
-pub const WorkspaceZombieMemoryRoute = struct {
-    workspace_id: []const u8,
-    zombie_id: []const u8,
-    memory_key: []const u8,
-};
-
-pub fn matchWorkspaceZombieMemoryByKey(p: Path) ?WorkspaceZombieMemoryRoute {
-    const v = matchZombieLeaf(p, "memories") orelse return null;
-    return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .memory_key = v.leaf };
-}
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
 // Both matchers share segs.len == 4 + segs[2] == "approvals"; mutual
@@ -319,6 +310,15 @@ pub fn matchRunnerLeaseActivity(p: Path) ?[]const u8 {
     if (p.segs.len != 5) return null;
     if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
     if (!p.eq(4, runner_protocol.RUNNER_LEASE_ACTIVITY_SUFFIX)) return null;
+    return p.param(3);
+}
+
+/// `GET|POST /v1/runners/me/memory/{zombie_id}` — runner-plane memory hydrate +
+/// capture. 4 segments after the v1 strip; the zombie is the leaf. The method
+/// (GET hydrate vs POST capture) is disambiguated by the router, not here.
+pub fn matchRunnerMemory(p: Path) ?[]const u8 {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_MEMORY)) return null;
     return p.param(3);
 }
 

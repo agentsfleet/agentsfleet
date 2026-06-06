@@ -132,6 +132,36 @@ const ActivityForwarder = struct {
     }
 };
 
+/// POSTs each `.memory` capture frame the child writes to the control plane —
+/// the daemon (not the child) holds the `zrn_` token, so capture rides the
+/// trusted plane. The frame is a JSON array of deltas; the daemon wraps it with
+/// the held lease's `lease_id` + `fencing_token` so the write is fenced. A blip
+/// is logged and swallowed — the next capture re-sends the full set.
+const MemoryForwarder = struct {
+    alloc: std.mem.Allocator,
+    cp: client_mod,
+    runner_token: []const u8,
+    zombie_id: []const u8,
+    lease_id: []const u8,
+    fencing_token: u64,
+
+    fn forward(ctx: *anyopaque, payload: []const u8) void {
+        const self: *MemoryForwarder = @ptrCast(@alignCast(ctx));
+        const parsed = std.json.parseFromSlice([]protocol.MemoryDelta, self.alloc, payload, .{}) catch {
+            log.warn("memory_frame_parse_failed", .{ .zombie_id = self.zombie_id });
+            return;
+        };
+        defer parsed.deinit();
+        const req = protocol.MemoryPushRequest{
+            .lease_id = self.lease_id,
+            .fencing_token = self.fencing_token,
+            .memory = parsed.value,
+        };
+        self.cp.memoryCapture(self.alloc, self.runner_token, self.zombie_id, req) catch |err|
+            log.warn("memory_capture_post_failed", .{ .zombie_id = self.zombie_id, .err = @errorName(err) });
+    }
+};
+
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 fn executeAndReport(
@@ -156,8 +186,28 @@ fn executeAndReport(
     const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = ActivityForwarder.forward };
     var driver = RenewDriver.init(alloc, cp, runner_token, payload);
 
+    // Hydrate the zombie's prior memory over the trusted plane BEFORE the fork so
+    // the child seeds its in-run store from it — the child makes no network call
+    // and holds no token. A hydrate miss degrades to empty memory, never blocks.
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.zombie_id) catch |err| blk: {
+        log.warn("memory_hydrate_failed", .{ .zombie_id = payload.event.zombie_id, .err = @errorName(err) });
+        break :blk null;
+    };
+    defer if (hydrated) |h| h.deinit();
+    const hydrated_memory: []const protocol.MemoryDelta = if (hydrated) |h| h.value.memory else &.{};
+
+    var mem_forwarder = MemoryForwarder{
+        .alloc = alloc,
+        .cp = cp,
+        .runner_token = runner_token,
+        .zombie_id = payload.event.zombie_id,
+        .lease_id = payload.lease_id,
+        .fencing_token = payload.fencing_token,
+    };
+    const mem_sink = child_supervisor.MemorySink{ .ctx = &mem_forwarder, .forward = MemoryForwarder.forward };
+
     const start_ms = clock.nowMillis();
-    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, sink, driver.hook());
+    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, driver.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
 
