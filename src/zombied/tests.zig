@@ -138,4 +138,5 @@ test {
     _ = @import("fleet/concurrency_renew_test.zig");
     _ = @import("fleet/integration_roundtrip_test.zig");
     _ = @import("fleet/integration_session_continuation_test.zig");
+    _ = @import("fleet/placement_eligibility_test.zig");
 }
