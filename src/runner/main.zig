@@ -92,7 +92,7 @@ pub fn main(init: std.process.Init) void {
     // Option B: the env-supplied `zrn_` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
-    loop.runLoop(io, alloc, cfg);
+    loop.runLoop(io, alloc, cfg, env_map);
     log.info("runner_exit", .{});
 }
 

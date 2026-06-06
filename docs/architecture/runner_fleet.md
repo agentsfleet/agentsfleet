@@ -236,6 +236,18 @@ report → zombied: persist terminal state + telemetry + checkpoint, then XACK
 
 The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 
+### Process-boundary hardening
+
+bwrap (namespaces) + Landlock (filesystem) + cgroup (kill/limit) are the headline layers, but the **process boundary underneath them** carries its own guarantees — what the child inherits across `fork`/`exec`, and how its tree is reaped. These sit below the namespace/LSM layer and close paths that the isolation layers do not:
+
+- **Filtered environment.** `ZOMBIE_RUNNER_TOKEN` (the daemon's control-plane credential) and every other daemon-only var live in the *parent's* environment. The child is spawned with a **fail-closed allowlist** `environ_map` (`HOME`, `PATH`, the engine's optional knobs, the TLS CA path) — it inherits only what tool execution needs, never the `ZOMBIE_`/`RUNNER_` namespace. A prompt-injected agent reading its own `/proc/self/environ` or calling `getenv` finds the token structurally absent. (The cross-process `/proc/<daemon>/environ` read is already shut by the pid namespace.) Lease secrets still ride **stdin**, never argv/env.
+- **No privilege escalation.** The child sets `PR_SET_NO_NEW_PRIVS` before `landlock_restrict_self`, so a setuid binary in the read-only system mounts can never raise privilege. It is additive — it does not remove the user-namespace `CAP_SYS_ADMIN` that Landlock currently rides.
+- **No controlling terminal.** `--new-session` detaches the child from any tty, closing terminal-input injection (`TIOCSTI`).
+- **Absolute `argv[0]`.** The exec target is asserted absolute before spawn, so a child program is never resolved through the parent's `$PATH`.
+- **Un-emptyable kill domain.** The cgroup is the primary atomic kill domain, but the parent **always also** signals the child's process group, and **fails the lease closed** if cgroup enrollment fails (otherwise the child would run unmetered in the daemon's cgroup and a kill on the empty exec-cgroup would reap nothing). A forking agent's whole tree dies on revocation/timeout.
+
+The first four make the daemon's own credentials and host privileges unreachable from inside a hostile agent; the last makes containment escape-proof against a child that forks to survive. Network egress is the orthogonal layer — see the egress model below.
+
 ### Multi-run events
 
 A *run* is one NullClaw execution inside one language-model context window. When a single event needs more reasoning than one window holds, NullClaw stops at `stage_chunk_threshold` (0.75 of the context cap), checkpoints, and signals "resume me." `zombied` enqueues a **continuation event** chained by `resumes_event_id`, and the next lease resumes from the checkpoint in a fresh window. One lease = one run.
@@ -317,6 +329,19 @@ A runner reports its isolation strength at registration. Assignment (and later t
 | `dev_none` | no real sandbox; refused in release builds | own-tenant dev work |
 
 On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
+
+> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (filesystem / syscall / process) — it is **orthogonal** to network egress. `landlock_full` does not constrain which hosts the child reaches (Landlock governs the filesystem; its recent network support is TCP *port* binding/connect only, not host allowlisting). `container_nested` gives a ready net-namespace boundary that the egress model can build on, but still needs the allowlist. So none of the tiers substitutes for the egress model below.
+
+## Egress model — outbound is the only network surface
+
+The runner box is **outbound-only**: it runs no inbound listener (the daemon dials the control plane via an outbound `std.http.Client`; see §Datastore role model), and holds no co-located datastore. So the network threat is entirely **outbound secret exfiltration** — the sandboxed agent legitimately holds the lease's inference `api_key` and tool secrets (e.g. a GitHub token), and the agent's *only* required egress is its inference endpoint (or a gateway) plus operator-declared `allow_hosts` for tools.
+
+Two network policies:
+
+- **`deny_all` (default)** — empty net namespace (`--unshare-all`); the child reaches nothing. Correct for non-network agents.
+- **network-enabled** — the child keeps its **own** net namespace whose only next hop is a **default-deny DNS-pinning egress proxy** that allows the configured inference endpoint/gateway + the operator's declared `allow_hosts`, and drops everything else (arbitrary exfil targets, raw IPs, link-local, private ranges). The operator's declared allowlist becomes a real boundary, not a log line.
+
+**Durable memory rides the trusted plane, never the agent.** The runner is built `base,sqlite` (no Postgres engine), so the sandboxed child holds no datastore credential and opens no DB socket; per-run agent memory is captured through the control plane's authenticated channel and written to `memory.memory_entries` server-side. The untrusted child never connects to Postgres.
 
 ## Scaling
 
