@@ -101,7 +101,8 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
     var bytes: usize = 0;
     for (body.memory) |d| {
         if (d.key.len == 0 or d.key.len > h.MAX_KEY_LEN or
-            d.content.len == 0 or d.content.len > h.MAX_CONTENT_LEN)
+            d.content.len == 0 or d.content.len > h.MAX_CONTENT_LEN or
+            d.category.len == 0 or d.category.len > h.MAX_CATEGORY_LEN)
         {
             skipped += 1;
             continue;
