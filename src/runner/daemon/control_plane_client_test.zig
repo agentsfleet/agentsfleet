@@ -46,6 +46,10 @@ test "the control-plane client holds no persistent file descriptor" {
     const fields = @typeInfo(client).@"struct".fields;
     try testing.expectEqual(@as(usize, 2), fields.len);
     inline for (fields) |f| {
+        // This guards field NAMES, not TYPES: it fires on an added field, but a
+        // type change to an existing field (e.g. `io: std.Io` -> a struct that
+        // wraps a persistent socket) keeps the name + count and passes silently.
+        // Any such type change to base_url/io must be reviewed for fd-ownership.
         const known = comptime (std.mem.eql(u8, f.name, "base_url") or std.mem.eql(u8, f.name, "io"));
         if (!known)
             @compileError("control-plane client gained field '" ++ f.name ++ "' — review for fd-statelessness (no persistent credential socket)");
