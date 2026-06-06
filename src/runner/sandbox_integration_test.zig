@@ -43,10 +43,21 @@ fn readToEnd(alloc: std.mem.Allocator, fd: std.posix.fd_t, cap: usize) ![]u8 {
     return buf.toOwnedSlice(alloc);
 }
 
+/// A spawn-capable IO. `common.globalIo()` carries a `.failing` allocator — fine
+/// for the sync/sleep seam, but `std.process.spawn` allocates the argv/envp block
+/// before fork, so it must reach a real gpa or every spawn errors. Production uses
+/// the process `Init.io`; tests stand up their own. Caller owns `t`, must `deinit`.
+fn spawnIo(t: *std.Io.Threaded) std.Io {
+    t.* = .init(std.testing.allocator, .{});
+    return t.io();
+}
+
 test "a planted daemon token never reaches a real spawned child's environment" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    const io = common.globalIo();
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
 
     // A daemon environ carrying the control-plane secret plus the load-bearing
     // allowlisted vars.
@@ -120,10 +131,13 @@ fn expectReapedViaEof(fd: std.posix.fd_t) !void {
 
 test "killChild reaps a forking child's whole process-group tree" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
-    const io = common.globalIo();
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
 
-    // sh backgrounds two sleeps (grandchildren holding the stdout pipe).
-    var child = try spawnReadyGroup(io, "sleep 60 & sleep 60 & echo ready; wait");
+    // sh backgrounds two sleeps (grandchildren holding the stdout pipe). Absolute
+    // /bin/sleep: the child inherits this io's (empty) environ, so PATH is unset.
+    var child = try spawnReadyGroup(io, "/bin/sleep 60 & /bin/sleep 60 & echo ready; wait");
 
     // Kill the whole group (scope=null → the pure pgroup-signal path).
     var scope: ?cgroup.CgroupScope = null;
@@ -134,9 +148,11 @@ test "killChild reaps a forking child's whole process-group tree" {
 
 test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollment failure" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
-    const io = common.globalIo();
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
 
-    var child = try spawnReadyGroup(io, "sleep 60 & echo ready; wait");
+    var child = try spawnReadyGroup(io, "/bin/sleep 60 & echo ready; wait");
 
     // A scope whose cgroup dir does not exist → addProcess (open cgroup.procs)
     // fails deterministically — the exact enrollment failure the fail-closed
