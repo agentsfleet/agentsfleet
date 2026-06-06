@@ -93,7 +93,9 @@ export async function RecentActivity() {
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) return null;
 
-  const page = await listWorkspaceEvents(workspace.id, token, { limit: 20 }).catch(
+  // Dashboard shows a short preview; the full, paginated stream lives at
+  // /events (the sidebar "Events" item). Keeps the two from duplicating.
+  const page = await listWorkspaceEvents(workspace.id, token, { limit: 5 }).catch(
     () => ({ items: [], next_cursor: null }),
   );
 
@@ -101,7 +103,11 @@ export async function RecentActivity() {
     <Section asChild>
       <section aria-label="Recent Activity">
         <SectionLabel>Recent Activity</SectionLabel>
-        <EventsList scope={{ kind: "workspace", workspaceId: workspace.id }} initial={page} />
+        <EventsList
+          scope={{ kind: "workspace", workspaceId: workspace.id }}
+          initial={page}
+          viewAllHref="/events"
+        />
       </section>
     </Section>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Alert,
   Badge,
@@ -17,6 +18,7 @@ import {
   Separator,
   Time,
 } from "@usezombie/design-system";
+import { ActivityIcon } from "lucide-react";
 import {
   listWorkspaceEventsAction,
   listZombieEventsAction,
@@ -33,6 +35,10 @@ export type EventsListProps = {
   initial: EventsPage;
   emptyTitle?: string;
   emptyDescription?: string;
+  // When set, the list renders as a preview: a "View all" link to this href
+  // replaces inline cursor pagination (used by the dashboard Recent Activity
+  // section, which points at the full /events page).
+  viewAllHref?: string;
 };
 
 // Map server status → Badge variant. Untracked statuses fall through to
@@ -48,7 +54,8 @@ export function EventsList({
   scope,
   initial,
   emptyTitle = "No events yet",
-  emptyDescription = "Operator steers, webhooks, and cron triggers will land here once your agents start running.",
+  emptyDescription = "Webhooks, schedules, and manual triggers show up here once your agents start running.",
+  viewAllHref,
 }: EventsListProps) {
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
@@ -78,7 +85,13 @@ export function EventsList({
   }
 
   if (items.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return (
+      <EmptyState
+        icon={<ActivityIcon size={28} />}
+        title={emptyTitle}
+        description={emptyDescription}
+      />
+    );
   }
 
   return (
@@ -94,7 +107,16 @@ export function EventsList({
         <Alert variant="destructive">{error}</Alert>
       ) : null}
       <Separator />
-      <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
+      {viewAllHref ? (
+        <Link
+          href={viewAllHref}
+          className="font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:text-foreground"
+        >
+          View all events →
+        </Link>
+      ) : (
+        <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { AuthProvider } from "@/lib/auth/client";
+import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
 import { THEME_COOKIE, normalizeTheme } from "@/lib/theme";
 import "./globals.css";
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = normalizeTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <AuthProvider>
+    <AuthProvider appearance={AUTH_APPEARANCE} localization={{ userButton: { action__manageAccount: "Account" } }}>
       <html lang="en" data-theme={theme} suppressHydrationWarning>
         <body>
           <AnalyticsBootstrap />

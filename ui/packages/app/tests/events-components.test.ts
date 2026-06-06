@@ -15,6 +15,12 @@ vi.mock("@/app/(dashboard)/events/actions", () => ({
   listWorkspaceEventsAction: listWorkspaceEventsActionMock,
 }));
 
+// EventsList renders a next/link <Link> in its viewAllHref preview mode.
+vi.mock("next/link", () => ({
+  default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
+    React.createElement("a", props, children),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -73,7 +79,7 @@ describe("EventsList", () => {
   it("renders default empty state when no items", () => {
     renderList({ items: [], next_cursor: null });
     expect(screen.getByText(/No events yet/i)).toBeTruthy();
-    expect(screen.getByText(/Operator steers, webhooks/i)).toBeTruthy();
+    expect(screen.getByText(/Webhooks, schedules, and manual triggers/i)).toBeTruthy();
   });
 
   it("respects custom empty copy", () => {
@@ -258,5 +264,31 @@ describe("EventsList", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
     );
+  });
+
+  // ── viewAllHref preview mode (dashboard Recent Activity) ──────────────────
+
+  it("renders a 'View all' link to the href instead of cursor pagination when viewAllHref is set", () => {
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(EventsList, {
+          scope: { kind: "workspace", workspaceId: "ws_1" },
+          // A next_cursor is present, so without viewAllHref the Pagination
+          // control WOULD render — this proves the preview branch replaces it.
+          initial: { items: [row({ event_id: "p1" })], next_cursor: "cur_1" },
+          viewAllHref: "/events",
+        }),
+      ),
+    );
+    expect(screen.getByRole("link", { name: /view all events/i }).getAttribute("href")).toBe("/events");
+    expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
+  });
+
+  it("renders cursor pagination (not a 'View all' link) when viewAllHref is absent", () => {
+    renderList({ items: [row({ event_id: "p1" })], next_cursor: "cur_1" });
+    expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /view all events/i })).toBeNull();
   });
 });

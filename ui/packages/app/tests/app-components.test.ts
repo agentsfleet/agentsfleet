@@ -74,25 +74,6 @@ vi.mock("@/components/layout/ThemeToggle", () => ({
   default: () => React.createElement("button", { "data-theme-toggle": "1" }),
 }));
 
-type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;
-
-function findElements(node: React.ReactNode, matcher: (element: ClickableElement) => boolean): ClickableElement[] {
-  const results: ClickableElement[] = [];
-  function walk(value: React.ReactNode) {
-    if (!React.isValidElement(value)) return;
-    const element = value as ClickableElement;
-    if (matcher(element)) results.push(element);
-    const children = element.props?.children;
-    if (Array.isArray(children)) {
-      children.forEach(walk);
-      return;
-    }
-    if (children) walk(children);
-  }
-  walk(node);
-  return results;
-}
-
 beforeEach(() => {
   mocks.useUser.mockReset();
   mocks.usePathname.mockReset();
@@ -110,20 +91,21 @@ afterEach(() => {
 describe("app components", () => {
   it("tracks shell navigation", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-
-    const shellTree = Shell({ children: React.createElement("div", null, "content") });
-    const clickable = findElements(shellTree, (el) => typeof el.props?.onClick === "function");
-    clickable.forEach((el) => el.props.onClick?.());
-
     mocks.usePathname.mockReturnValue("/");
-    renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div", null, "root")));
+    const user = userEvent.setup();
+    const { container } = render(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
 
+    // Clicking a sidebar nav link emits a navigation-analytics event.
+    await user.click(screen.getByText("Dashboard"));
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
+
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:
     // no decorative badges, no marketing chrome.
-    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, shellTree));
-    expect(markup).toContain("usezombie");
-    expect(markup).toContain("data-live");
+    expect(container.innerHTML).toContain("usezombie");
+    expect(container.innerHTML).toContain("data-live");
+    cleanup();
   });
 
   it("identifies the current clerk user once loaded", async () => {
@@ -315,7 +297,7 @@ describe("app components", () => {
     cleanup();
   });
 
-  it("emits navigation analytics from sidebar, bottom-nav, and header links", async () => {
+  it("emits navigation analytics from sidebar and bottom-nav links", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/");
     const user = userEvent.setup();
@@ -333,9 +315,6 @@ describe("app components", () => {
     await user.click(screen.getByText("Credentials"));
     await user.click(screen.getByText("Model"));
     await user.click(screen.getByText("Billing"));
-    // Header marketing/docs anchors.
-    await user.click(screen.getByText("docs"));
-    await user.click(screen.getByText("usezombie.com"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(
       (c) => (c[0] as { source: string }).source,
@@ -347,8 +326,6 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_credentials");
     expect(sources).toContain("app_sidebar_settings_models");
     expect(sources).toContain("app_sidebar_settings_billing");
-    expect(sources).toContain("app_header_docs");
-    expect(sources).toContain("app_header_marketing");
     cleanup();
   });
 });

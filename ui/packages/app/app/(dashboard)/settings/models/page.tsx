@@ -51,10 +51,8 @@ export default async function ProviderSettingsPage() {
         <PageTitle>Model</PageTitle>
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Choose between platform-managed credits (we handle the billing) and
-        self-managed provider keys (your API key, your provider account,
-        our flat per-event overhead). Platform-managed is the default for
-        every new tenant.
+        Pick who pays for model usage: platform-managed credits (we bill you per event) or
+        your own provider key (you bring the account, we add a flat per-event fee).
       </p>
       <div className="grid gap-8 md:grid-cols-2">
         <Section asChild>

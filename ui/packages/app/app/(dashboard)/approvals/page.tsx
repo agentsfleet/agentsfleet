@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section } from "@usezombie/design-system";
 
 import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
@@ -28,7 +28,6 @@ export default async function ApprovalsPage() {
 
       <Section asChild>
         <section aria-label="Pending approval gates">
-          <SectionLabel>Pending</SectionLabel>
           <ApprovalsList
             workspaceId={workspace.id}
             initialItems={initial.items}

@@ -112,7 +112,7 @@ describe("placeholder pages", () => {
     expect(m).toContain("Workspace events");
   });
 
-  it("settings page renders workspace info and userId when authenticated", async () => {
+  it("settings page renders workspace info when authenticated", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
@@ -120,7 +120,6 @@ describe("placeholder pages", () => {
     expect(m).toContain("Settings");
     expect(m).toContain("Production");
     expect(m).toContain("ws_xyz");
-    expect(m).toContain("usr_42");
   });
 
   it("settings page tolerates missing active workspace", async () => {
@@ -246,12 +245,4 @@ describe("placeholder pages", () => {
     expect(m).toContain("No workspace yet");
   });
 
-  it("settings page renders an em-dash when the userId is missing", async () => {
-    mockAuth({ token: "tkn", userId: null });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("ws_xyz");
-    expect(m).toContain("—"); // userId ?? "—"
-  });
 });

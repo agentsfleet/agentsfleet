@@ -44,10 +44,10 @@ export default async function CredentialsPage() {
       <PageHeader>
         <PageTitle>Credentials</PageTitle>
       </PageHeader>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Each credential is a JSON object stored in the vault, envelope-encrypted at rest.
-        Reference fields from an agent&apos;s tool calls as
-        {" "}<code>{"${secrets.<name>.<field>}"}</code>.
+      <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
+        Store secrets your agents use to reach other services — API tokens, passwords, keys. They&apos;re
+        saved encrypted, and an agent references one by name (e.g.{" "}
+        <code>{"${secrets.fly.api_token}"}</code>).
       </p>
       <div className="grid gap-8 md:grid-cols-2">
         <Section asChild>
