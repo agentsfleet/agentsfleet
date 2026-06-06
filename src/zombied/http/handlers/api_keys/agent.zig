@@ -199,7 +199,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
             .description = description,
             .created_at = created_at,
             .last_used_at = last_used,
-        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = agents.items, .total = agents.items.len });

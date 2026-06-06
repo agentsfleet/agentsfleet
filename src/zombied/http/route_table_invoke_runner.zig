@@ -16,6 +16,7 @@ const runner_lease = @import("handlers/runner/lease.zig");
 const runner_report = @import("handlers/runner/report.zig");
 const runner_activity = @import("handlers/runner/activity.zig");
 const runner_renew = @import("handlers/runner/renew.zig");
+const runner_memory = @import("handlers/runner/memory.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -91,4 +92,20 @@ pub fn invokeRunnerRenew(hx: *Hx, req: *httpz.Request, route: router.Route) void
         return;
     }
     runner_renew.innerRunnerRenew(hx.*, req, route.runner_renew);
+}
+
+pub fn invokeRunnerMemoryHydrate(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    runner_memory.innerRunnerMemoryHydrate(hx.*, route.runner_memory_hydrate);
+}
+
+pub fn invokeRunnerMemoryCapture(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    runner_memory.innerRunnerMemoryCapture(hx.*, req, route.runner_memory_capture);
 }

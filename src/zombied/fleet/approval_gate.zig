@@ -173,7 +173,7 @@ fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
     defer pool.release(conn);
     _ = conn.exec(
         \\UPDATE core.zombies SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
-    , .{ clock.nowMillis(), zombie_id }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    , .{ clock.nowMillis(), zombie_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 fn cleanupPendingKey(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8) void {
