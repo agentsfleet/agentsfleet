@@ -217,14 +217,21 @@ test "a real spawned child inherits only wired stdio — no daemon fd >= 3" {
     const io = spawnIo(&threaded);
     defer threaded.deinit();
 
-    // Spawn the way forkExec does (stdin/stdout/stderr wired; no progress_node,
-    // so std opens no fd 3). The child reports any open fd in 3..20 — there must
-    // be none: every daemon fd (the control-plane socket, cgroup handles) is
-    // CLOEXEC or closed before fork, so only 0/1/2 cross. `[ -L ]` opens no fd.
+    // Spawn via std.process.spawn — the syscall path forkExec uses — wiring
+    // stdio and leaving progress_node default (.none), so std opens no fd 3.
+    // The child probes fds 3..63 for any open descriptor: there must be none —
+    // every daemon fd (the control-plane socket, cgroup handles) is CLOEXEC or
+    // closed before fork, so only 0/1/2 cross. We probe a bounded window with
+    // `[ -L ]` (which opens no fd) rather than enumerating /proc/self/fd,
+    // because opendir() on that dir would itself open a transient fd and
+    // pollute the listing. 63 covers any realistic fork-time fd table (the
+    // daemon holds no live fd >= 3 at spawn per the open-site audit).
     const script =
         \\S=
-        \\for n in 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        \\n=3
+        \\while [ "$n" -le 63 ]; do
         \\  if [ -L /proc/self/fd/$n ]; then S="$S $n"; fi
+        \\  n=$((n+1))
         \\done
         \\printf 'stray:[%s]' "$S"
     ;
