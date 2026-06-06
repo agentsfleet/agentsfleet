@@ -98,16 +98,12 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
 
     // Placement tags: the SKILL.md frontmatter `tags:` the author already wrote
     // become core.zombies.required_tags (matched ⊆ runner.labels at lease time).
-    // Empty/absent ⇒ '[]' ⇒ any runner (today's behaviour).
+    // Empty/absent ⇒ '{}' ⇒ any runner (today's behaviour). The parsed slice is
+    // passed straight through as a TEXT[] param — no serialization.
     if (!zombie_config.validRequiredTags(skill_meta.tags)) {
         hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars");
         return;
     }
-    const tags_json = std.json.Stringify.valueAlloc(hx.alloc, skill_meta.tags, .{}) catch {
-        common.internalOperationError(hx.res, "required_tags serialization failed", hx.req_id);
-        return;
-    };
-    defer hx.alloc.free(tags_json);
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -126,7 +122,7 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     };
     const now_ms = clock.nowMillis();
 
-    insertZombieOnConn(conn, workspace_id, body, parsed, tags_json, zombie_id, now_ms) catch |err| {
+    insertZombieOnConn(conn, workspace_id, body, parsed, skill_meta.tags, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
             hx.fail(ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS);
             return;
@@ -199,7 +195,7 @@ fn insertZombieOnConn(
     workspace_id: []const u8,
     body: CreateBody,
     parsed: zombie_config.ParsedTrigger,
-    tags_json: []const u8,
+    required_tags: []const []const u8,
     zombie_id: []const u8,
     now_ms: i64,
 ) !void {
@@ -207,7 +203,7 @@ fn insertZombieOnConn(
         \\INSERT INTO core.zombies
         \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, required_tags, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9, $9)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8::text[], $9, $9)
     , .{
         zombie_id,
         workspace_id,
@@ -216,7 +212,7 @@ fn insertZombieOnConn(
         body.trigger_markdown,
         parsed.config_json,
         zombie_config.ZombieStatus.active.toSlice(),
-        tags_json,
+        required_tags,
         now_ms,
     });
 }

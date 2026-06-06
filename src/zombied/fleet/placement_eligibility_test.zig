@@ -84,15 +84,16 @@ fn seedRunnerWithLabels(conn: *pg.Conn, runner_id: []const u8, host_id: []const 
     , .{ runner_id, host_id, hash[0..], labels_json });
 }
 
-/// Seed the zombie + session, then stamp its required_tags. `tags_json` is a
-/// literal like '["gpu"]' or '[]'. base.seedZombie omits required_tags, so it
-/// lands as the column DEFAULT '[]' first; this UPDATE sets the test value.
-fn seedZombieWithTags(conn: *pg.Conn, tags_json: []const u8) !void {
+/// Seed the zombie + session, then stamp its required_tags. `tags_literal` is a
+/// Postgres TEXT[] literal like '{gpu}' or '{}'. base.seedZombie omits
+/// required_tags, so it lands as the column DEFAULT '{}' first; this UPDATE sets
+/// the test value.
+fn seedZombieWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
     try base.seedZombie(conn, ZOMBIE_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
     try base.seedZombieSession(conn, SESSION_ID, ZOMBIE_ID, "{}");
     _ = try conn.exec(
-        "UPDATE core.zombies SET required_tags = $1::jsonb WHERE id = $2::uuid",
-        .{ tags_json, ZOMBIE_ID },
+        "UPDATE core.zombies SET required_tags = $1::text[] WHERE id = $2::uuid",
+        .{ tags_literal, ZOMBIE_ID },
     );
 }
 
@@ -195,7 +196,7 @@ test "claim respects required tag subset: a [gpu] zombie leases only to a gpu ru
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    try seedBase(h, conn, "[\"gpu\"]");
+    try seedBase(h, conn, "{gpu}");
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
 
@@ -216,7 +217,7 @@ test "empty required_tags leases to any runner (back-compat with the global race
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    try seedBase(h, conn, "[]");
+    try seedBase(h, conn, "{}");
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
 
     // [] ⊆ any labels ⇒ a label-less runner claims an untagged zombie.
@@ -233,7 +234,7 @@ test "sticky hint never overrides eligibility: an ineligible sticky runner does 
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    try seedBase(h, conn, "[\"gpu\"]");
+    try seedBase(h, conn, "{gpu}");
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
     // The sticky hint points at the PLAIN runner, and the slot is claimable.
@@ -256,7 +257,7 @@ test "unsatisfiable tags hold then schedule once a matching runner enrolls" {
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    try seedBase(h, conn, "[\"gpu\"]");
+    try seedBase(h, conn, "{gpu}");
     // Only a plain runner exists: the zombie's [gpu] is unsatisfiable → holds.
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
     try std.testing.expect(!try leasePresent(h, PLAIN_TOKEN));

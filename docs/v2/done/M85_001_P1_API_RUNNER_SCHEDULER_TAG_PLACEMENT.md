@@ -39,7 +39,7 @@
 - **`docs/greptile-learnings/RULES.md`** — UFS (the match operator + any well-known label key are named consts, no re-spelled `required_tags` literal), NDC, ORP (the candidate scan is touched — sweep stale call sites).
 - **`docs/ZIG_RULES.md`** — the change is `*.zig` + SQL: pg-drain on any new/changed `conn.query`, tagged-union result, cross-compile both linux targets.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — the zombie create/config surface gains `required_tags`; request validation + error envelope.
-- **`docs/SCHEMA_CONVENTIONS.md`** — `core.zombies.required_tags` column (JSONB array, never NULL, app-enforced — RULE STS, no static DEFAULT/CHECK); single-concern migration.
+- **`docs/SCHEMA_CONVENTIONS.md`** — `core.zombies.required_tags` column (TEXT[], never NULL, app-enforced — RULE STS, structural `'{}'` default only); single-concern migration.
 
 ---
 
@@ -48,7 +48,7 @@
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | ZIG GATE | yes | cross-compile both linux targets; eligibility filter factored ≤50 lines. |
-| SCHEMA | yes | add `core.zombies.required_tags` by editing 007 in place (teardown-rebuild era, no `ALTER`). `'[]'::jsonb` structural default = the meter_slice_seq exception class, not an STS enum default. |
+| SCHEMA | yes | add `core.zombies.required_tags TEXT[]` + `gin (required_tags)` by editing 007 in place (teardown-rebuild era, no `ALTER`). `'{}'::text[]` structural default = the meter_slice_seq exception class, not an STS enum default. |
 | LIFECYCLE | yes | the `listCandidates` query already drains via `PgQuery`; the added JOIN keeps that path. |
 | UFS | yes | label-match operator single-sourced; no re-spelled `required_tags` literal. |
 | ERROR REGISTRY | yes | a "no eligible runner" hold is **not** an error code (work waits, not fails); a malformed `required_tags` is `UZ-REQ-001`. |
@@ -62,7 +62,7 @@
 
 **Problem:** Runner `labels` are stored at enrollment but **no assignment code reads them** — `listCandidates` lists every active zombie and the claim reads nothing about the host. So an operator cannot pin GPU work to GPU hosts or region work to a region — the exact thing GitLab (tags) and GitHub (labels) exist to do. `runner_fleet.md` names this gap as the reserved scheduler milestone.
 
-**Solution summary:** Add `required_tags` to the zombie model (data plane), and a **single label-eligibility filter** to the candidate scan (control plane): a runner may claim a zombie only if `required_tags ⊆ runner.labels`. The match is a candidate-set filter (`JOIN fleet.runners` + JSONB containment `<@`), not a change to the claim UPSERT — sound because `required_tags` (set at create) and `labels` (set at enrollment; relabeling is out of scope) are **immutable for the work's lifetime**, so there is no check-then-claim window. The runner advertises its labels once at enrollment (unchanged); `zombied` does the match server-side. When no runner is eligible, the work **holds** (it is not failed or thrashed) until a capable runner appears.
+**Solution summary:** Add `required_tags` to the zombie model (data plane), and a **single label-eligibility filter** to the candidate scan (control plane): a runner may claim a zombie only if `required_tags ⊆ runner.labels`. The match is a candidate-set filter — `required_tags` (TEXT[]) `<@` the polling runner's `labels`, bound as a constant TEXT[] via an uncorrelated subquery so a `gin (required_tags)` index can serve it — not a change to the claim UPSERT. Sound because `required_tags` (set at create) and `labels` (set at enrollment; relabeling is out of scope) are **immutable for the work's lifetime**, so there is no check-then-claim window. The runner advertises its labels once at enrollment (unchanged); `zombied` does the match server-side. When no runner is eligible, the work **holds** (it is not failed or thrashed) until a capable runner appears.
 
 This ships **one gate**. Trust-class, registration-scope, and sandbox-tier eligibility — and the funnel that composes them — are deferred to a follow-up spec (see Out of Scope). The predicate is written as a composable filter so those gates slot in later without reshaping it.
 
@@ -80,7 +80,7 @@ This ships **one gate**. Trust-class, registration-scope, and sandbox-tier eligi
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/007_core_zombies.sql` | EDIT | Add `core.zombies.required_tags JSONB NOT NULL DEFAULT '[]'::jsonb`. Edited in place (pre-v2.0.0 teardown-rebuild era forbids `ALTER`; no schema has one). No `embed.zig`/migration-array change — 007 is already registered. |
+| `schema/007_core_zombies.sql` | EDIT | Add `core.zombies.required_tags TEXT[] NOT NULL DEFAULT '{}'::text[]` + a `gin (required_tags)` index. Edited in place (pre-v2.0.0 teardown-rebuild era forbids `ALTER`; no schema has one). No `embed.zig`/migration-array change — 007 is already registered. |
 | `src/zombied/http/handlers/zombies/{create,patch}.zig` | EDIT | Persist `skill_meta.tags` → `required_tags` (create on insert; patch re-derives when `source_markdown` reparses), bounds-validated → `UZ-REQ-001`. |
 | `src/zombied/http/handlers/zombies/create_stream.zig` | CREATE | Event-stream-setup concern extracted from create.zig to stay ≤350 (RULE FLL); create.zig is the sole consumer. |
 | `src/zombied/zombie/config_types.zig` (+ `config.zig` re-export) | EDIT | `validRequiredTags` bounds helper (shared by create+patch) + corrected `tags` doc (no longer "uninterpreted"). |
@@ -109,7 +109,7 @@ A zombie carries `required_tags` (a set, possibly empty). Empty = any runner (pr
 
 ### §2 — Label-eligibility filter in the candidate scan (control plane) [S2]
 
-`listCandidates` joins the polling runner's `fleet.runners` row and admits a zombie only where `required_tags ⊆ runner.labels`, evaluated as JSONB containment (`z.required_tags <@ r.labels`). The sticky `last_runner_id` hint stays a tiebreak **within** the eligible set. The slot claim (`affinity.claim`) is **unchanged**.
+`listCandidates` admits a zombie only where `required_tags ⊆` the polling runner's labels, evaluated as array containment `z.required_tags <@ <labels>` where `<labels>` is the runner's stored JSONB labels converted to a constant TEXT[] via an uncorrelated subquery (InitPlan'd once → `column <@ constant` → the `gin (required_tags)` index can serve it). The sticky `last_runner_id` hint stays a tiebreak **within** the eligible set. The slot claim (`affinity.claim`) is **unchanged**.
 
 - **Dimension 2.1** — a zombie with `required_tags=[gpu]` is claimed only by a runner whose labels include `gpu`; a non-`gpu` runner never wins it → Test `claim respects required tag subset`.
 - **Dimension 2.2** — eligibility filters before the hint: a sticky `last_runner_id` whose labels no longer satisfy the tags does **not** surface the zombie to that runner; an eligible runner wins → Test `sticky hint never overrides eligibility`.
@@ -131,7 +131,7 @@ If no runner satisfies a zombie's tags, the work **holds** — it is neither fai
 ## Interfaces
 
 ```
-core.zombies.required_tags : JSONB array of label strings, never NULL (empty = any runner).
+core.zombies.required_tags : TEXT[] of label strings, never NULL (empty = any runner); gin-indexed.
 Zombie create/config (POST/PATCH zombies): accepts `required_tags?: string[]` (validated, deduped).
 Candidate scan (fleet.assign.listCandidates): eligibility predicate
     required_tags ⊆ runner.labels          -- the ONLY gate this spec ships
@@ -160,7 +160,7 @@ Deferred (own follow-up spec — written as composable AND-clauses so they slot 
 ## Invariants
 
 1. **`required_tags ⊆ runner.labels` is the only placement gate** this slice ships, evaluated as a candidate-set filter in `listCandidates`. The slot claim stays atomic and **untouched** — a check-then-claim gap is harmless here because `required_tags` (create-time) and `labels` (enrollment-time; relabeling out of scope) are immutable for the work's lifetime — enforced by §2.1 + the unchanged concurrency suite.
-2. **Empty `required_tags` ⇒ any runner** (back-compat with today's global race; `'[]' <@ labels` is always true) — enforced by §1.1 + §2.
+2. **Empty `required_tags` ⇒ any runner** (back-compat with today's global race; `'{}' <@ labels` is always true) — enforced by §1.1 + §2.
 3. **Eligibility filters before the sticky hint** — a hint whose runner fails eligibility never surfaces the zombie to it — enforced by §2.2.
 4. **Unsatisfiable tags hold, never fail/thrash** — enforced by §3.1. (The hold is silent this slice; surfacing is a deferred fast-follow.)
 5. **No capacity/fairness/trust/tier gating enters** — the predicate is a single boolean label-subset match; no scoring, no bin-packing, no second gate — enforced by review against this Invariant + the non-goals fence.
@@ -225,6 +225,7 @@ N/A — no files deleted (additive: one column, one candidate-scan filter, one v
     - Trust/scope/sandbox-tier composition + `required_tier` → own follow-up spec. Ack: Indy (2026-06-06): *"I want 1 gate via tags."*
     - Tag source (Path B, chosen): `required_tags` derives from the SKILL.md `tags:` already in the manifest (`skill_meta.tags`, previously discarded) rather than a new manual API field — cheaper than the manual field and matches "user doesn't separately input the tag." Ack: Indy (2026-06-06): *"Persist skill_meta.tags (Path B)"* (and *"if the user doesnt need to input the tag"*). The literal "bare manual field" (S5-deferred) was dropped because the CLI sends only trigger+source, so it would have shipped inert.
     - L4 write-time `matching_runner_count` echo + L5 `zombies_held_unmatched` metric (the silent-hold / F4 guardrails) → fast-follow; F4 accepted open this slice. Ack: Indy (2026-06-06): *"S1–S4 bare."*
+- **Storage type → TEXT[] + GIN (Jun 06 2026, greptile-driven).** A greptile P2 flagged a missing index on the `<@` filter. The initial answer was "no index helps" — correct for JSONB (no opclass supports `<@`) and for the column-to-column join shape. On Indy's prompt the answer improved: switch `required_tags` JSONB → `text[]` (array `array_ops` GIN supports `<@`) **and** bind the runner's labels as a constant TEXT[] (uncorrelated subquery) so the filter is `column <@ constant` — index-eligible. Done now because it is the more honest type for a string-set and the switch is free pre-launch (empty data; a migration later). Bonus: create/patch lose the JSON serialization — the parsed `[]const []const u8` is passed straight as a `text[]` param. Ack: Indy (2026-06-06): *"yes switch."*
 
 ---
 
@@ -263,4 +264,4 @@ N/A — no files deleted (additive: one column, one candidate-scan filter, one v
 - **Dynamic relabeling of a live runner** — changing a runner's labels after enrollment (and re-evaluating in-flight leases) is future work; the immutability it guarantees is what makes the candidate-set filter sound.
 - **`accepts_untagged` runner opt-out** — a specialist runner cannot refuse untagged work in this slice (untagged = any runner); the GitLab "run untagged jobs" toggle is future.
 - **Operator plane (cordon/drain/revoke) + event log** — that is M84_002.
-- **An index for the `required_tags <@ labels` scan** — `<@` on JSONB is not GIN-accelerable (only `@>` is, via `jsonb_path_ops`), so the eventual fix is a `text[]` column (array GIN supports `<@`) or a `NOT EXISTS` unmatched-tag rewrite. Deferred until the feature activates with heterogeneous runners; the active-zombie scan is pre-existing (this slice only adds a per-row boolean to it), so there is no regression to index away now. (greptile P2, PR #371.)
+- **Planner-usage tuning of the `required_tags` GIN index** — the index exists (`text[]` column + labels bound as a constant array make `<@` index-eligible), but `<@` is GIN's weak direction and the empty-set majority is unselective, so whether the planner *picks* it under real load needs an `EXPLAIN ANALYZE` once the feature carries data. Deferred until activation. (Originated greptile P2, PR #371 — resolved by the `text[]` switch rather than the originally-suggested `jsonb_path_ops` index, which supports only `@>`.)
