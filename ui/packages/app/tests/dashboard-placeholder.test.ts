@@ -80,6 +80,32 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
+  it("settings defaults page renders the masked placeholder when authenticated", async () => {
+    mockAuth({ token: "tkn" });
+    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Defaults");
+  });
+
+  it("settings defaults page redirects to /sign-in when no token", async () => {
+    mockAuth({ token: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("settings security page renders the masked placeholder when authenticated", async () => {
+    mockAuth({ token: "tkn" });
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Security");
+  });
+
+  it("settings security page redirects to /sign-in when no token", async () => {
+    mockAuth({ token: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
   it("events page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/events/page");
@@ -144,7 +170,7 @@ describe("placeholder pages", () => {
     listCredentialsMock.mockResolvedValue({ credentials: [] });
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Model");
+    expect(m).toContain("Models");
     expect(m).toContain(PROVIDER_MODE.platform);
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
@@ -171,7 +197,7 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     // The page swallows the error to keep rendering.
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Model");
+    expect(m).toContain("Models");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {

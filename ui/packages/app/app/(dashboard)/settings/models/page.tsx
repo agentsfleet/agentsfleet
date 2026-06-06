@@ -29,7 +29,7 @@ export default async function ProviderSettingsPage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>Model</PageTitle>
+          <PageTitle>Models</PageTitle>
         </PageHeader>
         <EmptyState
           icon={<ZapIcon size={32} />}
@@ -48,7 +48,7 @@ export default async function ProviderSettingsPage() {
   return (
     <div>
       <PageHeader>
-        <PageTitle>Model</PageTitle>
+        <PageTitle>Models</PageTitle>
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
         Pick who pays for model usage: platform-managed credits (we bill you per event) or

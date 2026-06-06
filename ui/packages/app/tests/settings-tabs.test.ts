@@ -61,11 +61,13 @@ describe("SettingsTabs active-tab computation", () => {
     expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("falls back to Basic Info for a settings route absent from the tab bar", async () => {
-    // /settings/defaults is a masked route with no tab entry → no tab should
-    // crash or double-activate; activeHref defaults to the index.
+  it("highlights no tab on a masked settings sub-route (defaults/security)", async () => {
+    // /settings/defaults + /settings/security render SettingsTabs but have no
+    // tab entry — neither tab should claim aria-current (so we don't falsely
+    // light up Basic Info while the user is clearly on a different page).
     await renderTabs("/settings/defaults");
-    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "API Keys" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("emits namespaced nav analytics with the clicked tab's slug on click", async () => {

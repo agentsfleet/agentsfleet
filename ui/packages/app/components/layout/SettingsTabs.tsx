@@ -7,7 +7,7 @@ import { trackNavigationClicked } from "@/lib/analytics/posthog";
 
 const NAV_SURFACE = "settings_tabs";
 
-// Org-settings sub-sections. Billing and Model are their own top-level sidebar
+// Org-settings sub-sections. Billing and Models are their own top-level sidebar
 // destinations. Defaults + Security are scaffolded (the routes exist) but
 // omitted here until built — add them back to surface them.
 const SETTINGS_TABS: TabNavItem[] = [
@@ -16,17 +16,19 @@ const SETTINGS_TABS: TabNavItem[] = [
 ];
 
 // "/settings" is the index — match it only exactly so it doesn't light up on
-// nested tabs; deeper tabs match themselves and any future children.
+// nested tabs; deeper tabs match themselves and any future children. Masked
+// sub-routes (/settings/defaults, /settings/security) have no tab entry, so
+// they highlight nothing rather than falsely lighting up Basic Info.
 function activeHref(pathname: string): string {
   for (const tab of SETTINGS_TABS) {
     if (tab.href === "/settings") continue;
     if (pathname === tab.href || pathname.startsWith(`${tab.href}/`)) return tab.href;
   }
-  return "/settings";
+  return pathname === "/settings" ? "/settings" : "";
 }
 
 function tabSource(href: string): string {
-  const slug = href === "/settings" ? "basic" : href.split("/").pop();
+  const slug = href === "/settings" ? "basic" : (href.split("/").pop() ?? href);
   return `${NAV_SURFACE}_${slug}`;
 }
 

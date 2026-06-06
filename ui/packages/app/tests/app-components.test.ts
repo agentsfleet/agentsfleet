@@ -178,8 +178,8 @@ describe("app components", () => {
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Agents");
     expect(markup).toContain("Credentials");
-    expect(markup).toContain("Model");
-    // The Model item points at the renamed route, not just the bare word.
+    expect(markup).toContain("Models");
+    // The Models item points at the renamed route, not just the bare word.
     expect(markup).toContain('href="/settings/models"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
@@ -313,7 +313,7 @@ describe("app components", () => {
     await user.click(screen.getByText("Settings"));
     // New grouped items — nested routes exercise the multi-segment slug branch.
     await user.click(screen.getByText("Credentials"));
-    await user.click(screen.getByText("Model"));
+    await user.click(screen.getByText("Models"));
     await user.click(screen.getByText("Billing"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(

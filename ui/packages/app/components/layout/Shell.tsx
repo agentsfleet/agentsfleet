@@ -56,7 +56,7 @@ const OPERATIONS_NAV: NavEntry[] = [
 // What the agents are wired to — secrets, the model brain, the execution fleet.
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
-  { label: "Model", href: "/settings/models", icon: CpuIcon },
+  { label: "Models", href: "/settings/models", icon: CpuIcon },
 ];
 
 // Platform-admin-only — appended to the Configuration group only when the
