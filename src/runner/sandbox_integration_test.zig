@@ -172,3 +172,71 @@ test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollme
     try expectReapedViaEof(child.stdout.?.handle); // not a silently-empty kill domain
     _ = child.wait(io) catch {};
 }
+
+test "a daemon-opened marker fd does not cross exec into a real spawned child" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // The daemon opens a fd the std way — O_CLOEXEC by default. /dev/null is a
+    // generic credential-like marker; if the CLOEXEC default ever regressed it
+    // would survive exec and appear in the child's /proc/self/fd.
+    const marker = try std.Io.Dir.openFileAbsolute(io, "/dev/null", .{});
+    defer marker.close(io);
+
+    // The child proves (a) it can see its own wired stdout symlink (probe is
+    // live) and (b) the parent's marker fd number is absent — CLOEXEC closed it
+    // on exec. `[ -L ]` matches the /proc/self/fd symlink regardless of target
+    // type and opens no fd, so the check never perturbs the table.
+    const script = try std.fmt.allocPrint(alloc,
+        \\if [ -L /proc/self/fd/1 ]; then P=ok; else P=broken; fi
+        \\if [ -L /proc/self/fd/{d} ]; then M=LEAKED; else M=absent; fi
+        \\printf '%s %s' "$P" "$M"
+    , .{marker.handle});
+    defer alloc.free(script);
+
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ SH, "-c", script },
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    try std.testing.expectEqualStrings("ok absent", out);
+}
+
+test "a real spawned child inherits only wired stdio — no daemon fd >= 3" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // Spawn the way forkExec does (stdin/stdout/stderr wired; no progress_node,
+    // so std opens no fd 3). The child reports any open fd in 3..20 — there must
+    // be none: every daemon fd (the control-plane socket, cgroup handles) is
+    // CLOEXEC or closed before fork, so only 0/1/2 cross. `[ -L ]` opens no fd.
+    const script =
+        \\S=
+        \\for n in 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        \\  if [ -L /proc/self/fd/$n ]; then S="$S $n"; fi
+        \\done
+        \\printf 'stray:[%s]' "$S"
+    ;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ SH, "-c", script },
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    try std.testing.expectEqualStrings("stray:[]", out);
+}

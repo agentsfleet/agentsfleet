@@ -36,3 +36,18 @@ test "isTerminalRenewStatus: only 401/402/404/409 are terminal" {
     inline for (.{ 401, 402, 404, 409 }) |s| try testing.expect(client.isTerminalRenewStatus(s));
     inline for (.{ 200, 400, 403, 408, 410, 429, 500, 503 }) |s| try testing.expect(!client.isTerminalRenewStatus(s));
 }
+
+test "the control-plane client holds no persistent file descriptor" {
+    // fd-stateless by construction: every credential-bearing socket is opened
+    // per call via std.http.Client and freed before the verb returns, so none is
+    // live when the supervisor forks the sandboxed child. The struct is exactly
+    // { base_url, io }; a future pooled/persistent socket field would be an
+    // inheritable credential vector and must be reviewed before it lands.
+    const fields = @typeInfo(client).@"struct".fields;
+    try testing.expectEqual(@as(usize, 2), fields.len);
+    inline for (fields) |f| {
+        const known = comptime (std.mem.eql(u8, f.name, "base_url") or std.mem.eql(u8, f.name, "io"));
+        if (!known)
+            @compileError("control-plane client gained field '" ++ f.name ++ "' — review for fd-statelessness (no persistent credential socket)");
+    }
+}

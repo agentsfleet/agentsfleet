@@ -160,12 +160,12 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 
 ## Acceptance Criteria
 
-- [ ] Child inherits only wired stdio — verify: `test_no_stray_fds_in_child`
-- [ ] Daemon-opened fds are not inherited (`EBADF` in child) — verify: `test_marker_fd_not_inherited_by_child`
-- [ ] Control-plane client holds no persistent fd — verify: `test_control_plane_client_holds_no_persistent_fd`
-- [ ] Daemon open-site audit recorded — verify: Discovery assertion table populated
-- [ ] `make lint` clean · `make test-unit-zigrunner` + `make test-integration-runner` pass · cross-compile both linux targets
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [~] Child inherits only wired stdio — verify: `test_no_stray_fds_in_child` (compiles both linux; runs on CI)
+- [~] Daemon-opened fds are not inherited — verify: `test_marker_fd_not_inherited_by_child` (compiles both linux; runs on CI)
+- [x] Control-plane client holds no persistent fd — verify: `test_control_plane_client_holds_no_persistent_fd` (passes natively)
+- [x] Daemon open-site audit recorded — verify: Discovery assertion table populated
+- [x] `make lint-zig` clean · `make test-unit-zigrunner` passes · cross-compile both linux targets compile-clean · `make test-integration-runner` on CI
+- [x] `gitleaks detect` clean · no file over 350 lines added
 
 ---
 
@@ -203,8 +203,12 @@ gitleaks detect 2>&1 | tail -3
 
 - **Origin (Jun 06, 2026):** this proof was M84_006 §2, briefly proposed as M84_004 §5, then split into this launch-safe spec. Indy decision (verbatim, Jun 06, 2026): _"do"_ — context: the recommendation to defer the egress proxy (M84_004 §1–§4) and cap-drop/containment (M84_006) behind untrusted-runner GA, while landing the proof-only credential-fd belt now. Both deferred specs keep their `Out of Scope` cross-reference pointing here.
 - **Code-grounded facts (worktree `main`):** `forkExec` → `std.process.spawn` with `.stdin/.stdout=.pipe`, `.stderr=.inherit`, `.pgid=0`, no `progress_node` (defaults `.none`); `LoopbackClient` fields are only `base_url` + `io`, one `std.http.Client` per verb, response freed before return; `sandbox_integration_test.zig` already forks real children (`spawnIo`, `readToEnd`, `SkipZigTest` on non-Linux) and is the `test-integration` artifact root, so the new integration tests need no build wiring.
-- **Daemon open-site audit (Dimension 1.4 — fill at EXECUTE):** { control-plane `std.http.Client` socket → per-call, freed before return ; cgroup scope fds → `defer`-closed ; lease stdio pipes → `dup2` to 0/1, parent ends `CLOEXEC` ; … }
-- **PLAN decisions to bank:** confirm the marker-fd `fcntl` probe + `/proc/self/fd` read run under the `__execute`-stub child harness on the Linux CI lane; confirm the structural client assertion compiles on macOS.
+- **Daemon open-site audit (Dimension 1.4 — done):**
+  - control-plane `std.http.Client` socket (`control_plane_client.zig` `post`/`get`) → opened per verb, `client.deinit()` before return; the struct holds no fd field (pinned by the structural test).
+  - cgroup scope fds (`engine/cgroup.zig`) → `defer`-closed within their scope; not held across `forkExec`.
+  - lease stdio pipes (`child_process.forkExec` → `std.process.spawn`) → `dup2` to child `0/1`; parent ends are `pipe2(CLOEXEC)` (std), so they do not cross into the child.
+  - `SpawnOptions.progress_node` → left default `std.Progress.Node.none` by `forkExec`, so std opens no progress fd 3 (covered empirically by the no-stray-fd proof).
+- **Implementation notes (Jun 06, 2026):** the integration proofs slot into the existing `sandbox_integration_test.zig` (mirroring the planted-token test) — no `build_runner.zig`/`make` change. `/proc/self/fd/*` are symlinks whose pipe/socket targets are not stat-able, so the child uses `[ -L ]` (symlink test, opens no fd) not `[ -e ]`. The marker fd is `/dev/null` via `std.Io.Dir.openFileAbsolute` (CLOEXEC by default). The structural assertion is comptime-folded (`const known = comptime (...)`) so an added field is a `@compileError`, not a live runtime branch.
 - **Deferrals** — none. Any "deferred to follow-up" needs an Indy-acked verbatim quote here.
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
 
@@ -220,11 +224,11 @@ gitleaks detect 2>&1 | tail -3
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Runner unit | `make test-unit-zigrunner` | {paste snippet} | |
-| Runner integration | `make test-integration-runner` | {paste snippet} | |
-| Lint | `make lint` | {paste snippet} | |
-| Cross-compile (TEST graph) | `zig build --build-file build_runner.zig test-integration -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | {paste snippet} | |
-| Gitleaks | `gitleaks detect` | {paste snippet} | |
+| Runner unit (incl. structural fd test) | `make test-unit-zigrunner` | Unit tests passed (`zig build test` 235 pass / 6 skip) | ✅ |
+| Lint | `make lint-zig` | ZLint 0 errors / 0 warnings across 397 files; format + 350-line + all gates green | ✅ |
+| Cross-compile (TEST graph) | `zig build --build-file build_runner.zig test-integration -Dtarget=x86_64-linux && aarch64-linux` | zero source compile errors on both targets (run step skipped — foreign binary) | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found (2426 commits scanned) | ✅ |
+| Runner integration (marker + stray fd) | `make test-integration-runner` | Linux-only — runs on CI (`SkipZigTest` on macOS dev host) | ⏳ CI |
 
 ---
 
