@@ -10,6 +10,11 @@
 -- WHERE zombie_id = $1 (never a fetch-all + in-memory filter). zombied fully owns
 -- this table — the in-child NullClaw Postgres memory path is retired, so the
 -- column layout no longer has to mirror NullClaw's PostgresMemory schema.
+--
+-- Pre-v2.0 teardown convention: migrations are edited in place and the test/dev
+-- DB is rebuilt from scratch (no live-data preservation, no ALTER chain) — so the
+-- instance_id -> zombie_id column change here is a fresh CREATE, not an in-place
+-- ALTER. The schema-gate enforces this teardown posture while VERSION < 2.0.0.
 
 -- memory_runtime role is created in the vault schema (002_vault_schema.sql).
 -- This migration scopes it to the memory schema. USAGE only: zombied owns the

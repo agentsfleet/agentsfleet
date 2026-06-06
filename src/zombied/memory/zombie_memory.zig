@@ -89,7 +89,7 @@ pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !void {
         \\  AND id IN (
         \\    SELECT id FROM memory.memory_entries
         \\    WHERE zombie_id = $1::uuid
-        \\    ORDER BY updated_at DESC
+        \\    ORDER BY updated_at DESC, id DESC
         \\    OFFSET $2
         \\  )
     , .{ zombie_id, @as(i64, @intCast(max)) });
@@ -110,7 +110,7 @@ pub fn listAll(
         \\SELECT key, content, category
         \\FROM memory.memory_entries
         \\WHERE zombie_id = $1::uuid
-        \\ORDER BY updated_at DESC
+        \\ORDER BY updated_at DESC, id DESC
     , .{zombie_id}));
     defer q.deinit();
     while (try q.next()) |row| {

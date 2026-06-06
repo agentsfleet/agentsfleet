@@ -199,7 +199,11 @@ pub fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, zombie_id: []const u8
     , .{ runner_id, zombie_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return @intCast(try row.get(i64, 0));
+    // fencing seqs are server-issued and monotonic (never negative); a negative
+    // value is corrupt/tampered data — fail it cleanly instead of @intCast trapping.
+    const raw = try row.get(i64, 0);
+    if (raw < 0) return error.InvalidFencingSeq;
+    return @intCast(raw);
 }
 
 /// The zombie's live fencing seq IFF the presenting runner holds the named LEASE for
@@ -219,5 +223,9 @@ pub fn pushLeaseSeq(conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8,
     , .{ lease_id, runner_id, zombie_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return @intCast(try row.get(i64, 0));
+    // fencing seqs are server-issued and monotonic (never negative); a negative
+    // value is corrupt/tampered data — fail it cleanly instead of @intCast trapping.
+    const raw = try row.get(i64, 0);
+    if (raw < 0) return error.InvalidFencingSeq;
+    return @intCast(raw);
 }

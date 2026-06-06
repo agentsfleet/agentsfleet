@@ -128,11 +128,16 @@ pub const MemoryCapturer = struct {
 
         var deltas: std.ArrayList(protocol.MemoryDelta) = .empty;
         var bytes: usize = 0;
-        for (entries) |e| {
+        for (entries, 0..) |e, i| {
             if (memory_mod.isInternalMemoryEntryKeyOrContent(e.key, e.content)) continue;
             const cat = e.category.toString();
             bytes += e.key.len + e.content.len + cat.len;
-            if (bytes > protocol.MAX_MEMORY_PUSH_BYTES) break;
+            // Always keep at least the newest entry (i==0); past the budget, stop
+            // and log — never a silent zero-count frame (mirrors the server window).
+            if (i > 0 and bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
+                log.warn("capture_truncated", .{ .kept = deltas.items.len, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
+                break;
+            }
             deltas.append(a, .{ .key = e.key, .content = e.content, .category = cat }) catch break;
         }
 
