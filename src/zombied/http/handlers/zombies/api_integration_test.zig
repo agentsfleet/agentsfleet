@@ -303,7 +303,7 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
 /// in-function before deinit.
 fn requiredTagsCsv(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
     var q = PgQuery.from(try conn.query(
-        "SELECT array_to_string(required_tags, ',') FROM core.zombies WHERE workspace_id = $1::uuid AND name = $2",
+        "SELECT array_to_string(ARRAY(SELECT unnest(required_tags) ORDER BY 1), ',') FROM core.zombies WHERE workspace_id = $1::uuid AND name = $2",
         .{ TEST_WORKSPACE_ID, name },
     ));
     defer q.deinit();
