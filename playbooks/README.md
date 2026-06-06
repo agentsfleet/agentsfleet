@@ -43,13 +43,13 @@ playbooks/
 └── operations/                        ← on-demand runbooks, NO implied order
     ├── admin_bootstrap/               ← provision the global usezombie-admin user
     │   └── 001_playbook.md
-    ├── runner_onboarding/             ← mint a runner zrn_ via the dashboard
-    │   └── 001_playbook.md
     ├── credential_rotation/           ← rotate an exposed DEV credential
     │   ├── 001_playbook.md
     │   ├── 00_gate.sh
     │   ├── 01_vault_sync.sh
     │   └── 02_service_health.sh
+    ├── runner_onboarding/             ← mint a runner zrn_ via the dashboard
+    │   └── 001_playbook.md
     ├── observability/                 ← bootstrap the Grafana stack
     │   ├── 001_playbook.md
     │   ├── 002_grafana_setup.md
