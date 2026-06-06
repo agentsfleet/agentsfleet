@@ -11,6 +11,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const id_format = @import("../../../types/id_format.zig");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -295,4 +296,140 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-ZMB-011");
+}
+
+/// Reads the stored required_tags for a zombie (by name) as a comma-joined
+/// string so the assertion is order-explicit. Row-backed slice is compared
+/// in-function before deinit.
+fn requiredTagsCsv(conn: *pg.Conn, alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT array_to_string(required_tags, ',') FROM core.zombies WHERE workspace_id = $1::uuid AND name = $2",
+        .{ TEST_WORKSPACE_ID, name },
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.ZombieRowMissing;
+    return alloc.dupe(u8, try row.get([]const u8, 0));
+}
+
+// Spec Dimension 1.1: a zombie persists required_tags from create. The placement
+// eligibility suite seeds tags via a raw UPDATE; THIS test proves the create
+// handler actually writes the SKILL.md frontmatter `tags:` into the column —
+// the S3 persistence path, end-to-end through the real router.
+test "integration: zombie create persists SKILL.md tags into required_tags" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: tag-persist-pin\\ndescription: pins required_tags persistence\\nversion: 0.1.0\\ntags: [gpu, us-east]\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: tag-persist-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.created);
+
+    const tags = try requiredTagsCsv(conn, alloc, "tag-persist-pin");
+    defer alloc.free(tags);
+    try std.testing.expectEqualStrings("gpu,us-east", tags);
+}
+
+// Spec Dimension 1.2: malformed required_tags → UZ-REQ-001. The validator's
+// bounds are unit-tested exhaustively (config_types); THIS proves the create
+// handler WIRES the rejection — an over-long tag (>64 chars) fails the request
+// rather than silently storing a never-matching label.
+test "integration: zombie create rejects an over-long required tag with UZ-REQ-001" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    const long_tag = "a" ** 65; // one over the 64-char per-tag bound
+    const body = try std.fmt.allocPrint(
+        alloc,
+        "{{\"source_markdown\":\"---\\nname: bad-tag-pin\\ndescription: d\\nversion: 0.1.0\\ntags: [{s}]\\n---\\nBody.\\n\"," ++
+            "\"trigger_markdown\":\"---\\nname: bad-tag-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}}",
+        .{long_tag},
+    );
+    defer alloc.free(body);
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-REQ-001");
+}
+
+// Patch re-derivation: editing the SKILL.md via PATCH source_markdown must
+// re-stamp required_tags from the reparsed frontmatter (not leave it stale).
+// Create untagged → PATCH in `tags: [gpu]` → the column reflects the new set.
+test "integration: zombie patch re-derives required_tags from reparsed source_markdown" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    const create_body =
+        "{\"source_markdown\":\"---\\nname: patch-tag-pin\\ndescription: starts untagged\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: patch-tag-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+    const create_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(create_url);
+    const cr = try (try (try h.post(create_url).bearer(TOKEN_USER)).json(create_body)).send();
+    defer cr.deinit();
+    try cr.expectStatus(.created);
+
+    // Untagged on create.
+    const before = try requiredTagsCsv(conn, alloc, "patch-tag-pin");
+    defer alloc.free(before);
+    try std.testing.expectEqualStrings("", before);
+
+    // Resolve the id, then PATCH a source_markdown that adds `tags: [gpu]`.
+    const zid = blk: {
+        var q = PgQuery.from(try conn.query(
+            "SELECT id::text FROM core.zombies WHERE workspace_id = $1::uuid AND name = $2",
+            .{ TEST_WORKSPACE_ID, "patch-tag-pin" },
+        ));
+        defer q.deinit();
+        const row = try q.next() orelse return error.ZombieRowMissing;
+        break :blk try alloc.dupe(u8, try row.get([]const u8, 0));
+    };
+    defer alloc.free(zid);
+
+    const patch_body =
+        "{\"source_markdown\":\"---\\nname: patch-tag-pin\\ndescription: now tagged\\nversion: 0.1.0\\ntags: [gpu]\\n---\\nBody.\\n\"}";
+    const patch_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, zid });
+    defer alloc.free(patch_url);
+    const pr = try (try (try h.request(.PATCH, patch_url).bearer(TOKEN_USER)).json(patch_body)).send();
+    defer pr.deinit();
+    try pr.expectStatus(.ok);
+
+    const after = try requiredTagsCsv(conn, alloc, "patch-tag-pin");
+    defer alloc.free(after);
+    try std.testing.expectEqualStrings("gpu", after);
 }
