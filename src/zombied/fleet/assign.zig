@@ -96,7 +96,9 @@ fn listCandidates(conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u
         \\  AND z.required_tags <@ (
         \\        SELECT COALESCE(array_agg(e), '{}'::text[])
         \\        FROM jsonb_array_elements_text(
-        \\               (SELECT labels FROM fleet.runners WHERE id = $2::uuid)
+        \\               (SELECT CASE WHEN jsonb_typeof(labels) = 'array'
+        \\                            THEN labels ELSE '[]'::jsonb END
+        \\                FROM fleet.runners WHERE id = $2::uuid)
         \\             ) AS e
         \\      )
         \\ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
