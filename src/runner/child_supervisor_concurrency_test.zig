@@ -14,6 +14,15 @@ const contract = @import("contract");
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
 
+// No-op memory sink — capture forwarding is out of scope for these read-loop tests.
+const NoopMem = struct {
+    var dummy: u8 = 0;
+    fn forward(_: *anyopaque, _: []const u8) void {}
+    fn sink() supervisor.MemorySink {
+        return .{ .ctx = &dummy, .forward = forward };
+    }
+};
+
 // Records the ordered sequence of forwarded activity-frame tool names so a test
 // can assert both COUNT and ORDER of delivery up to the terminate boundary.
 const OrderedCap = struct {
@@ -77,7 +86,7 @@ test "readResult should forward frames in order then honor terminate without pro
     const sink = ActivitySink{ .ctx = &cap, .forward = OrderedCap.forward };
 
     const far_dl = clock.nowMillis() + 60_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, NoopMem.sink(), hook);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.terminated);

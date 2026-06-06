@@ -302,3 +302,15 @@ pub const MemoryPushRequest = struct {
 pub const MemoryHydrateResponse = struct {
     memory: []const MemoryDelta,
 };
+
+/// What the runner parent pipes down the child's stdin: the lease to execute,
+/// plus the zombie's prior memory the parent already hydrated over the trusted
+/// plane (`GET /v1/runners/me/memory/{zombie_id}`). The child seeds its
+/// non-durable in-run store from `hydrated_memory` and never makes a network
+/// call of its own — hydration rides the parent (which holds the `zrn_` token),
+/// so no credential, URL, or DSN reaches the sandboxed agent. The wrapper keeps
+/// the lease shape unchanged while letting capture/hydrate flow parent-only.
+pub const RunnerChildInput = struct {
+    lease: LeasePayload,
+    hydrated_memory: []const MemoryDelta,
+};

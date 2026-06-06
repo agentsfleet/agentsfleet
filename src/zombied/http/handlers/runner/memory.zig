@@ -187,7 +187,7 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
 /// unexpired) lease for it — `COALESCE(affinity.fencing_seq, lease.fencing_token)`
 /// so a reclaim that bumped the seq strands the old holder below it. Null when the
 /// runner holds no live lease for the zombie; error on DB failure.
-fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, zombie_id: []const u8, now_ms: i64) !?u64 {
+pub fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, zombie_id: []const u8, now_ms: i64) !?u64 {
     var q = PgQuery.from(try conn.query(
         \\SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
         \\FROM fleet.runner_leases l
@@ -208,7 +208,7 @@ fn liveLeaseSeq(conn: *pg.Conn, runner_id: []const u8, zombie_id: []const u8, no
 /// IDOR cross-check is the `WHERE` itself. `COALESCE(affinity.fencing_seq,
 /// lease.fencing_token)` so a reclaim that bumped the seq strands the old holder
 /// below it. Null when no such live lease; error on DB failure.
-fn pushLeaseSeq(conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8, zombie_id: []const u8, now_ms: i64) !?u64 {
+pub fn pushLeaseSeq(conn: *pg.Conn, runner_id: []const u8, lease_id: []const u8, zombie_id: []const u8, now_ms: i64) !?u64 {
     var q = PgQuery.from(try conn.query(
         \\SELECT COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
         \\FROM fleet.runner_leases l

@@ -64,6 +64,35 @@ pub fn report(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, 
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
 }
 
+/// GET /v1/runners/me/memory/{zombie_id} → the zombie's prior memory (a
+/// compacted recency window). The parent seeds the child's in-run store from
+/// this; the sandboxed child never makes the call. `.alloc_always` so the
+/// returned deltas outlive `res.body` (freed here) — they ride the child input.
+/// Caller deinits the parsed value after the run.
+pub fn memoryHydrate(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8) !std.json.Parsed(protocol.MemoryHydrateResponse) {
+    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, zombie_id });
+    defer alloc.free(path);
+    const res = try self.get(alloc, path, runner_token);
+    defer alloc.free(res.body);
+    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    return std.json.parseFromSlice(protocol.MemoryHydrateResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
+        ClientError.MalformedResponse;
+}
+
+/// POST /v1/runners/me/memory/{zombie_id} → capture the run's memory for the
+/// zombie. `lease_id` + `fencing_token` ride the body (like `report`) so the
+/// control plane fences the write. Only the 2xx status matters to the caller;
+/// the daemon swallows + logs a failure (a memory blip never fails the run).
+pub fn memoryCapture(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8, req: protocol.MemoryPushRequest) !void {
+    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, zombie_id });
+    defer alloc.free(path);
+    const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
+    defer alloc.free(payload);
+    const res = try self.post(alloc, path, runner_token, payload);
+    defer alloc.free(res.body);
+    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+}
+
 /// POST /v1/runners/me/leases/{lease_id}/activity → forward live-tail progress
 /// frames. `lease_id` is a path param (the only runner verb that takes one).
 /// Best-effort by contract (202, no ack): the durable record is `report`, so a
