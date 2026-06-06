@@ -14,6 +14,15 @@ const cgroup = @import("engine/cgroup.zig");
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
 
+// No-op memory sink — capture forwarding is out of scope for these read-loop tests.
+const NoopMem = struct {
+    var dummy: u8 = 0;
+    fn forward(_: *anyopaque, _: []const u8) void {}
+    fn sink() supervisor.MemorySink {
+        return .{ .ctx = &dummy, .forward = forward };
+    }
+};
+
 // A hook that, on its first tick, "extends" the deadline to a value already in
 // the past — modelling a server clock skew / stale renewal. The loop must detect
 // the elapsed deadline next iteration and exit, not loop.
@@ -22,8 +31,7 @@ const PastExtendHook = struct {
     fn onTick(ctx: *anyopaque, now_ms: i64) supervisor.RenewDecision {
         const self: *PastExtendHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
-        // pin test: literal is the contract — extend to exactly 1s in the past
-        return .{ .extend = now_ms - 1_000 }; // already past
+        return .{ .extend = now_ms - std.time.ms_per_s }; // already past (1s ago)
     }
 };
 
@@ -46,7 +54,7 @@ test "readResult should exit cleanly when the hook extends to an already-past de
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const far_dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], far_dl, sink, NoopMem.sink(), hook);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.timed_out);

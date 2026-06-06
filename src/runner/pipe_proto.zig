@@ -22,6 +22,7 @@ const globalIo = @import("common").globalIo;
 pub const FrameType = enum(u8) {
     activity = 'A',
     result = 'R',
+    memory = 'M',
 };
 
 const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
@@ -180,6 +181,19 @@ test "readFrame distinguishes activity from result frames in order" {
     try std.testing.expectEqual(FrameType.result, f2.frame.ftype);
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", f2.frame.payload);
     std.testing.allocator.free(f2.frame.payload);
+}
+
+test "writeFrame/readFrame round-trip a memory frame" {
+    const fds = try osPipe();
+    defer osClose(fds[0]);
+    try writeFrame(fds[1], .memory, "[{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}]");
+    osClose(fds[1]);
+
+    const dl = clock.nowMillis() + 5_000;
+    const out = try readFrame(std.testing.allocator, fds[0], dl, 1024);
+    try std.testing.expectEqual(FrameType.memory, out.frame.ftype);
+    try std.testing.expectEqualStrings("[{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}]", out.frame.payload);
+    std.testing.allocator.free(out.frame.payload);
 }
 
 test "readFrame returns timed_out when the deadline is already past" {

@@ -1,11 +1,12 @@
-// External-agent memory API — workspace-scoped /memories collection.
+// External-agent memory API — workspace-scoped /memories collection (READ-ONLY).
 //
-//   POST   /v1/workspaces/{ws}/zombies/{zid}/memories          → innerStoreMemory
-//                                                                body: {key, content, category?}
 //   GET    /v1/workspaces/{ws}/zombies/{zid}/memories          → innerListMemories
 //                                                                query: query?, category?, limit?
-//   DELETE /v1/workspaces/{ws}/zombies/{zid}/memories/{key}    → innerDeleteMemory
-//                                                                idempotent 204; key is path-derived
+//
+// The write verbs (POST store / DELETE by-key) are retired: durable memory is
+// written only by the runner-plane capture push (the single fenced write path,
+// src/zombied/http/handlers/runner/memory.zig). Retired verbs answer 405
+// (collection POST) / 404 (by-key DELETE) with no compat shim.
 //
 // Auth: bearer (workspace-scoped). The path's workspace_id is the source of
 // truth — `resolveZombieInWorkspace` verifies the principal can access it and
@@ -15,7 +16,6 @@
 // RULE NSQ: schema-qualified SQL (memory.memory_entries / core.zombies).
 
 const std = @import("std");
-const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -25,89 +25,11 @@ const h = @import("helpers.zig");
 const Hx = h.Hx;
 const MemoryEntry = h.MemoryEntry;
 
-const log = logging.scoped(.memory_http);
 pub const Context = common.Context;
-
-// ── Store ─────────────────────────────────────────────────────────────────
 
 const S_OOM = "OOM";
 const S_MEMORY_BACKEND_ROLE_SWITCH_FAILED = "memory backend role switch failed";
-const S_KEY_MUST_BE_1_255_BYTES = "key must be 1-255 bytes";
 const S_MEMORY_LIST_FAILED = "memory list failed";
-
-const StoreBody = struct {
-    key: []const u8,
-    content: []const u8,
-    category: []const u8 = "core",
-};
-
-pub fn innerStoreMemory(
-    hx: Hx,
-    req: *httpz.Request,
-    workspace_id: []const u8,
-    zombie_id: []const u8,
-) void {
-    const body_raw = req.body() orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
-        return;
-    };
-    const parsed = std.json.parseFromSlice(StoreBody, hx.alloc, body_raw, .{ .ignore_unknown_fields = true }) catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
-        return;
-    };
-    const b = parsed.value;
-    if (b.key.len == 0 or b.key.len > h.MAX_KEY_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_KEY_MUST_BE_1_255_BYTES);
-        return;
-    }
-    // DELETE routes the key as a single path segment, so a stored key
-    // containing '/' would never round-trip back through DELETE — reject at
-    // store time to prevent orphaned entries.
-    if (std.mem.indexOfScalar(u8, b.key, '/') != null) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "key must not contain '/'");
-        return;
-    }
-    if (b.content.len == 0 or b.content.len > h.MAX_CONTENT_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "content must be 1-16384 bytes");
-        return;
-    }
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
-
-    if (!h.setMemoryRole(conn)) {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
-        return;
-    }
-    defer h.resetRole(conn);
-
-    const ts = h.nowTs(hx.alloc);
-    const entry_id = h.genId(hx.alloc);
-    _ = conn.exec(
-        \\INSERT INTO memory.memory_entries
-        \\  (id, key, content, category, instance_id, session_id, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5, NULL, $6, $6)
-        \\ON CONFLICT (key, instance_id) DO UPDATE
-        \\  SET content = EXCLUDED.content,
-        \\      category = EXCLUDED.category,
-        \\      updated_at = EXCLUDED.updated_at
-    , .{ entry_id, b.key, b.content, b.category, instance_id, ts }) catch {
-        log.warn("store_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id, .key = b.key });
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory store failed");
-        return;
-    };
-
-    hx.ok(.created, .{
-        .key = b.key,
-        .category = b.category,
-        .request_id = hx.req_id,
-    });
-}
 
 // ── List / Search ─────────────────────────────────────────────────────────
 // `?query=...` flips behaviour from list-most-recent to fuzzy LIKE search
@@ -147,7 +69,7 @@ pub fn innerListMemories(
     };
     defer hx.ctx.pool.release(conn);
 
-    const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
+    const zombie_scope = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
@@ -170,11 +92,11 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE instance_id = $1
+            \\WHERE zombie_id = $1::uuid
             \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
             \\ORDER BY updated_at DESC
             \\LIMIT $3
-        , .{ instance_id, like_pat, limit }) catch {
+        , .{ zombie_scope, like_pat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
             return;
         });
@@ -184,9 +106,9 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE instance_id = $1 AND category = $2
+            \\WHERE zombie_id = $1::uuid AND category = $2
             \\ORDER BY updated_at DESC LIMIT $3
-        , .{ instance_id, cat, limit }) catch {
+        , .{ zombie_scope, cat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
@@ -196,9 +118,9 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE instance_id = $1
+            \\WHERE zombie_id = $1::uuid
             \\ORDER BY updated_at DESC LIMIT $2
-        , .{ instance_id, limit }) catch {
+        , .{ zombie_scope, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
@@ -211,44 +133,6 @@ pub fn innerListMemories(
         .total = entries.items.len,
         .request_id = hx.req_id,
     });
-}
-
-// ── Delete (idempotent 204) ───────────────────────────────────────────────
-
-pub fn innerDeleteMemory(
-    hx: Hx,
-    workspace_id: []const u8,
-    zombie_id: []const u8,
-    key: []const u8,
-) void {
-    if (key.len == 0 or key.len > h.MAX_KEY_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_KEY_MUST_BE_1_255_BYTES);
-        return;
-    }
-
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-    defer hx.ctx.pool.release(conn);
-
-    const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
-
-    if (!h.setMemoryRole(conn)) {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
-        return;
-    }
-    defer h.resetRole(conn);
-
-    _ = conn.exec(
-        "DELETE FROM memory.memory_entries WHERE key = $1 AND instance_id = $2",
-        .{ key, instance_id },
-    ) catch {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory delete failed");
-        return;
-    };
-
-    hx.noContent();
 }
 
 // ── parseLimitQs ──────────────────────────────────────────────────────────

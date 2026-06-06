@@ -1,11 +1,13 @@
-// HTTP integration tests for the workspace-scoped /memories collection.
+// HTTP integration tests for the workspace-scoped /memories collection — now a
+// READ-ONLY tenant surface (the write-verb teardown: the runner plane is
+// the only writer).
 //
-//   POST   /v1/workspaces/{ws}/zombies/{zid}/memories          → store
 //   GET    /v1/workspaces/{ws}/zombies/{zid}/memories          → list-or-search
-//   DELETE /v1/workspaces/{ws}/zombies/{zid}/memories/{key}    → idempotent 204
+//   POST   /v1/workspaces/{ws}/zombies/{zid}/memories          → retired (404/405)
+//   DELETE /v1/workspaces/{ws}/zombies/{zid}/memories/{key}    → retired (404/405)
 //
-// Uses the shared TestHarness (src/http/test_harness.zig). DB-required;
-// self-skips when TEST_DATABASE_URL is unset.
+// Entries are seeded directly (memory_runtime INSERT) since POST is gone. Uses
+// the shared TestHarness; DB-required; self-skips when TEST_DATABASE_URL is unset.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -96,13 +98,31 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("SET ROLE memory_runtime", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    // Memory is scoped by the raw zombie_id (UUID) after schema/013 — no zmb: form.
     _ = conn.exec(
-        "DELETE FROM memory.memory_entries WHERE instance_id IN ($1, $2)",
-        .{ "zmb:" ++ ZOMBIE_LOCAL, "zmb:" ++ ZOMBIE_OTHER_WS },
+        "DELETE FROM memory.memory_entries WHERE zombie_id IN ($1::uuid, $2::uuid)",
+        .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS },
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.zombies WHERE id IN ($1, $2)", .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+/// Seed one memory entry directly (the tenant write verbs are retired —
+/// the runner push is the only writer; here we INSERT under the memory_runtime
+/// role so the surviving GET surface has data to read).
+fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
+    const conn = try f.h.acquireConn();
+    defer f.h.releaseConn(conn);
+    _ = try conn.exec("SET ROLE memory_runtime", .{});
+    defer _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("reset role ignored: {s}", .{@errorName(err)});
+    var id_buf: [128]u8 = undefined;
+    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ zombie_id, key });
+    _ = try conn.exec(
+        \\INSERT INTO memory.memory_entries (id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5::uuid, NULL, '1700000000', '1700000000')
+        \\ON CONFLICT (key, zombie_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
+    , .{ id, key, content, category, zombie_id });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
@@ -113,52 +133,29 @@ fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
     return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/memories/{s}", .{ ws, zid, key });
 }
 
-// ── Happy path round-trip ───────────────────────────────────────────────────
+// ── GET surface (the tenant memory API is read-only after the write-verb teardown) ──
 
-test "integration: memories POST happy path returns 201 with key + category" {
+test "integration: memories GET list returns a seeded entry" {
     const f = try fixture();
     defer f.deinit();
+    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "ship the runner memory loop", "core");
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
     defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"contact:lead-acme\",\"content\":\"prefers email after 4pm\",\"category\":\"core\"}",
-    )).send();
-    defer r.deinit();
-    try r.expectStatus(.created);
-    try std.testing.expect(r.bodyContains("\"key\":\"contact:lead-acme\""));
-    try std.testing.expect(r.bodyContains("\"category\":\"core\""));
-}
-
-test "integration: memories GET list returns previously stored entry" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-    const post_r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"goal:current\",\"content\":\"ship M41\",\"category\":\"core\"}",
-    )).send();
-    post_r.deinit();
-
     const list_r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer list_r.deinit();
     try list_r.expectStatus(.ok);
     try std.testing.expect(list_r.bodyContains("\"key\":\"goal:current\""));
-    try std.testing.expect(list_r.bodyContains("\"content\":\"ship M41\""));
+    try std.testing.expect(list_r.bodyContains("ship the runner memory loop"));
 }
 
-test "integration: memories GET ?query= finds entry by content match" {
+test "integration: memories GET ?query= finds an entry by content match" {
     const f = try fixture();
     defer f.deinit();
+    try seedEntry(f, ZOMBIE_LOCAL, "note:deploy", "deploy lands every monday morning", "core");
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
     defer ALLOC.free(url);
-    const post_r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"note:deploy\",\"content\":\"deploy lands every monday morning\"}",
-    )).send();
-    post_r.deinit();
-
     const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=monday", .{url});
     defer ALLOC.free(search_url);
     const search_r = try (try f.h.get(search_url).bearer(TOKEN_OPERATOR)).send();
@@ -167,165 +164,62 @@ test "integration: memories GET ?query= finds entry by content match" {
     try std.testing.expect(search_r.bodyContains("\"key\":\"note:deploy\""));
 }
 
-test "integration: memories DELETE returns 204 with empty body" {
+test "integration: memories GET without bearer returns 401" {
     const f = try fixture();
     defer f.deinit();
-
-    const collection = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(collection);
-    const post_r = try (try (try f.h.post(collection).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"ephemeral\",\"content\":\"temporary\"}",
-    )).send();
-    post_r.deinit();
-
-    const del_url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL, "ephemeral");
-    defer ALLOC.free(del_url);
-    const del_r = try (try f.h.delete(del_url).bearer(TOKEN_OPERATOR)).send();
-    defer del_r.deinit();
-    try del_r.expectStatus(.no_content);
-    // RFC 9110 §6.4.5: 204 MUST NOT include a message body.
-    try std.testing.expectEqual(@as(usize, 0), del_r.body.len);
-}
-
-test "integration: memories DELETE on missing key is idempotent 204" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL, "never-existed");
-    defer ALLOC.free(url);
-    const r = try (try f.h.delete(url).bearer(TOKEN_OPERATOR)).send();
-    defer r.deinit();
-    try r.expectStatus(.no_content);
-    try std.testing.expectEqual(@as(usize, 0), r.body.len);
-}
-
-// ── Validation / failure paths ─────────────────────────────────────────────
-
-test "integration: memories POST without bearer returns 401" {
-    const f = try fixture();
-    defer f.deinit();
-
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
     defer ALLOC.free(url);
-    const r = try (try f.h.post(url).json("{\"key\":\"k\",\"content\":\"c\"}")).send();
+    const r = try f.h.get(url).send();
     defer r.deinit();
     try r.expectStatus(.unauthorized);
 }
 
-test "integration: memories POST missing key field returns 400" {
+// ── Cross-workspace isolation on the surviving GET surface ──
+//   (a) URL workspace = OTHER_WS → auth middleware rejects 403
+//   (b) URL workspace = TEST_WS, zombie lives in OTHER_WS → handler 404 (no leak)
+
+test "integration: memories GET cross-workspace URL returns 403" {
     const f = try fixture();
     defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json("{\"content\":\"orphan\"}")).send();
-    defer r.deinit();
-    try r.expectStatus(.bad_request);
-}
-
-test "integration: memories POST missing content field returns 400" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json("{\"key\":\"orphan\"}")).send();
-    defer r.deinit();
-    try r.expectStatus(.bad_request);
-}
-
-test "integration: memories POST key containing '/' returns 400" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"folder/name\",\"content\":\"would orphan\"}",
-    )).send();
-    defer r.deinit();
-    try r.expectStatus(.bad_request);
-}
-
-test "integration: memories POST oversized content returns 400" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-    const big = "{\"key\":\"k\",\"content\":\"" ++ "x" ** 16385 ++ "\"}";
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(big)).send();
-    defer r.deinit();
-    try r.expectStatus(.bad_request);
-}
-
-// ── Cross-workspace isolation ──────────────────────────────────────────────
-// Principal token's workspace = TEST_WORKSPACE_ID. Two failure shapes:
-//   (a) URL workspace = OTHER_WS → auth middleware rejects with 403
-//   (b) URL workspace = TEST_WS, zombie lives in OTHER_WS → handler returns
-//       404 (don't-leak-existence pattern)
-
-test "integration: memories POST cross-workspace URL returns 403" {
-    const f = try fixture();
-    defer f.deinit();
-
     const url = try memoriesUrl(OTHER_WS_ID, ZOMBIE_OTHER_WS);
     defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"k\",\"content\":\"c\"}",
-    )).send();
+    const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.forbidden);
 }
 
-test "integration: memories POST zombie-in-foreign-ws returns 404" {
+test "integration: memories GET zombie-in-foreign-ws returns 404" {
     const f = try fixture();
     defer f.deinit();
-
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS);
     defer ALLOC.free(url);
-    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"k\",\"content\":\"c\"}",
-    )).send();
+    const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.not_found);
 }
 
-test "integration: memories DELETE zombie-in-foreign-ws returns 404" {
+// ── The tenant write verbs are retired (no compat shim) ──
+// POST /memories and DELETE /memories/{key} were removed with the runner-push
+// cutover — the runner plane is the only writer. Both 404/405; GET still 200.
+
+test "integration: tenant memory POST is retired (404/405, no write surface)" {
     const f = try fixture();
     defer f.deinit();
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
+        "{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}",
+    )).send();
+    defer r.deinit();
+    try std.testing.expect(r.status == 404 or r.status == 405);
+}
 
-    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS, "any");
+test "integration: tenant memory DELETE is retired (404/405, no delete surface)" {
+    const f = try fixture();
+    defer f.deinit();
+    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL, "any");
     defer ALLOC.free(url);
     const r = try (try f.h.delete(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
-    try r.expectStatus(.not_found);
-}
-
-// ── Same-key overwrite invariant (PUT-like ON CONFLICT semantics) ─────────
-
-test "integration: memories POST same key twice overwrites, GET reflects last write" {
-    const f = try fixture();
-    defer f.deinit();
-
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
-    defer ALLOC.free(url);
-
-    const r1 = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"contact:acme\",\"content\":\"first revision\"}",
-    )).send();
-    try r1.expectStatus(.created);
-    r1.deinit();
-
-    const r2 = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
-        "{\"key\":\"contact:acme\",\"content\":\"second revision wins\"}",
-    )).send();
-    try r2.expectStatus(.created);
-    r2.deinit();
-
-    const list_r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
-    defer list_r.deinit();
-    try list_r.expectStatus(.ok);
-    try std.testing.expect(list_r.bodyContains("\"content\":\"second revision wins\""));
-    try std.testing.expect(!list_r.bodyContains("\"content\":\"first revision\""));
+    try std.testing.expect(r.status == 404 or r.status == 405);
 }

@@ -181,7 +181,8 @@ fn flushBatch() void {
     var count: usize = 0;
 
     // Build OTLP JSON payload from buffered entries
-    var payload_buf: [256 * 1024]u8 = undefined;
+    const OTLP_PAYLOAD_BUF_BYTES = 256 * 1024;
+    var payload_buf: [OTLP_PAYLOAD_BUF_BYTES]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&payload_buf);
     const alloc = fba.allocator();
 
@@ -218,7 +219,7 @@ fn flushBatch() void {
     sb.allocate(alloc) catch return;
     const body = sb.fmt(envelope_fmt, envelope_args);
 
-    postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 pub fn postWithBasicAuth(
@@ -238,7 +239,8 @@ pub fn postWithBasicAuth(
     // Basic auth: base64(instance_id:api_key)
     var auth_raw_buf: [512]u8 = undefined;
     const auth_raw = std.fmt.bufPrint(&auth_raw_buf, "{s}:{s}", .{ cfg.instance_id, cfg.api_key }) catch return;
-    var b64_buf: [1024]u8 = undefined;
+    const AUTH_B64_BUF_BYTES = 1024;
+    var b64_buf: [AUTH_B64_BUF_BYTES]u8 = undefined;
     const b64_len = std.base64.standard.Encoder.calcSize(auth_raw.len);
     if (b64_len > b64_buf.len) return;
     const b64 = b64_buf[0..b64_len];

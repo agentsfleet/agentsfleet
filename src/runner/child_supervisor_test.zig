@@ -17,6 +17,16 @@ const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
 const FailureClass = contract.execution_result.FailureClass;
 
+// No-op memory sink: capture-frame forwarding is irrelevant to these read-path
+// tests (covered by inrun_memory + loop tests), so drop every `.memory` frame.
+const NoopMem = struct {
+    var dummy: u8 = 0;
+    fn forward(_: *anyopaque, _: []const u8) void {}
+    fn sink() supervisor.MemorySink {
+        return .{ .ctx = &dummy, .forward = forward };
+    }
+};
+
 test "readResult forwards activity frames in order and returns the result frame" {
     const Cap = struct {
         count: usize = 0,
@@ -45,7 +55,7 @@ test "readResult forwards activity frames in order and returns the result frame"
     var cap: Cap = .{};
     const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), null);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);
@@ -53,6 +63,46 @@ test "readResult forwards activity frames in order and returns the result frame"
     try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
     try std.testing.expectEqual(@as(usize, 1), cap.count);
     try std.testing.expectEqualStrings("fly_deploy", cap.name_buf[0..cap.name_len]);
+}
+
+test "readResult forwards a memory frame's raw bytes to the memory sink, then the result" {
+    // A run that writes N memory entries surfaces them as one `.memory` frame;
+    // the parent must forward that payload verbatim (the daemon parses + POSTs
+    // the N deltas). Proves the capture path the daemon push rides.
+    const Cap = struct {
+        count: usize = 0,
+        buf: [256]u8 = [_]u8{0} ** 256,
+        len: usize = 0,
+        fn forward(ctx: *anyopaque, payload: []const u8) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.count += 1;
+            @memcpy(self.buf[0..payload.len], payload);
+            self.len = payload.len;
+        }
+    };
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    const mem_json = "[{\"key\":\"a\",\"content\":\"1\",\"category\":\"core\"},{\"key\":\"b\",\"content\":\"2\",\"category\":\"core\"}]";
+    try pipe_proto.writeFrame(fds[1], .memory, mem_json);
+    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.osClose(fds[1]);
+
+    var dummy: u8 = 0;
+    const act_sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+    var cap: Cap = .{};
+    const mem_sink = supervisor.MemorySink{ .ctx = &cap, .forward = Cap.forward };
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, act_sink, mem_sink, null);
+    defer std.testing.allocator.free(outcome.bytes);
+
+    try std.testing.expectEqual(@as(usize, 1), cap.count);
+    try std.testing.expectEqualStrings(mem_json, cap.buf[0..cap.len]);
+    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
+
+    // The two deltas survive a parse — the daemon would POST exactly these.
+    const parsed = try std.json.parseFromSlice([]@import("contract").protocol.MemoryDelta, std.testing.allocator, cap.buf[0..cap.len], .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 2), parsed.value.len);
 }
 
 test "readResult tolerates a malformed activity frame and still returns the result" {
@@ -68,7 +118,7 @@ test "readResult tolerates a malformed activity frame and still returns the resu
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
     const dl = clock.nowMillis() + 5_000;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, null);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), null);
     defer std.testing.allocator.free(outcome.bytes);
     try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
 }
@@ -108,7 +158,7 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
 
     const dl = clock.nowMillis() + 60_000; // far; the 10ms tick fires first
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(outcome.terminated);
@@ -132,7 +182,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
 
     const Writer = struct {
         fn run(write_fd: std.posix.fd_t) void {
-            common.sleepNanos(1000 * std.time.ns_per_ms);
+            common.sleepNanos(std.time.ns_per_s);
             pipe_proto.writeFrame(write_fd, .result, "{\"exit_ok\":true}") catch {};
             pipe_proto.osClose(write_fd);
         }
@@ -141,7 +191,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
     defer wt.join();
 
     const near_dl = clock.nowMillis() + 500;
-    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], near_dl, sink, hook);
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], near_dl, sink, NoopMem.sink(), hook);
     defer std.testing.allocator.free(outcome.bytes);
 
     try std.testing.expect(!outcome.timed_out);

@@ -149,7 +149,7 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
         \\UPDATE core.zombie_sessions
         \\SET execution_id = NULL, execution_started_at = NULL
         \\WHERE zombie_id = $1::uuid
-    , .{session.zombie_id}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    , .{session.zombie_id}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
 const std = @import("std");
