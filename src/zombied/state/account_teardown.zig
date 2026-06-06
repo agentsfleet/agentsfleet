@@ -37,8 +37,8 @@ const ZOMBIES_OF_TENANT = "(SELECT id FROM core.zombies WHERE workspace_id IN " 
 const PURGE_STATEMENTS = [_][]const u8{
     // Keyed, no FK — telemetry workspace_id is TEXT.
     "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id IN (SELECT workspace_id::text FROM core.workspaces WHERE tenant_id = $1::uuid)",
-    // Keyed, no FK — memory instance_id is the TEXT namespace 'zmb:{uuid}'.
-    "DELETE FROM memory.memory_entries WHERE instance_id IN (SELECT 'zmb:' || id::text FROM core.zombies WHERE workspace_id IN " ++ WS_OF_TENANT ++ ")",
+    // Keyed, no FK — memory zombie_id is the owning zombie UUID (schema/013).
+    "DELETE FROM memory.memory_entries WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
     "DELETE FROM core.zombie_approval_gates WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
     "DELETE FROM core.zombie_sessions WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
     "DELETE FROM core.zombies WHERE workspace_id IN " ++ WS_OF_TENANT,
@@ -58,7 +58,7 @@ pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject
     defer alloc.free(tenant_id);
 
     _ = try conn.exec(S_BEGIN, .{});
-    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     for (PURGE_STATEMENTS) |stmt| {
         _ = try conn.exec(stmt, .{tenant_id});
     }

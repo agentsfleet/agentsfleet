@@ -83,7 +83,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
             .approved_at = approved_at,
             .revoked_at = revoked_at,
             .reason = reason,
-        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = grants.items, .total = grants.items.len });

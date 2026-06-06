@@ -21,6 +21,10 @@ const S_COLLECT_TRUNCATED = "collect_truncated";
 
 pub const MAX_KEY_LEN: usize = 255;
 pub const MAX_CONTENT_LEN: usize = 16 * 1024; // 16KB
+// Category is a short label (NullClaw's MemoryCategory.toString()); cap it so an
+// empty or oversized value can't bypass the schema DEFAULT 'core' and land a
+// junk category that fromString() later has to interpret.
+pub const MAX_CATEGORY_LEN: usize = 64;
 pub const MAX_RECALL_LIMIT: i64 = 100;
 pub const DEFAULT_RECALL_LIMIT: i64 = 20;
 pub const DEFAULT_LIST_LIMIT: i64 = 100;
@@ -33,8 +37,8 @@ pub const MemoryEntry = struct {
 };
 
 /// Verify the principal can access the path workspace and the zombie
-/// belongs to that workspace, then build the instance_id used by the
-/// memory storage layer ("zmb:{zombie_id}", arena-allocated).
+/// belongs to that workspace, then return the validated zombie_id used to
+/// scope the memory query (memory_entries.zombie_id, a $N::uuid parameter).
 ///
 /// Runs under api_runtime (core.* access) before any SET ROLE.
 pub fn resolveZombieInWorkspace(
@@ -78,10 +82,9 @@ pub fn resolveZombieInWorkspace(
         return null;
     }
 
-    return std.fmt.allocPrint(hx.alloc, "zmb:{s}", .{zombie_id}) catch {
-        common.internalOperationError(hx.res, "OOM building instance_id", hx.req_id);
-        return null;
-    };
+    // The memory scope is the raw zombie_id (UUID) — the memory_entries.zombie_id
+    // column — used as a $N::uuid query parameter by the caller.
+    return zombie_id;
 }
 
 /// SET ROLE memory_runtime. Returns false and caller must abort on failure.
@@ -129,14 +132,18 @@ pub fn nowTs(alloc: std.mem.Allocator) []const u8 {
     return std.fmt.allocPrint(alloc, "{d}", .{clock.nowSeconds()}) catch "0";
 }
 
+/// Sentinel ID returned when the CSPRNG or the format alloc fails — genId never
+/// returns an error, so callers always get a usable (if non-unique) id.
+const S_FALLBACK_ID = "fallback-id";
+
 /// Generate a NullClaw-compatible memory entry ID.
 pub fn genId(alloc: std.mem.Allocator) []const u8 {
     const ts = clock.nowNanos();
     var buf: [16]u8 = undefined;
-    constants.secureRandomBytes(&buf) catch return "fallback-id";
+    constants.secureRandomBytes(&buf) catch return S_FALLBACK_ID;
     const hi = std.mem.readInt(u64, buf[0..8], .little);
     const lo = std.mem.readInt(u64, buf[8..16], .little);
-    return std.fmt.allocPrint(alloc, "{d}-{x}-{x}", .{ ts, hi, lo }) catch "fallback-id";
+    return std.fmt.allocPrint(alloc, "{d}-{x}-{x}", .{ ts, hi, lo }) catch S_FALLBACK_ID;
 }
 
 /// Drain a PgQuery result into an ArrayList(MemoryEntry), arena-allocated.

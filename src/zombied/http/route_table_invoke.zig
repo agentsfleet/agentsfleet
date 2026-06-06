@@ -250,25 +250,15 @@ pub fn invokeZombieMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Rout
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────
-// /memories collection — GET (list-or-search) + POST (store).
-// /memories/{key} — DELETE only (idempotent 204).
+// /memories collection — GET (list-or-search) only. The write verbs are retired
+// (capture flows through the runner plane); POST answers 405, by-key DELETE 404.
 
 pub fn invokeZombieMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const r = route.workspace_zombie_memories;
     switch (req.method) {
         .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.zombie_id),
-        .POST => memory.innerStoreMemory(hx.*, req, r.workspace_id, r.zombie_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
-}
-
-pub fn invokeZombieMemoryByKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .DELETE) {
-        common.respondMethodNotAllowed(hx.res);
-        return;
-    }
-    const r = route.workspace_zombie_memory;
-    memory.innerDeleteMemory(hx.*, r.workspace_id, r.zombie_id, r.memory_key);
 }
 
 // ── Integration grants ────────────────────────────────────────────────────
@@ -329,3 +319,5 @@ pub const invokeRunnerLease = runner_invokes.invokeRunnerLease;
 pub const invokeRunnerReport = runner_invokes.invokeRunnerReport;
 pub const invokeRunnerActivity = runner_invokes.invokeRunnerActivity;
 pub const invokeRunnerRenew = runner_invokes.invokeRunnerRenew;
+pub const invokeRunnerMemoryHydrate = runner_invokes.invokeRunnerMemoryHydrate;
+pub const invokeRunnerMemoryCapture = runner_invokes.invokeRunnerMemoryCapture;

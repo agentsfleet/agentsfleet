@@ -89,14 +89,6 @@ test "match resolves /v1/workspaces/{ws}/zombies/{zid}/memories collection" {
         },
         else => return error.TestExpectedEqual,
     }
-    switch (match("/v1/workspaces/ws1/zombies/z1/memories/incident:42", .DELETE).?) {
-        .workspace_zombie_memory => |r| {
-            try std.testing.expectEqualStrings("ws1", r.workspace_id);
-            try std.testing.expectEqualStrings("z1", r.zombie_id);
-            try std.testing.expectEqualStrings("incident:42", r.memory_key);
-        },
-        else => return error.TestExpectedEqual,
-    }
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/memories/", .GET) == null);
 }
 

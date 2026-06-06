@@ -95,7 +95,7 @@ test "T8: execute with api_key in agent_config and null message fails closed (st
     // Null message -> early return before credential injection path runs.
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
-    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null);
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{});
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
@@ -109,7 +109,7 @@ test "T8: execute with github_token in agent_config and null message fails close
 
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
-    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null);
+    const result = runner.execute(&env_map, alloc, "/tmp/ws", ac, null, null, null, null, null, &.{});
     try std.testing.expect(!result.exit_ok);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }

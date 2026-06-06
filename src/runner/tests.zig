@@ -17,6 +17,7 @@ test {
     _ = @import("daemon/renew_driver_test.zig");
     _ = @import("common");
     _ = @import("child_supervisor.zig");
+    _ = @import("child_supervisor_result.zig");
     _ = @import("child_supervisor_test.zig");
     _ = @import("child_process.zig");
     _ = @import("child_exec.zig");
