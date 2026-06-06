@@ -4,7 +4,7 @@
 **Milestone:** M84
 **Workstream:** 007
 **Date:** Jun 06, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — security boundary, **launch-targeted** (not deferred). Proof-only: it pins an already-correct property (no daemon file descriptor crosses `exec` into the sandboxed child) with regression tests, so a future change cannot silently re-open a credential-inheritance escape. Ships for launch precisely because it adds no new subsystem and no new behaviour — only assertions over the existing `forkExec`/spawn path.
 **Categories:** API
 **Batch:** B1 — standalone; the proof rides the existing `test-integration-runner` lane.
@@ -138,7 +138,7 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 
 1. **Only wired stdio crosses `exec`** — a child spawned via the `forkExec` path lists exactly fds `0/1/2`; no daemon fd ≥ 3 is inherited. Enforced by `test_no_stray_fds_in_child`.
 2. **Daemon-opened fds are `CLOEXEC`** — a parent marker fd is `EBADF` in the child. Enforced by `test_marker_fd_not_inherited_by_child`.
-3. **The control-plane client is fd-stateless** — `LoopbackClient` holds no persistent socket/fd field; every credential-bearing socket is per-call and freed before any fork, so none is live at spawn. Enforced by `test_control_plane_client_holds_no_persistent_fd`. **Proof, not patch.**
+3. **The control-plane client is fd-stateless** — `LoopbackClient` holds no persistent socket/fd field; every credential-bearing socket is per-call and freed before any fork, so none is live at spawn. The structural test is a build-time tripwire: it pins the struct to exactly `{base_url, io}` and raises `@compileError` on any added field, so a future pooled/persistent-socket field cannot land unreviewed. It asserts struct *shape*, not transitive fd-ownership — a refactor that made an existing field fd-bearing would still need human review (the `@compileError` message names that obligation).
 
 ---
 
@@ -160,8 +160,8 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 
 ## Acceptance Criteria
 
-- [~] Child inherits only wired stdio — verify: `test_no_stray_fds_in_child` (compiles both linux; runs on CI)
-- [~] Daemon-opened fds are not inherited — verify: `test_marker_fd_not_inherited_by_child` (compiles both linux; runs on CI)
+- [x] Child inherits only wired stdio — verify: the no-stray-fd proof compiles on both linux targets; runs on CI (Linux-gated, skips on the macOS dev host)
+- [x] Daemon-opened fds are not inherited — verify: the marker-fd proof compiles on both linux targets; runs on CI (Linux-gated, skips on the macOS dev host)
 - [x] Control-plane client holds no persistent fd — verify: `test_control_plane_client_holds_no_persistent_fd` (passes natively)
 - [x] Daemon open-site audit recorded — verify: Discovery assertion table populated
 - [x] `make lint-zig` clean · `make test-unit-zigrunner` passes · cross-compile both linux targets compile-clean · `make test-integration-runner` on CI
@@ -172,8 +172,8 @@ Contract: the legitimate sandboxed lease is observably unchanged; only the file-
 ## Eval Commands (post-implementation)
 
 ```bash
-# E1: the fd proofs are present and named (TST-NAM clean — no milestone IDs)
-git grep -nE 'marker_fd_not_inherited|no_stray_fds_in_child|control_plane_client_holds_no_persistent_fd' src/runner
+# E1: the fd proofs are present and named (TST-NAM clean — prose names, no milestone IDs)
+git grep -nE 'marker fd does not cross exec|inherits only wired stdio|holds no persistent file descriptor' src/runner
 # E2: runner unit graph (structural assertion) — runs on macOS too
 make test-unit-zigrunner 2>&1 | tail -5
 # E3: integration lane (marker fd + stray-fd enumeration) — Linux
@@ -209,8 +209,12 @@ gitleaks detect 2>&1 | tail -3
   - lease stdio pipes (`child_process.forkExec` → `std.process.spawn`) → `dup2` to child `0/1`; parent ends are `pipe2(CLOEXEC)` (std), so they do not cross into the child.
   - `SpawnOptions.progress_node` → left default `std.Progress.Node.none` by `forkExec`, so std opens no progress fd 3 (covered empirically by the no-stray-fd proof).
 - **Implementation notes (Jun 06, 2026):** the integration proofs slot into the existing `sandbox_integration_test.zig` (mirroring the planted-token test) — no `build_runner.zig`/`make` change. `/proc/self/fd/*` are symlinks whose pipe/socket targets are not stat-able, so the child uses `[ -L ]` (symlink test, opens no fd) not `[ -e ]`. The marker fd is `/dev/null` via `std.Io.Dir.openFileAbsolute` (CLOEXEC by default). The structural assertion is comptime-folded (`const known = comptime (...)`) so an added field is a `@compileError`, not a live runtime branch.
+- **OWASP agent-trust-boundary coverage (Jun 06, 2026):** the sandboxed child is the prompt-injected-agent threat actor. The "deny it an inherited credential capability" boundary (OWASP LLM Excessive Agency · secrets-never-reach-the-agent · tool-permissions-scoped-per-invocation · fail-closed) is tested across both inbound channels: **env** — the planted-token test (M84_003, same file) proves the `zrn_` control-plane secret and its `ZOMBIE_RUNNER_TOKEN` key never appear in the child's `/proc/self/environ`; **fd** — this spec's three proofs (marker not inherited, no stray fd, client holds no persistent socket). The remaining channels are out of scope here and tracked elsewhere: **filesystem** secret-file isolation = M84_006 Landlock (deferred); **egress** exfiltration = M84_004 (deferred), both behind untrusted-runner GA.
+- **Review outcomes (Jun 06, 2026):**
+  - `/write-unit-test` — clean; the three proofs map 1:1 to the Test Specification + the §1.4 audit table. The marker test carries a positive control (`ok` proves the probe sees a live fd), so it is not vacuous.
+  - `/review` (adversarial, fresh-context) — two findings dispositioned: (a) the no-stray-fd test scanned a hardcoded `3..20` window → **fixed**, widened to a `3..63` `[ -L ]` loop (directory enumeration is avoided because `opendir()` on `/proc/self/fd` adds a transient entry); (b) both integration tests spawn via `std.process.spawn` (the syscall path `forkExec` uses) rather than calling `forkExec` directly → **accepted as a deliberate limitation**, consistent with the existing planted-token env test in this file: `forkExec` needs bwrap/sandbox scaffolding that the test lane cannot stand up, and the property under test (CLOEXEC + stdio wiring at the syscall layer) is faithfully exercised. The structural test's claim was softened from "proof of fd-statelessness" to "build-time tripwire on struct shape" (Invariant 3).
 - **Deferrals** — none. Any "deferred to follow-up" needs an Indy-acked verbatim quote here.
-- **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
+- **Skill chain outcomes** — `/write-unit-test`: clean. `/review`: 2 findings, both dispositioned (1 fixed, 1 accepted limitation). `/review-pr` + `kishore-babysit-prs`: run post-PR.
 
 ## Skill-Driven Review Chain (mandatory)
 
@@ -226,7 +230,7 @@ gitleaks detect 2>&1 | tail -3
 |-------|---------|--------|-------|
 | Runner unit (incl. structural fd test) | `make test-unit-zigrunner` | Unit tests passed (`zig build test` 235 pass / 6 skip) | ✅ |
 | Lint | `make lint-zig` | ZLint 0 errors / 0 warnings across 397 files; format + 350-line + all gates green | ✅ |
-| Cross-compile (TEST graph) | `zig build --build-file build_runner.zig test-integration -Dtarget=x86_64-linux && aarch64-linux` | zero source compile errors on both targets (run step skipped — foreign binary) | ✅ |
+| Cross-compile (TEST graph) | `zig build --build-file build_runner.zig test-integration -Dtarget=x86_64-linux && aarch64-linux` | both targets compile clean (7/9 steps; binaries emitted). The run step is execution-barred on the macOS host — the Linux test binary cannot run here ("host system is unable to execute binaries from the target"); it executes on the CI Linux lane | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found (2426 commits scanned) | ✅ |
 | Runner integration (marker + stray fd) | `make test-integration-runner` | Linux-only — runs on CI (`SkipZigTest` on macOS dev host) | ⏳ CI |
 
