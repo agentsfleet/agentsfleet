@@ -51,6 +51,8 @@ test {
     _ = @import("observability/otel_logs.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
+    _ = @import("state/account_teardown.zig");
+    _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");
     _ = @import("state/signup_bootstrap.zig");
