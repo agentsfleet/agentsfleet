@@ -10,8 +10,9 @@
 -- required_tags: capability tags this zombie needs to be placed (GitLab-tags /
 --   GitHub-labels model). A runner may claim it only when required_tags is a
 --   subset of the runner's fleet.runners.labels (fleet.assign.listCandidates).
---   Empty set = any runner (today's behaviour). App-supplied, deduped, validated
---   on create/config (UZ-REQ-001 on malformed).
+--   Empty set = any runner (today's behaviour). App-supplied, bounds-validated
+--   on create/config (≤32 tags, 1..64 chars each → UZ-REQ-001). Not deduplicated:
+--   `<@` containment is set-semantic, so duplicate entries are harmless.
 
 CREATE TABLE IF NOT EXISTS core.zombies (
     id              UUID PRIMARY KEY,
