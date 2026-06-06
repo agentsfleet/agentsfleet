@@ -33,6 +33,7 @@ pub const ZombieBudget = config_types.ZombieBudget;
 pub const ZombieNetwork = config_types.ZombieNetwork;
 pub const ZombieConfig = config_types.ZombieConfig;
 pub const SkillMetadata = config_types.SkillMetadata;
+pub const validRequiredTags = config_types.validRequiredTags;
 
 // Gate/anomaly policy types (owned by config_gates, surfaced here for callers).
 pub const GateBehavior = config_gates.GateBehavior;

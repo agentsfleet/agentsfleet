@@ -77,7 +77,15 @@ fn selectInner(hx: Hx, runner_id: []const u8) !?Acquired {
     return null;
 }
 
-/// Active zombies, sticky-first: the runner's affinity matches sort to the
+/// Eligible active zombies, sticky-first. Eligibility is a single label gate:
+/// a zombie is a candidate for this runner only when its `required_tags` (TEXT[])
+/// are a subset of the runner's advertised `labels` (`required_tags <@ labels`;
+/// empty tags ⊆ any labels ⇒ any runner — today's behaviour). The runner's labels
+/// (stored JSONB) are bound as a constant TEXT[] via the uncorrelated subquery,
+/// so `<@` is a `column <@ constant` shape that the `required_tags` GIN index can
+/// serve — not a column-to-column join (which no index serves). The match filters
+/// the candidate set here; the per-zombie slot claim (affinity.claim) is
+/// unchanged. Within the eligible set the runner's own affinity sorts to the
 /// front (DESC on the boolean), then oldest-created. Sticky is ordering only.
 fn listCandidates(conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u8) ![][]const u8 {
     var q = PgQuery.from(try conn.query(
@@ -85,6 +93,14 @@ fn listCandidates(conn: *pg.Conn, alloc: std.mem.Allocator, runner_id: []const u
         \\FROM core.zombies z
         \\LEFT JOIN fleet.runner_affinity a ON a.zombie_id = z.id
         \\WHERE z.status = $1
+        \\  AND z.required_tags <@ (
+        \\        SELECT COALESCE(array_agg(e), '{}'::text[])
+        \\        FROM jsonb_array_elements_text(
+        \\               (SELECT CASE WHEN jsonb_typeof(labels) = 'array'
+        \\                            THEN labels ELSE '[]'::jsonb END
+        \\                FROM fleet.runners WHERE id = $2::uuid)
+        \\             ) AS e
+        \\      )
         \\ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
     , .{ zombie_config.ZombieStatus.active.toSlice(), runner_id }));
     defer q.deinit();
