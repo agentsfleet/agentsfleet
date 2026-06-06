@@ -4,7 +4,7 @@
 **Milestone:** M86
 **Workstream:** 001
 **Date:** Jun 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the bring-your-own-key path is the first thing a paying tenant configures, and today it dead-ends.
 **Categories:** UI
 **Batch:** B1 — standalone UI slice; no concurrent workstream.
