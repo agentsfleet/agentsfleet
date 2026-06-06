@@ -21,6 +21,10 @@ const S_COLLECT_TRUNCATED = "collect_truncated";
 
 pub const MAX_KEY_LEN: usize = 255;
 pub const MAX_CONTENT_LEN: usize = 16 * 1024; // 16KB
+// Category is a short label (NullClaw's MemoryCategory.toString()); cap it so an
+// empty or oversized value can't bypass the schema DEFAULT 'core' and land a
+// junk category that fromString() later has to interpret.
+pub const MAX_CATEGORY_LEN: usize = 64;
 pub const MAX_RECALL_LIMIT: i64 = 100;
 pub const DEFAULT_RECALL_LIMIT: i64 = 20;
 pub const DEFAULT_LIST_LIMIT: i64 = 100;
