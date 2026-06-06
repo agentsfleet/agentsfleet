@@ -17,24 +17,26 @@
 #   fails on the cheapest discipline regressions before paying for oxlint /
 #   tsc / zlint / actionlint / redocly.
 #
-# Scope (M70):
-#   Every script except audit-combined.sh now defaults to a full-codebase
-#   scan via `git ls-files` — which reports the index, so staged-not-yet-
-#   committed content is in scope automatically. Pre-commit no longer
-#   needs to pass `--staged` or `--diff`; we invoke each script with no
-#   args and let its default scope do the right thing.
+# Scope:
+#   harness-verify (pre-commit) passes `--staged` to each per-file audit so it
+#   judges only the files in the commit (`git diff --cached`); pre-existing
+#   debt in untouched files does not block an unrelated commit. `--staged`
+#   reads the index, so a fix staged but not yet committed satisfies the check
+#   on the same hook run (no BASE...HEAD blindness — the M70 concern).
 #
-#   audit-combined.sh is the lone exception. It is diff-shaped by
-#   construction (asserts on *added* lines, not file state) and stays on
-#   `--staged` for pre-commit context. The script's docstring documents
-#   per-check rationale.
+#   Canonical full-codebase enforcement lives in harness-verify-all (below)
+#   and `make lint` / CI — the audits default to full-codebase via
+#   `git ls-files`; only this pre-commit target opts into `--staged`.
+#
+#   cross-tier-rates.sh always checks its fixed rate-pin file set (no scope
+#   flag). msid-ui.sh is diff-shaped by construction and stays on `--staged`.
 #
 #   M68 commit 02c1f3cf (the orphan-cleanup slip) was the forcing
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
-#   check was blind to a fix the agent staged but had not yet committed.</
+#   check was blind to a fix the agent staged but had not yet committed.
 #
 # Adding a gate:
-#   1. Drop scripts/audit-<gate>.sh on disk (or symlink from dotfiles).
+#   1. Drop audits/<gate>.sh on disk (or symlink from dotfiles).
 #   2. Add a row in HARNESS_GATES below with the gate's short label + the
 #      command that runs the audit.
 #   3. Update docs/gates/<gate>.md with "Fires in: make harness-verify".
@@ -67,19 +69,19 @@ else \
 fi
 endef
 
-harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; full-codebase scope)
-	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · full-codebase scope$(C_RESET)\n"
-	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh)
-	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh)
-	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh)
-	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
-	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
-	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
-	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
+harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; staged scope — pre-commit lens)
+	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
+	$(call HARNESS_RUN,UFS,audits/ufs.sh --staged)
+	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh --staged)
+	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh --staged)
+	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh --staged)
+	$(call HARNESS_RUN,LOGGING,audits/logging.sh --staged)
+	$(call HARNESS_RUN,LIFECYCLE,audits/deinit-pairs.sh --staged)
+	$(call HARNESS_RUN,CROSS-TIER RATES,audits/cross-tier-rates.sh)
 	# audit-msid-ui.sh is diff-shaped by construction — it asserts on
 	# *added* lines, not file state. Stays on --staged for pre-commit
-	# context. See scripts/audit-msid-ui.sh "Per-check scope" docstring.
-	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --staged)</
+	# context. See audits/msid-ui.sh "Per-check scope" docstring.
+	$(call HARNESS_RUN,MS-ID + UI,audits/msid-ui.sh --staged)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
@@ -88,12 +90,12 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# differs from harness-verify only in the COMBINED check's scope:
 	# `--diff` (vs origin/main) is the broadest meaningful scope for that
 	# diff-shaped script.
-	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh)
-	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh)
-	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh)
-	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
-	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
-	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
-	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
-	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --diff)</
+	$(call HARNESS_RUN,UFS,audits/ufs.sh)
+	$(call HARNESS_RUN,DESIGN TOKEN,audits/design-tokens.sh)
+	$(call HARNESS_RUN,SPEC TEMPLATE,audits/spec-template.sh)
+	$(call HARNESS_RUN,ERROR REGISTRY,audits/error-codes.sh)
+	$(call HARNESS_RUN,LOGGING,audits/logging.sh)
+	$(call HARNESS_RUN,LIFECYCLE,audits/deinit-pairs.sh)
+	$(call HARNESS_RUN,CROSS-TIER RATES,audits/cross-tier-rates.sh)
+	$(call HARNESS_RUN,MS-ID + UI,audits/msid-ui.sh --diff)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"

@@ -121,4 +121,26 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.step("test", "Run zombie-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
+
+    // Runner integration tests — real-process proofs (fork/spawn at the real
+    // environ_map boundary, kill(-pgid) tree reap). Rooted separately from the
+    // unit `test` step so the fast unit lane never forks real children. The
+    // bodies are Linux-only (SkipZigTest elsewhere); the `test-integration-runner`
+    // make lane runs them on a Linux host.
+    const runner_integration_tests = b.addTest(.{
+        .name = "zombie-runner-integration-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runner/sandbox_integration_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
+            },
+        }),
+    });
+    b.step("test-integration", "Run zombie-runner integration tests (real-process sandbox proofs, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }
