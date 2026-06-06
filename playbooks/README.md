@@ -48,6 +48,8 @@ playbooks/
     │   ├── 00_gate.sh
     │   ├── 01_vault_sync.sh
     │   └── 02_service_health.sh
+    ├── runner_onboarding/             ← mint a runner zrn_ via the dashboard
+    │   └── 001_playbook.md
     ├── observability/                 ← bootstrap the Grafana stack
     │   ├── 001_playbook.md
     │   ├── 002_grafana_setup.md

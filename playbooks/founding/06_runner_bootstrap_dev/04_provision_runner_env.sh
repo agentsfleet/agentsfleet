@@ -4,18 +4,21 @@
 # vars the runner daemon requires (see deploy/baremetal/zombie-runner.service):
 #   ZOMBIE_API_URL       — control-plane base URL (literal for dev)
 #   ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (Option B; vault: runner-token)
-#   RUNNER_HOST_ID       — stable machine identifier (vault: hostname)
+#   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
+#                          (vault: tailscale-hostname = zombie-…-worker-ant)
 #
 # Pre-Option-B, the daemon self-registered with a zmb_t_ API key and minted
 # its own zrn_. Post-Option-B (commit c1ac7343), the platform admin pre-mints
 # the zrn_ via POST /v1/runners and stores it under runner-token; the daemon
 # authenticates with it directly and never self-registers.
 #
-# A real zrn_ requires the platform-admin enrollment gate (this milestone)
-# served by a live dev control plane. Until that's done, store a placeholder
-# in 1Password (e.g. `zrn_FAKE_REPLACE_BEFORE_DEV_WORKER_READY_TRUE`) so the
-# bootstrap structure verifies end-to-end; DEV_WORKER_READY must stay `false`
-# until the placeholder is swapped for a real token.
+# A real zrn_ is minted by a platform admin from the dashboard ("Add runner",
+# POST /v1/runners) on the live dev control plane and stored under runner-token.
+# This script requires that real token: it seeds both the source /opt/zombie/.env
+# (which deploy.sh copies on every CI run) and the unit's EnvironmentFile
+# /etc/default/zombie-runner, then restarts and verifies the daemon is active.
+# A zrn_FAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
+# until a real token brings the runner up green.
 set -euo pipefail
 
 echo ""
@@ -78,7 +81,6 @@ echo "-- checking vault refs in: $vault_dev"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/deploy-user"
-require_ref "op://$vault_dev/zombie-dev-worker-ant/hostname"
 require_ref "op://$vault_dev/zombie-dev-worker-ant/runner-token"
 
 if [ "$missing" -gt 0 ]; then
@@ -93,7 +95,12 @@ fi
 ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key")"
 ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname")"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user")"
-host_id="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/hostname")"
+# RUNNER_HOST_ID must equal the fleet host_id the admin minted (POST /v1/runners):
+# the tailscale hostname (zombie-…-worker-ant). Reuse ssh_host rather than the
+# provider-DNS `hostname` field — the daemon's copy is local-only (host_id never
+# crosses the wire; the heartbeat is identified by the token), but matching keeps
+# the host's logs and the dashboard fleet list naming the runner the same way.
+host_id="$ssh_host"
 runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner-token")"
 
 # Fail loud on a stale pre-Option-B token so a wrong shape is caught here, not
@@ -101,6 +108,16 @@ runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner
 if [[ "$runner_token" != zrn_* ]]; then
   echo "  ✗ runner-token does not start with zrn_ (Option B contract)"
   echo "    got: $(printf '%s' "$runner_token" | head -c 5)... (truncated)"
+  exit 1
+fi
+
+# Reject the placeholder: it satisfies the zrn_ prefix but the daemon would loop
+# on 401s. Mirror deploy.sh sync_env's hardened exit so the cause is named here,
+# not surfaced as a confusing is-active failure after the restart below.
+if [[ "$runner_token" == zrn_FAKE* ]]; then
+  echo "  ✗ runner-token is the placeholder (zrn_FAKE…) — not a real token"
+  echo "    mint one via the dashboard (POST /v1/runners) and update"
+  echo "    op://$vault_dev/zombie-dev-worker-ant/runner-token before re-running."
   exit 1
 fi
 
@@ -129,13 +146,16 @@ scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "chmod 600 /opt/zombie/.env"
 
-# Restart only — env-write owns provisioning. The daemon's own startup prefix
-# check (assertRunnerTokenPrefix) + deploy.sh sync_env's validation (next time
-# CI runs) cover the validation surface; wrapping deploy.sh here just to
-# restart would mask its hardened exit on a missing key or zrn_FAKE_… token.
-echo "-- restarting zombie-runner.service"
+# Sync the source env to the unit's EnvironmentFile, then restart. The unit reads
+# /etc/default/zombie-runner (deploy.sh's ENV_DEST) — NOT /opt/zombie/.env — so a
+# restart without this copy would re-read the previous /etc/default and ignore the
+# vars just written. /opt/zombie/.env stays the source-of-truth deploy.sh copies
+# from on every CI deploy; we seed both here so this restart and the is-active
+# check below actually exercise the new token. install -m 600 keeps it root-only.
+echo "-- syncing env -> /etc/default/zombie-runner + restarting zombie-runner.service"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "sudo systemctl restart zombie-runner.service"
+  "sudo install -m 600 -o root -g root /opt/zombie/.env /etc/default/zombie-runner \
+   && sudo systemctl restart zombie-runner.service"
 
 # Poll up to ~10s so we don't race systemd's RestartSec=5 (a daemon that
 # crashes and is in `scheduled-restart` would read as `failed` at +3s).
