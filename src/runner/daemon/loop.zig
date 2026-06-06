@@ -6,10 +6,11 @@
 //! that streams live-tail `activity` frames, which the parent forwards on.
 
 const std = @import("std");
-const clock = @import("common").clock;
+const common = @import("common");
+const clock = common.clock;
 const logging = @import("log");
 const contract = @import("contract");
-const constants = @import("common");
+const constants = common;
 
 const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
@@ -52,7 +53,7 @@ pub fn installDrainHandlers() void {
 /// Heartbeat → lease → execute → report loop. Returns on stop or drain signal.
 /// Identity is `cfg.runner_token` (a pre-minted `zrn_`); the loop never
 /// registers — its first contact is a heartbeat.
-pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config) void {
+pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const cp = client_mod{ .base_url = cfg.control_plane_url, .io = io };
     const runner_token: []const u8 = cfg.runner_token;
     var draining = false;
@@ -90,14 +91,14 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config) void {
             .ok => {},
         }
 
-        pollAndProcess(io, alloc, cp, runner_token, cfg);
+        pollAndProcess(io, alloc, cp, runner_token, cfg, env_map);
     }
 }
 
 /// Long-poll one lease; execute + report it when present, else back off the
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration.
-fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config) void {
+fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
         log.warn("lease_failed", .{ .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
@@ -113,7 +114,7 @@ fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_t
         return;
     }
 
-    executeAndReport(io, alloc, cp, runner_token, cfg, lease_resp.lease.?);
+    executeAndReport(io, alloc, cp, runner_token, cfg, env_map, lease_resp.lease.?);
 }
 
 /// Forwards each `activity` frame the sandboxed child streams to the control
@@ -139,6 +140,7 @@ fn executeAndReport(
     cp: client_mod,
     runner_token: []const u8,
     cfg: Config,
+    env_map: *const std.process.Environ.Map,
     payload: protocol.LeasePayload,
 ) void {
     log.info("lease_acquired", .{
@@ -155,7 +157,7 @@ fn executeAndReport(
     var driver = RenewDriver.init(alloc, cp, runner_token, payload);
 
     const start_ms = clock.nowMillis();
-    const result = child_supervisor.run(io, alloc, cfg, workspace_path, payload, sink, driver.hook());
+    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, sink, driver.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
 

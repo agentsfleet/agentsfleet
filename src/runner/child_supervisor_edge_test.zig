@@ -9,6 +9,7 @@ const clock = @import("common").clock;
 const supervisor = @import("child_supervisor.zig");
 const pipe_proto = @import("pipe_proto.zig");
 const contract = @import("contract");
+const cgroup = @import("engine/cgroup.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
@@ -21,6 +22,7 @@ const PastExtendHook = struct {
     fn onTick(ctx: *anyopaque, now_ms: i64) supervisor.RenewDecision {
         const self: *PastExtendHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
+        // pin test: literal is the contract — extend to exactly 1s in the past
         return .{ .extend = now_ms - 1_000 }; // already past
     }
 };
@@ -50,4 +52,16 @@ test "readResult should exit cleanly when the hook extends to an already-past de
     try std.testing.expect(outcome.timed_out);
     try std.testing.expect(!outcome.terminated);
     try std.testing.expect(hook_state.ticks >= 1);
+}
+
+test "enrollOrFail is a no-op success for a null (dev_none) scope and never signals a pid" {
+    // dev_none establishes no cgroup, so the scope is null. enrollOrFail must
+    // return cleanly — the lease is NOT refused — and must take the early-return
+    // branch BEFORE killChild, so no `kill(-pid)` is ever issued. The pid below is
+    // never spawned and never signalled precisely because that branch returns
+    // first; a regression that drops the null guard would fail here (or kill an
+    // unrelated process). Guards the local-dev path against an accidental refusal.
+    var scope: ?cgroup.CgroupScope = null;
+    try supervisor.enrollOrFail(&scope, 999_999, "dev-none-lease");
+    try std.testing.expect(scope == null); // nothing enrolled, scope untouched
 }

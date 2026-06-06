@@ -66,3 +66,18 @@ jobs:
       - name: Stop services
         if: always()
         run: docker compose down
+
+  # Runner real-process sandbox proofs — its own build_runner.zig graph, no
+  # datastore and no docker infra (forks real children, reads /proc, kills by
+  # pgroup). Kept a separate job so the env-filter / kill-tree / cgroup-fault
+  # proofs actually execute on a Linux host rather than only compiling. Mirrors
+  # the test-unit-zigrunner job: same CI container, same Zig 0.16.0 toolchain.
+  test-integration-runner:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Runner sandbox proofs (env filter + kill-tree + cgroup-fault)
+        run: make test-integration-runner
