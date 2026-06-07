@@ -27,8 +27,13 @@ export interface ConfirmDialogProps {
   cancelLabel?: string;
   /** Colouring + semantics. `destructive` surfaces a red confirm button. */
   intent?: "default" | "destructive";
-  /** Async action. The dialog disables both buttons while it resolves. */
-  onConfirm: () => void | Promise<void>;
+  /**
+   * Async action. The dialog disables both buttons while it resolves.
+   * Optional so a parent-controlled dialog can pass `undefined` when there is
+   * nothing to confirm (e.g. while closed), avoiding an unreachable null guard
+   * in the caller's handler.
+   */
+  onConfirm?: () => void | Promise<void>;
   /**
    * Caller-controlled. Render a custom error message above the footer.
    * Typically set from caller state in response to `onError` below.
@@ -63,7 +68,7 @@ export function ConfirmDialog({
     if (pending) return;
     setPending(true);
     try {
-      await onConfirm();
+      await onConfirm?.();
     } catch (err) {
       if (onError) onError(err);
     } finally {
