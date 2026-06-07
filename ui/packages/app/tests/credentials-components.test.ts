@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
@@ -41,6 +41,52 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+// ── EditCredentialDialog — dismiss guard ────────────────────────────────────
+
+describe("EditCredentialDialog dismiss guard", () => {
+  afterEach(() => createCredentialActionMock.mockReset());
+
+  it("blocks dialog dismissal while a rotate save is in flight", async () => {
+    const onOpenChange = vi.fn();
+    // A deferred result keeps the save transition pending until we resolve it,
+    // so `pending` is true when we attempt to dismiss; resolving at the end
+    // lets the transition settle instead of leaking into later tests.
+    let resolveSave!: (v: { ok: true; data: { name: string } }) => void;
+    createCredentialActionMock.mockReturnValue(
+      new Promise<{ ok: true; data: { name: string } }>((r) => {
+        resolveSave = r;
+      }),
+    );
+    const { default: EditCredentialDialog } = await import(
+      "../app/(dashboard)/credentials/components/EditCredentialDialog"
+    );
+    render(
+      React.createElement(EditCredentialDialog, {
+        workspaceId: "ws_1",
+        name: "fly",
+        open: true,
+        onOpenChange,
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(/Data \(JSON object\)/i), {
+      target: { value: '{"api_key":"sk-x"}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
+    await waitFor(() => {
+      expect(document.querySelector('button[aria-busy="true"]')).not.toBeNull();
+    });
+    // The dialog's Close affordance fires onOpenChange(false); handleOpenChange's
+    // `if (pending) return` blocks propagation so the parent close handler — and
+    // thus the dismissal — never fires mid-save.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    // Settle the in-flight save so the transition doesn't leak.
+    await act(async () => {
+      resolveSave({ ok: true, data: { name: "fly" } });
+    });
+  });
+});
 
 // ── CredentialsList ────────────────────────────────────────────────────────
 

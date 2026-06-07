@@ -559,6 +559,28 @@ describe("ApprovalsList — 5s polling effect", () => {
     );
   });
 
+  it("refreshes the ApprovalCard relative-age label on its 30s timer", async () => {
+    const base = Date.UTC(2026, 4, 15, 18, 0, 0);
+    vi.setSystemTime(base);
+    const persisted = gate({ requested_at: base - 50_000, timeout_at: base + 600_000 });
+    // Polls re-fetch the same row so the card (and its `now` state) persists
+    // across the 30s window; the 30s interval re-reads Date.now() into `now`.
+    listApprovalsActionMock.mockResolvedValue({
+      ok: true,
+      data: { items: [persisted], next_cursor: null },
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [persisted],
+        initialCursor: null,
+      }),
+    );
+    expect(screen.getByText(/requested 0m ago/)).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(30_001);
+    expect(screen.getByText(/requested 1m ago/)).toBeTruthy();
+  });
+
   it("polling skips the update when the action reports unauth", async () => {
     listApprovalsActionMock.mockResolvedValueOnce({
       ok: false,

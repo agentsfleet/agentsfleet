@@ -144,6 +144,8 @@ describe("GuidedTriggerCard", () => {
   });
 
   it("clears the copied label after the reset window and preserves a newer copied key", async () => {
+    // A step larger than the reset window, used to fire a pending copy timer.
+    const ADVANCE_PAST_RESET_MS = 1000;
     vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -173,16 +175,16 @@ describe("GuidedTriggerCard", () => {
     });
     expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copied URL/);
 
-    // Fire the first (command) timeout — its updater sees copiedKey === "url-shortcut"
-    // but its captured key is "command", so the FALSE branch returns k unchanged.
+    // The command copy's timer was cancelled by the url copy (single-shot
+    // timer), so it never fires — the "Copied URL" label persists here.
     await act(async () => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(ADVANCE_PAST_RESET_MS);
     });
     expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copied URL/);
 
-    // Fire the second (url-shortcut) timeout — copiedKey === key → TRUE branch returns null.
+    // The surviving url timer fires and clears the copied label.
     await act(async () => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(ADVANCE_PAST_RESET_MS);
     });
     expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copy URL/);
   });
