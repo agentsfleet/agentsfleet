@@ -3,7 +3,6 @@ import {
   PageHeader,
   PageTitle,
   Section,
-  SectionLabel,
 } from "@usezombie/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { listWorkspaceEvents } from "@/lib/api/events";
@@ -32,7 +31,6 @@ export default async function EventsPage() {
 
       <Section asChild>
         <section aria-label="Workspace events">
-          <SectionLabel>Workspace events</SectionLabel>
           <EventsList
             scope={{ kind: "workspace", workspaceId: workspace.id }}
             initial={page}

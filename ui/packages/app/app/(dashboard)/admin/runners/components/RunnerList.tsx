@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import {
   Badge,
   type BadgeVariant,
   Button,
+  EmptyState,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@usezombie/design-system";
+import { ServerIcon } from "lucide-react";
 import {
   RUNNER_SORTS,
   DEFAULT_PAGE_SIZE,
@@ -22,7 +24,6 @@ import {
 } from "@/lib/api/runners";
 import { presentErrorString } from "@/lib/errors";
 import { listRunnersAction } from "../actions";
-import AddRunnerDialog from "./AddRunnerDialog";
 
 const SORT_LABELS: Record<RunnerSort, string> = {
   "-created_at": "Newest first",
@@ -45,13 +46,27 @@ function fmt(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
-export default function RunnerList({ initial }: { initial: RunnerListResponse }) {
+export type RunnerListHandle = { refresh: () => void };
+
+export default function RunnerList({
+  initial,
+  ref,
+}: {
+  initial: RunnerListResponse;
+  ref?: Ref<RunnerListHandle>;
+}) {
   const [pending, startTransition] = useTransition();
   const [items, setItems] = useState<RunnerListItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
   const [sort, setSort] = useState<RunnerSort>(DEFAULT_SORT);
   const [error, setError] = useState<string | null>(null);
+
+  // The header "Add runner" dialog (rendered by the parent view) calls this via
+  // ref on create — a targeted re-fetch of page 1, not a full-route refresh.
+  useImperativeHandle(ref, () => ({
+    refresh: () => loadPage({ page: 1, sort: DEFAULT_SORT }),
+  }));
 
   const lastPage = Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE));
 
@@ -79,26 +94,29 @@ export default function RunnerList({ initial }: { initial: RunnerListResponse })
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select value={sort} onValueChange={(v) => loadPage({ sort: v as RunnerSort, page: 1 })}>
-          <SelectTrigger className="w-44" aria-label="Sort runners">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RUNNER_SORTS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {SORT_LABELS[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <AddRunnerDialog onCreated={() => loadPage({ page: 1, sort: DEFAULT_SORT })} />
-      </div>
+      {items.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Select value={sort} onValueChange={(v) => loadPage({ sort: v as RunnerSort, page: 1 })}>
+            <SelectTrigger className="w-44" aria-label="Sort runners">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RUNNER_SORTS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {SORT_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No runners enrolled yet. Add one to give the fleet a host to lease work to.
-        </p>
+        <EmptyState
+          icon={<ServerIcon size={28} />}
+          title="No runners yet"
+          description="Add a host to run agent work."
+        />
       ) : (
         <div className="divide-y rounded-md border">
           {items.map((r) => (

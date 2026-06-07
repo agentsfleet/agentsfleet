@@ -36,7 +36,7 @@ describe("BillingBalanceCard", () => {
     render(React.createElement(BillingBalanceCard, { billing: exhausted }));
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Balance exhausted/);
-    expect(alert.textContent).toMatch(/Stripe purchase ships in v2\.1/);
+    expect(alert.textContent).toMatch(/top up/i);
   });
 
   it("applies destructive treatment to the balance headline when exhausted", () => {

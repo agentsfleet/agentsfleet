@@ -34,17 +34,16 @@ pub const EVENT_NANOS: i64 = 0;
 /// only) is added on top.
 pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
-/// Promotional free-trial cutoff (UTC). `2026-08-01T00:00:00Z` — first
-/// instant after July 31, 2026. While `now_ms < FREE_TRIAL_END_MS`,
-/// computeStageCharge returns `FREE_TRIAL_STAGE_NANOS` regardless of
-/// posture / model / token count; after, it falls through to the standard
-/// rate constants. The numeric value mirrors the JS/TS twins in
-/// `ui/packages/website/src/lib/rates.ts`, `ui/packages/app/lib/types.ts`,
-/// and `zombiectl/src/constants/billing.js` (cross-tier parity rule, value
-/// match — these are private to keep new pub surface at zero; the HTTP
-/// handler reads them through the `Billing` struct's `free_trial_*` fields
-/// rather than importing the const directly). Customer surface for live
-/// rates and active windows: usezombie.com/#pricing.
+/// Unit divisors for the per-slice charge math: ms→s and per-million-tokens.
+const MS_PER_SEC: i64 = 1000;
+const TOKENS_PER_MTOK: i64 = 1_000_000;
+
+/// Promotional free-trial cutoff (UTC) `2026-08-01T00:00:00Z`. While
+/// `now_ms < FREE_TRIAL_END_MS`, computeStageCharge returns
+/// `FREE_TRIAL_STAGE_NANOS` regardless of posture/model/tokens; after, the
+/// standard rate constants apply. Private — read via `publicConfig()` and the
+/// `Billing.free_trial_*` projection; value mirrors the JS/TS twins in
+/// `rates.ts`, `types.ts`, `billing.js` (cross-tier parity rule).
 const FREE_TRIAL_END_MS: i64 = 1_785_542_400_000;
 const FREE_TRIAL_STAGE_NANOS: i64 = 0;
 
@@ -53,6 +52,28 @@ const FREE_TRIAL_STAGE_NANOS: i64 = 0;
 /// charged at this floor; v3 may add reconciliation against StageResult.
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
+
+/// Global, non-secret config the public catalogue endpoint serves beside the
+/// model rows; read (not copied) so it can't drift from the billing math.
+const PublicConfig = struct {
+    run_nanos_per_sec: i64,
+    event_nanos: i64,
+    starter_credit_nanos: i64,
+    free_trial_end_ms: i64,
+    free_trial_stage_nanos: i64,
+};
+
+/// One accessor (minimal pub surface) exposing the served consts — including the
+/// otherwise-private free-trial window — to the public catalogue handler.
+pub fn publicConfig() PublicConfig {
+    return .{
+        .run_nanos_per_sec = RUN_NANOS_PER_SEC,
+        .event_nanos = EVENT_NANOS,
+        .starter_credit_nanos = STARTER_CREDIT_NANOS,
+        .free_trial_end_ms = FREE_TRIAL_END_MS,
+        .free_trial_stage_nanos = FREE_TRIAL_STAGE_NANOS,
+    };
+}
 
 pub const Billing = struct {
     balance_nanos: i64,
@@ -95,7 +116,7 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
 /// RUN_NANOS_PER_SEC` stays well inside i64. At lease issue `elapsed_ms` is 0,
 /// so the run fee is 0 and only the token estimate (platform) is charged.
 fn runFee(elapsed_ms: i64) i64 {
-    return @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, 1000);
+    return @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, MS_PER_SEC);
 }
 
 /// Per-slice stage charge: a run fee for `elapsed_ms` of active runtime plus,
@@ -152,10 +173,10 @@ pub fn resolveRenewSliceRates(provider: []const u8, posture: Posture, model: []c
 /// 1000)`; Postgres bigint `/` truncates toward zero, matching for Δ≥0). This is
 /// the reference the SQL==Zig pin test asserts against.
 pub fn sliceCharge(rates: SliceRates, elapsed_ms: i64, d_input: i64, d_cached: i64, d_output: i64) i64 {
-    return @divTrunc(elapsed_ms * rates.run_nanos_per_sec, 1000) +
-        @divTrunc(rates.input_nanos_per_mtok * d_input, 1_000_000) +
-        @divTrunc(rates.cached_input_nanos_per_mtok * d_cached, 1_000_000) +
-        @divTrunc(rates.output_nanos_per_mtok * d_output, 1_000_000);
+    return @divTrunc(elapsed_ms * rates.run_nanos_per_sec, MS_PER_SEC) +
+        @divTrunc(rates.input_nanos_per_mtok * d_input, TOKENS_PER_MTOK) +
+        @divTrunc(rates.cached_input_nanos_per_mtok * d_cached, TOKENS_PER_MTOK) +
+        @divTrunc(rates.output_nanos_per_mtok * d_output, TOKENS_PER_MTOK);
 }
 
 // Time-injected sibling of `computeStageCharge`. Private; inline tests below
@@ -248,7 +269,7 @@ test "computeStageChargeAt: self_managed charge is the run fee only, tokens and 
     // consults the rate cache, so a missing model must NOT panic.
     try std.testing.expectEqual(
         runFee(20_000),
-        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 20_000, 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 20_000, 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS), // pin test: literal is the contract
     );
     // 20s of active runtime → 20 × RUN_NANOS_PER_SEC.
     try std.testing.expectEqual(
@@ -283,11 +304,11 @@ test "computeStageChargeAt: free-trial window returns zero regardless of posture
     // short-circuit fires before the platform-branch lookup.
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 60_000, 800, 0, 1000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 60_000, 800, 0, 1000, PRE_TRIAL_NOW_MS), // pin test: literal is the contract
     );
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS), // pin test: literal is the contract
     );
     // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over — strict
     // less-than gate; self_managed then charges the run fee.
@@ -301,7 +322,7 @@ test "isFreeTrialActive: strict-less-than gate on FREE_TRIAL_END_MS" {
     try std.testing.expect(isFreeTrialActive(0));
     try std.testing.expect(isFreeTrialActive(FREE_TRIAL_END_MS - 1));
     try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS));
-    try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS + 1_000_000));
+    try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS + 1_000_000)); // pin test: literal is the contract
 }
 
 test "resolveRenewSliceRates: posture/trial branches, and platform cache-miss yields null (never panics)" {

@@ -6,10 +6,12 @@ const {
   setProviderSelfManagedActionMock,
   resetProviderActionMock,
   routerRefresh,
+  createCredentialActionMock,
 } = vi.hoisted(() => ({
   setProviderSelfManagedActionMock: vi.fn(),
   resetProviderActionMock: vi.fn(),
   routerRefresh: vi.fn(),
+  createCredentialActionMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,13 +21,17 @@ vi.mock("@/app/(dashboard)/settings/models/actions", () => ({
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
   resetProviderAction: resetProviderActionMock,
 }));
+vi.mock("@/app/(dashboard)/credentials/actions", () => ({
+  createCredentialAction: createCredentialActionMock,
+}));
 vi.mock("lucide-react", () => ({
   Loader2Icon: (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": "Loader2Icon" }),
 }));
 
 import ModeRadio from "@/app/(dashboard)/settings/models/components/ModeRadio";
-import ProviderKeyFields from "@/app/(dashboard)/settings/models/components/ProviderKeyFields";
+import Step1Credential from "@/app/(dashboard)/settings/models/components/Step1Credential";
+import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model";
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
 import { RadioGroup } from "@usezombie/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
@@ -43,6 +49,7 @@ beforeEach(() => {
   setProviderSelfManagedActionMock.mockReset();
   resetProviderActionMock.mockReset();
   routerRefresh.mockReset();
+  createCredentialActionMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -92,54 +99,114 @@ describe("ModeRadio", () => {
   });
 });
 
-// ── ProviderKeyFields (presentational) ─────────────────────────────────
+// ── Step1Credential (presentational) ───────────────────────────────────
 
-describe("ProviderKeyFields", () => {
+describe("Step1Credential", () => {
   const baseProps = {
     workspaceId: WORKSPACE_ID,
     credentials: [CRED],
+    catalogue: [],
     credentialRef: CRED.name,
     onCredentialRefChange: () => {},
-    modelOverride: "",
-    onModelOverrideChange: () => {},
   };
 
-  it("shows the empty-state CTA linking to /credentials when vault is empty", () => {
-    render(React.createElement(ProviderKeyFields, { ...baseProps, credentials: [] }));
-    expect(screen.getByTestId("provider-key-no-credentials")).toBeTruthy();
-    const link = screen.getByText("Add a credential first") as HTMLAnchorElement;
+  it("shows the inline create form (no dead-end) plus a manage link when the vault is empty", () => {
+    render(React.createElement(Step1Credential, { ...baseProps, credentials: [] }));
+    // The old empty-vault dead-end Alert is gone — an inline create form shows instead.
+    expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
+    expect(screen.getByText("Add a new provider key")).toBeTruthy();
+    const link = screen.getByText("Manage all credentials →") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/credentials");
-    // CTA carries the active workspace id so QA can attribute the click.
+    // The secondary link carries the active workspace id so QA can attribute the click.
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });
 
   it("renders a credential combobox showing the current value", () => {
-    render(React.createElement(ProviderKeyFields, baseProps));
+    render(React.createElement(Step1Credential, baseProps));
     const trigger = screen.getByLabelText(/credential/i);
     expect(trigger.getAttribute("role")).toBe("combobox");
     expect(trigger.textContent).toContain(CRED.name);
   });
 
-  it("propagates credential and model edits to the parent", () => {
+  it("propagates credential selection to the parent", () => {
     const onCred = vi.fn();
-    const onModel = vi.fn();
     render(
-      React.createElement(ProviderKeyFields, {
+      React.createElement(Step1Credential, {
         ...baseProps,
         credentials: [CRED, { name: "anth", created_at: CRED.created_at }],
         onCredentialRefChange: onCred,
-        onModelOverrideChange: onModel,
       }),
     );
     const trigger = screen.getByLabelText(/credential/i);
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
-    const anth = screen.getByText("anth");
-    fireEvent.click(anth);
+    fireEvent.click(screen.getByText("anth"));
     expect(onCred).toHaveBeenCalledWith("anth");
-    fireEvent.change(screen.getByLabelText(/model override/i), { target: { value: "claude-sonnet-4-6" } });
+  });
+
+  it("'+ New key' toggles the inline create form when credentials already exist", () => {
+    render(React.createElement(Step1Credential, baseProps));
+    expect(screen.queryByText("Add a new provider key")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /new key/i }));
+    expect(screen.getByText("Add a new provider key")).toBeTruthy();
+  });
+
+  it("selects a freshly created credential from the inline form (empty vault)", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    const onCred = vi.fn();
+    render(
+      React.createElement(Step1Credential, { ...baseProps, credentials: [], onCredentialRefChange: onCred }),
+    );
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-ant-x" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "claude-sonnet-4-6" } });
+    fireEvent.click(screen.getByRole("button", { name: /save key/i }));
+    await waitFor(() => expect(onCred).toHaveBeenCalledWith("anthropic"));
+  });
+});
+
+// ── Step2Model (presentational) ────────────────────────────────────────
+
+describe("Step2Model", () => {
+  const MODELS = [
+    { id: "claude-sonnet-4-6", provider: "anthropic", context_cap_tokens: 256000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    { id: "kimi-k2.6", provider: "moonshot", context_cap_tokens: 256000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+  ];
+
+  it("renders a catalogue-backed picker and propagates the picked model", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: MODELS, model: "", onModelChange: onModel }));
+    const trigger = screen.getByLabelText(/model/i);
+    expect(trigger.getAttribute("role")).toBe("combobox");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByText("kimi-k2.6"));
+    expect(onModel).toHaveBeenCalledWith("kimi-k2.6");
+  });
+
+  it("falls back to a free-text input when the catalogue is empty", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: [], model: "", onModelChange: onModel }));
+    const input = screen.getByLabelText(/model/i);
+    expect(input.tagName).toBe("INPUT");
+    fireEvent.change(input, { target: { value: "claude-sonnet-4-6" } });
     expect(onModel).toHaveBeenCalledWith("claude-sonnet-4-6");
+  });
+
+  it("reflects a preselected model and clears back to the credential default", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: MODELS, model: "kimi-k2.6", onModelChange: onModel }));
+    const trigger = screen.getByLabelText(/model/i);
+    // A non-empty model shows on the trigger (covers the value ternary's model branch).
+    expect(trigger.textContent).toContain("kimi-k2.6");
+    // Selecting the default entry maps the sentinel back to "" (omit the override).
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByText(/use the credential's model/i));
+    expect(onModel).toHaveBeenCalledWith("");
   });
 });
 
@@ -152,6 +219,7 @@ describe("ProviderSelector", () => {
     currentCredentialRef: null,
     currentModel: "",
     credentials: [CRED],
+    catalogue: [],
   };
 
   it("submits self-managed PUT with the picked credential and refreshes the route", async () => {

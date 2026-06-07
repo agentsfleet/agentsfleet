@@ -225,3 +225,37 @@
   --ease-fade: var(--easing-fade);
   --duration-fade: var(--motion-duration-fade);
 }
+
+/*
+ * max-w-* t-shirt scale — collision repair.
+ *
+ * The custom --spacing-{xs..6xl} scale above (forwarded so padding, gap and
+ * margin utilities read named steps) shares key names with Tailwind v4's
+ * max-width t-shirt scale.
+ * In v4 the --spacing-<key> token wins `max-w-<key>` resolution over the
+ * --container-* default, so `max-w-4xl` collapsed to --spacing-4xl (3rem/48px),
+ * `max-w-xl` to 16px, `max-w-lg` to 12px — shrinking every constrained column,
+ * Dialog, ConfirmDialog, and EmptyState to a few pixels. Re-declaring
+ * --container-* does NOT win (spacing shadows it), and @utility cannot redefine
+ * a built-in utility name in v4 (parser rejects it). So pin the utilities with
+ * plain rules in @layer utilities — imported after Tailwind's generated
+ * utilities, so equal-specificity source order makes these win. Values are
+ * Tailwind's stock container widths. The one responsive consumer
+ * (sm:max-w-xs, Shell mobile nav) is pinned in its matching media query.
+ */
+@layer utilities {
+  .max-w-xs { max-width: 20rem; }
+  .max-w-sm { max-width: 24rem; }
+  .max-w-md { max-width: 28rem; }
+  .max-w-lg { max-width: 32rem; }
+  .max-w-xl { max-width: 36rem; }
+  .max-w-2xl { max-width: 42rem; }
+  .max-w-3xl { max-width: 48rem; }
+  .max-w-4xl { max-width: 56rem; }
+  .max-w-5xl { max-width: 64rem; }
+  .max-w-6xl { max-width: 72rem; }
+  .max-w-7xl { max-width: 80rem; }
+  @media (min-width: 40rem) {
+    .sm\:max-w-xs { max-width: 20rem; }
+  }
+}

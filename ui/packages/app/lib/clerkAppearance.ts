@@ -35,6 +35,38 @@ export const AUTH_APPEARANCE = {
       backgroundColor: "var(--surface-2)",
       color: "var(--text)",
     },
+    // UserButton dropdown (account menu). Without these the popover renders in
+    // Clerk's stock light palette → invisible dark text on the app's dark
+    // surface. Theme the card, the action rows, and the identity preview.
+    userButtonPopoverCard: {
+      backgroundColor: "var(--surface-1)",
+      border: "1px solid var(--border-strong)",
+    },
+    userButtonPopoverActionButton: {
+      color: "var(--text)",
+    },
+    userButtonPopoverActionButtonText: {
+      color: "var(--text)",
+    },
+    userButtonPopoverActionButtonIcon: {
+      color: "var(--text-muted)",
+    },
+    userButtonPopoverFooter: {
+      backgroundColor: "var(--surface-1)",
+      borderTop: "1px solid var(--border)",
+    },
+    userPreviewMainIdentifier: {
+      color: "var(--text)",
+    },
+    userPreviewSecondaryIdentifier: {
+      color: "var(--text-muted)",
+    },
+    // Mask self-service account deletion (UserProfile → Security). The robust
+    // control is the instance-level toggle in the Clerk Dashboard; this hides
+    // the UI section as a stopgap.
+    profileSection__danger: {
+      display: "none",
+    },
     cardBox: {
       // --surface-2 over the page's --bg gives the card real visual lift on
       // the auth route — at --surface-1 (luminance delta = 3 units) the card

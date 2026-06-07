@@ -15,7 +15,7 @@ import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars } from "../lib/groupCharges";
 
-const PURCHASE_TOOLTIP = "Coming in v2.1 — contact support for a top-up.";
+const PURCHASE_TOOLTIP = "Contact support to top up your balance.";
 
 export type BillingBalanceCardProps = {
   billing: TenantBilling;
@@ -54,12 +54,12 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
       {isExhausted ? (
         <CardContent>
           <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New agent events are gate-blocked until a
-            top-up — Stripe purchase ships in v2.1; contact{" "}
+            Balance exhausted. New agent events are gate-blocked until you
+            top up — contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support
             </a>{" "}
-            for a manual top-up.
+            for a top-up.
           </Alert>
         </CardContent>
       ) : null}

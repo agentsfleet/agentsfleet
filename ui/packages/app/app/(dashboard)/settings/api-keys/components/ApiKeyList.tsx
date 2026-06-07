@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import {
   Badge,
   Button,
+  EmptyState,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@usezombie/design-system";
+import { KeyRoundIcon } from "lucide-react";
 import {
   API_KEY_SORTS,
   DEFAULT_PAGE_SIZE,
@@ -20,7 +22,6 @@ import {
 } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
-import CreateApiKeyDialog from "./CreateApiKeyDialog";
 import RevokeConfirm, { type ConfirmTarget } from "./RevokeConfirm";
 
 const SORT_LABELS: Record<ApiKeySort, string> = {
@@ -36,7 +37,15 @@ function fmt(ms: number): string {
   return new Date(ms).toLocaleString();
 }
 
-export default function ApiKeyList({ initial }: { initial: ApiKeyListResponse }) {
+export type ApiKeyListHandle = { refresh: () => void };
+
+export default function ApiKeyList({
+  initial,
+  ref,
+}: {
+  initial: ApiKeyListResponse;
+  ref?: Ref<ApiKeyListHandle>;
+}) {
   const [pending, startTransition] = useTransition();
   const [items, setItems] = useState<ApiKeyRow[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
@@ -44,6 +53,12 @@ export default function ApiKeyList({ initial }: { initial: ApiKeyListResponse })
   const [sort, setSort] = useState<ApiKeySort>(DEFAULT_SORT);
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The header "New API key" dialog (rendered by the parent view) calls this via
+  // ref on create — a targeted re-fetch of page 1, not a full-route refresh.
+  useImperativeHandle(ref, () => ({
+    refresh: () => loadPage({ page: 1, sort: DEFAULT_SORT }),
+  }));
 
   const lastPage = Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE));
 
@@ -100,26 +115,29 @@ export default function ApiKeyList({ initial }: { initial: ApiKeyListResponse })
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select value={sort} onValueChange={(v) => loadPage({ sort: v as ApiKeySort, page: 1 })}>
-          <SelectTrigger className="w-44" aria-label="Sort API keys">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {API_KEY_SORTS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {SORT_LABELS[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <CreateApiKeyDialog onCreated={() => loadPage({ page: 1, sort: DEFAULT_SORT })} />
-      </div>
+      {items.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Select value={sort} onValueChange={(v) => loadPage({ sort: v as ApiKeySort, page: 1 })}>
+            <SelectTrigger className="w-44" aria-label="Sort API keys">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {API_KEY_SORTS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {SORT_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No API keys yet. Create one to authenticate a service-to-service caller.
-        </p>
+        <EmptyState
+          icon={<KeyRoundIcon size={28} />}
+          title="No API keys yet"
+          description="Create one to let an outside tool call your API."
+        />
       ) : (
         <div className="divide-y rounded-md border">
           {items.map((k) => (

@@ -325,17 +325,17 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 ---
 
-## 10. The model-caps endpoint (cryptic-prefix, public-but-unguessable)
+## 10. The cap.json endpoint — model catalogue + global config (cryptic-prefix, public-but-unguessable)
 
-The single source of truth for model context caps **and per-model token rates**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the endpoint *is* and how it is hosted.
+The single source of truth for model context caps **and per-model token rates**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the endpoint *is* and how it is hosted. The same public document also carries a global, non-secret `rates`/`billing` block (run + event rates, starter credit, free-trial window) — the dashboard reads it for the global client config that needs no auth.
 
 For billing specifically: the API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached per-model token rates — never makes a network call on the hot path.
 
 Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-agent reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 
 ```
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded>
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded>
 
 200 {
   "version":      "<ISO date — bumped on every catalogue change>",
@@ -348,7 +348,9 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
       "output_nanos_per_mtok":       <int — retail rate per 1M output tokens, in nanos>
     },
     …one row per supported model…
-  ]
+  ],
+  "rates":   { "run_nanos_per_sec": <int — metered run rate per active second>, "event_nanos": <int — per-event drain> },
+  "billing": { "starter_credit_nanos": <int — new-tenant grant>, "free_trial_end_ms": <int — promo cutoff, UTC ms>, "free_trial_stage_nanos": <int — per-stage charge during the trial> }
 }
 ```
 

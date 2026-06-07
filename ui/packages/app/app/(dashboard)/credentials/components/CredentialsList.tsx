@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, ConfirmDialog, Spinner } from "@usezombie/design-system";
-import { Trash2Icon } from "lucide-react";
+import { Button, ConfirmDialog, EmptyState, Spinner } from "@usezombie/design-system";
+import { KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import { presentErrorString } from "@/lib/errors";
@@ -21,9 +21,11 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
 
   if (credentials.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No credentials stored yet. Add one using the form on the right.
-      </p>
+      <EmptyState
+        icon={<KeyRoundIcon size={28} />}
+        title="No credentials yet"
+        description="Add a secret your agents can use to reach other services."
+      />
     );
   }
 

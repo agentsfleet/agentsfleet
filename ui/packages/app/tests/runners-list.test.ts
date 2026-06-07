@@ -74,7 +74,18 @@ describe("RunnerList component", () => {
 
   it("renders the empty-state hint when no runners are enrolled", async () => {
     await renderList(listResponse([]));
-    expect(screen.getByText(/No runners enrolled yet/i)).toBeTruthy();
+    expect(screen.getByText(/No runners yet/i)).toBeTruthy();
+  });
+
+  it("hides the sort toolbar while the list is empty (only the empty state shows)", async () => {
+    await renderList(listResponse([]));
+    expect(screen.queryByLabelText(/sort runners/i)).toBeNull();
+    expect(screen.getByText(/No runners yet/i)).toBeTruthy();
+  });
+
+  it("shows the sort toolbar once runners exist", async () => {
+    await renderList(listResponse([REGISTERED, ONLINE]));
+    expect(screen.getByLabelText(/sort runners/i)).toBeTruthy();
   });
 
   it("renders every derived-liveness badge, the tier, labels, and the never-connected line", async () => {
@@ -159,7 +170,10 @@ describe("RunnerList component", () => {
 
   it("re-fetches the first page after a runner is minted and the reveal is closed", async () => {
     const user = userEvent.setup();
-    await renderList(listResponse([REGISTERED]));
+    const { default: RunnersView } = await import(
+      "../app/(dashboard)/admin/runners/components/RunnersView"
+    );
+    render(React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never));
     createRunnerActionMock.mockResolvedValue({
       ok: true,
       data: { runner_id: "r2", runner_token: "zrn_new" },

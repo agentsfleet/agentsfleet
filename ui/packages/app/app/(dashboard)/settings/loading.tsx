@@ -7,7 +7,7 @@ export default function SettingsLoading() {
         <PageTitle>Settings</PageTitle>
       </PageHeader>
       <div className="mb-6 flex gap-2">
-        {Array.from({ length: 3 }, (_, i) => (
+        {Array.from({ length: 2 }, (_, i) => (
           <Skeleton key={i} className="h-9 w-24" />
         ))}
       </div>

@@ -106,6 +106,7 @@ export {
   type TooltipContentProps,
 } from "./Tooltip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
+export { TabNav, type TabNavItem, type TabNavProps } from "./TabNav";
 export {
   StatusCard,
   type StatusCardProps,

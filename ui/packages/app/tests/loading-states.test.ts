@@ -40,6 +40,11 @@ describe("dashboard segment loading states", () => {
       importer: () => import("../app/(dashboard)/approvals/[gateId]/loading"),
       expectsTitle: null, // skeleton title
     },
+    {
+      name: "(dashboard) root",
+      importer: () => import("../app/(dashboard)/loading"),
+      expectsTitle: null, // dashboard-wide fallback — skeleton only, no static text
+    },
   ];
 
   for (const { name, importer, expectsTitle } of cases) {
