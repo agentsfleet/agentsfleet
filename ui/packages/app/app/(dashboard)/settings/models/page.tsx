@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import {
+  Card,
   DescriptionList,
   DescriptionTerm,
   DescriptionDetails,
@@ -58,38 +59,42 @@ export default async function ProviderSettingsPage() {
         Pick who pays for model usage: platform-managed credits (we bill you per event) or
         your own provider key (you bring the account, we add a flat per-event fee).
       </p>
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid items-start gap-8 md:grid-cols-2">
         <Section asChild>
           <section aria-label="Active provider configuration" className="max-w-lg">
             <SectionLabel>Active configuration</SectionLabel>
-            <DescriptionList className="mt-3">
+            <Card asChild>
               <div>
-                <DescriptionTerm>Mode</DescriptionTerm>
-                <DescriptionDetails className="font-medium capitalize">
-                  {provider.mode ?? "—"}
-                </DescriptionDetails>
+                <DescriptionList className="[&>div]:justify-start [&>div]:gap-x-6">
+                  <div>
+                    <DescriptionTerm className="w-28 shrink-0">Mode</DescriptionTerm>
+                    <DescriptionDetails className="font-medium capitalize">
+                      {provider.mode ?? "—"}
+                    </DescriptionDetails>
+                  </div>
+                  <div>
+                    <DescriptionTerm className="w-28 shrink-0">Provider</DescriptionTerm>
+                    <DescriptionDetails>{provider.provider ?? "—"}</DescriptionDetails>
+                  </div>
+                  <div>
+                    <DescriptionTerm className="w-28 shrink-0">Model</DescriptionTerm>
+                    <DescriptionDetails mono>{provider.model ?? "—"}</DescriptionDetails>
+                  </div>
+                  <div>
+                    <DescriptionTerm className="w-28 shrink-0">Context cap</DescriptionTerm>
+                    <DescriptionDetails className="tabular-nums">
+                      {typeof provider.context_cap_tokens === "number"
+                        ? new Intl.NumberFormat("en-US").format(provider.context_cap_tokens) + " tokens"
+                        : "—"}
+                    </DescriptionDetails>
+                  </div>
+                  <div>
+                    <DescriptionTerm className="w-28 shrink-0">Credential</DescriptionTerm>
+                    <DescriptionDetails mono>{provider.credential_ref ?? "—"}</DescriptionDetails>
+                  </div>
+                </DescriptionList>
               </div>
-              <div>
-                <DescriptionTerm>Provider</DescriptionTerm>
-                <DescriptionDetails>{provider.provider ?? "—"}</DescriptionDetails>
-              </div>
-              <div>
-                <DescriptionTerm>Model</DescriptionTerm>
-                <DescriptionDetails mono>{provider.model ?? "—"}</DescriptionDetails>
-              </div>
-              <div>
-                <DescriptionTerm>Context cap</DescriptionTerm>
-                <DescriptionDetails className="tabular-nums">
-                  {typeof provider.context_cap_tokens === "number"
-                    ? new Intl.NumberFormat("en-US").format(provider.context_cap_tokens) + " tokens"
-                    : "—"}
-                </DescriptionDetails>
-              </div>
-              <div>
-                <DescriptionTerm>Credential</DescriptionTerm>
-                <DescriptionDetails mono>{provider.credential_ref ?? "—"}</DescriptionDetails>
-              </div>
-            </DescriptionList>
+            </Card>
           </section>
         </Section>
         <Section asChild>

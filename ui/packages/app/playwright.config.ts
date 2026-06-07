@@ -52,7 +52,20 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         // Next.js Turbopack cold start can exceed 45s on first run after install.
         timeout: 120_000,
+        // @clerk/nextjs >=7.4 hard-throws without a publishable + secret key
+        // at render (no more keyless fallback), so the dry server needs both.
+        // Source them from the environment — the 1Password vault in CI (see
+        // .github/workflows/dry.yml) or .env.local locally — and pass them
+        // through to the spawned Next server. Omit when unset so Next can
+        // still load them from .env.local on disk. The publishable key is
+        // public (it ships in the client bundle); the secret key never is.
         env: {
+          ...(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+            ? { NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }
+            : {}),
+          ...(process.env.CLERK_SECRET_KEY
+            ? { CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY }
+            : {}),
           NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in",
           NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up",
         },

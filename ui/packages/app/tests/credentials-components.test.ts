@@ -185,13 +185,13 @@ describe("AddCredentialForm component", () => {
     await renderForm();
     expect(screen.getByLabelText(/^name$/i)).toBeTruthy();
     expect(screen.getByLabelText(/data \(json object\)/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /store credential/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^add$/i })).toBeTruthy();
   });
 
   it("submit with empty fields shows zod required errors", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() => {
       expect(screen.getByText(/Credential name is required/i)).toBeTruthy();
       expect(screen.getByText(/Credential data is required/i)).toBeTruthy();
@@ -209,7 +209,7 @@ describe("AddCredentialForm component", () => {
     fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
       target: { value: "{not json" },
     });
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(screen.getByText(/Invalid JSON:/i)).toBeTruthy(),
     );
@@ -223,7 +223,7 @@ describe("AddCredentialForm component", () => {
     fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
       target: { value: "[1,2,3]" },
     });
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(screen.getByText(/Data must be a JSON object/i)).toBeTruthy(),
     );
@@ -237,7 +237,7 @@ describe("AddCredentialForm component", () => {
     fireEvent.change(screen.getByLabelText(/data \(json object\)/i), {
       target: { value: "{}" },
     });
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(screen.getByText(/Object must have at least one field/i)).toBeTruthy(),
     );
@@ -253,7 +253,7 @@ describe("AddCredentialForm component", () => {
       screen.getByLabelText(/data \(json object\)/i),
       '{{"host":"api.machines.dev","api_token":"T"}',
     );
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(createCredentialActionMock).toHaveBeenCalledWith(
         "ws_1",
@@ -276,7 +276,7 @@ describe("AddCredentialForm component", () => {
       screen.getByLabelText(/data \(json object\)/i),
       '{{"host":"x"}',
     );
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(screen.getByText(/data too large/i)).toBeTruthy(),
     );
@@ -295,7 +295,7 @@ describe("AddCredentialForm component", () => {
       screen.getByLabelText(/data \(json object\)/i),
       '{{"host":"x"}',
     );
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     // WS-G — empty error from the action falls through presentError's
     // default path ("Couldn't store the credential. Try again …").
     await waitFor(() =>
@@ -316,7 +316,7 @@ describe("AddCredentialForm component", () => {
       screen.getByLabelText(/data \(json object\)/i),
       '{{"host":"x"}',
     );
-    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() =>
       expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
     );
