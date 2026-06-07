@@ -25,7 +25,8 @@ vi.mock("lucide-react", () => ({
 }));
 
 import ModeRadio from "@/app/(dashboard)/settings/models/components/ModeRadio";
-import ProviderKeyFields from "@/app/(dashboard)/settings/models/components/ProviderKeyFields";
+import Step1Credential from "@/app/(dashboard)/settings/models/components/Step1Credential";
+import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model";
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
 import { RadioGroup } from "@usezombie/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
@@ -92,20 +93,18 @@ describe("ModeRadio", () => {
   });
 });
 
-// ── ProviderKeyFields (presentational) ─────────────────────────────────
+// ── Step1Credential (presentational) ───────────────────────────────────
 
-describe("ProviderKeyFields", () => {
+describe("Step1Credential", () => {
   const baseProps = {
     workspaceId: WORKSPACE_ID,
     credentials: [CRED],
     credentialRef: CRED.name,
     onCredentialRefChange: () => {},
-    modelOverride: "",
-    onModelOverrideChange: () => {},
   };
 
   it("shows the empty-state CTA linking to /credentials when vault is empty", () => {
-    render(React.createElement(ProviderKeyFields, { ...baseProps, credentials: [] }));
+    render(React.createElement(Step1Credential, { ...baseProps, credentials: [] }));
     expect(screen.getByTestId("provider-key-no-credentials")).toBeTruthy();
     const link = screen.getByText("Add a credential first") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/credentials");
@@ -114,31 +113,56 @@ describe("ProviderKeyFields", () => {
   });
 
   it("renders a credential combobox showing the current value", () => {
-    render(React.createElement(ProviderKeyFields, baseProps));
+    render(React.createElement(Step1Credential, baseProps));
     const trigger = screen.getByLabelText(/credential/i);
     expect(trigger.getAttribute("role")).toBe("combobox");
     expect(trigger.textContent).toContain(CRED.name);
   });
 
-  it("propagates credential and model edits to the parent", () => {
+  it("propagates credential selection to the parent", () => {
     const onCred = vi.fn();
-    const onModel = vi.fn();
     render(
-      React.createElement(ProviderKeyFields, {
+      React.createElement(Step1Credential, {
         ...baseProps,
         credentials: [CRED, { name: "anth", created_at: CRED.created_at }],
         onCredentialRefChange: onCred,
-        onModelOverrideChange: onModel,
       }),
     );
     const trigger = screen.getByLabelText(/credential/i);
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
-    const anth = screen.getByText("anth");
-    fireEvent.click(anth);
+    fireEvent.click(screen.getByText("anth"));
     expect(onCred).toHaveBeenCalledWith("anth");
-    fireEvent.change(screen.getByLabelText(/model override/i), { target: { value: "claude-sonnet-4-6" } });
+  });
+});
+
+// ── Step2Model (presentational) ────────────────────────────────────────
+
+describe("Step2Model", () => {
+  const MODELS = [
+    { id: "claude-sonnet-4-6", provider: "anthropic", context_cap_tokens: 256000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    { id: "kimi-k2.6", provider: "moonshot", context_cap_tokens: 256000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+  ];
+
+  it("renders a catalogue-backed picker and propagates the picked model", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: MODELS, model: "", onModelChange: onModel }));
+    const trigger = screen.getByLabelText(/model/i);
+    expect(trigger.getAttribute("role")).toBe("combobox");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByText("kimi-k2.6"));
+    expect(onModel).toHaveBeenCalledWith("kimi-k2.6");
+  });
+
+  it("falls back to a free-text input when the catalogue is empty", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: [], model: "", onModelChange: onModel }));
+    const input = screen.getByLabelText(/model/i);
+    expect(input.tagName).toBe("INPUT");
+    fireEvent.change(input, { target: { value: "claude-sonnet-4-6" } });
     expect(onModel).toHaveBeenCalledWith("claude-sonnet-4-6");
   });
 });
@@ -152,6 +176,7 @@ describe("ProviderSelector", () => {
     currentCredentialRef: null,
     currentModel: "",
     credentials: [CRED],
+    catalogue: [],
   };
 
   it("submits self-managed PUT with the picked credential and refreshes the route", async () => {
