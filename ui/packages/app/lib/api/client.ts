@@ -14,11 +14,21 @@ export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
  * rare for our APIs and is ignored (callers fall back to exponential
  * backoff). Mirrors the CLI parser at `zombiectl/src/lib/http.js`.
  */
+const MS_PER_SECOND = 1000;
+
 export function parseRetryAfterHeaderValue(headerVal: string | null): number | null {
   if (!headerVal) return null;
   const n = Number(headerVal);
-  if (Number.isFinite(n) && n >= 0) return n * 1000;
+  if (Number.isFinite(n) && n >= 0) return n * MS_PER_SECOND;
   return null;
+}
+
+// Reads Retry-After off a response. Typed to need only an optional `Headers`
+// so it tolerates header-less duck-typed responses (test doubles, exotic
+// runtimes); a missing Headers reads as "no Retry-After" and the retry layer
+// falls back to exponential backoff rather than throwing.
+function retryAfterFrom(res: { headers?: Headers }): number | null {
+  return res.headers ? parseRetryAfterHeaderValue(res.headers.get("retry-after")) : null;
 }
 
 export async function request<T>(
@@ -44,12 +54,7 @@ export async function request<T>(
   const body = await res.json().catch(() => ({ detail: res.statusText }));
 
   if (!res.ok) {
-    // Defensive access — test doubles and rare runtimes may omit
-    // `headers`. The retry layer treats `null` as "fall back to
-    // exponential backoff" rather than failing closed.
-    const retryAfterMs = parseRetryAfterHeaderValue(
-      typeof res.headers?.get === "function" ? res.headers.get("retry-after") : null,
-    );
+    const retryAfterMs = retryAfterFrom(res);
     throw new ApiError(
       body.detail ?? body.title ?? res.statusText,
       res.status,

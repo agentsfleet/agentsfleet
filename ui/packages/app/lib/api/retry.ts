@@ -53,7 +53,7 @@ export type RetryOptions = {
 export function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
     if (err.code === "TIMEOUT") return "timeout";
-    if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
+    if (RETRYABLE_STATUSES.has(err.status)) {
       if (err.status === 429) return "429";
       return "5xx";
     }
@@ -120,8 +120,10 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 function isNoRetryEnv(): boolean {
-  if (typeof process === "undefined") return false;
-  const v = process.env?.ZOMBIE_NO_RETRY;
+  // `process.env` is defined in every runtime this ships to (Node on the
+  // server, the webpack/Edge shim in the browser); a non-public var simply
+  // reads back undefined off-server, so no `typeof process` guard is needed.
+  const v = process.env.ZOMBIE_NO_RETRY;
   return v === "1" || v === "true";
 }
 
@@ -223,7 +225,7 @@ export async function requestWithRetry<T>(
   // attempt it returns null, so the loop always exits via return (success)
   // or throw (failure) — no normal fall-through after the loop.
   let attempt = 0;
-  while (true) {
+  for (;;) {
     attempt += 1;
     const startedAt = Date.now();
     try {

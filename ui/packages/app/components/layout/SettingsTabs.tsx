@@ -28,7 +28,9 @@ function activeHref(pathname: string): string {
 }
 
 function tabSource(href: string): string {
-  const slug = href === "/settings" ? "basic" : (href.split("/").pop() ?? href);
+  // Last path segment as the slug. `lastIndexOf` always returns a number, so
+  // `slice` yields a string — no possibly-undefined `pop()` fallback branch.
+  const slug = href === "/settings" ? "basic" : href.slice(href.lastIndexOf("/") + 1);
   return `${NAV_SURFACE}_${slug}`;
 }
 

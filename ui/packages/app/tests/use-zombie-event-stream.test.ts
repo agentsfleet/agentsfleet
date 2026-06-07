@@ -115,6 +115,26 @@ describe("useZombieEventStream", () => {
     });
   });
 
+  it("a double error fires two reconnects but the second start no-ops (no leaked EventSource)", async () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      expect(FakeEventSource.instances.length).toBe(1);
+      // Two error events before any reconnect fires leave two pending reconnect
+      // timers (onEventSourceError doesn't dedupe). When both fire, the first
+      // re-opens the stream and the second finds entry.eventSource already set
+      // and bails — the double-start guard prevents a leaked EventSource.
+      act(() => FakeEventSource.instances[0]!.fail());
+      act(() => FakeEventSource.instances[0]!.fail());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(FakeEventSource.instances.length).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("seeds from the server-rendered initial rows and sorts by createdAt ascending", async () => {
     const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
     const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);

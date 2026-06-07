@@ -22,7 +22,7 @@ import {
 } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { listApiKeysAction, revokeApiKeyAction, deleteApiKeyAction } from "../actions";
-import RevokeConfirm, { type ConfirmTarget } from "./RevokeConfirm";
+import RevokeConfirm, { type ConfirmTarget, type ConfirmTargetActive } from "./RevokeConfirm";
 
 const SORT_LABELS: Record<ApiKeySort, string> = {
   "-created_at": "Newest first",
@@ -97,8 +97,9 @@ export default function ApiKeyList({
     });
   }
 
-  function onConfirm() {
-    if (!target) return;
+  // `target` is supplied by RevokeConfirm's onConfirm closure (bound only while
+  // the target is non-null), so no in-function null check is needed.
+  function onConfirm(target: ConfirmTargetActive) {
     const { id, mode } = target;
     setError(null);
     startTransition(async () => {

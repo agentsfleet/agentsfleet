@@ -66,8 +66,9 @@ export default function BillingUsageTab({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function loadMore() {
-    if (!cursor) return;
+  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
+  // render guard on the trigger), so no in-function null check is needed.
+  function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
       const result = await listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor });
@@ -117,7 +118,7 @@ export default function BillingUsageTab({
             type="button"
             variant="outline"
             size="sm"
-            onClick={loadMore}
+            onClick={() => loadMore(cursor)}
             disabled={pending}
             data-testid="usage-load-more"
           >

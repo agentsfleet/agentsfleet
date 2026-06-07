@@ -1,6 +1,8 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
+const TEST_TIMEOUT_MS = 10_000
+
 export default defineConfig({
   cacheDir: '.tmp/vite',
   resolve: {
@@ -21,7 +23,7 @@ export default defineConfig({
       '**/.{idea,git,cache,output,temp}/**',
       'tests/e2e/**',
     ],
-    testTimeout: 10000,
+    testTimeout: TEST_TIMEOUT_MS,
     setupFiles: ['./vitest.setup.ts'],
     // Global DOM environment so every test file can render React components
     // and fire interactions through @testing-library. Node-only tests still
@@ -62,10 +64,10 @@ export default defineConfig({
         'tests/**',
       ],
       thresholds: {
-        statements: 99,
-        branches: 99,
-        functions: 99,
-        lines: 99,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
     },
   },

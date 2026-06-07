@@ -33,6 +33,32 @@ describe("lib/utils formatDate", () => {
   });
 });
 
+// ── Billing settings page — Promise.all catch fallbacks ─────────────────
+
+describe("billing settings page — error fallback", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    authMock.mockReset();
+  });
+  afterEach(() => cleanup());
+
+  it("renders the not-ready empty state when getTenantBilling rejects", async () => {
+    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
+    // Both endpoints reject — exercises the `.catch(() => null)` and the
+    // `.catch(() => ({ items: [], next_cursor: null }))` fallbacks; a null
+    // billing result renders the explanatory empty state, not Next's error page.
+    vi.doMock("@/lib/api/tenant_billing", () => ({
+      getTenantBilling: vi.fn().mockRejectedValue(new Error("no billing row")),
+      listTenantBillingCharges: vi.fn().mockRejectedValue(new Error("no charges")),
+    }));
+    const { default: BillingSettingsPage } = await import(
+      "../app/(dashboard)/settings/billing/page"
+    );
+    const markup = renderToStaticMarkup(await BillingSettingsPage());
+    expect(markup).toMatch(/ready yet/);
+  });
+});
+
 // ── Inner async components of dashboard page.tsx + layout edge branches ──
 
 describe("dashboard page inner async components", () => {

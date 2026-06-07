@@ -118,7 +118,9 @@ export type LiveFrame =
       name: string;
       ms: number;
     }
-  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status: string };
+  // `status` is optional — the backend can emit a status-less completion
+  // frame, which the timeline resolves to "processed".
+  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status?: string };
 
 // Same-origin URL for the SSE stream. The path is intercepted by the
 // Next Route Handler at app/backend/.../events/stream/route.ts which

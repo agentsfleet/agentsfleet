@@ -3,8 +3,10 @@
 import { ConfirmDialog } from "@usezombie/design-system";
 import type { ApiKeyRow } from "@/lib/api/api_keys";
 
-/** The key + which destructive action is being confirmed, or null when closed. */
-export type ConfirmTarget = (ApiKeyRow & { mode: "revoke" | "delete" }) | null;
+/** The key + which destructive action is being confirmed. */
+export type ConfirmTargetActive = ApiKeyRow & { mode: "revoke" | "delete" };
+/** The active target, or null when the dialog is closed. */
+export type ConfirmTarget = ConfirmTargetActive | null;
 
 const COPY = {
   revoke: {
@@ -22,7 +24,7 @@ type Props = {
   target: ConfirmTarget;
   error: string | null;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  onConfirm: (target: ConfirmTargetActive) => void;
 };
 
 export default function RevokeConfirm({ target, error, onOpenChange, onConfirm }: Props) {
@@ -38,7 +40,9 @@ export default function RevokeConfirm({ target, error, onOpenChange, onConfirm }
       confirmLabel={copy.confirmLabel}
       intent="destructive"
       errorMessage={error}
-      onConfirm={onConfirm}
+      // Bound to the active target when open; `undefined` when closed so the
+      // caller's handler needs no unreachable null guard.
+      onConfirm={target ? () => onConfirm(target) : undefined}
     />
   );
 }

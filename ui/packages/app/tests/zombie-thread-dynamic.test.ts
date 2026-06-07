@@ -2,13 +2,20 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 
+// Stub the heavy inner component (it pulls in @assistant-ui/react) so the
+// dynamic import factory resolves to a light module.
+vi.mock("@/components/domain/ZombieThread", () => ({
+  ZombieThread: () => null,
+}));
+
 // `next/dynamic` lazy-loads the inner component asynchronously. Mock it
 // to return a deterministic placeholder so the shim's mount path is
 // covered without depending on the full Next.js runtime loader.
 vi.mock("next/dynamic", () => {
+  type Loader = () => Promise<unknown>;
   type LoaderOpts = { loading?: () => React.ReactNode };
   return {
-    default: (_loader: unknown, opts: LoaderOpts) => {
+    default: (loader: Loader, opts: LoaderOpts) => {
       // Render the configured loading fallback on first mount, then
       // resolve to a stub on the next tick. Mirrors next/dynamic's
       // ssr:false posture: server renders nothing/the loader,
@@ -16,6 +23,9 @@ vi.mock("next/dynamic", () => {
       return function MockedDynamic(props: Record<string, unknown>) {
         const [ready, setReady] = React.useState(false);
         React.useEffect(() => {
+          // Exercise the real import factory (its `.then` mapper too); the
+          // resolved module is irrelevant to this deterministic stub.
+          void loader();
           setReady(true);
         }, []);
         if (!ready && opts.loading) return opts.loading();

@@ -45,13 +45,49 @@ function fillKeyFields(provider: string, apiKey: string, model: string) {
 }
 
 describe("InlineProviderKeyCreate", () => {
-  it("paste-fills the provider from the key prefix and defaults the model from the catalogue", () => {
+  it("paste-fills the provider and scopes the model picker to the detected provider", () => {
     renderForm();
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-ant-secret123" } });
     expect((screen.getByLabelText("Provider") as HTMLInputElement).value).toBe("anthropic");
-    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("claude-sonnet-4-6");
+    // The model field becomes a provider-scoped picker, defaulted to anthropic's
+    // first catalogue model.
+    const modelTrigger = screen.getByLabelText("Model");
+    expect(modelTrigger.getAttribute("role")).toBe("combobox");
+    expect(modelTrigger.textContent).toContain("claude-sonnet-4-6");
     // The credential name follows the detected provider until edited.
     expect((screen.getByLabelText(/credential name/i) as HTMLInputElement).value).toBe("anthropic");
+  });
+
+  it("lists only the selected provider's models in the scoped picker", () => {
+    const catalogue: ModelCap[] = [
+      ...MODELS,
+      { id: "claude-opus-4-8", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    renderForm({ catalogue });
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    const modelTrigger = screen.getByLabelText("Model");
+    fireEvent.pointerDown(modelTrigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(modelTrigger);
+    fireEvent.keyDown(modelTrigger, { key: "Enter" });
+    // Anthropic's models are listed; the moonshot model is not.
+    expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
+    expect(screen.queryByText("kimi-k2.6")).toBeNull();
+  });
+
+  it("keeps the current model when re-applying a provider that still offers it", () => {
+    const catalogue: ModelCap[] = [
+      ...MODELS,
+      { id: "claude-opus-4-8", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    renderForm({ catalogue });
+    // First apply sets the model to anthropic's first catalogue entry.
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    const trigger = screen.getByLabelText("Model");
+    expect(trigger.textContent).toContain("claude-sonnet-4-6");
+    // Re-applying the same provider (trailing space → distinct input event, same
+    // trimmed provider) must KEEP the still-valid model, not reset it.
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic " } });
+    expect(screen.getByLabelText("Model").textContent).toContain("claude-sonnet-4-6");
   });
 
   it("does not overwrite a provider the user typed when a key is pasted", () => {
@@ -119,13 +155,19 @@ describe("InlineProviderKeyCreate", () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith("anthropic"));
   });
 
-  it("keeps a user-edited model when a key is later pasted", () => {
+  it("resets the model to the new provider's default when a pasted key changes the provider", () => {
     renderForm();
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "custom-model" } });
+    // Before a provider is known the model is a free-text field.
+    const modelInput = screen.getByLabelText("Model") as HTMLInputElement;
+    expect(modelInput.tagName).toBe("INPUT");
+    fireEvent.change(modelInput, { target: { value: "custom-model" } });
+    // Pasting an anthropic key applies the provider and re-defaults the model to
+    // anthropic's catalogue — the prior free-typed model belonged to no provider.
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-ant-xyz" } });
-    // The key still fills the provider, but the model the user chose is preserved.
     expect((screen.getByLabelText("Provider") as HTMLInputElement).value).toBe("anthropic");
-    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("custom-model");
+    const modelTrigger = screen.getByLabelText("Model");
+    expect(modelTrigger.getAttribute("role")).toBe("combobox");
+    expect(modelTrigger.textContent).toContain("claude-sonnet-4-6");
   });
 
   it("leaves the provider blank when the key prefix is unrecognized", () => {
