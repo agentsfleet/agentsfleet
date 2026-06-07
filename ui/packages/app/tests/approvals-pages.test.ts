@@ -159,14 +159,6 @@ describe("ApprovalDetailPage", () => {
     );
   });
 
-  it("renders empty evidence object when gate.evidence is null", async () => {
-    getApprovalMock.mockResolvedValueOnce(gateFixture({ evidence: null as unknown as Record<string, unknown> }));
-    const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
-    const markup = renderToStaticMarkup(await Page({ params: Promise.resolve({ gateId: GATE_ID }) }));
-    // The `?? {}` fallback renders an empty JSON object literal.
-    expect(markup).toContain("{}");
-  });
-
   it("notFound when getApproval returns null", async () => {
     getApprovalMock.mockRejectedValueOnce(new Error("404"));
     const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");

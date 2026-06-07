@@ -49,10 +49,9 @@ export default function GuidedTriggerCard({
     try {
       await navigator.clipboard.writeText(value);
       setCopiedKey(key);
-      resetTimer.start(
-        () => setCopiedKey((k) => (k === key ? null : k)),
-        COPY_RESET_MS,
-      );
+      // The timer is single-shot (a second copy cancels the prior one), so the
+      // pending callback always belongs to the current key — clear it outright.
+      resetTimer.start(() => setCopiedKey(null), COPY_RESET_MS);
     } catch {
       // clipboard API unavailable — user can select the code block manually
     }

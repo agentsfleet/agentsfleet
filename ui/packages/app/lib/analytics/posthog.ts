@@ -68,7 +68,11 @@ function resolveConfig(env: Record<string, string | undefined>) {
 
 function sanitizeProps(properties: Partial<AnalyticsProps>): Record<string, AnalyticsValue> {
   const out: Record<string, AnalyticsValue> = {};
-  for (const [key, value] of Object.entries(properties)) {
+  // `Object.entries` widens optional props to a non-null value type, but at
+  // runtime a caller can pass `{ key: undefined }`; keep the null check so an
+  // explicit-undefined prop is dropped rather than stringified to "undefined".
+  const entries = Object.entries(properties) as Array<[string, AnalyticsValue | undefined]>;
+  for (const [key, value] of entries) {
     const typedKey = key as keyof AnalyticsProps;
     if (!ALLOWED_PROP_KEYS.has(typedKey)) continue;
     if (value == null) continue;

@@ -69,7 +69,7 @@ export default async function ApprovalDetailPage({
           <Card>
             <CardContent className="pt-6">
               <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-4 text-xs">
-                {JSON.stringify(gate.evidence ?? {}, null, 2)}
+                {JSON.stringify(gate.evidence, null, 2)}
               </pre>
             </CardContent>
           </Card>

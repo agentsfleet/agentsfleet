@@ -44,13 +44,17 @@ export default async function ProviderSettingsPage() {
     );
   }
 
-  const [provider, credentialsResp, catalogue] = await Promise.all([
-    getTenantProvider(token).catch((err) => ({ error: String(err) }) as never),
+  const [providerResult, credentialsResp, catalogue] = await Promise.all([
+    getTenantProvider(token).catch((err) => ({ error: String(err) })),
     listCredentials(workspace.id, token).catch(() => ({ credentials: [] })),
     getModelCaps()
       .then((caps) => caps.models)
       .catch(() => [] as ModelCap[]),
   ]);
+  // A provider-fetch error degrades the config card to em-dash placeholders
+  // rather than failing the page; `provider` is null in that case.
+  const provider = "error" in providerResult ? null : providerResult;
+  const contextCap = provider?.context_cap_tokens;
 
   return (
     <div className="space-y-12">
@@ -76,28 +80,28 @@ export default async function ProviderSettingsPage() {
                     <div>
                       <DescriptionTerm className="w-28 shrink-0">Mode</DescriptionTerm>
                       <DescriptionDetails className="font-medium capitalize">
-                        {provider.mode ?? "—"}
+                        {provider?.mode ?? "—"}
                       </DescriptionDetails>
                     </div>
                     <div>
                       <DescriptionTerm className="w-28 shrink-0">Provider</DescriptionTerm>
-                      <DescriptionDetails>{provider.provider ?? "—"}</DescriptionDetails>
+                      <DescriptionDetails>{provider?.provider ?? "—"}</DescriptionDetails>
                     </div>
                     <div>
                       <DescriptionTerm className="w-28 shrink-0">Model</DescriptionTerm>
-                      <DescriptionDetails mono>{provider.model ?? "—"}</DescriptionDetails>
+                      <DescriptionDetails mono>{provider?.model ?? "—"}</DescriptionDetails>
                     </div>
                     <div>
                       <DescriptionTerm className="w-28 shrink-0">Context cap</DescriptionTerm>
                       <DescriptionDetails className="tabular-nums">
-                        {typeof provider.context_cap_tokens === "number"
-                          ? new Intl.NumberFormat("en-US").format(provider.context_cap_tokens) + " tokens"
+                        {typeof contextCap === "number"
+                          ? new Intl.NumberFormat("en-US").format(contextCap) + " tokens"
                           : "—"}
                       </DescriptionDetails>
                     </div>
                     <div>
                       <DescriptionTerm className="w-28 shrink-0">Credential</DescriptionTerm>
-                      <DescriptionDetails mono>{provider.credential_ref ?? "—"}</DescriptionDetails>
+                      <DescriptionDetails mono>{provider?.credential_ref ?? "—"}</DescriptionDetails>
                     </div>
                   </DescriptionList>
                 </div>
@@ -109,9 +113,9 @@ export default async function ProviderSettingsPage() {
               <SectionLabel>Change provider</SectionLabel>
               <ProviderSelector
                 workspaceId={workspace.id}
-                currentMode={provider.mode ?? PROVIDER_MODE.platform}
-                currentCredentialRef={provider.credential_ref}
-                currentModel={provider.model ?? ""}
+                currentMode={provider?.mode ?? PROVIDER_MODE.platform}
+                currentCredentialRef={provider?.credential_ref ?? null}
+                currentModel={provider?.model ?? ""}
                 credentials={credentialsResp.credentials}
                 catalogue={catalogue}
               />
