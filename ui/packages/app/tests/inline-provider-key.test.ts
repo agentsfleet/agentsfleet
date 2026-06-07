@@ -140,4 +140,25 @@ describe("InlineProviderKeyCreate", () => {
     fireEvent.keyDown(screen.getByLabelText("Provider"), { key: "Enter" });
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
+
+  it("recovers if the create action throws — re-enables the button and surfaces the error", async () => {
+    createCredentialActionMock.mockRejectedValue(new Error("network partition"));
+    const onCreated = vi.fn();
+    renderForm({ catalogue: [], onCreated });
+    fillKeyFields("anthropic", "sk-ant-secret", "claude-sonnet-4-6");
+    const button = screen.getByRole("button", { name: /save key/i });
+    fireEvent.click(button);
+    // try/catch/finally must clear pending (button not stuck) and show the error.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a generic message when a non-Error value is thrown", async () => {
+    createCredentialActionMock.mockRejectedValue("opaque failure");
+    renderForm({ catalogue: [], onCreated: vi.fn() });
+    fillKeyFields("anthropic", "sk-ant-secret", "claude-sonnet-4-6");
+    fireEvent.click(screen.getByRole("button", { name: /save key/i }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
 });

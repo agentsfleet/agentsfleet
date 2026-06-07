@@ -75,23 +75,35 @@ export default function InlineProviderKeyCreate({
     if (!canSubmit) return;
     setError(null);
     setPending(true);
-    const result = await createCredentialAction(workspaceId, {
-      name: effectiveName,
-      data: { provider: provider.trim(), api_key: apiKey.trim(), model: model.trim() },
-    });
-    setPending(false);
-    if (!result.ok) {
+    try {
+      const result = await createCredentialAction(workspaceId, {
+        name: effectiveName,
+        data: { provider: provider.trim(), api_key: apiKey.trim(), model: model.trim() },
+      });
+      if (!result.ok) {
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "store the credential",
+          }),
+        );
+        return;
+      }
+      onCreated(effectiveName);
+      router.refresh();
+    } catch (err) {
+      // A thrown action (network partition, Server-Action machinery) must not
+      // leave the button stuck disabled or fail silently — surface it.
       setError(
         presentErrorString({
-          errorCode: result.errorCode,
-          message: result.error,
+          message: err instanceof Error ? err.message : "Unexpected error",
           action: "store the credential",
         }),
       );
-      return;
+    } finally {
+      setPending(false);
     }
-    onCreated(effectiveName);
-    router.refresh();
   }
 
   // The fields live inside the wizard's form; intercept Enter on each field so it
