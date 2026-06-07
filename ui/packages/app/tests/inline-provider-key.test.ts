@@ -74,6 +74,22 @@ describe("InlineProviderKeyCreate", () => {
     expect(screen.queryByText("kimi-k2.6")).toBeNull();
   });
 
+  it("keeps the current model when re-applying a provider that still offers it", () => {
+    const catalogue: ModelCap[] = [
+      ...MODELS,
+      { id: "claude-opus-4-8", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    renderForm({ catalogue });
+    // First apply sets the model to anthropic's first catalogue entry.
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    const trigger = screen.getByLabelText("Model");
+    expect(trigger.textContent).toContain("claude-sonnet-4-6");
+    // Re-applying the same provider (trailing space → distinct input event, same
+    // trimmed provider) must KEEP the still-valid model, not reset it.
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic " } });
+    expect(screen.getByLabelText("Model").textContent).toContain("claude-sonnet-4-6");
+  });
+
   it("does not overwrite a provider the user typed when a key is pasted", () => {
     renderForm();
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "my-proxy" } });

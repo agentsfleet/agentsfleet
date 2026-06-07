@@ -93,6 +93,25 @@ describe("EditCredentialDialog", () => {
     expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
+  it("rename with an empty new name is rejected with a length message", () => {
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: /advanced — rename/i }));
+    enterData('{"api_token": "FLY"}');
+    // Leave the new-name field blank.
+    fireEvent.click(screen.getByRole("button", { name: /^rename$/i }));
+    expect(screen.getByText(/new name must be 1.?64 characters/i)).toBeTruthy();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+  });
+
+  it("Cancel closes the dialog and resets without calling the API", () => {
+    const onOpenChange = vi.fn();
+    renderDialog(onOpenChange);
+    enterData('{"api_token": "FLY"}');
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+  });
+
   it("rejects non-object / unparseable data before calling the API", () => {
     renderDialog();
     enterData('"just a string"');
@@ -117,6 +136,25 @@ describe("EditCredentialDialog", () => {
     await waitFor(() => expect(screen.getAllByText(/credential|unavailable/i).length).toBeGreaterThan(0));
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("surfaces a create failure during rename and never deletes the old name", async () => {
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "name already taken",
+      errorCode: "UZ-CRED-409",
+      status: 409,
+    });
+    renderDialog();
+    fireEvent.click(screen.getByRole("button", { name: /advanced — rename/i }));
+    enterData('{"api_token": "FLY"}');
+    fireEvent.change(screen.getByLabelText(/new name/i), { target: { value: "fly-prod" } });
+    fireEvent.click(screen.getByRole("button", { name: /^rename$/i }));
+
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    // create failed → the old name is never deleted.
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/name already taken/i)).toBeTruthy());
   });
 
   it("surfaces a delete failure during rename (new name stored, old kept)", async () => {

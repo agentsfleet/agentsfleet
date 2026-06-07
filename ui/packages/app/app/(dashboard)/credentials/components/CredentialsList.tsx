@@ -96,9 +96,9 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
         workspaceId={workspaceId}
         name={editTarget ?? ""}
         open={editTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditTarget(null);
-        }}
+        // The dialog is parent-controlled and only ever emits a close, so clear
+        // the target unconditionally.
+        onOpenChange={() => setEditTarget(null)}
       />
       <ConfirmDialog
         open={target !== null}

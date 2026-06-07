@@ -136,7 +136,7 @@ describe("CredentialsList component", () => {
     expect(deleteCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("clicking edit opens the edit dialog for that credential", async () => {
+  it("clicking edit opens the edit dialog, and Cancel closes it (clears editTarget)", async () => {
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Edit credential fly/i));
@@ -144,6 +144,9 @@ describe("CredentialsList component", () => {
     // The rotate (default) action is offered; rename is gated behind Advanced.
     expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /advanced — rename/i })).toBeTruthy();
+    // Cancel closes the dialog (CredentialsList clears editTarget on !open).
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByText(/Edit credential .*fly/i)).toBeNull());
   });
 
   it("error from a previous attempt clears when reopening for another credential", async () => {
