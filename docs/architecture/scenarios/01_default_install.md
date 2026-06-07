@@ -75,7 +75,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced zombies share it; rotation rotates everywhere).
 5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
-   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
+   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
 6. **File generation.** The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
@@ -93,7 +93,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
          schedule: "*/30 * * * *"
      model: accounts/fireworks/models/kimi-k2.6
      context:
-       context_cap_tokens: 256000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
+       context_cap_tokens: 256000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
        tool_window: auto
        memory_checkpoint_every: 5
        stage_chunk_threshold: 0.75
