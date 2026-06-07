@@ -174,7 +174,6 @@ export default function EditCredentialDialog({
               variant="ghost"
               size="sm"
               onClick={() => setMode(EDIT_MODE.rename)}
-              aria-expanded={false}
             >
               Advanced — rename
             </Button>
