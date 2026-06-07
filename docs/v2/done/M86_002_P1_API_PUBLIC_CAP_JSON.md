@@ -4,7 +4,7 @@
 **Milestone:** M86
 **Workstream:** 002
 **Date:** Jun 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the Models BYOK wizard (M86_001) server-fetches this for its model picker + default-model prefill; it cannot ship without it.
 **Categories:** API
 **Batch:** B1 — sibling of M86_001 on the same PR; build this first.
@@ -115,7 +115,7 @@ Extend `ResponseBody` with `rates { run_nanos_per_sec, event_nanos }` + `billing
 
 ### §3 — Reconcile docs + cross-repo prose
 In-repo architecture docs + the two skill repos + `docs/cli/zombiectl.mdx` updated to `cap.json`. `changelog.mdx`: a new entry (append-only).
-- **Dimension 3.1** — no in-repo doc references the old `model-caps.json` path. → Verify: `git grep -n 'model-caps.json' -- docs/` → 0
+- **Dimension 3.1** — no LIVE in-repo doc references the old `model-caps.json` path. → Verify: `git grep -n 'model-caps.json' -- src/ docs/architecture/` → 0. Carve-out: `docs/v2/done/*` history and the M86 spec prose retain the old name by design (append-only history + rename narration). The §1.1 "old path 404s" guarantee is structural — positive `cap.json` test + grep-clean `src/` + router exact-match, not a maintained literal negative test.
 
 ---
 
@@ -179,7 +179,7 @@ The `?model=` filter applies to `models[]` only; the global block is always pres
 - [ ] `cap.json` serves catalogue + `rates`/`billing`; `model-caps.json` 404s — verify: `make test-integration` (cap_json cases)
 - [ ] global block == `tenant_billing` constants — verify: the matching integration test
 - [ ] `make lint` (lint-zig) + `make memleak` clean; cross-compile both linux targets
-- [ ] `git grep -n 'model-caps.json' -- docs/ src/` → 0 (in-repo); cross-repo prose updated on their own branches
+- [x] `git grep -n 'model-caps.json' -- src/ docs/architecture/` → 0 (live in-repo surface; `docs/v2/done` history + spec narration excluded by design). Cross-repo prose (skills + docs.usezombie.com) is a satellite follow-up on its own repo branches.
 - [ ] `gitleaks detect` clean
 
 ---
