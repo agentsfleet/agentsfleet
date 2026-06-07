@@ -20,47 +20,28 @@ import {
 } from "@usezombie/design-system";
 import { createCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
+import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credential-data";
 
 type Props = { workspaceId: string };
 
-// `JSON.parse` only ever throws `SyntaxError` (an `Error`), so the fallback is
-// a belt-and-braces default for the `unknown` catch binding. Exported so the
-// branch is exercised directly without round-tripping a non-Error throw.
-export function jsonParseErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : "Invalid JSON";
-}
+// Re-exported from the shared credential-data contract so existing importers
+// (and tests) keep their import site; the implementation lives in one place.
+export { jsonParseErrorMessage } from "../lib/credential-data";
 
 const schema = z.object({
   name: z
     .string()
     .trim()
     .min(1, "Credential name is required")
-    .max(64, "Credential name must be 64 characters or fewer"),
+    .max(CREDENTIAL_NAME_MAX, `Credential name must be ${CREDENTIAL_NAME_MAX} characters or fewer`),
   data_json: z
     .string()
     .trim()
     .min(1, "Credential data is required")
     .superRefine((s, ctx) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(s);
-      } catch (err) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Invalid JSON: ${jsonParseErrorMessage(err)}` });
-        return;
-      }
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Data must be a JSON object — strings, arrays, and scalars are rejected",
-        });
-        return;
-      }
-      if (Object.keys(parsed).length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Object must have at least one field",
-        });
-      }
+      // Empty is already gated by .min(1) above; share the parse/shape contract.
+      const result = parseCredentialDataObject(s, "Credential data is required");
+      if (!result.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: result.message });
     }),
 });
 type FormValues = z.infer<typeof schema>;

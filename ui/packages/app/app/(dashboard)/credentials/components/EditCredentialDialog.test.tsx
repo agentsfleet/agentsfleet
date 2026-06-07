@@ -133,7 +133,9 @@ describe("EditCredentialDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /^rename$/i }));
 
     await waitFor(() => expect(deleteCredentialActionMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByText(/old credential name|delete failed/i)).toBeTruthy());
-    expect(routerRefresh).not.toHaveBeenCalled();
+    // The new name was created, so the list is refreshed to surface it (and the
+    // still-present old name), and the dialog stays open with a recovery message.
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(screen.getByText(/delete failed/i)).toBeTruthy();
   });
 });
