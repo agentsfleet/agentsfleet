@@ -4,7 +4,7 @@
 **Milestone:** M87
 **Workstream:** 001
 **Date:** Jun 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing dashboard confusion + a live console crash on the Models page.
 **Categories:** UI
 **Batch:** B1 — standalone UI workstream, no concurrent dependants.
