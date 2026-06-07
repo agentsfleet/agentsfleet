@@ -26,11 +26,6 @@ describe("dashboard segment loading states", () => {
       expectsTitle: "Events",
     },
     {
-      name: "credentials",
-      importer: () => import("../app/(dashboard)/credentials/loading"),
-      expectsTitle: "Credentials",
-    },
-    {
       name: "approvals",
       importer: () => import("../app/(dashboard)/approvals/loading"),
       expectsTitle: "Approvals",

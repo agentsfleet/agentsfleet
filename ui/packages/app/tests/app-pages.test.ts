@@ -91,6 +91,10 @@ describe("app layouts and pages", () => {
     expect(authMarkup).toContain("usezombie");
     // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
     expect(authMarkup).toContain("data-live");
+    // Configuration nav is collapsed to a single combined entry; the standalone
+    // /credentials nav link is gone (it redirects into the unified page now).
+    expect(dashboardMarkup).toContain("Models &amp; Credentials");
+    expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 
   it("dashboard entry page renders page header when authenticated", async () => {

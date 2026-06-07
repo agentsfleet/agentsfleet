@@ -40,9 +40,9 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
       byEvent.set(r.event_id, entry);
     }
     if (r.charge_type === CHARGE_TYPE.receive) {
-      entry.receive_nanos = r.credit_deducted_nanos ?? 0;
+      entry.receive_nanos = r.credit_deducted_nanos;
     } else if (r.charge_type === CHARGE_TYPE.stage) {
-      entry.stage_nanos = r.credit_deducted_nanos ?? 0;
+      entry.stage_nanos = r.credit_deducted_nanos;
       entry.token_count_input = r.token_count_input;
       entry.token_count_output = r.token_count_output;
     }
@@ -51,9 +51,9 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
     // entered the system), not by execution completion. Do NOT "fix" this
     // to use the latest timestamp — the dashboard's "when did this event
     // happen" semantic is gate-pass. Receive arrives before stage in the
-    // worker write path, but this branch tolerates either order for replay
-    // / migration safety.
-    if (r.recorded_at != null && (entry.recorded_at == null || r.recorded_at < entry.recorded_at)) {
+    // worker write path, but this comparison tolerates either order for
+    // replay / migration safety.
+    if (r.recorded_at < entry.recorded_at) {
       entry.recorded_at = r.recorded_at;
     }
     entry.total_nanos = entry.receive_nanos + entry.stage_nanos;
@@ -61,7 +61,7 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
   // Stable secondary sort by event_id keeps order deterministic when two
   // events share a recorded_at (rare but possible at sub-ms precision).
   return Array.from(byEvent.values()).sort((a, b) => {
-    const dt = (b.recorded_at ?? 0) - (a.recorded_at ?? 0);
+    const dt = b.recorded_at - a.recorded_at;
     return dt !== 0 ? dt : a.event_id.localeCompare(b.event_id);
   });
 }

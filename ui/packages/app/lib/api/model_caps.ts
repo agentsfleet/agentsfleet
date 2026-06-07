@@ -44,6 +44,21 @@ export interface CapJson {
   billing: CapBilling;
 }
 
+// The catalogue is keyed by (provider, model_id), so a model_id legitimately
+// recurs across providers. These two helpers keep that keying rule in one place
+// for the wizard's two distinct catalogue views: a provider-agnostic picker
+// dedupes by id; a provider-scoped picker filters by provider.
+
+/** One entry per model_id (last occurrence wins) — for a provider-agnostic picker. */
+export function uniqueModelIds(models: ModelCap[]): ModelCap[] {
+  return Array.from(new Map(models.map((m) => [m.id, m])).values());
+}
+
+/** Models belonging to one provider — unique by id within that provider (the PK). */
+export function modelsForProvider(models: ModelCap[], provider: string): ModelCap[] {
+  return models.filter((m) => m.provider === provider);
+}
+
 /**
  * Fetch the public model catalogue + global config. Unauthenticated — no Bearer
  * token (the document is global, non-secret). Server-fetched by the Models page

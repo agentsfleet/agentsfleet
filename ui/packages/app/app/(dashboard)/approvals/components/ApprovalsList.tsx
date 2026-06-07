@@ -73,10 +73,13 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   const hasLoadedMore = useRef(false);
   useEffect(() => {
     let alive = true;
+    // Read through an accessor so the post-await re-check isn't narrowed away:
+    // `loadMore` can flip the ref to true during the in-flight fetch.
+    const alreadyPaged = () => hasLoadedMore.current;
     const tick = async () => {
-      if (hasLoadedMore.current) return;
+      if (alreadyPaged()) return;
       const result = await listApprovalsAction(workspaceId, { limit: 50, zombieId });
-      if (!alive || hasLoadedMore.current) return;
+      if (!alive || alreadyPaged()) return;
       if (!result.ok) {
         // 401 is terminal — silently retrying for 5s forever leaves the
         // operator staring at a stale list with no signal that their
@@ -99,8 +102,9 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     };
   }, [workspaceId, zombieId]);
 
-  function loadMore() {
-    if (!cursor) return;
+  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
+  // render guard on the trigger), so no in-function null check is needed.
+  function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
       const result = await listApprovalsAction(workspaceId, { cursor, zombieId, limit: 50 });
@@ -185,7 +189,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
 
       {cursor ? (
         <div className="mt-4 flex justify-center">
-          <Button variant="ghost" size="sm" onClick={loadMore} disabled={pending} aria-busy={pending}>
+          <Button variant="ghost" size="sm" onClick={() => loadMore(cursor)} disabled={pending} aria-busy={pending}>
             {pending ? "Loading…" : "Load more"}
           </Button>
         </div>

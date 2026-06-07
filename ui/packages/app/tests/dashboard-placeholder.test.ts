@@ -49,31 +49,12 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("credentials page renders list + add form when workspace + credentials are present", async () => {
-    mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
-    listCredentialsMock.mockResolvedValue({
-      credentials: [
-        { name: "fly", created_at: "2026-04-26T00:00:00Z" },
-        { name: "slack", created_at: "2026-04-26T00:00:01Z" },
-      ],
-    });
+  it("credentials route redirects into the unified Models & Credentials page", async () => {
+    // The credentials list + add form now live in a section on the models page;
+    // this route is a redirect. Its list/empty rendering is covered by
+    // tests/models-credentials-page.test.ts and credentials-components.test.ts.
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Credentials");
-    expect(m).toContain("Stored credentials");
-    expect(m).toContain("Add credential");
-    expect(m).toContain("fly");
-    expect(m).toContain("slack");
-  });
-
-  it("credentials page falls back to empty list when API errors", async () => {
-    mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
-    listCredentialsMock.mockRejectedValue(new Error("boom"));
-    const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("No credentials stored yet");
+    expect(() => Page()).toThrow("redirect:/settings/models#credentials");
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
@@ -291,20 +272,6 @@ describe("placeholder pages", () => {
     // stable substring of the not-ready empty state instead.
     expect(m).toContain("ready yet");
     expect(m).toContain("still being set up");
-  });
-
-  it("credentials page redirects to /sign-in when no token", async () => {
-    mockAuth({ token: null });
-    const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("credentials page shows the no-workspace empty state", async () => {
-    mockAuth({ token: "token_abc" });
-    resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("No workspace yet");
   });
 
 });

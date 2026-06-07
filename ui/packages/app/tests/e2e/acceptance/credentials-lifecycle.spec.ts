@@ -45,8 +45,10 @@ test.describe("credentials lifecycle", () => {
     createdName = name;
 
     await signInAs(page, FIXTURE_KEY.regular);
+    // The /credentials route redirects into the unified Models & Credentials
+    // page; the add/list/delete surface lives in its Credentials section.
     await page.goto("/credentials");
-    await expect(page).toHaveURL(/\/credentials(\?|$)/);
+    await expect(page).toHaveURL(/\/settings\/models/);
     await expect(page.getByRole("heading", { name: /credentials/i }).first()).toBeVisible();
 
     await page.getByLabel("Name").fill(name);

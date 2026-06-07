@@ -20,7 +20,7 @@
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
  */
 
-import { FixtureKey } from "./constants";
+import type { FixtureKey } from "./constants";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 

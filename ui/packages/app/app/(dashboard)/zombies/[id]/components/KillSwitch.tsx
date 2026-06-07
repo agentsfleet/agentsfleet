@@ -41,9 +41,9 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(zombie.status);
   const [, startTransition] = useTransition();
 
-  async function handleConfirm() {
-    if (!pendingAction) return;
-    const action = pendingAction;
+  // `action` is supplied by the dialog's onConfirm closure (bound only while
+  // pendingAction is non-null), so no in-function null check is needed.
+  async function handleConfirm(action: ActionConfig) {
     setErrorMessage(null);
 
     startTransition(async () => {
@@ -153,7 +153,9 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
         title={pendingAction?.dialogTitle ?? ""}
         description={pendingAction?.dialogDescription ?? ""}
         confirmLabel={pendingAction?.confirmLabel ?? "Confirm"}
-        onConfirm={handleConfirm}
+        // Bound to the pending action when open; `undefined` when closed so the
+        // handler never needs an unreachable null guard.
+        onConfirm={pendingAction ? () => handleConfirm(pendingAction) : undefined}
         // handleConfirm owns its own error reporting (sets errorMessage
         // directly on result.ok=false). It never throws, so ConfirmDialog
         // doesn't need an onError backup.
