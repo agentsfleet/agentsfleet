@@ -103,4 +103,41 @@ describe("InlineProviderKeyCreate", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(onCreated).not.toHaveBeenCalled();
   });
+
+  it("submits on Enter in a field and ignores other keys", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    const onCreated = vi.fn();
+    renderForm({ catalogue: [], onCreated });
+
+    fillKeyFields("anthropic", "sk-ant-secret", "claude-sonnet-4-6");
+    // A non-Enter key does nothing.
+    fireEvent.keyDown(screen.getByLabelText("Model"), { key: "a" });
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+    // Enter stores the key.
+    fireEvent.keyDown(screen.getByLabelText("Model"), { key: "Enter" });
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith("anthropic"));
+  });
+
+  it("keeps a user-edited model when a key is later pasted", () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "custom-model" } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-ant-xyz" } });
+    // The key still fills the provider, but the model the user chose is preserved.
+    expect((screen.getByLabelText("Provider") as HTMLInputElement).value).toBe("anthropic");
+    expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("custom-model");
+  });
+
+  it("leaves the provider blank when the key prefix is unrecognized", () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "unknown-key-format" } });
+    expect((screen.getByLabelText("Provider") as HTMLInputElement).value).toBe("");
+  });
+
+  it("does not submit on Enter when required fields are missing", () => {
+    renderForm({ catalogue: [] });
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    fireEvent.keyDown(screen.getByLabelText("Provider"), { key: "Enter" });
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+  });
 });
