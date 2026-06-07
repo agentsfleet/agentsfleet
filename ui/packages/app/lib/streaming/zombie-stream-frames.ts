@@ -5,13 +5,17 @@ import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 // these out keeps the registry's lifecycle file under the LENGTH GATE
 // and the helpers unit-testable without spinning up a subscription.
 
+export const ZOMBIE_EVENT_STATUS = {
+  RECEIVED: "received",
+  PROCESSED: "processed",
+  AGENT_ERROR: "agent_error",
+  GATE_BLOCKED: "gate_blocked",
+  OPTIMISTIC: "optimistic",
+  FAILED: "failed",
+} as const;
+
 export type ZombieEventStatus =
-  | "received"
-  | "processed"
-  | "agent_error"
-  | "gate_blocked"
-  | "optimistic"
-  | "failed";
+  (typeof ZOMBIE_EVENT_STATUS)[keyof typeof ZOMBIE_EVENT_STATUS];
 
 export type ZombieEvent = {
   id: string;
@@ -125,7 +129,7 @@ function applyEventComplete(
   if (!existing) return prev;
   return prev.map((e) =>
     e === existing
-      ? { ...e, status: (frame.status as ZombieEventStatus) ?? "processed" }
+      ? { ...e, status: (frame.status ?? ZOMBIE_EVENT_STATUS.PROCESSED) as ZombieEventStatus }
       : e,
   );
 }

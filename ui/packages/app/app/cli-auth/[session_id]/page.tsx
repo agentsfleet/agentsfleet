@@ -84,7 +84,9 @@ export default function CliAuthPage({
   const [approve, setApprove] = useState<ApproveState>({ kind: APPROVE.idle });
 
   useEffect(() => {
-    let cancelled = false;
+    // Widen to `boolean` so the in-flight `cancelled` checks below aren't
+    // narrowed to a literal `false` — the cleanup flips it on unmount.
+    let cancelled = false as boolean;
     void (async () => {
       try {
         const res = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(session_id)}`, {
@@ -135,8 +137,9 @@ export default function CliAuthPage({
     };
   }, [session_id]);
 
-  const onApprove = useCallback(async () => {
-    if (load.kind !== LOAD.active) return;
+  // `session` is supplied by the caller (the Approve button renders only in the
+  // active state), so no in-callback state check is needed.
+  const onApprove = useCallback(async (session: ActiveSession) => {
     setApprove({ kind: APPROVE.working });
     // Hoisted out of the try so the catch can still read it: once the PATCH is
     // sent, the server may approve the session against this code even if the
@@ -165,7 +168,7 @@ export default function CliAuthPage({
         return;
       }
       const dash = await generateEphemeralKeypair();
-      const key = await deriveSharedKey(dash.privateKey, load.session.cli_public_key);
+      const key = await deriveSharedKey(dash.privateKey, session.cli_public_key);
       const { ciphertext, nonce } = await encryptJwt(jwt, key);
       pendingCode = generateVerificationCode();
 
@@ -214,7 +217,7 @@ export default function CliAuthPage({
           : { kind: APPROVE.failed, message: "Something went wrong while approving the CLI login." },
       );
     }
-  }, [getToken, load, session_id]);
+  }, [getToken, session_id]);
 
   if (!isLoaded || load.kind === LOAD.loading) {
     return (
@@ -303,7 +306,7 @@ export default function CliAuthPage({
         </CardContent>
         <CardFooter className="gap-2">
           <Button
-            onClick={() => void onApprove()}
+            onClick={() => void onApprove(load.session)}
             disabled={
               approve.kind === APPROVE.working ||
               approve.kind === APPROVE.failed ||

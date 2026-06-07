@@ -102,11 +102,11 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
       />
       <ConfirmDialog
         open={target !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setTarget(null);
-            setError(null);
-          }
+        // Parent-controlled — ConfirmDialog only ever emits a close, so clear
+        // the target and error unconditionally (mirrors EditCredentialDialog).
+        onOpenChange={() => {
+          setTarget(null);
+          setError(null);
         }}
         title={`Delete credential "${target ?? ""}"?`}
         description="Agents referencing this name will fail to resolve until it is re-added. This cannot be undone."

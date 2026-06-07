@@ -94,16 +94,17 @@ function startEventSource(entry: Entry, zombieId: string): void {
 }
 
 function onFrame(entry: Entry, e: MessageEvent): void {
-  let parsed: LiveFrame | null = null;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(e.data) as LiveFrame;
+    parsed = JSON.parse(e.data);
   } catch {
     return;
   }
-  if (!parsed || typeof parsed !== "object" || typeof parsed.kind !== "string") {
+  // SSE payloads are untrusted — validate shape before trusting the cast.
+  if (!parsed || typeof parsed !== "object" || typeof (parsed as { kind?: unknown }).kind !== "string") {
     return;
   }
-  const frame = parsed;
+  const frame = parsed as LiveFrame;
   setEvents(entry, (prev) => applyLiveFrame(prev, frame));
 }
 

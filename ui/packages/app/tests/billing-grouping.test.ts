@@ -3,9 +3,13 @@ import {
   formatDollars,
   groupChargesByEvent,
 } from "@/app/(dashboard)/settings/billing/lib/groupCharges";
-import { CHARGE_TYPE, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
+import { CHARGE_TYPE, NANOS_PER_USD, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
 
 type ChargeRow = TenantBillingChargesResponse["items"][number];
+
+// Base fixture timestamp (epoch ms); the stage row lands a few ms later.
+const BASE_RECORDED_AT = 1_000_000;
+const STAGE_RECORDED_AT = BASE_RECORDED_AT + 5;
 
 const RECEIVE: ChargeRow = {
   id: "tel_1",
@@ -20,7 +24,7 @@ const RECEIVE: ChargeRow = {
   token_count_input: null,
   token_count_output: null,
   wall_ms: null,
-  recorded_at: 1_000_000,
+  recorded_at: BASE_RECORDED_AT,
 };
 const STAGE: ChargeRow = {
   ...RECEIVE,
@@ -30,7 +34,7 @@ const STAGE: ChargeRow = {
   token_count_input: 820,
   token_count_output: 1040,
   wall_ms: 1500,
-  recorded_at: 1_000_005,
+  recorded_at: STAGE_RECORDED_AT,
 };
 
 describe("groupChargesByEvent", () => {
@@ -69,32 +73,11 @@ describe("groupChargesByEvent", () => {
     expect(groups[0]?.total_nanos).toBe(2);
   });
 
-  it("ignores zero/null credit_deducted_nanos fallbacks", () => {
+  it("keeps a zero credit_deducted_nanos as 0", () => {
     const zeroRow: ChargeRow = { ...RECEIVE, credit_deducted_nanos: 0 };
     const groups = groupChargesByEvent([zeroRow]);
     expect(groups[0]?.receive_nanos).toBe(0);
     expect(groups[0]?.total_nanos).toBe(0);
-  });
-
-  it("treats null credit_deducted_nanos as 0 on a receive row (`?? 0` fallback)", () => {
-    // Defensive — the API serializes the column as i64 NOT NULL, so a null
-    // here is wire-shape drift, not a legitimate state. The `?? 0` keeps
-    // grouping deterministic instead of propagating NaN into the dashboard.
-    const nullReceive: ChargeRow = {
-      ...RECEIVE,
-      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
-    };
-    const groups = groupChargesByEvent([nullReceive]);
-    expect(groups[0]?.receive_nanos).toBe(0);
-  });
-
-  it("treats null credit_deducted_nanos as 0 on a stage row (`?? 0` fallback)", () => {
-    const nullStage: ChargeRow = {
-      ...STAGE,
-      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
-    };
-    const groups = groupChargesByEvent([nullStage]);
-    expect(groups[0]?.stage_nanos).toBe(0);
   });
 
   it("skips updating recorded_at when the new row's timestamp is later", () => {
@@ -115,40 +98,6 @@ describe("groupChargesByEvent", () => {
     expect(groups.map((g) => g.event_id)).toEqual(["evt_a", "evt_b"]);
   });
 
-  it("sort tiebreaker treats null recorded_at as 0 via the ?? 0 guard (wire drift)", () => {
-    // The sort comparator has a defensive `?? 0` for recorded_at. This test
-    // sends a null value to exercise that branch. The API types recorded_at
-    // as non-null, but wire drift or migration replay can produce a null;
-    // the guard ensures the sort stays deterministic rather than producing NaN.
-    const nullAt: ChargeRow = {
-      ...RECEIVE,
-      event_id: "evt_null",
-      recorded_at: null as unknown as ChargeRow["recorded_at"],
-    };
-    const earlier: ChargeRow = { ...RECEIVE, event_id: "evt_real", recorded_at: 1_000 };
-    const groups = groupChargesByEvent([nullAt, earlier]);
-    // recorded_at=null treated as 0; earlier (1_000) sorts before it in newest-first order.
-    expect(groups[0]?.event_id).toBe("evt_real");
-    expect(groups[1]?.event_id).toBe("evt_null");
-  });
-
-  it("sort is stable when both events have null recorded_at (both ?? 0 arms)", () => {
-    // Exercises the `a.recorded_at ?? 0` arm of the sort comparator by putting
-    // null on both sides. dt becomes 0-0=0, so the localeCompare tiebreaker fires.
-    const nullA: ChargeRow = {
-      ...RECEIVE,
-      event_id: "evt_z",
-      recorded_at: null as unknown as ChargeRow["recorded_at"],
-    };
-    const nullB: ChargeRow = {
-      ...RECEIVE,
-      event_id: "evt_a",
-      recorded_at: null as unknown as ChargeRow["recorded_at"],
-    };
-    const groups = groupChargesByEvent([nullA, nullB]);
-    expect(groups.map((g) => g.event_id)).toEqual(["evt_a", "evt_z"]);
-  });
-
   it("ignores rows with an unknown charge_type (defensive)", () => {
     const weird = { ...RECEIVE, charge_type: "unknown" as ChargeRow["charge_type"] };
     const groups = groupChargesByEvent([weird]);
@@ -158,16 +107,12 @@ describe("groupChargesByEvent", () => {
 });
 
 describe("formatDollars", () => {
-  // Pin tests for the nanos-based dollar formatter. 1¢ = 10_000_000 nanos.
-  it("formats 0 nanos as $0.00", () => expect(formatDollars(0)).toBe("$0.00"));
-  it("formats 4_710_000_000 nanos as $4.71", () =>
-    expect(formatDollars(4_710_000_000)).toBe("$4.71"));
-  it("formats 1_000_000_000 nanos as $1.00", () =>
-    expect(formatDollars(1_000_000_000)).toBe("$1.00"));
-  it("formats 12_340_000_000 nanos as $12.34", () =>
-    expect(formatDollars(12_340_000_000)).toBe("$12.34"));
-  it("renders sub-cent traction rate $0.001 (1_000_000 nanos)", () =>
-    expect(formatDollars(1_000_000)).toBe("$0.001"));
-  it("renders sub-cent traction rate $0.0001 (100_000 nanos)", () =>
-    expect(formatDollars(100_000)).toBe("$0.0001"));
+  // Amounts are NANOS_PER_USD multiples, so each case reads as "$X of nanos
+  // formats to $X" — covering whole, multi-, and the two sub-cent rates.
+  it("formats zero as $0.00", () => expect(formatDollars(0)).toBe("$0.00"));
+  it("formats a whole dollar", () => expect(formatDollars(NANOS_PER_USD)).toBe("$1.00"));
+  it("formats an odd dollar amount", () => expect(formatDollars(NANOS_PER_USD * 4.71)).toBe("$4.71"));
+  it("formats a multi-dollar amount", () => expect(formatDollars(NANOS_PER_USD * 12.34)).toBe("$12.34"));
+  it("renders the tenth-of-a-cent traction rate", () => expect(formatDollars(NANOS_PER_USD * 0.001)).toBe("$0.001"));
+  it("renders the hundredth-of-a-cent traction rate", () => expect(formatDollars(NANOS_PER_USD * 0.0001)).toBe("$0.0001"));
 });

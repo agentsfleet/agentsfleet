@@ -66,8 +66,9 @@ export default function ZombiesList({
   }, [filtered]);
   const overCap = liveTotal > PULSE_CAP;
 
-  function loadMore() {
-    if (!cursor) return;
+  // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
+  // render guard on the trigger), so no in-function null check is needed.
+  function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
       const result = await listZombiesAction(workspaceId, { cursor });
@@ -135,7 +136,7 @@ export default function ZombiesList({
           <Button
             variant="ghost"
             size="sm"
-            onClick={loadMore}
+            onClick={() => loadMore(cursor)}
             disabled={pending}
             aria-busy={pending}
           >
@@ -170,7 +171,7 @@ function ZombieRow({ zombie: z, pulses }: ZombieRowProps) {
         {z.id}
       </div>
       <div className="col-span-4 sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums text-right">
-        <Time value={new Date(z.updated_at ?? z.created_at)} format="relative" tooltip={false} />
+        <Time value={new Date(z.updated_at)} format="relative" tooltip={false} />
       </div>
     </Link>
   );
