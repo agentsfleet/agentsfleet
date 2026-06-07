@@ -18,6 +18,7 @@ import {
 } from "@usezombie/design-system";
 import { createCredentialAction, deleteCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
+import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credential-data";
 
 export type EditCredentialDialogProps = {
   workspaceId: string;
@@ -33,30 +34,7 @@ export type EditCredentialDialogProps = {
 const EDIT_MODE = { rotate: "rotate", rename: "rename" } as const;
 type EditMode = (typeof EDIT_MODE)[keyof typeof EDIT_MODE];
 
-const NAME_MAX = 64;
 const DATA_REQUIRED = "Re-enter the secret as a JSON object";
-const DATA_NOT_OBJECT = "Data must be a JSON object — strings, arrays, and scalars are rejected";
-const DATA_EMPTY = "Object must have at least one field";
-
-type ParsedData = { ok: true; data: Record<string, unknown> } | { ok: false; message: string };
-
-// Values are write-only at the vault, so editing re-enters the full secret
-// rather than pre-filling it. Parse + shape-check before we ever call the API.
-function parseDataObject(raw: string): ParsedData {
-  const trimmed = raw.trim();
-  if (trimmed === "") return { ok: false, message: DATA_REQUIRED };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch (err) {
-    return { ok: false, message: `Invalid JSON: ${err instanceof Error ? err.message : "parse error"}` };
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, message: DATA_NOT_OBJECT };
-  }
-  if (Object.keys(parsed).length === 0) return { ok: false, message: DATA_EMPTY };
-  return { ok: true, data: parsed as Record<string, unknown> };
-}
 
 /**
  * Edit a stored credential. Rotate (default) overwrites the secret value under
@@ -94,14 +72,14 @@ export default function EditCredentialDialog({
 
   function onSubmit() {
     setError(null);
-    const parsed = parseDataObject(dataJson);
+    const parsed = parseCredentialDataObject(dataJson, DATA_REQUIRED);
     if (!parsed.ok) {
       setError(parsed.message);
       return;
     }
     const target = isRename ? newName.trim() : name;
-    if (isRename && (target === "" || target.length > NAME_MAX)) {
-      setError(`New name must be 1–${NAME_MAX} characters`);
+    if (isRename && (target === "" || target.length > CREDENTIAL_NAME_MAX)) {
+      setError(`New name must be 1–${CREDENTIAL_NAME_MAX} characters`);
       return;
     }
     if (isRename && target === name) {
@@ -126,11 +104,15 @@ export default function EditCredentialDialog({
       if (isRename) {
         const removed = await deleteCredentialAction(workspaceId, name);
         if (!removed.ok) {
+          // The new name IS stored — refresh so the list shows it (and the
+          // still-present old name), keep the dialog open with a clear message
+          // so the user can delete the old name from the list manually.
+          router.refresh();
           setError(
             presentErrorString({
               errorCode: removed.errorCode,
               message: removed.error,
-              action: "remove the old credential name",
+              action: `remove the old name "${name}" — "${target}" was created; delete "${name}" from the list`,
             }),
           );
           return;

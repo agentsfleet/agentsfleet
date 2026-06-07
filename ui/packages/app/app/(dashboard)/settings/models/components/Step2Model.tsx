@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@usezombie/design-system";
-import type { ModelCap } from "@/lib/api/model_caps";
+import { uniqueModelIds, type ModelCap } from "@/lib/api/model_caps";
 
 export type Step2ModelProps = {
   catalogue: ModelCap[];
@@ -31,14 +31,12 @@ const USE_CREDENTIAL_MODEL = "__use_credential_model__";
 export default function Step2Model({ catalogue, model, onModelChange }: Step2ModelProps) {
   const hasCatalogue = catalogue.length > 0;
 
-  // `core.model_caps` is keyed by (provider, model_id), so the same model_id
-  // legitimately recurs across providers (e.g. claude-opus-4-8 on anthropic and
-  // pioneer). This override picker is provider-agnostic — the backend resolves
-  // the provider from the selected credential at PUT time and only needs the
-  // bare model_id — so collapse the catalogue to one entry per id. Without this
-  // the duplicate ids produce colliding React keys + duplicate Radix
-  // <SelectItem> values and the page throws.
-  const uniqueModels = Array.from(new Map(catalogue.map((m) => [m.id, m])).values());
+  // This override picker is provider-agnostic — the backend resolves the
+  // provider from the selected credential at PUT time and only needs the bare
+  // model_id — so collapse the catalogue to one entry per id. Without this the
+  // (provider, model_id)-keyed duplicates produce colliding React keys +
+  // duplicate Radix <SelectItem> values and the page throws.
+  const uniqueModels = uniqueModelIds(catalogue);
 
   return (
     <div className="space-y-2">

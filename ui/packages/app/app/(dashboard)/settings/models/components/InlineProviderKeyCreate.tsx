@@ -16,7 +16,7 @@ import {
 } from "@usezombie/design-system";
 import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
 import { presentErrorString } from "@/lib/errors";
-import type { ModelCap } from "@/lib/api/model_caps";
+import { modelsForProvider, type ModelCap } from "@/lib/api/model_caps";
 import { detectProviderFromKey } from "../lib/detect-provider";
 
 export type InlineProviderKeyCreateProps = {
@@ -57,17 +57,18 @@ export default function InlineProviderKeyCreate({
   // Models the catalogue knows for the chosen provider. A model is
   // provider-specific (core.model_caps is keyed by (provider, model_id)), so
   // the picker only ever lists the selected provider's models.
-  const providerModels = catalogue.filter((m) => m.provider === provider.trim());
+  const providerModels = modelsForProvider(catalogue, provider.trim());
   const canSubmit =
     provider.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "" && effectiveName !== "";
 
-  // Switching providers invalidates the prior model (it belonged to the old
-  // provider), so default to the new provider's first catalogue model — or
-  // clear to a free-text entry when the catalogue doesn't cover it.
+  // Switching providers may invalidate the prior model (it belonged to the old
+  // provider). Keep the current model if it's still valid for the new provider;
+  // otherwise default to the new provider's first catalogue model — or clear to
+  // a free-text entry when the catalogue doesn't cover it.
   function applyProvider(next: string) {
     setProvider(next);
-    const first = catalogue.find((m) => m.provider === next.trim());
-    setModel(first ? first.id : "");
+    const nextModels = modelsForProvider(catalogue, next.trim());
+    setModel((prev) => (nextModels.some((m) => m.id === prev) ? prev : nextModels[0]?.id ?? ""));
   }
 
   function onApiKeyChange(value: string) {
