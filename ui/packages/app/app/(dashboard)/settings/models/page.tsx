@@ -14,6 +14,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
+import { getModelCaps, type ModelCap } from "@/lib/api/model_caps";
 import { PROVIDER_MODE } from "@/lib/types";
 import ProviderSelector from "./components/ProviderSelector";
 
@@ -40,9 +41,12 @@ export default async function ProviderSettingsPage() {
     );
   }
 
-  const [provider, credentialsResp] = await Promise.all([
+  const [provider, credentialsResp, catalogue] = await Promise.all([
     getTenantProvider(token).catch((err) => ({ error: String(err) }) as never),
     listCredentials(workspace.id, token).catch(() => ({ credentials: [] })),
+    getModelCaps()
+      .then((caps) => caps.models)
+      .catch(() => [] as ModelCap[]),
   ]);
 
   return (
@@ -97,6 +101,7 @@ export default async function ProviderSettingsPage() {
               currentCredentialRef={provider.credential_ref}
               currentModel={provider.model ?? ""}
               credentials={credentialsResp.credentials}
+              catalogue={catalogue}
             />
           </section>
         </Section>

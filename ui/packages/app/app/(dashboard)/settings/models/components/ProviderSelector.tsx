@@ -6,9 +6,11 @@ import { Alert, Badge, Button, RadioGroup, Spinner } from "@usezombie/design-sys
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
+import type { ModelCap } from "@/lib/api/model_caps";
 import { PROVIDER_MODE, type ProviderMode, type TenantProvider } from "@/lib/types";
 import ModeRadio from "./ModeRadio";
-import ProviderKeyFields from "./ProviderKeyFields";
+import Step1Credential from "./Step1Credential";
+import Step2Model from "./Step2Model";
 
 type Props = {
   workspaceId: string;
@@ -16,6 +18,7 @@ type Props = {
   currentCredentialRef: string | null;
   currentModel: string;
   credentials: CredentialSummary[];
+  catalogue: ModelCap[];
 };
 
 type ActionState = { ok: string | null; error: string | null };
@@ -51,6 +54,7 @@ export default function ProviderSelector({
   currentCredentialRef,
   currentModel,
   credentials,
+  catalogue,
 }: Props) {
   const router = useRouter();
 
@@ -105,14 +109,15 @@ export default function ProviderSelector({
       </fieldset>
 
       {isSelfManaged ? (
-        <ProviderKeyFields
-          workspaceId={workspaceId}
-          credentials={credentials}
-          credentialRef={credentialRef}
-          onCredentialRefChange={setCredentialRef}
-          modelOverride={modelOverride}
-          onModelOverrideChange={setModelOverride}
-        />
+        <div className="space-y-4 border-l-2 border-border pl-4 animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
+          <Step1Credential
+            workspaceId={workspaceId}
+            credentials={credentials}
+            credentialRef={credentialRef}
+            onCredentialRefChange={setCredentialRef}
+          />
+          <Step2Model catalogue={catalogue} model={modelOverride} onModelChange={setModelOverride} />
+        </div>
       ) : null}
 
       <div className="flex items-center gap-3">
