@@ -286,6 +286,24 @@ describe("EventsList", () => {
     expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
   });
 
+  it("hides the 'View all' link in preview mode when no further events exist (next_cursor null)", () => {
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(EventsList, {
+          scope: { kind: "workspace", workspaceId: "ws_1" },
+          // Every event already fits in the preview (no next_cursor), so a
+          // "View all" link would point at an identical list — it must not show.
+          initial: { items: [row({ event_id: "p1" })], next_cursor: null },
+          viewAllHref: "/events",
+        }),
+      ),
+    );
+    expect(screen.queryByRole("link", { name: /view all events/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /load more|next/i })).toBeNull();
+  });
+
   it("renders cursor pagination (not a 'View all' link) when viewAllHref is absent", () => {
     renderList({ items: [row({ event_id: "p1" })], next_cursor: "cur_1" });
     expect(screen.getByRole("button", { name: /load more|next/i })).toBeTruthy();

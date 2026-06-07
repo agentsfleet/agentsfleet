@@ -106,16 +106,25 @@ export function EventsList({
       {error ? (
         <Alert variant="destructive">{error}</Alert>
       ) : null}
-      <Separator />
       {viewAllHref ? (
-        <Link
-          href={viewAllHref}
-          className="font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:text-foreground"
-        >
-          View all events →
-        </Link>
+        // Preview mode: only offer "View all" when more events exist than are
+        // shown here — otherwise the link points at an identical list.
+        cursor !== null ? (
+          <>
+            <Separator />
+            <Link
+              href={viewAllHref}
+              className="font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:text-foreground"
+            >
+              View all events →
+            </Link>
+          </>
+        ) : null
       ) : (
-        <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
+        <>
+          <Separator />
+          <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
+        </>
       )}
     </div>
   );
