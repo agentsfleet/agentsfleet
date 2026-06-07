@@ -13,6 +13,10 @@ import { BASE } from "./client";
 const CAP_JSON_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:allow — public path obfuscator, not a credential
 const CAP_JSON_PATH = `/_um/${CAP_JSON_PATH_KEY}/cap.json`;
 
+// The catalogue changes only when model rows are updated in the DB, so the fetch
+// below opts back into ISR even though the Models page is force-dynamic.
+const CAP_JSON_REVALIDATE_SECONDS = 300;
+
 export interface ModelCap {
   id: string;
   provider: string;
@@ -50,6 +54,9 @@ export async function getModelCaps(): Promise<CapJson> {
   const res = await fetch(`${BASE}${CAP_JSON_PATH}`, {
     method: "GET",
     headers: { Accept: "application/json" },
+    // Opt back into ISR under the page's force-dynamic so the Models page
+    // doesn't make a cold catalogue round-trip on every server render.
+    next: { revalidate: CAP_JSON_REVALIDATE_SECONDS },
   });
   if (!res.ok) {
     throw new Error(`cap.json fetch failed: ${res.status} ${res.statusText}`);
