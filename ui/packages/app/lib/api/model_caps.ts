@@ -49,7 +49,7 @@ export interface CapJson {
 // for the wizard's two distinct catalogue views: a provider-agnostic picker
 // dedupes by id; a provider-scoped picker filters by provider.
 
-/** One entry per model_id (first occurrence wins) — for a provider-agnostic picker. */
+/** One entry per model_id (last occurrence wins) — for a provider-agnostic picker. */
 export function uniqueModelIds(models: ModelCap[]): ModelCap[] {
   return Array.from(new Map(models.map((m) => [m.id, m])).values());
 }
