@@ -208,7 +208,7 @@ install-skill →   doctor --json                           doctor --json
 tenant provider → (nothing — synth-default                → zombiectl tenant provider set
 set                stays in place)                            --credential account-fireworks-key
                                                               → API loads vault row
-                                                              → API GETs /_um/.../model-caps.json
+                                                              → API GETs /_um/.../cap.json
                                                               → upsert tenant_providers row
                                                                 {mode=self_managed, provider, model,
                                                                  context_cap_tokens, credential_ref}
@@ -233,4 +233,4 @@ L3 run chunking
 
 The parser-side companion to this rule landed with M49: `x-usezombie.model` and `x-usezombie.context.*` are now first-class fields on `ZombieConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.
+Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.

@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section } from "@usezombie/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
 import { listApiKeys, DEFAULT_PAGE_SIZE, DEFAULT_SORT } from "@/lib/api/api_keys";
-import ApiKeyList from "./components/ApiKeyList";
+import ApiKeysView from "./components/ApiKeysView";
 
 export const dynamic = "force-dynamic";
 
@@ -25,21 +24,5 @@ export default async function ApiKeysPage() {
     throw e;
   }
 
-  return (
-    <div>
-      <PageHeader>
-        <PageTitle>API keys</PageTitle>
-      </PageHeader>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Tenant API keys (<code>zmb_t_…</code>) authenticate service-to-service callers — n8n, Zapier,
-        cron, CI. The raw key is shown <strong>once</strong> at creation; store it somewhere safe.
-        Revoke a key to disable it immediately; delete a revoked key to remove the record.
-      </p>
-      <Section asChild>
-        <section aria-label="API keys">
-          <ApiKeyList initial={data} />
-        </section>
-      </Section>
-    </div>
-  );
+  return <ApiKeysView initial={data} />;
 }

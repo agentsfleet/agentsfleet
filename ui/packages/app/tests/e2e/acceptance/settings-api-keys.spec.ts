@@ -19,7 +19,14 @@ test.describe("settings api-keys page", () => {
     await signInAs(page, FIXTURE_KEY.admin);
     await page.goto("/settings/api-keys");
     await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
-    await expect(page.getByRole("heading", { name: /^api keys$/i })).toBeVisible();
+    // API keys is a tab within the settings area: the area heading stays
+    // "Settings" and the active section is marked on the tab, not a per-tab h1.
+    await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: /settings sections/i })
+        .getByRole("link", { name: /api keys/i }),
+    ).toHaveAttribute("aria-current", "page");
 
     const name = `e2e-${Date.now()}`;
 

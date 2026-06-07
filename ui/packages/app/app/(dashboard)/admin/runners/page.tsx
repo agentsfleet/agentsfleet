@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section } from "@usezombie/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { ApiError } from "@/lib/api/errors";
 import { readPlatformAdminClaim } from "@/lib/auth/platform";
 import { listRunners, DEFAULT_PAGE_SIZE, DEFAULT_SORT } from "@/lib/api/runners";
-import RunnerList from "./components/RunnerList";
+import RunnersView from "./components/RunnersView";
 
 export const dynamic = "force-dynamic";
 
@@ -28,22 +27,5 @@ export default async function RunnersPage() {
     throw e;
   }
 
-  return (
-    <div>
-      <PageHeader>
-        <PageTitle>Runners</PageTitle>
-      </PageHeader>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Enroll a host into the shared fleet. <strong>Add runner</strong> mints a runner token
-        (<code>zrn_…</code>) shown <strong>once</strong> — install it on the host as{" "}
-        <code>ZOMBIE_RUNNER_TOKEN</code>; the host never holds your identity credential. A freshly
-        minted runner shows <strong>registered</strong> until it first connects.
-      </p>
-      <Section asChild>
-        <section aria-label="Runners">
-          <RunnerList initial={data} />
-        </section>
-      </Section>
-    </div>
-  );
+  return <RunnersView initial={data} />;
 }

@@ -23,10 +23,9 @@ export type BillingUsageTabProps = {
 
 /**
  * Read-only Usage tab — newest-first per-event drain history with
- * cursor-based "Load more" pagination. CSV export + zombie/time filters
- * land alongside Stripe billing in v2.1; the v2.0 surface stays read-only
- * on purpose so we can ship without a dependency on a chart/filter
- * primitive.
+ * cursor-based "Load more" pagination. CSV export and zombie/time filters
+ * aren't built yet; this surface stays read-only on purpose so we can ship
+ * without a dependency on a chart/filter primitive.
  *
  * Initial events + cursor come from the server-rendered page; subsequent
  * pages are fetched via `listTenantBillingChargesAction`, a Server Action
@@ -99,7 +98,7 @@ export default function BillingUsageTab({
       <EmptyState
         icon={<ActivityIcon size={28} />}
         title="No billable events yet"
-        description="Run an agent event and its charges will appear here. Each event yields up to two rows (the receive gate and the stage execution)."
+        description="Charges appear here once your agents start running."
       />
     );
   }

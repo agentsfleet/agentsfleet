@@ -31,6 +31,7 @@ vi.mock("lucide-react", () => {
   return {
     Trash2Icon: make("Trash2Icon"),
     Loader2Icon: make("Loader2Icon"),
+    KeyRoundIcon: make("KeyRoundIcon"),
   };
 });
 
@@ -62,7 +63,7 @@ describe("CredentialsList component", () => {
 
   it("renders the empty-state message when no credentials", async () => {
     await renderList([]);
-    expect(screen.getByText(/No credentials stored yet/i)).toBeTruthy();
+    expect(screen.getByText(/No credentials yet/i)).toBeTruthy();
   });
 
   it("renders one row per credential with name + created_at", async () => {

@@ -17,8 +17,6 @@ import { groupChargesByEvent } from "./lib/groupCharges";
 
 export const dynamic = "force-dynamic";
 
-const PURCHASE_FOOTNOTE = "Stripe purchase ships in v2.1.";
-
 export default async function BillingSettingsPage() {
   const { getToken } = await auth();
   const token = await getToken();
@@ -78,7 +76,7 @@ export default async function BillingSettingsPage() {
           <EmptyState
             icon={<ReceiptIcon size={28} />}
             title="No invoices yet"
-            description={`Invoicing arrives with Purchase Credits in v2.1. ${PURCHASE_FOOTNOTE}`}
+            description="Your invoices will appear here."
           />
         </TabsContent>
 
@@ -86,7 +84,7 @@ export default async function BillingSettingsPage() {
           <EmptyState
             icon={<CreditCardIcon size={28} />}
             title="No payment method on file"
-            description={`Payment methods arrive with Purchase Credits in v2.1. ${PURCHASE_FOOTNOTE}`}
+            description="Your saved payment methods will appear here."
           />
         </TabsContent>
       </Tabs>

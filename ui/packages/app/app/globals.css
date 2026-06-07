@@ -5,7 +5,7 @@
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
-@source "../../../design-system/src/**/*.{ts,tsx}";
+@source "../../design-system/src/**/*.{ts,tsx}";
 
 * { box-sizing: border-box; }
 
@@ -21,7 +21,13 @@ body {
    * dot-grid on the marketing hero only. The app surface stays flat. */
 }
 
-a { color: inherit; }
+/* In @layer base so per-element text-colour utilities win on <a> elements
+ * (e.g. a Button rendered asChild as a Link). Unlayered, this bare rule beats
+ * Tailwind's layered utilities regardless of specificity — which made every
+ * <a>-based button inherit the page foreground (light text on the mint fill). */
+@layer base {
+  a { color: inherit; }
+}
 
 code, pre, kbd { font-family: var(--ff-mono); }
 

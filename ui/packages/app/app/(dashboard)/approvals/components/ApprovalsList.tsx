@@ -16,6 +16,7 @@ import {
   List,
   ListItem,
 } from "@usezombie/design-system";
+import { CheckCircle2Icon } from "lucide-react";
 
 import {
   approveApprovalAction,
@@ -150,7 +151,11 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
 
   if (filtered.length === 0 && filter.trim() === "" && !error) {
     return (
-      <EmptyState title="No pending approvals" description="Nothing waiting on operator action." />
+      <EmptyState
+        icon={<CheckCircle2Icon size={28} />}
+        title="No pending approvals"
+        description="Nothing waiting on operator action."
+      />
     );
   }
 

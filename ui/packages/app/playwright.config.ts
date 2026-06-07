@@ -5,6 +5,10 @@ import { defineConfig, devices } from "@playwright/test";
 const E2E_PORT = process.env.E2E_PORT ?? "3100";
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 
+// Playwright reporter + trace/video capture-mode literals, reused below.
+const LINE_REPORTER = "line";
+const ON_FIRST_RETRY = "on-first-retry";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   // Acceptance-suite specs require Clerk DEV credentials + globalSetup
@@ -16,8 +20,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
-    : "line",
+    ? [[LINE_REPORTER], ["html", { open: "never", outputFolder: "playwright-report" }]]
+    : LINE_REPORTER,
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET
@@ -26,9 +30,9 @@ export default defineConfig({
           "x-vercel-set-bypass-cookie": "true",
         }
       : {},
-    trace: "on-first-retry",
+    trace: ON_FIRST_RETRY,
     screenshot: "only-on-failure",
-    video: "on-first-retry",
+    video: ON_FIRST_RETRY,
   },
   projects: [
     {
@@ -48,6 +52,10 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         // Next.js Turbopack cold start can exceed 45s on first run after install.
         timeout: 120_000,
+        env: {
+          NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in",
+          NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up",
+        },
       },
   outputDir: "playwright-results",
 });

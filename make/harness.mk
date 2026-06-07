@@ -78,9 +78,6 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(call HARNESS_RUN,LOGGING,audits/logging.sh --staged)
 	$(call HARNESS_RUN,LIFECYCLE,audits/deinit-pairs.sh --staged)
 	$(call HARNESS_RUN,CROSS-TIER RATES,audits/cross-tier-rates.sh)
-	# audit-msid-ui.sh is diff-shaped by construction — it asserts on
-	# *added* lines, not file state. Stays on --staged for pre-commit
-	# context. See audits/msid-ui.sh "Per-check scope" docstring.
 	$(call HARNESS_RUN,MS-ID + UI,audits/msid-ui.sh --staged)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 

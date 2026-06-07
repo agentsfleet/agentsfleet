@@ -56,7 +56,7 @@ const OPERATIONS_NAV: NavEntry[] = [
 // What the agents are wired to — secrets, the model brain, the execution fleet.
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
-  { label: "Model", href: "/settings/models", icon: CpuIcon },
+  { label: "Models", href: "/settings/models", icon: CpuIcon },
 ];
 
 // Platform-admin-only — appended to the Configuration group only when the
@@ -143,39 +143,6 @@ export default function Shell({
           onSwitch={setActiveWorkspace}
         />
 
-        <nav className="hidden md:flex items-center gap-4">
-          <a
-            href="https://docs.usezombie.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-eyebrow text-muted-foreground transition-colors duration-snap ease-snap hover:text-foreground no-underline"
-            onClick={() =>
-              trackNavigationClicked({
-                source: "app_header_docs",
-                surface: "app_header",
-                target: "docs",
-              })
-            }
-          >
-            docs
-          </a>
-          <a
-            href="https://usezombie.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-mono text-eyebrow text-muted-foreground transition-colors duration-snap ease-snap hover:text-foreground no-underline"
-            onClick={() =>
-              trackNavigationClicked({
-                source: "app_header_marketing",
-                surface: "app_header",
-                target: "marketing_site",
-              })
-            }
-          >
-            usezombie.com
-          </a>
-        </nav>
-
         <ThemeToggle />
 
         <AuthUserButton appearance={AUTH_APPEARANCE} />
@@ -185,7 +152,9 @@ export default function Shell({
         <SidebarNav isActive={isActive} onNavigate={() => {}} isPlatformAdmin={isPlatformAdmin} />
       </aside>
 
-      <main className="p-6 md:p-8 overflow-auto">{children}</main>
+      <main className="p-6 md:p-8 overflow-auto">
+        <div className="mx-auto w-full max-w-content">{children}</div>
+      </main>
     </div>
   );
 }

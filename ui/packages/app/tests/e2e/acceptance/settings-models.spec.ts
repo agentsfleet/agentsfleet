@@ -17,12 +17,12 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 test.describe("settings model page", () => {
-  test("Model settings render for the fixture tenant", async ({ page }) => {
+  test("Models settings render for the fixture tenant", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto("/settings/models");
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
 
-    await expect(page.getByRole("heading", { name: /^model$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
     await expect(page.getByLabel("Active provider configuration")).toBeVisible();
     await expect(page.getByLabel("Change provider")).toBeVisible();
   });

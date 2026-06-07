@@ -10,6 +10,7 @@ import {
   getTenantProviderMock,
   getTenantBillingMock,
   listTenantBillingChargesMock,
+  getModelCapsMock,
 } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -29,6 +30,7 @@ vi.mock("@/lib/api/zombies", async () => (await import("./helpers/dashboard-app-
 vi.mock("@/app/(dashboard)/zombies/actions", async () => (await import("./helpers/dashboard-app-mocks")).zombieActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
+vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-app-mocks")).modelCapsMock());
 vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", async () => (await import("./helpers/dashboard-app-mocks")).billingBalanceCardMock());
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
@@ -80,6 +82,32 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
+  it("settings defaults page renders the masked placeholder when authenticated", async () => {
+    mockAuth({ token: "tkn" });
+    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Defaults");
+  });
+
+  it("settings defaults page redirects to /sign-in when no token", async () => {
+    mockAuth({ token: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/defaults/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("settings security page renders the masked placeholder when authenticated", async () => {
+    mockAuth({ token: "tkn" });
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Security");
+  });
+
+  it("settings security page redirects to /sign-in when no token", async () => {
+    mockAuth({ token: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
   it("events page redirects to /sign-in when no token", async () => {
     mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/events/page");
@@ -112,7 +140,7 @@ describe("placeholder pages", () => {
     expect(m).toContain("Workspace events");
   });
 
-  it("settings page renders workspace info and userId when authenticated", async () => {
+  it("settings page renders workspace info when authenticated", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
@@ -120,7 +148,6 @@ describe("placeholder pages", () => {
     expect(m).toContain("Settings");
     expect(m).toContain("Production");
     expect(m).toContain("ws_xyz");
-    expect(m).toContain("usr_42");
   });
 
   it("settings page tolerates missing active workspace", async () => {
@@ -145,7 +172,7 @@ describe("placeholder pages", () => {
     listCredentialsMock.mockResolvedValue({ credentials: [] });
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Model");
+    expect(m).toContain("Models");
     expect(m).toContain(PROVIDER_MODE.platform);
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
@@ -172,7 +199,41 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     // The page swallows the error to keep rendering.
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Model");
+    expect(m).toContain("Models");
+  });
+
+  it("provider settings page tolerates a getModelCaps 5xx (empty catalogue fallback)", async () => {
+    mockAuth({ token: "token_provider" });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
+    getTenantProviderMock.mockResolvedValue({
+      mode: PROVIDER_MODE.platform,
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      context_cap_tokens: 256000,
+      credential_ref: null,
+    });
+    listCredentialsMock.mockResolvedValue({ credentials: [] });
+    getModelCapsMock.mockRejectedValue(new Error("503"));
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
+    // The catalogue fetch failing must not break the page (catch -> []).
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Models");
+  });
+
+  it("provider settings page tolerates a listCredentials 5xx (empty credentials fallback)", async () => {
+    mockAuth({ token: "token_provider" });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
+    getTenantProviderMock.mockResolvedValue({
+      mode: PROVIDER_MODE.platform,
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      context_cap_tokens: 256000,
+      credential_ref: null,
+    });
+    listCredentialsMock.mockRejectedValue(new Error("503"));
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Models");
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
@@ -246,12 +307,4 @@ describe("placeholder pages", () => {
     expect(m).toContain("No workspace yet");
   });
 
-  it("settings page renders an em-dash when the userId is missing", async () => {
-    mockAuth({ token: "tkn", userId: null });
-    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("ws_xyz");
-    expect(m).toContain("—"); // userId ?? "—"
-  });
 });

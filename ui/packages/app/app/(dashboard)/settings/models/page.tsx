@@ -14,6 +14,7 @@ import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
+import { getModelCaps, type ModelCap } from "@/lib/api/model_caps";
 import { PROVIDER_MODE } from "@/lib/types";
 import ProviderSelector from "./components/ProviderSelector";
 
@@ -29,7 +30,7 @@ export default async function ProviderSettingsPage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>Model</PageTitle>
+          <PageTitle>Models</PageTitle>
         </PageHeader>
         <EmptyState
           icon={<ZapIcon size={32} />}
@@ -40,21 +41,22 @@ export default async function ProviderSettingsPage() {
     );
   }
 
-  const [provider, credentialsResp] = await Promise.all([
+  const [provider, credentialsResp, catalogue] = await Promise.all([
     getTenantProvider(token).catch((err) => ({ error: String(err) }) as never),
     listCredentials(workspace.id, token).catch(() => ({ credentials: [] })),
+    getModelCaps()
+      .then((caps) => caps.models)
+      .catch(() => [] as ModelCap[]),
   ]);
 
   return (
     <div>
       <PageHeader>
-        <PageTitle>Model</PageTitle>
+        <PageTitle>Models</PageTitle>
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Choose between platform-managed credits (we handle the billing) and
-        self-managed provider keys (your API key, your provider account,
-        our flat per-event overhead). Platform-managed is the default for
-        every new tenant.
+        Pick who pays for model usage: platform-managed credits (we bill you per event) or
+        your own provider key (you bring the account, we add a flat per-event fee).
       </p>
       <div className="grid gap-8 md:grid-cols-2">
         <Section asChild>
@@ -99,6 +101,7 @@ export default async function ProviderSettingsPage() {
               currentCredentialRef={provider.credential_ref}
               currentModel={provider.model ?? ""}
               credentials={credentialsResp.credentials}
+              catalogue={catalogue}
             />
           </section>
         </Section>

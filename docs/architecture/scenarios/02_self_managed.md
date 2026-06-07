@@ -61,7 +61,7 @@ What each does:
 - **`tenant provider set --credential <name>`** — flips `core.tenant_providers.mode` to `self_managed` and writes a row keyed on the tenant. As part of the PUT, the API:
   1. Loads the vault row at `(tenant_id, "account-fireworks-key")`.
   2. Validates the JSON has `provider`, `api_key`, `model` (eager structural validation; PUT fails with `400 credential_data_malformed` otherwise).
-  3. GETs `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded-model>` to resolve the cap.
+  3. GETs `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded-model>` to resolve the cap.
   4. Writes the row: `mode=self_managed`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-key`.
 
 If the model isn't in the public catalogue, the API returns `400 model_not_in_caps_catalogue` with a hint on how to add it (PR to the catalogue source, or wait for the admin-agent's next sweep — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9). The PUT does **not** make a synthetic call to Fireworks to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed` (lazy auth validation). The CLI prints a `Tip: run a test event to verify the key works against fireworks.` after success.
@@ -128,12 +128,12 @@ L3 run chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigg
 The endpoint is the single source of truth for model→cap mapping. Design constraints:
 
 1. **Hot, unauthenticated, cacheable** — `tenant provider set` and the platform-side synth-default resolver need to call it without holding any tenant token.
-2. **Not a DDoS magnet** — `/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` would advertise itself to every random scanner. We use a cryptic path prefix that is unguessable to scanning but well-known to our own clients.
+2. **Not a DDoS magnet** — `/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` would advertise itself to every random scanner. We use a cryptic path prefix that is unguessable to scanning but well-known to our own clients.
 3. **Cheap to serve** — small static JSON, CDN-cacheable, immutable per release.
 
 ```
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded>
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
+GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded>
 
 200 {
   "version": "2026-04-29",

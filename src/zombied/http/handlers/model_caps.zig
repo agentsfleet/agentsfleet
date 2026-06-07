@@ -1,4 +1,5 @@
-//! GET /_um/<key>/model-caps.json — public, unauthenticated model→cap catalogue.
+//! GET /_um/<key>/cap.json — public, unauthenticated model→cap catalogue plus the
+//! global, non-secret client config (run/event rates, starter credit, free-trial window).
 //!
 //! Both the install-skill (platform-managed posture) and `zombiectl provider set`
 //! (self-managed posture) call this endpoint exactly once at provisioning time and pin
@@ -26,6 +27,7 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
+const tenant_billing = @import("../../state/tenant_billing.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 
@@ -38,7 +40,7 @@ const Hx = hx_mod.Hx;
 pub const MODEL_CAPS_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:allow — public path obfuscator, not a credential
 
 /// Full URL path. Constants used by the router and by tests.
-pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/model-caps.json";
+pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/cap.json";
 
 const ModelCap = struct {
     id: []const u8,
@@ -49,9 +51,22 @@ const ModelCap = struct {
     output_nanos_per_mtok: i64,
 };
 
+const Rates = struct {
+    run_nanos_per_sec: i64,
+    event_nanos: i64,
+};
+
+const GlobalBilling = struct {
+    starter_credit_nanos: i64,
+    free_trial_end_ms: i64,
+    free_trial_stage_nanos: i64,
+};
+
 const ResponseBody = struct {
     version: []const u8,
     models: []const ModelCap,
+    rates: Rates,
+    billing: GlobalBilling,
 };
 
 /// SELECT clause shared by both list-all and filter-by-model paths.
@@ -126,9 +141,16 @@ fn buildResponse(
     }
 
     const version = try formatVersion(alloc, max_updated_ms);
+    const cfg = tenant_billing.publicConfig();
     return .{
         .version = version,
         .models = try models.toOwnedSlice(alloc),
+        .rates = .{ .run_nanos_per_sec = cfg.run_nanos_per_sec, .event_nanos = cfg.event_nanos },
+        .billing = .{
+            .starter_credit_nanos = cfg.starter_credit_nanos,
+            .free_trial_end_ms = cfg.free_trial_end_ms,
+            .free_trial_stage_nanos = cfg.free_trial_stage_nanos,
+        },
     };
 }
 
@@ -176,7 +198,7 @@ fn formatVersion(alloc: std.mem.Allocator, max_updated_ms: i64) ![]const u8 {
 
 test "MODEL_CAPS_PATH constant is well-formed" {
     try std.testing.expect(std.mem.startsWith(u8, MODEL_CAPS_PATH, "/_um/"));
-    try std.testing.expect(std.mem.endsWith(u8, MODEL_CAPS_PATH, "/model-caps.json"));
+    try std.testing.expect(std.mem.endsWith(u8, MODEL_CAPS_PATH, "/cap.json"));
     try std.testing.expectEqual(@as(usize, 32), MODEL_CAPS_PATH_KEY.len);
 }
 

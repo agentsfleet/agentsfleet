@@ -18,6 +18,10 @@ vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
   deleteApiKeyAction: deleteApiKeyActionMock,
 }));
 
+// SettingsTabs pulls usePathname/Link; the ApiKeysView wrapper only needs the
+// dialog + list for this flow, so stub the tab chrome out.
+vi.mock("@/components/layout/SettingsTabs", () => ({ default: () => null }));
+
 const ACTIVE: ApiKeyRow = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   key_name: "ci-runner",
@@ -61,6 +65,17 @@ describe("ApiKeyList component", () => {
   it("renders the empty-state message when there are no keys", async () => {
     await renderList(listResponse([]));
     expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
+  });
+
+  it("hides the sort toolbar while the list is empty (only the empty state shows)", async () => {
+    await renderList(listResponse([]));
+    expect(screen.queryByLabelText(/sort api keys/i)).toBeNull();
+    expect(screen.getByText(/No API keys yet/i)).toBeTruthy();
+  });
+
+  it("shows the sort toolbar once keys exist", async () => {
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(screen.getByLabelText(/sort api keys/i)).toBeTruthy();
   });
 
   it("renders active + revoked rows with status badges and 'never used'", async () => {
@@ -184,7 +199,10 @@ describe("ApiKeyList component", () => {
 
   it("re-fetches the first page after a key is minted and the reveal is closed", async () => {
     const user = userEvent.setup();
-    await renderList(listResponse([ACTIVE]));
+    const { default: ApiKeysView } = await import(
+      "../app/(dashboard)/settings/api-keys/components/ApiKeysView"
+    );
+    render(React.createElement(ApiKeysView, { initial: listResponse([ACTIVE]) } as never));
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
       data: { id: "k", key_name: "ci-runner", key: "zmb_t_new", created_at: 1 },

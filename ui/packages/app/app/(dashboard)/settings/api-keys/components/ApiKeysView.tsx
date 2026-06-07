@@ -1,0 +1,32 @@
+"use client";
+
+import { useRef } from "react";
+import { Section } from "@usezombie/design-system";
+import type { ApiKeyListResponse } from "@/lib/api/api_keys";
+import SettingsTabs from "@/components/layout/SettingsTabs";
+import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
+import CreateApiKeyDialog from "./CreateApiKeyDialog";
+
+// Client wrapper so the header "New API key" action and the list share a refresh
+// without a full-route reload: the dialog calls the list's ref on create, which
+// re-fetches just the list (page 1) via its Server Action.
+export default function ApiKeysView({ initial }: { initial: ApiKeyListResponse }) {
+  const listRef = useRef<ApiKeyListHandle>(null);
+  return (
+    <div className="space-y-8">
+      <SettingsTabs />
+      <div className="flex items-start justify-between gap-4">
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Keys let outside tools — n8n, Zapier, cron, CI — call this workspace&apos;s API. Each key is
+          shown once when created, so store it somewhere safe.
+        </p>
+        <CreateApiKeyDialog onCreated={() => listRef.current?.refresh()} />
+      </div>
+      <Section asChild>
+        <section aria-label="API keys">
+          <ApiKeyList ref={listRef} initial={initial} />
+        </section>
+      </Section>
+    </div>
+  );
+}
