@@ -72,7 +72,7 @@ export default function InlineProviderKeyCreate({
   }
 
   async function submit() {
-    if (!canSubmit) return;
+    if (!canSubmit || pending) return;
     setError(null);
     setPending(true);
     try {

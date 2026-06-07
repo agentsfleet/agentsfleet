@@ -161,4 +161,26 @@ describe("InlineProviderKeyCreate", () => {
     fireEvent.click(screen.getByRole("button", { name: /save key/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
   });
+
+  it("ignores a second Enter while a submit is already in flight (pending guard)", async () => {
+    // Hold the action in-flight so `pending` stays true between the two Enters.
+    let resolveCreate: (value: { ok: true; data: { name: string } }) => void = () => {};
+    const inFlight = new Promise<{ ok: true; data: { name: string } }>((res) => {
+      resolveCreate = res;
+    });
+    createCredentialActionMock.mockReturnValue(inFlight);
+    const onCreated = vi.fn();
+    renderForm({ catalogue: [], onCreated });
+    fillKeyFields("anthropic", "sk-ant-secret", "claude-sonnet-4-6");
+
+    const modelField = screen.getByLabelText("Model");
+    fireEvent.keyDown(modelField, { key: "Enter" });
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    // A second Enter before the first resolves must be swallowed by the guard.
+    fireEvent.keyDown(modelField, { key: "Enter" });
+    expect(createCredentialActionMock).toHaveBeenCalledTimes(1);
+
+    resolveCreate({ ok: true, data: { name: "anthropic" } });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+  });
 });
