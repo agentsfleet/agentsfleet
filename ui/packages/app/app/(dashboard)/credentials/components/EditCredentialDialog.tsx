@@ -65,8 +65,10 @@ export default function EditCredentialDialog({
   }
 
   function handleOpenChange(next: boolean) {
+    // Block dismiss mid-save. The dialog is parent-controlled and only ever
+    // emits a close, so reset unconditionally before propagating.
     if (pending) return;
-    if (!next) reset();
+    reset();
     onOpenChange(next);
   }
 
