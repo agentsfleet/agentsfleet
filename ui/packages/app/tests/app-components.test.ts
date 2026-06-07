@@ -177,10 +177,12 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Agents");
-    expect(markup).toContain("Credentials");
-    expect(markup).toContain("Models");
-    // The Models item points at the renamed route, not just the bare word.
+    // Models + Credentials are one combined Configuration entry now.
+    expect(markup).toContain("Models &amp; Credentials");
+    // The combined item points at the unified route.
     expect(markup).toContain('href="/settings/models"');
+    // The standalone Credentials nav link is gone (it redirects into the page).
+    expect(markup).not.toContain('href="/credentials"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Settings");
@@ -217,7 +219,6 @@ describe("app components", () => {
     expect(activeFor("/settings")).toEqual({ count: 1, icon: "SettingsIcon" });
     expect(activeFor("/settings/api-keys")).toEqual({ count: 1, icon: "SettingsIcon" });
     // Other groups resolve to their own item; root and admin-gated paths too.
-    expect(activeFor("/credentials")).toEqual({ count: 1, icon: "KeyRoundIcon" });
     expect(activeFor("/")).toEqual({ count: 1, icon: "LayoutDashboardIcon" });
     expect(activeFor("/admin/runners", true)).toEqual({ count: 1, icon: "ServerIcon" });
   });
@@ -311,9 +312,9 @@ describe("app components", () => {
     // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Settings"));
-    // New grouped items — nested routes exercise the multi-segment slug branch.
-    await user.click(screen.getByText("Credentials"));
-    await user.click(screen.getByText("Models"));
+    // The combined Configuration entry — a nested route exercises the
+    // multi-segment slug branch.
+    await user.click(screen.getByText("Models & Credentials"));
     await user.click(screen.getByText("Billing"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(
@@ -323,7 +324,6 @@ describe("app components", () => {
     expect(sources).toContain("app_sidebar_zombies");
     expect(sources).toContain("app_sidebar_docs");
     expect(sources).toContain("app_sidebar_settings");
-    expect(sources).toContain("app_sidebar_credentials");
     expect(sources).toContain("app_sidebar_settings_models");
     expect(sources).toContain("app_sidebar_settings_billing");
     cleanup();

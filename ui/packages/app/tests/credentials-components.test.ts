@@ -32,6 +32,7 @@ vi.mock("lucide-react", () => {
     Trash2Icon: make("Trash2Icon"),
     Loader2Icon: make("Loader2Icon"),
     KeyRoundIcon: make("KeyRoundIcon"),
+    PencilIcon: make("PencilIcon"),
   };
 });
 
@@ -133,6 +134,16 @@ describe("CredentialsList component", () => {
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /^delete$/i })).toBeTruthy());
     expect(deleteCredentialActionMock).not.toHaveBeenCalled();
+  });
+
+  it("clicking edit opens the edit dialog for that credential", async () => {
+    const user = userEvent.setup();
+    await renderList();
+    await user.click(screen.getByLabelText(/Edit credential fly/i));
+    await waitFor(() => expect(screen.getByText(/Edit credential .*fly/i)).toBeTruthy());
+    // The rotate (default) action is offered; rename is gated behind Advanced.
+    expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /advanced — rename/i })).toBeTruthy();
   });
 
   it("error from a previous attempt clears when reopening for another credential", async () => {

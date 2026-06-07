@@ -31,6 +31,15 @@ const USE_CREDENTIAL_MODEL = "__use_credential_model__";
 export default function Step2Model({ catalogue, model, onModelChange }: Step2ModelProps) {
   const hasCatalogue = catalogue.length > 0;
 
+  // `core.model_caps` is keyed by (provider, model_id), so the same model_id
+  // legitimately recurs across providers (e.g. claude-opus-4-8 on anthropic and
+  // pioneer). This override picker is provider-agnostic — the backend resolves
+  // the provider from the selected credential at PUT time and only needs the
+  // bare model_id — so collapse the catalogue to one entry per id. Without this
+  // the duplicate ids produce colliding React keys + duplicate Radix
+  // <SelectItem> values and the page throws.
+  const uniqueModels = Array.from(new Map(catalogue.map((m) => [m.id, m])).values());
+
   return (
     <div className="space-y-2">
       <Label htmlFor="model-override">Model</Label>
@@ -44,7 +53,7 @@ export default function Step2Model({ catalogue, model, onModelChange }: Step2Mod
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={USE_CREDENTIAL_MODEL}>Use the credential&apos;s model</SelectItem>
-            {catalogue.map((m) => (
+            {uniqueModels.map((m) => (
               <SelectItem key={m.id} value={m.id}>
                 {m.id}
               </SelectItem>
