@@ -32,6 +32,7 @@ export const resetTenantProviderMock = vi.fn();
 export const listCredentialsMock = vi.fn();
 export const createCredentialMock = vi.fn();
 export const deleteCredentialMock = vi.fn();
+export const getModelCapsMock = vi.fn();
 
 export const setZombieStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
@@ -118,6 +119,10 @@ export function credentialsApiMock() {
   return { listCredentials: listCredentialsMock, createCredential: createCredentialMock, deleteCredential: deleteCredentialMock };
 }
 
+export function modelCapsMock() {
+  return { getModelCaps: getModelCapsMock };
+}
+
 export function addCredentialFormMock() {
   return { default: ({ workspaceId }: { workspaceId: string }) => React.createElement("div", { "data-add-credential-form": workspaceId }) };
 }
@@ -160,5 +165,11 @@ export function resetDashboardMocks() {
   getTenantBillingMock.mockResolvedValue({ balance_nanos: 5 * NANOS_PER_USD, is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   listZombieEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+  getModelCapsMock.mockResolvedValue({
+    version: "2026-04-29",
+    models: [],
+    rates: { run_nanos_per_sec: 0, event_nanos: 0 },
+    billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
+  });
   stopZombieMock.mockResolvedValue(undefined);
 }

@@ -6,10 +6,12 @@ const {
   setProviderSelfManagedActionMock,
   resetProviderActionMock,
   routerRefresh,
+  createCredentialActionMock,
 } = vi.hoisted(() => ({
   setProviderSelfManagedActionMock: vi.fn(),
   resetProviderActionMock: vi.fn(),
   routerRefresh: vi.fn(),
+  createCredentialActionMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -20,7 +22,7 @@ vi.mock("@/app/(dashboard)/settings/models/actions", () => ({
   resetProviderAction: resetProviderActionMock,
 }));
 vi.mock("@/app/(dashboard)/credentials/actions", () => ({
-  createCredentialAction: vi.fn(),
+  createCredentialAction: createCredentialActionMock,
 }));
 vi.mock("lucide-react", () => ({
   Loader2Icon: (p: Record<string, unknown>) =>
@@ -47,6 +49,7 @@ beforeEach(() => {
   setProviderSelfManagedActionMock.mockReset();
   resetProviderActionMock.mockReset();
   routerRefresh.mockReset();
+  createCredentialActionMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -141,6 +144,26 @@ describe("Step1Credential", () => {
     fireEvent.click(screen.getByText("anth"));
     expect(onCred).toHaveBeenCalledWith("anth");
   });
+
+  it("'+ New key' toggles the inline create form when credentials already exist", () => {
+    render(React.createElement(Step1Credential, baseProps));
+    expect(screen.queryByText("Add a new provider key")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /new key/i }));
+    expect(screen.getByText("Add a new provider key")).toBeTruthy();
+  });
+
+  it("selects a freshly created credential from the inline form (empty vault)", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic" } });
+    const onCred = vi.fn();
+    render(
+      React.createElement(Step1Credential, { ...baseProps, credentials: [], onCredentialRefChange: onCred }),
+    );
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-ant-x" } });
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "claude-sonnet-4-6" } });
+    fireEvent.click(screen.getByRole("button", { name: /save key/i }));
+    await waitFor(() => expect(onCred).toHaveBeenCalledWith("anthropic"));
+  });
 });
 
 // ── Step2Model (presentational) ────────────────────────────────────────
@@ -170,6 +193,20 @@ describe("Step2Model", () => {
     expect(input.tagName).toBe("INPUT");
     fireEvent.change(input, { target: { value: "claude-sonnet-4-6" } });
     expect(onModel).toHaveBeenCalledWith("claude-sonnet-4-6");
+  });
+
+  it("reflects a preselected model and clears back to the credential default", () => {
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: MODELS, model: "kimi-k2.6", onModelChange: onModel }));
+    const trigger = screen.getByLabelText(/model/i);
+    // A non-empty model shows on the trigger (covers the value ternary's model branch).
+    expect(trigger.textContent).toContain("kimi-k2.6");
+    // Selecting the default entry maps the sentinel back to "" (omit the override).
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByText(/use the credential's model/i));
+    expect(onModel).toHaveBeenCalledWith("");
   });
 });
 
