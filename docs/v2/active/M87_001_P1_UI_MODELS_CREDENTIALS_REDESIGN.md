@@ -4,11 +4,11 @@
 **Milestone:** M87
 **Workstream:** 001
 **Date:** Jun 07, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing dashboard confusion + a live console crash on the Models page.
 **Categories:** UI
 **Batch:** B1 — standalone UI workstream, no concurrent dependants.
-**Branch:** {feat/m87-models-credentials-redesign — added when work begins}
+**Branch:** feat/m87-models-credentials-redesign
 **Depends on:** none (M86_001 BYOK wizard + cap.json already merged in #373).
 **Provenance:** agent-generated (pre-spec, `/Users/kishore/.claude/plans/i-want-a-redesign-transient-pearl.md`, ratified with Indy via plan approval Jun 07, 2026).
 
