@@ -116,7 +116,8 @@ describe("Step1Credential", () => {
     expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
     expect(screen.getByText("Add a new provider key")).toBeTruthy();
     const link = screen.getByText("Manage all credentials →") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("/credentials");
+    // Credentials now live in a section on this same page; the link is an anchor.
+    expect(link.getAttribute("href")).toBe("#credentials");
     // The secondary link carries the active workspace id so QA can attribute the click.
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });
@@ -207,6 +208,32 @@ describe("Step2Model", () => {
     fireEvent.keyDown(trigger, { key: "Enter" });
     fireEvent.click(screen.getByText(/use the credential's model/i));
     expect(onModel).toHaveBeenCalledWith("");
+  });
+
+  it("dedupes a catalogue with the same model_id across providers (regression: duplicate React key)", () => {
+    // core.model_caps is keyed (provider, model_id): claude-opus-4-8 is one row
+    // on anthropic and another on pioneer. The picker must render it once and
+    // emit no duplicate-key warning (the crash this redesign fixes).
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dupCatalogue = [
+      { id: "claude-opus-4-8", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+      { id: "claude-opus-4-8", provider: "pioneer", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+      { id: "claude-sonnet-4-6", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
+    ];
+    const onModel = vi.fn();
+    render(React.createElement(Step2Model, { catalogue: dupCatalogue, model: "", onModelChange: onModel }));
+    const trigger = screen.getByLabelText(/model/i);
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    // claude-opus-4-8 appears exactly once despite two catalogue rows.
+    expect(screen.getAllByText("claude-opus-4-8")).toHaveLength(1);
+    // No "two children with the same key" warning was emitted.
+    const dupKeyWarning = consoleError.mock.calls.some((args) =>
+      args.some((a) => typeof a === "string" && a.includes("same key")),
+    );
+    expect(dupKeyWarning).toBe(false);
+    consoleError.mockRestore();
   });
 });
 

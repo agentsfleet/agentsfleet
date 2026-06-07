@@ -9,7 +9,6 @@ import {
   SettingsIcon,
   BookOpenIcon,
   SkullIcon,
-  KeyRoundIcon,
   CheckCircle2Icon,
   CpuIcon,
   CreditCardIcon,
@@ -53,10 +52,10 @@ const OPERATIONS_NAV: NavEntry[] = [
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the agents are wired to — secrets, the model brain, the execution fleet.
+// What the agents are wired to — the model brain and the provider/service
+// secrets, unified on one page; plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
-  { label: "Models", href: "/settings/models", icon: CpuIcon },
+  { label: "Models & Credentials", href: "/settings/models", icon: CpuIcon },
 ];
 
 // Platform-admin-only — appended to the Configuration group only when the
