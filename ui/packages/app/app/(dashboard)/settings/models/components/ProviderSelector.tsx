@@ -69,7 +69,6 @@ export default function ProviderSelector({
   );
 
   const isSelfManaged = mode === PROVIDER_MODE.self_managed;
-  const noCredentials = credentials.length === 0;
 
   const strategy = MODE_STRATEGIES[mode];
 
@@ -121,7 +120,7 @@ export default function ProviderSelector({
       ) : null}
 
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isPending || (isSelfManaged && noCredentials)}>
+        <Button type="submit" disabled={isPending || (isSelfManaged && credentialRef === "")}>
           {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
           {strategy.submitLabel}
         </Button>

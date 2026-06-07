@@ -19,6 +19,9 @@ vi.mock("@/app/(dashboard)/settings/models/actions", () => ({
   setProviderSelfManagedAction: setProviderSelfManagedActionMock,
   resetProviderAction: resetProviderActionMock,
 }));
+vi.mock("@/app/(dashboard)/credentials/actions", () => ({
+  createCredentialAction: vi.fn(),
+}));
 vi.mock("lucide-react", () => ({
   Loader2Icon: (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": "Loader2Icon" }),
@@ -103,12 +106,14 @@ describe("Step1Credential", () => {
     onCredentialRefChange: () => {},
   };
 
-  it("shows the empty-state CTA linking to /credentials when vault is empty", () => {
+  it("shows the inline create form (no dead-end) plus a manage link when the vault is empty", () => {
     render(React.createElement(Step1Credential, { ...baseProps, credentials: [] }));
-    expect(screen.getByTestId("provider-key-no-credentials")).toBeTruthy();
-    const link = screen.getByText("Add a credential first") as HTMLAnchorElement;
+    // The old empty-vault dead-end Alert is gone — an inline create form shows instead.
+    expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
+    expect(screen.getByText("Add a new provider key")).toBeTruthy();
+    const link = screen.getByText("Manage all credentials →") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/credentials");
-    // CTA carries the active workspace id so QA can attribute the click.
+    // The secondary link carries the active workspace id so QA can attribute the click.
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });
 
