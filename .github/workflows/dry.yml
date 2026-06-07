@@ -67,6 +67,14 @@ jobs:
             bunx playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
+      - name: Load Clerk dev keys from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
       - name: Run app dry lane
         run: make dry-app
 
