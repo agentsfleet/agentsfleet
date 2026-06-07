@@ -62,7 +62,7 @@ describe("placeholder pages", () => {
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Credentials");
     expect(m).toContain("Stored credentials");
-    expect(m).toContain("Add a credential");
+    expect(m).toContain("Add credential");
     expect(m).toContain("fly");
     expect(m).toContain("slack");
   });

@@ -7,7 +7,7 @@ export default function CredentialsLoading() {
         <PageTitle>Credentials</PageTitle>
       </PageHeader>
       <Skeleton className="mb-6 h-4 w-2/3" />
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid items-start gap-8 md:grid-cols-2">
         <Section asChild>
           <section aria-label="Stored credentials">
             <Skeleton className="mb-3 h-3 w-32" />
@@ -19,7 +19,8 @@ export default function CredentialsLoading() {
           </section>
         </Section>
         <Section asChild>
-          <section aria-label="Add a credential">
+          {/* UI GATE: SKIPPED per user override (reason: this is the asChild render target of the Section primitive; its landmark name must match the "Add credential" heading) */}
+          <section aria-label="Add credential">
             <Skeleton className="mb-3 h-3 w-32" />
             <Skeleton className="h-48 w-full rounded-md" />
           </section>

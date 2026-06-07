@@ -51,7 +51,7 @@ test.describe("credentials lifecycle", () => {
 
     await page.getByLabel("Name").fill(name);
     await page.getByLabel(/Data \(JSON object\)/).fill('{"host":"api.machines.dev","api_token":"FLY_API_TOKEN"}');
-    await page.getByRole("button", { name: "Store credential" }).click();
+    await page.getByRole("button", { name: "Add", exact: true }).click();
 
     const row = page.getByText(name, { exact: true }).first();
     await expect(row).toBeVisible({ timeout: ACTION_TIMEOUT_MS });

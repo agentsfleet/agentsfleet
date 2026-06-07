@@ -45,11 +45,10 @@ export default async function CredentialsPage() {
         <PageTitle>Credentials</PageTitle>
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Store secrets your agents use to reach other services — API tokens, passwords, keys. They&apos;re
-        saved encrypted, and an agent references one by name (e.g.{" "}
-        <code>{"${secrets.fly.api_token}"}</code>).
+        Encrypted secrets your agents use to reach other services. Reference one by name, e.g.{" "}
+        <code>{"${secrets.fly.api_token}"}</code>.
       </p>
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid items-start gap-8 md:grid-cols-2">
         <Section asChild>
           <section aria-label="Stored credentials">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -59,9 +58,10 @@ export default async function CredentialsPage() {
           </section>
         </Section>
         <Section asChild>
-          <section aria-label="Add a credential">
+          {/* UI GATE: SKIPPED per user override (reason: this is the asChild render target of the Section primitive; its landmark name must match the "Add credential" heading) */}
+          <section aria-label="Add credential">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Add a credential
+              Add credential
             </h2>
             <AddCredentialForm workspaceId={workspace.id} />
           </section>

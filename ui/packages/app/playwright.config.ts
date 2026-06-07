@@ -53,6 +53,14 @@ export default defineConfig({
         // Next.js Turbopack cold start can exceed 45s on first run after install.
         timeout: 120_000,
         env: {
+          // Clerk publishable keys are public by design (they ship in the
+          // client bundle) — pin the dev instance key here so the dry lane
+          // boots without `.env.local` or secrets in CI. @clerk/nextjs >=7.4
+          // hard-throws "Missing publishableKey" at render instead of falling
+          // back to keyless mode, so the server must have one to come up.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+            process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??
+            "pk_test_d2lubmluZy13b21iYXQtNjUuY2xlcmsuYWNjb3VudHMuZGV2JA",
           NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in",
           NEXT_PUBLIC_CLERK_SIGN_UP_URL: "/sign-up",
         },

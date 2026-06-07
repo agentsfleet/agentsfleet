@@ -112,9 +112,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 <Input placeholder="fly" {...field} />
               </FormControl>
               <FormDescription>
-                Referenced from an agent&apos;s <code>credentials:</code> list and substituted as
-                {" "}
-                <code>{"${secrets.<name>.<field>}"}</code> at the tool bridge.
+                Agents reference this by name — <code>{"${secrets.<name>.<field>}"}</code>.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -137,8 +135,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 />
               </FormControl>
               <FormDescription>
-                Plaintext is the canonical-stringified form of this object,
-                envelope-encrypted at rest. Values are never returned by the API.
+                Encrypted at rest. Values are never shown again after you save.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -146,8 +143,8 @@ export default function AddCredentialForm({ workspaceId }: Props) {
         />
         {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
         <Button type="submit" disabled={pending}>
-          {pending ? <Spinner size="sm" srLabel="Storing" /> : null}
-          Store credential
+          {pending ? <Spinner size="sm" srLabel="Adding" /> : null}
+          Add
         </Button>
       </form>
     </Form>
