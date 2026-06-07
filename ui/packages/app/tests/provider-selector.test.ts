@@ -102,6 +102,7 @@ describe("Step1Credential", () => {
   const baseProps = {
     workspaceId: WORKSPACE_ID,
     credentials: [CRED],
+    catalogue: [],
     credentialRef: CRED.name,
     onCredentialRefChange: () => {},
   };

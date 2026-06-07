@@ -12,11 +12,13 @@ import {
   SelectValue,
 } from "@usezombie/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
+import type { ModelCap } from "@/lib/api/model_caps";
 import InlineProviderKeyCreate from "./InlineProviderKeyCreate";
 
 export type Step1CredentialProps = {
   workspaceId: string;
   credentials: CredentialSummary[];
+  catalogue: ModelCap[];
   credentialRef: string;
   onCredentialRefChange: (ref: string) => void;
 };
@@ -30,6 +32,7 @@ export type Step1CredentialProps = {
 export default function Step1Credential({
   workspaceId,
   credentials,
+  catalogue,
   credentialRef,
   onCredentialRefChange,
 }: Step1CredentialProps) {
@@ -77,7 +80,7 @@ export default function Step1Credential({
       ) : null}
 
       {showCreate ? (
-        <InlineProviderKeyCreate workspaceId={workspaceId} onCreated={onCreated} />
+        <InlineProviderKeyCreate workspaceId={workspaceId} catalogue={catalogue} onCreated={onCreated} />
       ) : null}
 
       <p className="text-xs text-muted-foreground">

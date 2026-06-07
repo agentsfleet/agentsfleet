@@ -5,22 +5,28 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Input, Label, Spinner } from "@usezombie/design-system";
 import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
 import { presentErrorString } from "@/lib/errors";
+import type { ModelCap } from "@/lib/api/model_caps";
+import { detectProviderFromKey } from "../lib/detect-provider";
 
 export type InlineProviderKeyCreateProps = {
   workspaceId: string;
+  catalogue: ModelCap[];
   onCreated: (name: string) => void;
 };
 
 /**
  * Inline "add a provider key" form for the Models wizard — a purpose-built
  * structured form (provider / api_key / model), not the generic JSON-blob
- * AddCredentialForm. The credential name defaults to the provider slug (editable)
- * so the common case is one decision. On success the parent selects the new
- * credential; the API surfaces duplicate-name and validation errors. Rendered
- * inside the wizard's form element, so it uses a button + onClick, not a nested form.
+ * AddCredentialForm. Pasting an API key fills the provider from its prefix
+ * (client-side heuristic) and defaults the model from the catalogue; the
+ * credential name tracks the provider slug. All three auto-fills yield to manual
+ * edits. On success the parent selects the new credential; the API surfaces
+ * duplicate-name and validation errors. Rendered inside the wizard's form
+ * element, so it uses a button + onClick, not a nested form.
  */
 export default function InlineProviderKeyCreate({
   workspaceId,
+  catalogue,
   onCreated,
 }: InlineProviderKeyCreateProps) {
   const router = useRouter();
@@ -29,6 +35,8 @@ export default function InlineProviderKeyCreate({
   const [model, setModel] = useState("");
   const [name, setName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
+  const [providerEdited, setProviderEdited] = useState(false);
+  const [modelEdited, setModelEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -36,6 +44,32 @@ export default function InlineProviderKeyCreate({
   const effectiveName = (nameEdited ? name : provider).trim();
   const canSubmit =
     provider.trim() !== "" && apiKey.trim() !== "" && model.trim() !== "" && effectiveName !== "";
+
+  // When the provider becomes known, default the model to the first catalogue
+  // entry for it — unless the user has already picked a model.
+  function defaultModelFor(prov: string) {
+    if (modelEdited) return;
+    const match = catalogue.find((m) => m.provider === prov);
+    if (match) setModel(match.id);
+  }
+
+  function onApiKeyChange(value: string) {
+    setApiKey(value);
+    // Paste-to-fill: a key's prefix maps to a provider (client-side heuristic,
+    // detect-provider.ts). Yields once the user has typed their own provider.
+    if (providerEdited) return;
+    const detected = detectProviderFromKey(value);
+    if (detected) {
+      setProvider(detected);
+      defaultModelFor(detected);
+    }
+  }
+
+  function onProviderChange(value: string) {
+    setProviderEdited(true);
+    setProvider(value);
+    defaultModelFor(value);
+  }
 
   async function submit() {
     if (!canSubmit) return;
@@ -73,26 +107,26 @@ export default function InlineProviderKeyCreate({
     <div className="space-y-3 rounded-md border border-dashed border-border p-3">
       <p className="text-xs font-medium text-muted-foreground">Add a new provider key</p>
       <div className="space-y-2">
-        <Label htmlFor="inline-provider">Provider</Label>
-        <Input
-          id="inline-provider"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value)}
-          onKeyDown={onFieldKeyDown}
-          placeholder="anthropic"
-          spellCheck={false}
-          autoComplete="off"
-        />
-      </div>
-      <div className="space-y-2">
         <Label htmlFor="inline-api-key">API key</Label>
         <Input
           id="inline-api-key"
           type="password"
           value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
+          onChange={(e) => onApiKeyChange(e.target.value)}
           onKeyDown={onFieldKeyDown}
-          placeholder="sk-…"
+          placeholder="paste your key — we'll detect the provider"
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="inline-provider">Provider</Label>
+        <Input
+          id="inline-provider"
+          value={provider}
+          onChange={(e) => onProviderChange(e.target.value)}
+          onKeyDown={onFieldKeyDown}
+          placeholder="anthropic"
           spellCheck={false}
           autoComplete="off"
         />
@@ -102,7 +136,10 @@ export default function InlineProviderKeyCreate({
         <Input
           id="inline-model"
           value={model}
-          onChange={(e) => setModel(e.target.value)}
+          onChange={(e) => {
+            setModelEdited(true);
+            setModel(e.target.value);
+          }}
           onKeyDown={onFieldKeyDown}
           placeholder="claude-sonnet-4-6"
           spellCheck={false}

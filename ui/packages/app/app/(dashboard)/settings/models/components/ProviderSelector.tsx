@@ -112,6 +112,7 @@ export default function ProviderSelector({
           <Step1Credential
             workspaceId={workspaceId}
             credentials={credentials}
+            catalogue={catalogue}
             credentialRef={credentialRef}
             onCredentialRefChange={setCredentialRef}
           />
@@ -134,6 +135,10 @@ export default function ProviderSelector({
           </Badge>
         ) : null}
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Changes apply to new events; events already in flight finish on their current configuration.
+      </p>
 
       {state.error ? (
         <Alert variant="destructive" className="text-xs">
