@@ -64,6 +64,20 @@ pub const MAX_RUNTIME_MS: i64 = 43_200_000;
 /// every lease cycle). The lapse-reassignment scan reuses/refines this value.
 pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS * 3;
 
+/// Control-loop heartbeat cadence: how often the runner's main (control) thread
+/// emits one host heartbeat, decoupled from worker execution now that the worker
+/// pool owns lease polling. A busy pool no longer carries the heartbeat, so this
+/// only has to keep an *idle* host live: it MUST stay below `RUNNER_OFFLINE_AFTER_MS`
+/// (the comptime assertion below enforces it) so an idle host always heartbeats
+/// before the fleet read would derive it offline. One stream per host regardless
+/// of `RUNNER_WORKER_COUNT`.
+pub const HEARTBEAT_INTERVAL_MS: i64 = 10_000;
+
+comptime {
+    if (HEARTBEAT_INTERVAL_MS >= RUNNER_OFFLINE_AFTER_MS)
+        @compileError("HEARTBEAT_INTERVAL_MS must be < RUNNER_OFFLINE_AFTER_MS so an idle host heartbeats before it is derived offline");
+}
+
 /// Backoff hint handed to a runner when there is no work to lease. The lease
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;

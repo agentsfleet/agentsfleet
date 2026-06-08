@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
@@ -62,7 +63,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     var list: std.ArrayList([]const u8) = .empty;
     errdefer freeList(alloc, &list);
 
-    const self_exe = try std.process.executablePathAlloc(io, alloc);
+    const self_exe = try resolveChildExe(io, alloc);
     defer alloc.free(self_exe);
 
     const sandboxed = builtin.os.tag == .linux and !std.mem.eql(u8, cfg.sandbox_tier, DEV_NONE);
@@ -81,6 +82,20 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     }
 
     return list.toOwnedSlice(alloc);
+}
+
+/// The child's exec target. Normally the runner's own binary (re-exec into
+/// `__execute`). An `executor_provider_stub` build (tests only) redirects to the
+/// prebuilt stub exe at `build_options.stub_runner_exe_path` — the integration
+/// daemon is a `zig test` binary with no `__execute` dispatch, so the forked
+/// child must run a real stub-flagged runner instead. Comptime-false in
+/// production: the whole branch (and the env-free path string) vanishes.
+fn resolveChildExe(io: std.Io, alloc: std.mem.Allocator) ![:0]u8 {
+    // Match executablePathAlloc's sentinel slice so the caller's single
+    // `alloc.free` frees the exact bytes allocated (len + 1).
+    if (build_options.executor_provider_stub and build_options.stub_runner_exe_path.len > 0)
+        return alloc.dupeZ(u8, build_options.stub_runner_exe_path);
+    return std.process.executablePathAlloc(io, alloc);
 }
 
 /// Free an argv produced by `buildArgv`.

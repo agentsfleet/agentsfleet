@@ -31,6 +31,13 @@ workspace_base: []const u8,
 /// off `cfg`; Zig 0.16 routes the env read through `Environ.Map` at startup,
 /// so the daemon hot path never touches the environment.
 network_policy: network.PolicyMode,
+/// Number of concurrent worker threads the daemon runs (env
+/// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
+/// the per-zombie `affinity.claim` keeps two off the same zombie. Default 1 is
+/// today's single-agent-per-host behaviour; clamped to `[1, MAX_WORKER_COUNT]`
+/// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
+/// is out of scope — the operator sizes N to the host.
+worker_count: u32,
 
 alloc: Allocator,
 
@@ -61,6 +68,16 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         (alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory);
     errdefer alloc.free(workspace_base);
 
+    const worker_count_raw = getOwned(env_map, alloc, ENV_RUNNER_WORKER_COUNT) catch null;
+    defer if (worker_count_raw) |raw| alloc.free(raw);
+    const worker_count = switch (parseWorkerCount(worker_count_raw)) {
+        .value => |v| v,
+        .invalid => blk: {
+            log.warn("runner_worker_count_invalid", .{ .raw = worker_count_raw.?, .fallback = DEFAULT_WORKER_COUNT });
+            break :blk DEFAULT_WORKER_COUNT;
+        },
+    };
+
     return Config{
         .control_plane_url = url,
         .runner_token = token,
@@ -68,8 +85,24 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         .sandbox_tier = tier,
         .workspace_base = workspace_base,
         .network_policy = network.policyFromMap(env_map),
+        .worker_count = worker_count,
         .alloc = alloc,
     };
+}
+
+/// Result of reading `RUNNER_WORKER_COUNT`: a usable clamped count, or `.invalid`
+/// when a present value does not parse (the caller falls back + warns). Unset is
+/// `.value = DEFAULT_WORKER_COUNT`, never `.invalid`.
+pub const WorkerCountParse = union(enum) { value: u32, invalid };
+
+/// Pure parse+clamp for `RUNNER_WORKER_COUNT` (RULE UFS: bounds single-sourced).
+/// null/unset → default; non-numeric/empty → `.invalid`; `0`/over-MAX → clamped
+/// into `[MIN_WORKER_COUNT, MAX_WORKER_COUNT]`. No logging, so it is unit-testable.
+fn parseWorkerCount(raw: ?[]const u8) WorkerCountParse {
+    const s = raw orelse return .{ .value = DEFAULT_WORKER_COUNT };
+    const trimmed = std.mem.trim(u8, s, &std.ascii.whitespace);
+    const n = std.fmt.parseInt(u32, trimmed, 10) catch return .invalid;
+    return .{ .value = std.math.clamp(n, MIN_WORKER_COUNT, MAX_WORKER_COUNT) };
 }
 
 pub fn deinit(self: Config) void {
@@ -105,6 +138,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 const network = @import("../engine/network.zig");
+const logging = @import("log");
+
+const log = logging.scoped(.zombie_runner);
 
 /// Environment variable names — single-sourced (RULE UFS).
 pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
@@ -112,15 +148,37 @@ pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
 pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
+pub const ENV_RUNNER_WORKER_COUNT = "RUNNER_WORKER_COUNT";
 
 // Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
 // only tier that runs without isolation — dev default; prod must override.
 const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
 const DEFAULT_WORKSPACE_BASE = "/tmp/zombie-runner";
 
+/// Worker-pool sizing bounds (RULE UFS: the clamp is single-sourced). Default 1
+/// = today's one-agent-per-host daemon; MAX caps a misconfigured value so the
+/// pool can never fork unbounded children on one host.
+pub const DEFAULT_WORKER_COUNT: u32 = 1;
+pub const MIN_WORKER_COUNT: u32 = 1;
+pub const MAX_WORKER_COUNT: u32 = 64;
+
 test "assertRunnerTokenPrefix accepts zrn_ tokens, rejects everything else" {
     try assertRunnerTokenPrefix("zrn_" ++ "a" ** 64);
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zmb_t_deadbeef"));
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix(""));
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zrn"));
+}
+
+test "worker count parses default and clamps" {
+    try std.testing.expectEqual(DEFAULT_WORKER_COUNT, parseWorkerCount(null).value); // unset → default
+    try std.testing.expectEqual(@as(u32, 8), parseWorkerCount("8").value);
+    try std.testing.expectEqual(MIN_WORKER_COUNT, parseWorkerCount("0").value); // below floor → clamp up
+    try std.testing.expectEqual(MAX_WORKER_COUNT, parseWorkerCount("99999").value); // above ceiling → clamp down
+    try std.testing.expectEqual(@as(u32, 4), parseWorkerCount("  4 \n").value); // surrounding whitespace tolerated
+}
+
+test "worker count invalid falls back to default" {
+    try std.testing.expect(parseWorkerCount("abc") == .invalid); // non-numeric → caller defaults + warns
+    try std.testing.expect(parseWorkerCount("") == .invalid); // empty → invalid, never a silent 0
+    try std.testing.expect(parseWorkerCount("-3") == .invalid); // signed rejected by u32 parse
 }

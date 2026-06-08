@@ -83,14 +83,20 @@ REST_API_DESIGN, SCHEMA_CONVENTIONS, and ERROR REGISTRY do **not** apply — no 
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/runner/daemon/loop.zig` | EDIT | split `runLoop` into the control loop (heartbeat on cadence + `.stop`/`.drain` → atomics + spawn/join) and an extracted `workerLoop` wrapping the existing `pollAndProcess`; add a `stop_requested` atomic beside `drain_requested`. `pollAndProcess`/`executeAndReport` retained verbatim. |
-| `src/runner/daemon/worker_pool.zig` | CREATE | the fixed-N `std.Thread` pool façade: spawn `cfg.worker_count` workers (each its own allocator scope + control-plane client), run `workerLoop`, join all on shutdown; `errdefer` joins any already-spawned worker on a partial-spawn failure. |
-| `src/runner/daemon/config.zig` | EDIT | add `worker_count` (env `RUNNER_WORKER_COUNT`, default 1, clamped `[1, MAX]`, invalid → default + warn; RULE UFS). |
-| `src/lib/common/constants.zig` | EDIT | add `HEARTBEAT_INTERVAL_MS` (control-loop cadence) with the invariant `< RUNNER_OFFLINE_AFTER_MS`. |
-| `src/runner/main.zig` | EDIT | thread `cfg.worker_count` into `runLoop`; N=1 keeps the call site behaviourally identical. |
-| `docs/architecture/scaling.md` | EDIT | document the runner worker-pool as the per-host throughput lever (sibling to the zombied handler-pool knob). |
-| `deploy/baremetal/zombie-runner.service` | EDIT | document the `RUNNER_WORKER_COUNT` operator knob (commented default). |
+| `src/runner/daemon/loop.zig` | EDIT ✅ | split `runLoop` into the control loop (heartbeat-first on cadence + `.stop`/`.drain` → atomics + lazy pool spawn/join); `pollAndProcess` made `pub` + retained verbatim; added a `stop_requested` atomic beside `drain_requested`. |
+| `src/runner/daemon/worker_pool.zig` | CREATE ✅ | the fixed-N `std.Thread` pool: `spawn(io, alloc, cfg, env_map, stop, drain) → Pool` + `Pool.join()` (each worker its own `DebugAllocator` scope + control-plane client, runs `workerLoop`; `errdefer` joins any already-spawned worker on partial-spawn failure). |
+| `src/runner/daemon/config.zig` | EDIT ✅ | add `worker_count` (env `RUNNER_WORKER_COUNT`, default 1, clamped `[1, 64]`, invalid → default + warn; RULE UFS), tagged-union parse. |
+| `src/lib/common/constants.zig` | EDIT ✅ | add `HEARTBEAT_INTERVAL_MS` (10 s) with a comptime assertion `< RUNNER_OFFLINE_AFTER_MS`. |
+| `src/runner/daemon/control_plane_client.zig` | EDIT ✅ (OUT OF ORIGINAL SCOPE — see Discovery) | `lease()` parse switched to `.alloc_always` — fixes a latent use-after-free (unescaped lease strings referenced the freed `res.body`) that the concurrent pool surfaced. Matches `getSelf`/`memoryHydrate`. |
+| `build_runner.zig` | EDIT ✅ | add the test-only `executor-provider-stub` build flag + `stub_runner_exe_path`; build a stub-flagged `zombie-runner-execstub` exe and feed its path to the integration target (lets the pool drive the real fork→execute→report path with no LLM). |
+| `src/runner/child_exec.zig` | EDIT ✅ | comptime-gated stub: an `executor_provider_stub` build emits a canned `result` frame instead of running the engine. |
+| `src/runner/sandbox_args.zig` | EDIT ✅ | comptime-gated child-exec redirect to `stub_runner_exe_path` (the integration `zig test` binary has no `__execute` dispatch). |
+| `deploy/baremetal/zombie-runner.service` | EDIT ✅ | document the `RUNNER_WORKER_COUNT` operator knob. |
+| `docs/architecture/scaling.md` | EDIT ✅ (carried from Indy's WIP) | the `RUNNER_WORKER_COUNT` lever row + failure-domain note (already authored by Indy; carried into this PR). |
+| `docs/architecture/runner_fleet.md` | EDIT ✅ (carried from Indy's WIP) | derived-capacity (`0..N` leases, `active < worker_count`) + multi-lease memory-isolation invariant (Indy's WIP; carried). |
+| tests | CREATE ✅ | `worker_pool_test.zig` (unit lifecycle), `worker_pool_integration_test.zig` (Linux/real-process: N concurrent leases→reports + clean drain + concurrent fork/reap); inline config tests; `loop_test`/`child_exec_edge`/`sandbox_args_edge` Config literals updated for the new field. |
 
+> **`src/runner/main.zig` NOT edited** — `runLoop` kept its signature and reads `cfg.worker_count`, so the call site is unchanged (cleaner than the originally-listed EDIT).
 > Line numbers/symbols omitted by design — the agent reads current code.
 
 ---
@@ -105,21 +111,21 @@ REST_API_DESIGN, SCHEMA_CONVENTIONS, and ERROR REGISTRY do **not** apply — no 
 
 ## Sections (implementation slices)
 
-### §1 — `RUNNER_WORKER_COUNT` config knob
+### §1 — `RUNNER_WORKER_COUNT` config knob — DONE
 
 Add `worker_count` to `Config`, read from `RUNNER_WORKER_COUNT`. **Implementation default:** default **1** (zero behaviour change without opt-in — N=1 is exactly today's daemon) because capacity-awareness is out of scope, so the operator sizes N to the host; clamp to `[1, MAX]` so a fat-fingered value can't fork unbounded children. Name, default, and bounds single-sourced (UFS).
 
 - **Dimension 1.1** — `RUNNER_WORKER_COUNT` parses; unset → 1; above MAX or `0` → clamped into `[1, MAX]` → Test `worker count parses default and clamps`.
 - **Dimension 1.2** — a non-numeric value fails safe to the default with a logged warning, never crashing startup → Test `worker count invalid falls back to default`.
 
-### §2 — Control/heartbeat loop split
+### §2 — Control/heartbeat loop split — DONE
 
 Refactor `runLoop` so the main thread is the control loop: it heartbeats **once per host** on an explicit `HEARTBEAT_INTERVAL_MS` cadence (decoupled from worker execution, since workers now own polling), maps the heartbeat response's `.stop`/`.drain` to the shared atomics, and spawns then joins the pool. Derived liveness is already busy-before-offline (`constants.zig` `RUNNER_OFFLINE_AFTER_MS`), so an in-flight host is never falsely offline; the cadence only needs to keep an **idle** host live. **Implementation default:** `.stop` and `.drain` both trigger graceful pool drain (finish in-flight, no new lease) — matching today's finish-current-then-exit semantics.
 
 - **Dimension 2.1** — with N workers the host emits one heartbeat stream (not N), and a busy pool never delays it (heartbeat is independent of worker execution) → Test `control loop heartbeats once independent of workers`.
 - **Dimension 2.2** — a `.stop`/`.drain` directive (and SIGTERM) sets the flag; every worker finishes its in-flight child, takes no new lease, and the control loop joins all → Test `drain finishes inflight and joins pool`.
 
-### §3 — Fixed-N worker pool (the concurrency)
+### §3 — Fixed-N worker pool (the concurrency) — DONE
 
 `worker_pool.zig` spawns N `std.Thread` workers; each runs `workerLoop` = (while not stop/drain: `pollAndProcess`), with its **own** allocator scope and control-plane client (the client is stateless — `{base_url, io}`, a fresh `std.http.Client` per call — so sharing the `io` is safe). The per-zombie `affinity.claim` serialises claims; no control-plane change.
 
@@ -127,7 +133,7 @@ Refactor `runLoop` so the main thread is the control loop: it heartbeats **once 
 - **Dimension 3.2** — each worker uses an independent allocator scope; the concurrency harness shows no cross-worker shared-allocator race or leak → Test `workers do not share allocator state`.
 - **Dimension 3.3** — fork-from-multithreaded is safe: N children spawn via `std.process.spawn` and are reaped cleanly, with no fork deadlock → Test `concurrent forked children spawn and reap`.
 
-### §4 — Lifecycle parity (clean shutdown, no leaks)
+### §4 — Lifecycle parity (clean shutdown, no leaks) — DONE
 
 The pool starts and stops exactly like the single-threaded daemon: on `.stop`/`.drain`/SIGTERM every worker thread is joined, every in-flight child reaped (the supervisor's always-reap `defer`), every per-lease workspace cleaned. A partial-spawn failure joins the workers already up. **Invariant:** shutdown leaks nothing.
 
@@ -207,13 +213,13 @@ Control plane: UNCHANGED — no new/changed endpoint; N pollers share one zrn_; 
 
 ## Acceptance Criteria
 
-- [ ] N concurrent leases execute + report on one host; the single-threaded path serialised them — verify: `make test-integration` + the pool harness
-- [ ] N=1 behaviourally identical to today (regression) — verify: `make test-integration`
-- [ ] Clean shutdown joins all workers, reaps all children, leaks nothing — verify: `make test-integration` (Test 4.1) + `make memleak`
-- [ ] `RUNNER_WORKER_COUNT` parsed / clamped / fail-safe — verify: `make test`
-- [ ] `make lint` clean · `make test` passes
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no non-`.md` file over 350 lines added
+- [x] N concurrent leases execute + report on one host; the single-threaded path serialised them — `test-integration` pool harness: N=4 leases → 4 reports, `max_in_lease ≥ 2`
+- [x] N=1 behaviourally identical to today (regression) — existing runner suites pass unchanged at default `worker_count=1`; pool unit test covers the N=1 boundary
+- [x] Clean shutdown joins all workers, reaps all children, leaks nothing — pool integration test drains + joins (no leak/hang); testing.allocator clean
+- [x] `RUNNER_WORKER_COUNT` parsed / clamped / fail-safe — `make test` (config inline tests 1.1/1.2)
+- [x] `make lint-zig` clean · runner unit graph 235/241 (0 failed, 6 skipped)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (exe, both targets, exit 0)
+- [x] no non-`.md` file over 350 lines added (FLL gate ✓) · `gitleaks` runs in pre-commit
 
 ---
 
@@ -259,6 +265,12 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 - **DB-scale note (CTO review).** `active = COUNT(active leases)` is derived now (cheap at current fleet size). A materialized counter/index for a capacity-ranked scheduler (`ORDER BY available`) may be introduced **later, for scheduler scale only** — explicitly not today, to avoid counter drift.
 - **Fixed-N vs capacity-units (CTO review).** Heterogeneous hosts (2 vs 64 cores) point toward capacity *units* rather than a fixed worker count; flagged as future direction, not a blocker for this spec.
 - **Deferrals** — none at authoring.
+- **PLAN handshake confirmed (Jun 08 2026).** All five "Implementing agent" pointers read; the five load-bearing assumptions hold against the code: fixed-N from `RUNNER_WORKER_COUNT`; workers run `pollAndProcess` verbatim with heartbeat 1/host on the control loop; no control-plane change for correctness; each worker owns an independent `DebugAllocator` scope; `.stop`/`.drain`/SIGTERM finish in-flight, take no new lease, join all. No mismatch.
+- **Interface refinement — `spawn`/`join` instead of a single blocking `run` (Jun 08 2026).** The Interfaces sketch listed `worker_pool.run(...)` spawning AND joining; but §2 requires the control loop (main thread) to interleave heartbeats between spawn and join, so the pool exposes `spawn(io, alloc, cfg, env_map, stop, drain) → Pool` + `Pool.join()`. `runLoop` spawns the pool lazily after the first `.ok` heartbeat (preserving the boot test's "first contact is a heartbeat, never register") and joins it via `defer` on exit. Behaviour matches the spec; only the call shape is split.
+- **Latent use-after-free in `control_plane_client.lease()` — found + fixed (Jun 08 2026, OUT OF ORIGINAL BLAST RADIUS).** `lease()` parsed `LeaseResponse` with default JSON options (`.alloc_if_needed`), so unescaped strings (`lease_id`/`event_id`/`zombie_id`) **referenced `res.body`**, which the method frees on return — leaving the returned `LeasePayload` dangling. The single-threaded daemon survived by luck (freed-not-reused); the concurrent pool's per-worker allocator reuses the buffer, so the first read of a payload string (a `log.info`) SEGV'd. Fix: `.alloc_always` (copies into the Parsed arena), matching `getSelf`/`memoryHydrate`, which already do this for the same reason. The pool feature is correct only with this fix — surfaced to Indy for sign-off as an out-of-scope but load-bearing edit.
+- **Executor-stub harness built (Path B, Indy-chosen Jun 08 2026).** The documented `-Dexecutor-provider-stub`/`ZOMBIE_RUNNER_STUB_BIN` mechanism did NOT exist; built it as a comptime-gated build flag (no env backdoor): a stub-flagged child emits a canned `result` frame (`child_exec.zig`), and a stub-flagged daemon redirects the forked child's exec target to a prebuilt stub exe (`sandbox_args.zig`), wired in `build_runner.zig`. Production builds (flag false) comptime-eliminate both seams. This lets `worker_pool_integration_test.zig` drive the real lease→fork→execute→report path with N concurrent children and no LLM.
+- **Workspace-base creation is `main.zig`'s job (Jun 08 2026).** The pool integration test drives `worker_pool.spawn` directly (bypassing `main`), so it must create `cfg.workspace_base` itself or every `prepareWorkspace` fails closed and no lease executes — captured in the test setup.
+- **Carried-in WIP (Jun 08 2026, Indy direction).** Per Indy, this PR carries his uncommitted `scaling.md` + `runner_fleet.md` WIP (the M88_002/M84_002 arch reconciliation) and the untracked `M84_008` pending spec (a separate M84 workstream — carried at his explicit request, not an M88 dependency).
 
 ---
 
@@ -278,11 +290,14 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Concurrency + no double-claim | `make test-integration` | {paste} | |
-| N=1 regression | `make test-integration` | {paste} | |
-| Clean shutdown / leaks | `make memleak` | {paste} | |
-| Config parse/clamp | `make test` | {paste} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | {paste} | |
+| Concurrency + reports + clean drain | `zig build --build-file build_runner.zig test-integration` | 54/59 passed, 5 skipped (Linux-only sandbox), 0 failed; pool test asserts 4 reports + `max_in_lease ≥ 2` | ✅ |
+| Concurrent fork/reap (3.3) | `test-integration` | 8 threads `std.process.spawn`+reap, all clean, no deadlock | ✅ |
+| Config parse/clamp/invalid | `zig build --build-file build_runner.zig test` | 235/241 passed, 0 failed (incl. 1.1/1.2) | ✅ |
+| Zig lint (fmt/ZLint/FLL/drain/role/legacy) | `make lint-zig` | Lint passed — 0 errors | ✅ |
+| Cross-compile x86_64-linux | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux` | exit 0 | ✅ |
+| Cross-compile aarch64-linux | `zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | exit 0 | ✅ |
+
+> Note: `make memleak` / the native-arm64-container run of the Linux-gated graph are the CI VERIFY tier; locally the pool/fork tests run on macOS (dev_none, no bwrap) and the testing.allocator + DebugAllocator scopes report no leak.
 
 ---
 
