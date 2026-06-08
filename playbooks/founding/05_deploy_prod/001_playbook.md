@@ -95,16 +95,17 @@ The release pipeline deploys in three stages:
 > **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
 > `[env]`, not in vault — they are tuning, not secrets. The handler pool is
 > **per worker**, so total concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`.
-> Prod runs `2 × 16 = 32` (2 workers for accept parallelism on the multi-core
-> slice). The one long-lived handler that holds a thread for the connection's
-> life is the SSE stream; the runner lease is a non-blocking single poll (see
-> `docs/architecture/scaling.md`). Both knobs default to `1`, which lets a
-> single SSE stream saturate the pool. **Reconcile `[[vm]]` with the live prod
-> slice** — if it is larger than the `shared-cpu-1x / 1gb` in the toml, update
-> it so a CI deploy does not scale prod back down, then raise `API_HTTP_THREADS`
-> to `32` (→ 64 total) for more SSE headroom. To change: edit `[env]`, redeploy,
-> watch handler-pool saturation on `/metrics` (port 9091). Next scaling levers:
-> a larger VM, then horizontal replicas (the binding constraint per `scaling.md`).
+> Prod runs `2 × 32 = 64` handler threads per machine (~192 across 3 replicas)
+> on the 4-core / 4gb slice. The one long-lived handler that holds a thread for
+> the connection's life is the SSE stream; the runner lease is a non-blocking
+> single poll (see `docs/architecture/scaling.md`). Both knobs default to `1`,
+> which lets a single SSE stream saturate the pool. **The `[[vm]]` strings
+> (`shared-cpu-4x` / `4gb`) must match the running machines** — a mismatch
+> reshapes prod hardware on deploy; the machine **count** (2 → 3) is set by
+> `flyctl scale` / the release pipeline, not the toml. To change tuning: edit
+> `[env]`, redeploy, watch handler-pool saturation on `/metrics` (port 9091).
+> The next scaling lever after this is more replicas (binding constraint per
+> `scaling.md`).
 
 ### 3.2 `deploy-prod-canary` — First Worker Host
 
