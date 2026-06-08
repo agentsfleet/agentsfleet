@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 export interface BrowserResolutionOk {
-  argv: string[];
+  argv: [string, ...string[]];
   quoteUrl?: boolean;
   command: string;
   reason?: undefined;
@@ -25,6 +25,8 @@ export interface OpenUrlOptions {
   // env/platform injection above and the fetchImpl/sleepImpl seams elsewhere.
   spawnImpl?: typeof spawn | undefined;
 }
+
+export type BrowserCommandExists = (command: string) => Promise<boolean>;
 
 function browserDisabled(env: NodeJS.ProcessEnv): boolean {
   const raw = env.BROWSER;
@@ -59,6 +61,7 @@ function commandExists(command: string): Promise<boolean> {
 export async function resolveBrowserCommand(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  commandExistsImpl: BrowserCommandExists = commandExists,
 ): Promise<BrowserResolution> {
   if (browserDisabled(env)) {
     return { argv: null, reason: "browser-disabled" };
@@ -75,7 +78,7 @@ export async function resolveBrowserCommand(
   if (platform === "linux") {
     const wsl = looksLikeWsl(env);
     if (wsl) {
-      if (await commandExists(WSLVIEW_COMMAND)) {
+      if (await commandExistsImpl(WSLVIEW_COMMAND)) {
         return { argv: [WSLVIEW_COMMAND], quoteUrl: false, command: WSLVIEW_COMMAND };
       }
       if (!hasDisplay(env)) {
@@ -87,7 +90,7 @@ export async function resolveBrowserCommand(
       return { argv: null, reason: isSsh(env) ? "ssh-no-display" : "no-display" };
     }
 
-    if (await commandExists(XDG_OPEN_COMMAND)) {
+    if (await commandExistsImpl(XDG_OPEN_COMMAND)) {
       return { argv: [XDG_OPEN_COMMAND], quoteUrl: false, command: XDG_OPEN_COMMAND };
     }
 
@@ -105,20 +108,15 @@ export async function openUrl(url: string, opts: OpenUrlOptions = {}): Promise<b
   if (!resolved.argv) return false;
 
   return new Promise((resolve) => {
-    const argv: string[] = [...resolved.argv];
+    const [head, ...argv] = resolved.argv;
     if (resolved.quoteUrl) {
       argv.push(`"${url}"`);
     } else {
       argv.push(url);
     }
 
-    const head = argv[0];
-    if (!head) {
-      resolve(false);
-      return;
-    }
     const doSpawn = opts.spawnImpl ?? spawn;
-    const child = doSpawn(head, argv.slice(1), {
+    const child = doSpawn(head, argv, {
       detached: true,
       stdio: STDIO_IGNORE,
       windowsVerbatimArguments: resolved.quoteUrl === true,

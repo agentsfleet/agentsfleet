@@ -1,19 +1,14 @@
-// Line-coverage backfill for src/commands/zombie_steer.ts.
+// Regression coverage for src/commands/zombie_steer.ts fallback behavior.
 //
-// Two defensive branches resist coverage, and these tests pin down WHY by
-// asserting the reachable behaviour that bypasses them:
+// These tests pin down the reachable behavior that bypasses direct
+// Server-Sent Events (SSE) transport-error rendering:
 //
-//   * renderOutcome's `sse_error` arm (the `message failed: … — detail`
-//     emit) can never render, because any `sse_error` produced by
-//     tailEventStream is overwritten by the fallback poll in steerTurnEffect
-//     before renderOutcome ever inspects the outcome. We prove the poll
-//     recovery path renders instead.
+//   * any `sse_error` produced by tailEventStream is overwritten by the
+//     fallback poll in steerTurnEffect before renderOutcome inspects the
+//     outcome. We prove the poll recovery path renders instead.
 //
-//   * the `onTurnError` ternary's else arm (constructing an UnexpectedError
-//     for a non-CliError cause) can never run, because runTurn only ever
-//     throws exitToCliError(...), which always returns a `_tag`-bearing
-//     CliError → the true arm. We prove a failing REPL turn renders the
-//     original CliError message, not a synthesized UnexpectedError.
+//   * runTurn failures are still surfaced as their original CliError message
+//     so the prompt loop can continue after one failed turn.
 
 import { describe, expect, test, setSystemTime } from "bun:test";
 import { Effect, Exit } from "effect";

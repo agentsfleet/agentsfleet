@@ -29,10 +29,9 @@ import {
   pollEventTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
-  STATUS_SSE_ERROR,
   STATUS_TIMEOUT,
   tailEventStream,
-  type SteerOutcome,
+  type PolledSteerOutcome,
 } from "./zombie_steer_events.ts";
 
 const MESSAGE_PLACEHOLDER = "<message>" as const;
@@ -41,8 +40,18 @@ const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as cons
 const SUGGESTION_RERUN_COMMAND = "rerun the command to continue" as const;
 const DETAIL_STEER_INTERRUPTED = "steer interrupted" as const;
 
+type RenderableSteerOutcome = PolledSteerOutcome;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === TYPE_OBJECT;
+
+const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
+  Effect.fail(
+    new InterruptedError({
+      detail: DETAIL_STEER_INTERRUPTED,
+      suggestion: SUGGESTION_RERUN_COMMAND,
+    }),
+  );
 
 interface MessagesResponse {
   readonly event_id?: string;
@@ -53,6 +62,7 @@ export interface SteerDeps {
   readonly stdin?: ReplInputStream;
   readonly stdout?: ReplOutputStream;
   readonly signalSource?: ReplSignalSource;
+  readonly runRepl?: typeof runSteerRepl;
 }
 export interface SteerOptions {
   readonly forceTty?: boolean;
@@ -86,23 +96,22 @@ const steerTurnEffect = (
       );
     }
 
-    let outcome = yield* tailEventStream(wsId, zombieId, post.event_id, token, streamGet, signal);
-    if (outcome.kind !== STATUS_COMPLETE && !signal?.aborted) {
+    const streamOutcome = yield* tailEventStream(wsId, zombieId, post.event_id, token, streamGet, signal);
+    let outcome: RenderableSteerOutcome;
+    if (streamOutcome.kind === STATUS_COMPLETE) {
+      outcome = streamOutcome;
+    } else {
+      if (signal?.aborted) return yield* failSteerInterrupted();
       outcome = yield* pollEventTerminal(wsId, zombieId, post.event_id, token, signal);
     }
     if (signal?.aborted) {
-      return yield* Effect.fail(
-        new InterruptedError({
-          detail: DETAIL_STEER_INTERRUPTED,
-          suggestion: SUGGESTION_RERUN_COMMAND,
-        }),
-      );
+      return yield* failSteerInterrupted();
     }
     yield* renderOutcome(outcome, post.event_id, zombieId);
   });
 
 const renderOutcome = (
-  outcome: SteerOutcome,
+  outcome: RenderableSteerOutcome,
   eventId: string,
   zombieId: string,
 ): Effect.Effect<void, CliError, CliConfig | Output> =>
@@ -119,10 +128,6 @@ const renderOutcome = (
       yield* output.error(
         `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s — check: zombiectl events ${zombieId}`,
       );
-    } else if (outcome.kind === STATUS_SSE_ERROR) {
-      yield* output.error(`message failed: ${outcome.kind} — ${outcome.detail}`);
-    } else {
-      yield* output.error(`message failed: ${outcome.kind}`);
     }
 
     if (outcome.kind === STATUS_COMPLETE) {
@@ -161,6 +166,7 @@ export const steerEffectFromArgs = (
     const streamGet = deps.streamGet ?? defaultStreamGet;
     const stdin = deps.stdin ?? (process.stdin as ReplInputStream);
     const stdout = deps.stdout ?? (process.stdout as ReplOutputStream);
+    const runRepl = deps.runRepl ?? runSteerRepl;
     const forceTty = options.forceTty === true;
 
     if (!zombieId) {
@@ -180,7 +186,7 @@ export const steerEffectFromArgs = (
       );
       const exitCode = yield* Effect.tryPromise({
         try: () =>
-          runSteerRepl({
+          runRepl({
             input: stdin,
             output: stdout,
             ...(deps.signalSource ? { signalSource: deps.signalSource } : {}),
