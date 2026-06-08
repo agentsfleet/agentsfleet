@@ -4,11 +4,11 @@
 **Milestone:** M88
 **Workstream:** 002
 **Date:** Jun 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a host runner executes exactly one agent at a time; this lifts per-host throughput to ~N concurrent without the async rewrite (M88_001), and is the boring lever the M88 pivot identified as the real fix.
 **Categories:** API
 **Batch:** B1 — sibling of M88_001 (gated); independent, may run concurrently.
-**Branch:** {feat/m88-runner-worker-pool — added when work begins}
+**Branch:** feat/m88-runner-worker-pool
 **Depends on:** none for correctness (the per-zombie `affinity.claim` already serializes N pollers; the runner memory plane is already lease/zombie-scoped — see Discovery). Composes with M84_002 — both specs model "busy"/capacity as **derived** from `fleet.runner_leases` (no singular `current_lease_id`), so a pooled runner holding 0..N leases needs no control-plane schema change. May run concurrently in a separate worktree (file-disjoint from M84_002's `src/zombied/fleet/*` + UI).
 **Provenance:** LLM-drafted (Opus 4.8, Jun 08 2026) — from the M88 scaling pivot; design LOCKED by Indy: fixed-N `std.Thread` pool, reuse `pollAndProcess`, not capacity-aware.
 
