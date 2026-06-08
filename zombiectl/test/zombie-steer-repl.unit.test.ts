@@ -19,6 +19,11 @@ const EVENT_ID = "1729874000000-0";
 const API_URL = "https://api.test.local";
 const DASHBOARD_URL = "https://dash.test.local";
 const POST = "POST";
+const REPL_EXIT_OK = 0;
+const REPL_PLAIN_ERROR = "plain repl problem";
+const REPL_REPORT_SUGGESTION = "report this with the command you ran";
+
+type RunRepl = NonNullable<NonNullable<Parameters<typeof steerEffectFromArgs>[3]>["runRepl"]>;
 
 interface Recorder {
   readonly requests: HttpRequestInput[];
@@ -180,6 +185,27 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     ]);
     expect(rec.stderr.join("\n")).toContain("messages response missing event_id");
     expect(rec.streamSignals).toHaveLength(1);
+  });
+
+  test("REPL reports non-CliError turn failures as unexpected errors", async () => {
+    const rec = makeRecorder();
+    const runRepl: RunRepl = async (options) => {
+      await options.onTurnError?.(new Error(REPL_PLAIN_ERROR));
+      return REPL_EXIT_OK;
+    };
+    const effect = steerEffectFromArgs(
+      ZOMBIE_ID,
+      undefined,
+      { forceTty: true },
+      { stdin: streamFrom([], false), stdout: nullOutput(), streamGet: completeStream(rec), runRepl },
+    ).pipe(Effect.provide(testLayer(rec)));
+
+    const exit = await Effect.runPromiseExit(effect);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const renderedErrors = rec.stderr.join("\n");
+    expect(renderedErrors).toContain(REPL_PLAIN_ERROR);
+    expect(renderedErrors).toContain(REPL_REPORT_SUGGESTION);
+    expect(rec.requests).toHaveLength(0);
   });
 
   test("SIGINT during the fallback poll breaks promptly instead of waiting out the timeout", async () => {

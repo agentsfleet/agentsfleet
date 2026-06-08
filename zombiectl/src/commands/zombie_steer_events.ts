@@ -40,6 +40,9 @@ export type SteerOutcome =
   | { readonly kind: typeof STATUS_TIMEOUT }
   | { readonly kind: typeof STATUS_SSE_DISCONNECTED }
   | { readonly kind: typeof STATUS_SSE_ERROR; readonly detail: string };
+export type PolledSteerOutcome =
+  | Extract<SteerOutcome, { readonly kind: typeof STATUS_COMPLETE }>
+  | Extract<SteerOutcome, { readonly kind: typeof STATUS_TIMEOUT }>;
 
 interface EventsResponse {
   readonly items?: ReadonlyArray<EventRow>;
@@ -144,7 +147,7 @@ export const pollEventTerminal = (
   eventId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
-): Effect.Effect<SteerOutcome, never, HttpClient> =>
+): Effect.Effect<PolledSteerOutcome, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const sinceParam = eventIdToSince(eventId);
@@ -156,10 +159,10 @@ export const pollEventTerminal = (
       );
       const match = (res.items ?? []).find((row: EventRow) => row.event_id === eventId);
       if (match && isString(match.status) && isTerminal(match.status)) {
-        return { kind: STATUS_COMPLETE, status: match.status } as SteerOutcome;
+        return { kind: STATUS_COMPLETE, status: match.status } as PolledSteerOutcome;
       }
       if (signal?.aborted) break;
       yield* Effect.sleep(`${FALLBACK_POLL_MS} millis`);
     }
-    return { kind: STATUS_TIMEOUT } as SteerOutcome;
+    return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
   });
