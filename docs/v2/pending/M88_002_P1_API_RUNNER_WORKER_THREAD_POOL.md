@@ -9,7 +9,7 @@
 **Categories:** API
 **Batch:** B1 — sibling of M88_001 (gated); independent, may run concurrently.
 **Branch:** {feat/m88-runner-worker-pool — added when work begins}
-**Depends on:** none for correctness (the per-zombie `affinity.claim` already serializes N pollers). Composes with M84_002 — its singular `current_lease_id` busy-marker assumes one lease per runner and must become "≥1 active lease" under this pool (flagged in that spec, see Discovery).
+**Depends on:** none for correctness (the per-zombie `affinity.claim` already serializes N pollers; the runner memory plane is already lease/zombie-scoped — see Discovery). Composes with M84_002 — both specs model "busy"/capacity as **derived** from `fleet.runner_leases` (no singular `current_lease_id`), so a pooled runner holding 0..N leases needs no control-plane schema change. May run concurrently in a separate worktree (file-disjoint from M84_002's `src/zombied/fleet/*` + UI).
 **Provenance:** LLM-drafted (Opus 4.8, Jun 08 2026) — from the M88 scaling pivot; design LOCKED by Indy: fixed-N `std.Thread` pool, reuse `pollAndProcess`, not capacity-aware.
 
 > **Provenance is load-bearing.** LLM-drafted — every claim below was cross-checked against the runner code on Jun 08 2026 (fork-safety, the per-zombie claim, the stateless client). Re-verify before EXECUTE.
@@ -169,6 +169,8 @@ Control plane: UNCHANGED — no new/changed endpoint; N pollers share one zrn_; 
 | Stop during a full pool | signal/`.stop`/`.drain` with N in-flight | each worker finishes its child at the between-lease boundary, takes no new lease; control loop joins all; no orphan child or thread → Test 2.2 / 4.1 |
 | Allocator contention/race | workers sharing one allocator | each worker owns an allocator scope → no global allocator-mutex bottleneck or cross-thread race → Test 3.2 |
 | Idle host stops heartbeating | control loop starved | heartbeat runs on the control loop independent of worker execution, on a cadence `< RUNNER_OFFLINE_AFTER_MS`, so a busy pool never lapses liveness → Test 2.1 |
+| Host loss with full pool | crash/network partition of a host running N children | **failure domain = N**: all N in-flight executions are lost at once (vs 1 on a single-lease host). M84_002's liveness sweeper marks the host offline and expires its per-zombie affinity, so all N zombies re-lease to healthy hosts; no work is dropped, but N runs are interrupted and restart. Operator-owned tradeoff (the `RUNNER_WORKER_COUNT` knob trades isolation for utilization). |
+| Resource contention across workers | N heavy children share one host | CPU / RAM / disk IOPS / network are not isolated across workers, so N concurrent heavy agents slow each other; each child is still bounded by its cgroup memory limit. `RUNNER_WORKER_COUNT` is a capacity knob, not a throughput guarantee — sizing N to the host is operator-owned. |
 
 ---
 
@@ -250,7 +252,12 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 - **Provenance (Jun 08 2026)** — the M88 scaling pivot: the async substrate (M88_001) is gated behind an evidence gate; this worker-thread pool is the boring, real per-host throughput fix. Design LOCKED by Indy — fixed-N `std.Thread` pool, reuse `pollAndProcess`, no capacity-awareness.
 - **Code-grounded validation (Jun 08 2026)** — verified in the runner code before authoring: (1) **fork-safety** — `forkExec` uses `std.process.spawn` (async-signal-safe post-fork path), so a multithreaded daemon forking is safe by construction; (2) **no control-plane change for correctness** — `assign.zig`: "the atomic per-zombie CLAIM. Exactly one of N racing runners wins the slot; a loser gets `.taken` and moves on, having read no event"; (3) **stateless client** — `control_plane_client.zig` is `{base_url, io}` with a fresh `std.http.Client` per call.
-- **Cross-spec note (M84_002)** — M84_002 introduces a singular `current_lease_id` "busy" marker that assumes one lease per runner. Under this pool a host holds **≤N concurrent leases**, so M84_002 (pending, being amended in the same effort) must make its busy-marker "has ≥1 active lease" (or a count), and any future capacity/heartbeat fields report N. Owned by M84_002; flagged here so the interaction is not lost.
+- **Cross-spec note (M84_002) — reconciled (Jun 08 2026).** M84_002 originally proposed a singular `current_lease_id` column; it has been **amended to drop it**. Both specs now model "busy"/capacity as **derived** from `fleet.runner_leases`: `busy = EXISTS(active lease)`, `active = COUNT(active)`, `available = worker_count − active`, scheduling predicate `active < worker_count`. A pooled host holding 0..N leases therefore needs no control-plane schema change. `worker_count` (this spec's `RUNNER_WORKER_COUNT`) is the runner-reported capacity; M84_002 derives `available` from it. No singular-lease assumption remains in either spec.
+- **Runner memory plane is already multi-lease-safe (Jun 08 2026, code-grounded).** Hydrate is keyed by `payload.event.zombie_id` (`loop.zig`), capture is fenced by `lease_id` + `fencing_token` (`runner/memory.zig`), writes are idempotent (`ON CONFLICT (key, zombie_id)`), and the durable store lives in `zombied`'s Postgres — not runner-local. M84_005's Jun 06 decision already moved `zombie_id` into the path explicitly ("does not depend on a one-live-lease invariant"). Each worker owns its own allocator scope, per-lease workspace (`{base}/{lease_id}`), and per-call forwarders. **There is no phantom "memory must be lease-scoped first" blocker.** Memory isolation rests on the invariant **`unique(active lease per zombie)`** (the control plane forbids two concurrent leases for one zombie) — NOT on `zombie_id` isolation alone. A future retry / speculative / failover / takeover-lease feature that breaks that uniqueness would reintroduce concurrent writes into one memory namespace; such a feature must scope memory by `lease_id` first. Documented in `runner_fleet.md`.
+- **Operational tradeoff — failure domain widens with N (CTO review).** `worker_count=1` = maximum isolation: one host loss = **one** execution lost. `worker_count=N` = better utilization but a **larger failure domain**: one host loss = **N** executions lost (all re-leased by M84_002's sweeper, but interrupted). This is the headline cost of the utilization win and is operator-owned via the knob. Captured in Failure Modes + Out of Scope.
+- **Capacity ≠ throughput (CTO review).** `RUNNER_WORKER_COUNT` is a capacity knob, not a throughput guarantee: CPU, RAM, disk IOPS, and network are **not** isolated across workers, so N agents doing heavy work (npm install / cargo build) contend. Per-lease cost / resource class / weight is future work; today a lease is treated as one undifferentiated capacity unit. Out of Scope.
+- **DB-scale note (CTO review).** `active = COUNT(active leases)` is derived now (cheap at current fleet size). A materialized counter/index for a capacity-ranked scheduler (`ORDER BY available`) may be introduced **later, for scheduler scale only** — explicitly not today, to avoid counter drift.
+- **Fixed-N vs capacity-units (CTO review).** Heterogeneous hosts (2 vs 64 cores) point toward capacity *units* rather than a fixed worker count; flagged as future direction, not a blocker for this spec.
 - **Deferrals** — none at authoring.
 
 ---
@@ -281,9 +288,10 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 ## Out of Scope
 
-- **Capacity-aware / dynamic pool sizing** (autoscale N to host cores/memory) — future refinement; fixed-N here.
+- **Capacity-aware / dynamic pool sizing** (autoscale N to host cores/memory) — future refinement; fixed-N here. Heterogeneous hosts point toward capacity *units* over a fixed count, but that is future direction.
+- **Per-lease resource accounting** (lease cost / resource class / weight; CPU/RAM/disk/network isolation across workers) — out. `RUNNER_WORKER_COUNT` is a capacity knob, not a throughput guarantee; a lease is one undifferentiated capacity unit here.
+- **A materialized active-lease count or capacity column** — `busy`/`active`/`available` derive from `fleet.runner_leases`; materialization is deferred (for scheduler scale only, if ever proven necessary).
 - **Per-worker capacity reporting in the heartbeat** (capacity/version fields) — a later workstream; the heartbeat body stays empty.
 - **Worker respawn-on-death supervision** — default is degrade-to-N−1 + log; a self-healing pool is future work.
 - **The async/evented substrate** — M88_001 (gated behind its evidence gate).
-- **M84_002's `current_lease_id` semantics under the pool** — owned by M84_002 (flagged in Discovery).
 - **Control-plane per-runner lease caps / fairness / scheduling** — out; the per-zombie claim suffices and the fleet non-goals fence holds.
