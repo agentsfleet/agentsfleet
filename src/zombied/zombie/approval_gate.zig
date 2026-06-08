@@ -22,6 +22,7 @@ const approval_gate_db = @import("approval_gate_db.zig");
 const approval_gate_anomaly = @import("approval_gate_anomaly.zig");
 const approval_gate_slack = @import("approval_gate_slack.zig");
 const logging = @import("log");
+const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.approval_gate);
 
@@ -66,7 +67,7 @@ pub const ActionDetail = struct {
     proposed_action: []const u8 = "",
     evidence_json: []const u8 = "{}",
     blast_radius: []const u8 = "",
-    timeout_ms: i64 = 24 * 60 * 60 * 1000,
+    timeout_ms: i64 = 24 * 60 * 60 * MS_PER_SECOND,
 };
 
 // ── Gate evaluation ─────────────────────────────────────────────────────

@@ -2,7 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, ConfirmDialog, EmptyState, Spinner } from "@usezombie/design-system";
+import {
+  Button,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  Spinner,
+  type DataTableColumn,
+} from "@usezombie/design-system";
 import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -13,6 +20,178 @@ type Props = {
   workspaceId: string;
   credentials: CredentialSummary[];
 };
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatCreatedAt(ms: number) {
+  return DATE_FORMATTER.format(new Date(ms));
+}
+
+type CredentialActionProps = {
+  credential: CredentialSummary;
+  pending: boolean;
+  deleting: boolean;
+  onEdit: (name: string) => void;
+  onDelete: (name: string) => void;
+};
+
+function CredentialActions({
+  credential,
+  pending,
+  deleting,
+  onEdit,
+  onDelete,
+}: CredentialActionProps) {
+  return (
+    <div className="flex justify-end gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => onEdit(credential.name)}
+        disabled={pending}
+        aria-label={`Edit credential ${credential.name}`}
+      >
+        <PencilIcon size={14} />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => onDelete(credential.name)}
+        disabled={pending}
+        aria-label={`Delete credential ${credential.name}`}
+      >
+        {deleting ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
+      </Button>
+    </div>
+  );
+}
+
+function CredentialNameCell({ credential }: { credential: CredentialSummary }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate font-mono text-sm">{credential.name}</div>
+      <div className="text-xs text-muted-foreground">Write-only encrypted secret</div>
+    </div>
+  );
+}
+
+function CredentialCreatedCell({ credential }: { credential: CredentialSummary }) {
+  return (
+    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+      {formatCreatedAt(credential.created_at)}
+    </span>
+  );
+}
+
+function buildColumns({
+  pending,
+  target,
+  onEdit,
+  onDelete,
+}: {
+  pending: boolean;
+  target: string | null;
+  onEdit: (name: string) => void;
+  onDelete: (name: string) => void;
+}): DataTableColumn<CredentialSummary>[] {
+  return [
+    {
+      key: "name",
+      header: "Name",
+      cell: (c) => <CredentialNameCell credential={c} />,
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      hideOnMobile: true,
+      cell: (c) => <CredentialCreatedCell credential={c} />,
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      numeric: true,
+      cell: (c) => (
+        <CredentialActions
+          credential={c}
+          pending={pending}
+          deleting={pending && target === c.name}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ),
+    },
+  ];
+}
+
+function CredentialDialogs({
+  workspaceId,
+  editTarget,
+  target,
+  error,
+  onEditClose,
+  onDeleteClose,
+  onConfirmDelete,
+}: {
+  workspaceId: string;
+  editTarget: string | null;
+  target: string | null;
+  error: string | null;
+  onEditClose: () => void;
+  onDeleteClose: () => void;
+  onConfirmDelete: (name: string) => void;
+}) {
+  return (
+    <>
+      <EditCredentialDialog
+        workspaceId={workspaceId}
+        name={editTarget ?? ""}
+        open={editTarget !== null}
+        onOpenChange={onEditClose}
+      />
+      <ConfirmDialog
+        open={target !== null}
+        onOpenChange={onDeleteClose}
+        title={`Delete credential "${target ?? ""}"?`}
+        description="Agents referencing this name will fail to resolve until it is re-added. This cannot be undone."
+        confirmLabel="Delete"
+        intent="destructive"
+        errorMessage={error}
+        onConfirm={() => {
+          if (target) onConfirmDelete(target);
+        }}
+      />
+    </>
+  );
+}
+
+function CredentialTable({
+  credentials,
+  pending,
+  target,
+  onEdit,
+  onDelete,
+}: {
+  credentials: CredentialSummary[];
+  pending: boolean;
+  target: string | null;
+  onEdit: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const columns = buildColumns({ pending, target, onEdit, onDelete });
+  return (
+    <DataTable
+      columns={columns}
+      rows={credentials}
+      rowKey={(c) => c.name}
+      caption="Stored credentials"
+    />
+  );
+}
 
 export default function CredentialsList({ workspaceId, credentials }: Props) {
   const router = useRouter();
@@ -51,71 +230,31 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
   }
 
   return (
-    <div className="divide-y rounded-md border">
-      {credentials.map((c) => (
-        <div key={c.name} className="flex items-center justify-between p-3">
-          <div>
-            <div className="font-mono text-sm">{c.name}</div>
-            <div className="font-mono text-xs tabular-nums text-muted-foreground">{c.created_at}</div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setError(null);
-                setEditTarget(c.name);
-              }}
-              disabled={pending}
-              aria-label={`Edit credential ${c.name}`}
-            >
-              <PencilIcon size={14} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setError(null);
-                setTarget(c.name);
-              }}
-              disabled={pending}
-              aria-label={`Delete credential ${c.name}`}
-            >
-              {pending && target === c.name ? (
-                <Spinner size="sm" srLabel="Deleting" />
-              ) : (
-                <Trash2Icon size={14} />
-              )}
-            </Button>
-          </div>
-        </div>
-      ))}
-      <EditCredentialDialog
-        workspaceId={workspaceId}
-        name={editTarget ?? ""}
-        open={editTarget !== null}
-        // The dialog is parent-controlled and only ever emits a close, so clear
-        // the target unconditionally.
-        onOpenChange={() => setEditTarget(null)}
+    <div className="space-y-3">
+      <CredentialTable
+        credentials={credentials}
+        pending={pending}
+        target={target}
+        onEdit={(name) => {
+          setError(null);
+          setEditTarget(name);
+        }}
+        onDelete={(name) => {
+          setError(null);
+          setTarget(name);
+        }}
       />
-      <ConfirmDialog
-        open={target !== null}
-        // Parent-controlled — ConfirmDialog only ever emits a close, so clear
-        // the target and error unconditionally (mirrors EditCredentialDialog).
-        onOpenChange={() => {
+      <CredentialDialogs
+        workspaceId={workspaceId}
+        editTarget={editTarget}
+        target={target}
+        error={error}
+        onEditClose={() => setEditTarget(null)}
+        onDeleteClose={() => {
           setTarget(null);
           setError(null);
         }}
-        title={`Delete credential "${target ?? ""}"?`}
-        description="Agents referencing this name will fail to resolve until it is re-added. This cannot be undone."
-        confirmLabel="Delete"
-        intent="destructive"
-        errorMessage={error}
-        onConfirm={() => {
-          if (target) onConfirmDelete(target);
-        }}
+        onConfirmDelete={onConfirmDelete}
       />
     </div>
   );

@@ -25,7 +25,9 @@ import {
   type CliError,
 } from "../errors/index.ts";
 
-export type { MainLayerServices } from "../runtime/main-layer.ts";
+export type { MainLayerServices };
+
+const FALLBACK_EXIT_CODE = 1;
 
 // R is the service-set the command Effect needs. The dispatcher provides
 // MainLayer; if R is not a subset of what MainLayer covers, the
@@ -66,7 +68,7 @@ const formatExit = <A, E extends CliError>(
   const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) {
     const err = failure.value;
-    return { code: EXIT_CODE[err._tag], rendered: err };
+    return { code: EXIT_CODE[err._tag] ?? FALLBACK_EXIT_CODE, rendered: err };
   }
   // Die / interrupt / unknown cause — render as UnexpectedError.
   const detail = Cause.pretty(exit.cause);
@@ -74,7 +76,7 @@ const formatExit = <A, E extends CliError>(
     detail,
     suggestion: "report this with the output above and the command you ran",
   });
-  return { code: EXIT_CODE.UnexpectedError, rendered: err };
+  return { code: EXIT_CODE.UnexpectedError ?? FALLBACK_EXIT_CODE, rendered: err };
 };
 
 // Server errors carry a server-side code (UZ-...) and a request_id that

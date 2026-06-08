@@ -18,7 +18,7 @@ import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { Workspaces } from "../services/workspaces.ts";
+import { Workspaces, type WorkspaceItem, type WorkspacesValue } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
@@ -34,7 +34,6 @@ import {
   EVT_WORKSPACE_USED,
   EVT_WORKSPACE_DELETED,
 } from "../constants/analytics-events.ts";
-import type { WorkspaceItem, WorkspacesValue } from "../services/workspaces.ts";
 
 interface WorkspaceCreateResponse {
   readonly workspace_id: string;
@@ -105,7 +104,7 @@ export const workspaceAddEffect = (
     yield* output.printSection("Workspace added");
     yield* output.printKeyValue({
       workspace_id: workspaceId,
-      name: resolvedName ?? "—",
+      name: resolvedName ?? LITERAL,
     });
   });
 
@@ -144,7 +143,7 @@ export const workspaceListEffect: Effect.Effect<
     state.items.map((item) => ({
       active: item.workspace_id === state.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
-      name: item.name ?? "—",
+      name: item.name ?? LITERAL,
     })),
   );
 });
@@ -253,7 +252,7 @@ export const workspaceShowEffectFromArgs = (
     yield* output.printKeyValue({
       workspace_id: detail.workspace_id,
       active: detail.active ? "yes" : "no",
-      name: detail.name ?? "—",
+      name: detail.name ?? LITERAL,
     });
   });
 
@@ -310,3 +309,4 @@ export const workspaceDeleteEffectFromArgs = (
       yield* output.success(`workspace deleted: ${workspaceId}`);
     }
   });
+const LITERAL = "—" as const;

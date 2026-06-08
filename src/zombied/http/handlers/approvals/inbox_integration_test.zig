@@ -19,6 +19,7 @@ const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
 const approval_gate_sweeper = @import("../../../zombie/approval_gate_sweeper.zig");
 
 const ALLOC = std.testing.allocator;
+const MS_PER_SECOND = 1000;
 
 // Reuse the JWT signing fixture (kid + JWKS + tenant/workspace claims) from
 // events_integration_test.zig so we don't have to mint a fresh signature.
@@ -424,7 +425,7 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
     };
     // -1 = key exists with no TTL (the bug); -2 = key does not exist.
     try std.testing.expect(ttl_ms > 0);
-    try std.testing.expect(ttl_ms <= @as(i64, window_s) * 1000);
+    try std.testing.expect(ttl_ms <= @as(i64, window_s) * MS_PER_SECOND);
 
     // Subsequent INCRs within the window must NOT reset the TTL — the EVAL
     // script gates EXPIRE on `v == 1`, so the second call reads the same
@@ -466,6 +467,7 @@ test "integration: worker self-timeout writes resolved_by=system:timeout" {
     try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
 
     const resolver = @import("../../../zombie/approval_gate_resolver.zig");
+
     @import("../../../zombie/approval_gate.zig").resolveGateDecision(
         h.pool,
         action_id,

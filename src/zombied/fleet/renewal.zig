@@ -38,6 +38,8 @@ const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
 const log = logging.scoped(.fleet_metering);
+const MS_PER_SECOND: i64 = 1000;
+const TOKENS_PER_MTOK: i64 = 1000000;
 
 /// The runner's cumulative token counts + the resolved per-unit slice rates for
 /// this renewal. Cumulatives are diffed against the lease's metering cursor IN
@@ -129,10 +131,10 @@ const RENEW_METER_SQL =
     \\    FOR UPDATE OF l, a
     \\), calc AS (
     \\    SELECT *,
-    \\           (d_ms * $10::bigint) / 1000          AS run_fee,
-    \\           (d_in * $11::bigint) / 1000000
-    \\             + (d_cached * $12::bigint) / 1000000
-    \\             + (d_out * $13::bigint) / 1000000  AS token_cost
+    \\           (d_ms * $10::bigint) / $15::bigint    AS run_fee,
+    \\           (d_in * $11::bigint) / $16::bigint
+    \\             + (d_cached * $12::bigint) / $16::bigint
+    \\             + (d_out * $13::bigint) / $16::bigint  AS token_cost
     \\    FROM probe
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
@@ -226,6 +228,8 @@ pub fn renew(
         meter.cached_input_nanos_per_mtok,
         meter.output_nanos_per_mtok,
         telemetry.ChargeType.stage.label(),
+        MS_PER_SECOND,
+        TOKENS_PER_MTOK,
     }));
     defer q.deinit();
     const row = try q.next() orelse return .lost;

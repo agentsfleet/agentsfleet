@@ -11,6 +11,9 @@ const queue_consts = @import("constants.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_client = @import("redis_client.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const REDIS_GROUP_ARG = "GROUP";
+const REDIS_STREAMS_ARG = "STREAMS";
+const REDIS_XREADGROUP_COMMAND = "XREADGROUP";
 
 const log = logging.scoped(.redis_zombie);
 
@@ -81,11 +84,11 @@ pub fn xreadgroupZombie(
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.command(&.{
-        "XREADGROUP",                       "GROUP",
+        REDIS_XREADGROUP_COMMAND,           REDIS_GROUP_ARG,
         queue_consts.zombie_consumer_group, consumer_id,
         S_COUNT,                            queue_consts.zombie_xread_count,
         "BLOCK",                            queue_consts.zombie_xread_block_ms,
-        "STREAMS",                          stream_key,
+        REDIS_STREAMS_ARG,                  stream_key,
         ">",
     });
     defer resp.deinit(client.alloc);
@@ -104,10 +107,10 @@ pub fn xreadgroupZombieOnce(
     var key_buf: [128]u8 = undefined;
     const stream_key = try zombieStreamKey(&key_buf, zombie_id);
     var resp = try client.command(&.{
-        "XREADGROUP",                       "GROUP",
+        REDIS_XREADGROUP_COMMAND,           REDIS_GROUP_ARG,
         queue_consts.zombie_consumer_group, consumer_id,
         S_COUNT,                            queue_consts.zombie_xread_count,
-        "STREAMS",                          stream_key,
+        REDIS_STREAMS_ARG,                  stream_key,
         ">",
     });
     defer resp.deinit(client.alloc);

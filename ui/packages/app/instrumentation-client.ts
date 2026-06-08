@@ -4,9 +4,9 @@ try {
   void initAnalytics();
 
   window.addEventListener("error", (event) => {
-    trackAppEvent("ui_runtime_error", {
+    trackAppEvent(UI_RUNTIME_ERROR, {
       source: "window_error",
-      surface: "browser_runtime",
+      surface: BROWSER_RUNTIME,
       error_message: event.message || event.error?.message || "Unknown runtime error",
     });
   });
@@ -20,9 +20,9 @@ try {
           ? reason.message
           : JSON.stringify(reason);
 
-    trackAppEvent("ui_runtime_error", {
+    trackAppEvent(UI_RUNTIME_ERROR, {
       source: "window_unhandled_rejection",
-      surface: "browser_runtime",
+      surface: BROWSER_RUNTIME,
       error_message: errorMessage,
     });
   });
@@ -38,3 +38,5 @@ export function onRouterTransitionStart(url: string, navigationType: "push" | "r
     reason: navigationType,
   });
 }
+const BROWSER_RUNTIME = "browser_runtime" as const;
+const UI_RUNTIME_ERROR = "ui_runtime_error" as const;

@@ -24,6 +24,9 @@ import {
 const STDIN_DATA_SENTINEL = "@-";
 const MISSING_DATA_HINT =
   "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
+const TYPE_STRING = "string" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface CredentialRow {
   readonly name?: string;
@@ -97,7 +100,7 @@ const requireName = (
   name: string | undefined,
   usage: string,
 ): Effect.Effect<string, ValidationError> =>
-  typeof name === "string" && name.length > 0
+  isString(name) && name.length > 0
     ? Effect.succeed(name)
     : Effect.fail(
         new ValidationError({
@@ -110,7 +113,7 @@ const resolveDataSource = (
   data: string | undefined,
 ): Effect.Effect<string, CliError> =>
   Effect.gen(function* () {
-    if (typeof data !== "string" || data.length === 0) {
+    if (!isString(data) || data.length === 0) {
       return yield* Effect.fail(
         new ValidationError({
           detail: MISSING_DATA_HINT,

@@ -27,6 +27,8 @@ vi.mock("@/lib/api/credentials", () => ({
 }));
 vi.mock("@/lib/api/model_caps", () => ({
   getModelCaps: vi.fn(),
+  uniqueModelIds: (models: Array<{ id: string }>) =>
+    Array.from(new Map(models.map((m) => [m.id, m])).values()),
 }));
 
 vi.mock("lucide-react", () => {
@@ -45,6 +47,43 @@ import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
 import { getModelCaps } from "@/lib/api/model_caps";
+import { PROVIDER_MODE } from "@/lib/types";
+
+const WORKSPACE_FIXTURE = { id: "ws_1", name: "Acme" };
+const FIREWORKS_PROVIDER = "fireworks";
+const FIREWORKS_MODEL_ID = "kimi-k2.6";
+const ANTHROPIC_PROVIDER = "anthropic";
+const CLAUDE_MODEL_ID = "claude-sonnet-4-5";
+const FLY_CREDENTIAL_NAME = "fly";
+const ANTHROPIC_CREDENTIAL_NAME = "anthropic-prod";
+const CREATED_AT_MS = 1_777_507_200_000;
+const CONTEXT_CAP_TOKENS = 256000;
+const ZERO_RATE_NANOS = 0;
+const ZERO_TIMESTAMP_MS = 0;
+
+function modelCap(provider: string, id: string) {
+  return {
+    id,
+    provider,
+    context_cap_tokens: CONTEXT_CAP_TOKENS,
+    input_nanos_per_mtok: ZERO_RATE_NANOS,
+    cached_input_nanos_per_mtok: ZERO_RATE_NANOS,
+    output_nanos_per_mtok: ZERO_RATE_NANOS,
+  };
+}
+
+function modelCatalogue(provider: string, id: string) {
+  return {
+    version: "1",
+    models: [modelCap(provider, id)],
+    rates: { run_nanos_per_sec: ZERO_RATE_NANOS, event_nanos: ZERO_RATE_NANOS },
+    billing: {
+      starter_credit_nanos: ZERO_RATE_NANOS,
+      free_trial_end_ms: ZERO_TIMESTAMP_MS,
+      free_trial_stage_nanos: ZERO_RATE_NANOS,
+    },
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -61,38 +100,56 @@ describe("/credentials route", () => {
 
 describe("unified Models & Credentials page", () => {
   it("renders both a Model section and a Credentials section with the stored credentials", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue({ id: "ws_1", name: "Acme" } as never);
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockResolvedValue({
-      mode: "platform",
-      provider: "fireworks",
-      model: "kimi-k2.6",
-      context_cap_tokens: 256000,
+      mode: PROVIDER_MODE.platform,
+      provider: FIREWORKS_PROVIDER,
+      model: FIREWORKS_MODEL_ID,
+      context_cap_tokens: CONTEXT_CAP_TOKENS,
       credential_ref: null,
     });
     vi.mocked(listCredentials).mockResolvedValue({
-      credentials: [{ name: "fly", created_at: 1_777_507_200_000 }],
+      credentials: [{ name: FLY_CREDENTIAL_NAME, created_at: CREATED_AT_MS }],
     });
-    vi.mocked(getModelCaps).mockResolvedValue({
-      version: "1",
-      models: [
-        { id: "kimi-k2.6", provider: "fireworks", context_cap_tokens: 256000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
-      ],
-      rates: { run_nanos_per_sec: 0, event_nanos: 0 },
-      billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
-    });
+    vi.mocked(getModelCaps).mockResolvedValue(modelCatalogue(FIREWORKS_PROVIDER, FIREWORKS_MODEL_ID));
 
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // Both section headings render on one page.
-    expect(markup).toContain(">Model<");
+    // Model setup, current setup, and credentials render on one page.
+    expect(markup).toContain(">Model setup<");
+    expect(markup).toContain(">Current setup<");
     expect(markup).toContain(">Credentials<");
     // The credentials section is anchorable from the in-page "manage" link.
     expect(markup).toContain('id="credentials"');
     // The stored credential is listed in the Credentials section.
-    expect(markup).toContain("fly");
+    expect(markup).toContain(FLY_CREDENTIAL_NAME);
+    expect(markup).toContain("Credential vault");
     // Page title reflects the union.
     expect(markup).toContain("Models &amp; Credentials");
+  });
+
+  it("renders the self-managed provider state with the chosen credential", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    vi.mocked(getTenantProvider).mockResolvedValue({
+      mode: PROVIDER_MODE.self_managed,
+      provider: ANTHROPIC_PROVIDER,
+      model: CLAUDE_MODEL_ID,
+      context_cap_tokens: CONTEXT_CAP_TOKENS,
+      credential_ref: ANTHROPIC_CREDENTIAL_NAME,
+    });
+    vi.mocked(listCredentials).mockResolvedValue({
+      credentials: [{ name: ANTHROPIC_CREDENTIAL_NAME, created_at: CREATED_AT_MS }],
+    });
+    vi.mocked(getModelCaps).mockResolvedValue(modelCatalogue(ANTHROPIC_PROVIDER, CLAUDE_MODEL_ID));
+
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    expect(markup).toContain("Own provider key");
+    expect(markup).toContain(ANTHROPIC_PROVIDER);
+    expect(markup).toContain(CLAUDE_MODEL_ID);
+    expect(markup).toContain(ANTHROPIC_CREDENTIAL_NAME);
   });
 
   it("renders the no-workspace empty state under the unified title", async () => {

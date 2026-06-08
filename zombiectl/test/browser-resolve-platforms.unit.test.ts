@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
 import { resolveBrowserCommand } from "../src/lib/browser.ts";
 
+const WSLVIEW_COMMAND = "wslview";
+const XDG_OPEN_COMMAND = "xdg-open";
+
 // Cover every code path through resolveBrowserCommand. The internal
 // helpers (browserDisabled, hasDisplay, isSsh, looksLikeWsl,
 // commandExists) are exercised through the public function.
@@ -64,6 +67,28 @@ test("WSL with DISPLAY but no wslview falls through to xdg-open path", async () 
     "linux",
   );
   expect(r.argv === null || r.command === "wslview" || r.command === "xdg-open").toBe(true);
+});
+
+test("Windows Subsystem for Linux with wslview installed resolves to the wslview opener", async () => {
+  const r = await resolveBrowserCommand(
+    { WSL_DISTRO_NAME: "wsl-Ubuntu" },
+    "linux",
+    async (command) => command === WSLVIEW_COMMAND,
+  );
+  expect(r.command).toBe(WSLVIEW_COMMAND);
+  expect(r.argv).toEqual([WSLVIEW_COMMAND]);
+  expect(r.quoteUrl).toBe(false);
+});
+
+test("linux with xdg-open installed resolves to the xdg-open opener", async () => {
+  const r = await resolveBrowserCommand(
+    { DISPLAY: ":0" },
+    "linux",
+    async (command) => command === XDG_OPEN_COMMAND,
+  );
+  expect(r.command).toBe(XDG_OPEN_COMMAND);
+  expect(r.argv).toEqual([XDG_OPEN_COMMAND]);
+  expect(r.quoteUrl).toBe(false);
 });
 
 test("WSL without DISPLAY and without wslview returns wsl-no-wslview", async () => {

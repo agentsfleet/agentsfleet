@@ -28,6 +28,8 @@ const audit_events = @import("../../../auth/audit_events.zig");
 const auth_sessions_store = @import("../../../session/session_store_redis.zig");
 const trusted_ip = @import("../../../auth/middleware/trusted_client_ip.zig");
 const helpers = @import("session_helpers.zig");
+const CLERK_USER_CONTEXT_MISSING = "Clerk user context missing";
+const REQUEST_BODY_REQUIRED = "Request body required";
 
 const log = logging.scoped(.auth);
 
@@ -41,7 +43,7 @@ pub fn innerCreateAuthSession(hx: hx_mod.Hx, req: *httpz.Request) void {
     helpers.buildScratch(&scratch, req);
 
     const body = req.body() orelse {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
+        hx.fail(error_codes.ERR_INVALID_REQUEST, REQUEST_BODY_REQUIRED);
         return;
     };
     const Body = struct { public_key: []const u8, token_name: []const u8 };
@@ -99,7 +101,7 @@ pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
 
 pub fn innerApproveAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
     const clerk_user_id = hx.principal.user_id orelse {
-        hx.fail(error_codes.ERR_UNAUTHORIZED, "Clerk user context missing");
+        hx.fail(error_codes.ERR_UNAUTHORIZED, CLERK_USER_CONTEXT_MISSING);
         return;
     };
     // SAFETY: every field is populated by `helpers.buildScratch` on the next line before any read.
@@ -107,7 +109,7 @@ pub fn innerApproveAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: [
     helpers.buildScratch(&scratch, req);
 
     const body = req.body() orelse {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
+        hx.fail(error_codes.ERR_INVALID_REQUEST, REQUEST_BODY_REQUIRED);
         return;
     };
     const ApproveBody = struct {
@@ -177,7 +179,7 @@ pub fn innerVerifyAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
     helpers.buildScratch(&scratch, req);
 
     const body = req.body() orelse {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
+        hx.fail(error_codes.ERR_INVALID_REQUEST, REQUEST_BODY_REQUIRED);
         return;
     };
     const Body = struct { verification_code: []const u8 };
@@ -201,7 +203,7 @@ pub fn innerVerifyAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
 
 pub fn innerDeleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
     const clerk_user_id = hx.principal.user_id orelse {
-        hx.fail(error_codes.ERR_UNAUTHORIZED, "Clerk user context missing");
+        hx.fail(error_codes.ERR_UNAUTHORIZED, CLERK_USER_CONTEXT_MISSING);
         return;
     };
     // SAFETY: every field is populated by `helpers.buildScratch` on the next line before any read.
@@ -233,7 +235,7 @@ pub fn innerDeleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
 
 pub fn innerDeleteAllAuthSessions(hx: hx_mod.Hx, req: *httpz.Request) void {
     const clerk_user_id = hx.principal.user_id orelse {
-        hx.fail(error_codes.ERR_UNAUTHORIZED, "Clerk user context missing");
+        hx.fail(error_codes.ERR_UNAUTHORIZED, CLERK_USER_CONTEXT_MISSING);
         return;
     };
     // SAFETY: every field is populated by `helpers.buildScratch` on the next line before any read.

@@ -32,6 +32,8 @@ const TEST_JWKS =
 // in the `metadata` claim is distinct from this suite's seeded tenant
 // (`…6f01` vs `…6f31`), so we override the billing row to the claim's
 // tenant before running the GET tests.
+const TEST_BALANCE_NANOS: i64 = 1000;
+
 const TOKEN_OPERATOR =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 const TOKEN_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
@@ -165,12 +167,12 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-        \\VALUES ($1, 1000, 'billing_handler_test', $2, $2)
+        \\VALUES ($1, $3, 'billing_handler_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\SET balance_nanos = EXCLUDED.balance_nanos,
         \\    balance_exhausted_at = NULL,
         \\    updated_at = EXCLUDED.updated_at
-    , .{ TOKEN_TENANT_ID, now_ms });
+    , .{ TOKEN_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
 
     const r = try (try h.get("/v1/tenants/me/billing").bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();

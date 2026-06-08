@@ -4,6 +4,7 @@
 
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
+import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
 import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
@@ -31,8 +32,12 @@ import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
-import type { CommandCtx, CommandDeps, Workspaces } from "../commands/types.ts";
-import { readStringOpt as optString } from "../commands/types.ts";
+import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
+
+const CTX = "ctx" as const;
+const TYPE_STRING = "string" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface Lifecycle {
   ctx: CommandCtx;
@@ -41,33 +46,35 @@ export interface Lifecycle {
   lastCommand: string | null;
 }
 
+type LifecycleCtx = Lifecycle[typeof CTX];
+
 // Thread runCli's env-resolved values into Effect's CliConfig override.
 // `ctx.token` is already a `creds.token || env.ZOMBIE_TOKEN` merge from
 // cli.ts; mirror it as the override's `accessToken` so commands' Effects
 // receive the merged value.
-function configOverrideFromCtx(ctx: Lifecycle["ctx"]): {
+function configOverrideFromCtx(ctx: LifecycleCtx): {
   jsonMode: boolean;
   noOpen: boolean;
   apiUrl: string;
   accessToken: Option.Option<Redacted.Redacted<string>>;
-  fetchImpl?: import("../lib/http.ts").FetchImpl;
+  fetchImpl?: FetchImpl;
 } {
   return {
     jsonMode: Boolean(ctx.jsonMode),
     noOpen: Boolean(ctx.noOpen),
     apiUrl: ctx.apiUrl,
     accessToken:
-      typeof ctx.token === "string" && ctx.token.length > 0
+      isString(ctx.token) && ctx.token.length > 0
         ? Option.some(Redacted.make(ctx.token))
         : Option.none(),
     ...(ctx.fetchImpl !== undefined
-      ? { fetchImpl: ctx.fetchImpl as import("../lib/http.ts").FetchImpl }
+      ? { fetchImpl: ctx.fetchImpl as FetchImpl }
       : {}),
   };
 }
 
 function streamsFromCtx(
-  ctx: Lifecycle["ctx"],
+  ctx: LifecycleCtx,
 ): { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream } | undefined {
   if (!ctx.stdout || !ctx.stderr) return undefined;
   if (ctx.stdout === process.stdout && ctx.stderr === process.stderr) return undefined;
@@ -77,9 +84,9 @@ function streamsFromCtx(
 // Only thread a non-default stdin stream (a string/null ctx.stdin is a test
 // convenience the Stdin layer doesn't model). process.stdin is the layer's
 // own default, so passing it through would be a no-op.
-function stdinFromCtx(ctx: Lifecycle["ctx"]): NodeJS.ReadableStream | undefined {
+function stdinFromCtx(ctx: LifecycleCtx): NodeJS.ReadableStream | undefined {
   const s = ctx.stdin;
-  if (!s || typeof s === "string") return undefined;
+  if (!s || isString(s)) return undefined;
   if (s === process.stdin) return undefined;
   return s;
 }
@@ -164,9 +171,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
-          tokenName: typeof tokenNameOpt === "string" ? tokenNameOpt : undefined,
-          tokenFlag: typeof tokenOpt === "string" ? tokenOpt : undefined,
-          envToken: typeof envToken === "string" ? envToken : undefined,
+          tokenName: isString(tokenNameOpt) ? tokenNameOpt : undefined,
+          tokenFlag: isString(tokenOpt) ? tokenOpt : undefined,
+          envToken: isString(envToken) ? envToken : undefined,
         });
       },
       lifecycle,

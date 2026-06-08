@@ -18,11 +18,16 @@ const affinity = @import("affinity.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const fleet_metering_store = @import("../state/fleet_metering_store.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
+const ONE_MILLION = 1_000_000;
+const TEST_TOKEN_COUNT = 1000;
+const TEST_CHARGE_NANOS = 1_000;
+const TEST_BALANCE_NANOS = 100_000;
 
 // A second tenant for the metering-periods cross-tenant read guard.
 const OTHER_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8b02";
 
 const ALLOC = std.testing.allocator;
+const PRIMARY_RUN_MS: i64 = 1000;
 
 fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -82,7 +87,7 @@ fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, m_in: i64, m_cached: i64, m_ou
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
         \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, NOW_MS + 1_000_000, m_in, m_cached, m_out, last_metered });
+    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
@@ -95,7 +100,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
         \\   '{"message":"hi"}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0,
         \\   $7, $8, $9, $10, $10)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token, status = EXCLUDED.status
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + 1_000_000, status, ISSUE_MS });
+    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
 }
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
@@ -199,7 +204,7 @@ test "renew charges run fee + token delta == sliceCharge (SQL==Zig pin)" {
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(expected, stage.charged);
     try std.testing.expectEqual(@as(i64, 1), stage.slices);
-    try std.testing.expectEqual(@as(?i64, 1000), stage.t_in);
+    try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
 
@@ -214,7 +219,7 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     const t3 = ISSUE_MS + 60_000; // settle at report
     try std.testing.expect(try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, t1, meterOf(300, 100, 200)) == .renewed);
     try std.testing.expect(try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, t2, meterOf(700, 250, 500)) == .renewed);
-    _ = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, t3, meterOf(1000, 500, 800));
+    _ = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, t3, meterOf(TEST_TOKEN_COUNT, 500, 800));
 
     // Per-slice debits telescope to one slice over the full run (elapsed t3-ISSUE, final cumulatives).
     const total = tenant_billing.sliceCharge(RATES, t3 - ISSUE_MS, 1000, 500, 800);
@@ -222,7 +227,7 @@ test "renews + settle sum to the real total (ms-precision, non-second-aligned)" 
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
     try std.testing.expectEqual(total, stage.charged);
     try std.testing.expectEqual(@as(i64, 3), stage.slices); // 2 renews + 1 settle
-    try std.testing.expectEqual(@as(?i64, 1000), stage.t_in);
+    try std.testing.expectEqual(@as(?i64, TEST_TOKEN_COUNT), stage.t_in);
     try std.testing.expectEqual(@as(?i64, 800), stage.t_out);
 }
 
@@ -327,7 +332,7 @@ test "claim+settle on an already-reported lease claims nothing — no double-set
 test "claim+settle clamps an exhausting final slice to the remaining balance" {
     const s = try arrange(1);
     defer cleanup(s);
-    try seedBalance(s.conn, 1_000); // far below the slice the run will compute
+    try seedBalance(s.conn, TEST_CHARGE_NANOS); // far below the slice the run will compute
 
     const out = try renewal_settle.claimAndSettle(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(1000, 500, 800));
 
@@ -335,24 +340,24 @@ test "claim+settle clamps an exhausting final slice to the remaining balance" {
     // the wallet floors at 0 and the ledger records the CLAMPED drain, not the
     // full slice — so the audit row equals the real debit even on exhaustion.
     try std.testing.expect(out.claimed);
-    try std.testing.expectEqual(@as(i64, 1_000), out.charged_nanos);
+    try std.testing.expectEqual(@as(i64, TEST_CHARGE_NANOS), out.charged_nanos);
     try std.testing.expectEqual(@as(i64, 0), try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
-    try std.testing.expectEqual(@as(i64, 1_000), stage.charged);
+    try std.testing.expectEqual(@as(i64, TEST_CHARGE_NANOS), stage.charged);
 }
 
 test "an exhausting slice clamps the wallet to zero and stamps balance_exhausted_at" {
     const s = try arrange(1);
     defer cleanup(s);
-    try seedBalance(s.conn, 1_000); // far below the slice the run will compute
+    try seedBalance(s.conn, TEST_CHARGE_NANOS); // far below the slice the run will compute
 
-    _ = try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(1000, 500, 800));
+    _ = try renewal.renew(s.conn, LEASE_ID, RUNNER_ID, NOW_MS, meterOf(TEST_TOKEN_COUNT, 500, 800));
 
     // Balance floors at 0; the ledger records the CLAMPED drain (1000), not the
     // full slice (P2); and the exhaust stamp is set (restores is_exhausted).
     try std.testing.expectEqual(@as(i64, 0), try readBalance(s.conn));
     const stage = (try readStage(s.conn)) orelse return error.StageRowMissing;
-    try std.testing.expectEqual(@as(i64, 1_000), stage.charged);
+    try std.testing.expectEqual(@as(i64, TEST_CHARGE_NANOS), stage.charged);
     var q = PgQuery.from(try s.conn.query(
         "SELECT balance_exhausted_at FROM billing.tenant_billing WHERE tenant_id = $1::uuid",
         .{base.TEST_TENANT_ID},
@@ -365,7 +370,7 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
     const s = try arrange(1);
     defer cleanup(s);
     // A prior (completed) run left a non-zero cursor on the surviving slot.
-    try seedAffinity(s.conn, 1, 9000, 4000, 7000, ISSUE_MS - 100_000);
+    try seedAffinity(s.conn, 1, 9000, 4000, 7000, ISSUE_MS - TEST_BALANCE_NANOS);
 
     // A fresh lease issue resets it (insertLeaseRow on .fresh, fail-closed) so the
     // first /renew meters off 0/now, not the prior run — a reused slot can't over-charge.
@@ -397,9 +402,9 @@ test "metering-periods read is tenant-scoped: own tenant sees slices, a foreign 
         \\INSERT INTO fleet.metering_periods
         \\  (event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
         \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ($1, 1, 10, 0, 20, 1000, 100, 50, 150, 0),
+        \\VALUES ($1, 1, 10, 0, 20, $2, 100, 50, 150, 0),
         \\       ($1, 2, 5, 0, 10, 500, 50, 25, 75, 0)
-    , .{EVENT_ID});
+    , .{ EVENT_ID, PRIMARY_RUN_MS });
 
     // Owning tenant: both slices, ordered by slice_seq.
     const mine = try fleet_metering_store.listForEvent(s.conn, ALLOC, EVENT_ID, base.TEST_TENANT_ID);

@@ -36,12 +36,12 @@ describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)
     expect(EVENT_NANOS).toBe(0n);
   });
 
-  it("RUN_NANOS_PER_SEC = 100_000 ($0.0001/sec)", () => {
+  it("RUN_NANOS_PER_SEC = RUN_NANOS_PER_SEC_EXPECTED ($0.0001/sec)", () => {
     // pin test: literal is the contract
     expect(RUN_NANOS_PER_SEC).toBe(100_000n);
   });
 
-  it("NANOS_PER_USD = 1_000_000_000 (canonical billing unit)", () => {
+  it("NANOS_PER_USD = NANOS_PER_USD_EXPECTED (canonical billing unit)", () => {
     // pin test: literal is the contract
     expect(NANOS_PER_USD).toBe(1_000_000_000n);
   });

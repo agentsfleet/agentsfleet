@@ -10,13 +10,14 @@
 const std = @import("std");
 const common = @import("common");
 const config = @import("config.zig");
+const BYTES_PER_KIB = 1024;
 
 const FIXTURES_BASE = "samples/fixtures/frontmatter";
 
 fn loadFixture(alloc: std.mem.Allocator, rel_path: []const u8) ![]u8 {
     const path = try std.fs.path.join(alloc, &.{ FIXTURES_BASE, rel_path });
     defer alloc.free(path);
-    return std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, alloc, .limited(64 * 1024));
+    return std.Io.Dir.cwd().readFileAlloc(common.globalIo(), path, alloc, .limited(64 * BYTES_PER_KIB));
 }
 
 test "fixture skill/minimal.md parses" {

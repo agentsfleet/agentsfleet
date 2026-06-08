@@ -17,6 +17,7 @@ import type { TelemetryConfig } from "./types.ts";
 // Pinned from Supabase's identity.ts. Inactivity past this rotates
 // `session_id`; `device_id` stays permanent.
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+const CONSENT_GRANTED = "granted" as const;
 
 interface ResolvedIdentity {
   readonly deviceId: string;
@@ -34,7 +35,7 @@ export const resolveIdentity = Effect.fn("telemetry.resolveIdentity")(
       // First-run: mint fresh identity + bootstrap with default-ON
       // consent. Mirrors supabase identity.ts:11-24.
       const bootstrap: TelemetryConfig = {
-        consent: "granted",
+        consent: CONSENT_GRANTED,
         device_id: randomUUID(),
         session_id: randomUUID(),
         session_last_active: now,
@@ -69,7 +70,7 @@ export const saveDistinctId = Effect.fn("telemetry.saveDistinctId")(
     const identity = yield* resolveIdentity(configDir);
     const existing = yield* readTelemetryConfig(configDir);
     const nextConfig: TelemetryConfig = {
-      consent: existing?.consent ?? "granted",
+      consent: existing?.consent ?? CONSENT_GRANTED,
       device_id: identity.deviceId,
       session_id: identity.sessionId,
       session_last_active: Date.now(),
@@ -84,11 +85,12 @@ export const clearDistinctId = Effect.fn("telemetry.clearDistinctId")(
     const identity = yield* resolveIdentity(configDir);
     const existing = yield* readTelemetryConfig(configDir);
     const nextConfig: TelemetryConfig = {
-      consent: existing?.consent ?? "granted",
+      consent: existing?.consent ?? CONSENT_GRANTED,
       device_id: identity.deviceId,
       session_id: identity.sessionId,
       session_last_active: Date.now(),
     };
     yield* writeTelemetryConfig(nextConfig, configDir);
   },
+
 );

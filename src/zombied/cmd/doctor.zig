@@ -6,17 +6,25 @@ const oidc_auth = @import("../auth/oidc.zig");
 const env_vars = @import("../config/env_vars.zig");
 const queue_redis = @import("../queue/redis.zig");
 const common = @import("common.zig");
+const doctor_args = @import("doctor_args.zig");
+const doctor_render = @import("doctor_render.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.zombied);
 
 const EnvMap = constants.env.Map;
+const DoctorArgError = doctor_args.DoctorArgError;
+const CheckResult = doctor_render.CheckResult;
+const appendCheck = doctor_render.appendCheck;
+const appendFmtCheck = doctor_render.appendFmtCheck;
+const renderText = doctor_render.renderText;
+const renderJson = doctor_render.renderJson;
+const parseDoctorArgs = doctor_args.parseDoctorArgs;
 
 const S_DOCTOR_DB_CONNECT_START = "doctor.db_connect_start";
 const S_DOCTOR_REDIS_CONNECT_START = "doctor.redis_connect_start";
 const S_DOCTOR_DB_CONNECT_OK = "doctor.db_connect_ok";
 const S_OIDC_PROVIDER = "oidc_provider";
-const S_FORMAT = "--format=";
 const S_API = "api";
 const S_ENCRYPTION_MASTER_KEY = "encryption_master_key";
 const S_AUTH_SESSION_CODE_PEPPER = "auth_session_code_pepper";
@@ -29,17 +37,6 @@ const S_OIDC_JWKS_REACHABILITY = "oidc_jwks_reachability";
 const S_T_R_N = " \t\r\n";
 const S_DOCTOR_REDIS_CONNECT_OK = "doctor.redis_connect_ok";
 const S_DOCTOR_DB_CONNECT_FAILED = "doctor.db_connect_failed";
-
-const OutputFormat = enum {
-    text,
-    json,
-};
-
-const DoctorArgError = error{
-    InvalidDoctorArgument,
-    MissingFormatValue,
-    InvalidFormatValue,
-};
 
 const MigrationSchemaGateError = error{
     FailedMigrations,
@@ -58,12 +55,6 @@ fn schemaGateReasonCode(err: ?MigrationSchemaGateError) []const u8 {
     return "SCHEMA_COMPATIBLE";
 }
 
-const CheckResult = struct {
-    id: []const u8,
-    ok: bool,
-    detail: []const u8,
-};
-
 fn redisUsernameFromUrl(url: []const u8) ?[]const u8 {
     const rest = if (std.mem.startsWith(u8, url, "redis://"))
         url["redis://".len..]
@@ -78,100 +69,10 @@ fn redisUsernameFromUrl(url: []const u8) ?[]const u8 {
     return userpass[0..colon];
 }
 
-fn parseFormatValue(raw: []const u8) DoctorArgError!OutputFormat {
-    if (std.mem.eql(u8, raw, "text")) return .text;
-    if (std.mem.eql(u8, raw, "json")) return .json;
-    return DoctorArgError.InvalidFormatValue;
-}
-
-const DoctorOptions = struct {
-    format: OutputFormat = .text,
-    schema_gate: bool = false,
-};
-
-fn parseDoctorArgs(args: []const []const u8) DoctorArgError!DoctorOptions {
-    var out: DoctorOptions = .{};
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--schema-gate")) {
-            out.schema_gate = true;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--json")) {
-            out.format = .json;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--format")) {
-            if (i + 1 >= args.len) return DoctorArgError.MissingFormatValue;
-            i += 1;
-            out.format = try parseFormatValue(args[i]);
-            continue;
-        }
-        if (std.mem.startsWith(u8, arg, S_FORMAT)) {
-            out.format = try parseFormatValue(arg[S_FORMAT.len..]);
-            continue;
-        }
-        return DoctorArgError.InvalidDoctorArgument;
-    }
-    return out;
-}
-
 fn ensureSchemaCompatible(state: db.MigrationState) MigrationSchemaGateError!void {
     if (state.has_failed_migrations) return MigrationSchemaGateError.FailedMigrations;
     if (state.has_newer_schema_version) return MigrationSchemaGateError.SchemaAhead;
     if (state.applied_versions < state.expected_versions) return MigrationSchemaGateError.PendingMigrations;
-}
-
-fn appendCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, detail: []const u8, overall_ok: *bool) !void {
-    try results.append(alloc, .{
-        .id = id,
-        .ok = ok,
-        .detail = detail,
-    });
-    if (!ok) overall_ok.* = false;
-}
-
-fn appendFmtCheck(alloc: std.mem.Allocator, results: *std.ArrayList(CheckResult), id: []const u8, ok: bool, overall_ok: *bool, comptime fmt: []const u8, args: anytype) !void {
-    try appendCheck(alloc, results, id, ok, try std.fmt.allocPrint(alloc, fmt, args), overall_ok);
-}
-
-fn renderText(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
-    try stdout.print("zombied doctor\n\n", .{});
-    for (results) |c| {
-        try stdout.print("  [{s}] {s}\n", .{
-            if (c.ok) "OK" else "FAIL",
-            c.detail,
-        });
-    }
-    try stdout.print("\n{s}\n", .{
-        if (overall_ok) "All checks passed." else "Some checks failed — fix before running serve.",
-    });
-}
-
-fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: bool) !void {
-    var pass_count: usize = 0;
-    for (results) |c| {
-        if (c.ok) pass_count += 1;
-    }
-    const fail_count = results.len - pass_count;
-
-    try stdout.print("{{\"ok\":{s},\"summary\":{{\"total\":{d},\"passed\":{d},\"failed\":{d}}},\"checks\":[", .{
-        if (overall_ok) "true" else "false",
-        results.len,
-        pass_count,
-        fail_count,
-    });
-
-    for (results, 0..) |c, idx| {
-        if (idx > 0) try stdout.print(",", .{});
-        try stdout.print("{{\"id\":{f},\"status\":{f},\"detail\":{f}}}", .{
-            std.json.fmt(c.id, .{}),
-            std.json.fmt(if (c.ok) "ok" else "fail", .{}),
-            std.json.fmt(c.detail, .{}),
-        });
-    }
-    try stdout.print("]}}\n", .{});
 }
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
@@ -405,33 +306,6 @@ test "redisUsernameFromUrl parses user for redis and rediss" {
     try std.testing.expect(redisUsernameFromUrl("rediss://cache.local:6379") == null);
 }
 
-test "parseDoctorArgs supports schema gate and json format" {
-    const args = [_][]const u8{ "--schema-gate", "--format=json" };
-    const parsed = try parseDoctorArgs(&args);
-    try std.testing.expect(parsed.schema_gate);
-    try std.testing.expectEqual(OutputFormat.json, parsed.format);
-}
-test "parseDoctorArgs rejects invalid arguments" {
-    try std.testing.expectError(DoctorArgError.InvalidFormatValue, parseDoctorArgs(&[_][]const u8{ "--format", "yaml" }));
-    try std.testing.expectError(DoctorArgError.MissingFormatValue, parseDoctorArgs(&[_][]const u8{"--format"}));
-    try std.testing.expectError(DoctorArgError.InvalidDoctorArgument, parseDoctorArgs(&[_][]const u8{"--unknown"}));
-}
-
-test "dynamic check details stay valid through render with GPA" {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const alloc = gpa.allocator();
-    var ok = true;
-    var results: std.ArrayList(CheckResult) = .empty;
-    defer results.deinit(alloc);
-    try appendFmtCheck(alloc, &results, "schema_gate_compat", false, &ok, "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}", .{ 3, 2, "SCHEMA_BEHIND_BINARY" });
-    var output_buf: [1024]u8 = undefined;
-    var w = std.Io.Writer.fixed(&output_buf);
-    try renderJson(&w, results.items, ok);
-    const out = w.buffered();
-    try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_gate_compat\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "SCHEMA_BEHIND_BINARY") != null);
-}
 test "schema gate reason and compatibility mapping are deterministic" {
     try std.testing.expectEqualStrings("SCHEMA_COMPATIBLE", schemaGateReasonCode(null));
     try std.testing.expectEqualStrings("SCHEMA_BEHIND_BINARY", schemaGateReasonCode(MigrationSchemaGateError.PendingMigrations));

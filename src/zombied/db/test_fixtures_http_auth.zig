@@ -20,6 +20,7 @@
 const std = @import("std");
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");
+const IGNORED_ERROR_FMT = "ignored: {s}";
 
 pub const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 pub const WS_PRIMARY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -40,11 +41,11 @@ pub fn cleanup(conn: *pg.Conn) void {
     _ = conn.exec(
         "DELETE FROM core.workspaces WHERE workspace_id IN ($1::uuid, $2::uuid)",
         .{ WS_PRIMARY, WS_SECONDARY },
-    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec(
         "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
         .{TENANT_ID},
-    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 /// Insert the shared auth-test tenant. Idempotent via ON CONFLICT DO NOTHING.

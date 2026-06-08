@@ -36,9 +36,9 @@ const readStreamToEnd = (stream: NodeJS.ReadableStream): Promise<string> =>
     // the others linger and trip MaxListenersExceededWarning if the stream
     // outlives one read (long-lived streams, test harnesses).
     const cleanup = (): void => {
-      stream.removeListener("data", onData);
-      stream.removeListener("end", onEnd);
-      stream.removeListener("error", onError);
+      stream.removeListener(STREAM_DATA_EVENT, onData);
+      stream.removeListener(STREAM_END_EVENT, onEnd);
+      stream.removeListener(STATUS_ERROR, onError);
     };
     const onEnd = (): void => {
       cleanup();
@@ -48,15 +48,19 @@ const readStreamToEnd = (stream: NodeJS.ReadableStream): Promise<string> =>
       cleanup();
       reject(err);
     };
-    stream.on("data", onData);
-    stream.once("end", onEnd);
-    stream.once("error", onError);
+    stream.on(STREAM_DATA_EVENT, onData);
+    stream.once(STREAM_END_EVENT, onEnd);
+    stream.once(STATUS_ERROR, onError);
   });
 
 export const makeLive = (stream: NodeJS.ReadableStream = process.stdin): StdinShape => ({
   isTTY: Boolean((stream as { isTTY?: boolean }).isTTY),
   readToEnd: Effect.promise(() => readStreamToEnd(stream)),
 });
+const STREAM_DATA_EVENT = "data" as const;
+const STREAM_END_EVENT = "end" as const;
+const STATUS_ERROR = "error" as const;
+
 
 export const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, Stdin.of(makeLive()));
 

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 export interface BrowserResolutionOk {
-  argv: string[];
+  argv: [string, ...string[]];
   quoteUrl?: boolean;
   command: string;
   reason?: undefined;
@@ -26,6 +26,8 @@ export interface OpenUrlOptions {
   spawnImpl?: typeof spawn | undefined;
 }
 
+export type BrowserCommandExists = (command: string) => Promise<boolean>;
+
 function browserDisabled(env: NodeJS.ProcessEnv): boolean {
   const raw = env.BROWSER;
   if (raw == null) return false;
@@ -49,34 +51,35 @@ function looksLikeWsl(env: NodeJS.ProcessEnv): boolean {
 function commandExists(command: string): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = spawn("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
-      stdio: "ignore",
+      stdio: STDIO_IGNORE,
     });
     probe.on("exit", (code) => resolve(code === 0));
-    probe.on("error", () => resolve(false));
+    probe.on(STATUS_ERROR, () => resolve(false));
   });
 }
 
 export async function resolveBrowserCommand(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  commandExistsImpl: BrowserCommandExists = commandExists,
 ): Promise<BrowserResolution> {
   if (browserDisabled(env)) {
     return { argv: null, reason: "browser-disabled" };
   }
 
   if (platform === "win32") {
-    return { argv: ["cmd", "/c", "start", ""], quoteUrl: true, command: "cmd" };
+    return { argv: [WINDOWS_CMD_COMMAND, "/c", "start", ""], quoteUrl: true, command: WINDOWS_CMD_COMMAND };
   }
 
   if (platform === "darwin") {
-    return { argv: ["open"], quoteUrl: false, command: "open" };
+    return { argv: [MAC_OPEN_COMMAND], quoteUrl: false, command: MAC_OPEN_COMMAND };
   }
 
   if (platform === "linux") {
     const wsl = looksLikeWsl(env);
     if (wsl) {
-      if (await commandExists("wslview")) {
-        return { argv: ["wslview"], quoteUrl: false, command: "wslview" };
+      if (await commandExistsImpl(WSLVIEW_COMMAND)) {
+        return { argv: [WSLVIEW_COMMAND], quoteUrl: false, command: WSLVIEW_COMMAND };
       }
       if (!hasDisplay(env)) {
         return { argv: null, reason: "wsl-no-wslview" };
@@ -87,8 +90,8 @@ export async function resolveBrowserCommand(
       return { argv: null, reason: isSsh(env) ? "ssh-no-display" : "no-display" };
     }
 
-    if (await commandExists("xdg-open")) {
-      return { argv: ["xdg-open"], quoteUrl: false, command: "xdg-open" };
+    if (await commandExistsImpl(XDG_OPEN_COMMAND)) {
+      return { argv: [XDG_OPEN_COMMAND], quoteUrl: false, command: XDG_OPEN_COMMAND };
     }
 
     return { argv: null, reason: "missing-xdg-open" };
@@ -105,27 +108,28 @@ export async function openUrl(url: string, opts: OpenUrlOptions = {}): Promise<b
   if (!resolved.argv) return false;
 
   return new Promise((resolve) => {
-    const argv: string[] = [...resolved.argv];
+    const [head, ...argv] = resolved.argv;
     if (resolved.quoteUrl) {
       argv.push(`"${url}"`);
     } else {
       argv.push(url);
     }
 
-    const head = argv[0];
-    if (!head) {
-      resolve(false);
-      return;
-    }
     const doSpawn = opts.spawnImpl ?? spawn;
-    const child = doSpawn(head, argv.slice(1), {
+    const child = doSpawn(head, argv, {
       detached: true,
-      stdio: "ignore",
+      stdio: STDIO_IGNORE,
       windowsVerbatimArguments: resolved.quoteUrl === true,
     });
 
-    child.on("error", () => resolve(false));
+    child.on(STATUS_ERROR, () => resolve(false));
     child.unref();
     resolve(true);
   });
 }
+const WINDOWS_CMD_COMMAND = "cmd" as const;
+const STATUS_ERROR = "error" as const;
+const STDIO_IGNORE = "ignore" as const;
+const MAC_OPEN_COMMAND = "open" as const;
+const WSLVIEW_COMMAND = "wslview" as const;
+const XDG_OPEN_COMMAND = "xdg-open" as const;

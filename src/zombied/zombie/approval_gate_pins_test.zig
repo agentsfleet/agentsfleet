@@ -7,11 +7,12 @@
 
 const std = @import("std");
 const ec = @import("../errors/error_registry.zig");
+const SECONDS_PER_HOUR = 3600;
 
-test "GATE_PENDING_TTL_SECONDS is at least 3600 (1-hour approval window)" {
+test "GATE_PENDING_TTL_SECONDS is at least SECONDS_PER_HOUR (1-hour approval window)" {
     // Below 3600 a human reviewer can no longer act in time and approvals are
     // silently dropped on expiry. Current value is 7200; the floor is 3600.
-    try std.testing.expect(ec.GATE_PENDING_TTL_SECONDS >= 3600);
+    try std.testing.expect(ec.GATE_PENDING_TTL_SECONDS >= SECONDS_PER_HOUR);
 }
 
 test "GATE_PENDING_KEY_PREFIX contains \"gate\" (routing invariant)" {

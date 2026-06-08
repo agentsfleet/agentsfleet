@@ -17,6 +17,8 @@ const error_codes = @import("../errors/error_registry.zig");
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
+const TEST_BALANCE_NANOS: i64 = 1000000;
+
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
@@ -67,9 +69,9 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-        \\VALUES ($1, 1000000, 'rbac_test_seed', $2, $2)
+        \\VALUES ($1, $3, 'rbac_test_seed', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, now_ms });
+    , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
 }
 
 fn cleanupSeedData(conn: *pg.Conn) !void {

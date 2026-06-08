@@ -4,6 +4,9 @@
 //! independently testable.
 
 const std = @import("std");
+
+const MS_PER_SECOND = 1_000;
+
 const base64 = std.base64.url_safe_no_pad;
 
 pub const Filter = struct {
@@ -66,7 +69,7 @@ pub fn parseSince(input: []const u8, now_ms: i64) SinceError!i64 {
         const num = std.fmt.parseInt(i64, input[0 .. input.len - 1], 10) catch return SinceError.InvalidSince;
         if (num < 0) return SinceError.InvalidSince;
         const unit_ms: i64 = switch (last) {
-            's' => 1_000,
+            's' => MS_PER_SECOND,
             'm' => 60_000,
             'h' => 3_600_000,
             'd' => 86_400_000,
@@ -92,7 +95,7 @@ fn parseRfc3339Z(s: []const u8) SinceError!i64 {
 
     const days = daysFromCivil(year, month, day);
     const seconds: i64 = @as(i64, days) * 86_400 + @as(i64, hour) * 3600 + @as(i64, minute) * 60 + @as(i64, second);
-    return seconds * 1_000;
+    return seconds * MS_PER_SECOND;
 }
 
 // Howard Hinnant's date algorithm: civil → days from 1970-01-01.

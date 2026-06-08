@@ -3,7 +3,7 @@
  *
  * Asserts the page resolves the active workspace, calls
  * GET /v1/tenants/me/provider (resolved server-side), and renders the
- * "Active configuration" + "Change provider" sections. Does NOT switch
+ * "Current setup" + "Model setup" sections. Does NOT switch
  * the provider mode — that touches tenant state and would race other
  * specs running against the same fixture tenant; the change-flow is
  * covered by unit tests under `lib/api/tenant_provider.test.ts`.
@@ -22,8 +22,9 @@ test.describe("settings model page", () => {
     await page.goto("/settings/models");
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
 
-    await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
-    await expect(page.getByLabel("Active provider configuration")).toBeVisible();
-    await expect(page.getByLabel("Change provider")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^models & credentials$/i })).toBeVisible();
+    await expect(page.getByLabel("Current model setup")).toBeVisible();
+    await expect(page.getByLabel("Model setup")).toBeVisible();
+    await expect(page.getByLabel("Credential vault")).toBeVisible();
   });
 });

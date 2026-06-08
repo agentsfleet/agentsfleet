@@ -10,6 +10,8 @@ const Config = @import("../daemon/config.zig");
 const Client = @import("../daemon/control_plane_client.zig");
 const args = @import("args.zig");
 const output = @import("output.zig");
+const LITERAL = "\n";
+const CHECK_CONTROL_PLANE = "control_plane";
 
 const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
@@ -40,11 +42,11 @@ fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
 /// Reachability + token validity in one heartbeat probe (skipped if either
 /// input is unset, so the env checks own that failure).
 fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
-    if (api == null or token == null) return .{ .name = "control_plane", .ok = false, .detail = "skipped — api/token unset" };
+    if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
     const client = Client{ .base_url = api.?, .io = io };
     _ = client.heartbeat(alloc, token.?) catch
-        return .{ .name = "control_plane", .ok = false, .detail = "unreachable or token rejected" };
-    return .{ .name = "control_plane", .ok = true, .detail = "reachable; token valid" };
+        return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "unreachable or token rejected" };
+    return .{ .name = CHECK_CONTROL_PLANE, .ok = true, .detail = "reachable; token valid" };
 }
 
 /// True only when every check passed — the doctor exit-code contract (any
@@ -63,12 +65,12 @@ fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 
             const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = ok, .checks = checks }, .{}) catch return 1;
             defer alloc.free(s);
             output.writeOut(s);
-            output.writeOut("\n");
+            output.writeOut(LITERAL);
         },
         .human => for (checks) |c| {
             var buf: [256]u8 = undefined;
             const mark = if (c.ok) "OK" else "!!";
-            output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch "\n");
+            output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL);
         },
     }
     return if (ok) 0 else 1;
