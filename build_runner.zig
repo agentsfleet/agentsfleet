@@ -25,6 +25,14 @@ const S_COMMON = "common";
 const S_NULLCLAW = "nullclaw";
 const S_BUILD_OPTIONS = "build_options";
 
+// Build-option names + the runner root, single-sourced (RULE UFS) — each is
+// referenced by the prod, stub-exe, and integration options modules below.
+const OPT_VERSION = "version";
+const OPT_GIT_COMMIT = "git_commit";
+const OPT_EXECUTOR_PROVIDER_STUB = "executor_provider_stub";
+const OPT_STUB_RUNNER_EXE_PATH = "stub_runner_exe_path";
+const SRC_RUNNER_MAIN = "src/runner/main.zig";
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -63,23 +71,31 @@ pub fn build(b: *std.Build) void {
     });
     const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
 
-    // Build options shared by both exe and tests. The runner always runs the
-    // real engine in-process — no build-time execution flags. `version` (read
-    // from the repo VERSION file, kept in sync by `make sync-version`) +
-    // `git_commit` (-Dgit-commit, passed from CI) back `--version` — the same
-    // git-commit knob zombied's build.zig exposes (RULE UFS).
+    // Build options. `version` (read from the repo VERSION file, kept in sync by
+    // `make sync-version`) + `git_commit` (-Dgit-commit, passed from CI) back
+    // `--version` — the same git-commit knob zombied's build.zig exposes (RULE
+    // UFS). `executor_provider_stub` (default false) is a TEST-ONLY build flag: a
+    // child built with it emits a canned `result` frame instead of running the
+    // NullClaw engine, and a daemon built with it redirects the forked child's
+    // exec target to `stub_runner_exe_path` — so the worker-pool integration lane
+    // can drive the real lease→fork→execute→report path with no LLM. Production
+    // builds leave it false, so both seams comptime-vanish (no env backdoor).
     const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
     const version_raw = b.build_root.handle.readFileAlloc(b.graph.io, "VERSION", b.allocator, .limited(64)) catch "0.0.0";
     const version = std.mem.trim(u8, version_raw, " \t\r\n");
+
+    // Production options (exe + unit tests): real engine, no exec redirect.
     const build_opts = b.addOptions();
-    build_opts.addOption([]const u8, "version", version);
-    build_opts.addOption([]const u8, "git_commit", git_commit);
+    build_opts.addOption([]const u8, OPT_VERSION, version);
+    build_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    build_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, false);
+    build_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     const build_options_mod = build_opts.createModule();
 
     const runner_exe = b.addExecutable(.{
         .name = "zombie-runner",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runner/main.zig"),
+            .root_source_file = b.path(SRC_RUNNER_MAIN),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -122,11 +138,47 @@ pub fn build(b: *std.Build) void {
     });
     b.step("test", "Run zombie-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
 
+    // The stub child binary the worker-pool integration lane forks: a real
+    // `zombie-runner` built with `executor_provider_stub=true`, so its `__execute`
+    // mode emits a canned `result` frame with no engine/LLM. The integration test
+    // binary can't be the child itself (a `zig test` binary has no `__execute`
+    // dispatch), so the harness points the forked child at THIS artifact's path.
+    const stub_exe_opts = b.addOptions();
+    stub_exe_opts.addOption([]const u8, OPT_VERSION, version);
+    stub_exe_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    stub_exe_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
+    stub_exe_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
+    const stub_runner_exe = b.addExecutable(.{
+        .name = "zombie-runner-execstub",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(SRC_RUNNER_MAIN),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = stub_exe_opts.createModule() },
+            },
+        }),
+    });
+
+    // Integration-test options: stub flag ON (so the daemon-side `buildArgv`
+    // redirects the child exec target) + the stub exe's built path. `addOptionPath`
+    // makes the test compilation depend on the stub exe being emitted first.
+    const integ_opts = b.addOptions();
+    integ_opts.addOption([]const u8, OPT_VERSION, version);
+    integ_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    integ_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
+    integ_opts.addOptionPath(OPT_STUB_RUNNER_EXE_PATH, stub_runner_exe.getEmittedBin());
+
     // Runner integration tests — real-process proofs (fork/spawn at the real
-    // environ_map boundary, kill(-pgid) tree reap). Rooted separately from the
-    // unit `test` step so the fast unit lane never forks real children. The
-    // bodies are Linux-only (SkipZigTest elsewhere); the `test-integration-runner`
-    // make lane runs them on a Linux host.
+    // environ_map boundary, kill(-pgid) tree reap, and the worker pool running N
+    // real forked children concurrently). Rooted separately from the unit `test`
+    // step so the fast unit lane never forks real children. The bodies are
+    // Linux-only (SkipZigTest elsewhere); the `test-integration-runner` make lane
+    // runs them on a Linux host.
     const runner_integration_tests = b.addTest(.{
         .name = "zombie-runner-integration-tests",
         .root_module = b.createModule(.{
@@ -138,9 +190,9 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },
         }),
     });
-    b.step("test-integration", "Run zombie-runner integration tests (real-process sandbox proofs, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
+    b.step("test-integration", "Run zombie-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }

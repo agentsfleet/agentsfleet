@@ -15,6 +15,7 @@ const constants = common;
 const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
+const worker_pool = @import("worker_pool.zig");
 const RenewDriver = @import("renew_driver.zig").RenewDriver(client_mod);
 
 const protocol = contract.protocol;
@@ -50,23 +51,37 @@ pub fn installDrainHandlers() void {
     std.posix.sigaction(std.posix.SIG.INT, &action, null);
 }
 
-/// Heartbeat → lease → execute → report loop. Returns on stop or drain signal.
-/// Identity is `cfg.runner_token` (a pre-minted `zrn_`); the loop never
-/// registers — its first contact is a heartbeat.
+/// Set by the control loop when the fleet returns a `.stop` heartbeat. Distinct
+/// from `drain_requested` (signal / fleet `.drain`) only by origin; each worker
+/// halts on either at its between-lease boundary, so both are graceful drains
+/// (finish in-flight, take no new lease) per the locked design.
+pub var stop_requested = std.atomic.Value(bool).init(false);
+
+/// Control loop: the host's single thread heartbeats once per host on the
+/// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
+/// signal-set `drain_requested`) onto the shared atomics, and owns the worker
+/// pool's spawn/join. Identity is `cfg.runner_token` (a pre-minted `zrn_`); the
+/// loop never registers — its first contact is a heartbeat (Option B).
+///
+/// The pool is spawned lazily after the first `.ok` heartbeat, so the host's
+/// first control-plane contact is always the heartbeat and a boot-time `.stop`
+/// exits before a single lease is taken. Workers each run `pollAndProcess`
+/// concurrently; `cfg.worker_count == 1` is behaviourally today's single daemon.
 pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const cp = client_mod{ .base_url = cfg.control_plane_url, .io = io };
     const runner_token: []const u8 = cfg.runner_token;
-    var draining = false;
-    var heartbeat_errors: u32 = 0;
+    stop_requested.store(false, .seq_cst);
 
-    outer: while (true) {
-        if (drain_requested.load(.seq_cst) and !draining) {
+    var pool: ?worker_pool.Pool = null;
+    // On any exit the workers see stop/drain (set below or by the signal handler),
+    // finish their in-flight child, and are joined — no thread/child leak.
+    defer if (pool) |p| p.join();
+
+    var heartbeat_errors: u32 = 0;
+    while (true) {
+        if (drain_requested.load(.seq_cst)) {
             log.info("signal_drain", .{});
-            draining = true;
-        }
-        if (draining) {
-            log.info("drain_idle_exit", .{});
-            break :outer;
+            break;
         }
 
         const hb = cp.heartbeat(alloc, runner_token) catch |err| {
@@ -74,31 +89,41 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
             log.warn("heartbeat_failed", .{ .err = @errorName(err), .consecutive = heartbeat_errors });
             const mult: u64 = if (heartbeat_errors >= HEARTBEAT_MAX_CONSECUTIVE_ERRORS) heartbeat_errors else 1;
             sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS * mult);
-            continue :outer;
+            continue;
         };
         heartbeat_errors = 0;
 
         switch (hb.status) {
             .stop => {
                 log.info("fleet_stop", .{});
-                break :outer;
+                stop_requested.store(true, .seq_cst);
+                break;
             },
             .drain => {
-                if (!draining) log.info("fleet_drain", .{});
-                draining = true;
-                continue :outer;
+                log.info("fleet_drain", .{});
+                drain_requested.store(true, .seq_cst);
+                break;
             },
             .ok => {},
         }
 
-        pollAndProcess(io, alloc, cp, runner_token, cfg, env_map);
+        // First OK heartbeat brings the pool up; later ones are liveness ticks.
+        if (pool == null) {
+            pool = worker_pool.spawn(io, alloc, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
+                log.err("worker_pool_spawn_failed", .{ .err = @errorName(err) });
+                break;
+            };
+        }
+
+        sleepMs(io, @intCast(constants.HEARTBEAT_INTERVAL_MS));
     }
 }
 
 /// Long-poll one lease; execute + report it when present, else back off the
 /// server-supplied (or default) retry interval. Errors back off and return — the
-/// caller's loop retries on the next iteration.
-fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
+/// caller's loop retries on the next iteration. Each pool worker calls this in a
+/// loop with its own allocator + client (see `worker_pool.zig`).
+pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
         log.warn("lease_failed", .{ .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);

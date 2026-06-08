@@ -37,7 +37,14 @@ KillMode=mixed
 #              RUNNER_WORKSPACE_BASE,
 #              RUNNER_NETWORK_POLICY (set to registry_allowlist on bare-metal
 #                                    hosts that need agent dependency installs;
-#                                    default deny_all)
+#                                    default deny_all),
+#              RUNNER_WORKER_COUNT  (concurrent leased agents per host; default 1
+#                                    = one agent at a time. Size to the host's
+#                                    spare cores/memory; clamped to [1, 64]. A
+#                                    larger N lifts per-host throughput but widens
+#                                    the failure domain — one host loss drops N
+#                                    in-flight runs, not 1, all re-leased to
+#                                    healthy hosts)
 # Bootstrap order (chicken-and-egg): the updated zombied (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `zrn_` for this host. Until that's done, DEV_WORKER_READY stays `false`.

@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const logging = @import("log");
 const contract = @import("contract");
 
@@ -87,13 +88,26 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     defer parsed.deinit();
 
     // The process exits immediately after writing; the engine result's content
-    // is reclaimed by exit (no free needed on this single-shot path).
-    const result = runEngine(env_map, alloc, workspace, parsed.value.lease, parsed.value.hydrated_memory);
+    // is reclaimed by exit (no free needed on this single-shot path). A
+    // `executor_provider_stub` build (tests only) skips the engine and emits a
+    // canned success result so the worker-pool integration lane can exercise the
+    // real fork→execute→report path with no LLM; comptime-false in production.
+    const result = if (build_options.executor_provider_stub)
+        stubResult()
+    else
+        runEngine(env_map, alloc, workspace, parsed.value.lease, parsed.value.hydrated_memory);
     writeResult(alloc, result) catch |err| {
         log.err("result_write_failed", .{ .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
     return 0;
+}
+
+/// Canned success result for an `executor_provider_stub` build — a clean exit
+/// with a sentinel body, no engine, no LLM, no network. Lets a test prove the
+/// pool forks N children, each runs, and each reports, without a model call.
+fn stubResult() types.ExecutionResult {
+    return .{ .exit_ok = true, .content = "stub-ok", .token_count = 0 };
 }
 
 /// Map the lease to engine args and run NullClaw in this child's address space.
