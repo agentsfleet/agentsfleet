@@ -62,6 +62,15 @@ Expected DEV pipeline order:
 5. `qa-dev` — Playwright smoke suite against `https://usezombie-app.vercel.app`
 6. `notify` — Discord
 
+> **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
+> `[env]` (`API_HTTP_THREADS = "32"` — matched to prod so dev surfaces pool
+> saturation first — and `API_HTTP_WORKERS = "2"` on this 512mb box).
+> `API_HTTP_THREADS` is the handler-pool size — one long-lived SSE stream
+> or runner long-poll holds a thread for the connection's life, and the default
+> of `1` lets a single stream saturate the pool. See
+> `deploy/fly/zombied-prod/fly.toml` for the full rationale. To change: edit the
+> `[env]` block, redeploy, watch handler-pool saturation on `/metrics`.
+
 ---
 
 ## 3.0 Runtime Verification

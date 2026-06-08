@@ -10,6 +10,17 @@ primary_region = "iad"
 [processes]
   app = "/usr/local/bin/zombied serve"
 
+# HTTP concurrency tuning — see deploy/fly/zombied-prod/fly.toml for the full
+# rationale. API_HTTP_THREADS is the handler-pool ceiling; the default of 1
+# means one long-lived handler (SSE stream / runner long-poll) saturates the
+# pool. Pinned to 32 to MATCH prod's ceiling so dev surfaces any pool-
+# saturation behaviour before prod does (the 512mb box still absorbs it —
+# thread stacks are virtual/lazily committed, redis active count is
+# unbounded). API_HTTP_WORKERS is the accept/event-loop thread count.
+[env]
+  API_HTTP_THREADS = "32"
+  API_HTTP_WORKERS = "2"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"

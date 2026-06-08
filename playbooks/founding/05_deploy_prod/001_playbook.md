@@ -92,6 +92,16 @@ The release pipeline deploys in three stages:
 4. Ensure `cloudflared-prod` tunnel is running (restart or deploy from scratch)
 5. Verify `/healthz` + `/readyz`
 
+> **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
+> `[env]`, not in vault — they are tuning, not secrets. `API_HTTP_THREADS`
+> (handler-pool size; one long-lived SSE stream or runner long-poll holds one
+> thread for the connection's life) is set to `32`, `API_HTTP_WORKERS`
+> (accept/event-loop threads) to `2`. Both default to `1`, which lets a single
+> long-lived stream saturate the pool. To change: edit the `[env]` block and
+> redeploy, then watch handler-pool saturation on `/metrics` (port 9091). The
+> next scaling levers after raising threads are a larger VM and horizontal
+> replicas.
+
 ### 3.2 `deploy-prod-canary` — First Worker Host
 
 1. Load tailscale authkey + Discord webhook from 1Password

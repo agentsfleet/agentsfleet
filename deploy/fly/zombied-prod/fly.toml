@@ -7,6 +7,23 @@ primary_region = "iad"
 [processes]
   app = "/usr/local/bin/zombied serve"
 
+# HTTP concurrency tuning. zombied runs httpz with two independent pools:
+#   API_HTTP_WORKERS — accept/event-loop threads (epoll); each multiplexes up
+#                      to API_MAX_CLIENTS (default 1024) connections as fds.
+#   API_HTTP_THREADS — handler-pool threads. A long-lived handler (an SSE
+#                      stream or a runner long-poll) holds ONE for the whole
+#                      life of the connection.
+# Both default to 1 (see src/zombied/config/runtime_loader.zig), so a single
+# long-lived stream saturates the handler pool and the next request queues.
+# 32 handler threads lift that ceiling 1 -> 32 on this 1gb box: the 16MiB
+# thread stacks are virtual / lazily committed (a parked handler resides in
+# tens of KB), and the redis pool's active count is unbounded, so the bump
+# does not move the wall onto redis. Raise after watching pool-saturation
+# metrics; the next levers are a larger VM, then horizontal replicas.
+[env]
+  API_HTTP_THREADS = "32"
+  API_HTTP_WORKERS = "2"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "1gb"
