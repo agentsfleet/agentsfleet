@@ -64,12 +64,13 @@ Expected DEV pipeline order:
 
 > **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
 > `[env]` (`API_HTTP_THREADS = "32"` — matched to prod so dev surfaces pool
-> saturation first — and `API_HTTP_WORKERS = "2"` on this 512mb box).
-> `API_HTTP_THREADS` is the handler-pool size — one long-lived SSE stream
-> or runner long-poll holds a thread for the connection's life, and the default
-> of `1` lets a single stream saturate the pool. See
-> `deploy/fly/zombied-prod/fly.toml` for the full rationale. To change: edit the
-> `[env]` block, redeploy, watch handler-pool saturation on `/metrics`.
+> saturation first — and `API_HTTP_WORKERS = "1"` on this 512mb box).
+> `API_HTTP_THREADS` is the per-worker handler-pool size; the one long-lived
+> handler that holds a thread for the connection's life is the SSE stream (the
+> runner lease is a non-blocking single poll). The default of `1` lets a single
+> SSE stream saturate the pool. See `deploy/fly/zombied-prod/fly.toml` for the
+> full rationale. To change: edit the `[env]` block, redeploy, watch
+> handler-pool saturation on `/metrics`.
 
 ---
 

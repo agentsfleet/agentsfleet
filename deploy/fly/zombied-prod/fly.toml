@@ -7,22 +7,28 @@ primary_region = "iad"
 [processes]
   app = "/usr/local/bin/zombied serve"
 
-# HTTP concurrency tuning. zombied runs httpz with two independent pools:
-#   API_HTTP_WORKERS — accept/event-loop threads (epoll); each multiplexes up
-#                      to API_MAX_CLIENTS (default 1024) connections as fds.
-#   API_HTTP_THREADS — handler-pool threads. A long-lived handler (an SSE
-#                      stream or a runner long-poll) holds ONE for the whole
-#                      life of the connection.
-# Both default to 1 (see src/zombied/config/runtime_loader.zig), so a single
-# long-lived stream saturates the handler pool and the next request queues.
-# 32 handler threads lift that ceiling 1 -> 32 on this 1gb box: the 16MiB
-# thread stacks are virtual / lazily committed (a parked handler resides in
-# tens of KB), and the redis pool's active count is unbounded, so the bump
-# does not move the wall onto redis. Raise after watching pool-saturation
-# metrics; the next levers are a larger VM, then horizontal replicas.
+# HTTP concurrency tuning. zombied runs httpz as an evented server:
+#   API_HTTP_WORKERS — accept/event-loop threads (epoll/kqueue). Each worker
+#                      multiplexes up to API_MAX_CLIENTS (1024) idle connections
+#                      as file descriptors AND owns its OWN handler pool of
+#                      API_HTTP_THREADS threads (the pool is PER worker --
+#                      vendor/httpz/src/worker.zig). Kept at 1 so there is a
+#                      single shared handler pool, not N fragmented ones.
+#   API_HTTP_THREADS — handler-pool size. The one long-lived handler that holds
+#                      a thread for the whole connection is the SSE stream
+#                      (src/zombied/http/handlers/zombies/events_stream.zig).
+#                      The runner lease is a non-blocking single poll and does
+#                      NOT hold a thread (docs/architecture/scaling.md).
+# Both default to 1 (src/zombied/config/runtime_loader.zig), so a single SSE
+# stream saturates the pool and the next request queues. 32 lifts that ceiling
+# 1 -> 32 on this 1gb box: the 16MiB thread stacks are virtual / lazily
+# committed (a parked handler resides in tens of KB), and each SSE stream dials
+# its own dedicated redis subscriber (bounded by redis maxclients, not this
+# box). Raise after watching pool-saturation metrics; the next levers are a
+# larger VM, then horizontal replicas (the binding constraint per scaling.md).
 [env]
   API_HTTP_THREADS = "32"
-  API_HTTP_WORKERS = "2"
+  API_HTTP_WORKERS = "1"
 
 [[vm]]
   size = "shared-cpu-1x"

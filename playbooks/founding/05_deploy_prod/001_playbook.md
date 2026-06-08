@@ -93,14 +93,17 @@ The release pipeline deploys in three stages:
 5. Verify `/healthz` + `/readyz`
 
 > **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
-> `[env]`, not in vault — they are tuning, not secrets. `API_HTTP_THREADS`
-> (handler-pool size; one long-lived SSE stream or runner long-poll holds one
-> thread for the connection's life) is set to `32`, `API_HTTP_WORKERS`
-> (accept/event-loop threads) to `2`. Both default to `1`, which lets a single
-> long-lived stream saturate the pool. To change: edit the `[env]` block and
-> redeploy, then watch handler-pool saturation on `/metrics` (port 9091). The
-> next scaling levers after raising threads are a larger VM and horizontal
-> replicas.
+> `[env]`, not in vault — they are tuning, not secrets. `API_HTTP_THREADS` is
+> the per-worker handler-pool size (set to `32`); the one long-lived handler
+> that holds a thread for the connection's life is the SSE stream — the runner
+> lease is a non-blocking single poll (see `docs/architecture/scaling.md`).
+> `API_HTTP_WORKERS` (accept/event-loop threads) is kept at `1` so there is a
+> single shared handler pool; the pool is per-worker, so 2 workers would mean
+> two fragmented 32-thread pools. Both default to `1`, which lets a single SSE
+> stream saturate the pool. To change: edit the `[env]` block and redeploy,
+> then watch handler-pool saturation on `/metrics` (port 9091). The next
+> scaling levers after raising threads are a larger VM and horizontal replicas
+> (the binding constraint per `scaling.md`).
 
 ### 3.2 `deploy-prod-canary` — First Worker Host
 
