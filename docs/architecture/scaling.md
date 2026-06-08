@@ -94,6 +94,8 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hou
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `src/lib/common/constants.zig`. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-agent runtime before reclaim (the renewal gap) | Raise to cover the longest expected agent runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short agents. |
+| `API_HTTP_THREADS` | 1 | Concurrent long-lived handlers **per worker** — the httpz handler-pool size. The one handler that holds a thread for the connection's life is the SSE stream (`events_stream.zig`); the lease is a non-blocking single poll and returns immediately. | A single SSE stream saturates the pool at the default of 1. Raise to cover peak concurrent SSE tails per replica (32 on the 1gb/512mb Fly boxes); watch handler-pool saturation on `/metrics`. The pool is per-worker, so total concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`. |
+| `API_HTTP_WORKERS` | 1 | Accept/event-loop threads (epoll/kqueue), each multiplexing up to `API_MAX_CLIENTS` idle connections as fds **and owning its own `API_HTTP_THREADS` handler pool**. | Scale toward core count on a multi-core VM. Keep at 1 on a shared/fractional-core box so the handler pool is a single shared pool, not N fragmented ones (an SSE-heavy worker can strand the other worker's idle threads). The accept layer is rarely the wall. |
 | `zombied` API replica count | deployment-driven | HTTP QPS (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or SSE connection count on one replica × open tabs nears the Upstash plan cap. |
 | Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no Redis or coordination cost. Each idle runner adds one poll loop to the Upstash bill (tune via `NO_WORK_RETRY_AFTER_MS`). |
 
@@ -115,7 +117,9 @@ Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock c
 
 `zombie:{id}:activity` PUBLISH is cheap server-side (`zombied` is the sole publisher); SSE subscribers each hold one dedicated Upstash `SUBSCRIBE` connection. A dashboard with 1000 simultaneous viewers = 1000 Upstash connections before the underlying agent produces a byte. Plan API-tier sizing around peak concurrent SSE.
 
-Symptom: API-tier file-descriptor exhaustion while Upstash is otherwise idle; Upstash connection count climbing with viewer count. Fix: more API replicas, or a dedicated SSE process pool.
+**Each open SSE stream also pins one httpz handler thread** for the life of the connection — its handler (`events_stream.zig`) runs an inline read/write loop on a pool thread, it is not just a Redis connection. So the **first** per-replica SSE ceiling is `API_HTTP_THREADS` (per worker), reached well before the Upstash connection cap: at the default of 1, a single viewer saturates the pool. Raising `API_HTTP_THREADS` is the first lever; a larger VM and more replicas come next. An event-loop SSE substrate (so a parked stream costs an fd, not a thread) is a much later lever and is gated — it only earns its keep above the thread/memory ceiling, and it must make the SSE *subscriber socket itself* evented, not merely offload the blocking read (offloading still pins one worker per stream). See `docs/v2/pending/M88_001_*` for the gated design.
+
+Symptom: handler-pool saturation (new requests on a replica queue while CPU is idle) at the `API_HTTP_THREADS` ceiling; then API-tier file-descriptor exhaustion while Upstash is otherwise idle; Upstash connection count climbing with viewer count. Fix, in order: raise `API_HTTP_THREADS`, then a larger VM, then more API replicas / a dedicated SSE process pool.
 
 ### 3. Upstash plan ceiling (now rarely first)
 
@@ -176,6 +180,7 @@ Step 4: Emit configuration
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `zombied` replicas + Postgres for hot-path latency.
 4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
 5. **Pool the SSE `SUBSCRIBE` connection.** Blocking reads hold dedicated connections — the one invariant that survived the cutover.
+6. **Leave `API_HTTP_THREADS` at the default of 1.** One SSE stream pins the entire per-worker handler pool; the next request queues while the CPU is idle. Size it to peak concurrent SSE tails per replica.
 
 ---
 

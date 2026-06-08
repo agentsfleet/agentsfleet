@@ -14,7 +14,9 @@
 
 > **Provenance is load-bearing.** LLM-drafted — cross-check every claim against the codebase. The substrate (libxev) is a new dependency whose shape this spec defines.
 
-**Canonical architecture:** `docs/architecture/data_flow.md` (the synchronous request → handler → pg/redis write model this preserves) + a NEW `docs/architecture/concurrency.md` this spec creates (the event-loop + blocking-worker-pool model). The threaded executor seam is `src/lib/common/sync.zig:8`.
+> **⚠️ STATUS — GATED, not the flagship (updated Jun 08, 2026).** A code-grounded eng review + a codex adversarial pass reframed this milestone. The felt "httpz is slow" pain was a config default: `API_HTTP_THREADS`/`API_HTTP_WORKERS` shipped at **1/1** on the prod 1gb box, so a single Server-Sent Events (SSE) stream saturated the per-worker handler pool. That is **fixed by config** — the boring lever, now landed (fly.toml `[env]` raising the handler pool to 32 on a single worker, + playbooks). This async-substrate workstream is **deferred behind an evidence gate** (see Discovery, Jun 08): implement only when metrics prove per-node SSE-tail density is the binding constraint *after* the thread bump, a larger VM, and horizontal replicas — and even then the design below needs the §2 fix. Several original premises were wrong (httpz is already evented at the connection layer; the runner lease does NOT pin a thread). Do **not** CHORE(open) this without re-reading Discovery.
+
+**Canonical architecture:** `docs/architecture/scaling.md` (the binding constraint — API replicas + Postgres write throughput — and the `API_HTTP_THREADS/WORKERS` handler-pool knobs, which this spec reconciles with) + `docs/architecture/data_flow.md` (the synchronous request → handler → pg/redis write model this preserves). A NEW `docs/architecture/concurrency.md` (the event-loop + blocking-worker-pool model) is **deferred with this workstream**, created only if the gate opens. The threaded executor seam is `src/lib/common/sync.zig:8`.
 
 ---
 
@@ -22,7 +24,7 @@
 
 1. `src/zombied/http/server.zig` — the current httpz `Server(App)` init (worker/thread-pool config). This is the integration point being replaced; mirror its `Context`/handler wiring onto the new substrate.
 2. `src/zombied/cmd/serve.zig` (≈320-367) — how the server is started/stopped and how `signal`, `event bus`, `approval sweeper` threads are spawned + joined. The new loop owns the same lifecycle.
-3. `src/zombied/http/handlers/zombies/events_stream.zig`, `…/create_stream.zig`, `src/zombied/http/handlers/runner/lease.zig` — the long-lived connections (SSE + server-side long-poll) that pin a worker thread today; these are the migration's first beneficiaries.
+3. `src/zombied/http/handlers/zombies/events_stream.zig`, `…/create_stream.zig` — the SSE streams, the ONLY long-lived handlers that pin a per-worker handler thread today; the sole migration beneficiaries. (`src/zombied/http/handlers/runner/lease.zig` is NOT in scope — it is a non-blocking single poll, not a long-poll; see Discovery Jun 08.)
 4. `src/zombied/queue/redis_pool.zig` + `src/lib/common/sync.zig` — the blocking pools and the `globalIo()` seam; pg/redis stay blocking behind a worker pool the loop dispatches to.
 5. https://github.com/mitchellh/libxev + https://github.com/tardy-org/zzz — the substrate to adopt (event loop + async HTTP framework). NOT Zig's built-in `std.Io.Evented` (experimental; upstream advises Threaded for critical workloads).
 
@@ -62,11 +64,11 @@
 
 ## Overview
 
-**Goal (testable):** zombied serves Server-Sent Events (SSE) streams and the runner lease long-poll on an event loop where N idle long-lived connections consume O(1) threads (not N); a load test holds ≥2000 concurrent idle SSE connections on a small fixed worker count with stable p99, where the current httpz path exhausts its worker pool and refuses connections.
+**Goal (testable, gated):** when per-node concurrent SSE-tail density is the proven binding constraint (after `API_HTTP_THREADS`, VM size, and replicas are exhausted), zombied serves SSE streams on an event loop where a parked stream costs a file descriptor, not a handler thread — a load test holds ≥2000 concurrent idle SSE connections on a small fixed worker + memory budget with stable p99, where the thread-per-SSE-handler path is bounded by `API_HTTP_THREADS × per-thread memory`. The runner lease is **out of scope** — it is already a non-blocking single poll.
 
-**Problem:** httpz gives each connection a worker thread for its whole life. SSE viewers and the server-side runner long-poll sit mostly idle but each holds a thread; once held connections reach the worker-pool size, new requests queue or are refused while the central processing unit (CPU) is idle. The wall is threads-held-by-idle-connections, not compute.
+**Problem (corrected — see Discovery Jun 08):** httpz is **already evented at the connection layer**: `API_HTTP_WORKERS` accept/event-loop threads (epoll/kqueue) multiplex idle connections as file descriptors. What pins a thread is a **long-lived handler**, and there is exactly one — the SSE stream (`events_stream.zig` runs an inline read/write loop on a per-worker handler-pool thread for the connection's life). The runner lease is a **non-blocking single poll** that returns immediately (`assign.zig`: "no server-side long-poll loop"; `redis_zombie.zig`: `XREADGROUP` WITHOUT `BLOCK`) — it does NOT pin a thread. The per-node SSE ceiling is therefore `API_HTTP_THREADS` (per worker), which shipped at the default of **1**, so a single SSE viewer saturated the pool. Raising it to 32 (config, landed) lifts the ceiling without touching the substrate; this workstream earns its keep only when 32+ concurrent SSE tails per node become the wall after the box and replica levers.
 
-**Solution summary:** Adopt an event-loop HTTP substrate (libxev + zzz/tardy) for the connection/accept layer so idle connections cost a file descriptor, not a thread. Keep pg and redis blocking behind a bounded worker pool the loop dispatches to and awaits, so the data layer and its 566 call sites are untouched. Migrate the SSE and runner-long-poll endpoints first (the connection-density win); leave all other endpoints on the threaded path until a follow-on workstream.
+**Solution summary:** Adopt an event-loop HTTP substrate (libxev + zzz/tardy) for the connection/accept layer so idle connections cost a file descriptor, not a thread. Keep pg and redis blocking behind a bounded worker pool the loop dispatches to and awaits, so the data layer and its 566 call sites are untouched. Migrate the SSE endpoints only (the sole connection-density win — the runner lease is already non-blocking); leave all other endpoints on the threaded path until a follow-on workstream.
 
 ---
 
@@ -88,7 +90,7 @@
 | `src/zombied/http/offload.zig` | CREATE | bounded blocking worker pool the loop dispatches pg/redis calls to and awaits |
 | `src/zombied/cmd/serve.zig` | EDIT | start/stop the event loop + offload pool; same lifecycle as today's threads |
 | `src/zombied/http/handlers/zombies/events_stream.zig`, `…/create_stream.zig` | EDIT | run SSE on the loop; emit per event via the loop, blocking redis reads offloaded |
-| `src/zombied/http/handlers/runner/lease.zig` | EDIT | run the server-side long-poll on the loop instead of pinning a worker |
+| `src/zombied/http/handlers/runner/lease.zig` | NONE | NOT in scope — already a non-blocking single poll, does not pin a thread (Discovery Jun 08) |
 | `vendor/httpz` | EDIT/KEEP | retained for the not-yet-migrated endpoints during the transition; removed in the follow-on |
 | `docs/architecture/concurrency.md` | CREATE | the event-loop + blocking-worker-pool model + the offload seam |
 
@@ -108,14 +110,16 @@
 
 ### §1 — Baseline + substrate spike (the gate)
 
-Measure the current httpz ceiling and prove the evented substrate clears it on our workload before any cutover. **Implementation default:** spike one SSE endpoint and the lease long-poll on libxev+zzz; compare against httpz under identical load. The win must be real on our endpoints, not a synthetic benchmark.
+Measure the **tuned** httpz ceiling and prove the evented substrate clears it on our workload before any cutover. **Implementation default:** spike one SSE endpoint on libxev+zzz; compare against httpz **at `API_HTTP_THREADS=32` (the shipped config), NOT the default of 1** — a default-1 baseline is a strawman that measures the config lever, not the substrate. Record per-thread memory so the headline reads "fd-cost vs thread-cost", not "32 vs 1". The win must be real on our endpoint, net of the config lever. The runner lease is excluded (already non-blocking).
 
-- **Dimension 1.1** — under a load holding many idle long-lived connections, the httpz path exhausts its worker pool and refuses/queues new requests at a measured connection count → Test `baseline_thread_per_conn_saturates`.
-- **Dimension 1.2** — the evented substrate holds ≥2000 idle SSE connections on a small fixed worker count with stable p99 and accepts new requests → Test `evented_holds_many_idle_connections`.
+- **Dimension 1.1** — under a load holding many idle SSE connections, the tuned httpz path (`API_HTTP_THREADS=32`) saturates its handler pool and queues new requests at ~32 concurrent SSE tails → Test `baseline_sse_handler_pool_saturates`.
+- **Dimension 1.2** — the evented substrate holds ≥2000 idle SSE connections on a small fixed worker + memory budget with stable p99 and accepts new requests → Test `evented_holds_many_idle_connections`.
 
 ### §2 — Blocking pg/redis offload seam
 
 The loop must never block on a pg/redis call. **Implementation default:** option (a) offload-and-await — each blocking pg/redis call is dispatched to a bounded worker pool and the connection's task awaits the result; pg/redis client code is unchanged. (Option (b), running handler bodies on a worker-thread scheduler, is the fallback if the spike shows (a)'s per-call overhead dominates; the spike decides.)
+
+> **Design hole (codex, Jun 08): offloading the SSE subscriber read does NOT deliver SSE density.** The SSE stream's defining cost is the dedicated Redis `SUBSCRIBE` socket it blocks on. If that blocking read is merely dispatched to the offload pool, **each parked stream pins one offload-pool thread for its whole life** — the thread-pin moves from the httpz handler pool to `offload.zig`, same bucket, zero density win. The offload seam is correct for *request-path* pg/redis calls (acquire → query → release), but for SSE to cost a file descriptor instead of a thread **the subscriber socket itself must be registered on the event loop** (libxev-native Redis pub/sub read), which is a larger change than "redis reads behind the offload pool". The spike MUST resolve this before any cutover; if evented pub/sub is infeasible, this workstream does not achieve its goal.
 
 - **Dimension 2.1** — a handler issuing a blocking pg query on the loop completes without stalling concurrent connections (a slow query on one connection does not freeze others) → Test `offload_does_not_block_loop`.
 - **Dimension 2.2** — the offload pool is bounded; saturation applies backpressure (callers wait) rather than unbounded thread growth → Test `offload_pool_bounded_backpressure`.
@@ -125,7 +129,7 @@ The loop must never block on a pg/redis call. **Implementation default:** option
 Move the two connection-density endpoints onto the substrate; the public HTTP contract is byte-for-byte unchanged. **Implementation default:** SSE event delivery is driven by the loop; redis reads behind the offload pool.
 
 - **Dimension 3.1** — SSE stream emits the same `text/event-stream` framing/ordering/reconnection as today, verified against the existing SSE test suite → Test `sse_contract_unchanged_on_loop`.
-- **Dimension 3.2** — the runner lease long-poll returns the same lease/no-work responses as today and no longer pins a worker thread per waiting runner → Test `lease_longpoll_contract_unchanged_on_loop`.
+- **Dimension 3.2** — **REMOVED.** The runner lease is already a non-blocking single poll that returns immediately (`assign.zig`, `redis_zombie.zig`: `XREADGROUP` WITHOUT `BLOCK`); it does not pin a thread and is not a long-lived connection. The original premise was false (see Discovery Jun 08). Only the SSE stream (§3.1) migrates in this workstream.
 
 ### §4 — Lifecycle parity (start/stop/drain)
 
@@ -236,7 +240,15 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 > **Empty at creation.** Append as work surfaces consults/decisions.
 
 - **Provenance (Jun 08 2026)** — CEO-reviewed plan; owner-directed async. Off-the-shelf scaling (replicas + PgBouncer + cache) and the runner worker-thread pool are sibling M88 workstreams, sequenced separately.
-- **Deferrals** — none at authoring.
+- **Eng review + codex adversarial pass (Jun 08 2026) — premises corrected, milestone gated.**
+  - **httpz is already evented at the connection layer.** `server.zig` configures two pools: `API_HTTP_WORKERS` accept/event-loop threads (epoll/kqueue, multiplexing idle connections as fds) and a `API_HTTP_THREADS` handler pool. The original "thread-per-connection" framing was wrong.
+  - **The handler pool is PER worker** (`vendor/httpz/src/worker.zig:466`, instantiated inside `Worker.init`, looped per worker in `httpz.zig:421`). Total handler concurrency = `WORKERS × THREADS`. Prod/dev now run `WORKERS=1 / THREADS=32` (a single shared 32-thread pool); 2 workers would fragment into two pools where an SSE-heavy worker strands the other's idle threads.
+  - **Prod shipped at the default `1/1`** (`runtime_loader.zig:40-41`, no fly.toml override), so one SSE stream saturated the handler pool. **Fixed by config** (fly.toml `[env]` + deploy playbooks, this branch) — the boring lever and the actual fix for the felt "httpz is slow" pain at current scale.
+  - **The runner lease does NOT pin a thread.** `assign.zig:3` "no server-side long-poll loop; the runner re-polls via `retry_after_ms`"; `redis_zombie.zig:1` "XREADGROUP ... WITHOUT BLOCK". The lease returns immediately. The original Problem/Goal and §3.2 claim that it pins a worker per waiting runner is false. The ONLY long-lived-handler thread-pinner is the SSE stream.
+  - **The offload-pool design does not solve SSE density** (see §2 design hole): the SSE subscriber's blocking `SUBSCRIBE` read must become evented on the loop, not be offloaded — offloading just moves the thread-pin to `offload.zig`.
+  - **Reconciled with `docs/architecture/scaling.md`** (canonical): post-M80_002 the binding constraint is `zombied` API replicas + Postgres write throughput, and SSE is the only dedicated-Redis long-lived tier. Async connection-density sits below those on the ROI ranking. `scaling.md` now documents the `API_HTTP_THREADS/WORKERS` knobs as the first SSE-density lever.
+  - **Gate to CHORE(open) this workstream:** metrics prove per-node concurrent SSE-tail density is the binding constraint AFTER (1) `API_HTTP_THREADS` raised, (2) VM sized up, (3) horizontal replicas (M84_002 single-flight) — AND per-thread memory is the proven ceiling. Until then this stays PENDING.
+- **Deferrals** — the entire async substrate is deferred behind the gate above (owner-directed reframe — Indy, Jun 08 2026: pull the config lever, gate async on evidence). `docs/architecture/concurrency.md` creation is deferred with it.
 
 ---
 
