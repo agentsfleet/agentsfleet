@@ -12,23 +12,24 @@ primary_region = "iad"
 #                      multiplexes up to API_MAX_CLIENTS (1024) idle connections
 #                      as file descriptors AND owns its OWN handler pool of
 #                      API_HTTP_THREADS threads (the pool is PER worker --
-#                      vendor/httpz/src/worker.zig). Kept at 1 so there is a
-#                      single shared handler pool, not N fragmented ones.
-#   API_HTTP_THREADS — handler-pool size. The one long-lived handler that holds
-#                      a thread for the whole connection is the SSE stream
-#                      (src/zombied/http/handlers/zombies/events_stream.zig).
-#                      The runner lease is a non-blocking single poll and does
-#                      NOT hold a thread (docs/architecture/scaling.md).
-# Both default to 1 (src/zombied/config/runtime_loader.zig), so a single SSE
-# stream saturates the pool and the next request queues. 32 lifts that ceiling
-# 1 -> 32 on this 1gb box: the 16MiB thread stacks are virtual / lazily
-# committed (a parked handler resides in tens of KB), and each SSE stream dials
-# its own dedicated redis subscriber (bounded by redis maxclients, not this
-# box). Raise after watching pool-saturation metrics; the next levers are a
-# larger VM, then horizontal replicas (the binding constraint per scaling.md).
+#                      vendor/httpz/src/worker.zig). 2 workers on the prod
+#                      multi-core slice for accept parallelism across cores.
+#   API_HTTP_THREADS — per-worker handler-pool size. The one long-lived handler
+#                      that holds a thread for the whole connection is the SSE
+#                      stream (events_stream.zig). The runner lease is a
+#                      non-blocking single poll and does NOT hold a thread
+#                      (docs/architecture/scaling.md).
+# Total handler concurrency = WORKERS x THREADS = 2 x 16 = 32 (the validated
+# ceiling). Both knobs default to 1 (runtime_loader.zig), where one SSE stream
+# saturates the pool. NOTE: the [[vm]] block below still reads
+# shared-cpu-1x / 1gb -- if the live prod slice is larger, reconcile [[vm]]
+# here too so a CI deploy does not scale prod back DOWN, then raise THREADS to
+# 32 (-> 64 total) for more SSE headroom. Watch pool saturation on /metrics;
+# next levers are a larger VM and horizontal replicas (binding constraint per
+# scaling.md).
 [env]
-  API_HTTP_THREADS = "32"
-  API_HTTP_WORKERS = "1"
+  API_HTTP_THREADS = "16"
+  API_HTTP_WORKERS = "2"
 
 [[vm]]
   size = "shared-cpu-1x"
