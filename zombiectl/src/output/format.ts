@@ -16,7 +16,7 @@ export interface FormatOpts extends StyleOpts {
 export interface TableColumn {
   readonly key: string;
   readonly label: string;
-  readonly align?: "left" | "right";
+  readonly align?: typeof ALIGN_LEFT | typeof ALIGN_RIGHT;
 }
 
 export type TableRow = Record<string, unknown>;
@@ -67,7 +67,7 @@ export function formatKeyValue(rows: KeyValueRows, opts?: FormatOpts): string {
     const label = palette.subtle(String(key).padEnd(width), opts);
     return `  ${label}${sep}${value}`;
   });
-  return `${lines.join("\n")  }\n`;
+  return `${lines.join(LITERAL)  }\n`;
 }
 
 function renderHeader(columns: ReadonlyArray<TableColumn>, widths: ReadonlyArray<number>, opts: FormatOpts | undefined): string {
@@ -85,11 +85,11 @@ function renderRow(
   columns: ReadonlyArray<TableColumn>,
   widths: ReadonlyArray<number>,
   row: TableRow,
-  alignments: ReadonlyArray<"left" | "right">,
+  alignments: ReadonlyArray<typeof ALIGN_LEFT | typeof ALIGN_RIGHT>,
 ): string {
   return columns.map((c, i) => {
     const cell = String(row[c.key] ?? "");
-    return alignments[i] === "right" ? cell.padStart(widths[i] ?? 0) : cell.padEnd(widths[i] ?? 0);
+    return alignments[i] === ALIGN_RIGHT ? cell.padStart(widths[i] ?? 0) : cell.padEnd(widths[i] ?? 0);
   }).join("  ");
 }
 
@@ -98,16 +98,16 @@ function renderHorizontal(
   rows: ReadonlyArray<TableRow>,
   opts: FormatOpts | undefined,
 ): string {
-  const alignments: Array<"left" | "right"> = columns.map((c) => {
+  const alignments: Array<typeof ALIGN_LEFT | typeof ALIGN_RIGHT> = columns.map((c) => {
     if (c.align) return c.align;
-    return isAllNumeric(rows.map((r) => r[c.key] ?? "")) ? "right" : "left";
+    return isAllNumeric(rows.map((r) => r[c.key] ?? "")) ? ALIGN_RIGHT : ALIGN_LEFT;
   });
   const widths = columns.map((c) =>
     Math.max(c.label.length, ...rows.map((r) => String(r[c.key] ?? "").length))
   );
   const lines = [renderHeader(columns, widths, opts), renderRule(widths, opts)];
   for (const row of rows) lines.push(renderRow(columns, widths, row, alignments));
-  return `${lines.join("\n")  }\n`;
+  return `${lines.join(LITERAL)  }\n`;
 }
 
 // Below NARROW_THRESHOLD columns, fall back to a vertical key:value
@@ -125,7 +125,7 @@ function renderVertical(
       const value = String(row[c.key] ?? "");
       return `  ${label}  ${value}`;
     });
-    return lines.join("\n");
+    return lines.join(LITERAL);
   });
   return `${blocks.join("\n\n")  }\n`;
 }
@@ -140,3 +140,6 @@ export function formatTable(
     ? renderVertical(columns, rows, opts)
     : renderHorizontal(columns, rows, opts);
 }
+const LITERAL = "\n" as const;
+const ALIGN_LEFT = "left" as const;
+const ALIGN_RIGHT = "right" as const;

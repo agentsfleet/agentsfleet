@@ -7,6 +7,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
+const MAX_BUDGET_UNITS = 10000;
+const MAX_THRESHOLD_WINDOW_SECONDS_TEXT = "100000";
+const SECONDS_PER_DAY = 86400;
 
 pub const GateBehavior = enum { approve, auto_kill };
 
@@ -146,14 +149,14 @@ fn parseAnomalyRules(alloc: Allocator, items: []const std.json.Value) (Allocator
         const threshold_count: u32 = blk: {
             const val = obj.get("threshold_count") orelse return GateConfigError.MissingRequiredField;
             break :blk switch (val) {
-                .integer => |n| if (n > 0 and n <= 10000) @intCast(n) else return GateConfigError.InvalidBudget,
+                .integer => |n| if (n > 0 and n <= MAX_BUDGET_UNITS) @intCast(n) else return GateConfigError.InvalidBudget,
                 else => return GateConfigError.MissingRequiredField,
             };
         };
         const threshold_window_s: u32 = blk: {
             const val = obj.get("threshold_window_s") orelse return GateConfigError.MissingRequiredField;
             break :blk switch (val) {
-                .integer => |n| if (n > 0 and n <= 86400) @intCast(n) else return GateConfigError.InvalidBudget,
+                .integer => |n| if (n > 0 and n <= SECONDS_PER_DAY) @intCast(n) else return GateConfigError.InvalidBudget,
                 else => return GateConfigError.MissingRequiredField,
             };
         };
@@ -283,7 +286,9 @@ test "parseGatePolicy: anomaly threshold_count zero returns error" {
 test "parseGatePolicy: anomaly threshold_window_s exceeds max returns error" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":10,"threshold_window_s":100000}]}
+        \\{"anomaly_rules":[{"pattern":"same_action","threshold_count":10,"threshold_window_s":
+    ++ MAX_THRESHOLD_WINDOW_SECONDS_TEXT ++
+        \\}]}
     ;
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
     defer parsed.deinit();

@@ -80,7 +80,7 @@ test("integration: honors a real Retry-After header on 429", async () => {
   const body = await apiRequestWithRetry(srv.url, options);
   expect(body).toEqual({ ok: true });
   expect(srv.requests.length).toBe(2);
-  expect(delays[0]).toBeGreaterThanOrEqual(1000); // 1s server floor parsed from the header
+  expect(delays[0]).toBeGreaterThanOrEqual(MS_PER_SECOND); // 1s server floor parsed from the header
 });
 
 test("integration: exhausts maxAttempts on a persistently failing real server", async () => {
@@ -89,3 +89,4 @@ test("integration: exhausts maxAttempts on a persistently failing real server", 
   await expect(apiRequestWithRetry(srv.url, options)).rejects.toBeInstanceOf(ApiError);
   expect(srv.requests.length).toBe(3); // capped at maxAttempts, not the 4 queued
 });
+const MS_PER_SECOND = 1000 as const;

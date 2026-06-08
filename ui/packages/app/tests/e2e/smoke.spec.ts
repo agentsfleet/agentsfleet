@@ -12,7 +12,7 @@ test.describe("App smoke", () => {
 
   test("protected route stays on first-party app surfaces", async ({ page }) => {
     await page.goto("/zombies");
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(MS_PER_SECOND);
     const redirected = new URL(page.url());
     expect(redirected.hostname).toBe(EXPECTED_HOSTNAME);
     expect(["/sign-in", "/zombies", "/"]).toContain(redirected.pathname);
@@ -20,3 +20,4 @@ test.describe("App smoke", () => {
     await expect(page.locator("body")).toContainText(/usezombie|Zombies|Dashboard/);
   });
 });
+const MS_PER_SECOND = 1000 as const;

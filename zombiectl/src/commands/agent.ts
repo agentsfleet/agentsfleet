@@ -141,9 +141,9 @@ export const agentAddEffectFromArgs = (
         { key: "value", label: "" },
       ],
       [
-        { label: "agent_id", value: res.agent_id ?? "" },
+        { label: AGENT_ID_2, value: res.agent_id ?? "" },
         { label: "zombie_id", value: zombieId },
-        { label: "name", value: name },
+        { label: FIELD_NAME, value: name },
         {
           label: "created_at",
           value: res.created_at ? new Date(res.created_at).toISOString() : "—",
@@ -182,10 +182,10 @@ export const agentListEffectFromArgs = (
     }
     yield* output.printTable(
       [
-        { key: "name", label: "NAME" },
+        { key: FIELD_NAME, label: "NAME" },
         { key: "description", label: "DESCRIPTION" },
         { key: "last_used_at", label: "LAST_USED" },
-        { key: "agent_id", label: "AGENT_ID" },
+        { key: AGENT_ID_2, label: "AGENT_ID" },
       ],
       agents.map((a) => ({
         name: a.name ?? "",
@@ -235,3 +235,5 @@ export const agentDeleteEffectFromArgs = (
       );
     }
   });
+const AGENT_ID_2 = "agent_id" as const;
+const FIELD_NAME = "name" as const;

@@ -10,6 +10,7 @@ const constants = @import("common");
 const client = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const renew_driver = @import("renew_driver.zig");
+const MS_PER_SECOND = 1_000;
 
 const RenewDecision = child_supervisor.RenewDecision;
 const Driver = renew_driver.RenewDriver(*FakeClient);
@@ -54,14 +55,14 @@ test "onTick should accumulate deadline extensions across multiple consecutive r
         .{ .renewed = d2 },
         .{ .renewed = d3 },
     } };
-    var driver = driverWith(&fake, NOW_MS + 1_000); // 1s left → inside the window
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND); // 1s left → inside the window
     const h = driver.hook();
 
     try testing.expectEqual(RenewDecision{ .extend = d1 }, h.onTick(h.ctx, NOW_MS));
     try testing.expectEqual(d1, driver.deadline_ms);
-    try testing.expectEqual(RenewDecision{ .extend = d2 }, h.onTick(h.ctx, d1 - 1_000));
+    try testing.expectEqual(RenewDecision{ .extend = d2 }, h.onTick(h.ctx, d1 - MS_PER_SECOND));
     try testing.expectEqual(d2, driver.deadline_ms);
-    try testing.expectEqual(RenewDecision{ .extend = d3 }, h.onTick(h.ctx, d2 - 1_000));
+    try testing.expectEqual(RenewDecision{ .extend = d3 }, h.onTick(h.ctx, d2 - MS_PER_SECOND));
 
     try testing.expectEqual(d3, driver.deadline_ms); // final deadline is the last renewal
     try testing.expectEqual(@as(usize, 3), fake.calls);
@@ -74,12 +75,12 @@ test "onTick should remain safe after a terminal renewal even when called again"
     // client — proving a late tick after termination cannot corrupt state or
     // re-enter the client when the deadline is comfortably far.
     var fake = FakeClient{ .outcomes = &.{.{ .terminal = 402 }} };
-    var driver = driverWith(&fake, NOW_MS + 1_000);
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
 
     try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS));
     try testing.expectEqual(@as(usize, 1), fake.calls);
-    try testing.expectEqual(NOW_MS + 1_000, driver.deadline_ms); // terminal left it unchanged
+    try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // terminal left it unchanged
 
     // A late tick well outside the renewal window: short-circuits, no second call.
     const far_now = NOW_MS + 1_000 - constants.RENEWAL_WINDOW_MS - 60_000;

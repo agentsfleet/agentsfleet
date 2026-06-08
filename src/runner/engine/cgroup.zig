@@ -14,6 +14,7 @@ const logging = @import("log");
 const common = @import("common");
 const builtin = @import("builtin");
 const types = @import("types.zig");
+const BYTES_PER_KIB = 1024;
 
 const log = logging.scoped(.runner_cgroup);
 
@@ -178,7 +179,7 @@ pub const CgroupScope = struct {
     pub fn destroy(self: *CgroupScope, limits: types.ResourceLimits) CgroupMetrics {
         var result = CgroupMetrics{
             .memory_peak_bytes = 0,
-            .memory_limit_bytes = limits.memory_limit_mb * 1024 * 1024,
+            .memory_limit_bytes = limits.memory_limit_mb * BYTES_PER_KIB * BYTES_PER_KIB,
             .cpu_throttled_ms = 0,
         };
         if (builtin.os.tag != .linux) return result;

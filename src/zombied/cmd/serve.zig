@@ -19,6 +19,7 @@ const telemetry_mod = @import("../observability/telemetry.zig");
 const preflight = @import("preflight.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
+const serve_shutdown = @import("serve_shutdown.zig");
 const pg = @import("pg");
 const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
@@ -37,17 +38,7 @@ const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
 const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
 const S_API = "api";
 
-var shutdown_requested = std.atomic.Value(bool).init(false);
-/// Published by run() before listen() begins; signalWatcher reads this to call stop().
-var active_server = std.atomic.Value(?*http_server.Server).init(null);
-var stop_server_fn: *const fn () void = defaultStopServer;
-var stop_server_test_counter: ?*std.atomic.Value(u32) = null;
-
-fn defaultStopServer() void {
-    if (active_server.load(.acquire)) |s| s.stop();
-}
-
-/// Boot-path read of the request-path Redis read-timeout knob (spec §6).
+/// Boot-path read of the request-path Redis read-timeout knob.
 /// Absent env → default; present-but-malformed → fail loud (env hygiene
 /// matches DATABASE_URL / REDIS_URL validation upstream).
 fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u32 {
@@ -84,18 +75,6 @@ fn parseServeArgOverrides(argv: []const [:0]const u8) serve_args.ServeArgError!?
     _ = it.next(); // binary name
     _ = it.next(); // subcommand
     return serve_args.parseArgs(&it);
-}
-
-fn onSignal(sig: std.posix.SIG) callconv(.c) void {
-    _ = sig;
-    shutdown_requested.store(true, .release);
-}
-
-fn signalWatcher() void {
-    while (!shutdown_requested.load(.acquire)) {
-        common.sleepNanos(100 * std.time.ns_per_ms);
-    }
-    stop_server_fn();
 }
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
@@ -264,8 +243,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         log.info("startup.oidc_init_ok", .{});
     }
 
-    // M18_002 C.2: Build the middleware registry at boot.
-    //
+    // Build the middleware registry at boot.
     // The webhook signing secret is the boot-resolved `approval_signing_secret_owned`
     // (above) — each request borrows it, paying no getenv. Missing → empty slice →
     // the middleware rejects every request on that route (fail-closed).
@@ -296,15 +274,14 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
     };
-    // M28_001: construct the generic WebhookSig with concrete *pg.Pool type.
+    // Construct the generic WebhookSig with concrete *pg.Pool type.
     // Must be declared before initChains() so the pointer is stable, but
     // the chain is set via setWebhookSig() after initChains().
     var webhook_sig_mw = webhook_sig.WebhookSig(*pg.Pool){
         .lookup_ctx = api_pool,
         .lookup_fn = serve_webhook_lookup.lookup,
     };
-    // M28_001 §5: Svix middleware for Clerk — separate lookup fn resolves
-    // the whsec_<base64> secret via the workspace vault.
+    // Svix middleware for Clerk resolves whsec_<base64> via the workspace vault.
     var svix_mw = svix_signature.SvixSignature(*pg.Pool){
         .lookup_ctx = api_pool,
         .lookup_fn = serve_webhook_lookup.lookupSvix,
@@ -314,8 +291,8 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     registry.setSvixSig(svix_mw.middleware());
     log.info("startup.middleware_registry_ok", .{});
 
-    shutdown_requested.store(false, .release);
-    preflight.installSignalHandlers(onSignal);
+    serve_shutdown.reset();
+    preflight.installSignalHandlers(serve_shutdown.onSignal);
 
     var event_bus = events_bus.Bus.init();
     events_bus.install(&event_bus);
@@ -325,15 +302,15 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var event_thread: ?std.Thread = null;
     var approval_sweeper_thread: ?std.Thread = null;
     errdefer {
-        shutdown_requested.store(true, .release);
+        serve_shutdown.request();
         event_bus.stop();
         if (signal_thread) |*t| t.join();
         if (event_thread) |*t| t.join();
         if (approval_sweeper_thread) |*t| t.join();
     }
-    signal_thread = try std.Thread.spawn(.{}, signalWatcher, .{});
+    signal_thread = try std.Thread.spawn(.{}, serve_shutdown.signalWatcher, .{});
     event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
-    approval_sweeper_thread = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{ api_pool, &api_queue, alloc, &shutdown_requested });
+    approval_sweeper_thread = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{ api_pool, &api_queue, alloc, serve_shutdown.flag() });
 
     log.info("http.server_starting", .{
         .port = serve_cfg.port,
@@ -353,47 +330,21 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         return err;
     };
     defer srv.deinit();
-    active_server.store(srv, .release);
-    defer active_server.store(null, .release);
+    serve_shutdown.publishServer(srv);
+    defer serve_shutdown.clearServer();
 
     srv.listen() catch |err| {
         log.err("http.server_exit_failed", .{ .err = @errorName(err) });
     };
 
-    shutdown_requested.store(true, .release);
+    serve_shutdown.request();
     event_bus.stop();
     if (signal_thread) |*t| t.join();
     if (event_thread) |*t| t.join();
     if (approval_sweeper_thread) |*t| t.join();
 }
 
-fn testStopServerHook() void {
-    if (stop_server_test_counter) |counter| {
-        _ = counter.fetchAdd(1, .acq_rel);
-    }
-}
-
-test "integration: signalWatcher stops server on shutdown" {
-    shutdown_requested.store(false, .release);
-
-    var stop_calls = std.atomic.Value(u32).init(0);
-    stop_server_test_counter = &stop_calls;
-    stop_server_fn = testStopServerHook;
-    defer {
-        stop_server_fn = defaultStopServer;
-        stop_server_test_counter = null;
-        shutdown_requested.store(false, .release);
-    }
-
-    const thread = try std.Thread.spawn(.{}, signalWatcher, .{});
-    common.sleepNanos(15 * std.time.ns_per_ms);
-    shutdown_requested.store(true, .release);
-    thread.join();
-
-    try std.testing.expectEqual(@as(u32, 1), stop_calls.load(.acquire));
-}
-
-// Arg-parsing tests extracted to serve_test.zig (M10_002).
+// Arg-parsing tests live in serve_test.zig.
 comptime {
     _ = @import("serve_test.zig");
 }

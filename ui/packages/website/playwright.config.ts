@@ -9,8 +9,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
-    : "line",
+    ? [[REPORTER_LINE], ["html", { open: "never", outputFolder: "playwright-report" }]]
+    : REPORTER_LINE,
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET
@@ -19,9 +19,9 @@ export default defineConfig({
           "x-vercel-set-bypass-cookie": "true",
         }
       : {},
-    trace: "on-first-retry",
+    trace: PLAYWRIGHT_ON_FIRST_RETRY,
     screenshot: "only-on-failure",
-    video: "on-first-retry",
+    video: PLAYWRIGHT_ON_FIRST_RETRY,
   },
   projects: [
     {
@@ -40,3 +40,5 @@ export default defineConfig({
       },
   outputDir: "playwright-results",
 });
+const REPORTER_LINE = "line" as const;
+const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;

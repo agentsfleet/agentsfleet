@@ -5,6 +5,10 @@
 
 const std = @import("std");
 const webhook_verify = @import("bench_app").webhook_verify;
+
+const EVAL_BRANCH_QUOTA = 1_000_000;
+const EVAL_BRANCH_QUOTA_2 = 100_000;
+
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 // ── activity_chunk_encode ─────────────────────────────────────────────────
@@ -46,10 +50,10 @@ pub const ROUTE_PATHS = [_][]const u8{
 // Mix of real registered codes + 2 unknowns so both the hit and UNKNOWN
 // paths are exercised.
 pub const ERROR_CODES = [_][]const u8{
-    "UZ-REQ-001", "UZ-REQ-002", "UZ-AUTH-001", "UZ-AUTH-002", "UZ-AUTH-003",
-    "UZ-AUTH-004", "UZ-AUTH-005", "UZ-AUTH-006", "UZ-INTERNAL-001", "UZ-INTERNAL-002",
-    "UZ-INTERNAL-003", "UZ-UUIDV7-003", "UZ-UUIDV7-005", "UZ-UUIDV7-009", "UZ-UUIDV7-010",
-    "UZ-UUIDV7-011", "UZ-UUIDV7-012",
+    "UZ-REQ-001",      "UZ-REQ-002",    "UZ-AUTH-001",           "UZ-AUTH-002",         "UZ-AUTH-003",
+    "UZ-AUTH-004",     "UZ-AUTH-005",   "UZ-AUTH-006",           "UZ-INTERNAL-001",     "UZ-INTERNAL-002",
+    "UZ-INTERNAL-003", "UZ-UUIDV7-003", "UZ-UUIDV7-005",         "UZ-UUIDV7-009",       "UZ-UUIDV7-010",
+    "UZ-UUIDV7-011",   "UZ-UUIDV7-012",
     // Unknowns — exercise the StaticStringMap miss path.
     "UZ-DOES-NOT-EXIST-001", "UZ-ALSO-MISSING-002",
 };
@@ -58,7 +62,7 @@ pub const ERROR_CODES = [_][]const u8{
 // 100 synthetic cursors. Variety in timestamp width and id length keeps the
 // decimal parse from benchmarking a single register-fit case.
 fn buildCursors(comptime n: usize) [n][]const u8 {
-    @setEvalBranchQuota(1_000_000);
+    @setEvalBranchQuota(EVAL_BRANCH_QUOTA);
     var out: [n][]const u8 = undefined;
     for (0..n) |i| {
         const ts: u64 = 1_700_000_000_000 + @as(u64, i) * 37;
@@ -80,16 +84,16 @@ pub const ZombieRow = struct {
 };
 
 pub const ZOMBIE_PAGE = [_]ZombieRow{
-    .{ .id = "019abcde-0001-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-alpha",   .status = S_RUNNING,  .created_at = 1_700_000_000_000, .updated_at = 1_700_000_030_000 },
-    .{ .id = "019abcde-0002-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-beta",    .status = S_RUNNING,  .created_at = 1_700_000_001_000, .updated_at = 1_700_000_031_000 },
-    .{ .id = "019abcde-0003-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-gamma",   .status = S_PAUSED,   .created_at = 1_700_000_002_000, .updated_at = 1_700_000_032_000 },
-    .{ .id = "019abcde-0004-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-delta",   .status = S_RUNNING,  .created_at = 1_700_000_003_000, .updated_at = 1_700_000_033_000 },
-    .{ .id = "019abcde-0005-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-epsilon", .status = "stopped",  .created_at = 1_700_000_004_000, .updated_at = 1_700_000_034_000 },
-    .{ .id = "019abcde-0006-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-zeta",    .status = S_RUNNING,  .created_at = 1_700_000_005_000, .updated_at = 1_700_000_035_000 },
-    .{ .id = "019abcde-0007-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-eta",     .status = S_RUNNING,  .created_at = 1_700_000_006_000, .updated_at = 1_700_000_036_000 },
-    .{ .id = "019abcde-0008-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-theta",   .status = S_PAUSED,   .created_at = 1_700_000_007_000, .updated_at = 1_700_000_037_000 },
-    .{ .id = "019abcde-0009-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-iota",    .status = S_RUNNING,  .created_at = 1_700_000_008_000, .updated_at = 1_700_000_038_000 },
-    .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-kappa",   .status = S_RUNNING,  .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
+    .{ .id = "019abcde-0001-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-alpha", .status = S_RUNNING, .created_at = 1_700_000_000_000, .updated_at = 1_700_000_030_000 },
+    .{ .id = "019abcde-0002-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-beta", .status = S_RUNNING, .created_at = 1_700_000_001_000, .updated_at = 1_700_000_031_000 },
+    .{ .id = "019abcde-0003-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-gamma", .status = S_PAUSED, .created_at = 1_700_000_002_000, .updated_at = 1_700_000_032_000 },
+    .{ .id = "019abcde-0004-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-delta", .status = S_RUNNING, .created_at = 1_700_000_003_000, .updated_at = 1_700_000_033_000 },
+    .{ .id = "019abcde-0005-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-epsilon", .status = "stopped", .created_at = 1_700_000_004_000, .updated_at = 1_700_000_034_000 },
+    .{ .id = "019abcde-0006-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-zeta", .status = S_RUNNING, .created_at = 1_700_000_005_000, .updated_at = 1_700_000_035_000 },
+    .{ .id = "019abcde-0007-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-eta", .status = S_RUNNING, .created_at = 1_700_000_006_000, .updated_at = 1_700_000_036_000 },
+    .{ .id = "019abcde-0008-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-theta", .status = S_PAUSED, .created_at = 1_700_000_007_000, .updated_at = 1_700_000_037_000 },
+    .{ .id = "019abcde-0009-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-iota", .status = S_RUNNING, .created_at = 1_700_000_008_000, .updated_at = 1_700_000_038_000 },
+    .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-kappa", .status = S_RUNNING, .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
 };
 
 // ── webhook_signature_verify ──────────────────────────────────────────────
@@ -108,7 +112,7 @@ fn mkBody(comptime n: usize) [n]u8 {
 // Precomputed signature over WEBHOOK_BODY — format matches
 // webhook_verify.GITHUB (prefix "sha256=" + 64 hex chars).
 pub const WEBHOOK_SIGNATURE = blk: {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(EVAL_BRANCH_QUOTA_2);
     var mac: [HmacSha256.mac_length]u8 = undefined;
     var hmac = HmacSha256.init(WEBHOOK_SECRET);
     hmac.update(&WEBHOOK_BODY);

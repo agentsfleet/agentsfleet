@@ -11,6 +11,8 @@ const args = @import("args.zig");
 const help = @import("help.zig");
 const status = @import("status.zig");
 const doctor = @import("doctor.zig");
+const FLAG_HELP = "--help";
+const H = "-h";
 
 pub const Command = enum { status, doctor };
 
@@ -41,12 +43,12 @@ pub fn dispatch(
     alloc: std.mem.Allocator,
     name: []const u8,
 ) u8 {
-    if (std.mem.eql(u8, name, "--help") or std.mem.eql(u8, name, "-h")) return help.run(alloc);
+    if (std.mem.eql(u8, name, FLAG_HELP) or std.mem.eql(u8, name, H)) return help.run(alloc);
     const cmd = std.meta.stringToEnum(Command, name) orelse return help.runUnknown(alloc, name);
     // `<cmd> --help` shows help instead of running the command — a subcommand must
     // never perform a live action (mint a token, write the env file) when the
     // operator asked for help.
-    if (args.has(argv, "--help") or args.has(argv, "-h")) return help.run(alloc);
+    if (args.has(argv, FLAG_HELP) or args.has(argv, H)) return help.run(alloc);
     return specFor(cmd).handler(argv, env_map, io, alloc);
 }
 

@@ -32,6 +32,9 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+
+const EVAL_BRANCH_QUOTA = 100_000;
+
 const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
@@ -633,7 +636,7 @@ test "integration: concurrent PATCH + INSERT into zombie_events — both succeed
 // Comptime JSON-string-encode a multi-line literal. See
 // patch_body_fields_integration_test.zig for the rationale.
 fn jsonEscape(comptime s: []const u8) []const u8 {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(EVAL_BRANCH_QUOTA);
     comptime var out: []const u8 = "\"";
     inline for (s) |c| {
         out = out ++ switch (c) {

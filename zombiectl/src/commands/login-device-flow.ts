@@ -41,9 +41,10 @@ import {
   type NetworkError,
   type ServerError,
 } from "../errors/index.ts";
-import type {
-  SessionCreatedResponse,
-  VerifySuccessResponse,
+import {
+  defaultTokenName,
+  type SessionCreatedResponse,
+  type VerifySuccessResponse,
 } from "./login-device-flow-types.ts";
 
 // Wrong-code budget for the interactive verify prompt. Only a wrong code
@@ -62,9 +63,9 @@ export type {
   SessionCreatedResponse,
   VerifySuccessResponse,
 };
-export { defaultTokenName } from "./login-device-flow-types.ts";
+export { defaultTokenName };
 
-const noInputAbort = (detail: string): InterruptedError =>
+const noInputAbort = (detail: string): InstanceType<typeof InterruptedError> =>
   new InterruptedError({
     detail,
     suggestion: "re-run interactively (without --no-input) or pass --force",
@@ -129,7 +130,7 @@ export const createSession = (
     const http = yield* HttpClient;
     return yield* http.request<SessionCreatedResponse>({
       path: AUTH_SESSIONS_PATH,
-      method: "POST",
+      method: HTTP_METHOD_POST,
       body: { public_key: publicKeyBase64Url, token_name: tokenName },
     });
   });
@@ -142,7 +143,7 @@ export const submitVerificationCode = (
     const http = yield* HttpClient;
     return yield* http.request<VerifySuccessResponse>({
       path: `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/verify`,
-      method: "POST",
+      method: HTTP_METHOD_POST,
       body: { verification_code: verificationCode },
     });
   });
@@ -191,7 +192,7 @@ const VERIFICATION_CODE_RE = /^\d{6}$/;
 
 const promptVerificationCode = (
   signal?: AbortSignal,
-): Effect.Effect<string, InterruptedError, Input | Output> =>
+): Effect.Effect<string, InstanceType<typeof InterruptedError>, Input | Output> =>
   Effect.gen(function* () {
     const input = yield* Input;
     const output = yield* Output;
@@ -254,14 +255,16 @@ export const verifyAndDecryptWithRetry = (
     for (;;) {
       const code = yield* promptVerificationCode(opts.signal);
       const attempt = yield* verifyAndDecrypt(sessionId, keypair, code).pipe(
-        Effect.map((token) => ({ kind: "ok" as const, token })),
+        Effect.map((token) => ({ kind: STATUS_OK, token })),
         Effect.catchTag("VerificationFailedError", (err) =>
           Effect.succeed({ kind: "wrong" as const, err }),
         ),
       );
-      if (attempt.kind === "ok") return attempt.token;
+      if (attempt.kind === STATUS_OK) return attempt.token;
       strikesLeft -= 1;
       if (strikesLeft <= 0) return yield* Effect.fail(attempt.err);
       yield* output.warn("verification code didn't match — one more try");
     }
   });
+const HTTP_METHOD_POST = "POST" as const;
+const STATUS_OK = "ok" as const;

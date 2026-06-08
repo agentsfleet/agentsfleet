@@ -16,6 +16,7 @@ const common = @import("common");
 const builtin = @import("builtin");
 
 const policy_config = @import("runner_network_policy.zig");
+const NETWORK_POLICY_DENY_ALL = "deny_all";
 
 const log = logging.scoped(.runner_network);
 
@@ -44,8 +45,8 @@ pub fn policyFromMap(env_map: *const std.process.Environ.Map) PolicyMode {
 /// Parse a network policy string. Exported for unit testing.
 fn policyFromSlice(raw: []const u8) PolicyMode {
     if (std.ascii.eqlIgnoreCase(raw, "registry_allowlist")) return .registry_allowlist;
-    if (std.ascii.eqlIgnoreCase(raw, "deny_all")) return .deny_all;
-    log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = "deny_all" });
+    if (std.ascii.eqlIgnoreCase(raw, NETWORK_POLICY_DENY_ALL)) return .deny_all;
+    log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = NETWORK_POLICY_DENY_ALL });
     return .deny_all;
 }
 
@@ -157,7 +158,7 @@ test "policyFromSlice covers all variants and edge inputs" {
         .{ .input = "REGISTRY_Allowlist", .want = .registry_allowlist },
         // Deny-all — unknown / empty / partial
         .{ .input = "", .want = .deny_all },
-        .{ .input = "deny_all", .want = .deny_all },
+        .{ .input = NETWORK_POLICY_DENY_ALL, .want = .deny_all },
         .{ .input = "open_internet", .want = .deny_all },
         .{ .input = "allowlist", .want = .deny_all },
         // Leading/trailing whitespace is NOT stripped — stays deny_all

@@ -23,10 +23,9 @@ export type Step1CredentialProps = {
 };
 
 /**
- * Step 1 of the self-managed wizard — pick or create the vault credential that
- * holds the provider key. An empty vault is no longer a dead-end: the inline
- * create form shows directly. Selection/creation is owned by the parent
- * orchestrator (a freshly created key is selected via onCredentialRefChange).
+ * Pick or create the vault credential that holds the provider key. An empty
+ * vault is no longer a dead-end: the inline create form shows directly.
+ * Selection/creation is owned by the parent orchestrator.
  */
 export default function Step1Credential({
   workspaceId,
@@ -49,7 +48,7 @@ export default function Step1Credential({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor="credential-ref">Credential</Label>
+        <Label htmlFor="credential-ref">Provider key</Label>
         {hasCredentials ? (
           <Button
             type="button"
@@ -65,8 +64,8 @@ export default function Step1Credential({
 
       {hasCredentials ? (
         <Select value={credentialRef} onValueChange={onCredentialRefChange}>
-          <SelectTrigger id="credential-ref" aria-label="Credential">
-            <SelectValue placeholder="Select a credential" />
+          <SelectTrigger id="credential-ref" aria-label="Provider key credential">
+            <SelectValue placeholder="Select a provider key" />
           </SelectTrigger>
           <SelectContent>
             {credentials.map((c) => (
@@ -84,7 +83,7 @@ export default function Step1Credential({
 
       <p className="text-xs text-muted-foreground">
         <a href="#credentials" className="underline" data-workspace-id={workspaceId}>
-          Manage all credentials →
+          Manage credential vault →
         </a>
       </p>
     </div>

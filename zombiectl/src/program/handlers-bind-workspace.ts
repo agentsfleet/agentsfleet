@@ -29,8 +29,8 @@ export const buildWorkspaceHandlers = (
     (frame) =>
       workspaceUseEffectFromArgs(
         frame.parsed.positionals[0],
-        optString(frame.parsed.options, "workspaceId") ??
-          optString(frame.parsed.options, "workspace-id"),
+        optString(frame.parsed.options, FIELD_WORKSPACE_ID_CAMEL) ??
+          optString(frame.parsed.options, FIELD_WORKSPACE_ID_DASHED),
       ),
   ),
   show: wrapEFn(
@@ -38,8 +38,8 @@ export const buildWorkspaceHandlers = (
     (frame) =>
       workspaceShowEffectFromArgs(
         frame.parsed.positionals[0],
-        optString(frame.parsed.options, "workspaceId") ??
-          optString(frame.parsed.options, "workspace-id"),
+        optString(frame.parsed.options, FIELD_WORKSPACE_ID_CAMEL) ??
+          optString(frame.parsed.options, FIELD_WORKSPACE_ID_DASHED),
       ),
   ),
   credentials: wrapE("workspace.credentials", workspaceCredentialsEffect),
@@ -48,8 +48,10 @@ export const buildWorkspaceHandlers = (
     (frame) =>
       workspaceDeleteEffectFromArgs(
         frame.parsed.positionals[0],
-        optString(frame.parsed.options, "workspaceId") ??
-          optString(frame.parsed.options, "workspace-id"),
+        optString(frame.parsed.options, FIELD_WORKSPACE_ID_CAMEL) ??
+          optString(frame.parsed.options, FIELD_WORKSPACE_ID_DASHED),
       ),
   ),
 });
+const FIELD_WORKSPACE_ID_DASHED = "workspace-id" as const;
+const FIELD_WORKSPACE_ID_CAMEL = "workspaceId" as const;

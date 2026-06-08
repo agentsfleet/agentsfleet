@@ -114,6 +114,7 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
 
     const opts = try parseUrl(std.heap.page_allocator, url);
     const pool = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
+
     defer pool.deinit();
 
     const conn = try pool.acquire();
@@ -165,7 +166,7 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     defer alloc.free(pid);
 
     _ = try db_ctx.conn.exec(
-        "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', 1000)",
+        "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', MS_PER_SECOND)",
         .{tid},
     );
     _ = try db_ctx.conn.exec(

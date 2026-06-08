@@ -19,15 +19,18 @@ import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/Billi
 import type { GroupedEvent } from "@/app/(dashboard)/settings/billing/lib/groupCharges";
 import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
 
+const SAMPLE_RECORDED_AT_MS = 1_000_000 as const;
+const SAMPLE_STAGE_NANOS = 1_000_000 as const;
+
 const SAMPLE: GroupedEvent = {
   event_id: "evt_1",
   zombie_id: "z_1",
   posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",
-  recorded_at: 1_000_000,
+  recorded_at: SAMPLE_RECORDED_AT_MS,
   receive_nanos: 0,
-  stage_nanos: 1_000_000, // $0.001 platform stage rate
-  total_nanos: 1_000_000,
+  stage_nanos: SAMPLE_STAGE_NANOS, // $0.001 platform stage rate
+  total_nanos: SAMPLE_STAGE_NANOS,
   token_count_input: 820,
   token_count_output: 1040,
 };

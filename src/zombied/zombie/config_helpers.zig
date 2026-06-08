@@ -9,6 +9,8 @@ const logging = @import("log");
 
 const config_types = @import("config_types.zig");
 const webhook_verify = @import("webhook_verify.zig");
+const MS_PER_SECOND = 1000.0;
+const MAX_BUDGET_UNITS = 10000.0;
 
 const log = logging.scoped(.zombie_config);
 const ZombieTrigger = config_types.ZombieTrigger;
@@ -249,7 +251,7 @@ pub fn parseZombieBudget(obj: std.json.ObjectMap) ZombieConfigError!ZombieBudget
         .integer => |i| @as(f64, @floatFromInt(i)),
         else => return ZombieConfigError.InvalidBudget,
     };
-    if (daily <= 0.0 or daily > 1000.0) return ZombieConfigError.InvalidBudget;
+    if (daily <= 0.0 or daily > MS_PER_SECOND) return ZombieConfigError.InvalidBudget;
 
     const monthly: ?f64 = blk: {
         const val = obj.get("monthly_dollars") orelse break :blk null;
@@ -258,7 +260,7 @@ pub fn parseZombieBudget(obj: std.json.ObjectMap) ZombieConfigError!ZombieBudget
             .integer => |i| @as(f64, @floatFromInt(i)),
             else => return ZombieConfigError.InvalidBudget,
         };
-        if (f <= 0.0 or f > 10000.0) return ZombieConfigError.InvalidBudget;
+        if (f <= 0.0 or f > MAX_BUDGET_UNITS) return ZombieConfigError.InvalidBudget;
         break :blk f;
     };
 

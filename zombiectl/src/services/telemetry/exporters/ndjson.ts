@@ -46,7 +46,7 @@ export function exportSpanToNdjson(span: Tracer.Span, tracesDir: string): void {
   }
 
   let errorCode: string | undefined;
-  if (status.exit._tag !== "Success") {
+  if (status.exit._tag !== EFFECT_SUCCESS_TAG) {
     const exitStr = JSON.stringify(status.exit);
     const match = exitStr.match(/"_tag"\s*:\s*"([^"]+)"/);
     if (match) errorCode = match[1];
@@ -58,7 +58,7 @@ export function exportSpanToNdjson(span: Tracer.Span, tracesDir: string): void {
     spanId: span.spanId,
     name: span.name,
     duration_ms: Math.round(durationMs),
-    status: status.exit._tag === "Success" ? "ok" : "error",
+    status: status.exit._tag === EFFECT_SUCCESS_TAG ? "ok" : "error",
     ...(errorCode !== undefined ? { error_code: errorCode } : {}),
     attributes,
   });
@@ -70,3 +70,4 @@ export function exportSpanToNdjson(span: Tracer.Span, tracesDir: string): void {
     // ignore write errors
   }
 }
+const EFFECT_SUCCESS_TAG = "Success" as const;

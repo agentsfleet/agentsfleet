@@ -11,6 +11,8 @@ const id_format = @import("../types/id_format.zig");
 const hmac_sig = @import("hmac_sig");
 const session_state = @import("../auth/session_state.zig");
 const proto = @import("session_store_redis_proto.zig");
+const REDIS_EVAL_COMMAND = "EVAL";
+const HTTP_METHOD_GET = "GET";
 
 const log = logging.scoped(.auth);
 
@@ -96,7 +98,7 @@ pub const SessionStore = struct {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = try formatSessionKey(&key_buf, session_id);
 
-        var resp = try self.client.command(&.{ "GET", key });
+        var resp = try self.client.command(&.{ HTTP_METHOD_GET, key });
         defer resp.deinit(self.alloc);
         const blob = switch (resp) {
             .bulk => |maybe| maybe orelse return null,
@@ -139,7 +141,7 @@ pub const SessionStore = struct {
         const now_str = std.fmt.bufPrint(&now_buf, "{d}", .{clock.nowMillis()}) catch return Error.RedisError;
 
         var resp = self.client.command(&.{
-            "EVAL",               proto.APPROVE_LUA, "1",     key,
+            REDIS_EVAL_COMMAND,   proto.APPROVE_LUA, "1",     key,
             dashboard_public_key, ciphertext,        nonce,   hmac_hex,
             clerk_user_id,        now_str,           ttl_str,
         }) catch return Error.RedisError;
@@ -178,9 +180,9 @@ pub const SessionStore = struct {
         const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS});
 
         var resp = try self.client.command(&.{
-            "EVAL",   proto.VERIFY_AND_CONSUME_LUA, "1",                    key,
-            hmac_hex, now_str,                      client_fingerprint_hex, win_str,
-            att_str,  ttl_str,
+            REDIS_EVAL_COMMAND, proto.VERIFY_AND_CONSUME_LUA, "1",                    key,
+            hmac_hex,           now_str,                      client_fingerprint_hex, win_str,
+            att_str,            ttl_str,
         });
         defer resp.deinit(self.alloc);
         // parseVerifyOutcome returns slices borrowed from `resp`; dupe so they
@@ -202,8 +204,8 @@ pub const SessionStore = struct {
         const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS}) catch return Error.RedisError;
 
         var resp = self.client.command(&.{
-            "EVAL",        proto.DELETE_OWNER_LUA, "1",     key,
-            clerk_user_id, reason,                 ttl_str,
+            REDIS_EVAL_COMMAND, proto.DELETE_OWNER_LUA, "1",     key,
+            clerk_user_id,      reason,                 ttl_str,
         }) catch return Error.RedisError;
         defer resp.deinit(self.alloc);
         return proto.mapDeleteOutcome(resp);
@@ -282,8 +284,8 @@ pub const SessionStore = struct {
         var ttl_buf: [12]u8 = undefined;
         const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS});
         var resp = try self.client.command(&.{
-            "EVAL",        proto.DELETE_OWNER_LUA, "1",     key,
-            clerk_user_id, reason,                 ttl_str,
+            REDIS_EVAL_COMMAND, proto.DELETE_OWNER_LUA, "1",     key,
+            clerk_user_id,      reason,                 ttl_str,
         });
         defer resp.deinit(self.alloc);
         const tag = proto.firstTag(resp) orelse return 0;
@@ -294,7 +296,7 @@ pub const SessionStore = struct {
     }
 
     fn pruneIfExpired(self: *SessionStore, key: []const u8, now_ms: i64) !u32 {
-        var resp = try self.client.command(&.{ "GET", key });
+        var resp = try self.client.command(&.{ HTTP_METHOD_GET, key });
         defer resp.deinit(self.alloc);
         const blob = switch (resp) {
             .bulk => |b| b orelse return 0,

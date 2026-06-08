@@ -9,6 +9,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const pipe_proto = @import("pipe_proto.zig");
+const BYTES_PER_KIB = 1024;
 
 const FrameType = pipe_proto.FrameType;
 
@@ -47,7 +48,7 @@ test "readFrame should return TruncatedFrame when EOF arrives mid-payload" {
     const dl = clock.nowMillis() + 5_000;
     try std.testing.expectError(
         error.TruncatedFrame,
-        pipe_proto.readFrame(std.testing.allocator, fds[0], dl, 1024),
+        pipe_proto.readFrame(std.testing.allocator, fds[0], dl, BYTES_PER_KIB),
     );
 }
 

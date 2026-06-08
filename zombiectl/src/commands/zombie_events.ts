@@ -21,6 +21,12 @@ import {
 
 const DEFAULT_LIMIT = 50;
 const PREVIEW_MAX = 80;
+const TYPE_NUMBER = "number" as const;
+const TYPE_STRING = "string" as const;
+const LITERAL = "—" as const;
+
+const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface EventRow {
   readonly created_at?: number | string | null;
@@ -46,18 +52,18 @@ export interface EventsEffectFlags {
 const buildQuery = (flags: EventsEffectFlags): string => {
   const qs = new URLSearchParams();
   const limit =
-    typeof flags.limit === "string" || typeof flags.limit === "number"
+    isString(flags.limit) || isNumber(flags.limit)
       ? String(flags.limit)
       : String(DEFAULT_LIMIT);
   qs.set("limit", limit);
-  if (typeof flags.actor === "string" && flags.actor.length > 0) qs.set("actor", flags.actor);
-  if (typeof flags.since === "string" && flags.since.length > 0) qs.set("since", flags.since);
-  if (typeof flags.cursor === "string" && flags.cursor.length > 0) qs.set("cursor", flags.cursor);
+  if (isString(flags.actor) && flags.actor.length > 0) qs.set("actor", flags.actor);
+  if (isString(flags.since) && flags.since.length > 0) qs.set("since", flags.since);
+  if (isString(flags.cursor) && flags.cursor.length > 0) qs.set("cursor", flags.cursor);
   return qs.toString();
 };
 
 const renderStatus = (status: string | null | undefined, theme: UiTheme): string => {
-  if (!status) return theme.dim("—");
+  if (!status) return theme.dim(LITERAL);
   if (status === EVENT_STATUS.PROCESSED) return theme.ok(status);
   if (status === EVENT_STATUS.AGENT_ERROR) return theme.err(status);
   if (status === EVENT_STATUS.GATE_BLOCKED) return theme.warn(status);
@@ -65,16 +71,16 @@ const renderStatus = (status: string | null | undefined, theme: UiTheme): string
 };
 
 const previewText = (text: string | null | undefined): string => {
-  if (typeof text !== "string" || text.length === 0) return "";
+  if (!isString(text) || text.length === 0) return "";
   const oneline = text.replace(/\s+/g, " ").trim();
   return oneline.length > PREVIEW_MAX ? `${oneline.slice(0, PREVIEW_MAX - 3)}…` : oneline;
 };
 
 const formatRow = (ev: EventRow): string => {
   const ts =
-    typeof ev.created_at === "number" && Number.isFinite(ev.created_at)
+    isNumber(ev.created_at) && Number.isFinite(ev.created_at)
       ? new Date(ev.created_at).toISOString()
-      : "—";
+      : LITERAL;
   const status = renderStatus(ev.status, ui);
   const actor = ev.actor || "—";
   const preview = previewText(ev.response_text);

@@ -23,6 +23,10 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+
+const MS_PER_SECOND = 1_000;
+const EVAL_BRANCH_QUOTA = 100_000;
+
 const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
@@ -376,7 +380,7 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
     defer r_good.deinit();
     try r_good.expectStatus(.ok);
     const elapsed_ms = clock.nowMillis() - t0;
-    try std.testing.expect(elapsed_ms < 1_000);
+    try std.testing.expect(elapsed_ms < MS_PER_SECOND);
 
     const c = try h.acquireConn();
     defer h.releaseConn(c);
@@ -393,7 +397,7 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
 // concatenation needs `return` outside the block so the caller sees the
 // concatenated slice as a comptime value, not a runtime fn result.
 fn jsonEscape(comptime s: []const u8) []const u8 {
-    @setEvalBranchQuota(100_000);
+    @setEvalBranchQuota(EVAL_BRANCH_QUOTA);
     comptime var out: []const u8 = "\"";
     inline for (s) |c| {
         out = out ++ switch (c) {

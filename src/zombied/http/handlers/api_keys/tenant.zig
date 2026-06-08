@@ -33,6 +33,7 @@ const log = logging.scoped(.api_keys);
 const S_ID_MUST_BE_A_VALID_UUIDV7 = "id must be a valid UUIDv7";
 const S_API_KEY_NOT_FOUND = "API key not found";
 const S_PATCH_BODY_MUST_BE_ACTIVE_FALSE = "PATCH body must be {\"active\": false}";
+const MS_PER_SECOND = 1000;
 
 pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "zmb_t_"
 pub const KEY_RANDOM_BYTES: usize = 32;
@@ -195,8 +196,8 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
         \\UPDATE core.api_keys
         \\SET active = FALSE, revoked_at = now(), updated_at = now()
         \\WHERE id = $1::uuid AND tenant_id = $2::uuid AND active = TRUE
-        \\RETURNING id::text, (EXTRACT(EPOCH FROM revoked_at) * 1000)::bigint
-    , .{ key_id, tenant_id }) catch {
+        \\RETURNING id::text, (EXTRACT(EPOCH FROM revoked_at) * $3::bigint)::bigint
+    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -222,7 +223,7 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
 fn reportRevokeFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id }) catch {
+    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
         hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });
@@ -253,7 +254,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
         \\DELETE FROM core.api_keys
         \\WHERE id = $1::uuid AND tenant_id = $2::uuid AND active = FALSE
         \\RETURNING id::text
-    , .{ key_id, tenant_id }) catch {
+    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -275,7 +276,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
 fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id }) catch {
+    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
         hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });

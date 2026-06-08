@@ -137,7 +137,7 @@ describe("resolveIdentity", () => {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: sessionId,
-      session_last_active: Date.now() - 10 * 60 * 1000,
+      session_last_active: Date.now() - 10 * 60 * MS_PER_SECOND,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -155,7 +155,7 @@ describe("resolveIdentity", () => {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: oldSessionId,
-      session_last_active: Date.now() - 31 * 60 * 1000,
+      session_last_active: Date.now() - 31 * 60 * MS_PER_SECOND,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -283,3 +283,4 @@ describe("clearDistinctId", () => {
     }
   });
 });
+const MS_PER_SECOND = 1000 as const;

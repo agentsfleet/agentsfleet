@@ -16,7 +16,11 @@ const httpLayer = (
 
 const tok = Redacted.make("tok_test");
 
-const findFailure = (exit: Exit.Exit<true, MeValidationError>): MeValidationError | null => {
+type MeValidationErrorInstance = InstanceType<typeof MeValidationError>;
+
+const findFailure = (
+  exit: Exit.Exit<true, MeValidationErrorInstance>,
+): MeValidationErrorInstance | null => {
   if (!Exit.isFailure(exit)) return null;
   return Option.getOrNull(Cause.findErrorOption(exit.cause));
 };
@@ -53,7 +57,7 @@ describe("pingMe", () => {
     const exit = await Effect.runPromiseExit(program);
     const fail = findFailure(exit);
     expect(fail).toBeInstanceOf(MeValidationError);
-    expect((fail as MeValidationError | null)?.requestId).toBe("req_abc");
+    expect(fail?.requestId).toBe("req_abc");
   });
 
   test("network failure → MeValidationError", async () => {

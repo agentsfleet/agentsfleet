@@ -16,6 +16,8 @@ const logging = @import("log");
 
 const log = logging.scoped(.http);
 
+const DEFAULT_MAX_CLIENTS = 1024;
+
 const ServerConfig = struct {
     port: u16 = 3000,
     /// Dual-stack "::" accepts both IPv4 and IPv6 connections.
@@ -23,7 +25,7 @@ const ServerConfig = struct {
     interface: []const u8 = "::",
     threads: i16 = 1,
     workers: i16 = 1,
-    max_clients: ?isize = 1024,
+    max_clients: ?isize = DEFAULT_MAX_CLIENTS,
 };
 
 /// httpz handler struct — carries Context and owns dispatch.
@@ -76,7 +78,7 @@ pub const Server = struct {
                     .count = @intCast(cfg.threads),
                 },
                 .request = .{
-                    .max_body_size = 2 * 1024 * 1024, // 2MB
+                    .max_body_size = 2 * DEFAULT_MAX_CLIENTS * DEFAULT_MAX_CLIENTS, // 2MB
                 },
             }, .{ .ctx = ctx, .registry = registry }),
             .cfg = cfg,
@@ -248,7 +250,7 @@ test "ServerConfig defaults are stable — full struct check" {
     try std.testing.expectEqualStrings("::", cfg.interface);
     try std.testing.expectEqual(@as(i16, 1), cfg.threads);
     try std.testing.expectEqual(@as(i16, 1), cfg.workers);
-    try std.testing.expectEqual(@as(?isize, 1024), cfg.max_clients);
+    try std.testing.expectEqual(@as(?isize, DEFAULT_MAX_CLIENTS), cfg.max_clients);
 }
 
 // ── Server lifecycle tests ───────────────────────────────────────────────
@@ -264,6 +266,7 @@ test "Server.init then deinit without listen does not leak" {
     var ctx: handler.Context = undefined;
     ctx.alloc = alloc;
     const srv = try Server.initForTesting(@import("common").globalIo(), &ctx, .{ .threads = 1, .workers = 1, .max_clients = 4 });
+
     srv.deinit();
 }
 

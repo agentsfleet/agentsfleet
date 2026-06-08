@@ -24,6 +24,8 @@ const ZOMBIE_IDLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa01";
 const ZOMBIE_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa02";
 const ZOMBIE_OTHER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa03";
 const SESSION_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa10";
+const EXECUTION_STARTED_AT_MS: i64 = 1000;
+
 const ACTIVE_EXEC_ID = "test-exec-messages-001";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
@@ -79,9 +81,9 @@ fn seedTestData(conn: *pg.Conn) !void {
     , .{ ZOMBIE_ACTIVE, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.zombie_sessions (id, zombie_id, context_json, execution_id, execution_started_at, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, '{}', $3, 1000, 0, 0, 0)
+        \\VALUES ($1, $2, '{}', $3, $4, 0, 0, 0)
         \\ON CONFLICT (zombie_id) DO UPDATE SET execution_id=EXCLUDED.execution_id, execution_started_at=EXCLUDED.execution_started_at
-    , .{ SESSION_ACTIVE, ZOMBIE_ACTIVE, ACTIVE_EXEC_ID });
+    , .{ SESSION_ACTIVE, ZOMBIE_ACTIVE, ACTIVE_EXEC_ID, EXECUTION_STARTED_AT_MS });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'msg-otherws', '---\nname: msg-otherws\n---\ntest', '{"name":"msg-otherws"}', 'active', 0, 0)

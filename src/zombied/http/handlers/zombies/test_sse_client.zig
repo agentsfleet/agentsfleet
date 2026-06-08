@@ -178,21 +178,25 @@ fn parseFrame(alloc: Allocator, frame_bytes: []const u8) !Frame {
 
 fn setReadTimeout(fd: std.posix.fd_t, ms: u32) void {
     const timeout = std.posix.timeval{
-        .sec = @intCast(ms / 1000),
-        .usec = @intCast((ms % 1000) * 1000),
+        .sec = @intCast(ms / MS_PER_SECOND),
+        .usec = @intCast((ms % MS_PER_SECOND) * MS_PER_SECOND),
     };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 const Linger = extern struct { onoff: c_int, linger: c_int };
 
 fn forceRstOnClose(fd: std.posix.fd_t) void {
     const opt = Linger{ .onoff = 1, .linger = 0 };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.LINGER, std.mem.asBytes(&opt)) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.LINGER, std.mem.asBytes(&opt)) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 const std = @import("std");
 const common = @import("common");
+
+const IGNORED_ERROR_FMT = "ignored: {s}";
+const MS_PER_SECOND = 1000;
+
 const Allocator = std.mem.Allocator;
 
 // ── Tests ───────────────────────────────────────────────────────────────────

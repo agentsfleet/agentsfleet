@@ -28,6 +28,7 @@ const reclaim = @import("reclaim.zig");
 const ALLOC = std.testing.allocator;
 
 const auth_mw = @import("../auth/middleware/mod.zig");
+const MS_PER_SECOND = 1_000;
 
 // These tests drive the SQL core directly against the DB, not through the HTTP
 // middleware chain, so no policy wiring is needed — the harness just gives us a
@@ -167,8 +168,8 @@ test "renew one millisecond before the hard cap clamps to the exact cap" {
     // now: the renewal is still legal (capped > now) but clamps to the cap, not
     // the full TTL increment.
     const created = NOW_MS + 1 - constants.MAX_RUNTIME_MS;
-    try seedAffinity(conn, RUNNER_ID, 5, NOW_MS - 1_000);
-    try seedLease(conn, 5, created, NOW_MS - 1_000);
+    try seedAffinity(conn, RUNNER_ID, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(conn, 5, created, NOW_MS - MS_PER_SECOND);
     defer teardown(conn);
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});

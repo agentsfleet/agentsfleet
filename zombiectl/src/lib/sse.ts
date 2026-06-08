@@ -80,7 +80,7 @@ export async function streamGet(
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      let boundary = buf.indexOf("\n\n");
+      let boundary = buf.indexOf(LITERAL);
       while (boundary !== -1) {
         const frame = buf.slice(0, boundary);
         buf = buf.slice(boundary + 2);
@@ -89,11 +89,11 @@ export async function streamGet(
           const cont = onEvent(event);
           if (cont === false) return;
         }
-        boundary = buf.indexOf("\n\n");
+        boundary = buf.indexOf(LITERAL);
       }
     }
   } catch (err) {
-    if (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "AbortError") {
+    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
       if (externalSignal?.aborted) return; // user-cancelled, not a timeout
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
@@ -106,7 +106,7 @@ export async function streamGet(
 function readNestedString(value: unknown, path: ReadonlyArray<string>): string | undefined {
   let cursor: unknown = value;
   for (const key of path) {
-    if (cursor === null || typeof cursor !== "object") return undefined;
+    if (cursor === null || typeof cursor !== TYPE_OBJECT) return undefined;
     cursor = (cursor as Record<string, unknown>)[key];
   }
   return typeof cursor === "string" ? cursor : undefined;
@@ -135,3 +135,5 @@ export function parseSseFrame(frame: string): SseFrame | null {
   try { parsed = JSON.parse(data); } catch { /* keep raw */ }
   return { id, type, data: parsed };
 }
+const LITERAL = "\n\n" as const;
+const TYPE_OBJECT = "object" as const;

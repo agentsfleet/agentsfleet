@@ -6,48 +6,28 @@ const std = @import("std");
 const common = @import("common");
 const clock = @import("common").clock;
 const logging = @import("log");
+const jwks_types = @import("jwks_types.zig");
+const jwks_token = @import("jwks_token.zig");
+const jwks_crypto = @import("jwks_crypto.zig");
+const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.auth);
 
 const PANIC_OOM = "oom";
 
-pub const VerifyError = error{
-    MissingAuthorization,
-    InvalidAuthorization,
-    TokenMalformed,
-    UnsupportedAlgorithm,
-    MissingKeyId,
-    MissingSubject,
-    MissingIssuer,
-    MissingExpiry,
-    TokenExpired,
-    IssuerMismatch,
-    AudienceMismatch,
-    JwksFetchFailed,
-    JwksParseFailed,
-    JwkNotFound,
-    SignatureInvalid,
-};
+pub const VerifyError = jwks_types.VerifyError;
+pub const VerifiedClaims = jwks_types.VerifiedClaims;
+pub const extractBearerToken = jwks_token.extractBearerToken;
+pub const splitJwt = jwks_token.splitJwt;
+pub const decodeBase64UrlOwned = jwks_token.decodeBase64UrlOwned;
+pub const verifyRs256 = jwks_crypto.verifyRs256;
 
 pub const Config = struct {
     jwks_url: []const u8,
     issuer: ?[]const u8 = null,
     audience: ?[]const u8 = null,
     inline_jwks_json: ?[]const u8 = null,
-    cache_ttl_ms: i64 = 6 * 60 * 60 * 1000,
-};
-
-/// Verified standard OIDC claims + raw claims object for provider-specific extraction.
-pub const VerifiedClaims = struct {
-    subject: []u8,
-    issuer: []u8,
-    claims_json: []u8,
-};
-
-const JwtParts = struct {
-    header_b64: []const u8,
-    payload_b64: []const u8,
-    signature_b64: []const u8,
+    cache_ttl_ms: i64 = 6 * 60 * 60 * MS_PER_SECOND,
 };
 
 const Header = struct {
@@ -64,25 +44,8 @@ const JwkDoc = struct {
     },
 };
 
-const JwkKey = struct {
-    kid: []u8,
-    modulus: []u8,
-    exponent: []u8,
-};
-
-/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
-const JwksCache = struct {
-    fetched_at_ms: i64,
-    keys: []JwkKey,
-    pub fn deinit(self: *JwksCache, alloc: std.mem.Allocator) void {
-        for (self.keys) |key| {
-            alloc.free(key.kid);
-            alloc.free(key.modulus);
-            alloc.free(key.exponent);
-        }
-        alloc.free(self.keys);
-    }
-};
+const JwkKey = jwks_types.JwkKey;
+const JwksCache = jwks_types.JwksCache;
 
 pub const Verifier = struct {
     alloc: std.mem.Allocator,
@@ -239,34 +202,6 @@ pub const Verifier = struct {
     }
 };
 
-// ── JWT helpers (generic, not provider-specific) ──────────────────────────
-
-pub fn extractBearerToken(authorization: []const u8) ![]const u8 {
-    const prefix = "Bearer ";
-    if (!std.mem.startsWith(u8, authorization, prefix)) return VerifyError.InvalidAuthorization;
-    const token = std.mem.trim(u8, authorization[prefix.len..], " \t");
-    if (token.len == 0) return VerifyError.InvalidAuthorization;
-    return token;
-}
-
-pub fn splitJwt(token: []const u8) !JwtParts {
-    var split = std.mem.splitScalar(u8, token, '.');
-    const a = split.next() orelse return VerifyError.TokenMalformed;
-    const b = split.next() orelse return VerifyError.TokenMalformed;
-    const c = split.next() orelse return VerifyError.TokenMalformed;
-    if (split.next() != null) return VerifyError.TokenMalformed;
-    if (a.len == 0 or b.len == 0 or c.len == 0) return VerifyError.TokenMalformed;
-    return .{ .header_b64 = a, .payload_b64 = b, .signature_b64 = c };
-}
-
-pub fn decodeBase64UrlOwned(alloc: std.mem.Allocator, text: []const u8) ![]u8 {
-    const size = std.base64.url_safe_no_pad.Decoder.calcSizeForSlice(text) catch return VerifyError.TokenMalformed;
-    const out = try alloc.alloc(u8, size);
-    errdefer alloc.free(out);
-    std.base64.url_safe_no_pad.Decoder.decode(out, text) catch return VerifyError.TokenMalformed;
-    return out;
-}
-
 pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
     const parsed = std.json.parseFromSlice(JwkDoc, alloc, raw, .{ .ignore_unknown_fields = true }) catch return VerifyError.JwksParseFailed;
     defer parsed.deinit();
@@ -300,21 +235,6 @@ pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
         .fetched_at_ms = 0,
         .keys = try keys.toOwnedSlice(alloc),
     };
-}
-
-pub fn verifyRs256(message: []const u8, signature: []const u8, modulus: []const u8, exponent: []const u8) !void {
-    switch (modulus.len) {
-        inline 128, 256, 384, 512 => |mod_len| {
-            if (signature.len != mod_len) return VerifyError.SignatureInvalid;
-            const public_key = std.crypto.Certificate.rsa.PublicKey.fromBytes(exponent, modulus) catch return VerifyError.SignatureInvalid;
-            var sig: [mod_len]u8 = undefined;
-            @memcpy(sig[0..], signature);
-            std.crypto.Certificate.rsa.PKCS1v1_5Signature.verify(mod_len, sig, message, public_key, std.crypto.hash.sha2.Sha256) catch {
-                return VerifyError.SignatureInvalid;
-            };
-        },
-        else => return VerifyError.SignatureInvalid,
-    }
 }
 
 pub fn parseStandardClaims(

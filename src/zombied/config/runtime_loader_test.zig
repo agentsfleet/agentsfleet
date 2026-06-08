@@ -15,6 +15,7 @@ const std = @import("std");
 const oidc = @import("../auth/oidc.zig");
 const runtime = @import("runtime.zig");
 const loader = @import("runtime_loader.zig");
+const DEFAULT_MAX_CLIENTS = 1024;
 
 const ServeConfig = runtime.ServeConfig;
 const ValidationError = runtime.ValidationError;
@@ -177,7 +178,7 @@ test "ServeConfig.load applies default port" {
 
     try std.testing.expectEqual(@as(u16, 3000), cfg.port);
     try std.testing.expectEqual(@as(i16, 1), cfg.api_http_threads);
-    try std.testing.expectEqual(@as(u32, 1024), cfg.api_max_clients);
+    try std.testing.expectEqual(@as(u32, DEFAULT_MAX_CLIENTS), cfg.api_max_clients);
 }
 
 test "ServeConfig.load rejects short encryption key" {
@@ -267,7 +268,7 @@ test "loadSizes applies all defaults when env empty" {
     try std.testing.expectEqual(@as(u16, 3000), sizes.port);
     try std.testing.expectEqual(@as(i16, 1), sizes.api_http_threads);
     try std.testing.expectEqual(@as(i16, 1), sizes.api_http_workers);
-    try std.testing.expectEqual(@as(u32, 1024), sizes.api_max_clients);
+    try std.testing.expectEqual(@as(u32, DEFAULT_MAX_CLIENTS), sizes.api_max_clients);
     try std.testing.expectEqual(@as(u32, 256), sizes.api_max_in_flight_requests);
     try std.testing.expect(sizes.ready_max_queue_depth == null);
     try std.testing.expect(sizes.ready_max_queue_age_ms == null);

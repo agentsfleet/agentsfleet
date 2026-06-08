@@ -8,6 +8,8 @@ loadWorktreeEnv();
 
 const E2E_PORT = process.env.E2E_PORT ?? "3101";
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
+const REPORTER_LINE = "line" as const;
+const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;
 
 export default defineConfig({
   testDir: "./tests/e2e/acceptance",
@@ -16,8 +18,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: process.env.CI
-    ? [["line"], ["html", { open: "never", outputFolder: "playwright-acceptance-report" }]]
-    : "line",
+    ? [[REPORTER_LINE], ["html", { open: "never", outputFolder: "playwright-acceptance-report" }]]
+    : REPORTER_LINE,
   globalSetup: "./tests/e2e/acceptance/global-setup.ts",
   globalTeardown: "./tests/e2e/acceptance/global-teardown.ts",
   use: {
@@ -28,9 +30,9 @@ export default defineConfig({
           "x-vercel-set-bypass-cookie": "true",
         }
       : {},
-    trace: "on-first-retry",
+    trace: PLAYWRIGHT_ON_FIRST_RETRY,
     screenshot: "only-on-failure",
-    video: "on-first-retry",
+    video: PLAYWRIGHT_ON_FIRST_RETRY,
   },
   projects: [
     {

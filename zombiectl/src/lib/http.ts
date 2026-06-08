@@ -1,3 +1,8 @@
+
+const APIERROR = "ApiError" as const;
+const TYPE_OBJECT = "object" as const;
+const MS_PER_SECOND = 1000 as const;
+
 // HTTP transport: fetch wrapper, JSON envelope unwrap, AbortController-backed
 // timeout. Every non-OK response surfaces as ApiError; the caller never sees a
 // raw Response. The retry-with-backoff layer lives in http-retry.ts.
@@ -13,7 +18,7 @@ export interface ApiErrorDetails {
 }
 
 export class ApiError extends Error {
-  override readonly name: "ApiError";
+  override readonly name: typeof APIERROR;
   readonly status: number | undefined;
   readonly code: string | undefined;
   readonly requestId: string | null | undefined;
@@ -22,7 +27,7 @@ export class ApiError extends Error {
 
   constructor(message: string, details: ApiErrorDetails = {}) {
     super(message);
-    this.name = "ApiError";
+    this.name = APIERROR;
     this.status = details.status;
     this.code = details.code;
     this.requestId = details.requestId;
@@ -38,7 +43,7 @@ export class ApiError extends Error {
 function parseRetryAfterHeaderValue(headerVal: string | null | undefined): number | null {
   if (!headerVal) return null;
   const n = Number(headerVal);
-  if (Number.isFinite(n) && n >= 0) return n * 1000;
+  if (Number.isFinite(n) && n >= 0) return n * MS_PER_SECOND;
   // HTTP-date form is rare for our APIs; fall back to ignoring.
   return null;
 }
@@ -102,7 +107,7 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
 
     return json ?? {};
   } catch (err) {
-    if (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "AbortError") {
+    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,
         code: "TIMEOUT",
@@ -124,7 +129,7 @@ interface ErrorEnvelope {
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return value !== null && typeof value === "object";
+  return value !== null && typeof value === TYPE_OBJECT;
 }
 
 // POST-based SSE streaming consumer lives in stream-fetch.ts (the
