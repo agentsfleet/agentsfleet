@@ -27,9 +27,11 @@ const MODE_LABELS: Record<ProviderMode, string> = {
   self_managed: "Own provider key",
 };
 
+const CONTEXT_CAP_FORMATTER = new Intl.NumberFormat("en-US");
+
 function formatContextCap(tokens: number | null | undefined) {
   if (typeof tokens !== "number") return EMPTY_FIELD;
-  return `${new Intl.NumberFormat("en-US").format(tokens)} tokens`;
+  return `${CONTEXT_CAP_FORMATTER.format(tokens)} tokens`;
 }
 
 function modeBadgeVariant(provider: TenantProvider | null, mode: ProviderMode) {
