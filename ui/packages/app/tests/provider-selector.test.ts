@@ -62,13 +62,13 @@ describe("ModeRadio", () => {
         React.createElement(ModeRadio, {
           value: PROVIDER_MODE.self_managed,
           checked: true,
-          label: "Use my own provider key",
+          label: "Use my provider key",
           description: "your provider, your key.",
         }),
         PROVIDER_MODE.self_managed,
       ),
     );
-    expect(screen.getByText("Use my own provider key")).toBeTruthy();
+    expect(screen.getByText("Use my provider key")).toBeTruthy();
     expect(container.querySelector("[data-active='true']")).toBeTruthy();
   });
 
@@ -115,7 +115,7 @@ describe("Step1Credential", () => {
     // The old empty-vault dead-end Alert is gone — an inline create form shows instead.
     expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
     expect(screen.getByText("Add a new provider key")).toBeTruthy();
-    const link = screen.getByText("Manage all credentials →") as HTMLAnchorElement;
+    const link = screen.getByText("Manage credential vault →") as HTMLAnchorElement;
     // Credentials now live in a section on this same page; the link is an anchor.
     expect(link.getAttribute("href")).toBe("#credentials");
     // The secondary link carries the active workspace id so QA can attribute the click.
@@ -256,8 +256,8 @@ describe("ProviderSelector", () => {
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
 
-    fireEvent.click(screen.getByRole("radio", { name: /use my own provider key/i }));
-    fireEvent.click(screen.getByRole("button", { name: /save self-managed key/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /use my provider key/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save model setup/i }));
 
     await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({
@@ -266,7 +266,7 @@ describe("ProviderSelector", () => {
     });
     expect(routerRefresh).toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByText(/Switched to self-managed\. Run a test event/)).toBeTruthy(),
+      expect(screen.getByText(/Saved\. Run a test event/)).toBeTruthy(),
     );
   });
 
@@ -282,8 +282,8 @@ describe("ProviderSelector", () => {
         currentCredentialRef: CRED.name,
       }),
     );
-    fireEvent.click(screen.getByRole("radio", { name: /platform-managed/i }));
-    fireEvent.click(screen.getByRole("button", { name: /reset to platform default/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /platform defaults/i }));
+    fireEvent.click(screen.getByRole("button", { name: /use platform defaults/i }));
     await waitFor(() => expect(resetProviderActionMock).toHaveBeenCalledTimes(1));
   });
 
@@ -294,8 +294,8 @@ describe("ProviderSelector", () => {
       status: 400,
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
-    fireEvent.click(screen.getByRole("radio", { name: /use my own provider key/i }));
-    fireEvent.click(screen.getByRole("button", { name: /save self-managed key/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /use my provider key/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save model setup/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("credential_data_malformed"),
     );
@@ -309,7 +309,7 @@ describe("ProviderSelector", () => {
       status: 401,
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
-    fireEvent.click(screen.getByRole("button", { name: /reset to platform default/i }));
+    fireEvent.click(screen.getByRole("button", { name: /use platform defaults/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("Not authenticated"),
     );
@@ -326,7 +326,7 @@ describe("ProviderSelector", () => {
     );
     // Submit button is disabled when vault is empty AND mode is self_managed.
     expect(
-      (screen.getByRole("button", { name: /save self-managed key/i }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: /save model setup/i }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });

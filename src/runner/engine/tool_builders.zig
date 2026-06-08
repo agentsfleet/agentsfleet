@@ -12,6 +12,7 @@ const tools_mod = nullclaw.tools;
 const bridge = @import("tool_bridge.zig");
 const BuildCtx = bridge.BuildCtx;
 const PolicyHttpRequestTool = @import("runtime/policy_http_request.zig");
+const MAX_RESPONSE_SIZE_BYTES = 1_000_000;
 
 // ── Core file tools ────────────────────────────────────────────────────────
 
@@ -191,7 +192,7 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
             .policy = policy_ptr,
             .inner = .{
                 .allowed_domains = policy_ptr.network_policy.allow,
-                .max_response_size = 1_000_000,
+                .max_response_size = MAX_RESPONSE_SIZE_BYTES,
                 .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
             },
         };
@@ -200,7 +201,7 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
     const ptr = try ctx.alloc.create(tools_mod.http_request.HttpRequestTool);
     ptr.* = .{
         .allowed_domains = &.{},
-        .max_response_size = 1_000_000,
+        .max_response_size = MAX_RESPONSE_SIZE_BYTES,
         .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
     };
     return ptr.tool();

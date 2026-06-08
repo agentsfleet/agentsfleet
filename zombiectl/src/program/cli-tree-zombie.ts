@@ -36,7 +36,7 @@ export function buildZombieTree(
     // Path existence is validated by loadSkillFromPath inside the handler
     // so the failure path emits ERR_PATH_NOT_FOUND with the friendly
     // remap message instead of commander's generic "path does not exist".
-    .option("--from <path>", "Skill bundle path", parsePathOption({ mustExist: false }))
+    .option(FLAG_FROM_PATH, SKILL_BUNDLE_PATH, parsePathOption({ mustExist: false }))
     .action(actionFor("zombie.install", (frame) => runHandler(state, frame, handlers.zombie.install)));
 
   const zombieGroup = program
@@ -46,15 +46,15 @@ export function buildZombieTree(
   zombieGroup
     .command("update <zombie_id>")
     .description("Re-parse and PATCH a zombie's TRIGGER.md + SKILL.md from a local bundle")
-    .option("--from <path>", "Skill bundle path", parsePathOption({ mustExist: false }))
+    .option(FLAG_FROM_PATH, SKILL_BUNDLE_PATH, parsePathOption({ mustExist: false }))
     .action(actionFor("zombie.update", (frame) => runHandler(state, frame, handlers.zombie.update)));
 
   program
-    .command("list")
+    .command(COMMAND_LIST)
     .description("List zombies in the active workspace (paginated)")
     .option("--workspace-id <id>", "Workspace ID override", parseIdOption)
-    .option("--cursor <token>", "next_cursor from a previous page")
-    .option("--limit <n>", "Page size", parseIntOption(LIST_LIMIT_BOUNDS))
+    .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
+    .option(FLAG_LIMIT_N, PAGE_SIZE, parseIntOption(LIST_LIMIT_BOUNDS))
     .action(actionFor("zombie.list", (frame) => runHandler(state, frame, handlers.zombie.list)));
 
   program
@@ -86,8 +86,8 @@ export function buildZombieTree(
     .command("logs [zombie_id]")
     .description("Tail zombie activity")
     .option("--zombie <id>", "Zombie ID (alternative to positional)", parseIdOption)
-    .option("--limit <n>", "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
-    .option("--cursor <token>", "next_cursor from a previous page")
+    .option(FLAG_LIMIT_N, "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .action(actionFor("zombie.logs", (frame) => runHandler(state, frame, handlers.zombie.logs)));
 
   program
@@ -95,8 +95,8 @@ export function buildZombieTree(
     .description("Page through historical events")
     .option("--actor <glob>", "Filter by actor glob")
     .option("--since <when>", "RFC 3339 or duration (e.g. 2h)")
-    .option("--cursor <token>", "next_cursor from a previous page")
-    .option("--limit <n>", "Page size", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
+    .option(FLAG_LIMIT_N, PAGE_SIZE, parseIntOption(EVENTS_LIMIT_BOUNDS))
     .action(actionFor("zombie.events", (frame) => runHandler(state, frame, handlers.zombie.events)));
 
   program
@@ -118,7 +118,7 @@ export function buildZombieTree(
     .description("Confirm a credential exists (never echoes secret bytes)")
     .action(actionFor("zombie.credential.show", (frame) => runHandler(state, frame, handlers.zombie.credential.show)));
 
-  credential.command("list")
+  credential.command(COMMAND_LIST)
     .description("List credentials in the workspace vault")
     .action(actionFor("zombie.credential.list", (frame) => runHandler(state, frame, handlers.zombie.credential.list)));
 
@@ -126,3 +126,10 @@ export function buildZombieTree(
     .description("Delete a credential from the workspace vault")
     .action(actionFor("zombie.credential.delete", (frame) => runHandler(state, frame, handlers.zombie.credential.delete)));
 }
+const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
+const FLAG_FROM_PATH = "--from <path>" as const;
+const FLAG_LIMIT_N = "--limit <n>" as const;
+const PAGE_SIZE = "Page size" as const;
+const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
+const COMMAND_LIST = "list" as const;
+const NEXT_CURSOR_FROM_A_PREVIOUS_PAGE = "next_cursor from a previous page" as const;

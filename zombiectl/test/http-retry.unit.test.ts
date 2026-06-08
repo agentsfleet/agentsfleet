@@ -287,13 +287,13 @@ test("apiRequestWithRetry: backoff caps at capDelayMs even after exponential gro
       sleepImpl,
       randomFn: () => 0.5, // zero jitter
       env: {},
-      retry: { maxAttempts: 4, baseDelayMs: 1000, capDelayMs: 1500 },
+      retry: { maxAttempts: 4, baseDelayMs: MS_PER_SECOND, capDelayMs: 1500 },
     }),
   );
 
   // Three retries → three sleeps. base*2^(n-1): 1000, 2000, 4000.
   // Capped at 1500. Jitter is zero so we expect exactly 1000, 1500, 1500.
-  assert.deepEqual(sleeps, [1000, 1500, 1500]);
+  assert.deepEqual(sleeps, [MS_PER_SECOND, 1500, 1500]);
 });
 
 test("apiRequestWithRetry: POST 503 is NOT retried (duplicate-mutation hazard)", async () => {
@@ -362,3 +362,4 @@ test("isIdempotentMethod: GET/PUT/DELETE/HEAD safe; POST/PATCH not (case-insensi
   for (const m of ["GET", "put", "Delete", "HEAD"]) assert.equal(isIdempotentMethod(m), true);
   for (const m of ["POST", "patch", "CONNECT"]) assert.equal(isIdempotentMethod(m), false);
 });
+const MS_PER_SECOND = 1000 as const;

@@ -11,9 +11,19 @@
 // same identifiers.
 
 import { Data } from "effect";
-import type { AuthFlowError } from "./auth.ts";
+import * as AuthErrors from "./auth.ts";
 
-export * from "./auth.ts";
+export const InvalidSessionError = AuthErrors.InvalidSessionError;
+export const ExpiredSessionError = AuthErrors.ExpiredSessionError;
+export const RateLimitedError = AuthErrors.RateLimitedError;
+export const TimeoutError = AuthErrors.TimeoutError;
+export const InterruptedError = AuthErrors.InterruptedError;
+export const VerificationFailedError = AuthErrors.VerificationFailedError;
+export const DecryptError = AuthErrors.DecryptError;
+export const SessionAbortedError = AuthErrors.SessionAbortedError;
+export const SessionConsumedError = AuthErrors.SessionConsumedError;
+export const MeValidationError = AuthErrors.MeValidationError;
+export type AuthFlowError = AuthErrors.AuthFlowError;
 
 export class AuthError extends Data.TaggedError("AuthError")<{
   readonly detail: string;
@@ -90,7 +100,7 @@ export type CliError =
   // Data.TaggedError doesn't compose by inheritance and the dispatcher's
   // exit-code lookup keys directly on _tag. Each member still needs an
   // EXIT_CODE entry below or the Record type rejects the dispatcher.
-  | AuthFlowError;
+  | AuthErrors.AuthFlowError;
 
 // Exit-code mapping. The dispatcher's exhaustive switch on `_tag`
 // references this; any new variant must add a row here or the

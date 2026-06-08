@@ -3,6 +3,8 @@
 const std = @import("std");
 const testing = std.testing;
 const github = @import("github.zig");
+const TEST_GITHUB_RUN_ID = 10000000000;
+const TEST_BALANCE_NANOS = 100000;
 
 const FAILURE_FIXTURE = @embedFile("workflow_run_failure.json");
 const SUCCESS_FIXTURE = @embedFile("workflow_run_success.json");
@@ -148,7 +150,7 @@ test "normalize: numeric run_id accepted as i64 even when serialized as float" {
 
     var parsed = try parseObject(alloc, out);
     defer parsed.deinit();
-    try testing.expectEqual(@as(i64, 10000000000), fieldI64(parsed.value.object, "run_id"));
+    try testing.expectEqual(@as(i64, TEST_GITHUB_RUN_ID), fieldI64(parsed.value.object, "run_id"));
 }
 
 test "normalize: empty repository.full_name produces empty repo field" {
@@ -281,7 +283,7 @@ test "normalizeFromValue: negative received_at_unix clamps to epoch" {
     const alloc = testing.allocator;
     var r = try fromValue(alloc,
         \\{"workflow_run":{"id":1},"repository":{"full_name":"o/r"}}
-    , -100000);
+    , -TEST_BALANCE_NANOS);
     defer r.parsed.deinit();
     defer alloc.free(r.out);
 

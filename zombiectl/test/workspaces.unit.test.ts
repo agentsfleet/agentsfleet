@@ -28,16 +28,17 @@ import { withFreshStateDir } from "./helpers-cli-state.ts";
 // ---------------------------------------------------------------------------
 
 const EMPTY_WS: WorkspacesValue = { current_workspace_id: null, items: [] };
+const TEST_RECORDED_AT_MS = 1_000_000 as const;
 
 const WS_A: WorkspacesValue = {
   current_workspace_id: "ws-1",
-  items: [{ workspace_id: "ws-1", name: "Alpha", created_at: 1_000_000 }],
+  items: [{ workspace_id: "ws-1", name: "Alpha", created_at: TEST_RECORDED_AT_MS }],
 };
 
 const WS_B: WorkspacesValue = {
   current_workspace_id: "ws-2",
   items: [
-    { workspace_id: "ws-1", name: "Alpha", created_at: 1_000_000 },
+    { workspace_id: "ws-1", name: "Alpha", created_at: TEST_RECORDED_AT_MS },
     { workspace_id: "ws-2", name: "Beta", created_at: 2_000_000 },
   ],
 };

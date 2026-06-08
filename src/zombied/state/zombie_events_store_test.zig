@@ -5,6 +5,9 @@
 const std = @import("std");
 const filter_mod = @import("zombie_events_filter.zig");
 const store = @import("zombie_events_store.zig");
+
+const MS_PER_SECOND = 1_000;
+
 const base64 = std.base64.url_safe_no_pad;
 
 const testing = std.testing;
@@ -14,7 +17,7 @@ test "parseSince: durations relative to now" {
     try testing.expectEqual(now - 2 * 3_600_000, try filter_mod.parseSince("2h", now));
     try testing.expectEqual(now - 30 * 60_000, try filter_mod.parseSince("30m", now));
     try testing.expectEqual(now - 7 * 86_400_000, try filter_mod.parseSince("7d", now));
-    try testing.expectEqual(now - 15 * 1_000, try filter_mod.parseSince("15s", now));
+    try testing.expectEqual(now - 15 * MS_PER_SECOND, try filter_mod.parseSince("15s", now));
 }
 
 test "parseSince: rfc3339Z" {

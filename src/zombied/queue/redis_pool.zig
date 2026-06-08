@@ -209,7 +209,7 @@ fn reserveActiveSlot(self: *Pool) error{AcquireTimeout}!SlotReservation {
     if (self.idle.popFirst()) |node| {
         self.idle_count -= 1;
         self.active_count += 1;
-        return .{ .reused = @as(*Connection, @fieldParentPtr("node", node)), .at_or_over_cap = false };
+        return .{ .reused = @as(*Connection, @fieldParentPtr(POOL_NODE_FIELD, node)), .at_or_over_cap = false };
     }
     if (self.max_active != max_active_unbounded) {
         if (try self.waitForActiveSlot()) |conn| {
@@ -254,7 +254,7 @@ fn waitForActiveSlot(self: *Pool) error{AcquireTimeout}!?*Connection {
     if (self.idle.popFirst()) |node| {
         self.idle_count -= 1;
         self.active_count += 1;
-        return @as(*Connection, @fieldParentPtr("node", node));
+        return @as(*Connection, @fieldParentPtr(POOL_NODE_FIELD, node));
     }
     return null;
 }
@@ -332,3 +332,4 @@ const common = @import("common");
 const clock = @import("common").clock;
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");
+const POOL_NODE_FIELD = "node";

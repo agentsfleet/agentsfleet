@@ -40,6 +40,11 @@ export const VERSION: string = pkgJson.version;
 // Only `login` skips the preAction auth-guard. Subcommands of every
 // other root inherit the requirement.
 const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login"]);
+const FLAG = "--" as const;
+const FLAG_API = "--api=" as const;
+const TYPE_STRING = "string" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface RunCliIo {
   stdout?: WritableStreamLike;
@@ -59,7 +64,7 @@ function maybePrintVersion(
   env: NodeJS.ProcessEnv,
 ): boolean {
   for (const token of argv) {
-    if (token === "--") break;
+    if (token === FLAG) break;
     if (token === "--version" || token === "-v") {
       if (jsonMode) {
         printJson(stdout, { version: VERSION });
@@ -77,7 +82,7 @@ function maybePrintVersion(
 
 function detectJsonMode(argv: readonly string[]): boolean {
   for (const token of argv) {
-    if (token === "--") return false;
+    if (token === FLAG) return false;
     if (token === "--json") return true;
   }
   return false;
@@ -88,9 +93,9 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) break;
-    if (t === "--") break;
+    if (t === FLAG) break;
     if (t === "--api") { api = argv[i + 1] || null; break; }
-    if (t.startsWith("--api=")) { api = t.slice("--api=".length); break; }
+    if (t.startsWith(FLAG_API)) { api = t.slice(FLAG_API.length); break; }
   }
   return api || env.ZOMBIE_API_URL || env.API_URL || null;
 }
@@ -123,7 +128,7 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
     ctx.noOpen = opts["open"] === false || opts["noOpen"] === true;
     ctx.noInput = opts["input"] === false || opts["noInput"] === true;
     const apiOverride = opts["api"];
-    if (typeof apiOverride === "string" && apiOverride.length > 0) {
+    if (isString(apiOverride) && apiOverride.length > 0) {
       ctx.apiUrl = normalizeApiUrl(apiOverride);
     }
 
@@ -161,7 +166,7 @@ function exitFromCommanderError(err: CommanderError, state: ProgramState): numbe
 }
 
 function errMessage(err: unknown): string {
-  if (err instanceof Error && typeof err.message === "string") return err.message;
+  if (err instanceof Error && isString(err.message)) return err.message;
   return String(err);
 }
 

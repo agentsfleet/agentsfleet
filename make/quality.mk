@@ -79,19 +79,12 @@ _zig_target_lint:
 # Do NOT add new entries — shrink this list over time.
 # Policy: RULE FLL in docs/greptile-learnings/RULES.md
 ZIG_LINE_LIMIT_ALLOWLIST := \
-	src/zombied/auth/claims.zig \
-	src/zombied/auth/jwks.zig \
-	src/zombied/cmd/doctor.zig \
-	src/zombied/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \
 	src/git/pr.zig \
 	src/git/repo.zig \
-	src/zombied/http/handlers/common.zig \
 	src/http/workspace_guards.zig \
 	src/observability/metrics_counters.zig \
-	src/zombied/observability/otel_logs.zig \
-	src/zombied/observability/otel_traces.zig \
 	src/observability/posthog_events.zig \
 	src/queue/redis_client.zig \
 	src/state/entitlements.zig \
@@ -101,10 +94,13 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/zombie/approval_gate.zig \
 	src/zombie/config.zig
 
+ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
+ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
+
 _zig_line_limit_check:
 	@echo "→ [zig] Checking Zig file line limit (max 350 lines — RULE FLL)..."
 	@FAIL=0; \
-	for f in $$(find src -name '*.zig' ! -path '*/.zig-cache/*' ! -name '*_test.zig' ! -name '*_test_*.zig' ! -name 'tests*.zig' ! -name '*test*.zig' | sort); do \
+	for f in $$(git ls-files '*.zig' | grep -vE '$(ZIG_LINE_LIMIT_EXCLUDE_DIRS)' | grep -vE '$(ZIG_LINE_LIMIT_TEST_PATTERN)' | sort); do \
 		lines=$$(wc -l < "$$f"); \
 		if [ "$$lines" -gt 350 ]; then \
 			allowed=0; \

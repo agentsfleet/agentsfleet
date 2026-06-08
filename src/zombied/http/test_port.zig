@@ -12,6 +12,9 @@
 
 const std = @import("std");
 const common = @import("common");
+
+const FIRST_UNPRIVILEGED_PORT = 1024;
+
 const net = std.Io.net;
 
 /// A bound, listening loopback socket plus its kernel-assigned port. The server
@@ -63,7 +66,7 @@ test "allocFreePort returns a port in the valid unprivileged range" {
     // 49152-65535. We don't pin to a kernel-specific range, just assert
     // the port is unprivileged (>=1024) and within u16.
     const p = try allocFreePort();
-    try std.testing.expect(p >= 1024);
+    try std.testing.expect(p >= FIRST_UNPRIVILEGED_PORT);
 }
 
 test "allocFreePort: two consecutive calls both return valid ports" {

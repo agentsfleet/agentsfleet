@@ -34,6 +34,7 @@ const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
+const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECK passes.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0de011";
@@ -90,10 +91,10 @@ fn seedActiveZombie(conn: *pg.Conn, context_json: []const u8) !void {
 fn fundLargeBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-        \\VALUES ($1::uuid, 1000000000000, 'session-test', 0, 0)
+        \\VALUES ($1::uuid, $2, 'session-test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
-    , .{base.TEST_TENANT_ID});
+    , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {

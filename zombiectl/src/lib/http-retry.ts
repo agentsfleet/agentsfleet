@@ -11,31 +11,37 @@ const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
 const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
+const RETRY_REASON_429 = "429" as const;
+const RETRY_REASON_5XX = "5xx" as const;
+const HTTP_METHOD_GET = "GET" as const;
+const RETRY_REASON_NETWORK = "network" as const;
+const TYPE_OBJECT = "object" as const;
+const STATUS_TIMEOUT = "timeout" as const;
 
 // Reasons surfaced on the `onRetry` callback so the analytics layer
 // can attribute the retry to a concrete failure class.
 export type RetryReason =
-  | "timeout"
-  | "429"
-  | "5xx"
-  | "network";
+  | typeof STATUS_TIMEOUT
+  | typeof RETRY_REASON_429
+  | typeof RETRY_REASON_5XX
+  | typeof RETRY_REASON_NETWORK;
 
 function hasRetryOptOut(body: unknown): boolean {
-  if (body === null || typeof body !== "object") return false;
+  if (body === null || typeof body !== TYPE_OBJECT) return false;
   const errField = (body as { error?: unknown }).error;
-  if (errField === null || typeof errField !== "object") return false;
+  if (errField === null || typeof errField !== TYPE_OBJECT) return false;
   return (errField as { retry_after_seconds?: unknown }).retry_after_seconds === 0;
 }
 
 function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
-    if (err.code === "TIMEOUT") return "timeout";
+    if (err.code === "TIMEOUT") return STATUS_TIMEOUT;
     if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
       if (hasRetryOptOut(err.body)) return null;
-      if (err.status === 429) return "429";
-      return "5xx";
+      if (err.status === 429) return RETRY_REASON_429;
+      return RETRY_REASON_5XX;
     }
     return null;
   }
@@ -44,12 +50,12 @@ function classifyRetryable(err: unknown): RetryReason | null {
     && typeof err.message === "string"
     && err.message.toLowerCase().includes("fetch failed")
   ) {
-    return "network";
+    return RETRY_REASON_NETWORK;
   }
-  if (err !== null && typeof err === "object") {
+  if (err !== null && typeof err === TYPE_OBJECT) {
     const code = (err as { code?: unknown }).code;
     if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") {
-      return "network";
+      return RETRY_REASON_NETWORK;
     }
   }
   return null;
@@ -123,7 +129,7 @@ export interface ApiRequestWithRetryOptions extends ApiRequestOptions {
  */
 export function isIdempotentMethod(method: string): boolean {
   const m = method.toUpperCase();
-  return m === "GET" || m === "PUT" || m === "DELETE" || m === "HEAD";
+  return m === HTTP_METHOD_GET || m === "PUT" || m === "DELETE" || m === "HEAD";
 }
 
 interface ResolvedRetryRuntime {
@@ -156,7 +162,7 @@ function resolveRetryRuntime(options: ApiRequestWithRetryOptions): ResolvedRetry
     randomFn: options.randomFn ?? Math.random,
     onAttempt: options.onAttempt,
     onRetry: options.onRetry,
-    method: options.method ?? "GET",
+    method: options.method ?? HTTP_METHOD_GET,
   };
 }
 
@@ -166,7 +172,7 @@ function emitTerminalAttempt(
   status: number | undefined,
   durationMs: number,
 ): void {
-  if (typeof onAttempt === "function") {
+  if (onAttempt !== undefined) {
     onAttempt({ attempt, status, durationMs, retryCount: attempt - 1, terminal: true });
   }
 }
@@ -189,7 +195,7 @@ function planRetry(
   const isServer5xx = ctx.status !== undefined && ctx.status >= 500;
   const unsafeReplay = reason === "5xx" && isServer5xx && !isIdempotentMethod(cfg.method);
   if (reason === null || unsafeReplay || ctx.attempt >= cfg.maxAttempts) return null;
-  if (typeof cfg.onRetry === "function") {
+  if (cfg.onRetry !== undefined) {
     cfg.onRetry({ attempt: ctx.attempt, status: ctx.status, durationMs: ctx.durationMs, reason });
   }
   const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;

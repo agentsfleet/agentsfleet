@@ -4,6 +4,8 @@
 //! column allowlist) and stays with the individual handler.
 
 const std = @import("std");
+const QUERY_PAGE = "page";
+const QUERY_PAGE_SIZE = "page_size";
 
 pub const DEFAULT_PAGE_SIZE: i32 = 25;
 pub const MAX_PAGE_SIZE: i32 = 100;
@@ -20,8 +22,8 @@ pub const PageParams = struct {
 /// a fake in tests.
 pub fn parsePageParams(qs: anytype) ?PageParams {
     var out: PageParams = .{};
-    if (qs.get("page")) |v| out.page = std.fmt.parseInt(i32, v, 10) catch return null;
-    if (qs.get("page_size")) |v| out.page_size = std.fmt.parseInt(i32, v, 10) catch return null;
+    if (qs.get(QUERY_PAGE)) |v| out.page = std.fmt.parseInt(i32, v, 10) catch return null;
+    if (qs.get(QUERY_PAGE_SIZE)) |v| out.page_size = std.fmt.parseInt(i32, v, 10) catch return null;
     if (out.page < 1) return null;
     if (out.page_size < 1 or out.page_size > MAX_PAGE_SIZE) return null;
     return out;
@@ -33,8 +35,8 @@ const FakeQs = struct {
     page: ?[]const u8 = null,
     page_size: ?[]const u8 = null,
     fn get(self: FakeQs, key: []const u8) ?[]const u8 {
-        if (std.mem.eql(u8, key, "page")) return self.page;
-        if (std.mem.eql(u8, key, "page_size")) return self.page_size;
+        if (std.mem.eql(u8, key, QUERY_PAGE)) return self.page;
+        if (std.mem.eql(u8, key, QUERY_PAGE_SIZE)) return self.page_size;
         return null;
     }
 };

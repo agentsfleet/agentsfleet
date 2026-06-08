@@ -42,7 +42,7 @@ export const readTelemetryConfig = (
   configDir: string,
 ): Effect.Effect<TelemetryConfig | null> =>
   Effect.tryPromise({
-    try: () => fs.readFile(path.join(configDir, "telemetry.json"), "utf8"),
+    try: () => fs.readFile(path.join(configDir, TELEMETRY_FILE_NAME), "utf8"),
     catch: () => null,
   }).pipe(
     // JSON.parse throws synchronously on malformed input; wrap in
@@ -67,7 +67,7 @@ export const writeTelemetryConfig = (
     try: async () => {
       await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
       await fs.writeFile(
-        path.join(configDir, "telemetry.json"),
+        path.join(configDir, TELEMETRY_FILE_NAME),
         JSON.stringify(config, null, 2),
         { mode: 0o600 },
       );
@@ -79,7 +79,9 @@ export const getEffectiveConsent = (
   config: TelemetryConfig | null,
   env: NodeJS.ProcessEnv = process.env,
 ): ConsentState => {
-  if (telemetryDisabledFromEnv(env)) return "denied";
-  if (doNotTrackFromEnv(env)) return "denied";
+  if (telemetryDisabledFromEnv(env)) return CONSENT_DENIED;
+  if (doNotTrackFromEnv(env)) return CONSENT_DENIED;
   return config?.consent ?? "granted";
 };
+const CONSENT_DENIED = "denied" as const;
+const TELEMETRY_FILE_NAME = "telemetry.json" as const;

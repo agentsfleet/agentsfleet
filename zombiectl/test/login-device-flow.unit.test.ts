@@ -144,6 +144,7 @@ describe("buildLoginUrl", () => {
 
 describe("mapVerifyFailure", () => {
   test("translates a 400 ServerError to VerificationFailedError", () => {
+    type VerificationFailedErrorInstance = InstanceType<typeof VerificationFailedError>;
     const err = new ServerError({
       detail: "verification failed",
       suggestion: "retry",
@@ -153,7 +154,7 @@ describe("mapVerifyFailure", () => {
     });
     const mapped = mapVerifyFailure(err);
     expect(mapped).toBeInstanceOf(VerificationFailedError);
-    expect((mapped as VerificationFailedError).requestId).toBe("req_abc");
+    expect((mapped as VerificationFailedErrorInstance).requestId).toBe("req_abc");
   });
   test("leaves a UZ-AUTH-018 malformed-code 400 untouched (re-enter, not a strike)", () => {
     const err = new ServerError({

@@ -31,11 +31,21 @@ import {
   type UnexpectedError,
 } from "../errors/index.ts";
 
+const FIELD_CREATED_AT = "created_at" as const;
+const FIELD_ID = "id" as const;
+const FIELD_NAME = "name" as const;
+const TYPE_NUMBER = "number" as const;
+const TYPE_STRING = "string" as const;
+const FIELD_TOKEN = "token" as const;
+const FIELD_WORKSPACE_ID = "workspace_id" as const;
+const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+
+const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+
 // login_method analytics dimension — distinguishes the interactive browser
 // device flow from a directly-supplied token (--token / env / piped stdin).
-export type LoginMethod = "browser" | "token";
-
-const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+export type LoginMethod = "browser" | typeof FIELD_TOKEN;
 
 const normalizeWorkspaceItem = (
   raw: unknown,
@@ -44,18 +54,18 @@ const normalizeWorkspaceItem = (
   if (!raw || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
   const workspaceId =
-    typeof rec["workspace_id"] === "string"
-      ? rec["workspace_id"]
-      : typeof rec["id"] === "string"
-        ? rec["id"]
+    isString(rec[FIELD_WORKSPACE_ID])
+      ? rec[FIELD_WORKSPACE_ID]
+      : isString(rec[FIELD_ID])
+        ? rec[FIELD_ID]
         : null;
   if (!workspaceId) return null;
   return {
     workspace_id: workspaceId,
-    name: typeof rec["name"] === "string" ? rec["name"] : null,
+    name: isString(rec[FIELD_NAME]) ? rec[FIELD_NAME] : null,
     created_at:
-      typeof rec["created_at"] === "number" && Number.isFinite(rec["created_at"])
-        ? rec["created_at"]
+      isNumber(rec[FIELD_CREATED_AT]) && Number.isFinite(rec[FIELD_CREATED_AT])
+        ? rec[FIELD_CREATED_AT]
         : fallbackCreatedAt,
   };
 };
@@ -171,7 +181,7 @@ export const captureLoginCompleted = (
   });
 
 const trimToUndefined = (value: string | undefined): string | undefined => {
-  if (typeof value !== "string") return undefined;
+  if (!isString(value)) return undefined;
   const t = value.trim();
   return t.length > 0 ? t : undefined;
 };
@@ -224,5 +234,5 @@ export const saveDirectToken = (
       apiUrl: config.apiUrl,
     });
     yield* hydrateWorkspacesAfterLogin(redacted);
-    yield* captureLoginCompleted("", rawToken, "token");
+    yield* captureLoginCompleted("", rawToken, FIELD_TOKEN);
   });

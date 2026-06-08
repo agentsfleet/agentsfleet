@@ -14,9 +14,14 @@ import { apiRequestWithRetry, type RetryConfig } from "../lib/http-retry.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 
+const HTTP_METHOD_GET = "GET" as const;
+const TYPE_STRING = "string" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+
 export interface HttpRequestInput {
   readonly path: string;
-  readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly method?: typeof HTTP_METHOD_GET | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly headers?: Record<string, string>;
   readonly body?: unknown;
   readonly token?: Redacted.Redacted<string> | undefined;
@@ -36,7 +41,7 @@ export class HttpClient extends Context.Service<HttpClient, HttpClientShape>()(
 
 const isFetchFailed = (cause: unknown): boolean =>
   cause instanceof TypeError &&
-  typeof cause.message === "string" &&
+  isString(cause.message) &&
   cause.message.toLowerCase().includes("fetch failed");
 
 const toCliError = (
@@ -93,14 +98,17 @@ const makeLive = (
   request: <T = unknown>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
     const url = `${apiUrl.replace(/\/$/, "")}${input.path}`;
     const headers = buildHeaders(input.headers, input.token);
+    const body = input.body === undefined
+      ? undefined
+      : isString(input.body)
+        ? input.body
+        : JSON.stringify(input.body);
     return Effect.tryPromise({
       try: () =>
         apiRequestWithRetry(url, {
-          method: input.method ?? "GET",
+          method: input.method ?? HTTP_METHOD_GET,
           headers,
-          ...(input.body !== undefined
-            ? { body: typeof input.body === "string" ? input.body : JSON.stringify(input.body) }
-            : {}),
+          ...(body !== undefined ? { body } : {}),
           ...(input.retry !== undefined ? { retry: input.retry } : {}),
           ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
           ...(fetchImpl !== undefined ? { fetchImpl } : {}),
@@ -116,6 +124,7 @@ export const httpClientLayer: Layer.Layer<HttpClient, never, CliConfig> = Layer.
     const config = yield* CliConfig;
     return HttpClient.of(makeLive(config.apiUrl, config.fetchImpl));
   }),
+
 );
 
 // Token resolution helper for command handlers: prefer Credentials over env.

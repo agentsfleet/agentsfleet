@@ -81,7 +81,7 @@ const deriveTokenSummary = (token: string | null): TokenSummary | null => {
       (typeof (payload as Record<string, unknown>)["role"] === "string"
         ? ((payload as Record<string, unknown>)["role"] as string)
         : null),
-    exp_at: expSec ? new Date(expSec * 1000).toISOString() : null,
+    exp_at: expSec ? new Date(expSec * MS_PER_SECOND).toISOString() : null,
     expired: expSec ? expSec <= nowSec : null,
   };
 };
@@ -322,3 +322,4 @@ export const logoutEffect = (
 
     yield* renderLogoutOutcome(outcome);
   });
+const MS_PER_SECOND = 1000 as const;

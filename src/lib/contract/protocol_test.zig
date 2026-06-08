@@ -7,6 +7,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const FailureClass = @import("execution_result.zig").FailureClass;
+const MS_PER_SECOND = 1000;
 
 /// Assert serialize → parse → serialize is stable for `value`.
 fn expectStable(comptime T: type, value: T) !void {
@@ -152,7 +153,7 @@ test "lease response — work payload round-trips (fencing + event + policy)" {
 }
 
 test "lease response — no-work carries a backoff hint" {
-    try expectStable(protocol.LeaseResponse, .{ .lease = null, .retry_after_ms = 1000 });
+    try expectStable(protocol.LeaseResponse, .{ .lease = null, .retry_after_ms = MS_PER_SECOND });
 }
 
 test "lease policy carries the resolved provider and api_key across the round-trip" {

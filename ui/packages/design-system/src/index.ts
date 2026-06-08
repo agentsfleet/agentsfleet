@@ -1,5 +1,7 @@
 export { cn } from "./utils";
 export {
+  ActionForm,
+  type ActionFormProps,
   Button,
   buttonVariants,
   buttonClassName,

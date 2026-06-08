@@ -27,6 +27,9 @@ const protocol = @import("contract").protocol;
 const telemetry = @import("../state/zombie_telemetry_store.zig");
 const renewal = @import("renewal.zig");
 
+const MS_PER_SECOND: i64 = 1000;
+const TOKENS_PER_MTOK: i64 = 1000000;
+
 /// The verdict of a claim+settle. `claimed` is the fenced active→reported flip
 /// (this holder won the report); `charged_nanos` is the final slice debited (0
 /// when fenced out or nothing was owed). A `claimed == false` result means the
@@ -62,10 +65,10 @@ const CLAIM_SETTLE_SQL =
     \\    FOR UPDATE OF l, a
     \\), calc AS (
     \\    SELECT *,
-    \\           (d_ms * $7::bigint) / 1000          AS run_fee,
-    \\           (d_in * $8::bigint) / 1000000
-    \\             + (d_cached * $9::bigint) / 1000000
-    \\             + (d_out * $10::bigint) / 1000000 AS token_cost
+    \\           (d_ms * $7::bigint) / $14::bigint    AS run_fee,
+    \\           (d_in * $8::bigint) / $15::bigint
+    \\             + (d_cached * $9::bigint) / $15::bigint
+    \\             + (d_out * $10::bigint) / $15::bigint AS token_cost
     \\    FROM probe
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
@@ -152,6 +155,8 @@ pub fn claimAndSettle(
         telemetry.ChargeType.stage.label(),
         protocol.RUNNER_LEASE_STATUS_ACTIVE,
         protocol.RUNNER_LEASE_STATUS_REPORTED,
+        MS_PER_SECOND,
+        TOKENS_PER_MTOK,
     }));
     defer q.deinit();
     const row = try q.next() orelse return .{ .claimed = false, .charged_nanos = 0 };

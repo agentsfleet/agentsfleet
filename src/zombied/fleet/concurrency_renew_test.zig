@@ -41,7 +41,7 @@ const RATES = tenant_billing.SliceRates{
 };
 const CURSOR_BASE_MS: i64 = NOW_MS - 20_000;
 const METER = renewal.MeterInputs{
-    .cumulative_input = 1000,
+    .cumulative_input = TEST_TOKEN_COUNT,
     .cumulative_cached = 500,
     .cumulative_output = 800,
     .run_nanos_per_sec = RATES.run_nanos_per_sec,
@@ -51,6 +51,8 @@ const METER = renewal.MeterInputs{
 };
 
 const auth_mw = @import("../auth/middleware/mod.zig");
+const TEST_TOKEN_COUNT = 1000;
+const MS_PER_SECOND = 1_000;
 
 fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -183,8 +185,8 @@ test "100 concurrent renews on one active lease converge to a single shared dead
     try seedRunner(c_init);
     // Fence holds (token == seq); created_at recent so the cap is far away and
     // every renew clamps to the same now+TTL target.
-    try seedAffinity(c_init, 5, NOW_MS - 1_000);
-    try seedLease(c_init, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    try seedAffinity(c_init, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c_init, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     defer teardown(c_init);
 
     var slots: [N_RENEWERS]RenewSlot = @splat(RenewSlot{});
@@ -248,8 +250,8 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
     try base.seedTenant(c);
     try base.seedWorkspace(c, WORKSPACE_ID);
     try seedRunner(c);
-    try seedAffinity(c, 5, NOW_MS - 1_000);
-    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     // Cursor baseline: 20s of runtime elapsed, no tokens metered yet. The first
     // renewal to win prices this slice off the cursor; `FOR UPDATE OF l, a` makes
     // the other 99 block, re-read the advanced cursor (Δ=0), and charge ≈0 —
@@ -315,8 +317,8 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     try seedRunner(c);
     // Fence holds at issue (token == seq == 5) so the claim CAN win; a racing
     // reclaim bumps the sequence to 6+, which would fence the claim out.
-    try seedAffinity(c, 5, NOW_MS - 1_000);
-    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     // 20s of run elapsed (bounded slice); ample balance so no clamp.
     _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;

@@ -10,6 +10,7 @@ const common = @import("common");
 const net = std.Io.net;
 const test_port = @import("../http/test_port.zig");
 const redis_config = @import("redis_config.zig");
+const PONG_2 = "+PONG\r\n";
 
 // ── Zig 0.16 socket-fake plumbing ──────────────────────────────────────
 // `std.Io.net.Stream` dropped the direct `read`/`writeAll`/`close` methods;
@@ -88,11 +89,11 @@ pub const PingFake = struct {
                 // answered. Loop until peer-close, shutdown, or short-read EOF.
                 while (!self.stop.load(.acquire)) {
                     if (streamReadOnce(r) == 0) break;
-                    streamWriteAll(w, "+PONG\r\n");
+                    streamWriteAll(w, PONG_2);
                 }
             } else {
                 // Single-shot: read one command, write one reply, close.
-                if (streamReadOnce(r) > 0) streamWriteAll(w, "+PONG\r\n");
+                if (streamReadOnce(r) > 0) streamWriteAll(w, PONG_2);
             }
             stream.close(io);
         }

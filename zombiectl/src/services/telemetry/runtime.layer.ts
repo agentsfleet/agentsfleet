@@ -27,14 +27,16 @@ import {
 import { resolveIdentity } from "./identity.ts";
 import { TelemetryRuntime } from "./runtime.service.ts";
 
+const PARENT_DIR_SEGMENT = ".." as const;
+
 // Read package.json once at module load — same shape as cli.ts VERSION
 // resolution. cli.ts re-imports this for its own export; avoids the
 // import cycle that "telemetry/runtime.layer.ts → cli.ts" would create.
 const PKG_JSON_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "..",
+  PARENT_DIR_SEGMENT,
+  PARENT_DIR_SEGMENT,
+  PARENT_DIR_SEGMENT,
   "package.json",
 );
 const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
@@ -130,4 +132,5 @@ export const telemetryRuntimeLayer = Layer.effect(
         : base,
     );
   }),
+
 );

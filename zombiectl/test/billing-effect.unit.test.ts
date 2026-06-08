@@ -23,6 +23,8 @@ import {
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";
 const ONE_CENT_NANOS = NANOS_PER_USD / 100;
+const TEST_RECORDED_AT_MS = 1_000_000 as const;
+const TEST_CHARGE_NANOS = 1000 as const;
 
 interface Recorder {
   readonly stdout: string[];
@@ -108,7 +110,7 @@ const RECEIVE_ROW = {
   credit_deducted_nanos: ONE_CENT_NANOS,
   token_count_input: null,
   token_count_output: null,
-  recorded_at: 1_000_000,
+  recorded_at: TEST_RECORDED_AT_MS,
 };
 const STAGE_ROW = {
   event_id: "evt_1",
@@ -422,7 +424,7 @@ describe("billingShowEffectFromArgs", () => {
         httpClientLayer((path) => {
           if (path === BILLING_PATH) {
             return Effect.succeed({
-              balance_nanos: 1000 * ONE_CENT_NANOS,
+              balance_nanos: TEST_CHARGE_NANOS * ONE_CENT_NANOS,
               is_exhausted: false,
             }) as Effect.Effect<unknown, ServerError>;
           }

@@ -12,7 +12,16 @@ import {
   type WritableStreamLike,
 } from "./capability.ts";
 
-export type Token = "pulse" | "evidence" | "success" | "warn" | "error" | "muted" | "subtle";
+const VALUE_33 = "33" as const;
+const STATUS_ERROR = "error" as const;
+const PALETTE_TOKEN_EVIDENCE = "evidence" as const;
+const PALETTE_TOKEN_MUTED = "muted" as const;
+const PALETTE_TOKEN_PULSE = "pulse" as const;
+const PALETTE_TOKEN_SUBTLE = "subtle" as const;
+const PALETTE_TOKEN_SUCCESS = "success" as const;
+const PALETTE_TOKEN_WARN = "warn" as const;
+
+export type Token = typeof PALETTE_TOKEN_PULSE | typeof PALETTE_TOKEN_EVIDENCE | typeof PALETTE_TOKEN_SUCCESS | typeof PALETTE_TOKEN_WARN | typeof STATUS_ERROR | typeof PALETTE_TOKEN_MUTED | typeof PALETTE_TOKEN_SUBTLE;
 
 export interface StyleOpts {
   readonly env?: NodeJS.ProcessEnv;
@@ -39,9 +48,9 @@ const XTERM_256: Record<Token, number> = {
 // match, accepting that 256→16 always loses fidelity.
 const BASIC_16: Record<Token, string> = {
   pulse:    "36",  // cyan
-  evidence: "33",  // yellow
+  evidence: VALUE_33,  // yellow
   success:  "32",  // green
-  warn:     "33",  // yellow (warn lands on the same bin as evidence in 16-color terms)
+  warn:     VALUE_33,  // yellow (warn lands on the same bin as evidence in 16-color terms)
   error:    "31",  // red
   muted:    "2",   // dim
   subtle:   "2",   // dim (no separate subtle in 16-color)
@@ -109,17 +118,17 @@ export interface Palette {
 // Token helpers — every site that emits color goes through one of these.
 // Add a new token here, not at the call site.
 export const palette: Palette = {
-  pulse:    (text, opts) => styled("pulse", text, opts),
-  evidence: (text, opts) => styled("evidence", text, opts),
-  success:  (text, opts) => styled("success", text, opts),
-  warn:     (text, opts) => styled("warn", text, opts),
-  error:    (text, opts) => styled("error", text, opts),
-  muted:    (text, opts) => styled("muted", text, opts),
-  subtle:   (text, opts) => styled("subtle", text, opts),
+  pulse:    (text, opts) => styled(PALETTE_TOKEN_PULSE, text, opts),
+  evidence: (text, opts) => styled(PALETTE_TOKEN_EVIDENCE, text, opts),
+  success:  (text, opts) => styled(PALETTE_TOKEN_SUCCESS, text, opts),
+  warn:     (text, opts) => styled(PALETTE_TOKEN_WARN, text, opts),
+  error:    (text, opts) => styled(STATUS_ERROR, text, opts),
+  muted:    (text, opts) => styled(PALETTE_TOKEN_MUTED, text, opts),
+  subtle:   (text, opts) => styled(PALETTE_TOKEN_SUBTLE, text, opts),
   text:     (text)       => String(text),
   bold,
 
-  pulseBold: (text, opts) => styledBold("pulse", text, opts),
+  pulseBold: (text, opts) => styledBold(PALETTE_TOKEN_PULSE, text, opts),
 };
 
 // Test/inspection surface. Production callers should not import these;

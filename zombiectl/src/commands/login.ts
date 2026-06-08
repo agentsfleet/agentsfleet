@@ -31,8 +31,8 @@ import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
+  MeValidationError,
   type CliError,
-  type MeValidationError,
 } from "../errors/index.ts";
 import {
   buildLoginUrl,
@@ -91,7 +91,7 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   if (noOpen || config.noOpen) {
     if (!config.jsonMode) {
       const output = yield* Output;
-      yield* output.info("browser: not opened (open URL manually)");
+      yield* output.info(BROWSER_NOT_OPENED_MESSAGE);
     }
     return false;
   }
@@ -100,7 +100,7 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   if (!config.jsonMode) {
     const output = yield* Output;
     yield* output.info(
-      opened ? "browser: opened" : "browser: not opened (open URL manually)",
+      opened ? "browser: opened" : BROWSER_NOT_OPENED_MESSAGE,
     );
   }
   return opened;
@@ -145,7 +145,7 @@ const persistSuccess = Effect.fnUntraced(function* (
 // on disk would route subsequent commands to the same dead-on-arrival
 // token. Swallow the clear's own UnexpectedError — the validation
 // failure is the load-bearing signal the operator needs to see.
-const rollbackOnMeFailure = Effect.fnUntraced(function* (err: MeValidationError) {
+const rollbackOnMeFailure = Effect.fnUntraced(function* (err: InstanceType<typeof MeValidationError>) {
   const credentials = yield* Credentials;
   yield* credentials.clearAccessToken.pipe(Effect.ignore);
   return yield* Effect.fail(err);
@@ -274,3 +274,4 @@ export const loginEffectFromFlags = (
     tokenFlag: raw.tokenFlag,
     envToken: raw.envToken,
   });
+const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as const;

@@ -39,7 +39,7 @@ export interface EncryptedJwt {
 
 export async function generateCliKeypair(): Promise<CliKeypair> {
   const pair = await subtle.generateKey(
-    { name: "ECDH", namedCurve: ECDH_CURVE },
+    { name: ECDH_ALGORITHM, namedCurve: ECDH_CURVE },
     true,
     ["deriveBits"],
   );
@@ -58,31 +58,31 @@ export async function deriveSharedKey(
   const peerPublicKey = await subtle.importKey(
     "spki",
     peerSpki,
-    { name: "ECDH", namedCurve: ECDH_CURVE },
+    { name: ECDH_ALGORITHM, namedCurve: ECDH_CURVE },
     false,
     [],
   );
   const sharedBits = await subtle.deriveBits(
-    { name: "ECDH", public: peerPublicKey },
+    { name: ECDH_ALGORITHM, public: peerPublicKey },
     privateKey,
     AES_GCM_BITS,
   );
   const hkdfBase = await subtle.importKey(
     "raw",
     sharedBits,
-    "HKDF",
+    HKDF_ALGORITHM,
     false,
     ["deriveKey"],
   );
   return subtle.deriveKey(
     {
-      name: "HKDF",
+      name: HKDF_ALGORITHM,
       hash: "SHA-256",
       salt: new Uint8Array(0),
       info: textEncoder.encode(HKDF_INFO_STRING),
     },
     hkdfBase,
-    { name: "AES-GCM", length: AES_GCM_BITS },
+    { name: AES_GCM_ALGORITHM, length: AES_GCM_BITS },
     false,
     ["encrypt", "decrypt"],
   );
@@ -99,7 +99,7 @@ export async function decryptJwt(
     throw new Error(`nonce length ${nonce.byteLength} != ${NONCE_BYTES}`);
   }
   const plaintext = await subtle.decrypt(
-    { name: "AES-GCM", iv: nonce },
+    { name: AES_GCM_ALGORITHM, iv: nonce },
     key,
     ciphertext,
   );
@@ -122,7 +122,7 @@ export async function encryptJwtForTest(
 ): Promise<EncryptedJwt> {
   const nonce = webcrypto.getRandomValues(new Uint8Array(NONCE_BYTES));
   const ciphertext = await subtle.encrypt(
-    { name: "AES-GCM", iv: nonce },
+    { name: AES_GCM_ALGORITHM, iv: nonce },
     key,
     textEncoder.encode(jwt),
   );
@@ -147,3 +147,6 @@ function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
 }
+const AES_GCM_ALGORITHM = "AES-GCM" as const;
+const ECDH_ALGORITHM = "ECDH" as const;
+const HKDF_ALGORITHM = "HKDF" as const;

@@ -3,6 +3,8 @@
 //! metrics_counters.zig under the 350-line gate (RULE FLL).
 
 const std = @import("std");
+const MS_PER_SECOND = 1_000;
+const TEST_TOKEN_COUNT = 1000;
 
 // Buckets are stored in milliseconds; rendered as fractional seconds in
 // metrics_render (Prometheus base unit is seconds). Sub-second buckets capture
@@ -122,7 +124,7 @@ test "1.3: add_tokens_accumulates" {
 test "T2: observe at exact bucket boundary increments that bucket and all larger ones" {
     resetForTest();
     defer resetForTest();
-    observeZombieExecutionSeconds(1_000); // exactly the 1s bucket
+    observeZombieExecutionSeconds(MS_PER_SECOND); // exactly the 1s bucket
     const s = snapshotZombieFields();
     // Cumulative histogram: every bucket with bound >= 1000ms sees this observation.
     for (ZombieDurationBucketsMs, 0..) |bound, i| {
@@ -130,7 +132,7 @@ test "T2: observe at exact bucket boundary increments that bucket and all larger
         try std.testing.expectEqual(expected, s.zombie_execution_seconds.buckets[i]);
     }
     try std.testing.expectEqual(@as(u64, 1), s.zombie_execution_seconds.count);
-    try std.testing.expectEqual(@as(u64, 1_000), s.zombie_execution_seconds.sum);
+    try std.testing.expectEqual(@as(u64, MS_PER_SECOND), s.zombie_execution_seconds.sum);
 }
 
 // T2 — wall_ms beyond the largest bucket contributes to count + sum but no named bucket.
@@ -177,9 +179,9 @@ test "T1: inc_failed_increments_counter" {
 test "T2: add_zero_tokens_is_identity" {
     resetForTest();
     defer resetForTest();
-    addZombieTokens(1000);
+    addZombieTokens(TEST_TOKEN_COUNT);
     addZombieTokens(0);
-    try std.testing.expectEqual(@as(u64, 1000), snapshotZombieFields().zombie_tokens_total);
+    try std.testing.expectEqual(@as(u64, TEST_TOKEN_COUNT), snapshotZombieFields().zombie_tokens_total);
 }
 
 // T2 — observation at smallest bucket (100ms) fills every bucket.
@@ -223,7 +225,7 @@ test "T5: concurrent observe does not lose observations" {
     const Runner = struct {
         fn run(iters: usize) void {
             var i: usize = 0;
-            while (i < iters) : (i += 1) observeZombieExecutionSeconds(1_000);
+            while (i < iters) : (i += 1) observeZombieExecutionSeconds(MS_PER_SECOND);
         }
     };
     const thread_count = 4;
@@ -233,5 +235,5 @@ test "T5: concurrent observe does not lose observations" {
     for (threads) |t| t.join();
     const s = snapshotZombieFields();
     try std.testing.expectEqual(@as(u64, thread_count * per_thread), s.zombie_execution_seconds.count);
-    try std.testing.expectEqual(@as(u64, thread_count * per_thread * 1_000), s.zombie_execution_seconds.sum);
+    try std.testing.expectEqual(@as(u64, thread_count * per_thread * MS_PER_SECOND), s.zombie_execution_seconds.sum);
 }

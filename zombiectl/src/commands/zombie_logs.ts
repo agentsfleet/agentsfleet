@@ -19,6 +19,10 @@ import {
 
 const DEFAULT_LOGS_LIMIT = "20";
 const USAGE = "logs requires --zombie <id>";
+const TYPE_STRING = "string" as const;
+const LITERAL = "—" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface EventRow {
   readonly created_at?: number | string | null;
@@ -57,7 +61,7 @@ const requireZombieId = (
   });
 
 const formatTimestamp = (raw: number | string | null | undefined): string =>
-  raw ? new Date(raw).toISOString() : "—";
+  raw ? new Date(raw).toISOString() : LITERAL;
 
 export const logsEffectFromFlags = (
   flags: LogsEffectFlags,
@@ -75,12 +79,12 @@ export const logsEffectFromFlags = (
     const zombieId = yield* requireZombieId(flags.zombieId);
 
     const limit =
-      typeof flags.limit === "string" && flags.limit.length > 0
+      isString(flags.limit) && flags.limit.length > 0
         ? flags.limit
         : DEFAULT_LOGS_LIMIT;
     const qs = new URLSearchParams();
     qs.set("limit", limit);
-    if (typeof flags.cursor === "string" && flags.cursor.length > 0) {
+    if (isString(flags.cursor) && flags.cursor.length > 0) {
       qs.set("cursor", flags.cursor);
     }
     const path = `${wsZombieEventsPath(wsId, zombieId)}?${qs.toString()}`;
@@ -106,7 +110,7 @@ export const logsEffectFromFlags = (
         ? evt.response_text.slice(0, 80)
         : (evt.status ?? "");
       yield* output.info(
-        `  ${ui.dim(ts)}  ${evt.actor ?? "—"}  ${summary}`,
+        `  ${ui.dim(ts)}  ${evt.actor ?? LITERAL}  ${summary}`,
       );
     }
 

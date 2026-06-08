@@ -129,7 +129,7 @@ describe("Hero", () => {
       vi.advanceTimersByTime(2000);
     });
     await act(async () => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(MS_PER_SECOND);
     });
     expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
   });
@@ -286,3 +286,4 @@ describe("Hero", () => {
     });
   });
 });
+const MS_PER_SECOND = 1000 as const;

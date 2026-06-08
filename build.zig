@@ -1,5 +1,5 @@
 const std = @import("std");
-const builtin = @import("builtin");
+const build_pg = @import("build_pg.zig");
 
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
@@ -45,56 +45,7 @@ pub fn build(b: *std.Build) void {
     });
     const httpz_mod = httpz_dep.module("httpz");
 
-    // ── pg.zig (pure-Zig Postgres driver) ────────────────────────────────────
-    // OpenSSL is required for TLS connections to PlanetScale / hosted Postgres.
-    // Only enabled when the target is Linux (our deployment platform) and the
-    // host can provide headers. macOS cross-compile from Linux skips OpenSSL
-    // (no macOS OpenSSL headers on Linux runners). macOS native dev uses Homebrew.
-    const target_os = target.result.os.tag;
-    const target_arch = target.result.cpu.arch;
-    const host_is_linux = builtin.os.tag == .linux;
-    const host_is_darwin = builtin.os.tag == .macos;
-    const same_arch = builtin.cpu.arch == target_arch;
-    // Enable OpenSSL when headers AND matching-arch libs are available:
-    //   Linux host + Linux target + same arch: CI deploy build (system libssl-dev)
-    //   macOS host + macOS target: local dev (Homebrew OpenSSL, native only)
-    // Skip for cross-arch (e.g. x86_64 host → aarch64 target: libssl-dev
-    // provides x86_64 libs, can't link into aarch64 binary) and cross-OS.
-    // -Dopenssl overrides auto-detection: the memleak CI image lacks libc6-dev, so it
-    // passes -Dopenssl=false to select pg's stub and skip the aro translate-c of openssl.h.
-    const openssl_override = b.option(bool, "openssl", "Force pg OpenSSL/TLS on/off (default: host/target auto-detect)");
-    const enable_openssl = openssl_override orelse ((host_is_linux and target_os == .linux and same_arch) or (host_is_darwin and target_os == .macos));
-
-    const pg_dep = if (enable_openssl) blk: {
-        // Homebrew installs to /opt/homebrew on Apple Silicon, /usr/local on Intel.
-        const homebrew_prefix = if (builtin.cpu.arch == .aarch64) "/opt/homebrew" else "/usr/local";
-        const ssl_include: std.Build.LazyPath = .{ .cwd_relative = if (host_is_linux)
-            "/usr/include"
-        else
-            homebrew_prefix ++ "/opt/openssl@3/include" };
-        const ssl_lib: std.Build.LazyPath = .{ .cwd_relative = if (host_is_linux)
-            b.fmt("/usr/lib/{s}", .{@tagName(builtin.cpu.arch) ++ "-linux-gnu"})
-        else
-            homebrew_prefix ++ "/opt/openssl@3/lib" };
-        break :blk b.dependency(S_PG, .{
-            .target = target,
-            .optimize = optimize,
-            .openssl_include_path = ssl_include,
-            .openssl_lib_path = ssl_lib,
-        });
-    } else b.dependency(S_PG, .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const pg_mod = pg_dep.module(S_PG);
-
-    // Ubuntu/Debian multiarch: opensslconf.h lives in /usr/include/{arch}-linux-gnu/
-    // rather than /usr/include/. Add the arch-specific include path so @cImport finds it.
-    if (enable_openssl and host_is_linux) {
-        pg_mod.addIncludePath(.{
-            .cwd_relative = b.fmt("/usr/include/{s}-linux-gnu", .{@tagName(builtin.cpu.arch)}),
-        });
-    }
+    const pg_mod = build_pg.module(b, target, optimize, S_PG);
 
     // ── posthog-zig (server-side PostHog SDK) ───────────────────────────────
     const posthog_dep = b.dependency(S_POSTHOG, .{
@@ -119,7 +70,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("schema/embed.zig"),
     });
 
-    // ── Crypto primitives module (M28_001 §crypto — shared HMAC/CT/hex) ──────
+    // ── Crypto primitives module: shared HMAC/CT/hex ─────────────────────────
     // Pure stdlib only; no deps. Importable from src/auth/ without breaking the
     // test-auth portability gate, and from src/zombie/ as the canonical source
     // for webhook signature verification primitives.
@@ -266,7 +217,7 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
-    // ── test-auth (M18_002 §1.3) ─────────────────────────────────────────────
+    // ── test-auth ────────────────────────────────────────────────────────────
     // Links ONLY src/auth/** and proves the portability contract: every module
     // under src/auth/ compiles in isolation without the rest of the project.
     // Any import that escapes the folder (directly or transitively) fails the

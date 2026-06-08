@@ -41,7 +41,7 @@ test.describe("Auth theming", () => {
 
   test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
     await page.goto("/zombies");
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(MS_PER_SECOND);
 
     expect(new URL(page.url()).hostname).toBe(EXPECTED_HOSTNAME);
     expect(page.url()).not.toContain("accounts.dev");
@@ -79,3 +79,4 @@ test.describe("Auth theming", () => {
     expect(buttonBackground).not.toBe("rgb(255, 255, 255)");
   });
 });
+const MS_PER_SECOND = 1000 as const;

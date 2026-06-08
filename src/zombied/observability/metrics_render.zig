@@ -5,6 +5,7 @@ const mc = @import("metrics_counters.zig");
 const mw = @import("metrics_workspace.zig");
 const mr = @import("metrics_runner.zig");
 const mrp = @import("metrics_redis_pool.zig");
+const MS_PER_SECOND = 1000.0;
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
 const S_REASON = "reason";
@@ -159,10 +160,10 @@ pub fn renderPrometheus(
         try writer.print("# TYPE zombie_execution_seconds histogram\n", .{});
         // Buckets stored as ms; emit le and sum as fractional seconds (Prometheus base unit).
         for (mc.ZombieDurationBucketsMs, 0..) |le_ms, i| {
-            try writer.print("zombie_execution_seconds_bucket{{le=\"{d:.3}\"}} {d}\n", .{ @as(f64, @floatFromInt(le_ms)) / 1000.0, zh.buckets[i] });
+            try writer.print("zombie_execution_seconds_bucket{{le=\"{d:.3}\"}} {d}\n", .{ @as(f64, @floatFromInt(le_ms)) / MS_PER_SECOND, zh.buckets[i] });
         }
         try writer.print("zombie_execution_seconds_bucket{{le=\"+Inf\"}} {d}\n", .{zh.count});
-        try writer.print("zombie_execution_seconds_sum {d:.3}\n", .{@as(f64, @floatFromInt(zh.sum)) / 1000.0});
+        try writer.print("zombie_execution_seconds_sum {d:.3}\n", .{@as(f64, @floatFromInt(zh.sum)) / MS_PER_SECOND});
         try writer.print("zombie_execution_seconds_count {d}\n", .{zh.count});
     }
 

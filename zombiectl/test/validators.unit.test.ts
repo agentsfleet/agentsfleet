@@ -16,6 +16,8 @@ import {
 
 const VALID_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 const UUIDV4 = "550e8400-e29b-41d4-a716-446655440000";
+const SECONDS_PER_HOUR = 3600 as const;
+const ONE_THOUSAND_VALUE = 1000 as const;
 
 describe("parseStringOption", () => {
   test("trims surrounding whitespace and returns string", () => {
@@ -79,10 +81,10 @@ describe("parseIntOption", () => {
   });
 
   test("enforces both min and max", () => {
-    const parse = parseIntOption({ min: 1, max: 3600 });
+    const parse = parseIntOption({ min: 1, max: SECONDS_PER_HOUR });
     expect(parse("300")).toBe(300);
     expect(() => parse("0")).toThrow("must be ≥ 1");
-    expect(() => parse("3601")).toThrow("must be ≤ 3600");
+    expect(() => parse("3601")).toThrow(`must be ≤ ${SECONDS_PER_HOUR}`);
   });
 });
 
@@ -96,7 +98,7 @@ describe("parseFloatOption", () => {
   });
 
   test("parses scientific notation", () => {
-    expect(parseFloatOption("1e3")).toBe(1000);
+    expect(parseFloatOption("1e3")).toBe(ONE_THOUSAND_VALUE);
   });
 
   test("parses negative decimal", () => {

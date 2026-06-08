@@ -4,7 +4,7 @@
 // zombie.* leaf is an Effect.Effect<void, CliError, R>.
 
 import type { Effect } from "effect";
-import type { CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
+import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type { MainLayerServices } from "../lib/run-effect.ts";
 import type { CliError } from "../errors/index.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
@@ -38,23 +38,23 @@ export type WrapE = <E extends CliError, R extends MainLayerServices>(
 
 export type WrapEFn = <E extends CliError, R extends MainLayerServices>(
   name: string,
-  factory: (frame: import("./cli-tree-types.ts").ActionFrame) => Effect.Effect<void, E, R>,
+  factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
 ) => CommandHandlerFn;
 
 export const buildZombieHandlers = (
   wrapE: WrapE,
   wrapEFn: WrapEFn,
-): Handlers["zombie"] => ({
+): Handlers[typeof ZOMBIE] => ({
   install: wrapEFn(
     "zombie.install",
-    (frame) => installEffectFromFlags(optString(frame.parsed.options, "from")),
+    (frame) => installEffectFromFlags(optString(frame.parsed.options, FIELD_FROM)),
   ),
   update: wrapEFn(
     "zombie.update",
     (frame) =>
       updateEffectFromArgs(
         frame.parsed.positionals[0],
-        optString(frame.parsed.options, "from"),
+        optString(frame.parsed.options, FIELD_FROM),
       ),
   ),
   list: wrapEFn(
@@ -64,8 +64,8 @@ export const buildZombieHandlers = (
         workspaceId:
           optString(frame.parsed.options, "workspace-id") ??
           optString(frame.parsed.options, "workspaceId"),
-        cursor: optString(frame.parsed.options, "cursor"),
-        limit: optString(frame.parsed.options, "limit"),
+        cursor: optString(frame.parsed.options, FIELD_CURSOR),
+        limit: optString(frame.parsed.options, FIELD_LIMIT),
       }),
   ),
   status: wrapE("zombie.status", statusEffect),
@@ -90,10 +90,10 @@ export const buildZombieHandlers = (
     (frame) =>
       logsEffectFromFlags({
         zombieId:
-          optString(frame.parsed.options, "zombie") ??
+          optString(frame.parsed.options, ZOMBIE) ??
           frame.parsed.positionals[0],
-        cursor: optString(frame.parsed.options, "cursor"),
-        limit: optString(frame.parsed.options, "limit"),
+        cursor: optString(frame.parsed.options, FIELD_CURSOR),
+        limit: optString(frame.parsed.options, FIELD_LIMIT),
       }),
   ),
   events: wrapEFn(
@@ -103,8 +103,8 @@ export const buildZombieHandlers = (
         zombieId: frame.parsed.positionals[0],
         actor: optString(frame.parsed.options, "actor"),
         since: optString(frame.parsed.options, "since"),
-        cursor: optString(frame.parsed.options, "cursor"),
-        limit: optString(frame.parsed.options, "limit"),
+        cursor: optString(frame.parsed.options, FIELD_CURSOR),
+        limit: optString(frame.parsed.options, FIELD_LIMIT),
         json: frame.parsed.options["json"] === true,
       }),
   ),
@@ -138,3 +138,7 @@ export const buildZombieHandlers = (
     ),
   },
 });
+const FIELD_CURSOR = "cursor" as const;
+const FIELD_FROM = "from" as const;
+const FIELD_LIMIT = "limit" as const;
+const ZOMBIE = "zombie" as const;

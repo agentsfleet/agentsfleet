@@ -10,6 +10,8 @@ const std = @import("std");
 const entries = @import("error_entries.zig");
 const entries_runtime = @import("error_entries_runtime.zig");
 
+const EVAL_BRANCH_QUOTA = 1_000_000;
+
 pub const Entry = entries.Entry;
 pub const UNKNOWN = entries.UNKNOWN;
 pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
@@ -278,7 +280,7 @@ pub const GATE_EVENT_AUTO_APPROVE = "gate_auto_approve";
 
 // ── Comptime self-check: every ERR_* constant exists in REGISTRY ───────────
 comptime {
-    @setEvalBranchQuota(1_000_000);
+    @setEvalBranchQuota(EVAL_BRANCH_QUOTA);
     const decls = @typeInfo(@This()).@"struct".decls;
     for (decls) |decl| {
         if (std.mem.startsWith(u8, decl.name, "ERR_")) {
@@ -296,6 +298,7 @@ comptime {
 // That leaf duplicates the literals; this pin makes any drift a compile error.
 comptime {
     const auth_codes = @import("auth_codes");
+
     const pairs = .{
         .{ ERR_FORBIDDEN, auth_codes.ERR_FORBIDDEN },
         .{ ERR_UNAUTHORIZED, auth_codes.ERR_UNAUTHORIZED },

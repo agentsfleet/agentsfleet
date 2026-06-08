@@ -11,6 +11,8 @@ const constants = @import("common");
 const client = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const renew_driver = @import("renew_driver.zig");
+const ONE_MILLION = 1_000_000;
+const MS_PER_SECOND = 1_000;
 
 const RenewDecision = child_supervisor.RenewDecision;
 const Driver = renew_driver.RenewDriver(*FakeClient);
@@ -51,7 +53,7 @@ test "onTick outside the renewal window keeps without calling the control plane"
 }
 
 test "onTick at exactly the window boundary renews (boundary is inclusive)" {
-    var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + 1_000_000 } };
+    var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + ONE_MILLION } };
     var driver = driverWith(&fake, NOW_MS + constants.RENEWAL_WINDOW_MS);
     const h = driver.hook();
     _ = h.onTick(h.ctx, NOW_MS);
@@ -61,7 +63,7 @@ test "onTick at exactly the window boundary renews (boundary is inclusive)" {
 test "onTick inside the window renews and advances the kill deadline" {
     const new_deadline = NOW_MS + 1_000_000;
     var fake = FakeClient{ .outcome = .{ .renewed = new_deadline } };
-    var driver = driverWith(&fake, NOW_MS + 1_000); // 1s left → inside the window
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND); // 1s left → inside the window
     const h = driver.hook();
     try testing.expectEqual(RenewDecision{ .extend = new_deadline }, h.onTick(h.ctx, NOW_MS));
     try testing.expectEqual(new_deadline, driver.deadline_ms); // advanced to the renewed value
@@ -70,17 +72,17 @@ test "onTick inside the window renews and advances the kill deadline" {
 
 test "onTick inside the window terminates on a terminal renewal and leaves the deadline" {
     var fake = FakeClient{ .outcome = .{ .terminal = 402 } };
-    var driver = driverWith(&fake, NOW_MS + 1_000);
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
     try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS));
-    try testing.expectEqual(NOW_MS + 1_000, driver.deadline_ms); // unchanged
+    try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged
 }
 
 test "onTick keeps (and does not advance) when the renewal call fails transiently" {
     var fake = FakeClient{ .outcome = client.ClientError.RequestFailed };
-    var driver = driverWith(&fake, NOW_MS + 1_000);
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
     try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS));
-    try testing.expectEqual(NOW_MS + 1_000, driver.deadline_ms); // unchanged → next tick retries
+    try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged → next tick retries
     try testing.expectEqual(@as(usize, 1), fake.calls); // it DID attempt
 }

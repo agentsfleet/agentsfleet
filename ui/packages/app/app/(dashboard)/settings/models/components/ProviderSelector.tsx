@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Badge, Button, RadioGroup, Spinner } from "@usezombie/design-system";
+import { ActionForm, Alert, Badge, Button, RadioGroup, Spinner } from "@usezombie/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -31,13 +31,13 @@ type ModeStrategy = {
 
 const MODE_STRATEGIES: Record<ProviderMode, ModeStrategy> = {
   platform: {
-    submitLabel: "Reset to platform default",
-    successMsg: "Reset to platform default.",
+    submitLabel: "Use platform defaults",
+    successMsg: "Using platform defaults.",
     run: () => resetProviderAction(),
   },
   self_managed: {
-    submitLabel: "Save self-managed key",
-    successMsg: "Switched to self-managed. Run a test event to verify the key.",
+    submitLabel: "Save model setup",
+    successMsg: "Saved. Run a test event to verify the key.",
     run: ({ credentialRef, modelOverride }) =>
       setProviderSelfManagedAction({
         credential_ref: credentialRef,
@@ -47,6 +47,194 @@ const MODE_STRATEGIES: Record<ProviderMode, ModeStrategy> = {
 };
 
 const INITIAL_ACTION_STATE: ActionState = { ok: null, error: null };
+
+function PlatformModePanel({ isPending }: { isPending: boolean }) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Credential
+          </div>
+          <div className="mt-1 font-medium">Not required</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Account
+          </div>
+          <div className="mt-1 font-medium">usezombie managed</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Billing
+          </div>
+          <div className="mt-1 font-medium">Tenant balance</div>
+        </div>
+      </div>
+      <Button type="submit" disabled={isPending}>
+        {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
+        {MODE_STRATEGIES.platform.submitLabel}
+      </Button>
+    </div>
+  );
+}
+
+type SelfManagedModePanelProps = {
+  workspaceId: string;
+  credentials: CredentialSummary[];
+  catalogue: ModelCap[];
+  credentialRef: string;
+  modelOverride: string;
+  isPending: boolean;
+  onCredentialRefChange: (ref: string) => void;
+  onModelChange: (value: string) => void;
+};
+
+function SelfManagedModePanel({
+  workspaceId,
+  credentials,
+  catalogue,
+  credentialRef,
+  modelOverride,
+  isPending,
+  onCredentialRefChange,
+  onModelChange,
+}: SelfManagedModePanelProps) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Step1Credential
+          workspaceId={workspaceId}
+          credentials={credentials}
+          catalogue={catalogue}
+          credentialRef={credentialRef}
+          onCredentialRefChange={onCredentialRefChange}
+        />
+        <Step2Model catalogue={catalogue} model={modelOverride} onModelChange={onModelChange} />
+      </div>
+      <Button type="submit" disabled={isPending || credentialRef === ""}>
+        {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
+        {MODE_STRATEGIES.self_managed.submitLabel}
+      </Button>
+    </div>
+  );
+}
+
+function PlatformModeCard({
+  mode,
+  isPending,
+}: {
+  mode: ProviderMode;
+  isPending: boolean;
+}) {
+  return (
+    <ModeRadio
+      value={PROVIDER_MODE.platform}
+      checked={mode === PROVIDER_MODE.platform}
+      label="Platform defaults"
+      meta="No key"
+      description="Use the built-in provider and pay from your tenant balance per event."
+    >
+      <PlatformModePanel isPending={isPending} />
+    </ModeRadio>
+  );
+}
+
+function SelfManagedModeCard({
+  mode,
+  workspaceId,
+  credentials,
+  catalogue,
+  credentialRef,
+  modelOverride,
+  isPending,
+  onCredentialRefChange,
+  onModelChange,
+}: SelfManagedModePanelProps & { mode: ProviderMode }) {
+  return (
+    <ModeRadio
+      value={PROVIDER_MODE.self_managed}
+      checked={mode === PROVIDER_MODE.self_managed}
+      label="Use my provider key"
+      meta="Bring a key"
+      description="Store a provider key, then choose which credential and model agents should use."
+    >
+      <SelfManagedModePanel
+        workspaceId={workspaceId}
+        credentials={credentials}
+        catalogue={catalogue}
+        credentialRef={credentialRef}
+        modelOverride={modelOverride}
+        isPending={isPending}
+        onCredentialRefChange={onCredentialRefChange}
+        onModelChange={onModelChange}
+      />
+    </ModeRadio>
+  );
+}
+
+function ProviderSelectorFeedback({ state }: { state: ActionState }) {
+  return (
+    <>
+      {state.ok ? (
+        <Badge
+          variant="green"
+          role="status" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- Badge is the design-system primitive; <output> drops text children in happy-dom@20.
+          className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200 normal-case tracking-normal"
+        >
+          {state.ok}
+        </Badge>
+      ) : null}
+
+      {state.error ? (
+        <Alert variant="destructive" className="text-xs">
+          {state.error}
+        </Alert>
+      ) : null}
+    </>
+  );
+}
+
+function ProviderModeRadioGroup({
+  mode,
+  workspaceId,
+  credentials,
+  catalogue,
+  credentialRef,
+  modelOverride,
+  isPending,
+  onModeChange,
+  onCredentialRefChange,
+  onModelChange,
+}: SelfManagedModePanelProps & {
+  mode: ProviderMode;
+  onModeChange: (value: ProviderMode) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="sr-only">Model billing mode</legend>
+      <RadioGroup
+        value={mode}
+        onValueChange={(v) => onModeChange(v as ProviderMode)}
+        aria-label="Provider mode"
+        className="space-y-3"
+      >
+        <PlatformModeCard mode={mode} isPending={isPending} />
+        <SelfManagedModeCard
+          mode={mode}
+          workspaceId={workspaceId}
+          credentials={credentials}
+          catalogue={catalogue}
+          credentialRef={credentialRef}
+          modelOverride={modelOverride}
+          isPending={isPending}
+          onCredentialRefChange={onCredentialRefChange}
+          onModelChange={onModelChange}
+        />
+      </RadioGroup>
+    </fieldset>
+  );
+}
 
 export default function ProviderSelector({
   workspaceId,
@@ -59,7 +247,7 @@ export default function ProviderSelector({
   const router = useRouter();
 
   // Form-controlled inputs are local state; the action below is the React 19
-  // form-action handler that the <form> submits to.
+  // form-action handler submitted by ActionForm.
   const [mode, setMode] = useState<ProviderMode>(currentMode);
   const [credentialRef, setCredentialRef] = useState<string>(
     currentCredentialRef ?? credentials[0]?.name ?? "",
@@ -67,8 +255,6 @@ export default function ProviderSelector({
   const [modelOverride, setModelOverride] = useState<string>(
     currentMode === PROVIDER_MODE.self_managed ? currentModel : "",
   );
-
-  const isSelfManaged = mode === PROVIDER_MODE.self_managed;
 
   const strategy = MODE_STRATEGIES[mode];
 
@@ -82,69 +268,24 @@ export default function ProviderSelector({
   const [state, submitAction, isPending] = useActionState(action, INITIAL_ACTION_STATE);
 
   return (
-    <form action={submitAction} className="mt-3 space-y-5 text-sm">
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Mode
-        </legend>
-        <RadioGroup
-          value={mode}
-          onValueChange={(v) => setMode(v as ProviderMode)}
-          aria-label="Provider mode"
-        >
-          <ModeRadio
-            value={PROVIDER_MODE.platform}
-            checked={mode === PROVIDER_MODE.platform}
-            label="Platform-managed"
-            description="Agent credits cover everything. Charged from your tenant balance per event."
-          />
-          <ModeRadio
-            value={PROVIDER_MODE.self_managed}
-            checked={isSelfManaged}
-            label="Use my own provider key"
-            description="Your provider account, your API key. We charge a flat per-event overhead."
-          />
-        </RadioGroup>
-      </fieldset>
-
-      {isSelfManaged ? (
-        <div className="space-y-4 border-l-2 border-border pl-4 animate-in fade-in-0 slide-in-from-top-2 duration-300 ease-out">
-          <Step1Credential
-            workspaceId={workspaceId}
-            credentials={credentials}
-            catalogue={catalogue}
-            credentialRef={credentialRef}
-            onCredentialRefChange={setCredentialRef}
-          />
-          <Step2Model catalogue={catalogue} model={modelOverride} onModelChange={setModelOverride} />
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isPending || (isSelfManaged && credentialRef === "")}>
-          {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
-          {strategy.submitLabel}
-        </Button>
-        {state.ok ? (
-          <Badge
-            variant="green"
-            role="status" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- Badge is the design-system primitive; <output> drops text children in happy-dom@20.
-            className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200 normal-case tracking-normal"
-          >
-            {state.ok}
-          </Badge>
-        ) : null}
-      </div>
-
+    <ActionForm action={submitAction} className="text-sm">
+      <ProviderModeRadioGroup
+        mode={mode}
+        workspaceId={workspaceId}
+        credentials={credentials}
+        catalogue={catalogue}
+        credentialRef={credentialRef}
+        modelOverride={modelOverride}
+        isPending={isPending}
+        onModeChange={setMode}
+        onCredentialRefChange={setCredentialRef}
+        onModelChange={setModelOverride}
+      />
       <p className="text-xs text-muted-foreground">
         Changes apply to new events; events already in flight finish on their current configuration.
       </p>
 
-      {state.error ? (
-        <Alert variant="destructive" className="text-xs">
-          {state.error}
-        </Alert>
-      ) : null}
-    </form>
+      <ProviderSelectorFeedback state={state} />
+    </ActionForm>
   );
 }

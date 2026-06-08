@@ -126,13 +126,13 @@ export const grantDeleteEffectFromArgs = (
     const token = yield* resolveAuthToken;
     const zombieIdRaw = yield* requireFlag(
       zombieIdFlag,
-      "grant delete requires --zombie <id> <grant_id>",
+      GRANT_DELETE_USAGE_ERROR,
       "pass --zombie <zombie_id> <grant_id>",
     );
     const zombieId = yield* requireValidId(zombieIdRaw, "zombie_id");
     const grantIdRaw = yield* requireFlag(
       grantIdPositional,
-      "grant delete requires --zombie <id> <grant_id>",
+      GRANT_DELETE_USAGE_ERROR,
       "pass <grant_id> as positional",
     );
     const grantId = yield* requireValidId(grantIdRaw, "grant_id");
@@ -151,3 +151,4 @@ export const grantDeleteEffectFromArgs = (
       );
     }
   });
+const GRANT_DELETE_USAGE_ERROR = "grant delete requires --zombie <id> <grant_id>" as const;

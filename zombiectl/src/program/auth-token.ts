@@ -14,7 +14,16 @@
 
 import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
 
-export type RoleClaim = "user" | "operator" | "admin";
+const ADMIN = "admin" as const;
+const NONE = "none" as const;
+const OPERATOR = "operator" as const;
+const TYPE_STRING = "string" as const;
+const USER = "user" as const;
+const ZOMBIE_ENV = "zombie_env" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+
+export type RoleClaim = typeof USER | typeof OPERATOR | typeof ADMIN;
 
 // Subset of Clerk-style claims the CLI consumes. Index signature carries
 // namespaced URL keys (`https://usezombie.dev/role` etc.) as `unknown`,
@@ -48,7 +57,7 @@ export interface JwtClaims {
 const ROLE_NAMESPACE_DEV = "https://usezombie.dev/role";
 const ROLE_NAMESPACE_COM = "https://usezombie.com/role";
 
-export type AuthTokenSource = "file" | "zombie_env" | "none";
+export type AuthTokenSource = "file" | typeof ZOMBIE_ENV | typeof NONE;
 
 export interface ResolvedAuthToken {
   readonly token: string | null;
@@ -62,7 +71,7 @@ export interface ResolveAuthTokenInput {
 }
 
 const trimOrNull = (raw: string | undefined | null): string | null => {
-  if (typeof raw !== "string") return null;
+  if (!isString(raw)) return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
@@ -77,17 +86,17 @@ export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAu
   const file = trimOrNull(input.fileToken);
   const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
   const zombieResolved: ResolvedAuthToken | null = zombie
-    ? { token: zombie, source: "zombie_env" }
+    ? { token: zombie, source: ZOMBIE_ENV }
     : null;
   const order: ReadonlyArray<ResolvedAuthToken | null> = input.isTty
     ? [zombieResolved, fileResolved]
     : [fileResolved, zombieResolved];
   for (const candidate of order) if (candidate) return candidate;
-  return { token: null, source: "none" };
+  return { token: null, source: NONE };
 }
 
 export function decodeTokenPayload(token: unknown): JwtClaims | null {
-  if (!token || typeof token !== "string") return null;
+  if (!token || !isString(token)) return null;
   const parts = token.split(".");
   if (parts.length < 2 || !parts[1]) return null;
   try {
@@ -101,7 +110,7 @@ export function decodeTokenPayload(token: unknown): JwtClaims | null {
 
 export function extractDistinctIdFromToken(token: unknown): string | null {
   const payload = decodeTokenPayload(token);
-  if (payload && typeof payload.sub === "string" && payload.sub.trim().length > 0) {
+  if (payload && isString(payload.sub) && payload.sub.trim().length > 0) {
     return payload.sub.trim();
   }
   return null;
@@ -122,9 +131,9 @@ export function extractRoleFromToken(token: unknown): RoleClaim | null {
     payload.metadata?.[ROLE_NAMESPACE_COM],
   ];
   for (const raw of candidates) {
-    if (typeof raw !== "string") continue;
+    if (!isString(raw)) continue;
     const value = raw.toLowerCase();
-    if (value === "user" || value === "operator" || value === "admin") return value;
+    if (value === USER || value === OPERATOR || value === ADMIN) return value;
   }
   return null;
 }

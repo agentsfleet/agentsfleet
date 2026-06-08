@@ -11,6 +11,11 @@
 
 const std = @import("std");
 const redis_protocol = @import("../queue/redis_protocol.zig");
+const CONSUMED = "consumed";
+const MISSING = "missing";
+const STATUS_OK = "ok";
+const SUCCESS = "success";
+const LUA_MS_PER_SECOND = "1000";
 
 pub const VERIFY_AND_CONSUME_LUA: []const u8 = @embedFile("session_verify_consume.lua");
 
@@ -20,7 +25,9 @@ pub const VERIFY_AND_CONSUME_LUA: []const u8 = @embedFile("session_verify_consum
 /// expiry would let a background sweep prune a freshly-approved session.
 pub const APPROVE_LUA: []const u8 =
     \\local blob = redis.call("GET", KEYS[1])
-    \\if not blob then return {"missing"} end
+    \\if not blob then return {"
+++ MISSING ++
+    \\"} end
     \\local s = cjson.decode(blob)
     \\if s.status ~= "pending" then return {"conflict", s.status} end
     \\s.status = "verification_pending"
@@ -30,9 +37,13 @@ pub const APPROVE_LUA: []const u8 =
     \\s.verification_code_hmac_hex = ARGV[4]
     \\s.clerk_user_id = ARGV[5]
     \\s.approved_at_ms = tonumber(ARGV[6])
-    \\s.expires_at_ms = tonumber(ARGV[6]) + tonumber(ARGV[7]) * 1000
+    \\s.expires_at_ms = tonumber(ARGV[6]) + tonumber(ARGV[7]) *
+++ LUA_MS_PER_SECOND ++
+    \\
     \\redis.call("SET", KEYS[1], cjson.encode(s), "EX", tonumber(ARGV[7]))
-    \\return {"ok"}
+    \\return {"
+++ STATUS_OK ++
+    \\"}
 ;
 
 /// Owner-checked abort in one EVAL: `DELETE /sessions/{id}` transitions to
@@ -40,15 +51,23 @@ pub const APPROVE_LUA: []const u8 =
 /// stored `clerk_user_id`.
 pub const DELETE_OWNER_LUA: []const u8 =
     \\local blob = redis.call("GET", KEYS[1])
-    \\if not blob then return {"missing"} end
+    \\if not blob then return {"
+++ MISSING ++
+    \\"} end
     \\local s = cjson.decode(blob)
     \\if s.clerk_user_id ~= ARGV[1] then return {"not_owner"} end
-    \\if s.status == "consumed" then return {"consumed"} end
+    \\if s.status == "
+++ CONSUMED ++
+    \\" then return {"
+++ CONSUMED ++
+    \\"} end
     \\if s.status == "aborted" then return {"already_aborted"} end
     \\s.status = "aborted"
     \\s.aborted_reason = ARGV[2]
     \\redis.call("SET", KEYS[1], cjson.encode(s), "EX", tonumber(ARGV[3]))
-    \\return {"ok"}
+    \\return {"
+++ STATUS_OK ++
+    \\"}
 ;
 
 pub const VerifyOutcome = union(enum) {
@@ -161,8 +180,8 @@ pub fn firstTag(resp: redis_protocol.RespValue) ?[]const u8 {
 
 pub fn mapApproveOutcome(resp: redis_protocol.RespValue) Error!void {
     const tag = firstTag(resp) orelse return Error.UnexpectedRedisReply;
-    if (std.mem.eql(u8, tag, "ok")) return;
-    if (std.mem.eql(u8, tag, "missing")) return Error.SessionMissing;
+    if (std.mem.eql(u8, tag, STATUS_OK)) return;
+    if (std.mem.eql(u8, tag, MISSING)) return Error.SessionMissing;
     if (std.mem.eql(u8, tag, "conflict")) return Error.AlreadyApproved;
     return Error.UnexpectedRedisReply;
 }
@@ -172,11 +191,11 @@ pub const DeleteOutcome = enum { aborted, already_aborted };
 
 pub fn mapDeleteOutcome(resp: redis_protocol.RespValue) Error!DeleteOutcome {
     const tag = firstTag(resp) orelse return Error.UnexpectedRedisReply;
-    if (std.mem.eql(u8, tag, "ok")) return .aborted;
+    if (std.mem.eql(u8, tag, STATUS_OK)) return .aborted;
     if (std.mem.eql(u8, tag, "already_aborted")) return .already_aborted;
-    if (std.mem.eql(u8, tag, "missing")) return Error.SessionMissing;
+    if (std.mem.eql(u8, tag, MISSING)) return Error.SessionMissing;
     if (std.mem.eql(u8, tag, "not_owner")) return Error.NotOwner;
-    if (std.mem.eql(u8, tag, "consumed")) return Error.SessionConsumed;
+    if (std.mem.eql(u8, tag, CONSUMED)) return Error.SessionConsumed;
     return Error.UnexpectedRedisReply;
 }
 
@@ -188,9 +207,9 @@ pub fn parseVerifyOutcome(resp: redis_protocol.RespValue) Error!VerifyOutcome {
     if (arr.len == 0) return Error.UnexpectedRedisReply;
     const tag = redis_protocol.valueAsString(arr[0]) orelse return Error.UnexpectedRedisReply;
 
-    if (std.mem.eql(u8, tag, "missing")) return .{ .missing = {} };
+    if (std.mem.eql(u8, tag, MISSING)) return .{ .missing = {} };
     if (std.mem.eql(u8, tag, "expired")) return .{ .expired = {} };
-    if (std.mem.eql(u8, tag, "consumed")) return .{ .consumed = {} };
+    if (std.mem.eql(u8, tag, CONSUMED)) return .{ .consumed = {} };
     if (std.mem.eql(u8, tag, "not_approved")) return .{ .not_approved = {} };
     if (std.mem.eql(u8, tag, "rate_limited")) return .{ .rate_limited = {} };
     if (std.mem.eql(u8, tag, "aborted")) {
@@ -204,13 +223,13 @@ pub fn parseVerifyOutcome(resp: redis_protocol.RespValue) Error!VerifyOutcome {
         const attempts = std.fmt.parseInt(u8, s, 10) catch return Error.UnexpectedRedisReply;
         return .{ .invalid_code = attempts };
     }
-    if (std.mem.eql(u8, tag, "success") or std.mem.eql(u8, tag, "replay")) {
+    if (std.mem.eql(u8, tag, SUCCESS) or std.mem.eql(u8, tag, "replay")) {
         if (arr.len < 4) return Error.UnexpectedRedisReply;
         const dpk = redis_protocol.valueAsString(arr[1]) orelse return Error.UnexpectedRedisReply;
         const ct = redis_protocol.valueAsString(arr[2]) orelse return Error.UnexpectedRedisReply;
         const nonce = redis_protocol.valueAsString(arr[3]) orelse return Error.UnexpectedRedisReply;
         const payload = VerifyPayload{ .dashboard_public_key = dpk, .ciphertext = ct, .nonce = nonce };
-        return if (std.mem.eql(u8, tag, "success")) .{ .success = payload } else .{ .replay = payload };
+        return if (std.mem.eql(u8, tag, SUCCESS)) .{ .success = payload } else .{ .replay = payload };
     }
     return Error.UnexpectedRedisReply;
 }

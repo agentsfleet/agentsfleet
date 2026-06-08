@@ -22,6 +22,8 @@ const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
 // Fixed — embedded in TOKEN_USER and TOKEN_OPERATOR.
+const TEST_BALANCE_NANOS: i64 = 1000;
+
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
@@ -71,7 +73,7 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'DashTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, now_ms });
+    , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
         \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
@@ -79,9 +81,9 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
-        \\VALUES ($1, 1000, 'dash_test', $2, $2)
+        \\VALUES ($1, $3, 'dash_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, now_ms });
+    , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
 }
 
 fn seedZombies(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {

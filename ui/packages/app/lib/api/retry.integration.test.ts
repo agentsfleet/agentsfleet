@@ -119,7 +119,7 @@ describe("requestWithRetry — real transport integration", () => {
     const body = await requestWithRetry<{ ok: boolean }>(PATH, { method: "GET" }, TOKEN, options);
     expect(body).toEqual({ ok: true });
     expect(methodLog.length).toBe(2);
-    expect(delays[0]).toBeGreaterThanOrEqual(1000); // 1s server floor parsed from the header
+    expect(delays[0]).toBeGreaterThanOrEqual(MS_PER_SECOND); // 1s server floor parsed from the header
   });
 
   it("exhausts maxAttempts on a persistently failing real server", async () => {
@@ -131,3 +131,4 @@ describe("requestWithRetry — real transport integration", () => {
     expect(methodLog.length).toBe(3); // capped at maxAttempts, not the 4 queued
   });
 });
+const MS_PER_SECOND = 1000 as const;

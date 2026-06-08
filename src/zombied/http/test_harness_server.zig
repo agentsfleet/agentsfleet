@@ -9,6 +9,7 @@ const harness_mod = @import("test_harness.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const http_server = @import("server.zig");
 const test_port = @import("test_port.zig");
+const common = @import("common");
 
 const TestHarness = harness_mod.TestHarness;
 const Config = harness_mod.Config;
@@ -102,7 +103,7 @@ fn waitForServer(alloc: std.mem.Allocator, port: u16, timeout_ms: u32, bind_fail
         // The server thread lost the bind race → stop waiting so bringUpServer
         // can retry on a fresh port (don't burn the full timeout).
         if (bind_failed.load(.seq_cst)) return error.ServerBindRace;
-        var client: std.http.Client = .{ .allocator = alloc, .io = @import("common").globalIo() };
+        var client: std.http.Client = .{ .allocator = alloc, .io = common.globalIo() };
         defer client.deinit();
         var buf: std.ArrayList(u8) = .empty;
         var writer: std.Io.Writer.Allocating = .fromArrayList(alloc, &buf);
@@ -111,13 +112,13 @@ fn waitForServer(alloc: std.mem.Allocator, port: u16, timeout_ms: u32, bind_fail
             .method = .GET,
             .response_writer = &writer.writer,
         }) catch {
-            @import("common").sleepNanos(poll_interval_ms * std.time.ns_per_ms);
+            common.sleepNanos(poll_interval_ms * std.time.ns_per_ms);
             continue;
         };
         const body = writer.toOwnedSlice() catch &.{};
         alloc.free(body);
         if (@intFromEnum(result.status) == 200) return;
-        @import("common").sleepNanos(poll_interval_ms * std.time.ns_per_ms);
+        common.sleepNanos(poll_interval_ms * std.time.ns_per_ms);
     }
     return error.ServerStartTimeout;
 }

@@ -8,10 +8,10 @@ const SKILL_FILENAME = "SKILL.md";
 const TRIGGER_FILENAME = "TRIGGER.md";
 
 export type SkillLoadErrorCode =
-  | "ERR_PATH_NOT_FOUND"
-  | "ERR_PATH_DENIED"
-  | "ERR_SKILL_MISSING"
-  | "ERR_TRIGGER_MISSING";
+  | typeof ERR_PATH_NOT_FOUND_2
+  | typeof ERR_PATH_DENIED_2
+  | typeof ERR_SKILL_MISSING_2
+  | typeof ERR_TRIGGER_MISSING_2;
 
 export class SkillLoadError extends Error {
   readonly code: SkillLoadErrorCode;
@@ -30,24 +30,24 @@ export interface LoadedSkill {
 }
 
 function isNodeErrnoException(err: unknown): err is NodeJS.ErrnoException {
-  return err instanceof Error && typeof (err as NodeJS.ErrnoException).code === "string";
+  return err instanceof Error && typeof (err as NodeJS.ErrnoException).code === TYPE_STRING;
 }
 
 export function loadSkillFromPath(path: string): LoadedSkill {
-  if (typeof path !== "string" || path === "") {
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", "<no path provided>");
+  if (typeof path !== TYPE_STRING || path === "") {
+    throw new SkillLoadError(ERR_PATH_NOT_FOUND_2, "<no path provided>");
   }
   let stat;
   try {
     stat = statSync(path);
   } catch (err) {
-    if (isNodeErrnoException(err) && err.code === "EACCES") {
-      throw new SkillLoadError("ERR_PATH_DENIED", path);
+    if (isNodeErrnoException(err) && err.code === EACCES_CODE) {
+      throw new SkillLoadError(ERR_PATH_DENIED_2, path);
     }
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", path);
+    throw new SkillLoadError(ERR_PATH_NOT_FOUND_2, path);
   }
   if (!stat.isDirectory()) {
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", `${path} (not a directory)`);
+    throw new SkillLoadError(ERR_PATH_NOT_FOUND_2, `${path} (not a directory)`);
   }
 
   const skillPath = join(path, SKILL_FILENAME);
@@ -55,22 +55,22 @@ export function loadSkillFromPath(path: string): LoadedSkill {
 
   let skill_md: string;
   try {
-    skill_md = readFileSync(skillPath, "utf-8");
+    skill_md = readFileSync(skillPath, UTF8_ENCODING);
   } catch (err) {
-    if (isNodeErrnoException(err) && err.code === "EACCES") {
-      throw new SkillLoadError("ERR_PATH_DENIED", skillPath);
+    if (isNodeErrnoException(err) && err.code === EACCES_CODE) {
+      throw new SkillLoadError(ERR_PATH_DENIED_2, skillPath);
     }
-    throw new SkillLoadError("ERR_SKILL_MISSING", skillPath);
+    throw new SkillLoadError(ERR_SKILL_MISSING_2, skillPath);
   }
 
   let trigger_md: string;
   try {
-    trigger_md = readFileSync(triggerPath, "utf-8");
+    trigger_md = readFileSync(triggerPath, UTF8_ENCODING);
   } catch (err) {
-    if (isNodeErrnoException(err) && err.code === "EACCES") {
-      throw new SkillLoadError("ERR_PATH_DENIED", triggerPath);
+    if (isNodeErrnoException(err) && err.code === EACCES_CODE) {
+      throw new SkillLoadError(ERR_PATH_DENIED_2, triggerPath);
     }
-    throw new SkillLoadError("ERR_TRIGGER_MISSING", triggerPath);
+    throw new SkillLoadError(ERR_TRIGGER_MISSING_2, triggerPath);
   }
 
   // The canonical zombie name comes back in the install response after the
@@ -78,3 +78,10 @@ export function loadSkillFromPath(path: string): LoadedSkill {
   // fallback hint for human-readable CLI output if the server omits it.
   return { skill_md, trigger_md, fallback_name: basename(path) };
 }
+const EACCES_CODE = "EACCES" as const;
+const ERR_PATH_DENIED_2 = "ERR_PATH_DENIED" as const;
+const ERR_PATH_NOT_FOUND_2 = "ERR_PATH_NOT_FOUND" as const;
+const ERR_SKILL_MISSING_2 = "ERR_SKILL_MISSING" as const;
+const ERR_TRIGGER_MISSING_2 = "ERR_TRIGGER_MISSING" as const;
+const TYPE_STRING = "string" as const;
+const UTF8_ENCODING = "utf-8" as const;

@@ -25,11 +25,18 @@ interface ZombieListResponse {
   readonly cursor?: string | null;
 }
 
+const FIELD_NAME = "name" as const;
+const FIELD_STATUS = "status" as const;
+const TYPE_STRING = "string" as const;
+const FIELD_ZOMBIE_ID = "zombie_id" as const;
+
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
+
 const resolveWorkspaceOverride = (
   override: string | undefined,
 ): Effect.Effect<string, ConfigError | UnexpectedError, Workspaces> =>
   Effect.gen(function* () {
-    if (typeof override === "string" && override.length > 0) return override;
+    if (isString(override) && override.length > 0) return override;
     const workspaces = yield* Workspaces;
     const state = yield* workspaces.load;
     if (!state.current_workspace_id) {
@@ -49,8 +56,8 @@ const buildPath = (
   limit: string | undefined,
 ): string => {
   const qs = new URLSearchParams();
-  if (typeof cursor === "string" && cursor.length > 0) qs.set("cursor", cursor);
-  if (typeof limit === "string" && limit.length > 0) qs.set("limit", limit);
+  if (isString(cursor) && cursor.length > 0) qs.set("cursor", cursor);
+  if (isString(limit) && limit.length > 0) qs.set("limit", limit);
   const query = qs.toString();
   return query ? `${wsZombiesPath(wsId)}?${query}` : wsZombiesPath(wsId);
 };
@@ -93,14 +100,14 @@ export const listEffectFromFlags = (
 
     yield* output.printTable(
       [
-        { key: "name", label: "NAME" },
-        { key: "zombie_id", label: "ZOMBIE" },
-        { key: "status", label: "STATUS" },
+        { key: FIELD_NAME, label: "NAME" },
+        { key: FIELD_ZOMBIE_ID, label: "ZOMBIE" },
+        { key: FIELD_STATUS, label: "STATUS" },
       ],
       items.map((z) => ({
-        name: String(z["name"] ?? ""),
-        zombie_id: String(z["zombie_id"] ?? z["id"] ?? ""),
-        status: String(z["status"] ?? ""),
+        name: String(z[FIELD_NAME] ?? ""),
+        zombie_id: String(z[FIELD_ZOMBIE_ID] ?? z["id"] ?? ""),
+        status: String(z[FIELD_STATUS] ?? ""),
       })),
     );
     if (res.cursor) {

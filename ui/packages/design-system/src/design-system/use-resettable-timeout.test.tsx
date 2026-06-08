@@ -8,11 +8,11 @@ describe("useResettableTimeout", () => {
     const cb = vi.fn();
     const { result } = renderHook(() => useResettableTimeout());
     act(() => {
-      result.current.start(cb, 1000);
+      result.current.start(cb, MS_PER_SECOND);
     });
     expect(cb).not.toHaveBeenCalled();
     act(() => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(MS_PER_SECOND);
     });
     expect(cb).toHaveBeenCalledTimes(1);
   });
@@ -23,13 +23,13 @@ describe("useResettableTimeout", () => {
     const second = vi.fn();
     const { result } = renderHook(() => useResettableTimeout());
     act(() => {
-      result.current.start(first, 1000);
+      result.current.start(first, MS_PER_SECOND);
     });
     act(() => {
       vi.advanceTimersByTime(500);
     });
     act(() => {
-      result.current.start(second, 1000);
+      result.current.start(second, MS_PER_SECOND);
     });
     act(() => {
       vi.advanceTimersByTime(500);
@@ -48,7 +48,7 @@ describe("useResettableTimeout", () => {
     const cb = vi.fn();
     const { result } = renderHook(() => useResettableTimeout());
     act(() => {
-      result.current.start(cb, 1000);
+      result.current.start(cb, MS_PER_SECOND);
       result.current.cancel();
     });
     act(() => {
@@ -62,7 +62,7 @@ describe("useResettableTimeout", () => {
     const cb = vi.fn();
     const { result, unmount } = renderHook(() => useResettableTimeout());
     act(() => {
-      result.current.start(cb, 1000);
+      result.current.start(cb, MS_PER_SECOND);
     });
     unmount();
     act(() => {
@@ -95,3 +95,4 @@ describe("useResettableTimeout", () => {
     expect(second.cancel).toBe(first.cancel);
   });
 });
+const MS_PER_SECOND = 1000 as const;

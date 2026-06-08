@@ -129,5 +129,5 @@ export const mainLayerFor = (
     http,
     analytics,
     tracing,
-  );
+  ) as Layer.Layer<MainLayerServices>;
 };

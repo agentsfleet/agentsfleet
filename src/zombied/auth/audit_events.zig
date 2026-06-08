@@ -22,6 +22,7 @@ const clock = @import("common").clock;
 const logging = @import("log");
 const audit = @import("audit.zig");
 const trusted_ip = @import("middleware/trusted_client_ip.zig");
+const AUDIT_RECORD_EVENT = "audit_record";
 
 const audit_log = logging.scoped(.auth_audit);
 
@@ -68,7 +69,7 @@ pub fn emitSessionCreated(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CREATED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -95,7 +96,7 @@ pub fn emitSessionApproved(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_APPROVED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -123,7 +124,7 @@ pub fn emitSessionVerifyFailed(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_VERIFY_FAILED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -151,7 +152,7 @@ pub fn emitSessionVerified(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_VERIFIED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -176,7 +177,7 @@ pub fn emitSessionConsumed(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CONSUMED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -195,7 +196,7 @@ pub fn emitSessionConsumedReplay(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_CONSUMED_REPLAY,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -216,7 +217,7 @@ pub fn emitSessionAborted(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_ABORTED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,
@@ -240,7 +241,7 @@ pub fn emitSessionExpired(
 ) void {
     var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
     const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info("audit_record", .{
+    audit_log.info(AUDIT_RECORD_EVENT, .{
         .event = EV_SESSION_EXPIRED,
         .ts_ms = clock.nowMillis(),
         .session_id_hash = sid_hash,

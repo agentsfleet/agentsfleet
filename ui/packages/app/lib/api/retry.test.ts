@@ -72,7 +72,7 @@ describe("backoffDelay", () => {
       attempt: 1,
       baseDelayMs: 250,
       capDelayMs: 2000,
-      retryAfterMs: 1000,
+      retryAfterMs: MS_PER_SECOND,
       randomFn: () => 1, // maximizes jitter add
     });
     // Retry-After 1000ms + (1000 * 0.2 * 1) = 1200
@@ -343,3 +343,4 @@ describe("requestWithRetry — config", () => {
     }
   });
 });
+const MS_PER_SECOND = 1000 as const;

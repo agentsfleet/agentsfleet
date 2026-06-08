@@ -1,24 +1,25 @@
-// Unit tests for M11_001 errorResponse contract.
+// Unit tests for errorResponse behavior.
 //
 // Uses httpz.testing to exercise the real response path — correct HTTP status,
 // Content-Type: application/problem+json, and RFC 7807 JSON body shape.
 //
 // What is tested here (not in error_registry.zig):
-//   T1  — Known code → correct HTTP status in response
-//   T2  — Content-Type header is application/problem+json
-//   T3  — Body fields: docs_uri, title, detail, error_code, request_id all present
-//   T4  — error_code uses caller-supplied code, not UNKNOWN.code
-//   T5  — Unregistered code → 500 with caller's code in body
-//   T6  — detail and request_id pass through verbatim
+//   Known code -> correct HTTP status in response
+//   Content-Type header is application/problem+json
+//   Body fields: docs_uri, title, detail, error_code, request_id all present
+//   error_code uses caller-supplied code, not UNKNOWN.code
+//   Unregistered code -> 500 with caller's code in body
+//   detail and request_id pass through verbatim
 
 const std = @import("std");
 const httpz = @import("httpz");
 const common = @import("common.zig");
 const error_codes = @import("../../errors/error_registry.zig");
+const LONG_DETAIL_LENGTH = 1000;
 
-// ── T1: Known code → correct HTTP status ─────────────────────────────────────
+// Known code -> correct HTTP status.
 
-test "M11_001: UZ-AUTH-002 → HTTP 401 Unauthorized" {
+test "UZ-AUTH-002 returns HTTP 401 Unauthorized" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -26,7 +27,7 @@ test "M11_001: UZ-AUTH-002 → HTTP 401 Unauthorized" {
     try ht.expectStatus(401);
 }
 
-test "M11_001: UZ-INTERNAL-001 → HTTP 503 Service Unavailable" {
+test "UZ-INTERNAL-001 returns HTTP 503 Service Unavailable" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -34,7 +35,7 @@ test "M11_001: UZ-INTERNAL-001 → HTTP 503 Service Unavailable" {
     try ht.expectStatus(503);
 }
 
-test "M11_001: UZ-REQ-002 → HTTP 413 Payload Too Large" {
+test "UZ-REQ-002 returns HTTP 413 Payload Too Large" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -42,9 +43,9 @@ test "M11_001: UZ-REQ-002 → HTTP 413 Payload Too Large" {
     try ht.expectStatus(413);
 }
 
-// ── T2: Content-Type is application/problem+json ─────────────────────────────
+// Content-Type is application/problem+json.
 
-test "M11_001: Content-Type is application/problem+json" {
+test "Content-Type is application/problem+json" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -52,9 +53,9 @@ test "M11_001: Content-Type is application/problem+json" {
     try ht.expectHeader("Content-Type", "application/problem+json");
 }
 
-// ── T3 + T6: RFC 7807 body fields present and verbatim pass-through ──────────
+// Problem details body fields and verbatim pass-through.
 
-test "M11_001: body contains all required RFC 7807 fields" {
+test "body contains all required problem details fields" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -70,7 +71,7 @@ test "M11_001: body contains all required RFC 7807 fields" {
     try std.testing.expect(obj.get("request_id") != null);
 }
 
-test "M11_001: detail and request_id pass through verbatim" {
+test "detail and request_id pass through verbatim" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -83,9 +84,9 @@ test "M11_001: detail and request_id pass through verbatim" {
     try std.testing.expectEqualStrings("xreq-999", obj.get("request_id").?.string);
 }
 
-// ── T4: error_code is the caller-supplied code, not UNKNOWN.code ────────
+// error_code is the caller-supplied code, not UNKNOWN.code.
 
-test "M11_001: error_code in body is caller-supplied code, not UNKNOWN.code" {
+test "error_code in body is caller-supplied code, not UNKNOWN.code" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -102,9 +103,9 @@ test "M11_001: error_code in body is caller-supplied code, not UNKNOWN.code" {
     try std.testing.expect(!std.mem.eql(u8, error_codes.UNKNOWN.code, obj.get("error_code").?.string));
 }
 
-// ── T5: Unregistered code → 500, caller code preserved ───────────────────────
+// Unregistered code -> 500, caller code preserved.
 
-test "M11_001: unregistered code → HTTP 500 fallback" {
+test "unregistered code returns HTTP 500 fallback" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -112,9 +113,9 @@ test "M11_001: unregistered code → HTTP 500 fallback" {
     try ht.expectStatus(500);
 }
 
-// ── T2: Edge cases — empty / boundary inputs ─────────────────────────────────
+// Edge cases: empty and boundary inputs.
 
-test "M11_001 T2: empty detail string passes through without crashing" {
+test "empty detail string passes through without crashing" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -124,7 +125,7 @@ test "M11_001 T2: empty detail string passes through without crashing" {
     try std.testing.expectEqualStrings("", json.object.get("detail").?.string);
 }
 
-test "M11_001 T2: empty request_id string passes through without crashing" {
+test "empty request_id string passes through without crashing" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -134,7 +135,7 @@ test "M11_001 T2: empty request_id string passes through without crashing" {
     try std.testing.expectEqualStrings("", json.object.get("request_id").?.string);
 }
 
-test "M11_001 T2: very long detail (1000 chars) does not crash" {
+test "very long detail does not crash" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -142,10 +143,10 @@ test "M11_001 T2: very long detail (1000 chars) does not crash" {
     common.errorResponse(ht.res, error_codes.ERR_UNAUTHORIZED, long_detail, "req-t2c");
     try ht.expectStatus(401);
     const json = try ht.getJson();
-    try std.testing.expectEqual(@as(usize, 1000), json.object.get("detail").?.string.len);
+    try std.testing.expectEqual(@as(usize, LONG_DETAIL_LENGTH), json.object.get("detail").?.string.len);
 }
 
-test "M11_001 T2: docs_uri in body matches table entry (not constructed by caller)" {
+test "docs_uri in body matches table entry and is not caller-constructed" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -155,7 +156,7 @@ test "M11_001 T2: docs_uri in body matches table entry (not constructed by calle
     try std.testing.expectEqualStrings(expected_entry.docs_uri, json.object.get("docs_uri").?.string);
 }
 
-test "M11_001 T2: title in body matches table entry (caller cannot override)" {
+test "title in body matches table entry and caller cannot override" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -165,9 +166,9 @@ test "M11_001 T2: title in body matches table entry (caller cannot override)" {
     try std.testing.expectEqualStrings(expected_entry.title, json.object.get("title").?.string);
 }
 
-// ── T3: No nested 'error' wrapper — RFC 7807 flat body ───────────────────────
+// No nested error wrapper: problem details body is flat.
 
-test "M11_001 T3: body has no nested 'error' field (old format regression)" {
+test "body has no nested error field" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -177,7 +178,7 @@ test "M11_001 T3: body has no nested 'error' field (old format regression)" {
     try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("error"));
 }
 
-test "M11_001 T3: body has no nested 'message' field (old format regression)" {
+test "body has no nested message field" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
@@ -187,9 +188,9 @@ test "M11_001 T3: body has no nested 'message' field (old format regression)" {
     try std.testing.expectEqual(@as(?std.json.Value, null), json.object.get("message"));
 }
 
-// ── T11: Memory safety — repeated calls don't leak ───────────────────────────
+// Memory safety: repeated calls do not leak.
 
-test "M11_001 T11: 100 errorResponse calls with std.testing.allocator — no leaks" {
+test "repeated errorResponse calls with std.testing.allocator do not leak" {
     // httpz.testing.init uses a fresh arena per call; we verify no arena leak
     // by ensuring each call pair (init/deinit) is balanced.
     var i: usize = 0;

@@ -21,6 +21,9 @@ const protocol = @import("contract").protocol;
 const constants = @import("common");
 
 const logging = @import("log");
+
+const MS_PER_SECOND = 1000;
+
 const log = logging.scoped(.fleet_runners_list);
 
 const Hx = hx_mod.Hx;
@@ -310,7 +313,7 @@ test "collectItems: a mid-iteration transport error propagates (caller fails clo
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "b" } }, .fail_after = 1 };
-    try std.testing.expectError(error.TestTransport, collectItems(arena.allocator(), &rows, 1000));
+    try std.testing.expectError(error.TestTransport, collectItems(arena.allocator(), &rows, MS_PER_SECOND));
 }
 
 test "readItem: a mid-decode column error frees the slices duped before it" {
@@ -318,7 +321,7 @@ test "readItem: a mid-decode column error frees the slices duped before it" {
     // chain misses a dupe. fail_at=2 errors on sandbox_tier after id + host_id
     // are duped — both must be freed by readItem's errdefers.
     const fake = FakeRow{ .fail_at = 2 };
-    try std.testing.expectError(error.TestDecode, readItem(std.testing.allocator, fake, 1000));
+    try std.testing.expectError(error.TestDecode, readItem(std.testing.allocator, fake, MS_PER_SECOND));
 }
 
 test "parseLabels: a JSON array of strings parses to owned slices" {

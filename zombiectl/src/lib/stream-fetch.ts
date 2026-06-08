@@ -28,7 +28,7 @@ interface ErrorEnvelope {
 }
 
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
-  return value !== null && typeof value === "object";
+  return value !== null && typeof value === TYPE_OBJECT;
 }
 
 export async function streamFetch(
@@ -76,17 +76,17 @@ export async function streamFetch(
       if (done) break;
       buf += decoder.decode(value, { stream: true });
 
-      let boundary = buf.indexOf("\n\n");
+      let boundary = buf.indexOf(LITERAL);
       while (boundary !== -1) {
         const frame = buf.slice(0, boundary);
         buf = buf.slice(boundary + 2);
         const event = parseSseFrame(frame);
         if (event) onEvent(event);
-        boundary = buf.indexOf("\n\n");
+        boundary = buf.indexOf(LITERAL);
       }
     }
   } catch (err) {
-    if (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "AbortError") {
+    if (err !== null && typeof err === TYPE_OBJECT && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
     throw err;
@@ -110,3 +110,5 @@ function parseSseFrame(frame: string): SseEvent | null {
   if (!data) return null;
   try { return { type, data: JSON.parse(data) }; } catch { return { type, data }; }
 }
+const LITERAL = "\n\n" as const;
+const TYPE_OBJECT = "object" as const;

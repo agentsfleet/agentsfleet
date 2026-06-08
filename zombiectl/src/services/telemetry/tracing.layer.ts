@@ -12,14 +12,14 @@
 // usezombie's writes-to-stderr convention matches the rest of the CLI
 // where output.error → process.stderr.
 
-import { Effect, Layer, Option, Tracer } from "effect";
-import type { Exit, Context } from "effect";
+import { Effect, Layer, Option, Tracer, type Exit, type Context } from "effect";
 import { makeDebugConsoleExporter } from "./exporters/debug-console.ts";
 import { exportSpanToNdjson, initNdjsonExporter } from "./exporters/ndjson.ts";
 import { TelemetryRuntime } from "./runtime.service.ts";
 import { Tracing } from "./tracing.service.ts";
 
 const HEX_CHARS = "0123456789abcdef";
+const CONSENT_GRANTED = "granted" as const;
 
 function generateHexId(length: number): string {
   let result = "";
@@ -99,13 +99,13 @@ export const tracingLayer = Layer.effect(
       process.stderr.write(line);
     });
 
-    if (telemetryRuntime.consent === "granted") {
+    if (telemetryRuntime.consent === CONSENT_GRANTED) {
       initNdjsonExporter(telemetryRuntime.tracesDir);
     }
 
     function onSpanEnd(span: ExportableSpan): void {
       if (!span.sampled) return;
-      if (telemetryRuntime.consent === "granted") {
+      if (telemetryRuntime.consent === CONSENT_GRANTED) {
         exportSpanToNdjson(span, telemetryRuntime.tracesDir);
       }
       if (telemetryRuntime.showDebug) {
@@ -135,4 +135,5 @@ export const tracingLayer = Layer.effect(
       },
     });
   }),
+
 );

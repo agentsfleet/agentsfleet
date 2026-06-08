@@ -5,6 +5,7 @@ const std = @import("std");
 const jwks = @import("jwks.zig");
 const claims = @import("claims.zig");
 const logging = @import("log");
+const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.auth);
 
@@ -49,7 +50,7 @@ pub const Config = struct {
     issuer: ?[]const u8 = null,
     audience: ?[]const u8 = null,
     inline_jwks_json: ?[]const u8 = null,
-    cache_ttl_ms: i64 = 6 * 60 * 60 * 1000,
+    cache_ttl_ms: i64 = 6 * 60 * 60 * MS_PER_SECOND,
 };
 
 pub const Verifier = struct {

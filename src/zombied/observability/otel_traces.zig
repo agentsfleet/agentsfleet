@@ -25,7 +25,7 @@ const log = logging.scoped(.otel_traces);
 // ---------------------------------------------------------------------------
 
 const MAX_NAME_LEN: usize = 128;
-const MAX_ATTR_COUNT: usize = 12; // M27_002: expanded for run.id, workspace.id, agent.id, stage.id
+const MAX_ATTR_COUNT: usize = 12;
 const MAX_ATTR_KEY_LEN: usize = 32;
 const MAX_ATTR_VAL_LEN: usize = 64;
 
@@ -60,7 +60,7 @@ const Ring = struct {
     tail: std.atomic.Value(usize) = std.atomic.Value(usize).init(0),
     dropped: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
 
-    fn push(self: *Ring, entry: SpanEntry) bool {
+    pub fn push(self: *Ring, entry: SpanEntry) bool {
         const head = self.head.load(.acquire);
         const tail = self.tail.load(.acquire);
         const next_head = (head + 1) % BUFFER_CAPACITY;
@@ -73,7 +73,7 @@ const Ring = struct {
         return true;
     }
 
-    fn pop(self: *Ring) ?SpanEntry {
+    pub fn pop(self: *Ring) ?SpanEntry {
         const head = self.head.load(.acquire);
         const tail = self.tail.load(.acquire);
         if (head == tail) return null;
@@ -82,7 +82,7 @@ const Ring = struct {
         return entry;
     }
 
-    fn len(self: *Ring) usize {
+    pub fn len(self: *Ring) usize {
         const head = self.head.load(.acquire);
         const tail = self.tail.load(.acquire);
         if (head >= tail) return head - tail;
@@ -259,145 +259,11 @@ fn flushBatch() void {
     otel_logs.postWithBasicAuth(alloc, cfg, OTLP_TRACES_PATH, body) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+pub const TestRing = Ring;
+pub const TEST_BUFFER_CAPACITY = BUFFER_CAPACITY;
+pub const TEST_MAX_ATTR_COUNT = MAX_ATTR_COUNT;
+pub const TEST_MAX_NAME_LEN = MAX_NAME_LEN;
 
-test "ring buffer push and pop round-trip" {
-    const alloc = std.testing.allocator;
-    const ring = try alloc.create(Ring);
-    defer alloc.destroy(ring);
-    ring.* = .{};
-
-    const ctx = trace.TraceContext.generate();
-    // pin test: literal is the contract
-    var entry = buildSpan(ctx, "test.span", 1000, 2000);
-    try std.testing.expect(addAttr(&entry, "key1", "val1"));
-
-    try std.testing.expect(ring.push(entry));
-    try std.testing.expectEqual(@as(usize, 1), ring.len());
-
-    const popped = ring.pop();
-    try std.testing.expect(popped != null);
-    // pin test: literal is the contract
-    try std.testing.expectEqual(@as(u64, 1000), popped.?.start_ns);
-    try std.testing.expectEqual(@as(u64, 2000), popped.?.end_ns);
-    try std.testing.expectEqualStrings("test.span", popped.?.name[0..popped.?.name_len]);
-    try std.testing.expectEqual(@as(u8, 1), popped.?.attr_count);
-    try std.testing.expectEqualStrings("key1", popped.?.attrs[0].key[0..popped.?.attrs[0].key_len]);
-    try std.testing.expectEqualStrings("val1", popped.?.attrs[0].val[0..popped.?.attrs[0].val_len]);
-    try std.testing.expectEqual(@as(usize, 0), ring.len());
-}
-
-test "ring buffer pop returns null when empty" {
-    const alloc = std.testing.allocator;
-    const ring = try alloc.create(Ring);
-    defer alloc.destroy(ring);
-    ring.* = .{};
-    try std.testing.expect(ring.pop() == null);
-}
-
-test "ring buffer drops when full" {
-    const alloc = std.testing.allocator;
-    const ring = try alloc.create(Ring);
-    defer alloc.destroy(ring);
-    ring.* = .{};
-
-    const ctx = trace.TraceContext.generate();
-    const entry = buildSpan(ctx, "x", 0, 0);
-
-    var i: usize = 0;
-    while (i < BUFFER_CAPACITY - 1) : (i += 1) {
-        try std.testing.expect(ring.push(entry));
-    }
-    try std.testing.expect(!ring.push(entry));
-    try std.testing.expectEqual(@as(u64, 1), ring.dropped.load(.acquire));
-}
-
-test "enqueueSpan is no-op when exporter not installed" {
-    const ctx = trace.TraceContext.generate();
-    const entry = buildSpan(ctx, "noop", 0, 0);
-    enqueueSpan(entry);
-}
-
-test "buildSpan sets fields correctly for root span" {
-    const ctx = trace.TraceContext.generate();
-    const entry = buildSpan(ctx, "root.op", 100, 200);
-    try std.testing.expect(!entry.has_parent);
-    try std.testing.expectEqualStrings("root.op", entry.name[0..entry.name_len]);
-    try std.testing.expectEqual(@as(u64, 100), entry.start_ns);
-    try std.testing.expectEqual(@as(u64, 200), entry.end_ns);
-    try std.testing.expectEqual(@as(u8, 0), entry.attr_count);
-}
-
-test "buildSpan sets parent for child span" {
-    const root = trace.TraceContext.generate();
-    const child = root.child();
-    const entry = buildSpan(child, "child.op", 100, 200);
-    try std.testing.expect(entry.has_parent);
-    try std.testing.expectEqualSlices(u8, &root.span_id, &entry.parent_span_id);
-}
-
-test "addAttr respects max count" {
-    const ctx = trace.TraceContext.generate();
-    var entry = buildSpan(ctx, "attrs", 0, 0);
-    var i: u8 = 0;
-    while (i < MAX_ATTR_COUNT) : (i += 1) {
-        try std.testing.expect(addAttr(&entry, "k", "v"));
-    }
-    try std.testing.expect(!addAttr(&entry, "overflow", "x"));
-    try std.testing.expectEqual(@as(u8, MAX_ATTR_COUNT), entry.attr_count);
-}
-
-test "SpanEntry truncates oversized name" {
-    const ctx = trace.TraceContext.generate();
-    const long_name = "a" ** 200;
-    const entry = buildSpan(ctx, long_name, 0, 0);
-    try std.testing.expectEqual(@as(u8, MAX_NAME_LEN), entry.name_len);
-}
-
-// M28_001: Root and child spans must share the same trace_id for Tempo waterfall.
-test "child span shares parent trace_id (Tempo waterfall invariant)" {
-    const root = trace.TraceContext.generate();
-    const child = root.child();
-
-    const root_span = buildSpan(root, "run.execute", 100, 200);
-    const child_span = buildSpan(child, "agent.call", 110, 190);
-
-    // Both spans must have the same trace_id.
-    try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
-    // Child must reference root as parent.
-    try std.testing.expect(child_span.has_parent);
-    try std.testing.expectEqualSlices(u8, &root_span.span_id, &child_span.parent_span_id);
-    // Root must NOT have a parent.
-    try std.testing.expect(!root_span.has_parent);
-}
-
-// M28_001: Manually constructed TraceContext (like root span fix) preserves trace_id.
-test "manual TraceContext with external trace_id produces aligned spans" {
-    // Simulate what the root span defer block does:
-    // use ctx.trace_id (external) + root_tc.span_id (generated).
-    const external_trace_id = "abcdef0123456789abcdef0123456789";
-    const root_tc = trace.TraceContext.generate();
-
-    var manual_tc: trace.TraceContext = undefined;
-    @memcpy(&manual_tc.trace_id, external_trace_id);
-    manual_tc.span_id = root_tc.span_id;
-    manual_tc.parent_span_id = null;
-
-    const root_span = buildSpan(manual_tc, "run.execute", 0, 100);
-
-    // Now build a child the way emitAgentSpan does:
-    var child_tc: trace.TraceContext = undefined;
-    @memcpy(&child_tc.trace_id, external_trace_id);
-    const child_gen = trace.TraceContext.generate();
-    child_tc.span_id = child_gen.span_id;
-    child_tc.parent_span_id = root_tc.span_id;
-
-    const child_span = buildSpan(child_tc, "agent.call", 10, 90);
-
-    // Invariant: same trace_id, child points to root.
-    try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
-    try std.testing.expectEqualSlices(u8, &root_span.span_id, &child_span.parent_span_id);
-    try std.testing.expectEqualStrings(external_trace_id, &root_span.trace_id);
+test {
+    _ = @import("otel_traces_test.zig");
 }

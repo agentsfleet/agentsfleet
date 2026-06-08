@@ -166,8 +166,8 @@ const renderHuman = (
           event_id: e.event_id ?? "",
           posture: e.posture ?? "",
           model: e.model ?? "",
-          in_tok: e.token_count_input != null ? String(e.token_count_input) : "—",
-          out_tok: e.token_count_output != null ? String(e.token_count_output) : "—",
+          in_tok: e.token_count_input != null ? String(e.token_count_input) : LITERAL,
+          out_tok: e.token_count_output != null ? String(e.token_count_output) : LITERAL,
           receive: formatDollars(e.receive_nanos),
           stage: formatDollars(e.stage_nanos),
           total: formatDollars(e.total_nanos),
@@ -235,3 +235,4 @@ export const billingShowEffectFromArgs = (
     }
     yield* renderHuman(billing, events, nextCursor);
   });
+const LITERAL = "—" as const;

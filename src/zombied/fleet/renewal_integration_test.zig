@@ -24,6 +24,7 @@ const renewal = @import("renewal.zig");
 const ALLOC = std.testing.allocator;
 
 const auth_mw = @import("../auth/middleware/mod.zig");
+const MS_PER_SECOND = 1_000;
 
 // These tests drive `renewal.renew` directly against the DB, not through the
 // HTTP middleware chain, so no policy wiring is needed — the harness just gives
@@ -132,8 +133,8 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     try seedRunner(conn);
     // Fence holds (token == seq). created_at recent → cap not reached. Both rows
     // start at an about-to-expire deadline.
-    try seedAffinity(conn, 5, NOW_MS - 1_000);
-    try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    try seedAffinity(conn, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     defer teardown(conn);
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
@@ -163,14 +164,14 @@ test "renew on a lease whose fence was bumped by a reclaim returns lost" {
     // A reclaim bumped the affinity fence past the lease's token: lease holds
     // token 5, the live slot is at seq 6 → the lease is no longer the holder.
     try seedAffinity(conn, 6, NOW_MS + 30_000);
-    try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     defer teardown(conn);
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     try std.testing.expectEqual(renewal.RenewOutcome.lost, outcome);
     // Neither row moved.
     const after = try readDeadlines(conn);
-    try std.testing.expectEqual(@as(i64, NOW_MS - 1_000), after.lease);
+    try std.testing.expectEqual(@as(i64, NOW_MS - MS_PER_SECOND), after.lease);
     try std.testing.expectEqual(@as(i64, NOW_MS + 30_000), after.affinity);
 }
 
@@ -190,8 +191,8 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     // Fence holds, but created_at is older than MAX_RUNTIME_MS, so the cap
     // (created_at + MAX) is already <= now → no extension is legal.
     const created = NOW_MS - constants.MAX_RUNTIME_MS - 1_000;
-    try seedAffinity(conn, 5, NOW_MS - 1_000);
-    try seedLease(conn, 5, created, NOW_MS - 1_000);
+    try seedAffinity(conn, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(conn, 5, created, NOW_MS - MS_PER_SECOND);
     defer teardown(conn);
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
@@ -201,8 +202,8 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     );
     // Cap reached → rows untouched.
     const after = try readDeadlines(conn);
-    try std.testing.expectEqual(@as(i64, NOW_MS - 1_000), after.lease);
-    try std.testing.expectEqual(@as(i64, NOW_MS - 1_000), after.affinity);
+    try std.testing.expectEqual(@as(i64, NOW_MS - MS_PER_SECOND), after.lease);
+    try std.testing.expectEqual(@as(i64, NOW_MS - MS_PER_SECOND), after.affinity);
 }
 
 test "renew clamps the new deadline to the hard cap when TTL would overshoot it" {
@@ -222,8 +223,8 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     // legal (cap > now) but clamps to the cap, not the full TTL increment.
     const cap_offset: i64 = constants.LEASE_TTL_MS - 5_000; // < LEASE_TTL_MS
     const created = NOW_MS + cap_offset - constants.MAX_RUNTIME_MS;
-    try seedAffinity(conn, 5, NOW_MS - 1_000);
-    try seedLease(conn, 5, created, NOW_MS - 1_000);
+    try seedAffinity(conn, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(conn, 5, created, NOW_MS - MS_PER_SECOND);
     defer teardown(conn);
 
     const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});

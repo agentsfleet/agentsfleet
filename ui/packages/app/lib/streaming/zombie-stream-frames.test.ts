@@ -22,8 +22,8 @@ function row(over: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     checkpoint_id: null,
     resumes_event_id: null,
-    created_at: 1000,
-    updated_at: 1000,
+    created_at: MS_PER_SECOND,
+    updated_at: MS_PER_SECOND,
     ...over,
   } as EventRow;
 }
@@ -53,7 +53,7 @@ describe("mergeBackfill", () => {
   it("drops rows already present and sorts the union oldest-first", () => {
     const prev = [evt({ id: "e2", createdAt: new Date(2000) })];
     const merged = mergeBackfill(prev, [
-      row({ event_id: "e1", created_at: 1000, response_text: "a" }),
+      row({ event_id: "e1", created_at: MS_PER_SECOND, response_text: "a" }),
       row({ event_id: "e2", created_at: 2000 }), // already in prev → skipped
     ]);
     expect(merged.map((e) => e.id)).toEqual(["e1", "e2"]);
@@ -145,3 +145,4 @@ describe("applyLiveFrame", () => {
     expect(bystanderOut?.status).toBe("received");
   });
 });
+const MS_PER_SECOND = 1000 as const;

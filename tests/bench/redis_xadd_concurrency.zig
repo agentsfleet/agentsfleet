@@ -11,6 +11,9 @@
 
 const std = @import("std");
 const app = @import("bench_app");
+
+const NANOS_PER_MILLISECOND = 1_000_000.0;
+
 const queue = app.queue;
 const Client = queue.Client;
 const clock = app.clock;
@@ -57,7 +60,7 @@ fn writeSummary(writer: anytype, total_ops: usize, elapsed_ns: u64, ctxs: []cons
     try writer.print("bench-redis xadd_concurrency: threads={d} ops_per_thread={d} total={d}\n", .{ N_THREADS, N_OPS_PER_THREAD, total_ops });
     try writer.print("  elapsed_ms={d:.2} ops_per_sec={d:.2}\n", .{ elapsed_ms, ops_per_sec });
     try writer.print("  per_thread_ms:", .{});
-    for (ctxs) |c| try writer.print(" t{d}={d:.2}", .{ c.tid, @as(f64, @floatFromInt(c.elapsed_ns)) / 1_000_000.0 });
+    for (ctxs) |c| try writer.print(" t{d}={d:.2}", .{ c.tid, @as(f64, @floatFromInt(c.elapsed_ns)) / NANOS_PER_MILLISECOND });
     try writer.print("\n", .{});
 }
 

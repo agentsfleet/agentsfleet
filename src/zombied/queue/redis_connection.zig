@@ -264,9 +264,9 @@ fn dialAndAuth(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config) !
 
     if (cfg.password) |pwd| {
         const argv: []const []const u8 = if (cfg.username) |usr|
-            &.{ "AUTH", usr, pwd }
+            &.{ REDIS_AUTH_COMMAND, usr, pwd }
         else
-            &.{ "AUTH", pwd };
+            &.{ REDIS_AUTH_COMMAND, pwd };
         try writeArgvToTransport(&transport, argv);
         var resp = try redis_protocol.readRespValue(alloc, transport.reader());
         defer resp.deinit(alloc);
@@ -299,4 +299,7 @@ const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
+
+const REDIS_AUTH_COMMAND = "AUTH";
+
 const log = logging.scoped(.redis_queue);

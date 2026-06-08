@@ -25,6 +25,12 @@ import { ValidationError, type CliError } from "../errors/index.ts";
 
 // <$1 left → warn on reset.
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
+const TYPE_NUMBER = "number" as const;
+const TYPE_STRING = "string" as const;
+const LITERAL = "—" as const;
+
+const isNumber = (value: unknown): value is number => typeof value === TYPE_NUMBER;
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 interface ProviderResponse {
   readonly mode?: string;
@@ -57,17 +63,17 @@ const renderProviderTable = (
         { key: "value", label: "VALUE" },
       ],
       [
-        { field: "mode", value: res?.mode ?? "—" },
-        { field: "provider", value: res?.provider ?? "—" },
-        { field: "model", value: res?.model ?? "—" },
+        { field: "mode", value: res?.mode ?? LITERAL },
+        { field: "provider", value: res?.provider ?? LITERAL },
+        { field: "model", value: res?.model ?? LITERAL },
         {
           field: "context_cap_tokens",
           value:
-            typeof res?.context_cap_tokens === "number"
+            isNumber(res?.context_cap_tokens)
               ? String(res.context_cap_tokens)
-              : "—",
+              : LITERAL,
         },
-        { field: "credential_ref", value: res?.credential_ref ?? "—" },
+        { field: "credential_ref", value: res?.credential_ref ?? LITERAL },
       ],
     );
   });
@@ -94,7 +100,7 @@ export const tenantProviderShowEffect: Effect.Effect<
 
   // The handler surfaces resolver failures via an `error` field — surface
   // it before the table so the operator sees the broken state immediately.
-  if (typeof res.error === "string" && res.error.length > 0) {
+  if (isString(res.error) && res.error.length > 0) {
     const ref = res.credential_ref ?? "(unknown)";
     const msg =
       res.error === "credential_missing"
@@ -184,7 +190,7 @@ const lowBalanceWarning: Effect.Effect<
     .pipe(Effect.orElseSucceed(() => null));
   if (billing === null) return;
   const balance =
-    typeof billing.balance_nanos === "number" ? billing.balance_nanos : null;
+    isNumber(billing.balance_nanos) ? billing.balance_nanos : null;
   if (balance !== null && balance < LOW_BALANCE_THRESHOLD_NANOS) {
     yield* output.info("");
     yield* output.error(

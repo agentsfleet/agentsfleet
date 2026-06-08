@@ -10,6 +10,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const crypto_store = @import("../secrets/crypto_store.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const IGNORED_ERROR_FMT = "ignored: {s}";
 
 /// Set `ENCRYPTION_MASTER_KEY` so `crypto_store.store/load` can operate.
 /// Safe to call once per test. Value is a fixed test key — not a secret.
@@ -94,10 +95,10 @@ pub fn insertWebhookCredential(
 
 /// Delete all rows this test created. Idempotent.
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
-    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 /// Convenience: build a trigger config JSON for a given source. Optionally

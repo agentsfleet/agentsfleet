@@ -35,6 +35,7 @@ const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
 const metering = @import("../zombie/metering.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
+const LEASE_NOT_FOUND_DETAIL = "No lease matches this lease_id for the runner";
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_renew);
@@ -62,7 +63,7 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
     // BEFORE the query, so the `::uuid` cast can never be the source of a load
     // error. Any error from loadLease below is then a genuine transient DB fault.
     if (!id_format.isUuidV7(lease_id)) {
-        hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, "No lease matches this lease_id for the runner");
+        hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, LEASE_NOT_FOUND_DETAIL);
         return;
     }
     // Distinguish a transient DB fault (retryable 5xx — the runner renews again
@@ -72,7 +73,7 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
         common.internalDbError(hx.res, hx.req_id);
         return;
     }) orelse {
-        hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, "No lease matches this lease_id for the runner");
+        hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, LEASE_NOT_FOUND_DETAIL);
         return;
     };
     if (!std.mem.eql(u8, lease.status, protocol.RUNNER_LEASE_STATUS_ACTIVE)) {

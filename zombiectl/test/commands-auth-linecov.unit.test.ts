@@ -134,7 +134,7 @@ describe("authStatusEffect token summary derivation", () => {
     expect(t["iss"]).toBe("https://issuer.test");
     expect(t["aud"]).toBe("zombie-cli");
     expect(t["sub"]).toBe("user_42");
-    expect(t["exp_at"]).toBe(new Date(FUTURE_EXP_SEC * 1000).toISOString());
+    expect(t["exp_at"]).toBe(new Date(FUTURE_EXP_SEC * MS_PER_SECOND).toISOString());
     expect(t["expired"]).toBe(false);
   });
 
@@ -142,7 +142,7 @@ describe("authStatusEffect token summary derivation", () => {
     const { json } = await runJson(makeJwt({ sub: "u", exp: PAST_EXP_SEC }));
     const t = tokenOf(json);
     expect(t["expired"]).toBe(true);
-    expect(t["exp_at"]).toBe(new Date(PAST_EXP_SEC * 1000).toISOString());
+    expect(t["exp_at"]).toBe(new Date(PAST_EXP_SEC * MS_PER_SECOND).toISOString());
   });
 
   test("nulls exp_at/expired when exp is absent or non-finite", async () => {
@@ -212,3 +212,4 @@ describe("authStatusEffect token summary derivation", () => {
     expect(rec.stdout.some((l) => l.includes("ok: authenticated"))).toBe(true);
   });
 });
+const MS_PER_SECOND = 1000 as const;

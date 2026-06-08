@@ -94,7 +94,7 @@ test("decodeTokenPayload returns parsed payload object", () => {
   assert.ok(result, "expected non-null decoded payload");
   assert.equal(result.sub, "user_1");
   assert.equal(result.role, "admin");
-  assert.equal(result.iat, 1000);
+  assert.equal(result.iat, TEST_TOKEN_COUNT);
 });
 
 test("decodeTokenPayload returns null for non-string input", () => {
@@ -111,3 +111,4 @@ test("decodeTokenPayload returns null for malformed base64", () => {
 test("decodeTokenPayload returns null for token with fewer than 2 parts", () => {
   assert.equal(decodeTokenPayload("single-segment"), null);
 });
+const TEST_TOKEN_COUNT = 1000 as const;

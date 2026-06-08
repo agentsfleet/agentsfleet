@@ -143,21 +143,21 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   // ── User commands ────────────────────────────────────────────────
 
   program
-    .command("login")
+    .command(COMMAND_LOGIN)
     .description("Authenticate via browser")
     .option("--token <token>", "Authenticate with this token directly, no browser (prefer ZOMBIE_TOKEN or piped stdin to keep it out of shell history)")
     .option("--token-name <label>", "Label for this session, shown on the approval page and in `auth status` (default: platform family)")
     .option("--force", "Skip the existing-credential prompt and overwrite", false)
-    .action(actionFor("login", (frame) => runHandler(state, frame, handlers.login)));
+    .action(actionFor(COMMAND_LOGIN, (frame) => runHandler(state, frame, handlers.login)));
 
   program
-    .command("logout")
+    .command(COMMAND_LOGOUT)
     .description("Sign out — revoke every active session on this account and clear local credentials")
     .option(
       "--all",
       "rejected — revocation of every active session is the default; passing this flag exits with a validation error",
     )
-    .action(actionFor("logout", (frame) => runHandler(state, frame, handlers.logout)));
+    .action(actionFor(COMMAND_LOGOUT, (frame) => runHandler(state, frame, handlers.logout)));
 
   const auth = program.command("auth").description("Inspect authentication state");
   auth
@@ -166,9 +166,9 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .action(actionFor("auth.status", (frame) => runHandler(state, frame, handlers.auth.status)));
 
   program
-    .command("doctor")
+    .command(COMMAND_DOCTOR)
     .description("Diagnose CLI configuration and connectivity")
-    .action(actionFor("doctor", (frame) => runHandler(state, frame, handlers.doctor)));
+    .action(actionFor(COMMAND_DOCTOR, (frame) => runHandler(state, frame, handlers.doctor)));
 
   buildWorkspaceTree(program, handlers, state);
   buildAgentTree(program, handlers, state);
@@ -189,7 +189,7 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .description("Create a new workspace")
     .action(actionFor("workspace.add", (frame) => runHandler(state, frame, handlers.workspace.add)));
 
-  ws.command("list")
+  ws.command(COMMAND_LIST)
     .description("List workspaces")
     .action(actionFor("workspace.list", (frame) => runHandler(state, frame, handlers.workspace.list)));
 
@@ -216,22 +216,22 @@ function buildAgentTree(program: Command, handlers: Handlers, state: ProgramStat
     .command("agent")
     .description("Manage external agent API keys");
 
-  agent.command("add")
+  agent.command(COMMAND_ADD)
     .description("Mint an agent API key for the workspace")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
-    .option("--zombie <id>", "Zombie ID this key is bound to", parseIdOption)
+    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
+    .option(FLAG_ZOMBIE_ID, "Zombie ID this key is bound to", parseIdOption)
     .option("--name <name>", "Human-readable agent name")
     .option("--description <desc>", "Optional description")
     .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
 
-  agent.command("list")
+  agent.command(COMMAND_LIST)
     .description("List external agent API keys")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .action(actionFor("agent.list", (frame) => runHandler(state, frame, handlers.agent.list)));
 
   agent.command("delete <agent_id>")
     .description("Revoke an external agent API key")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
 }
 
@@ -240,14 +240,14 @@ function buildGrantTree(program: Command, handlers: Handlers, state: ProgramStat
     .command("grant")
     .description("Manage integration grants");
 
-  grant.command("list")
+  grant.command(COMMAND_LIST)
     .description("List integration grants for a zombie")
-    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
   grant.command("delete <grant_id>")
     .description("Revoke an integration grant")
-    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
@@ -259,11 +259,11 @@ function buildTenantTree(program: Command, handlers: Handlers, state: ProgramSta
     .command("provider")
     .description("Manage tenant LLM provider posture");
 
-  provider.command("show")
+  provider.command(COMMAND_SHOW)
     .description("Show the active provider config")
     .action(actionFor("tenant.provider.show", (frame) => runHandler(state, frame, handlers.tenant.provider.show)));
 
-  provider.command("add")
+  provider.command(COMMAND_ADD)
     .description("Use a self-managed credential")
     .option("--credential <name>", "Named credential from the workspace vault")
     .option("--model <name>", "Override the default model identifier")
@@ -279,9 +279,19 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
     .command("billing")
     .description("Tenant billing dashboard");
 
-  billing.command("show")
+  billing.command(COMMAND_SHOW)
     .description("Plan, balance, and recent events")
     .option("--limit <n>", "Number of recent events to show", parseIntOption(BILLING_LIMIT_BOUNDS))
     .option("--cursor <token>", "next_cursor from a previous page")
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
+const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
+const FLAG_ZOMBIE_ID = "--zombie <id>" as const;
+const WORKSPACE_ID = "Workspace ID" as const;
+const ZOMBIE_ID = "Zombie ID" as const;
+const COMMAND_ADD = "add" as const;
+const COMMAND_DOCTOR = "doctor" as const;
+const COMMAND_LIST = "list" as const;
+const COMMAND_LOGIN = "login" as const;
+const COMMAND_LOGOUT = "logout" as const;
+const COMMAND_SHOW = "show" as const;

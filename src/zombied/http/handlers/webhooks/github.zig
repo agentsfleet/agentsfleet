@@ -33,6 +33,7 @@ const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
 const normalizer = @import("../../../zombie/webhook/normalizer/github.zig");
 const filter = @import("github_filter.zig");
+const BYTES_PER_KIB = 1024;
 
 const log = logging.scoped(.http_webhook_github);
 
@@ -268,7 +269,7 @@ fn recordAccepted(
 const testing = std.testing;
 
 test "handler constants pin" {
-    try testing.expectEqual(@as(usize, 1024 * 1024), MAX_BODY_BYTES);
+    try testing.expectEqual(@as(usize, BYTES_PER_KIB * BYTES_PER_KIB), MAX_BODY_BYTES);
     try testing.expectEqual(@as(u32, 72 * 60 * 60), GITHUB_DEDUP_TTL_SECONDS);
     try testing.expectEqualStrings("webhook:github", ACTOR);
     try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);

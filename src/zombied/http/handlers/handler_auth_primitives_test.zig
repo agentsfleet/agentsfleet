@@ -19,6 +19,7 @@ const common = @import("common.zig");
 const rbac = @import("../../auth/rbac.zig");
 const workspace_guards = @import("../workspace_guards.zig");
 const error_codes = @import("../../errors/error_registry.zig");
+const BYTES_PER_KIB = 1024;
 
 // --- AuthPrincipal default role field ---
 
@@ -94,7 +95,7 @@ test "ERR_UNSUPPORTED_ROLE error code is UZ-AUTH-010" {
 // --- MAX_BODY_SIZE constant ---
 
 test "MAX_BODY_SIZE is 2 MB" {
-    try std.testing.expectEqual(@as(usize, 2 * 1024 * 1024), common.MAX_BODY_SIZE);
+    try std.testing.expectEqual(@as(usize, 2 * BYTES_PER_KIB * BYTES_PER_KIB), common.MAX_BODY_SIZE);
 }
 
 // --- Module import resolution for all changed handler files ---

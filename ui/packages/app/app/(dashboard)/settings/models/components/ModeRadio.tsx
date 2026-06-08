@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { Label, RadioGroupItem } from "@usezombie/design-system";
 import type { ProviderMode } from "@/lib/types";
 
@@ -9,40 +9,43 @@ export type ModeRadioProps = {
   checked: boolean;
   label: string;
   description: string;
+  meta?: string;
+  children?: ReactNode;
 };
 
-/**
- * Single radio card in the Mode picker. Pure presentation — no state, no
- * fetch — so the parent ProviderSelector can be tested for orchestration
- * concerns without mounting browser-only APIs. Wraps the design-system
- * `<RadioGroupItem>` (Radix-backed) so the parent `<RadioGroup>` gets
- * arrow-key navigation, roving tabindex, and `data-state="checked"` for
- * free.
- *
- * Selection is owned by the parent `<RadioGroup onValueChange>`. We
- * deliberately do NOT add an `onClick` handler here — Radix already fires
- * `onValueChange` on click + keyboard, and adding a sibling `onClick`
- * would double-fire the parent's setter (harmless under React 18 batching,
- * but ambiguous if `onValueChange` ever grows side effects).
- */
 export default function ModeRadio({
   value,
   checked,
   label,
   description,
+  meta,
+  children,
 }: ModeRadioProps) {
   const id = useId();
   return (
-    <Label
-      htmlFor={id}
+    <div
       data-active={checked}
-      className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-200 ease-out hover:bg-accent/40 data-[active=true]:border-primary data-[active=true]:bg-accent/30"
+      className="overflow-hidden rounded-md border border-border bg-card transition-colors duration-200 ease-out hover:border-border-strong data-[active=true]:border-primary"
     >
-      <RadioGroupItem id={id} value={value} className="mt-0.5" />
-      <span className="space-y-0.5">
-        <span className="block font-medium">{label}</span>
-        <span className="block text-xs font-normal text-muted-foreground">{description}</span>
-      </span>
-    </Label>
+      <Label htmlFor={id} className="flex cursor-pointer items-start gap-3 p-4">
+        <RadioGroupItem id={id} value={value} className="mt-0.5" />
+        <span className="min-w-0 flex-1 space-y-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{label}</span>
+            {meta ? (
+              <span className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-label uppercase tracking-wide text-muted-foreground">
+                {meta}
+              </span>
+            ) : null}
+          </span>
+          <span className="block text-xs font-normal text-muted-foreground">{description}</span>
+        </span>
+      </Label>
+      {checked && children ? (
+        <div className="border-t border-border bg-muted/20 px-4 py-4 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+          {children}
+        </div>
+      ) : null}
+    </div>
   );
 }
