@@ -31,9 +31,12 @@ primary_region = "iad"
   API_HTTP_WORKERS = "2"
 
 [[vm]]
-  # 4 shared vCPUs / 4gb. CONFIRM these strings match the running prod machines
-  # before the next deploy -- a mismatch reshapes prod hardware. Machine COUNT
-  # (2 -> 3 machines) is set by flyctl scale / the release pipeline, not here.
+  # 4 shared vCPUs / 4gb, matching the owner-confirmed prod slice. Fly applies
+  # [[vm]] to every machine on `fly deploy`, so a mismatch would resize prod
+  # in-place mid-rolling-deploy. Machine COUNT (2 -> 3) is set by flyctl scale /
+  # the release pipeline, not here.
+  # TODO(orly): remove this gate once a deploy confirms the live machines are
+  #   already shared-cpu-4x / 4gb -- verify with `flyctl machine list -a zombied-prod`.
   size = "shared-cpu-4x"
   memory = "4gb"
 
