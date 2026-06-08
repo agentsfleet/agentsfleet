@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:5173";
+const REPORTER_LINE = "line" as const;
+const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -40,5 +42,3 @@ export default defineConfig({
       },
   outputDir: "playwright-results",
 });
-const REPORTER_LINE = "line" as const;
-const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;
