@@ -10,6 +10,7 @@ const Pool = pool_mod.Pool;
 const Conn = pool_mod.Conn;
 const parseUrl = pool_mod.parseUrl;
 const roleEnvVarName = pool_mod.roleEnvVarName;
+const TEST_RUN_MS: i64 = 1_000;
 
 test "parseUrl parses host, port, db, credentials" {
     const alloc = std.testing.allocator;
@@ -166,8 +167,8 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     defer alloc.free(pid);
 
     _ = try db_ctx.conn.exec(
-        "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', MS_PER_SECOND)",
-        .{tid},
+        "INSERT INTO t6_run_transitions (id, run_id, ts) VALUES ($1::uuid, 'run-1', $2)",
+        .{ tid, TEST_RUN_MS },
     );
     _ = try db_ctx.conn.exec(
         "INSERT INTO t6_usage_ledger (id, run_id) VALUES ($1::uuid, 'run-1')",

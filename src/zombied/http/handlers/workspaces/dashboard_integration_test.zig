@@ -73,7 +73,7 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'DashTest', $2, $2) ON CONFLICT (tenant_id) DO NOTHING
-    , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
+    , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
         \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING

@@ -223,7 +223,7 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
 fn reportRevokeFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
+    , .{ key_id, tenant_id }) catch {
         hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });
@@ -254,7 +254,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
         \\DELETE FROM core.api_keys
         \\WHERE id = $1::uuid AND tenant_id = $2::uuid AND active = FALSE
         \\RETURNING id::text
-    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
+    , .{ key_id, tenant_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -276,7 +276,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
 fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
+    , .{ key_id, tenant_id }) catch {
         hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });

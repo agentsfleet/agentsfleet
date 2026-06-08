@@ -116,8 +116,8 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{ EVENT_ID, PRIMARY_RUN_MS });
-    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{ EVENT_ID, PRIMARY_RUN_MS });
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});

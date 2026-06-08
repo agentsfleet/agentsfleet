@@ -203,7 +203,7 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
         \\SET balance_nanos = 0,
         \\    balance_exhausted_at = EXCLUDED.balance_exhausted_at,
         \\    updated_at = EXCLUDED.updated_at
-    , .{ TOKEN_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
+    , .{ TOKEN_TENANT_ID, now_ms });
 
     const r = try (try h.get("/v1/tenants/me/billing").bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
