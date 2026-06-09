@@ -52,7 +52,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         \\  SELECT id, last_seen_at FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
         \\), bumped AS (
         \\  UPDATE fleet.runners r
-        \\  SET last_seen_at = $2, updated_at = $2
+        \\  SET last_seen_at = $2::bigint, updated_at = $2::bigint
         \\  FROM locked
         \\  WHERE r.id = locked.id
         \\  RETURNING locked.last_seen_at
@@ -62,7 +62,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         \\SELECT $3::uuid, $1::uuid, $4::text, $2::bigint,
         \\       jsonb_build_object($5::text, last_seen_at), NULL, $2::bigint
         \\FROM bumped
-        \\WHERE last_seen_at = $6 OR ($2::bigint - last_seen_at) > $7
+        \\WHERE last_seen_at = $6::bigint OR ($2::bigint - last_seen_at) > $7::bigint
     , .{
         runner_id,
         now_ms,

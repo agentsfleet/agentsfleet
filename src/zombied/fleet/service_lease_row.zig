@@ -62,9 +62,9 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         \\)
         \\INSERT INTO fleet.runner_events
         \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\SELECT $18::uuid, runner_id, $19, $17,
-        \\       jsonb_build_object($20, id::text, $21, zombie_id::text, $22, event_id, $23, $24),
-        \\       NULL, $17
+        \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
+        \\       jsonb_build_object($20::text, id::text, $21::text, zombie_id::text, $22::text, event_id, $23::text, $24::text),
+        \\       NULL, $17::bigint
         \\FROM inserted
     , .{
         lease_id,

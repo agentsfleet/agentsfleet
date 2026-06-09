@@ -115,9 +115,9 @@ fn appendLeaseReleased(
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_events
         \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4,
-        \\        jsonb_build_object($5, $6, $7, $8, $9, $10),
-        \\        NULL, $4)
+        \\VALUES ($1::uuid, $2::uuid, $3::text, $4::bigint,
+        \\        jsonb_build_object($5::text, $6::text, $7::text, $8::text, $9::text, $10::text),
+        \\        NULL, $4::bigint)
     , .{
         event_row_id,
         runner_id,

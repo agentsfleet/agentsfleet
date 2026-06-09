@@ -117,18 +117,18 @@ fn updateState(
         \\  FOR UPDATE
         \\), updated AS (
         \\  UPDATE fleet.runners r
-        \\  SET admin_state = $2, updated_at = $3
+        \\  SET admin_state = $2::text, updated_at = $3::bigint
         \\  FROM current_state c
         \\  WHERE r.id = c.id
         \\    AND ($4::bool OR c.from_admin_state <> $5)
-        \\    AND c.from_admin_state <> $2
+        \\    AND c.from_admin_state <> $2::text
         \\  RETURNING r.id::text, c.from_admin_state
         \\), event AS (
         \\  INSERT INTO fleet.runner_events
         \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
-        \\  SELECT $6::uuid, id::uuid, $7, $3,
-        \\         jsonb_build_object($8, from_admin_state, $9, $2),
-        \\         NULL, $3
+        \\  SELECT $6::uuid, id::uuid, $7::text, $3::bigint,
+        \\         jsonb_build_object($8::text, from_admin_state, $9::text, $2::text),
+        \\         NULL, $3::bigint
         \\  FROM updated
         \\  RETURNING id
         \\)
