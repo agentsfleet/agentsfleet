@@ -6,9 +6,15 @@ import { ERROR_CODE } from "@/lib/errors";
 import {
   listRunners,
   createRunner,
+  updateRunnerAdminState,
+  listRunnerEvents,
   type RunnerListResponse,
   type CreatedRunner,
+  type RunnerAdminAction,
+  type RunnerAdminStateUpdate,
+  type RunnerEventsResponse,
   type ListParams,
+  type EventListParams,
   type SandboxTier,
 } from "@/lib/api/runners";
 
@@ -37,4 +43,18 @@ export async function createRunnerAction(body: {
   labels: string[];
 }): Promise<ActionResult<CreatedRunner>> {
   return asPlatformAdmin(() => withToken((t) => createRunner(t, body)));
+}
+
+export async function updateRunnerAdminStateAction(
+  runnerId: string,
+  action: RunnerAdminAction,
+): Promise<ActionResult<RunnerAdminStateUpdate>> {
+  return asPlatformAdmin(() => withToken((t) => updateRunnerAdminState(t, runnerId, action)));
+}
+
+export async function listRunnerEventsAction(
+  runnerId: string,
+  params: EventListParams,
+): Promise<ActionResult<RunnerEventsResponse>> {
+  return asPlatformAdmin(() => withToken((t) => listRunnerEvents(t, runnerId, params)));
 }
