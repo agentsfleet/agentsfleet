@@ -18,8 +18,9 @@
 --   index-eligible when the runner's labels are bound as a constant array.
 
 CREATE TABLE IF NOT EXISTS core.zombies (
-    id              UUID PRIMARY KEY,
-    CONSTRAINT ck_zombies_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid             UUID GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_zombies_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id              UUID NOT NULL UNIQUE,
     workspace_id    UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     name            TEXT NOT NULL,
     source_markdown TEXT NOT NULL,

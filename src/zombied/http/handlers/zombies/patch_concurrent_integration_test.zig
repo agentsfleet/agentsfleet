@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const clock = @import("common").clock;
+const id_format = @import("../../../types/id_format.zig");
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 
@@ -290,13 +291,18 @@ const Worker = struct {
         };
         defer h.releaseConn(conn);
         const now = clock.nowMillis();
+        var uid_buf: [36]u8 = undefined;
+        const uid = id_format.formatUuidV7(&uid_buf) catch |err| {
+            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
+            return;
+        };
         _ = conn.exec(
             \\INSERT INTO core.zombie_events
-            \\  (zombie_id, event_id, workspace_id, actor, event_type, status,
+            \\  (uid, zombie_id, event_id, workspace_id, actor, event_type, status,
             \\   request_json, created_at, updated_at)
-            \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'message', 'received',
-            \\        '{}'::jsonb, $4, $4)
-        , .{ zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
+            \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'message', 'received',
+            \\        '{}'::jsonb, $5, $5)
+        , .{ uid, zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
             slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = clock.nowMillis() - t0 };
             return;
         };

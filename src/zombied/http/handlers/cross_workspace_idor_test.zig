@@ -547,7 +547,7 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
 
     // Seed an agent key in TEST_WORKSPACE_ID for this test only. A zombie
     // record is also required because agent_keys.zombie_id has a FK.
-    const agent_id = "agent_m26_204_test";
+    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
     const zombie_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
@@ -556,8 +556,8 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
         \\ON CONFLICT DO NOTHING
     , .{ zombie_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.agent_keys (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
-        \\VALUES ($1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
+        \\INSERT INTO core.agent_keys (uid, agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
         \\ON CONFLICT (agent_id) DO NOTHING
     , .{ agent_id, TEST_WORKSPACE_ID, zombie_for_agent });
     srv.pool.release(conn);
@@ -592,7 +592,7 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
 
     // Seed zombie + pending grant. Revoke path requires the grant.status != 'revoked'.
     const zombie_for_grant = "0195b4ba-8d3a-7f13-8abc-2b3e1ecafe02";
-    const grant_id = "grant_m26_204";
+    const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6205";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
@@ -601,8 +601,8 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     , .{ zombie_for_grant, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
+        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
         \\ON CONFLICT (grant_id) DO NOTHING
     , .{ grant_id, zombie_for_grant });
     srv.pool.release(conn);

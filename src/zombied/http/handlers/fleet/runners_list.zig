@@ -44,6 +44,11 @@ const RunnerItem = struct {
     created_at: i64,
 };
 
+const PageRows = struct {
+    items: []RunnerItem,
+    total: i64,
+};
+
 const ListQuery = struct {
     page: i32 = 1,
     page_size: i32 = pagination.DEFAULT_PAGE_SIZE,
@@ -90,25 +95,51 @@ pub fn innerListFleetRunners(hx: Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     const now_ms = constants.clock.nowMillis();
-    const items = fetchPage(hx, conn, q, now_ms) orelse return;
-    const total = fetchTotal(hx, conn) orelse return;
+    const page = fetchPage(hx, conn, q, now_ms) orelse return;
 
     hx.ok(.ok, .{
-        .items = items,
-        .total = total,
+        .items = page.items,
+        .total = page.total,
         .page = q.page,
         .page_size = q.page_size,
     });
 }
 
-fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
+fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
     // order_sql is from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc, "SELECT r.id::text, r.host_id, r.sandbox_tier, r.labels::text, r.last_seen_at, r.created_at, " ++
-        "EXISTS (SELECT 1 FROM fleet.runner_leases l WHERE l.runner_id = r.id " ++
-        "AND l.status = $1 AND l.lease_expires_at > $2) " ++
-        "FROM fleet.runners r ORDER BY {s} LIMIT $3 OFFSET $4", .{q.order_sql}) catch {
+    const list_sql = std.fmt.allocPrint(hx.alloc,
+        \\WITH filtered AS (
+        \\    SELECT r.id, r.host_id, r.sandbox_tier, r.labels, r.last_seen_at, r.created_at,
+        \\           EXISTS (
+        \\               SELECT 1
+        \\               FROM fleet.runner_leases l
+        \\               WHERE l.runner_id = r.id
+        \\                 AND l.status = $1
+        \\                 AND l.lease_expires_at > $2
+        \\           ) AS has_live_lease
+        \\    FROM fleet.runners r
+        \\),
+        \\page AS (
+        \\    SELECT r.id::text, r.host_id, r.sandbox_tier, r.labels::text, r.last_seen_at, r.created_at,
+        \\           r.has_live_lease, COUNT(*) OVER()::bigint AS total, false AS count_only,
+        \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
+        \\    FROM filtered r
+        \\    ORDER BY {s}
+        \\    LIMIT $3 OFFSET $4
+        \\),
+        \\total_row AS (
+        \\    SELECT ''::text, ''::text, ''::text, '[]'::text, 0::bigint, 0::bigint,
+        \\           false, COUNT(*)::bigint, true, NULL::bigint
+        \\    FROM filtered
+        \\    WHERE NOT EXISTS (SELECT 1 FROM page)
+        \\)
+        \\SELECT * FROM page
+        \\UNION ALL
+        \\SELECT * FROM total_row
+        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
+    , .{ q.order_sql, q.order_sql }) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
         return null;
     };
@@ -137,17 +168,24 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?[]RunnerItem {
 /// `next() !?Row`; tests drive every branch with a fake iterator. `alloc` is the
 /// caller-owned request arena, so partial items on the error path are reclaimed
 /// when that arena is released.
-fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) ![]RunnerItem {
+fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) !PageRows {
     var items: std.ArrayListUnmanaged(RunnerItem) = .empty;
     errdefer items.deinit(alloc);
+    var total: i64 = 0;
     while (try rows.next()) |row| {
+        const row_total = try row.get(i64, 7);
+        if (total == 0) total = row_total;
+        if (try row.get(bool, 8)) {
+            total = row_total;
+            continue;
+        }
         const item = readItem(alloc, row, now_ms) catch |err| {
             log.warn("row_decode_skipped", .{ .err = @errorName(err) });
             continue;
         };
         try items.append(alloc, item);
     }
-    return items.toOwnedSlice(alloc);
+    return .{ .items = try items.toOwnedSlice(alloc), .total = total };
 }
 
 /// Build one item, duping borrowed row slices into the request arena (they
@@ -183,55 +221,6 @@ fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, text, .{ .allocate = .alloc_always }) catch &.{};
 }
 
-fn fetchTotal(hx: Hx, conn: anytype) ?i64 {
-    var q = PgQuery.from(conn.query(
-        \\SELECT COUNT(*)::bigint FROM fleet.runners
-    , .{}) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    });
-    defer q.deinit();
-    // COUNT(*) always yields exactly one row; any error or absent row is a real
-    // DB failure → 500, not a fabricated total derived from the page length.
-    const row = (q.next() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    }) orelse {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    };
-    return row.get(i64, 0) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    };
-}
-
-// ── Tests (pure liveness derivation; no DB) ──────────────────────────────────
-
-test "deriveLiveness: never-seen sentinel is registered regardless of lease" {
-    const now: i64 = 1_000_000;
-    try std.testing.expectEqual(protocol.RunnerLiveness.registered, deriveLiveness(protocol.RUNNER_LAST_SEEN_NEVER, false, now));
-    // A never-seen runner can't actually hold a lease, but registered wins the
-    // ordering either way — proves the sentinel is checked first.
-    try std.testing.expectEqual(protocol.RunnerLiveness.registered, deriveLiveness(protocol.RUNNER_LAST_SEEN_NEVER, true, now));
-}
-
-test "deriveLiveness: a live lease is busy even when last_seen is stale" {
-    const now: i64 = 10_000_000;
-    const stale = now - constants.RUNNER_OFFLINE_AFTER_MS - 1; // would be offline without the lease
-    try std.testing.expectEqual(protocol.RunnerLiveness.busy, deriveLiveness(stale, true, now));
-}
-
-test "deriveLiveness: fresh heartbeat without a lease is online; stale is offline" {
-    const now: i64 = 10_000_000;
-    const fresh = now - 1;
-    const at_threshold = now - constants.RUNNER_OFFLINE_AFTER_MS; // inclusive → still online
-    const stale = now - constants.RUNNER_OFFLINE_AFTER_MS - 1;
-    try std.testing.expectEqual(protocol.RunnerLiveness.online, deriveLiveness(fresh, false, now));
-    try std.testing.expectEqual(protocol.RunnerLiveness.online, deriveLiveness(at_threshold, false, now));
-    try std.testing.expectEqual(protocol.RunnerLiveness.offline, deriveLiveness(stale, false, now));
-}
-
 // ── Row-iteration error paths (fault-injected via a fake iterator) ───────────
 //
 // fetchPage's real transport is pg.Result; here a scriptable FakeRow + FakeRows
@@ -247,6 +236,8 @@ const FakeRow = struct {
     last_seen_at: i64 = 0,
     created_at: i64 = 0,
     has_live_lease: bool = false,
+    total: i64 = 1,
+    count_only: bool = false,
     fail_at: ?usize = null, // inject a decode error at this column index
 
     fn get(self: *const FakeRow, comptime T: type, col: usize) !T {
@@ -263,10 +254,12 @@ const FakeRow = struct {
         if (T == i64) return switch (col) {
             4 => self.last_seen_at,
             5 => self.created_at,
+            7 => self.total,
             else => unreachable,
         };
         if (T == bool) return switch (col) {
             6 => self.has_live_lease,
+            8 => self.count_only,
             else => unreachable,
         };
         unreachable;
@@ -293,8 +286,10 @@ test "collectItems: a clean read returns every row in order" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "b" } } };
-    const items = try collectItems(arena.allocator(), &rows, 1000);
+    const page = try collectItems(arena.allocator(), &rows, 1000);
+    const items = page.items;
     try std.testing.expectEqual(@as(usize, 2), items.len);
+    try std.testing.expectEqual(@as(i64, 1), page.total);
     try std.testing.expectEqualStrings("a", items[0].id);
     try std.testing.expectEqualStrings("b", items[1].id);
 }
@@ -303,10 +298,20 @@ test "collectItems: a row that fails to decode is skipped; the rest survive" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var rows = FakeRows{ .rows = &.{ .{ .id = "a" }, .{ .id = "bad", .fail_at = 0 }, .{ .id = "c" } } };
-    const items = try collectItems(arena.allocator(), &rows, 1000);
+    const page = try collectItems(arena.allocator(), &rows, 1000);
+    const items = page.items;
     try std.testing.expectEqual(@as(usize, 2), items.len);
     try std.testing.expectEqualStrings("a", items[0].id);
     try std.testing.expectEqualStrings("c", items[1].id);
+}
+
+test "collectItems: count-only sentinel preserves total for empty pages" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var rows = FakeRows{ .rows = &.{.{ .total = 42, .count_only = true }} };
+    const page = try collectItems(arena.allocator(), &rows, 1000);
+    try std.testing.expectEqual(@as(usize, 0), page.items.len);
+    try std.testing.expectEqual(@as(i64, 42), page.total);
 }
 
 test "collectItems: a mid-iteration transport error propagates (caller fails closed)" {
@@ -336,4 +341,8 @@ test "parseLabels: malformed JSONB degrades to an empty set, not an error" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     try std.testing.expectEqual(@as(usize, 0), parseLabels(arena.allocator(), "{not valid").len);
+}
+
+test {
+    _ = @import("runners_list_test.zig");
 }

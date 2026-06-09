@@ -56,8 +56,14 @@ pub fn isUuidV7(id: []const u8) bool {
 }
 
 pub fn allocUuidV7(alloc: std.mem.Allocator) ![]const u8 {
+    var buf: [36]u8 = undefined;
+    const id = try formatUuidV7(&buf);
+    return alloc.dupe(u8, id);
+}
+
+pub fn formatUuidV7(buf: *[36]u8) ![]const u8 {
     var raw: [16]u8 = undefined;
-    try constants.secureRandomBytes(&raw);
+    try constants.secureRandomBytes(raw[6..]);
 
     const ts_ms: u64 = @intCast(clock.nowMillis());
     raw[0] = @intCast((ts_ms >> 40) & 0xff);
@@ -73,7 +79,7 @@ pub fn allocUuidV7(alloc: std.mem.Allocator) ![]const u8 {
     raw[8] = (raw[8] & 0x3f) | 0x80;
 
     const hex = std.fmt.bytesToHex(raw, .lower);
-    return std.fmt.allocPrint(alloc, "{s}-{s}-{s}-{s}-{s}", .{
+    return std.fmt.bufPrint(buf, "{s}-{s}-{s}-{s}-{s}", .{
         hex[0..8],
         hex[8..12],
         hex[12..16],

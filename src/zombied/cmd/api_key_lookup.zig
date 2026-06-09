@@ -34,7 +34,7 @@ pub fn lookup(
     defer self.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        \\SELECT id::text, tenant_id::text, created_by::text, active
+        \\SELECT uid::text, tenant_id::text, created_by::text, active
         \\FROM core.api_keys
         \\WHERE key_hash = $1
         \\LIMIT 1
