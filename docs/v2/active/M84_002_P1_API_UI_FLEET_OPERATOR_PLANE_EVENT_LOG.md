@@ -8,7 +8,7 @@
 **Priority:** P1 — operators can't take a host out of rotation or audit fleet history; the read-only list (M84_001) shows *now* but nothing past or actionable.
 **Categories:** API, UI
 **Batch:** B2 — after M84_001 (the read list + derived liveness it builds on must land first).
-**Branch:** feat/m84-fleet-operator-plane
+**Branch:** feat/m84-fleet-operator-plane-fresh
 **Depends on:** M84_001 (the `GET /v1/fleet/runners` read + derived liveness + dashboard surface this extends). Composes with M85_001 (eligibility filter narrows the reassignment re-lease set) but does not require it.
 **Provenance:** agent-generated (Indy CTO consult, Jun 04 2026 — authored as a design artifact in PR `feat/m84-dashboard-runner-enrollment`; **not implemented there**). Realises the operator plane + reassignment deferred from M80_006 §1/§2 after its design study.
 
@@ -19,7 +19,7 @@
 ## Implementing agent — read these first
 
 1. `docs/architecture/roadmap.md` (the "Fleet operator plane + proactive reassignment" section) — the design study that carved this out: the all-runners-down hold, the reassignment-eligibility problem, why `RUNNER_STATUS_{cordoned,revoked}` + `UZ-RUN-009` were left **unbuilt** so the design wasn't foreclosed. This spec builds them.
-2. `src/zombied/cmd/serve_runner_lookup.zig` — the runner-auth lookup that gates on `status == 'active'`; renaming to `admin_state` + adding `cordoned`/`revoked`/`draining`/`drained` makes this the revoke mechanism (`admin_state != 'active'` → 401).
+2. `src/zombied/cmd/serve_runner_lookup.zig` — the runner-auth lookup that gates on `admin_state == 'active'`; adding `cordoned`/`revoked`/`draining`/`drained` makes this the revoke mechanism (`admin_state != 'active'` → 401).
 3. `src/zombied/http/handlers/runner/{register,heartbeat,lease,report}.zig` + `src/zombied/fleet/{assign,reclaim}.zig` — the existing **writes** the event log hooks (registered / lease_acquired / lease_released / reclaim) and the affinity slot the sweeper expires for reassignment.
 4. `docs/v2/done/M84_001_*` (the prior enrollment spec it builds on) — the derived-liveness model (`registered/online/busy/offline`) + `GET /v1/fleet/runners` this extends with mutation + history; `last_seen_at=0` sentinel.
 5. `docs/REST_API_DESIGN_GUIDELINES.md` + `ui/packages/app/app/(dashboard)/settings/api-keys/components/RevokeConfirm.tsx` — the `PATCH` route conventions + the destructive-confirm UI to mirror for cordon/revoke.
@@ -30,7 +30,7 @@
 
 - **PR title (eventual):** Fleet operator plane — cordon/drain/revoke runners + immutable event history
 - **Intent (one sentence):** Let a platform admin take a runner out of rotation (cordon → drain → revoke) from the dashboard, and answer "what has this runner done / when was it last busy / how long offline" from an append-only event log — without bloating the current-state model into a Kubernetes-style status object.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent + `ASSUMPTIONS I'M MAKING: …`. Key assumptions: (1) `status`→`admin_state` (typed enum, **not** JSONB); (2) liveness stays **derived** (M84_001), never stored; (3) history is `fleet.runner_events` (append-only), not a status field; (4) the sweeper both emits offline events and drives heartbeat-lapse reassignment (one job, not two). A mismatch → STOP and reconcile.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent + `ASSUMPTIONS I'M MAKING: …`. Key assumptions: (1) `status`→`admin_state` (typed enum, **not** JSONB); (2) liveness stays **derived** (M84_001), never stored; (3) history is `fleet.runner_events` (append-only), not a status field; (4) the sweeper is audit-first for heartbeat lapse and drives admin-state reassignment where no heartbeat timeout exists. A mismatch → STOP and reconcile.
 
 ---
 
@@ -61,7 +61,7 @@
 
 ## Overview
 
-**Goal (testable):** A platform admin cordons a runner (`PATCH …/{id}` → `admin_state=cordoned`); it stops receiving new leases but finishes in-flight work; draining then revoking sets `admin_state=revoked` so the runner's next call gets `401 UZ-RUN-009`; every transition (registered / online / offline / lease_acquired / lease_released / cordoned / drained / revoked) lands an immutable `fleet.runner_events` row answerable by `GET …/{id}/events`; a runner whose heartbeat lapses is swept offline and its affinity expired so its work re-leases to a healthy host.
+**Goal (testable):** A platform admin cordons a runner (`PATCH …/{id}` → `admin_state=cordoned`); because runner auth admits only `active`, the runner's next plane call gets `401 UZ-RUN-009`, and any active leases stay fenced until normal lease expiry or §4's admin-driven reassignment expires their affinity. Draining/drained/revoked are explicit operator intents on the same non-active gate; every transition (registered / online / offline / lease_acquired / lease_released / cordoned / drained / revoked) lands an immutable `fleet.runner_events` row answerable by `GET …/{id}/events`.
 
 **Problem:** After M84_001 an operator can *see* the fleet but can't *act* on it (no way to cordon a misbehaving host, drain it, or revoke a leaked `zrn_`) and can't *audit* it (the derived snapshot can't answer "when was it last busy", "how many runs this period", "how long offline"). A dead runner's work also waits on the lease TTL backstop rather than being proactively reassigned.
 
@@ -98,10 +98,10 @@ Operator lifecycle — `PATCH /v1/fleet/runners/{id}` (platformAdmin · idempote
       ┌────────┐  action:cordon   ┌──────────┐  action:drain   ┌─────────┐
       │ active │ ───────────────► │ cordoned │ ──────────────► │draining │
       └────────┘                  └──────────┘                 └─────────┘
-          ▲                       no NEW leases;               in-flight
-          │                       in-flight finishes           work drains
-          │                       (still heartbeats →               │
-          │                        liveness unaffected)             ▼
+          ▲                       no runner-plane calls;       admin-driven
+          │                       active leases stay fenced    reassignment
+          │                       until expiry / §4                 │
+          │                                                           ▼
           │                                                   ┌─────────┐
           │                                                   │ drained │
           │                                                   └─────────┘
@@ -186,9 +186,9 @@ Rename the overloaded `status` to `admin_state` and expand its values (active|co
 
 ### §2 — Operator-plane mutation (`PATCH /v1/fleet/runners/{id}`)
 
-Platform-admin-gated cordon → drain → revoke. Cordon stops new leases; in-flight work finishes; revoke sets `admin_state=revoked` → the runner's next call is `401 UZ-RUN-009`. **Implementation default:** idempotent PATCH (re-cordoning a cordoned runner is a no-op success).
+Platform-admin-gated cordon → drain → revoke. Any non-active state blocks the runner plane via `401 UZ-RUN-009`; active leases remain fenced and are picked up by normal lease expiry or §4's admin-driven reassignment. **Implementation default:** idempotent PATCH (re-cordoning a cordoned runner is a no-op success).
 
-- **Dimension 2.1** — cordon → no new lease claims for that runner; in-flight lease unaffected → Test `cordon stops new leases keeps in-flight`.
+- **Dimension 2.1** — cordon → no new runner-plane calls for that runner; active lease rows stay fenced for expiry / §4 reassignment → Test `cordon blocks runner plane keeps lease fenced`.
 - **Dimension 2.2** — revoke → runner's next authed call returns `401 UZ-RUN-009` → Test `revoke 401s the runner plane`.
 - **Dimension 2.3** — the mutation is platform-admin-gated; tenant admin / `zmb_t_` → `403 UZ-AUTH-021` → Test `operator mutation is platform-admin-gated`.
 
@@ -250,8 +250,8 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Revoke a runner mid-lease | operator revokes a busy host | in-flight lease's fenced report still settles or is rejected by fence; the next authed call → `401 UZ-RUN-009`; work re-leases (§4). |
-| Cordon then host keeps heartbeating | host unaware | heartbeats still bump `last_seen_at` (liveness), but no new lease is granted; admin_state stays cordoned. |
+| Revoke a runner mid-lease | operator revokes a busy host | the next authed runner-plane call → `401 UZ-RUN-009`; the active lease stays fenced until normal expiry or §4 reassignment, and a stale holder's late report is still rejected by the fence. |
+| Cordon then host keeps heartbeating | host unaware | heartbeat is rejected by the non-active auth gate; liveness stops advancing and later derives offline, while `admin_state` stays cordoned. |
 | All runners down during sweep | no healthy target | work **holds** (unclaimed, no error/dead-letter) until capacity returns (§4.2). |
 | Event write fails | DB error mid-transaction | the state write + its event share a transaction → both roll back; no half-written history. |
 | Non-platform-admin mutates | wrong role | `403 UZ-AUTH-021`; nothing changes; UI action not rendered (§2.3/§5). |
@@ -280,14 +280,14 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `runner auth admits only active admin state` | active → 200; cordoned/revoked → 401. |
 | 1.2 | regression | `no orphaned status references` | grep `\.status`/`RUNNER_STATUS_ACTIVE` in fleet paths → 0 stale. |
-| 2.1 | integration | `cordon stops new leases keeps in-flight` | cordon → no new claim; existing lease still reports. |
+| 2.1 | integration | `cordon blocks runner plane keeps lease fenced` | cordon → next lease/report/heartbeat call returns `401 UZ-RUN-009`; any existing active lease row remains fenced for expiry / §4 reassignment. |
 | 2.2 | integration | `revoke 401s the runner plane` | revoke → next runner call `401 UZ-RUN-009`. |
 | 2.3 | integration | `operator mutation is platform-admin-gated` | tenant admin / `zmb_t_` PATCH → `403 UZ-AUTH-021`. |
 | 3.1 | integration | `state writes append events` | register/lease-acquire/cordon → one typed event each in the same statement/txn; report → best-effort `lease_released` (logged on failure, non-atomic by design). |
 | 3.2 | integration | `event history answers last-busy and counts` | `GET …/events` → last `lease_acquired`, window count. |
 | 4.1 | integration | `stale runner swept and work reassigned` | stale `last_seen` → offline event + affinity expired → re-leased. |
 | 4.2 | integration | `reassignment holds when no eligible target` | no live runner → work unclaimed, no error; returns → claimed. |
-| 4.3 | integration | `liveness derives active lease set without singular column` | runner with 0/1/N active leases → `busy`/`available` correct; no runner-level lease column exists. |
+| 4.3 | integration | `liveness derives active lease set without singular column` | runner with 0/1/N active leases → `busy`/`active` correct; no runner-level lease column exists. |
 | 4.4 | integration | `concurrent sweepers emit one offline event` | N replicas sweep the same stale runner → exactly one `runner_offline` row (others `ON CONFLICT DO NOTHING`). |
 | 5.1 | e2e | `dashboard cordon revoke updates state` | admin cordons/revokes → badge reflects `admin_state`. |
 | 5.2 | e2e/component | `dashboard shows runner activity` | event timeline renders for a runner. |
@@ -346,7 +346,7 @@ gitleaks detect 2>&1 | tail -3
 - **Builds the M80_006 deferral** — `roadmap.md`'s "Fleet operator plane + proactive reassignment" (the cordon/drain/revoke surface, `RUNNER_STATUS_{cordoned,revoked}`, `UZ-RUN-009`, and heartbeat-lapse reassignment) was deferred after a design study; this is that spec.
 - **Re-scope (Jun 08 2026) — `current_lease_id` dropped; "busy" stays derived.** The original draft proposed a singular `fleet.runners.current_lease_id` column as a cheap busy-marker + reassignment target. M88_002's worker pool makes a runner hold **0..N** concurrent leases, so a singular column is fundamentally wrong (there is no single "current" lease). Ratified with Indy (ChatGPT + CTO review): `runner_leases` is the sole assignment truth; `busy = EXISTS(active lease)` and `active = COUNT(active)` **derive** from it — no column, no counter, no drift, no migration tear-out when M88_002 lands. The capacity predicate `available = worker_count − active` is the *direction* (a capacity-based scheduler) but is **out of scope here**: no spec transports a runner-reported `worker_count` (the heartbeat body is empty, M88_002), and this workstream has no scheduler — capacity-aware placement is M85_001. A materialized active-count is likewise deferred (for scheduler scale only, if ever). This removed one migration (`schema/0NN_runner_current_lease.sql`) and Dimension 4.3's column-tracking test. (Adversarial review Jun 09 caught the dangling `worker_count` reference — fixed by scoping capacity out, keeping only the two derivable signals.)
 - **Sweeper single-flight — X (unique constraint) chosen over Y (CAS column) + advisory lock (Jun 08 2026, Orly CTO review, ratified Indy).** Under N `zombied` replicas every replica runs the liveness sweeper, so the `runner_offline` audit event must be exactly-once per offline episode (the reassignment side-effect is already lease-fenced via `reclaim.zig`). **Chosen (X):** a partial unique index on `fleet.runner_events` keyed by the stale `last_seen_at` (the offline-episode idempotency key) — `INSERT … ON CONFLICT DO NOTHING RETURNING`; the winning replica emits + drives reassignment. **Rejected:** an advisory lock (serializes the sweeper across replicas, defeating horizontal scale) and a CAS on a stored `fleet.runners.offline_notified_at` column (reintroduces the runtime-shadow the `current_lease_id` drop removed; discipline-enforced, not DB-enforced; `approval_gate`'s CAS flips *real state*, this would be pure dedup bookkeeping). The idempotency key lives on the append-only event table — where idempotency keys belong — leaving `fleet.runners` column-free. Key correctness: immutable while dead (no heartbeat), distinct across episodes (revival bumps `last_seen_at`).
-- **§1 implemented (Jun 08 2026) — teardown-rebuild rename, not an ALTER migration.** VERSION is 0.37.0 (major 0 < 2), so `check-schema-gate` forbids `ALTER`/`DROP` — the `status`→`admin_state` rename is an **in-place edit of `021_fleet_runners.sql`** (and §4's sweeper index lands in-place in `022`), not new migration files. The ORP sweep was wider than first scoped: **12 test seeds** (not 3) plus 3 production sites (register insert, runnerBearer lookup, `GET /me`) referenced `fleet.runners.status`; all swept, `RUNNER_STATUS_ACTIVE` removed (0 refs). `SelfResponse.status` wire field **kept** (sourced from the renamed column) — renaming it ripples cross-binary to the runner daemon, out of this spec's blast radius; `docs/AUTH.md` gate prose updates at DOCUMENT stage. `AdminState` is a typed enum; `ADMIN_STATE_ACTIVE` derives from it via `@tagName` (UFS). §1 verified GREEN (DB integration + cross-compile both linux); commit pending the UFS whole-file-cascade pin on the touched test seeds.
+- **§1 implemented (Jun 09 2026) — teardown-rebuild rename, not an ALTER migration.** VERSION is 0.37.0 (major 0 < 2), so `check-schema-gate` forbids `ALTER`/`DROP` — the `status`→`admin_state` rename is an **in-place edit of `021_fleet_runners.sql`** (and §4's sweeper index lands in-place in `022`), not new migration files. The ORP sweep was wider than first scoped: **12 test seeds** (not 3) plus 3 production sites (register insert, runnerBearer lookup, `GET /me`) referenced `fleet.runners.status`; all swept, `RUNNER_STATUS_ACTIVE` removed (0 refs). `SelfResponse.status` wire field **kept** (sourced from the renamed column) — renaming it ripples cross-binary to the runner daemon, out of this spec's blast radius; `docs/AUTH.md` gate prose updates at DOCUMENT stage. `AdminState` is a typed enum; `ADMIN_STATE_ACTIVE` derives from it via `@tagName` (UFS). Commit `bd222fae` added the Error Registry entry for `UZ-RUN-009`; this pickup reran `make harness-verify`, `zig build test-auth`, and the pre-commit gates clean.
 - **Deferrals** — populate during implementation; none at authoring.
 
 ---
