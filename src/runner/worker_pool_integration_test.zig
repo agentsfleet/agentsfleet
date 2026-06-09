@@ -51,7 +51,10 @@ const ControlPlaneStub = struct {
                 conn.close(self.io);
                 continue;
             };
-            self.handlers.append(std.heap.page_allocator, t) catch t.detach();
+            // On the rare append-OOM, join inline rather than detach: a detached
+            // handler holds `*ControlPlaneStub` (stack-allocated in the test) and
+            // could outlive the test frame → UB. Inline join is fine on this cold path.
+            self.handlers.append(std.heap.page_allocator, t) catch t.join();
         }
     }
 
