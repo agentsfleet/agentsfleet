@@ -129,6 +129,14 @@ fn leaseStatus(conn: *pg.Conn, lease_id: []const u8) ![]const u8 {
     return row.get([]const u8, 0);
 }
 
+fn runnerState(conn: *pg.Conn, runner_id: []const u8) !protocol.AdminState {
+    var q = PgQuery.from(try conn.query("SELECT admin_state FROM fleet.runners WHERE id = $1::uuid", .{runner_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const raw = try row.get([]const u8, 0);
+    return std.meta.stringToEnum(protocol.AdminState, raw) orelse error.TestUnexpectedResult;
+}
+
 fn leasedUntil(conn: *pg.Conn, zombie_id: []const u8) !i64 {
     return scalarI64(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{zombie_id});
 }
@@ -215,6 +223,22 @@ test "liveness derives active lease set without singular column" {
         \\SELECT COUNT(*)::bigint FROM information_schema.columns
         \\WHERE table_schema = 'fleet' AND table_name = 'runners' AND column_name = 'current_lease_id'
     , .{}));
+}
+
+test "idle draining runner becomes drained on the next sweep" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+    cleanup(ctx.conn);
+    defer cleanup(ctx.conn);
+
+    try seedRunner(ctx.conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .draining, clock.nowMillis());
+    try std.testing.expectEqual(@as(i64, 0), try activeCount(ctx.conn, RUNNER_STALE_ID));
+
+    const stats = try sweeper.sweepOnce(ctx.pool, ALLOC);
+    try std.testing.expectEqual(@as(i64, 1), stats.drained_runners);
+    try std.testing.expectEqual(protocol.AdminState.drained, try runnerState(ctx.conn, RUNNER_STALE_ID));
+    try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_drained));
 }
 
 const SweepWorker = struct {

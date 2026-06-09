@@ -97,18 +97,20 @@ fn fetchDueRunners(pool: *pg.Pool, alloc: std.mem.Allocator, now_ms: i64) ![]Run
         \\SELECT r.id::text, r.last_seen_at, r.admin_state
         \\FROM fleet.runners r
         \\WHERE (r.last_seen_at <> $1 AND ($2::bigint - r.last_seen_at) > $3)
+        \\   OR r.admin_state = $6
         \\   OR (r.admin_state <> $4 AND EXISTS (
         \\        SELECT 1 FROM fleet.runner_leases l
         \\        WHERE l.runner_id = r.id AND l.status = $5
         \\      ))
         \\ORDER BY r.updated_at ASC, r.id ASC
-        \\LIMIT $6
+        \\LIMIT $7
     , .{
         protocol.RUNNER_LAST_SEEN_NEVER,
         now_ms,
         constants.RUNNER_OFFLINE_AFTER_MS,
         protocol.ADMIN_STATE_ACTIVE,
         protocol.RUNNER_LEASE_STATUS_ACTIVE,
+        @tagName(protocol.AdminState.draining),
         SWEEP_BATCH_LIMIT,
     }));
     defer q.deinit();
