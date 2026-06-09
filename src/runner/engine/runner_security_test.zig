@@ -8,6 +8,8 @@
 
 const std = @import("std");
 const runner = @import("runner.zig");
+const helpers = @import("runner_helpers.zig");
+const wire = @import("wire.zig");
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const common = @import("common");
@@ -139,6 +141,100 @@ test "T8: composeMessage allowlist is tight — only 5 known keys produce sectio
     // Only the plan section was added.
     try std.testing.expect(std.mem.indexOf(u8, composed, "## Plan") != null);
     try std.testing.expect(std.mem.indexOf(u8, composed, "## Spec") == null);
+}
+
+// ── Installed SKILL.md instructions reach the prompt (delivered on the lease) ──
+
+test "runner prompt includes installed instructions before trigger event" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "INSTALLED BEHAVIOR PROSE" });
+
+    const composed = try runner.composeMessage(alloc, "TRIGGER EVENT MESSAGE", ctx);
+    defer alloc.free(composed);
+
+    const instr_at = std.mem.indexOf(u8, composed, "INSTALLED BEHAVIOR PROSE");
+    const event_at = std.mem.indexOf(u8, composed, "TRIGGER EVENT MESSAGE");
+    try std.testing.expect(instr_at != null and event_at != null);
+    try std.testing.expect(instr_at.? < event_at.?); // instructions render FIRST
+    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.INSTALLED_INSTRUCTIONS_LABEL) != null);
+}
+
+test "runner prompt preserves raw event payload when message field is absent" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "INSTALLED BEHAVIOR" });
+
+    // buildCallArgs falls back to the raw request_json as the message when the
+    // event body carries no "message" field; that raw JSON must still reach the
+    // prompt after the instructions.
+    const raw_event = "{\"action\":\"workflow_run\",\"conclusion\":\"failure\"}";
+    const composed = try runner.composeMessage(alloc, raw_event, ctx);
+    defer alloc.free(composed);
+
+    const instr_at = std.mem.indexOf(u8, composed, "INSTALLED BEHAVIOR");
+    const event_at = std.mem.indexOf(u8, composed, "workflow_run");
+    try std.testing.expect(instr_at != null and event_at != null);
+    try std.testing.expect(instr_at.? < event_at.?);
+}
+
+test "runner handles empty installed instructions explicitly" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "" }); // frontmatter-only SKILL.md
+
+    const composed = try runner.composeMessage(alloc, "EVENT", ctx);
+    defer alloc.free(composed);
+
+    // Explicit sentinel + the section label — never a silent omission, so an
+    // installed agent never degrades to a generic chat bot.
+    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.NO_INSTALLED_INSTRUCTIONS) != null);
+    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.INSTALLED_INSTRUCTIONS_LABEL) != null);
+    try std.testing.expect(std.mem.indexOf(u8, composed, "EVENT") != null);
+}
+
+test "composed prompt excludes tool secret bytes" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "fetch the logs" });
+    // A tool secret must never render even if mistakenly placed in context — only
+    // installed_instructions + the 5 coding-agent keys are allowlisted.
+    try ctx.object.put(alloc, "secrets_map", .{ .string = "ghs_planted_tool_secret" });
+
+    const composed = try runner.composeMessage(alloc, "EVENT", ctx);
+    defer alloc.free(composed);
+    try std.testing.expect(std.mem.indexOf(u8, composed, "ghs_planted_tool_secret") == null);
+    try std.testing.expect(std.mem.indexOf(u8, composed, "fetch the logs") != null);
+}
+
+test "composed prompt excludes provider key" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "do work" });
+    try ctx.object.put(alloc, "api_key", .{ .string = "fw_planted_provider_key" });
+
+    const composed = try runner.composeMessage(alloc, "EVENT", ctx);
+    defer alloc.free(composed);
+    try std.testing.expect(std.mem.indexOf(u8, composed, "fw_planted_provider_key") == null);
+}
+
+test "skill placeholders are not pre-substituted in prompt" {
+    const alloc = std.testing.allocator;
+    var ctx = std.json.Value{ .object = .empty };
+    defer ctx.object.deinit(alloc);
+    // A SKILL.md body referencing a tool-secret placeholder. composeMessage is pure
+    // assembly — it never substitutes; the placeholder stays literal until the tool
+    // bridge resolves it on a permitted tool call.
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "use ${secrets.github.api_token} to call the API" });
+
+    const composed = try runner.composeMessage(alloc, "EVENT", ctx);
+    defer alloc.free(composed);
+    try std.testing.expect(std.mem.indexOf(u8, composed, "${secrets.github.api_token}") != null);
 }
 
 // ── Re-landed from the deleted runner_test.zig (cutover, RULE ORP) ───────────

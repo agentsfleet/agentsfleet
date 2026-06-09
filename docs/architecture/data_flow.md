@@ -93,8 +93,8 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
            ║  6. issue fleet.runner_leases row  ║
            ║     (lease_expires_at, fencing)    ║
            ║  → 200 { event, ExecutionPolicy,   ║
-           ║         secrets_map, lease_id,     ║
-           ║         fencing_token }            ║
+           ║         secrets_map, instructions, ║
+           ║         lease_id, fencing_token }  ║
            ╚═══════════════════════════════════╝
                           ↓
            ╔═══════════════════════════════════╗
@@ -514,8 +514,11 @@ The deleted worker's single in-process `processEvent` loop is now split across t
      6. issue fleet.runner_leases row              ← durable ownership
           (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL_MS)
      → 200 { event, ExecutionPolicy(config + secrets_map + network_policy
-              + tool_allowlist + provider + api_key), lease_id,
+              + tool_allowlist + provider + api_key), instructions, lease_id,
               fencing_token, checkpoint? }
+       (`instructions` = the installed agent's SKILL.md body, extracted server-side
+        by ZombieSession, so the runner gives NullClaw the installed behaviour and
+        not a generic chat — soft reasoning input, never a secret. M84_008.)
 
    zombie-runner — parent (child_supervisor.zig):
        establish cgroup → fork → exec self as `zombie-runner __execute`

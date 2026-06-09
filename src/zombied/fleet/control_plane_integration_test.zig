@@ -184,6 +184,19 @@ fn expectLeasePolicyKey(h: *TestHarness, token: []const u8, expect_api_key: []co
     try std.testing.expectEqualStrings(expect_api_key, policy.get("api_key").?.string);
 }
 
+fn expectLeaseInstructions(h: *TestHarness, token: []const u8, expect_substr: []const u8) !void {
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const resp = try req.send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+    defer parsed.deinit();
+    const lease = parsed.value.object.get("lease").?;
+    try std.testing.expect(lease != .null);
+    const instructions = lease.object.get("instructions").?.string;
+    try std.testing.expect(std.mem.indexOf(u8, instructions, expect_substr) != null);
+}
+
 fn reportLease(h: *TestHarness, token: []const u8, lease_id: []const u8, fencing_token: u64) !harness_mod.Response {
     const body = try std.fmt.allocPrint(ALLOC,
         \\{{"lease_id":"{s}","event_id":"evt-seed-1","fencing_token":{d},"outcome":"processed","response_text":"done","tokens":10,"telemetry":{{"time_to_first_token_ms":5,"wall_ms":100}},"checkpoint":{{"last_event_id":"evt-seed-1","last_response":"done"}}}}
@@ -381,6 +394,48 @@ test "integration: runner control plane — a reclaimed lease re-resolves and ca
     // Reclaim reuses prior billing, but the key was never persisted — issueLease
     // re-resolves it, so the reclaimed lease still authenticates (the named fix).
     try expectLeasePolicyKey(h, RUNNER_B_TOKEN, KNOWN_KEY);
+}
+
+test "integration: runner control plane — a fresh lease carries the installed SKILL.md instructions" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_instr_fresh_key");
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try publishFreshEvent(h, ZOMBIE_1_ID);
+
+    // The SKILL.md body (extracted from SOURCE_MD by ZombieSession) rides the lease,
+    // so the runner delivers the installed behaviour to NullClaw.
+    try expectLeaseInstructions(h, RUNNER_A_TOKEN, "You are a control-plane test agent.");
+}
+
+test "integration: runner control plane — a reclaimed lease keeps the installed SKILL.md instructions" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_instr_reclaim_key");
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // dead holder
+    try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // reclaimer
+    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+
+    // Reclaim resolves the session through the same ZombieSession path, so the
+    // installed instructions still ride the re-issued lease.
+    try expectLeaseInstructions(h, RUNNER_B_TOKEN, "You are a control-plane test agent.");
 }
 
 test "integration: runner control plane — sticky routing is a hint, not ownership" {

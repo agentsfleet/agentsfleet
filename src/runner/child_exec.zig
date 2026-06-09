@@ -117,7 +117,21 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     var args = buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
-    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, null, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
+
+    // The installed SKILL.md body becomes reasoning context so NullClaw runs the
+    // installed behaviour, not a generic chat. Secrets never enter context — they
+    // stay in `ep` (provider/api_key) and the tool bridge (secrets_map). An empty
+    // body is surfaced by the engine as an explicit sentinel and warned here,
+    // never silently dropped (an installed agent must not degrade to generic chat).
+    if (payload.instructions.len == 0)
+        log.warn("empty_installed_instructions", .{ .zombie_id = payload.event.zombie_id });
+    var ctx_obj: std.json.ObjectMap = .empty;
+    defer ctx_obj.deinit(alloc);
+    ctx_obj.put(alloc, wire.installed_instructions, .{ .string = payload.instructions }) catch |err|
+        log.warn("installed_instructions_ctx_dropped", .{ .err = @errorName(err) });
+    const context_val: ?std.json.Value = if (ctx_obj.count() > 0) .{ .object = ctx_obj } else null;
+
+    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, context_val, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were

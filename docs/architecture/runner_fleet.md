@@ -221,7 +221,11 @@ A `lease` reply is the runner's entire input for an event. The runner forks a sa
 
 ```
 lease → { event, ExecutionPolicy(config + secrets_map + network_policy + tool_allowlist),
-          lease_id, fencing_token, checkpoint? }
+          instructions, lease_id, fencing_token, checkpoint? }
+   (`instructions` = the installed agent's SKILL.md body, extracted server-side by
+    ZombieSession; the runner composes the NullClaw turn from instructions + event so
+    the installed behaviour runs on every trigger. Soft reasoning input, never a secret
+    — provider key + secrets_map stay in ExecutionPolicy / the tool bridge. M84_008.)
    │
 zombie-runner parent (child_supervisor.zig): establish the cgroup, fork, exec self as
    `zombie-runner __execute` under bwrap (unshare-all + ro-system + rw-workspace), feed the
