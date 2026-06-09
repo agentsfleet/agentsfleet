@@ -23,7 +23,6 @@
 //! event (owned by the Redis client's allocator) before returning.
 
 const std = @import("std");
-const clock = @import("common").clock;
 const logging = @import("log");
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -34,6 +33,7 @@ const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
+const lease_row = @import("service_lease_row.zig");
 const ZombieSession = @import("zombie_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const context_resolve = @import("context_resolve.zig");
@@ -51,19 +51,10 @@ const execution_policy = @import("contract").execution_policy;
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_lease);
 
-/// The lease-row billing fields resolved at issue (fresh) or carried from the
-/// prior lease (reclaim). Arena-scoped (see the module note).
-const Billed = struct {
-    tenant_id: []const u8,
-    posture: []const u8,
-    model: []const u8,
-    /// Resolved provider for a FRESH lease, carried from `runBilling` so the key
-    /// the lease bills is the exact key it delivers — one vault decryption, no
-    /// rotation TOCTOU between billing and delivery. Null on reclaim (no billing
-    /// pass); `issueLease` re-resolves. Owned: `issueLease` deinits (secureZero)
-    /// after `hx.ok` serializes.
-    provider: ?tenant_provider.ResolvedProvider = null,
-};
+/// The lease-row billing fields, defined alongside the row write in
+/// `service_lease_row.zig` (RULE FLL split); aliased here so the billing
+/// helpers keep naming the type.
+const Billed = lease_row.Billed;
 
 /// POST /v1/runners/me/leases — claim the next event across all active zombies
 /// (sticky-preferred), bill it (or reuse a reclaim's billing), and hand back the
@@ -224,7 +215,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
     };
 
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
-    try insertLeaseRow(hx, runner_id, acq, billed, lease_id);
+    try lease_row.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
@@ -235,6 +226,11 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
         .secret_delivery = .@"inline",
         .event = envelope,
         .policy = resolveExecutionPolicy(hx, session, resolved),
+        // The installed SKILL.md body (extracted by ZombieSession), so the runner
+        // delivers it to NullClaw. `claimZombie` resolves the session before the
+        // fresh/reclaim split, so this is set identically on both paths. Borrowed
+        // from `session`, which lives until the response serialises (deinit defer).
+        .instructions = session.instructions,
     } });
 }
 
@@ -283,55 +279,6 @@ fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_pro
         .provider = if (resolved) |r| r.provider else "",
         .api_key = if (resolved) |r| r.api_key else "",
     };
-}
-
-fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: Billed, lease_id: []const u8) !void {
-    const conn = hx.ctx.pool.acquire() catch return error.DbError;
-    defer hx.ctx.pool.release(conn);
-    const now_ms = clock.nowMillis();
-    // Fresh event → reset the per-zombie metering cursor (the slot may carry a
-    // prior run's preserved cursor); a reclaim leaves it so the re-leased run
-    // meters forward. Fail-closed: a reset error fails issue, never over-charges.
-    if (acq.kind == .fresh) affinity.resetCursor(conn, acq.zombie_id, now_ms) catch return error.DbError;
-    // The provider name resolved at billing — stored alongside posture/model so
-    // the renew credit gate + the report settle can key the rate row by
-    // (provider, model) without re-resolving. Fresh leases always carry it.
-    const provider_name: []const u8 = if (billed.provider) |p| p.provider else "";
-    // metered_* = 0 + last_metered_at_ms = now ($17) seed the incremental-
-    // metering cursor at issue (Invariant 9 — never read NULL). A reclaimed
-    // re-lease carries the dead holder's cursor forward instead (wired with the
-    // /renew Δ-charge), so the new holder meters from where it stopped.
-    _ = conn.exec(
-        \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id,
-        \\   actor, event_type, request_json, event_created_at,
-        \\   posture, provider, model,
-        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
-        \\   fencing_token, lease_expires_at, status,
-        \\   created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        $7, $8, $9, $10, $11, $12, $13,
-        \\        0, 0, 0, $17,
-        \\        $14, $15, $16, $17, $17)
-    , .{
-        lease_id,
-        runner_id,
-        acq.zombie_id,
-        acq.workspace_id,
-        billed.tenant_id,
-        acq.event_id,
-        acq.actor,
-        acq.event_type,
-        acq.request_json,
-        acq.event_created_at,
-        billed.posture,
-        provider_name,
-        billed.model,
-        @as(i64, @intCast(acq.fencing_token)),
-        acq.leased_until,
-        protocol.RUNNER_LEASE_STATUS_ACTIVE,
-        now_ms,
-    }) catch return error.DbError;
 }
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued
