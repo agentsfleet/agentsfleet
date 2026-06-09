@@ -43,16 +43,13 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_IS_TERMINAL);
         return;
     }
-    if (current == target) {
-        return writeResponse(hx, runner_id, target);
-    }
     const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch {
         common.internalOperationError(hx.res, "runner event id generation failed", hx.req_id);
         return;
     };
     defer hx.alloc.free(event_row_id);
 
-    updateState(conn, runner_id, current, target, event_row_id) catch |err| {
+    updateState(conn, runner_id, target, event_row_id) catch |err| {
         switch (err) {
             error.RunnerGone => hx.fail(ec.ERR_RUNNER_NOT_FOUND, S_RUNNER_NOT_FOUND),
             error.RevokedRace => hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_IS_TERMINAL),
@@ -106,7 +103,6 @@ fn loadState(conn: *pg.Conn, runner_id: []const u8) !?protocol.AdminState {
 fn updateState(
     conn: *pg.Conn,
     runner_id: []const u8,
-    current: protocol.AdminState,
     target: protocol.AdminState,
     event_row_id: []const u8,
 ) !void {
@@ -114,16 +110,24 @@ fn updateState(
     const allows_non_revoked = target == .revoked;
     const event_type = runner_events.eventTypeForAdminState(target);
     var q = PgQuery.from(conn.query(
-        \\WITH updated AS (
-        \\UPDATE fleet.runners
-        \\SET admin_state = $2, updated_at = $3
-        \\WHERE id = $1::uuid AND ($4::bool OR admin_state <> $5)
-        \\RETURNING id::text
+        \\WITH current_state AS (
+        \\  SELECT id, admin_state AS from_admin_state
+        \\  FROM fleet.runners
+        \\  WHERE id = $1::uuid
+        \\  FOR UPDATE
+        \\), updated AS (
+        \\  UPDATE fleet.runners r
+        \\  SET admin_state = $2, updated_at = $3
+        \\  FROM current_state c
+        \\  WHERE r.id = c.id
+        \\    AND ($4::bool OR c.from_admin_state <> $5)
+        \\    AND c.from_admin_state <> $2
+        \\  RETURNING r.id::text, c.from_admin_state
         \\), event AS (
         \\  INSERT INTO fleet.runner_events
         \\    (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
         \\  SELECT $6::uuid, id::uuid, $7, $3,
-        \\         jsonb_build_object($8, $9, $10, $2),
+        \\         jsonb_build_object($8, from_admin_state, $9, $2),
         \\         NULL, $3
         \\  FROM updated
         \\  RETURNING id
@@ -138,7 +142,6 @@ fn updateState(
         event_row_id,
         @tagName(event_type),
         runner_events.META_FROM_ADMIN_STATE,
-        @tagName(current),
         runner_events.META_TO_ADMIN_STATE,
     }) catch return error.DbError);
     defer q.deinit();
@@ -146,6 +149,7 @@ fn updateState(
     const row = q.next() catch return error.DbError;
     if (row != null) return;
     const after = try loadState(conn, runner_id) orelse return error.RunnerGone;
+    if (after == target) return;
     if (after == .revoked and target != .revoked) return error.RevokedRace;
     return error.DbError;
 }
