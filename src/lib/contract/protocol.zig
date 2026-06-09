@@ -113,10 +113,15 @@ pub const Outcome = enum { processed, agent_error };
 /// reserved for fleet failover so that workstream needn't recut the type.
 pub const HeartbeatStatus = enum { ok, drain, stop };
 
-/// `fleet.runners.status` lifecycle value — app-enforced (no SQL CHECK, per
-/// RULE STS). Single-sourced here for register (insert) and the runnerBearer
-/// lookup (active gate). Not a wire value.
-pub const RUNNER_STATUS_ACTIVE = "active";
+/// `fleet.runners.admin_state` — operator intent, a typed enum, app-enforced (no
+/// SQL CHECK, per RULE STS). `active` admits the runner plane; cordoned/draining/
+/// drained/revoked all reject it (→ 401 UZ-RUN-009). Renamed from `status`. The
+/// enum is the single source for the operator PATCH; the string consts below are
+/// derived from it (RULE UFS) for the SQL insert + the active gate. Not a wire value.
+pub const AdminState = enum { active, cordoned, draining, drained, revoked };
+/// The only `admin_state` that admits a runner-plane call — derived from the enum
+/// (RULE UFS). Used by register (insert) and the runnerBearer lookup (active gate).
+pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
 
 /// `fleet.runners.last_seen_at` sentinel for a runner minted but never seen.
 /// register inserts this; the heartbeat moves it to `now`. The fleet read

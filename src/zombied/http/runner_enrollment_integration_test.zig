@@ -249,6 +249,59 @@ test "fleet list: a zmb_t_ api_key is rejected 403" {
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 }
 
+// ── Runner-plane auth gate: admin_state admits only `active` ──────────────────
+// The runnerBearer lookup (serve_runner_lookup) gates on `admin_state == active`,
+// so a revoked/cordoned runner's token is rejected at the middleware before any
+// `/v1/runners/me/*` handler runs. (The end-to-end PATCH-revoke → 401 flow is the
+// operator-plane mutation's own test; here the gate is proven by flipping the
+// stored admin_state directly.)
+
+// UUIDv7 (version nibble 7) so the schema id CHECK passes; tenant_id NULL = trusted fleet.
+const GATE_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
+const GATE_RAW_TOKEN = "zrn_" ++ "g" ** 60;
+
+fn setGateRunner(h: *TestHarness, admin_state: []const u8) !void {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const hash = api_key.sha256Hex(GATE_RAW_TOKEN);
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
+        \\   last_seen_at, created_at, updated_at)
+        \\VALUES ($1::uuid, 'host-gate-test', $2, 'dev_none', $3, '[]'::jsonb, NULL, 0, 0, 0)
+        \\ON CONFLICT (id) DO UPDATE SET admin_state = EXCLUDED.admin_state
+    , .{ GATE_RUNNER_ID, hash[0..], admin_state });
+}
+
+fn cleanupGate(h: *TestHarness) void {
+    const conn = h.acquireConn() catch return;
+    defer h.releaseConn(conn);
+    _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{GATE_RUNNER_ID}) catch |err|
+        std.log.warn("cleanup gate runner ignored: {s}", .{@errorName(err)});
+}
+
+test "runner auth admits an active admin_state and rejects a revoked one" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    defer cleanupGate(h);
+
+    // active → the runner plane admits (GET /v1/runners/me → 200).
+    try setGateRunner(h, @tagName(protocol.AdminState.active));
+    {
+        const resp = try (try h.get(protocol.PATH_RUNNER_SELF).bearer(GATE_RAW_TOKEN)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+
+    // revoked → the same token is rejected at the middleware (401), before /me runs.
+    try setGateRunner(h, @tagName(protocol.AdminState.revoked));
+    {
+        const resp = try (try h.get(protocol.PATH_RUNNER_SELF).bearer(GATE_RAW_TOKEN)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.unauthorized);
+    }
+}
+
 // Enrollment is mint-by-API only: the `zombie-runner register` CLI was retired,
 // so there is no binary-spawned register arm. The handler authz above is the
 // enrollment contract; the `zrn_` is minted server-side from the dashboard's

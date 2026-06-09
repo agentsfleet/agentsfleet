@@ -82,7 +82,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     // until its first heartbeat moves last_seen forward. created/updated = now.
     _ = conn.exec(
         \\INSERT INTO fleet.runners
-        \\  (id, host_id, token_hash, sandbox_tier, status, labels, tenant_id,
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
         \\   last_seen_at, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, NULL, $7, $8, $8)
     , .{
@@ -90,7 +90,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
         body.host_id,
         token_hash[0..],
         @tagName(body.sandbox_tier),
-        protocol.RUNNER_STATUS_ACTIVE,
+        protocol.ADMIN_STATE_ACTIVE,
         labels_json,
         protocol.RUNNER_LAST_SEEN_NEVER,
         now_ms,
