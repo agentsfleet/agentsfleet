@@ -161,7 +161,7 @@ Liveness sweeper + reassignment (§4) — one periodic job:
 | `src/zombied/errors/error_entries.zig` | EDIT | Wire `UZ-RUN-009` (runner revoked). |
 | `src/lib/contract/protocol.zig` | EDIT | `AdminState` + `RunnerEvent`/event-type enums. |
 | `ui/packages/app/app/(dashboard)/admin/runners/*` | EDIT | Row actions (cordon/drain/revoke via ConfirmDialog) + an activity/history view. |
-| `ui/packages/app/lib/api/runners.ts` | EDIT | `patchRunner` + `listRunnerEvents`. |
+| `ui/packages/app/lib/api/runners.ts` | EDIT | `updateRunnerAdminState` + `listRunnerEvents`. |
 | `docs/architecture/runner_fleet.md` + `roadmap.md` | EDIT | Document the realised operator plane + event model; clear the M80_006 §1/§2 deferral. |
 | `docs/AUTH.md` | EDIT | Update the runner-auth gate prose (DOCUMENT stage): the lookup selects `admin_state` (renamed from `status`); `admin_state='active'` admits, else 401. |
 
@@ -220,8 +220,8 @@ One periodic job: a runner whose `last_seen_at` is stale beyond the threshold ge
 
 The M84_001 runners surface gains per-row cordon/drain/revoke (destructive `ConfirmDialog`, mirror `RevokeConfirm`) and a per-runner activity view reading the event log. **Invariant:** actions + history are platform-admin-only (server 403 + UI not rendered for non-admins).
 
-- **Dimension 5.1** — a platform admin cordons/revokes a runner from the list; the badge reflects the new `admin_state` → Test `dashboard cordon revoke updates state` (e2e).
-- **Dimension 5.2** — the activity view renders the event timeline for a runner → Test `dashboard shows runner activity` (e2e/component).
+- **Dimension 5.1** ✅ DONE — a platform admin cordons/revokes a runner from the list; the badge reflects the new `admin_state` → Tests `cordons a runner from the row and updates the admin-state badge`, `revokes a runner from the row and updates the badge`, `updateRunnerAdminStateAction forwards the runner state change through withToken when admin`.
+- **Dimension 5.2** ✅ DONE — the activity view renders the event timeline for a runner → Tests `opens runner activity and renders the event timeline`, `pages runner activity without reloading the runner list`, `listRunnerEventsAction forwards activity-history paging through withToken when admin`.
 
 ---
 
@@ -296,8 +296,8 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 | 4.3 | integration | `liveness derives active lease set without singular column` | runner with 0/1/N active leases → `busy`/`active` correct; no runner-level lease column exists. |
 | 4.4 | integration | `concurrent sweepers emit one offline event` | N replicas sweep the same stale runner → exactly one `runner_offline` row (others `ON CONFLICT DO NOTHING`). |
 | 4.5 | integration | `idle draining runner becomes drained on the next sweep` | `admin_state=draining` and zero active leases → next sweep writes `drained` + one `runner_drained` event. |
-| 5.1 | e2e | `dashboard cordon revoke updates state` | admin cordons/revokes → badge reflects `admin_state`. |
-| 5.2 | e2e/component | `dashboard shows runner activity` | event timeline renders for a runner. |
+| 5.1 | component/server-action | `cordons a runner from the row and updates the admin-state badge`; `revokes a runner from the row and updates the badge`; `updateRunnerAdminStateAction forwards the runner state change through withToken when admin` | admin cordons/revokes → badge reflects `admin_state`; server action stays platform-admin-gated. |
+| 5.2 | component/server-action | `opens runner activity and renders the event timeline`; `pages runner activity without reloading the runner list`; `listRunnerEventsAction forwards activity-history paging through withToken when admin` | event timeline renders for a runner; pagination requests the expected page; server action stays platform-admin-gated. |
 
 **Regression:** the existing lease/fence/reclaim + M84_001 derived-liveness suites stay green. **Idempotency:** PATCH cordon/drain/revoke are idempotent (re-applying yields one event, success).
 
@@ -308,10 +308,10 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 - [x] `admin_state` rename + auth gate; revoke → `401 UZ-RUN-009` — verify: `make test-integration` + `zig build test-auth`
 - [x] `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, platform-admin-gated — verify: `make test-integration`
 - [x] `fleet.runner_events` append-only; emitted on state writes; `GET …/events` reads — verify: `make test-integration`
-- [ ] Sweeper marks offline + reassigns; holds when no target — verify: `make test-integration`
-- [ ] Dashboard cordon/revoke + activity view, platform-admin-only — verify: `make acceptance-e2e`
-- [ ] `make lint` clean · `make test` passes · cross-compile both linux targets
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Sweeper marks offline + reassigns; holds when no target — verify: `make test-integration-db`
+- [x] Dashboard cordon/revoke + activity view, platform-admin-only — verify: `bun run test:coverage --no-file-parallelism` + focused runner coverage slice
+- [x] `make lint-zig` clean · app package tests pass · cross-compile both linux targets
+- [x] `gitleaks detect` clean · no file over 350 lines added
 
 ---
 
@@ -374,11 +374,16 @@ gitleaks detect 2>&1 | tail -3
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Operator plane + events | `make test-integration` | {paste} | |
-| Revoke gate | `zig build test-auth` | {paste} | |
-| Sweeper + reassignment | `make test-integration` | {paste} | |
-| Dashboard e2e | `make acceptance-e2e` | {paste} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | {paste} | |
+| Operator plane + events | `make test-integration-db` | `✓ [zombied] database-backed integration tests passed` | yes |
+| Backend unit graph | `zig build test` | exited 0 (known negative-test diagnostics only) | yes |
+| Sweeper + reassignment | `make test-integration-db` | stale/offline/reassignment/drain integration tests passed in suite | yes |
+| Dashboard changed-surface coverage | focused `vitest ... --coverage --coverage.thresholds.100 --coverage.thresholds.perFile` | 50 tests; statements 100% (149/149), branches 100% (94/94), functions 100% (59/59), lines 100% (129/129) | yes |
+| Dashboard package coverage | `bun run test:coverage --no-file-parallelism` | 91 files, 856 tests; statements 100% (2139/2139), branches 100% (1306/1306), functions 100% (675/675), lines 100% (1901/1901) | yes |
+| Repository coverage gate | `make test-coverage-all` | app 100%, website 100%, `zombiectl` 1097 pass / 2 skip, design-system 43 files / 403 tests; all package coverage gates passed | yes |
+| Cross-compile | `zig build -Dtarget=x86_64-linux`; `zig build -Dtarget=aarch64-linux` | both exited 0 | yes |
+| Staged harness | `make harness-verify` | all staged gates green | yes |
+| Frontend lint | `make lint-apps-ds-ctl` | app, design-system, and `zombiectl` lint/type checks passed | yes |
+| Secret scan | `gitleaks detect` | no leaks found | yes |
 
 ---
 

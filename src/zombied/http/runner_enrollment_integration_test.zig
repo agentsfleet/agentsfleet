@@ -221,6 +221,7 @@ test "fleet list: a platform_admin JWT lists the fleet with derived liveness (20
     try resp.expectStatus(.ok);
     try std.testing.expect(resp.bodyContains("host-enroll-test"));
     try std.testing.expect(resp.bodyContains("registered")); // never-connected liveness
+    try std.testing.expect(resp.bodyContains("\"admin_state\":\"active\""));
     try std.testing.expect(!resp.bodyContains("token_hash")); // invariant: hash never leaves
     try std.testing.expect(!resp.bodyContains("zrn_")); // the raw token is mint-only
 }
