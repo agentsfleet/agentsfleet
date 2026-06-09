@@ -256,8 +256,8 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
     _ = conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, $3, $4, $5, $6)
+        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, $6)
     , .{ grant_id, zombie_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;

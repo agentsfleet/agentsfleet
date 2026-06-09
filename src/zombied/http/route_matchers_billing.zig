@@ -5,6 +5,12 @@
 
 const Path = @import("route_matchers.zig").Path;
 
+const SEG_TENANTS = "tenants";
+const SEG_ME = "me";
+const SEG_BILLING = "billing";
+const SEG_CHARGES = "charges";
+const SEG_TELEMETRY = "telemetry";
+
 // ── /admin/platform-keys/{provider} ────────────────────────────────────────
 
 pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
@@ -26,7 +32,7 @@ pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
 
 pub fn matchTenantMeteringPeriods(p: Path) ?[]const u8 {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, "tenants") or !p.eq(1, "me") or !p.eq(2, "billing") or
-        !p.eq(3, "charges") or !p.eq(5, "telemetry")) return null;
+    if (!p.eq(0, SEG_TENANTS) or !p.eq(1, SEG_ME) or !p.eq(2, SEG_BILLING) or
+        !p.eq(3, SEG_CHARGES) or !p.eq(5, SEG_TELEMETRY)) return null;
     return p.param(4);
 }

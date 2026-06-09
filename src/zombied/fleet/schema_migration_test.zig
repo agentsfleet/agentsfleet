@@ -17,6 +17,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 //  created_at updated_at` — the frozen `fleet.runners` column set.
 const EXPECTED_COLUMN_COUNT: i64 = 11;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
+const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
 
 // `uid id runner_id zombie_id workspace_id tenant_id event_id actor event_type
 //  request_json event_created_at posture provider model metered_input_tokens
@@ -103,5 +104,29 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
         "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_uid_uuidv7'",
+    ));
+}
+
+test "core key schemas: public text ids have explicit UUIDv7 constraints" {
+    const alloc = std.testing.allocator;
+    const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    try std.testing.expectEqual(EXPECTED_CORE_KEY_CONSTRAINTS, try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint
+        \\FROM pg_constraint c
+        \\JOIN pg_class rel ON rel.oid = c.conrelid
+        \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        \\WHERE nsp.nspname = 'core'
+        \\  AND rel.relname IN ('agent_keys', 'integration_grants')
+        \\  AND c.conname IN (
+        \\    'ck_agent_keys_uid_uuidv7',
+        \\    'ck_agent_keys_agent_id_uuidv7',
+        \\    'ck_agent_keys_uid_matches_agent_id',
+        \\    'ck_integration_grants_uid_uuidv7',
+        \\    'ck_integration_grants_grant_id_uuidv7',
+        \\    'ck_integration_grants_uid_matches_grant_id'
+        \\  )
     ));
 }
