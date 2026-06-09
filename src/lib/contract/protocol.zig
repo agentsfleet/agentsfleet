@@ -123,6 +123,19 @@ pub const AdminState = enum { active, cordoned, draining, drained, revoked };
 /// (RULE UFS). Used by register (insert) and the runnerBearer lookup (active gate).
 pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
 
+/// Platform-admin mutation actions for `PATCH /v1/fleet/runners/{id}`. These
+/// are wire enum values, so std.json accepts/serializes the tag names verbatim.
+pub const RunnerAdminAction = enum { cordon, drain, revoke };
+
+pub const RunnerAdminPatchRequest = struct {
+    action: RunnerAdminAction,
+};
+
+pub const RunnerAdminPatchResponse = struct {
+    id: []const u8,
+    admin_state: AdminState,
+};
+
 /// `fleet.runners.last_seen_at` sentinel for a runner minted but never seen.
 /// register inserts this; the heartbeat moves it to `now`. The fleet read
 /// derives `registered` from it, so a fresh runner is honestly "registered",

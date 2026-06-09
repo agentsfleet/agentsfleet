@@ -22,6 +22,7 @@ const S_SESSIONS = "sessions";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
+const S_FLEET = "fleet";
 const S_RUNNERS = "runners";
 const S_ME = "me";
 const S_LEASES = "leases";
@@ -242,7 +243,6 @@ pub fn matchWorkspaceZombieGrant(p: Path) ?WorkspaceZombieGrantRoute {
     return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .grant_id = v.leaf };
 }
 
-
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
 // Both matchers share segs.len == 4 + segs[2] == "approvals"; mutual
 // exclusivity is decided by whether the leaf ends with one of the colon
@@ -302,6 +302,15 @@ pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
 pub const matchWebhookAction = webhook.matchWebhookAction;
 pub const matchSvixWebhook = webhook.matchSvixWebhook;
 pub const matchWebhook = webhook.matchWebhook;
+
+/// Match `/fleet/runners/{runner_id}` after the `/v1` prefix is stripped.
+/// The collection path is exact-matched before parsing; this handles the
+/// platform-admin mutation on one runner row.
+pub fn matchFleetRunner(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, S_FLEET) or !p.eq(1, S_RUNNERS)) return null;
+    return p.param(2);
+}
 
 /// Match `/runners/me/leases/{lease_id}/activity` (the only runner verb with a
 /// path param). `me` is the self-plane segment; identity is the Bearer token.

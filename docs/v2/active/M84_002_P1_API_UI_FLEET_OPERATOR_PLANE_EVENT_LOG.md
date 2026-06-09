@@ -50,7 +50,7 @@
 |------|--------|-----------------------|
 | ZIG GATE | yes | cross-compile; the reassignment write stays atomic under the existing fence. |
 | SCHEMA | yes | pre-v2.0 teardown-rebuild (VERSION 0.x — no ALTER, enforced by `check-schema-gate`): rename `status`→`admin_state` **in place** in `021_fleet_runners.sql`; add the `fleet.runner_leases (runner_id, status)` index **in place** in `022_fleet_runner_leases.sql` (sweeper lookup + derived `busy`/`active` counts, unindexed today); add new `025_fleet_runner_events.sql` (with the offline-event partial unique index for cross-replica sweeper single-flight) + register it in `schema/embed.zig` + the migration array. |
-| ERROR REGISTRY | yes | wire `UZ-RUN-009` (runner revoked → 401 on the runner plane); `UZ-AUTH-021` reused for the platform-admin gate. |
+| ERROR REGISTRY | yes | wire `UZ-RUN-009` (runner revoked → 401 on the runner plane); `UZ-RUN-014` for missing runner rows; `UZ-AUTH-021` reused for the platform-admin gate. |
 | LIFECYCLE | yes | event-log + sweeper reads drain before release; the sweeper job's lifecycle (start/stop) is owned like the existing background workers. |
 | LOGGING | yes | state transitions logged via the logfmt envelope; never log a `zrn_`/`token_hash`. |
 | UFS | yes | `admin_state` + `event_type` value sets single-sourced; cross-runtime identical. |
@@ -188,9 +188,10 @@ Rename the overloaded `status` to `admin_state` and expand its values (active|co
 
 Platform-admin-gated cordon → drain → revoke. Any non-active state blocks the runner plane via `401 UZ-RUN-009`; active leases remain fenced and are picked up by normal lease expiry or §4's admin-driven reassignment. **Implementation default:** idempotent PATCH (re-cordoning a cordoned runner is a no-op success).
 
-- **Dimension 2.1** — cordon → no new runner-plane calls for that runner; active lease rows stay fenced for expiry / §4 reassignment → Test `cordon blocks runner plane keeps lease fenced`.
-- **Dimension 2.2** — revoke → runner's next authed call returns `401 UZ-RUN-009` → Test `revoke 401s the runner plane`.
-- **Dimension 2.3** — the mutation is platform-admin-gated; tenant admin / `zmb_t_` → `403 UZ-AUTH-021` → Test `operator mutation is platform-admin-gated`.
+- **Dimension 2.1** ✅ DONE — cordon → no new runner-plane calls for that runner; active lease rows stay fenced for expiry / §4 reassignment → Test `fleet runner PATCH cordons idempotently then drains`.
+- **Dimension 2.2** ✅ DONE — revoke → runner's next authed call returns `401 UZ-RUN-009` → Test `fleet runner PATCH revoke makes the next runner-plane call unauthorized`.
+- **Dimension 2.3** ✅ DONE — the mutation is platform-admin-gated; tenant admin / `zmb_t_` → `403 UZ-AUTH-021` → Test `fleet runner PATCH is platform-admin gated`.
+- **Dimension 2.4** ✅ DONE — malformed action rejects before a DB write and a missing runner returns `404 UZ-RUN-014` → Test `fleet runner PATCH rejects malformed actions and missing runners`.
 
 ### §3 — Immutable event log (`fleet.runner_events`)
 
@@ -280,9 +281,10 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `runner auth admits only active admin state` | active → 200; cordoned/revoked → 401. |
 | 1.2 | regression | `no orphaned status references` | grep `\.status`/`RUNNER_STATUS_ACTIVE` in fleet paths → 0 stale. |
-| 2.1 | integration | `cordon blocks runner plane keeps lease fenced` | cordon → next lease/report/heartbeat call returns `401 UZ-RUN-009`; any existing active lease row remains fenced for expiry / §4 reassignment. |
-| 2.2 | integration | `revoke 401s the runner plane` | revoke → next runner call `401 UZ-RUN-009`. |
-| 2.3 | integration | `operator mutation is platform-admin-gated` | tenant admin / `zmb_t_` PATCH → `403 UZ-AUTH-021`. |
+| 2.1 | integration | `fleet runner PATCH cordons idempotently then drains` | cordon → `admin_state=cordoned`; repeated cordon leaves `updated_at` unchanged; drain → `admin_state=draining`. |
+| 2.2 | integration | `fleet runner PATCH revoke makes the next runner-plane call unauthorized` | revoke → next runner `/me` call `401 UZ-RUN-009`. |
+| 2.3 | integration | `fleet runner PATCH is platform-admin gated` | tenant admin / `zmb_t_` PATCH → `403 UZ-AUTH-021`. |
+| 2.4 | integration | `fleet runner PATCH rejects malformed actions and missing runners` | malformed action → `400 UZ-REQ-001`; missing runner → `404 UZ-RUN-014`. |
 | 3.1 | integration | `state writes append events` | register/lease-acquire/cordon → one typed event each in the same statement/txn; report → best-effort `lease_released` (logged on failure, non-atomic by design). |
 | 3.2 | integration | `event history answers last-busy and counts` | `GET …/events` → last `lease_acquired`, window count. |
 | 4.1 | integration | `stale runner swept and work reassigned` | stale `last_seen` → offline event + affinity expired → re-leased. |

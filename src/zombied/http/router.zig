@@ -47,6 +47,9 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// (no API-version literal). Disambiguation is shape-driven (segment count +
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
+    // ── Fleet operator plane ──────────────────────────────────────────────
+    if (matchers.matchFleetRunner(p)) |runner_id| return .{ .fleet_runner_patch = runner_id };
+
     // ── Runner control plane (the one self-plane verb with a path param) ──
     // `register/heartbeat/lease/report` are exact-matched in `match()` before
     // the parse; only `…/leases/{lease_id}/activity` needs segment extraction.
