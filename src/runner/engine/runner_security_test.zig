@@ -279,6 +279,25 @@ test "composeMessage keeps the installed playbook first and intact under an igno
     try std.testing.expect(instr_at.? < inj_at.?);
 }
 
+test "composeMessage leaks nothing on allocation failure at any append site" {
+    // checkAllAllocationFailures fails each allocation in turn (the ctx puts AND
+    // every appendSlice inside composeMessage) and asserts the function returns
+    // error.OutOfMemory and frees everything — exhaustive proof that the `parts`
+    // errdefer is correct on every OOM path, not just the happy path. Covers the
+    // installed-instructions section + an appended coding-agent section.
+    const Case = struct {
+        fn run(a: std.mem.Allocator) !void {
+            var ctx = std.json.Value{ .object = .empty };
+            defer ctx.object.deinit(a);
+            try ctx.object.put(a, wire.installed_instructions, .{ .string = "do platform ops" });
+            try ctx.object.put(a, "spec_content", .{ .string = "the installed spec body" });
+            const composed = try runner.composeMessage(a, "trigger event payload", ctx);
+            a.free(composed);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Case.run, .{});
+}
+
 // ── Re-landed from the deleted runner_test.zig (cutover, RULE ORP) ───────────
 
 test "mapError maps each RunnerError to its FailureClass; unknown → runner_crash" {
