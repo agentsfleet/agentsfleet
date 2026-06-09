@@ -124,7 +124,7 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
 }
 
 // Tenant + admin billing matchers (/admin/platform-keys, /api-keys,
-// /tenants/me/billing/charges/.../metering-periods) live in
+// /tenants/me/billing/charges/.../telemetry) live in
 // route_matchers_billing.zig (RULE FLL). Re-exported so call sites stay unchanged.
 pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
@@ -241,7 +241,6 @@ pub fn matchWorkspaceZombieGrant(p: Path) ?WorkspaceZombieGrantRoute {
     const v = matchZombieLeaf(p, "integration-grants") orelse return null;
     return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .grant_id = v.leaf };
 }
-
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
 // Both matchers share segs.len == 4 + segs[2] == "approvals"; mutual

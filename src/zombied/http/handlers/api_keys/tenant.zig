@@ -33,7 +33,6 @@ const log = logging.scoped(.api_keys);
 const S_ID_MUST_BE_A_VALID_UUIDV7 = "id must be a valid UUIDv7";
 const S_API_KEY_NOT_FOUND = "API key not found";
 const S_PATCH_BODY_MUST_BE_ACTIVE_FALSE = "PATCH body must be {\"active\": false}";
-const MS_PER_SECOND = 1000;
 
 pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "zmb_t_"
 pub const KEY_RANDOM_BYTES: usize = 32;
@@ -134,9 +133,9 @@ fn performCreate(
     // where two concurrent POSTs could both pass the check and race.
     const description: []const u8 = body.description orelse "";
     _ = conn.exec(
-        \\INSERT INTO core.api_keys (id, tenant_id, key_name, description, key_hash, created_by, active)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE)
-    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id }) catch {
+        \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, TRUE, $7, $7)
+    , .{ id, tenant_id, body.key_name, description, key_hash[0..], user_id, now_ms }) catch {
         if (conn.err) |pe| {
             if (std.mem.eql(u8, pe.code, "23505")) return error.NameTaken;
         }
@@ -192,12 +191,27 @@ pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void {
 }
 
 fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u8, key_id: []const u8) void {
+    const now_ms = clock.nowMillis();
     var q = PgQuery.from(conn.query(
-        \\UPDATE core.api_keys
-        \\SET active = FALSE, revoked_at = now(), updated_at = now()
-        \\WHERE id = $1::uuid AND tenant_id = $2::uuid AND active = TRUE
-        \\RETURNING id::text, (EXTRACT(EPOCH FROM revoked_at) * $3::bigint)::bigint
-    , .{ key_id, tenant_id, MS_PER_SECOND }) catch {
+        \\WITH current_row AS (
+        \\    SELECT uid, active
+        \\    FROM core.api_keys
+        \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
+        \\), updated AS (
+        \\    UPDATE core.api_keys k
+        \\    SET active = FALSE, revoked_at = $3, updated_at = $3
+        \\    FROM current_row c
+        \\    WHERE k.uid = c.uid AND c.active = TRUE
+        \\    RETURNING k.uid::text, k.revoked_at
+        \\)
+        \\SELECT u.uid, u.revoked_at, TRUE AS changed, FALSE AS active
+        \\FROM updated u
+        \\UNION ALL
+        \\SELECT c.uid::text, NULL::bigint AS revoked_at, FALSE AS changed, c.active
+        \\FROM current_row c
+        \\WHERE NOT EXISTS (SELECT 1 FROM updated)
+        \\LIMIT 1
+    , .{ key_id, tenant_id, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -205,11 +219,16 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
 
     const row = q.next() catch null;
     if (row == null) {
-        reportRevokeFailure(hx, conn, tenant_id, key_id);
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     }
     const id = hx.alloc.dupe(u8, row.?.get([]u8, 0) catch "") catch "";
     const revoked_at = row.?.get(i64, 1) catch 0;
+    const changed = row.?.get(bool, 2) catch false;
+    if (!changed) {
+        hx.fail(ec.ERR_APIKEY_ALREADY_REVOKED, "API key is already revoked");
+        return;
+    }
 
     log.info("revoked", .{
         .tenant_id = tenant_id,
@@ -218,22 +237,6 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
     });
 
     hx.ok(.ok, .{ .id = id, .active = false, .revoked_at = revoked_at });
-}
-
-fn reportRevokeFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
-    var q = PgQuery.from(conn.query(
-        \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id }) catch {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
-        return;
-    });
-    defer q.deinit();
-    const row = q.next() catch null;
-    if (row == null) {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
-        return;
-    }
-    hx.fail(ec.ERR_APIKEY_ALREADY_REVOKED, "API key is already revoked");
 }
 
 pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
@@ -251,17 +254,37 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     defer hx.ctx.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        \\DELETE FROM core.api_keys
-        \\WHERE id = $1::uuid AND tenant_id = $2::uuid AND active = FALSE
-        \\RETURNING id::text
+        \\WITH current_row AS (
+        \\    SELECT uid, active
+        \\    FROM core.api_keys
+        \\    WHERE uid = $1::uuid AND tenant_id = $2::uuid
+        \\), deleted AS (
+        \\    DELETE FROM core.api_keys k
+        \\    USING current_row c
+        \\    WHERE k.uid = c.uid AND c.active = FALSE
+        \\    RETURNING k.uid::text
+        \\)
+        \\SELECT d.uid, TRUE AS changed, FALSE AS active
+        \\FROM deleted d
+        \\UNION ALL
+        \\SELECT c.uid::text, FALSE AS changed, c.active
+        \\FROM current_row c
+        \\WHERE NOT EXISTS (SELECT 1 FROM deleted)
+        \\LIMIT 1
     , .{ key_id, tenant_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
     defer q.deinit();
 
-    if ((q.next() catch null) == null) {
-        reportDeleteFailure(hx, conn, tenant_id, key_id);
+    const row = q.next() catch null;
+    if (row == null) {
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
+        return;
+    }
+    const changed = row.?.get(bool, 1) catch false;
+    if (!changed) {
+        hx.fail(ec.ERR_APIKEY_MUST_REVOKE_FIRST, "Active key must be revoked before deletion");
         return;
     }
 
@@ -271,22 +294,6 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
         .api_key_id = key_id,
     });
     hx.noContent();
-}
-
-fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []const u8) void {
-    var q = PgQuery.from(conn.query(
-        \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
-    , .{ key_id, tenant_id }) catch {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
-        return;
-    });
-    defer q.deinit();
-    const row = q.next() catch null;
-    if (row == null) {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
-        return;
-    }
-    hx.fail(ec.ERR_APIKEY_MUST_REVOKE_FIRST, "Active key must be revoked before deletion");
 }
 
 test {

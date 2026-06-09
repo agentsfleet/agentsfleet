@@ -116,10 +116,10 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\INSERT INTO core.zombie_approval_gates
         \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   status, detail, requested_at, created_at)
+        \\   resolved_by, status, detail, requested_at, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
         \\        $7, $8, $9::jsonb, $10, $11,
-        \\        'pending', '', $12, $12)
+        \\        '', 'pending', '', $12, $12)
         \\ON CONFLICT (id) DO NOTHING
     , .{
         g.gate_id,   g.zombie_id,       g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,

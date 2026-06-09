@@ -4,7 +4,9 @@
 -- No plan tiers. Constants live in src/state/tenant_billing.zig.
 
 CREATE TABLE IF NOT EXISTS billing.tenant_billing (
-    tenant_id             UUID PRIMARY KEY REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
+    uid                   UUID GENERATED ALWAYS AS (tenant_id) STORED PRIMARY KEY,
+    CONSTRAINT ck_tenant_billing_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    tenant_id             UUID NOT NULL UNIQUE REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
     balance_nanos         BIGINT NOT NULL CHECK (balance_nanos >= 0),
     grant_source          TEXT   NOT NULL,
     balance_exhausted_at  BIGINT NULL,

@@ -194,8 +194,8 @@ fn insertPendingRow(
         \\INSERT INTO core.zombie_approval_gates
         \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-        \\   status, detail, requested_at, created_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, '', $13, $13)
+        \\   resolved_by, status, detail, requested_at, created_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $13)
     , .{
         gate_id,          zombie_id,              workspace_id,         action_id,           detail.tool, detail.action,
         detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,

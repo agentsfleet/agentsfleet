@@ -8,11 +8,12 @@
 -- Joined to zombie_execution_telemetry by event_id (1:1, write-once telemetry row).
 -- Joined to zombie_sessions by zombie_id (1:N, current session bookmark).
 --
--- Idempotent on replay: PRIMARY KEY (zombie_id, event_id) + ON CONFLICT DO NOTHING.
+-- Idempotent on replay: UNIQUE (zombie_id, event_id) + ON CONFLICT DO NOTHING.
 -- The status enum and event_type enum are enforced in application code. No SQL CHECK
 -- (CHECK with literal strings drifts silently from Zig/JS constants).
 
 CREATE TABLE IF NOT EXISTS core.zombie_events (
+    uid              UUID    NOT NULL,
     zombie_id        UUID    NOT NULL REFERENCES core.zombies(id) ON DELETE CASCADE,
     event_id         TEXT    NOT NULL,
     workspace_id     UUID    NOT NULL,
@@ -29,7 +30,9 @@ CREATE TABLE IF NOT EXISTS core.zombie_events (
     resumes_event_id TEXT    NULL,
     created_at       BIGINT  NOT NULL,
     updated_at       BIGINT  NOT NULL,
-    PRIMARY KEY (zombie_id, event_id)
+    PRIMARY KEY (uid),
+    CONSTRAINT ck_zombie_events_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT uq_zombie_events_zombie_event UNIQUE (zombie_id, event_id)
 );
 
 -- Per-zombie history newest-first. Covers the dashboard's primary view

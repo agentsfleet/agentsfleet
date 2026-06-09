@@ -46,7 +46,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     const value = std.json.Value{ .object = obj };
     try vault.storeJson(alloc, conn, ws_id, provider, value);
 
-    // Generate a UUIDv7 (required by ck_platform_llm_keys_id_uuidv7).
+    // Generate a UUIDv7 (required by ck_platform_llm_keys_uid_uuidv7).
     const id_format = @import("../types/id_format.zig");
     const key_id = try id_format.generateZombieId(alloc);
     defer alloc.free(key_id);

@@ -129,16 +129,17 @@ test "match resolves tenant billing charges route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
 }
 
-test "match resolves per-charge metering-periods route (carries event_id)" {
+test "match resolves per-charge telemetry route (carries event_id)" {
     try std.testing.expectEqualStrings(
         "evt_42",
-        switch (match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET).?) {
+        switch (match("/v1/tenants/me/billing/charges/evt_42/telemetry", .GET).?) {
             .get_tenant_metering_periods => |event_id| event_id,
             else => return error.TestExpectedEqual,
         },
     );
-    // The bare charges collection must NOT match the periods route.
+    // The bare charges collection must NOT match the telemetry route.
     try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET) == null);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {

@@ -13,7 +13,9 @@
 -- src/state/tenant_provider.zig — RULE STS forbids static-string CHECKs.
 
 CREATE TABLE IF NOT EXISTS core.tenant_providers (
-    tenant_id          UUID    PRIMARY KEY
+    uid                UUID    GENERATED ALWAYS AS (tenant_id) STORED PRIMARY KEY,
+    CONSTRAINT ck_tenant_providers_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    tenant_id          UUID    NOT NULL UNIQUE
                                REFERENCES core.tenants(tenant_id)
                                ON DELETE CASCADE,
     mode               TEXT    NOT NULL,

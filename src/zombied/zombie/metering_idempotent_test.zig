@@ -59,7 +59,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
 
     try uc1.seed(db_ctx.conn, WS_ZERO_DEBIT);
     defer uc1.teardown(db_ctx.conn, WS_ZERO_DEBIT);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_ZERO_DEBIT}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{WS_ZERO_DEBIT}) catch {};
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
     const before = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
@@ -89,7 +89,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
     // Telemetry row present with credit_deducted_nanos = 0.
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, credit_deducted_nanos
-        \\FROM zombie_execution_telemetry WHERE event_id = $1
+        \\FROM core.zombie_execution_telemetry WHERE event_id = $1
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;

@@ -3,18 +3,19 @@
 -- credentials for it. Zombie-initiated, human-approved.
 
 CREATE TABLE IF NOT EXISTS core.integration_grants (
-    grant_id        TEXT    NOT NULL PRIMARY KEY,
+    uid             UUID    PRIMARY KEY,
+    grant_id        TEXT    NOT NULL UNIQUE,
     zombie_id       UUID    NOT NULL REFERENCES core.zombies(id) ON DELETE CASCADE,
     service         TEXT    NOT NULL,
-    status          TEXT    NOT NULL DEFAULT 'pending',
+    status          TEXT    NOT NULL,
     requested_at    BIGINT  NOT NULL,
     requested_reason TEXT   NOT NULL,
     approved_at     BIGINT  NULL,
     revoked_at      BIGINT  NULL,
-    CONSTRAINT ck_integration_grants_status
-        CHECK (status IN ('pending', 'approved', 'revoked')),
-    CONSTRAINT ck_integration_grants_service
-        CHECK (service IN ('slack', 'gmail', 'agentmail', 'discord', 'grafana')),
+    CONSTRAINT ck_integration_grants_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT ck_integration_grants_grant_id_uuidv7
+        CHECK (grant_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
+    CONSTRAINT ck_integration_grants_uid_matches_grant_id CHECK (uid::text = grant_id),
     CONSTRAINT uq_integration_grants_zombie_service
         UNIQUE (zombie_id, service)
 );

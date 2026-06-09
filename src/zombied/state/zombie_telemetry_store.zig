@@ -1,6 +1,6 @@
 //! Per-event execution telemetry store.
 //!
-//! Writes to `zombie_execution_telemetry`. All queries use PgQuery (RULE FLS).
+//! Writes to `core.zombie_execution_telemetry`. All queries use PgQuery (RULE FLS).
 //! Two rows per event under the credit-pool billing model:
 //! `charge_type='receive'` is INSERTed at gate-pass; `charge_type='stage'` is
 //! INSERTed before startStage and UPDATEd post-execution with token counts and
@@ -35,7 +35,7 @@ const TELEMETRY_SELECT =
     \\       credit_deducted_nanos,
     \\       token_count_input, token_count_output, wall_ms,
     \\       recorded_at
-    \\FROM zombie_execution_telemetry
+    \\FROM core.zombie_execution_telemetry
     \\
 ;
 
@@ -95,13 +95,13 @@ pub fn insertTelemetry(
     defer alloc.free(row_id);
 
     _ = try conn.exec(
-        \\INSERT INTO zombie_execution_telemetry
-        \\  (id, tenant_id, workspace_id, zombie_id, event_id,
+        \\INSERT INTO core.zombie_execution_telemetry
+        \\  (uid, id, tenant_id, workspace_id, zombie_id, event_id,
         \\   charge_type, posture, model,
         \\   credit_deducted_nanos,
         \\   token_count_input, token_count_output, wall_ms,
         \\   recorded_at)
-        \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        \\VALUES ($1::uuid, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         \\ON CONFLICT (event_id, charge_type) DO NOTHING
     , .{
         row_id,

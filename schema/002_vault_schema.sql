@@ -47,8 +47,9 @@ TO api_runtime;
 GRANT SELECT ON audit.schema_migrations, audit.schema_migration_failures TO api_runtime;
 
 CREATE TABLE IF NOT EXISTS vault.secrets (
-    id            UUID PRIMARY KEY,
-    CONSTRAINT ck_vault_secrets_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid           UUID GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_vault_secrets_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id            UUID NOT NULL UNIQUE,
     workspace_id  UUID    NOT NULL REFERENCES core.workspaces(workspace_id),
     key_name      TEXT    NOT NULL,
     kek_version   INTEGER NOT NULL DEFAULT 1,
@@ -67,6 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime;
+REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_agent;
 
 -- Read-only principals are strictly routed to ops_ro + audit
 GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;

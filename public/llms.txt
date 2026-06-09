@@ -2,7 +2,7 @@
 
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json
-- Agent manifest: /agents (JSON-LD)
+- Agent manifest: /agents (JSON Linked Data)
 - Skill description: /skill.md
 - Health/status: /heartbeat
 - Documentation: /docs
@@ -23,6 +23,9 @@ Status transitions ride PATCH on the zombie resource — body {status: "active"|
 - list_zombie_events:   GET    /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events
 - stream_zombie_events: GET    /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
 - ingest_zombie_webhook: POST  /v1/webhooks/{zombie_id}
+- get_tenant_billing:         GET /v1/tenants/me/billing
+- get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
+- get_tenant_metering_periods: GET /v1/tenants/me/billing/charges/{event_id}/telemetry
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>
@@ -35,4 +38,3 @@ triggers) and are appended to the Zombie's event stream. The control plane
 the runner runs the Zombie's loop, which can call tools, update state,
 and emit further events. Operators steer or kill running Zombies through the
 control-plane endpoints above.
-

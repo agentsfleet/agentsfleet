@@ -118,13 +118,13 @@ Result: deterministic, low-latency routing with no re-routing surprises.
 
 ## 6. Service-to-service traffic (no tunnel needed)
 
-Internal traffic (runner → API, etc.) stays on the private mesh:
+Internal Fly traffic (Cloudflare connector → API; Fly Prometheus → `:9091` metrics) stays on the private 6PN mesh:
 
 ```
-worker.internal → api.internal:3000  (WireGuard, never exits)
+cloudflared-dev → zombied-dev.internal:3000  (Fly 6PN / WireGuard, never exits)
 ```
 
-Only public ingress goes through the tunnel. Internal traffic is zero-overhead.
+Only public ingress goes through the tunnel. The host-resident `zombie-runner` is off-platform — it reaches the API over HTTPS carrying a runner token, not the 6PN mesh.
 
 ---
 
@@ -142,7 +142,8 @@ The architecture above is what usezombie's DEV + PROD deployments actually run.
 
 | Component | Implementation |
 |---|---|
-| Compute | Fly.io (`zombied-dev`, `zombied-dev-worker`, plus prod equivalents) |
+| Compute (control plane / API) | Fly.io (`zombied-dev`, plus prod equivalent) |
+| Compute (execution plane) | Host-resident `zombie-runner` daemon on a bare-metal node (not Fly) — bootstrapped via `06_/07_runner_bootstrap_*` |
 | Tunnel connector | Fly.io (`cloudflared-dev`, 2 machines; `cloudflared-prod`, 2 machines) |
 | Edge | Cloudflare Tunnel (`zombied-dev` and `zombied-prod` tunnels) |
 | Private network | Fly 6PN (WireGuard mesh) |
