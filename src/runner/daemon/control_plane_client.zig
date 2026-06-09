@@ -21,12 +21,16 @@ pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
 
 /// POST /v1/runners/me/leases → the next event + resolved policy, or no-work.
 /// The whole tree (event envelope + secrets_map + budget) lives in the returned
-/// arena; the caller deinits after executing and reporting.
+/// arena; the caller deinits after executing and reporting. `.alloc_always` so
+/// every string is copied into that arena — otherwise unescaped fields reference
+/// `res.body`, which is freed here, leaving the returned `LeasePayload` dangling
+/// (a use-after-free the worker pool surfaces when its allocator reuses the
+/// buffer). Matches `getSelf`/`memoryHydrate`, which copy for the same reason.
 pub fn lease(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !std.json.Parsed(protocol.LeaseResponse) {
     const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, "");
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
-    return std.json.parseFromSlice(protocol.LeaseResponse, alloc, res.body, .{}) catch
+    return std.json.parseFromSlice(protocol.LeaseResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
         ClientError.MalformedResponse;
 }
 

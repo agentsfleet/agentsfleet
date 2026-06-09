@@ -181,7 +181,7 @@ Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connect
 
 ### Operator plane + reassignment
 
-The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — lands in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires their affinity so work re-leases to a healthy host (heartbeat-lapse reassignment) — is **M84_002**. `current_lease_id` makes "busy" a column read and names the reassignment target. Until M84_002, heartbeat-lapse recovery is bounded by the lease-TTL backstop + the pull-triggered reclaim M80_002 already ships.
+The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — lands in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires their affinity so work re-leases to a healthy host (heartbeat-lapse reassignment) — is **M84_002**. "Busy" and capacity stay **derived** from `fleet.runner_leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)`, `active = COUNT(active)`, `available = worker_count − active`, and the scheduler reasons in **capacity** (`active < worker_count`), not a boolean. Reassignment targets a specific lease row. Until M84_002, heartbeat-lapse recovery is bounded by the lease-TTL backstop + the pull-triggered reclaim M80_002 already ships.
 
 ## Datastore role model — why there is no `runner_runtime`
 
@@ -270,7 +270,7 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches the **live lease's zombie's full** prior memory and seeds the child's `:memory:` store at run start. No lease id in the path or query — the loop is strictly serial (one live lease), so the server resolves the zombie from the runner's live lease |
+| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches **that lease's zombie's full** prior memory and seeds the child's `:memory:` store at run start. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
 | `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
@@ -318,6 +318,8 @@ RUN 2  (next run, same zombie A)                          ◄── THE CARRY-OV
 ```
 
 **Data model.** Scope is the **zombie**, not the workspace: `instance_id = "zmb:" + zombie_id`, derived **server-side** from the lease `zombied` issued — a client-supplied scope is ignored. Within a zombie each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the zombie to read its memory via the tenant `GET`); two zombies never share a memory namespace.
+
+**Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on **`unique(active lease per zombie)`** — the control plane never issues two concurrent leases for one zombie, so a runner's N concurrent leases are always N *distinct* zombies = N distinct namespaces, written under N distinct `lease_id` + `fencing_token` fences. Isolation does **not** rest on `zombie_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke that uniqueness would reintroduce concurrent writes into one namespace, and would have to scope memory by `lease_id` first. Keep the uniqueness invariant load-bearing.
 
 **Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
 

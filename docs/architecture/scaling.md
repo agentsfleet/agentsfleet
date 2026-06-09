@@ -98,6 +98,7 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hou
 | `API_HTTP_WORKERS` | 1 | Accept/event-loop threads (epoll/kqueue), each multiplexing up to `API_MAX_CLIENTS` idle connections as fds **and owning its own `API_HTTP_THREADS` handler pool**. | Scale toward core count on a multi-core VM. Keep at 1 on a shared/fractional-core box so the handler pool is a single shared pool, not N fragmented ones (an SSE-heavy worker can strand the other worker's idle threads). The accept layer is rarely the wall. |
 | `zombied` API replica count | deployment-driven | HTTP QPS (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or SSE connection count on one replica × open tabs nears the Upstash plan cap. |
 | Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no Redis or coordination cost. Each idle runner adds one poll loop to the Upstash bill (tune via `NO_WORK_RETRY_AFTER_MS`). |
+| `RUNNER_WORKER_COUNT` | 1 | Concurrent leased agents **per host** — the runner worker-pool size (M88_002). N workers each run the lease→execute→report unit; the per-zombie `affinity.claim` keeps two workers off the same zombie. | A host has spare cores/memory while one long agent run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more agents per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. |
 
 **The `XREADGROUP BLOCK` knob is gone.** The lease path uses a non-blocking read; there is no per-stream blocking loop to tune. Its role (idle-cost vs latency trade) moved to `NO_WORK_RETRY_AFTER_MS` on the runner side.
 
@@ -189,6 +190,8 @@ Step 4: Emit configuration
 ### Runner host loss
 
 A runner that dies holds no datastore connection to leak and no Redis consumer to reclaim. Its in-flight lease expires at `lease_expires_at`; the next runner's `lease` reclaim path re-issues the event with a higher fencing token (see `runner_fleet.md` Failure Recovery Model). Recovery latency is `LEASE_TTL_MS` + poll density — the S0 lazy-reclaim SLA. There is **no connection storm** on runner loss — the survivors just keep polling.
+
+**Failure domain scales with `RUNNER_WORKER_COUNT`.** A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one — each of the N leases expires and re-leases independently (no batch coupling), so no work is dropped, but N runs restart instead of one. This is the cost of the per-host utilization win; `worker_count=1` keeps the failure domain at one run. Operators size N against this tradeoff.
 
 ### Runner host add
 

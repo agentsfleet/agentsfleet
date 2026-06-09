@@ -28,6 +28,12 @@ const SH = "/bin/sh";
 const PLANTED_TOKEN = "zrn_planted_probe_value";
 const WAIT_BUDGET_MS = 5_000;
 
+// Worker-pool concurrency proofs share the integration lane (real forked
+// children; the pool forks the executor_provider_stub runner per lease).
+test {
+    _ = @import("worker_pool_integration_test.zig");
+}
+
 /// Read up to `cap` bytes from `fd` until EOF (the child's output is small).
 fn readToEnd(alloc: std.mem.Allocator, fd: std.posix.fd_t, cap: usize) ![]u8 {
     // BUFFER GATE: ArrayList(u8) — read-to-EOF, size unknown up front, need one

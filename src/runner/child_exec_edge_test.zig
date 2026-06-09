@@ -59,6 +59,7 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .sandbox_tier = @tagName(contract.protocol.SandboxTier.dev_none),
         .workspace_base = "/tmp/zombie-runner",
         .network_policy = .deny_all,
+        .worker_count = 1,
         .alloc = alloc,
     };
     const ws = "/tmp/zombie-ws-childexec";
