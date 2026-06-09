@@ -70,6 +70,10 @@ pub var stop_requested = std.atomic.Value(bool).init(false);
 pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const cp = client_mod{ .base_url = cfg.control_plane_url, .io = io };
     const runner_token: []const u8 = cfg.runner_token;
+    // Reset only `stop_requested` (set solely by this control loop). `drain_requested`
+    // is set by the async SIGTERM/SIGINT handler and is DELIBERATELY not reset here:
+    // a SIGTERM landing in the window between `installDrainHandlers` and this point
+    // must NOT be dropped, or the daemon would ignore `systemctl stop` until SIGKILL.
     stop_requested.store(false, .seq_cst);
 
     var pool: ?worker_pool.Pool = null;
