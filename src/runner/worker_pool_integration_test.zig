@@ -40,6 +40,7 @@ const ControlPlaneStub = struct {
     handlers: std.ArrayList(std.Thread) = .empty,
     next_lease: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     reports: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    heartbeats: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     in_lease: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
     max_in_lease: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
 
@@ -69,6 +70,10 @@ const ControlPlaneStub = struct {
     fn handle(self: *ControlPlaneStub, conn: anytype) void {
         var buf: [2048]u8 = undefined;
         const line = readRequestLine(conn, &buf) orelse return;
+        if (std.mem.indexOf(u8, line, protocol.PATH_RUNNER_HEARTBEATS) != null) {
+            _ = self.heartbeats.fetchAdd(1, .seq_cst); // workers must NEVER hit this
+            return writeJson(self.io, conn, "{\"status\":\"ok\"}");
+        }
         if (std.mem.indexOf(u8, line, protocol.PATH_RUNNER_REPORTS) != null) {
             _ = self.reports.fetchAdd(1, .seq_cst);
             return writeJson(self.io, conn, "{\"ok\":true}");
@@ -170,6 +175,7 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
 
     try std.testing.expectEqual(WORKER_COUNT, stub.reports.load(.seq_cst)); // all N executed + reported
     try std.testing.expect(stub.max_in_lease.load(.seq_cst) >= 2); // genuinely concurrent, not serialized
+    try std.testing.expectEqual(@as(u32, 0), stub.heartbeats.load(.seq_cst)); // heartbeat is the control loop's job — workers never emit one (Invariant 5)
 }
 
 test "concurrent forked children spawn and reap from many threads without deadlock" {
