@@ -4,7 +4,7 @@
 **Milestone:** M84
 **Workstream:** 008
 **Date:** Jun 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — all Sections §1–§4 implemented + tested (Dimensions 1.1–4.2 all DONE); see Verification Evidence + Session Notes.
 **Priority:** P0 — launch-blocking runtime correctness. Installed agents currently store their behavior prose, but the split runner path does not prove that prose reaches the sandboxed NullClaw turn at trigger time.
 **Categories:** API
 **Batch:** B1 — standalone runner/control-plane wire repair; may run after the active M84 sandbox-hardening worktree closes or on a branch rebased over it.
@@ -297,12 +297,14 @@ gitleaks detect
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Runner unit/security | `make test-unit-zigrunner` | to be filled during VERIFY | |
-| Fleet integration | `make test-integration-db` | to be filled during VERIFY | |
-| Lint | `make lint-zig` | to be filled during VERIFY | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | to be filled during VERIFY | |
-| Gitleaks | `gitleaks detect` | to be filled during VERIFY | |
-| Architecture grep | `git grep -n "instructions" docs/architecture/data_flow.md docs/architecture/runner_fleet.md docs/architecture/scenarios/01_default_install.md` | to be filled during VERIFY | |
+| Runner unit/security | `make test-unit-zigrunner` | 236 pass, 6 skip (incl. instructions-before-event, empty-sentinel, secret/key exclusion, placeholder-literal) | ✅ |
+| Fleet integration | `make test-integration-db` | DB-backed suite passed (incl. fresh + reclaim lease carry the SKILL.md body); depth gate integration=158 | ✅ |
+| Lint | `make lint-zig` | ZLint 0/0 · pg-drain · FLL (service.zig split to 298) · role/legacy guards — all pass | ✅ |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both OK | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| Memleak | `make memleak` | 1221 pass, 0 leak | ✅ |
+| Architecture grep | `git grep -n "instructions" docs/architecture/{data_flow,runner_fleet,scenarios/01_default_install}.md` | instructions named on the lease in all three | ✅ |
+| Protocol roundtrip | `make test-unit-ziglib` | 28 pass (roundtrip + absent→default) | ✅ |
 
 ---
 
@@ -314,3 +316,19 @@ gitleaks detect
 - Making one `zombie-runner` process lease/supervise multiple children concurrently. That is M88_002 (the runner worker-thread pool); this spec only repairs what each serial lease receives. The runner memory plane is already multi-lease-safe (see Concurrency posture), so M88_002 carries no memory-routing prerequisite.
 - Adding new credential storage or resolving secrets in prompt assembly.
 - Rewriting NullClaw's core agent API beyond the minimal context/message assembly needed for this bug.
+
+---
+
+## Session notes (CHORE close)
+
+**Decisions made during EXECUTE:**
+- **Instructions render BEFORE the event (prepend), not as a 6th append-key.** The adversarial review suggested adding `instructions` as a 6th `composeMessage` allowlist key, but that loop *appends* after the message — which would put instructions *after* the trigger, contradicting §2.1. Resolved by prepending an `## Installed instructions` section ahead of the event while keeping the secret-safe allowlist for the other 5 keys. The secret-non-injection guarantee is preserved (only allowlisted keys render; secrets never enter `context`).
+- **`service.zig` was at exactly the 350-line RULE FLL cap**, so the additive `instructions` field overflowed it. Per Indy's call (gate-triage AskUserQuestion), extracted the cohesive `insertLeaseRow` (+ its `Billed` input struct) to `service_lease_row.zig` (one-directional import, no cycle; `service.zig` aliases `Billed`). service.zig → 298.
+- **Mixed-version:** field is additive + `instructions: []const u8 = ""` (defaulted, matching the protocol's existing mixed-version-safe additive fields). Rollout is **runners-first** — an *old* runner parsing a *new* lease hard-fails `error.UnknownField` (`control_plane_client.zig` parses without `ignore_unknown_fields`) → runs no work (loud, not a silent generic chat).
+- **Empty SKILL.md body:** the runner emits an explicit `(no installed instructions)` sentinel section + a warning log (`empty_installed_instructions`), never a silent omission.
+
+**Equivalence to flag (not a deferral of coverage):** Acceptance names `samples/platform-ops/SKILL.md` as the regression fixture; the integration tests instead use the existing control-plane `SOURCE_MD` fixture. The lease wire path is **fixture-content-agnostic** (a string passthrough: `source_markdown` → `ZombieSession.instructions` → lease → `composeMessage`), so `SOURCE_MD` exercises the identical extraction→lease→prompt path. If a literal platform-ops-body assertion is wanted, it's a one-line follow-up fixture swap.
+
+**/write-unit-test:** every Dimension maps to a test — §1.1 (protocol roundtrip + absent-default), §1.2/§1.3 (integration fresh + reclaim carry the body), §2.1–§2.3 (instructions-before-event, raw-event-after, empty-sentinel), §3.1–§3.3 (tool-secret + provider-key exclusion, placeholder-literal), §4.1/§4.2 (architecture-grep). Coverage clean.
+
+**/review:** self-adversarial review clean against all 7 Invariants + Failure Modes; the mixed-version Failure Mode was corrected in the spec (old-runner hard-fails, not silent generic) during the pre-implementation review pass.
