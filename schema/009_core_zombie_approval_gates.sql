@@ -6,8 +6,9 @@
 -- first writer wins, second observes RETURNING 0 rows and surfaces 409.
 
 CREATE TABLE IF NOT EXISTS core.zombie_approval_gates (
-    id              UUID PRIMARY KEY,
-    CONSTRAINT ck_zombie_approval_gates_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid             UUID GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_zombie_approval_gates_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id              UUID NOT NULL UNIQUE,
     zombie_id       UUID NOT NULL REFERENCES core.zombies(id),
     workspace_id    UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     action_id       TEXT NOT NULL,
@@ -24,19 +25,19 @@ CREATE TABLE IF NOT EXISTS core.zombie_approval_gates (
     -- (0 ≤ now_ms is always true), auto-denying gates outside the writer's intent.
     -- resolved_by: attribution of the resolver across channels
     --   ('user:<email>' | 'slack:<user_id>' | 'api:<key_id>' | 'system:timeout').
-    gate_kind       TEXT NOT NULL DEFAULT '',
-    proposed_action TEXT NOT NULL DEFAULT '',
-    evidence        JSONB NOT NULL DEFAULT '{}'::jsonb,
-    blast_radius    TEXT NOT NULL DEFAULT '',
+    gate_kind       TEXT NOT NULL,
+    proposed_action TEXT NOT NULL,
+    evidence        JSONB NOT NULL,
+    blast_radius    TEXT NOT NULL,
     timeout_at      BIGINT NOT NULL,
-    resolved_by     TEXT NOT NULL DEFAULT '',
+    resolved_by     TEXT NOT NULL,
 
     -- status: enum maintained in application code (src/zombie/approval_gate.zig
     -- GateStatus). No DEFAULT here — every INSERT supplies it explicitly via
     -- approval_gate.GateStatus.<variant>.toSlice() so a rename of an enum
     -- variant cannot drift past the type system.
     status          TEXT NOT NULL,
-    detail          TEXT NOT NULL DEFAULT '',
+    detail          TEXT NOT NULL,
     requested_at    BIGINT NOT NULL,
     updated_at      BIGINT,
     created_at      BIGINT NOT NULL

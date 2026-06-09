@@ -90,21 +90,23 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         return;
     }
 
-    // Verify zombie belongs to this workspace.
-    var zombie_q = PgQuery.from(conn.query(
-        \\SELECT id FROM core.zombies WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
-    , .{ body.zombie_id, workspace_id }) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    });
-    defer zombie_q.deinit();
-    const zombie_row = zombie_q.next() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    if (zombie_row == null) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found in this workspace");
-        return;
+    // Verify zombie belongs to this workspace before minting key material.
+    {
+        var zombie_q = PgQuery.from(conn.query(
+            \\SELECT 1 FROM core.zombies WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
+        , .{ body.zombie_id, workspace_id }) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        });
+        defer zombie_q.deinit();
+        const zombie_row = zombie_q.next() catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        };
+        if (zombie_row == null) {
+            hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found in this workspace");
+            return;
+        }
     }
 
     const raw_key = generateApiKey(hx.alloc) catch {

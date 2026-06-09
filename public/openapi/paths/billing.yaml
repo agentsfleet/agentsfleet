@@ -135,3 +135,57 @@
                       recorded_at:           { type: integer, format: int64 }
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/tenants/me/billing/charges/{event_id}/telemetry:
+  get:
+    operationId: get_tenant_metering_periods
+    summary: Tenant metering periods for one charge
+    description: >
+      Returns the oldest-first renewal slices behind one `stage` charge. The
+      route is scoped to the caller's tenant through the matching
+      `zombie_execution_telemetry` row; unknown or foreign `event_id` values
+      return an empty `items` list.
+    tags:
+    - Billing
+    parameters:
+    - name: event_id
+      in: path
+      description: Event Identifier (ID) from a `get_tenant_billing_charges` response.
+      required: true
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Metering slices for the requested event.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - slice_seq
+                    - d_input_tokens
+                    - d_cached_tokens
+                    - d_output_tokens
+                    - run_ms
+                    - run_fee_nanos
+                    - token_cost_nanos
+                    - charged_nanos
+                    - created_at
+                    properties:
+                      slice_seq:        { type: integer, format: int64 }
+                      d_input_tokens:   { type: integer, format: int64 }
+                      d_cached_tokens:  { type: integer, format: int64 }
+                      d_output_tokens:  { type: integer, format: int64 }
+                      run_ms:           { type: integer, format: int64 }
+                      run_fee_nanos:    { type: integer, format: int64 }
+                      token_cost_nanos: { type: integer, format: int64 }
+                      charged_nanos:    { type: integer, format: int64 }
+                      created_at:       { type: integer, format: int64 }
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

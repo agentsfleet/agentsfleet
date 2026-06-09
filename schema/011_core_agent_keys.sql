@@ -7,11 +7,13 @@
 -- Pre-v2.0 teardown: full file replace of the prior 027_core_external_agents.sql.
 
 CREATE TABLE IF NOT EXISTS core.agent_keys (
-    agent_id        TEXT    NOT NULL PRIMARY KEY,
+    uid             UUID    GENERATED ALWAYS AS (agent_id::uuid) STORED PRIMARY KEY,
+    CONSTRAINT ck_agent_keys_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    agent_id        TEXT    NOT NULL UNIQUE,
     workspace_id    UUID    NOT NULL REFERENCES core.workspaces(workspace_id) ON DELETE CASCADE,
     zombie_id       UUID    NOT NULL REFERENCES core.zombies(id) ON DELETE CASCADE,
     name            TEXT    NOT NULL,
-    description     TEXT    NOT NULL DEFAULT '',
+    description     TEXT    NOT NULL,
     key_hash        TEXT    NOT NULL,
     created_at      BIGINT  NOT NULL,
     last_used_at    BIGINT  NULL,

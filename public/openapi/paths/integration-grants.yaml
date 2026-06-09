@@ -91,7 +91,7 @@
     operationId: request_integration_grant
     summary: Request a new integration grant
     description: Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack,
-      GitHub). Creates a pending grant that a human approves via the grant-approval webhook.
+      Gmail). Creates a pending grant that a human approves via the grant-approval webhook.
     tags:
     - Integration Grants
     parameters:
@@ -121,6 +121,12 @@
             properties:
               service:
                 type: string
+                enum:
+                - slack
+                - gmail
+                - agentmail
+                - discord
+                - grafana
               reason:
                 type: string
     responses:

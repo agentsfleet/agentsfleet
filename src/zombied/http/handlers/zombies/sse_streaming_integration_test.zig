@@ -15,6 +15,7 @@ const clock = common.clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const queue_redis = @import("../../../queue/redis.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -191,14 +192,16 @@ test "integration: SSE publish→receive latency p95 < 200ms over 50 trials" {
 // ── test_sse_reconnect_backfills_via_events ─────────────────────────────────
 
 fn insertZombieEvent(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8, ts: i64) !void {
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
     _ = try conn.exec(
         \\INSERT INTO core.zombie_events
-        \\  (zombie_id, event_id, workspace_id, actor, event_type,
+        \\  (uid, zombie_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'chat', 'processed',
-        \\        '{"message":"x"}'::jsonb, $4, $4)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'steer:test', 'chat', 'processed',
+        \\        '{"message":"x"}'::jsonb, $5, $5)
         \\ON CONFLICT (zombie_id, event_id) DO NOTHING
-    , .{ zombie_id, event_id, TEST_WORKSPACE_ID, ts });
+    , .{ uid, zombie_id, event_id, TEST_WORKSPACE_ID, ts });
 }
 
 test "integration: SSE reconnect — durable backfill via /events covers the gap" {

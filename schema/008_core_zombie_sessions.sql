@@ -12,8 +12,9 @@
 -- NULL means the zombie is idle. Non-NULL means it is actively executing an event.
 
 CREATE TABLE IF NOT EXISTS core.zombie_sessions (
-    id                   UUID   PRIMARY KEY,
-    CONSTRAINT ck_zombie_sessions_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid                  UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_zombie_sessions_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id                   UUID   NOT NULL UNIQUE,
     zombie_id            UUID   NOT NULL REFERENCES core.zombies(id),
     context_json         JSONB  NOT NULL DEFAULT '{}',
     checkpoint_at        BIGINT NOT NULL,

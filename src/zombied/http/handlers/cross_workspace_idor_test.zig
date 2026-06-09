@@ -547,7 +547,7 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
 
     // Seed an agent key in TEST_WORKSPACE_ID for this test only. A zombie
     // record is also required because agent_keys.zombie_id has a FK.
-    const agent_id = "agent_m26_204_test";
+    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
     const zombie_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
@@ -592,7 +592,7 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
 
     // Seed zombie + pending grant. Revoke path requires the grant.status != 'revoked'.
     const zombie_for_grant = "0195b4ba-8d3a-7f13-8abc-2b3e1ecafe02";
-    const grant_id = "grant_m26_204";
+    const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6205";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)

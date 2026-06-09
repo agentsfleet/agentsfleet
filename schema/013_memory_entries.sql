@@ -36,10 +36,12 @@ ALTER ROLE memory_runtime SET search_path = memory, public;
 -- created_at / updated_at: decimal Unix epoch as TEXT (NullClaw format, retained).
 -- zombie_id: the owning zombie (UUID) — our identifier end to end, no "zmb:" form.
 CREATE TABLE IF NOT EXISTS memory.memory_entries (
-    id          TEXT PRIMARY KEY,
+    uid         UUID PRIMARY KEY,
+    CONSTRAINT ck_memory_entries_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id          TEXT NOT NULL UNIQUE,
     key         TEXT NOT NULL,
     content     TEXT NOT NULL,
-    category    TEXT NOT NULL DEFAULT 'core',
+    category    TEXT NOT NULL,
     session_id  TEXT,
     zombie_id   UUID NOT NULL,
     created_at  TEXT NOT NULL,

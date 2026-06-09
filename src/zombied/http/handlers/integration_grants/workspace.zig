@@ -22,6 +22,8 @@ pub const Context = common.Context;
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_ZOMBIE_NOT_FOUND = "Zombie not found";
+const S_PENDING = "pending";
+const S_REVOKED = "revoked";
 
 const GrantRow = struct {
     grant_id: []const u8,
@@ -119,14 +121,16 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     // killZombieOnConn. Even if the app-level zombie-ws match is ever bypassed by
     // a future refactor, the SQL still refuses cross-workspace revocation.
     var rev_q = PgQuery.from(conn.query(
-        \\UPDATE core.integration_grants
-        \\SET status = 'revoked', revoked_at = $1
-        \\WHERE grant_id = $2
-        \\  AND zombie_id = $3::uuid
-        \\  AND zombie_id IN (SELECT id FROM core.zombies WHERE workspace_id = $4::uuid)
-        \\  AND status != 'revoked'
-        \\RETURNING grant_id
-    , .{ now_ms, grant_id, zombie_id, workspace_id }) catch {
+        \\UPDATE core.integration_grants g
+        \\SET status = $1, revoked_at = $2
+        \\FROM core.zombies z
+        \\WHERE g.grant_id = $3
+        \\  AND g.zombie_id = $4::uuid
+        \\  AND z.id = g.zombie_id
+        \\  AND z.workspace_id = $5::uuid
+        \\  AND g.status != $1
+        \\RETURNING g.grant_id
+    , .{ S_REVOKED, now_ms, grant_id, zombie_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -145,8 +149,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
 // ── Defence-in-depth test for the revoke UPDATE SQL ────────────────────────
 //
 // Even if a future refactor removes the app-layer `zombie_ws_id == workspace_id`
-// check in innerRevokeGrant, the SQL `WHERE zombie_id IN (SELECT id FROM
-// core.zombies WHERE workspace_id = $4)` clause must still block cross-workspace
+// check in innerRevokeGrant, the SQL join to core.zombies by workspace_id must still block cross-workspace
 // revocation. This test executes the exact production SQL with a foreign
 // workspace_id and asserts (a) RETURNING produces zero rows, (b) the grant's
 // status remains 'pending' in the DB. If the SQL scope is ever removed from the
@@ -165,7 +168,7 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     const ws_a = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd11";
     const ws_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd12";
     const zombie_in_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd21";
-    const grant_id = "grant_defindep_001";
+    const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd22";
     const now: i64 = clock.nowMillis();
 
     // Seed tenant, two workspaces, a zombie in WS_B, and a pending grant.
@@ -192,9 +195,9 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
         \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, 'slack', 'pending', $3, 'test defence-in-depth')
+        \\VALUES ($1, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
         \\ON CONFLICT (grant_id) DO NOTHING
-    , .{ grant_id, zombie_in_b, now });
+    , .{ grant_id, zombie_in_b, S_PENDING, now });
 
     defer {
         _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
@@ -204,17 +207,19 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
         _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1", .{tenant_id}) catch {};
     }
 
-    // Execute the EXACT production UPDATE with a MISMATCHED workspace_id (WS_A,
-    // while the zombie lives in WS_B). Must return zero rows.
+    // Execute the exact production UPDATE with a mismatched workspace_id (WS_A,
+    // while the zombie lives in WS_B). It must return zero rows.
     var rev_q = PgQuery.from(try conn.query(
-        \\UPDATE core.integration_grants
-        \\SET status = 'revoked', revoked_at = $1
-        \\WHERE grant_id = $2
-        \\  AND zombie_id = $3::uuid
-        \\  AND zombie_id IN (SELECT id FROM core.zombies WHERE workspace_id = $4::uuid)
-        \\  AND status != 'revoked'
-        \\RETURNING grant_id
-    , .{ now, grant_id, zombie_in_b, ws_a }));
+        \\UPDATE core.integration_grants g
+        \\SET status = $1, revoked_at = $2
+        \\FROM core.zombies z
+        \\WHERE g.grant_id = $3
+        \\  AND g.zombie_id = $4::uuid
+        \\  AND z.id = g.zombie_id
+        \\  AND z.workspace_id = $5::uuid
+        \\  AND g.status != $1
+        \\RETURNING g.grant_id
+    , .{ S_REVOKED, now, grant_id, zombie_in_b, ws_a }));
     defer rev_q.deinit();
     try std.testing.expect((try rev_q.next()) == null);
 
@@ -226,5 +231,5 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     defer check_q.deinit();
     const row = (try check_q.next()) orelse return error.TestUnexpectedResult;
     const status_after = try row.get([]const u8, 0);
-    try std.testing.expectEqualStrings("pending", status_after);
+    try std.testing.expectEqualStrings(S_PENDING, status_after);
 }

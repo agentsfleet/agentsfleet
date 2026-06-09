@@ -13,6 +13,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
+const id_format = @import("../../../types/id_format.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -116,13 +117,15 @@ fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []cons
     defer f.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("reset role ignored: {s}", .{@errorName(err)});
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
     var id_buf: [128]u8 = undefined;
     const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ zombie_id, key });
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5::uuid, NULL, '1700000000', '1700000000')
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, NULL, '1700000000', '1700000000')
         \\ON CONFLICT (key, zombie_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ id, key, content, category, zombie_id });
+    , .{ uid, id, key, content, category, zombie_id });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {

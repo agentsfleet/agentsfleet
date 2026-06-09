@@ -39,8 +39,9 @@
 --     numbering forward), reset to 0 at fresh lease issue.
 
 CREATE TABLE IF NOT EXISTS fleet.runner_affinity (
-    id              UUID   PRIMARY KEY,
-    CONSTRAINT ck_runner_affinity_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid             UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_runner_affinity_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id              UUID   NOT NULL UNIQUE,
     zombie_id       UUID   NOT NULL,
     last_runner_id  UUID   NULL REFERENCES fleet.runners(id) ON DELETE SET NULL,
     fencing_seq     BIGINT NOT NULL,
