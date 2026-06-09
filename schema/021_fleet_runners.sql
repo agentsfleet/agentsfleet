@@ -28,8 +28,9 @@
 CREATE SCHEMA IF NOT EXISTS fleet;
 
 CREATE TABLE IF NOT EXISTS fleet.runners (
-    id            UUID   PRIMARY KEY,
-    CONSTRAINT ck_runners_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid           UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_runners_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id            UUID   NOT NULL UNIQUE,
     host_id       TEXT   NOT NULL,
     token_hash    TEXT   NOT NULL,
     sandbox_tier  TEXT   NOT NULL,

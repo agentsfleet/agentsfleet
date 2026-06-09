@@ -8,7 +8,9 @@
 -- src/state/zombie_telemetry_store.zig — RULE STS forbids static-string CHECKs.
 
 CREATE TABLE core.zombie_execution_telemetry (
-    id                       TEXT   NOT NULL PRIMARY KEY,
+    uid                      UUID   PRIMARY KEY,
+    CONSTRAINT ck_zombie_execution_telemetry_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id                       TEXT   NOT NULL UNIQUE,
     tenant_id                UUID   NOT NULL,
     workspace_id             TEXT   NOT NULL,
     zombie_id                TEXT   NOT NULL,

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Permanently flush all keys from the Upstash Redis cache (DEV and/or PROD). This is a **destructive, irreversible operation** that removes every key, including Redis Streams (`run_queue`) and their consumer groups, via `FLUSHALL`.
+Permanently flush all keys from the Upstash Redis cache (DEV and/or PROD). This is a **destructive, irreversible operation** that removes every key, including the per-zombie event streams (`zombie:{zombie_id}:events`) and their `zombie_lease` consumer groups, via `FLUSHALL`.
 
 Sibling to the database teardown (`operations/teardown/database`, PlanetScale Postgres). Run both when fully resetting an environment.
 
@@ -86,13 +86,7 @@ ENV=prod ./03_verify.sh
 
 ## Post-Teardown
 
-`FLUSHALL` removes the `run_queue` stream and its consumer groups. Re-run the priming stream bootstrap before serving traffic:
-
-```bash
-# See playbooks/founding/03_priming_infra/001_playbook.md § 3.2
-REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
-docker run --rm redis:7-alpine redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
-```
+No manual re-priming is required. `FLUSHALL` removes the per-zombie event streams and their `zombie_lease` consumer groups, but zombied recreates each one on demand when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first zombie created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
 
 ## Troubleshooting
 

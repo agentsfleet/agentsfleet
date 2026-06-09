@@ -19,12 +19,11 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [22]db.Migration {
+pub fn canonicalMigrations() [21]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
         .{ .version = 2, .sql = schema.vault_sql },
-        .{ .version = 5, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 6, .sql = schema.platform_llm_keys_sql },
         .{ .version = 7, .sql = schema.core_zombies_sql },
         .{ .version = 8, .sql = schema.core_zombie_sessions_sql },
@@ -104,18 +103,21 @@ pub fn runCanonicalMigrations(pool: *db.Pool) !void {
 
 test "migrateOnStartEnabledFromEnv parses known values" {
     const alloc = std.testing.allocator;
+    var empty = try common.env.fromPairs(alloc, &.{});
+    defer empty.deinit();
+    try std.testing.expect(!try migrateOnStartEnabledFromEnv(&empty, alloc));
 
-    try std.testing.expect(!try migrateOnStartEnabledFromEnv(alloc));
+    var enabled = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "1" }});
+    defer enabled.deinit();
+    try std.testing.expect(try migrateOnStartEnabledFromEnv(&enabled, alloc));
 
-    try std.posix.setenv("MIGRATE_ON_START", "1", true);
-    try std.testing.expect(try migrateOnStartEnabledFromEnv(alloc));
+    var disabled = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "false" }});
+    defer disabled.deinit();
+    try std.testing.expect(!try migrateOnStartEnabledFromEnv(&disabled, alloc));
 
-    try std.posix.setenv("MIGRATE_ON_START", "false", true);
-    try std.testing.expect(!try migrateOnStartEnabledFromEnv(alloc));
-
-    try std.posix.setenv("MIGRATE_ON_START", "bad", true);
-    try std.testing.expectError(MigrationGuardError.InvalidMigrateOnStart, migrateOnStartEnabledFromEnv(alloc));
-    try std.posix.unsetenv("MIGRATE_ON_START");
+    var invalid = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "bad" }});
+    defer invalid.deinit();
+    try std.testing.expectError(MigrationGuardError.InvalidMigrateOnStart, migrateOnStartEnabledFromEnv(&invalid, alloc));
 }
 
 test "unit: migration guard allows startup when schema is clean" {

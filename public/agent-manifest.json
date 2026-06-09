@@ -56,10 +56,31 @@
       "actionClass": "safe"
     },
     {
+      "operationId": "get_tenant_billing",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing",
+      "description": "Read the caller tenant's credit-pool balance, exhaustion state, and free-trial window.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_billing_charges",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/charges",
+      "description": "List newest-first credit-pool charge telemetry rows for the caller tenant.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_metering_periods",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/charges/{event_id}/telemetry",
+      "description": "Read the per-renewal metering slices behind one tenant charge.",
+      "actionClass": "safe"
+    },
+    {
       "operationId": "ingest_zombie_webhook",
       "method": "POST",
       "path": "/v1/webhooks/{zombie_id}",
-      "description": "Deliver an inbound event to a Zombie. Body must be HMAC-SHA256 signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
+      "description": "Deliver an inbound event to a Zombie. Body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     }
   ],
@@ -69,11 +90,11 @@
     "format": "Bearer <api_key>"
   },
   "revenue": {
-    "model": "self-managed + per-event + per-stage credit-pool metering",
-    "description": "Users supply their own LLM API keys. usezombie meters hosted execution against a credit pool: $0.01 per event receipt and $0.10 per stage execution. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
+    "model": "self-managed + credit-pool runtime metering",
+    "description": "Users may supply their own Large Language Model (LLM) API keys. usezombie meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
-    "safe": ["list_zombie_events", "stream_zombie_events"],
+    "safe": ["list_zombie_events", "stream_zombie_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],
     "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook"],
     "critical": ["delete_zombie"]
   }

@@ -149,7 +149,7 @@ Liveness sweeper + reassignment (§4) — one periodic job:
 |------|--------|-----|
 | `schema/021_fleet_runners.sql` | EDIT | In-place rename `status` → `admin_state` (pre-v2.0 teardown-rebuild — no ALTER migration); values active\|cordoned\|draining\|drained\|revoked, app-enforced. |
 | `schema/022_fleet_runner_leases.sql` | EDIT | Add the `(runner_id, status)` index in place (pre-v2.0 teardown — no separate migration file): the sweeper's "find this runner's active leases" query + the derived `busy`/`active` counts scan by `runner_id`, unindexed today. |
-| `schema/025_fleet_runner_events.sql` | CREATE | Append-only `fleet.runner_events` (id, runner_id FK, event_type, occurred_at, metadata JSONB, `dedup_key` BIGINT NULL) + a partial unique index `(runner_id, dedup_key) WHERE event_type='runner_offline'` — the offline-event idempotency key (stale `last_seen_at`) for cross-replica sweeper single-flight. |
+| `schema/025_fleet_runner_events.sql` | CREATE | Append-only `fleet.runner_events` with canonical `uid` generated from `id`, `runner_id` FK, `event_type`, `occurred_at`, metadata JSONB, `dedup_key` BIGINT NULL + a partial unique index `(runner_id, dedup_key) WHERE event_type='runner_offline'` — the offline-event idempotency key (stale `last_seen_at`) for cross-replica sweeper single-flight. |
 | `schema/embed.zig` + migration array | EDIT | Register the new `025_fleet_runner_events.sql` (021 + 022 are edited in place — already registered). |
 | `src/zombied/cmd/serve_runner_lookup.zig` | EDIT | Gate on `admin_state == 'active'`; non-active → `401 UZ-RUN-009`. |
 | `src/zombied/http/handlers/fleet/runner_patch.zig` | CREATE | `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke; platform-admin gated; emits events. |
@@ -229,7 +229,7 @@ The M84_001 runners surface gains per-row cordon/drain/revoke (destructive `Conf
 
 ```
 fleet.runners.admin_state : TEXT (active|cordoned|draining|drained|revoked), app-enforced. Renamed from `status`.
-fleet.runner_events : (id, runner_id FK, event_type, occurred_at BIGINT, metadata JSONB, dedup_key BIGINT NULL) — append-only.
+fleet.runner_events : (uid generated from id, id, runner_id FK, event_type, occurred_at BIGINT, metadata JSONB, dedup_key BIGINT NULL) — append-only.
   Partial unique: (runner_id, dedup_key) WHERE event_type='runner_offline' — one offline event per
   offline episode across replicas; dedup_key = the stale last_seen_at snapshot the sweeper read.
 
@@ -380,11 +380,17 @@ gitleaks detect 2>&1 | tail -3
 | Sweeper + reassignment | `make test-integration-db` | stale/offline/reassignment/drain integration tests passed in suite | yes |
 | Dashboard changed-surface coverage | focused `vitest ... --coverage --coverage.thresholds.100 --coverage.thresholds.perFile` | 50 tests; statements 100% (149/149), branches 100% (94/94), functions 100% (59/59), lines 100% (129/129) | yes |
 | Dashboard package coverage | `bun run test:coverage --no-file-parallelism` | 91 files, 856 tests; statements 100% (2139/2139), branches 100% (1306/1306), functions 100% (675/675), lines 100% (1901/1901) | yes |
-| Repository coverage gate | `make test-coverage-all` | app 100%, website 100%, `zombiectl` 1097 pass / 2 skip, design-system 43 files / 403 tests; all package coverage gates passed | yes |
+| Repository coverage gate | `make test-coverage-all` | app 100%, website 100%, design-system 100% (301/301 statements, 285/285 branches, 118/118 functions, 278/278 lines); `zombiectl` 1097 pass / 2 skip and package gate passed | yes |
 | Cross-compile | `zig build -Dtarget=x86_64-linux`; `zig build -Dtarget=aarch64-linux` | both exited 0 | yes |
 | Staged harness | `make harness-verify` | all staged gates green | yes |
 | Frontend lint | `make lint-apps-ds-ctl` | app, design-system, and `zombiectl` lint/type checks passed | yes |
 | Secret scan | `gitleaks detect` | no leaks found | yes |
+
+---
+
+## Punch List
+
+- **Deployment follow-up (requested by Indy, Jun 10 2026: 12:05 AM Indian Standard Time (IST))** — `deploy-dev` failed while syncing the Cloudflare tunnel token because the secret update API returned `502 Bad Gateway`; the log does not indicate an expired token. `deploy-dev-worker` then wrote `/etc/default/zombie-runner` but validation found `ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, and `RUNNER_HOST_ID` absent. This is outside this runner-operator workstream's file scope; investigate secret-update retry/backoff and runner environment propagation in a deployment follow-up.
 
 ---
 

@@ -124,7 +124,7 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
     hx.ok(.ok, .{ .items = rows, .next_cursor = next_cursor });
 }
 
-/// GET /v1/tenants/me/billing/charges/{event_id}/metering-periods — the per-
+/// GET /v1/tenants/me/billing/charges/{event_id}/telemetry — the per-
 /// renewal slice breakdown behind one charge, oldest-first. Scoped to the
 /// caller's tenant by the store's EXISTS guard (a foreign/unknown event_id
 /// returns an empty list, never another tenant's slices).

@@ -29,8 +29,8 @@ SECTIONS=2 ./playbooks/founding/02_preflight/00_gate.sh
 Bootstrap (`playbooks/founding/01_bootstrap/001_playbook.md`) — human + agent bootstrap
     └── Milestone 2 (this doc) — agent infra priming
         ├── 1.0 Container pipeline (GHCR)
-        ├── 2.0 Fly.io — API + Worker services (recommended)
-        │     ├── 2.1 Fly apps: zombied-dev, zombied-dev-worker, cloudflared-dev
+        ├── 2.0 Fly.io — API service (recommended)
+        │     ├── 2.1 Fly apps: zombied-dev, cloudflared-dev
         │     ├── 2.2 Cloudflare Tunnel (origin shield — no public Fly port)
         │     └── 2.3 Auto-scaling configuration
         ├── 3.0 Data-plane bootstrap (PlanetScale + Upstash)
@@ -54,7 +54,6 @@ Bootstrap (`playbooks/founding/01_bootstrap/001_playbook.md`) — human + agent 
 | Set DNS CNAME records | Agent | Cloudflare API |
 | Configure auto-scaling in fly.toml | Agent | Config file + `fly deploy` |
 | PlanetScale schema migrations | Agent | `psql` + migration files |
-| Upstash stream bootstrap | Agent | `docker run --rm redis:7-alpine redis-cli` |
 
 ---
 
@@ -87,15 +86,13 @@ grep "needs:.*binaries" .github/workflows/release.yml
 ```bash
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
-# Create the three DEV apps
-fly apps create zombied-dev         --org <org>
-fly apps create zombied-dev-worker  --org <org>
-fly apps create cloudflared-dev     --org <org>
+# Create the two DEV apps (API + tunnel connector)
+fly apps create zombied-dev      --org <org>
+fly apps create cloudflared-dev  --org <org>
 
 # Repeat for PROD
-fly apps create zombied-prod         --org <org>
-fly apps create zombied-prod-worker  --org <org>
-fly apps create cloudflared-prod     --org <org>
+fly apps create zombied-prod      --org <org>
+fly apps create cloudflared-prod  --org <org>
 ```
 
 ### 2.2 Set Secrets from 1Password (Agent)
@@ -103,8 +100,8 @@ fly apps create cloudflared-prod     --org <org>
 > **Important:** `DATABASE_URL` and `REDIS_URL` are not valid for `zombied serve`. Use role-separated vars. See `docs/CONFIGURATION.md`.
 
 ```bash
-# DEV API + Worker (same secrets, separate apps)
-for APP in zombied-dev zombied-dev-worker; do
+# DEV API
+for APP in zombied-dev; do
   fly secrets set \
     DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
     DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
@@ -137,11 +134,6 @@ fly deploy --app zombied-dev \
   --regions iad \
   --ha=false   # start with 1 machine, scale after verify
 
-# Deploy Worker (separate process, same image)
-fly deploy --app zombied-dev-worker \
-  --image ghcr.io/usezombie/zombied:dev-latest \
-  --regions iad
-
 # Verify
 fly status --app zombied-dev
 ```
@@ -168,24 +160,7 @@ primary_region = "iad"
   path = "/metrics"
 ```
 
-`fly.toml` for the Worker app:
-
-```toml
-app = "zombied-dev-worker"
-primary_region = "iad"
-
-[build]
-  image = "ghcr.io/usezombie/zombied:dev-latest"
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-
-[processes]
-  worker = "zombied worker"
-
-# No http_service — workers consume Redis Streams, no inbound HTTP.
-```
+There is no Fly "worker" app. Execution runs on the host-resident `zombie-runner` daemon on a bare-metal node — it leases work over HTTPS, runs the agent in a bubblewrap-sandboxed forked child, and reports back over a Tailscale control plane. The runner host is bootstrapped separately (§4.0 of this doc; canonical playbooks `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` for DEV and `07_runner_bootstrap_prod/001_playbook.md` for PROD) and CI-deployed via `deploy-dev.yml`. Only the API (`zombied serve`) deploys to Fly. The single-process `zombied worker` subcommand and the standalone sandbox sidecar were folded into `zombie-runner` by the M80_002 cutover — see `docs/architecture/runner_fleet.md`.
 
 ### 2.4 Cloudflare Tunnel — Origin Shield (Agent)
 
@@ -259,8 +234,8 @@ fly scale count 2 --app zombied-dev
 # Auto-scaling: scale up to 5 on load, never scale below 1
 fly autoscale set min=1 max=5 --app zombied-dev
 
-# Workers — scale independently based on queue depth (manual for now)
-fly scale count 1 --app zombied-dev-worker
+# Execution capacity is the host-resident zombie-runner (bare-metal), not a
+# Fly app — provision/scale it via the runner bootstrap playbooks (06_/07_).
 ```
 
 For PROD multi-region (future):
@@ -280,7 +255,6 @@ op item create --vault "$VAULT_DEV" --title fly-api-token \
 
 # Set GitHub Actions vars
 gh variable set FLY_APP_DEV --body "zombied-dev" --repo usezombie/usezombie
-gh variable set FLY_APP_DEV_WORKER --body "zombied-dev-worker" --repo usezombie/usezombie
 gh variable set FLY_APP_PROD --body "zombied-prod" --repo usezombie/usezombie
 ```
 
@@ -332,18 +306,11 @@ Role contract (`schema/002_vault_schema.sql`):
 - `memory_runtime` — runtime DML on the agent-memory schema
 - `ops_readonly_human`, `ops_readonly_agent` — read-only access via `ops_ro` views only
 
-### 3.2 Redis — Stream Bootstrap (Upstash)
+### 3.2 Redis — Streams (Upstash)
 
-Redis is hosted on Upstash (DEV and PROD). ACL is managed via Upstash dashboard — no custom ACL commands needed.
+Redis is hosted on Upstash (DEV and PROD). ACL is managed via the Upstash dashboard — no custom ACL commands needed.
 
-Stream setup — run once per environment:
-
-```bash
-REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
-docker run --rm redis:7-alpine redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
-```
-
-For PROD, swap `$VAULT_DEV/upstash-dev` for `$VAULT_PROD/upstash-prod`.
+No manual stream bootstrap is required. zombied creates each zombie's event stream (`zombie:{zombie_id}:events`) and its `zombie_lease` consumer group on demand, synchronously, when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream` in `src/zombied/http/handlers/zombies/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first zombie created after deploy.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 

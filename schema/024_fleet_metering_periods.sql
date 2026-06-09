@@ -20,6 +20,7 @@
 -- equals the wallet drain + the accumulated telemetry ledger row, for audit.
 
 CREATE TABLE IF NOT EXISTS fleet.metering_periods (
+    uid               UUID   NOT NULL,
     event_id          TEXT   NOT NULL,
     slice_seq         BIGINT NOT NULL,
     d_input_tokens    BIGINT NOT NULL,
@@ -30,14 +31,16 @@ CREATE TABLE IF NOT EXISTS fleet.metering_periods (
     token_cost_nanos  BIGINT NOT NULL,
     charged_nanos     BIGINT NOT NULL,
     created_at        BIGINT NOT NULL,
-    CONSTRAINT pk_metering_periods PRIMARY KEY (event_id, slice_seq)
+    CONSTRAINT pk_metering_periods PRIMARY KEY (uid),
+    CONSTRAINT ck_metering_periods_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT uq_metering_periods_event_slice UNIQUE (event_id, slice_seq)
 );
 
--- No separate index: pk_metering_periods is a unique B-tree on (event_id,
--- slice_seq), so it already serves the INSERT conflict check AND the per-event
--- drill-down read (GET /v1/.../metering-periods, WHERE event_id = $1 ORDER BY
--- slice_seq). A second index on the same columns would only waste storage and
--- slow every INSERT.
+-- No separate index: uq_metering_periods_event_slice is a unique B-tree on
+-- (event_id, slice_seq), so it already serves the INSERT conflict check and
+-- the per-event drill-down read (GET /v1/.../telemetry, WHERE event_id = $1
+-- ORDER BY slice_seq). A second index on the same columns would only waste
+-- storage and slow every INSERT.
 
 -- api_runtime: the renew/report path INSERTs a slice; the read endpoint SELECTs.
 GRANT SELECT, INSERT ON fleet.metering_periods TO api_runtime;
