@@ -4,7 +4,7 @@
 **Milestone:** M84
 **Workstream:** 002
 **Date:** Jun 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operators can't take a host out of rotation or audit fleet history; the read-only list (M84_001) shows *now* but nothing past or actionable.
 **Categories:** API, UI
 **Batch:** B2 — after M84_001 (the read list + derived liveness it builds on must land first).
@@ -355,7 +355,9 @@ gitleaks detect 2>&1 | tail -3
 - **Sweeper single-flight — X (unique constraint) chosen over Y (CAS column) + advisory lock (Jun 08 2026, Orly CTO review, ratified Indy).** Under N `zombied` replicas every replica runs the liveness sweeper, so the `runner_offline` audit event must be exactly-once per offline episode (the reassignment side-effect is already lease-fenced via `reclaim.zig`). **Chosen (X):** a partial unique index on `fleet.runner_events` keyed by the stale `last_seen_at` (the offline-episode idempotency key) — `INSERT … ON CONFLICT DO NOTHING RETURNING`; the winning replica emits + drives reassignment. **Rejected:** an advisory lock (serializes the sweeper across replicas, defeating horizontal scale) and a CAS on a stored `fleet.runners.offline_notified_at` column (reintroduces the runtime-shadow the `current_lease_id` drop removed; discipline-enforced, not DB-enforced; `approval_gate`'s CAS flips *real state*, this would be pure dedup bookkeeping). The idempotency key lives on the append-only event table — where idempotency keys belong — leaving `fleet.runners` column-free. Key correctness: immutable while dead (no heartbeat), distinct across episodes (revival bumps `last_seen_at`).
 - **§1 implemented (Jun 09 2026) — teardown-rebuild rename, not an ALTER migration.** VERSION is 0.37.0 (major 0 < 2), so `check-schema-gate` forbids `ALTER`/`DROP` — the `status`→`admin_state` rename is an **in-place edit of `021_fleet_runners.sql`** (and §4's sweeper index lands in-place in `022`), not new migration files. The ORP sweep was wider than first scoped: **12 test seeds** (not 3) plus 3 production sites (register insert, runnerBearer lookup, `GET /me`) referenced `fleet.runners.status`; all swept, `RUNNER_STATUS_ACTIVE` removed (0 refs). `SelfResponse.status` wire field **kept** (sourced from the renamed column) — renaming it ripples cross-binary to the runner daemon, out of this spec's blast radius; `docs/AUTH.md` gate prose updates at DOCUMENT stage. `AdminState` is a typed enum; `ADMIN_STATE_ACTIVE` derives from it via `@tagName` (UFS). Commit `bd222fae` added the Error Registry entry for `UZ-RUN-009`; this pickup reran `make harness-verify`, `zig build test-auth`, and the pre-commit gates clean.
 - **Pre-close review fix (Jun 09 2026) — PATCH event metadata now reads the locked row state.** The adversarial review found a race where concurrent non-revoked transitions could update the runner correctly but write stale `from_admin_state` metadata from the earlier caller-side read. `runner_patch.zig` now locks the current row in the update statement, uses that locked `from_admin_state` for the event metadata, and routes idempotent repeats through the locked no-op path. Verification reran `make test-integration-db`, `make lint-zig`, `zig build test`, and both Linux cross-builds.
-- **Deferrals** — populate during implementation; none at authoring.
+- **`/write-unit-test` closeout (Jun 10 2026) — coverage ledger resolved.** Every Test Specification row maps to an integration, component, or server-action test. The ledger found one missing assertion: repeated `PATCH` cordon already proved `updated_at` stability but did not prove event idempotency. `fleet_operator_integration_test.zig` now asserts exactly one `runner_cordoned` event after a repeated cordon and exactly one `runner_draining` event after drain; `make test-integration-db` passed after the fix.
+- **`/review` closeout (Jun 10 2026) — findings dispositioned.** Review found stale docs, not a remaining code defect: `docs/AUTH.md` still described `platform_admin` as enrollment-only, and architecture prose still said M84_002 was pending/unwired. Both now name the fleet list, mutation, event-history, and sweeper surfaces correctly. No unresolved deferrals.
+- **Deferrals** — none.
 
 ---
 
@@ -363,8 +365,8 @@ gitleaks detect 2>&1 | tail -3
 
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
-| After implementation, before CHORE(close) | `/write-unit-test` | Coverage vs the operator-plane + event + sweeper matrix (esp. event⇄state txn, revoke gate, reassignment hold). | Clean; count in Discovery. |
-| After tests pass, before CHORE(close) | `/review` | Adversarial review vs spec, ZIG_RULES, AUTH.md, the append-only + no-JSONB invariants. | Clean OR every finding dispositioned. |
+| After implementation, before CHORE(close) | `/write-unit-test` | Coverage vs the operator-plane + event + sweeper matrix (esp. event⇄state txn, revoke gate, reassignment hold). | Clean; one idempotent-event assertion gap found and fixed. |
+| After tests pass, before CHORE(close) | `/review` | Adversarial review vs spec, ZIG_RULES, AUTH.md, the append-only + no-JSONB invariants. | Clean after docs findings were fixed. |
 | After `gh pr create` | `/review-pr` | Review-comments the open PR. | Comments addressed before merge. |
 
 ---
@@ -376,6 +378,7 @@ gitleaks detect 2>&1 | tail -3
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
 | Operator plane + events | `make test-integration-db` | `✓ [zombied] database-backed integration tests passed` | yes |
+| PATCH event idempotency | `make test-integration-db` | repeated cordon now asserts one `runner_cordoned` event; drain asserts one `runner_draining` event | yes |
 | Backend unit graph | `zig build test` | exited 0 (known negative-test diagnostics only) | yes |
 | Sweeper + reassignment | `make test-integration-db` | stale/offline/reassignment/drain integration tests passed in suite | yes |
 | Dashboard changed-surface coverage | focused `vitest ... --coverage --coverage.thresholds.100 --coverage.thresholds.perFile` | 50 tests; statements 100% (149/149), branches 100% (94/94), functions 100% (59/59), lines 100% (129/129) | yes |
@@ -385,6 +388,8 @@ gitleaks detect 2>&1 | tail -3
 | Staged harness | `make harness-verify` | all staged gates green | yes |
 | Frontend lint | `make lint-apps-ds-ctl` | app, design-system, and `zombiectl` lint/type checks passed | yes |
 | Secret scan | `gitleaks detect` | no leaks found | yes |
+| `/write-unit-test` ledger | diff-ledger review vs Test Specification | all rows covered; idempotent-event gap fixed | yes |
+| `/review` | adversarial diff pass | two docs findings fixed; no unresolved code findings | yes |
 
 ---
 

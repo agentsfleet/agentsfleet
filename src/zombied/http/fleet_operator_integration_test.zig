@@ -30,6 +30,7 @@ const BODY_CORDON = "{\"action\":\"cordon\"}";
 const BODY_DRAIN = "{\"action\":\"drain\"}";
 const BODY_REVOKE = "{\"action\":\"revoke\"}";
 const BODY_BAD_ACTION = "{\"action\":\"pause\"}";
+const ONE_EVENT: i64 = 1;
 
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"0Z8ud27-1vd_WsxIcCdMkFeWNiGYpOIKhKAkQruCx6lIzCiDnKyH4I1fL2copGyb5EXdzmqrPvMIKEvoSXGUafrjWp8QneMKdVXoFwRsdrsaEcXg_1npJuiF9smRouTn8pda6m0bwcjn8jBXdBo4q_Eah9O03A8yrC-ZfNqDKjClG0lsYWlJVxpcUIYGQNNVI6LRhYD3tQnzu_4vQdW_FgDrPffwv2uA6YQoMt-Tq93LtDZFE8PlEW43vDcSRw-1gWQazcLw9VPEw6vAywE7PLeQyx3cjIQZxBDo0eDld4J6oprxatCVZ0I-CuBdj07PvGFYmWke5nfV-zsbwwwvhw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
@@ -126,6 +127,18 @@ fn getRunnerUpdatedAt(h: *TestHarness) !i64 {
     return row.get(i64, 0);
 }
 
+fn eventCount(h: *TestHarness, event_type: protocol.RunnerEventType) !i64 {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT COUNT(*)::bigint FROM fleet.runner_events
+        \\WHERE runner_id = $1::uuid AND event_type = $2
+    , .{ OP_RUNNER_ID, @tagName(event_type) }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    return row.get(i64, 0);
+}
+
 test "fleet runner PATCH cordons idempotently then drains" {
     const h = try startHarness();
     defer h.deinit();
@@ -144,11 +157,13 @@ test "fleet runner PATCH cordons idempotently then drains" {
     defer again.deinit();
     try again.expectStatus(.ok);
     try std.testing.expectEqual(cordoned_at, try getRunnerUpdatedAt(h));
+    try std.testing.expectEqual(ONE_EVENT, try eventCount(h, .runner_cordoned));
 
     const drain = try patchRunner(h, PLATFORM_ADMIN_TOKEN, BODY_DRAIN);
     defer drain.deinit();
     try drain.expectStatus(.ok);
     try std.testing.expectEqual(protocol.AdminState.draining, try getRunnerState(h));
+    try std.testing.expectEqual(ONE_EVENT, try eventCount(h, .runner_draining));
 }
 
 test "fleet runner PATCH is platform-admin gated" {

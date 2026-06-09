@@ -181,7 +181,7 @@ Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connect
 
 ### Operator plane + reassignment
 
-The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — lands in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires affinity for admin-driven reassignment — is **M84_002**. "Busy" stays **derived** from `fleet.runner_leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)` and `active = COUNT(active)` derive server-side, and reassignment targets a specific lease row. Capacity-aware scheduling (`available = worker_count − active`) stays out of scope until M85_001 because no runner-reported `worker_count` exists today. Until M84_002, heartbeat-lapse recovery is bounded by the lease-TTL backstop + the pull-triggered reclaim M80_002 already ships.
+The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — landed in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires affinity for admin-driven reassignment — lands in **M84_002**. "Busy" stays **derived** from `fleet.runner_leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)` and `active = COUNT(active)` derive server-side, and reassignment targets a specific lease row. Capacity-aware scheduling (`available = worker_count − active`) stays out of scope until M85_001 because no runner-reported `worker_count` exists today. Heartbeat-lapse recovery remains bounded by the lease-expiry backstop first; M84_002 adds the offline audit event and admin-driven affinity expiry.
 
 ## Datastore role model — why there is no `runner_runtime`
 
@@ -485,7 +485,7 @@ The exact and restart-resilient form of the two gauges is a read-only background
  S6  M84_001  ENROLLMENT dashboard "Add runner" mint (retired register --token CLI) + GET
                          /v1/fleet/runners read + honest derived liveness                          (done)
  S6  M84_002  OPERATOR   PATCH /v1/fleet/runners cordon/drain/revoke + admin_state + UZ-RUN-009 +
-                         fleet.runner_events log + liveness sweeper / reassignment                 (pending)
+                         fleet.runner_events log + liveness sweeper / reassignment                 (done)
  S7  M85_001  SCHEDULER  label placement (required_tags ⊆ runner.labels, before the sticky hint) +
                          trust-gated placement; capacity / fairness / autoscale stay out            (pending)
  ── note ──────────────────────────────────────────────────────────────────────────────────────
