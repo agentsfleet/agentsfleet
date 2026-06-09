@@ -100,7 +100,7 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
         return .short_circuit;
     }
 
-    log.info("auth_succeeded", .{ .runner_id = row.runner_id });
+    log.debug("auth_succeeded", .{ .runner_id = row.runner_id });
     ctx.principal = .{
         .mode = .runner,
         .runner_id = row.runner_id,
