@@ -4,11 +4,11 @@
 **Milestone:** M84
 **Workstream:** 008
 **Date:** Jun 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — launch-blocking runtime correctness. Installed agents currently store their behavior prose, but the split runner path does not prove that prose reaches the sandboxed NullClaw turn at trigger time.
 **Categories:** API
 **Batch:** B1 — standalone runner/control-plane wire repair; may run after the active M84 sandbox-hardening worktree closes or on a branch rebased over it.
-**Branch:** added during CHORE(open)
+**Branch:** feat/m84-skill-instructions-lease
 **Depends on:** M80_002 runner cutover — the bug exists only in the split `zombied` / `zombie-runner` path. M84_006 is adjacent sandbox-depth work and is not a dependency.
 **Provenance:** agent-generated from Indy's Jun 08, 2026 architecture review question about whether the installed platform-ops `SKILL.md` actually runs after a GitHub deploy-failure trigger.
 
