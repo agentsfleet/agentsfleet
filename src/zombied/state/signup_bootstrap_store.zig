@@ -5,6 +5,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const id_format = @import("../types/id_format.zig");
 
 const TenantRow = struct {
     tenant_id: []const u8,
@@ -109,10 +110,12 @@ pub fn insertMembership(
     role: []const u8,
     now_ms: i64,
 ) !void {
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
     _ = try conn.exec(
-        \\INSERT INTO core.memberships (tenant_id, user_id, role, created_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4)
-    , .{ tenant_id, user_id, role, now_ms });
+        \\INSERT INTO core.memberships (uid, tenant_id, user_id, role, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+    , .{ uid, tenant_id, user_id, role, now_ms });
 }
 
 /// Returns true on insert, false on (tenant_id, name) collision. Caller

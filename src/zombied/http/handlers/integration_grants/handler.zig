@@ -30,14 +30,12 @@ pub const GrantStatus = enum {
     pending,
     approved,
     revoked,
-    rejected,
 
     pub fn toSlice(self: GrantStatus) []const u8 {
         return switch (self) {
             .pending => S_PENDING,
             .approved => "approved",
             .revoked => S_REVOKED,
-            .rejected => "rejected",
         };
     }
 };
@@ -134,6 +132,13 @@ const RequestGrantBody = struct {
     reason: []const u8,
 };
 
+const ExistingGrant = struct {
+    zombie_name: []const u8,
+    grant_id: []const u8,
+    status: []const u8,
+    requested_at: i64,
+};
+
 pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -179,25 +184,19 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
     // Idempotency / re-request logic:
     //   pending | approved → return existing (no new request needed)
-    //   revoked | denied   → UPDATE back to pending with new reason (re-request allowed)
+    //   revoked           → UPDATE back to pending with new reason (re-request allowed)
     //   no row             → INSERT new grant
-    var existing_q = PgQuery.from(conn.query(
-        \\SELECT grant_id, status, requested_at FROM core.integration_grants
-        \\WHERE zombie_id = $1::uuid AND service = $2
-        \\LIMIT 1
-    , .{ zombie_id, body.service }) catch {
+    const existing = fetchExistingGrant(hx, conn, zombie_id, body.service) orelse {
         common.internalDbError(hx.res, hx.req_id);
         return;
-    });
-    defer existing_q.deinit();
+    };
 
-    if (existing_q.next() catch null) |existing_row| {
-        const existing_id = existing_row.get([]u8, 0) catch "";
-        const existing_st = existing_row.get([]u8, 1) catch "unknown";
-        const existing_at = existing_row.get(i64, 2) catch 0;
+    if (existing.grant_id.len != 0) {
+        const existing_id = existing.grant_id;
+        const existing_st = existing.status;
+        const existing_at = existing.requested_at;
 
-        const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED) or
-            std.mem.eql(u8, existing_st, "denied");
+        const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED);
         if (!is_terminal) {
             // pending or approved — idempotent return.
             log.info("already_exists", .{ .zombie_id = zombie_id, .service = body.service, .status = existing_st });
@@ -212,7 +211,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             return;
         }
 
-        // Revoked/denied: re-request — UPDATE back to pending.
+        // Revoked: re-request — UPDATE back to pending.
         const now_ms_reopen = clock.nowMillis();
         _ = conn.exec(
             \\UPDATE core.integration_grants
@@ -227,16 +226,6 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
         // Notify for the re-request using the existing grant_id.
         const existing_grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id;
-        var zombie_name_reopen: []const u8 = zombie_id;
-        fetch_name_reopen: {
-            var nq = PgQuery.from(conn.query(
-                \\SELECT name FROM core.zombies WHERE id = $1::uuid LIMIT 1
-            , .{zombie_id}) catch break :fetch_name_reopen);
-            defer nq.deinit();
-            const nrow = nq.next() catch break :fetch_name_reopen orelse break :fetch_name_reopen;
-            const raw = nrow.get([]u8, 0) catch break :fetch_name_reopen;
-            zombie_name_reopen = hx.alloc.dupe(u8, raw) catch zombie_id;
-        }
         grant_notifier.notifyGrantRequest(
             hx.ctx.pool,
             hx.ctx.queue,
@@ -244,7 +233,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             zombie_id,
             caller.workspace_id,
             existing_grant_id,
-            zombie_name_reopen,
+            existing.zombie_name,
             body.service,
             body.reason,
         );
@@ -267,26 +256,14 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
     _ = conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (grant_id, zombie_id, service, scopes, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, $3, ARRAY['*'], $4, $5, $6)
+        \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1, $2::uuid, $3, $4, $5, $6)
     , .{ grant_id, zombie_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     log.info("requested", .{ .zombie_id = zombie_id, .service = body.service, .grant_id = grant_id });
-
-    // Fetch zombie name for notification; falls back to zombie_id on any error.
-    var zombie_name: []const u8 = zombie_id;
-    fetch_name: {
-        var nq = PgQuery.from(conn.query(
-            \\SELECT name FROM core.zombies WHERE id = $1::uuid LIMIT 1
-        , .{zombie_id}) catch break :fetch_name);
-        defer nq.deinit();
-        const nrow = nq.next() catch break :fetch_name orelse break :fetch_name;
-        const raw = nrow.get([]u8, 0) catch break :fetch_name;
-        zombie_name = hx.alloc.dupe(u8, raw) catch zombie_id;
-    }
 
     grant_notifier.notifyGrantRequest(
         hx.ctx.pool,
@@ -295,7 +272,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         zombie_id,
         caller.workspace_id,
         grant_id,
-        zombie_name,
+        existing.zombie_name,
         body.service,
         body.reason,
     );
@@ -308,4 +285,31 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         .requested_at = now_ms,
         .message = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
     });
+}
+
+fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, zombie_id: []const u8, service: []const u8) ?ExistingGrant {
+    var existing_q = PgQuery.from(conn.query(
+        \\SELECT z.name, COALESCE(g.grant_id, ''), COALESCE(g.status, ''), COALESCE(g.requested_at, 0)
+        \\FROM core.zombies z
+        \\LEFT JOIN core.integration_grants g
+        \\  ON g.zombie_id = z.id
+        \\ AND g.service = $2
+        \\WHERE z.id = $1::uuid
+        \\LIMIT 1
+    , .{ zombie_id, service }) catch return null);
+    defer existing_q.deinit();
+
+    const existing_row = (existing_q.next() catch return null) orelse return .{
+        .zombie_name = zombie_id,
+        .grant_id = "",
+        .status = "",
+        .requested_at = 0,
+    };
+
+    return .{
+        .zombie_name = hx.alloc.dupe(u8, existing_row.get([]u8, 0) catch zombie_id) catch zombie_id,
+        .grant_id = hx.alloc.dupe(u8, existing_row.get([]u8, 1) catch "") catch "",
+        .status = hx.alloc.dupe(u8, existing_row.get([]u8, 2) catch "") catch "",
+        .requested_at = existing_row.get(i64, 3) catch 0,
+    };
 }

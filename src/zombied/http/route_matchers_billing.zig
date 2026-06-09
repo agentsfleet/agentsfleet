@@ -21,12 +21,12 @@ pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
     return p.param(1);
 }
 
-// ── /tenants/me/billing/charges/{event_id}/metering-periods ────────────────
+// ── /tenants/me/billing/charges/{event_id}/telemetry ───────────────────────
 // The per-renewal slice breakdown behind one charge; returns the event_id.
 
 pub fn matchTenantMeteringPeriods(p: Path) ?[]const u8 {
     if (p.segs.len != 6) return null;
     if (!p.eq(0, "tenants") or !p.eq(1, "me") or !p.eq(2, "billing") or
-        !p.eq(3, "charges") or !p.eq(5, "metering-periods")) return null;
+        !p.eq(3, "charges") or !p.eq(5, "telemetry")) return null;
     return p.param(4);
 }

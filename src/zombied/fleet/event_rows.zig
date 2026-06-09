@@ -49,6 +49,8 @@ pub fn insertReceivedRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
 
     // Continuation events carry parent event_id in request_json's
     // `original_event_id` (§7); lift onto resumes_event_id for index walks.
@@ -64,11 +66,12 @@ pub fn insertReceivedRow(
 
     _ = try conn.exec(
         \\INSERT INTO core.zombie_events
-        \\  (zombie_id, event_id, workspace_id, actor, event_type,
+        \\  (uid, zombie_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, resumes_event_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'received', $6::jsonb, $7, $8, $8)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, 'received', $7::jsonb, $8, $9, $9)
         \\ON CONFLICT (zombie_id, event_id) DO NOTHING
     , .{
+        uid,
         session.zombie_id,
         event.event_id,
         session.workspace_id,

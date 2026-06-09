@@ -33,6 +33,7 @@ const logging = @import("log");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const constants = @import("common");
 const protocol = @import("contract").protocol;
+const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/zombie_telemetry_store.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -168,10 +169,10 @@ const RENEW_METER_SQL =
     \\    RETURNING tb.tenant_id
     \\), ledger AS (
     \\    INSERT INTO core.zombie_execution_telemetry
-    \\      (id, tenant_id, workspace_id, zombie_id, event_id, charge_type, posture,
+    \\      (uid, id, tenant_id, workspace_id, zombie_id, event_id, charge_type, posture,
     \\       model, credit_deducted_nanos, token_count_input, token_count_output,
     \\       wall_ms, recorded_at)
-    \\    SELECT 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
+    \\    SELECT $17::uuid, 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
     \\           g.zombie_id::text, g.event_id, $14, g.posture, g.model,
     \\           g.charged, g.d_in, g.d_out, g.d_ms, $6
     \\    FROM guard g
@@ -186,9 +187,9 @@ const RENEW_METER_SQL =
     \\    RETURNING event_id
     \\), breakdown AS (
     \\    INSERT INTO fleet.metering_periods
-    \\      (event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+    \\      (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
     \\       run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\    SELECT g.event_id, g.next_seq,
+    \\    SELECT $18::uuid, g.event_id, g.next_seq,
     \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $6
     \\    FROM guard g
     \\    RETURNING event_id
@@ -213,6 +214,10 @@ pub fn renew(
     meter: MeterInputs,
 ) !RenewOutcome {
     const want_until = now_ms + constants.LEASE_TTL_MS;
+    var ledger_uid_buf: [36]u8 = undefined;
+    var breakdown_uid_buf: [36]u8 = undefined;
+    const ledger_uid = try id_format.formatUuidV7(&ledger_uid_buf);
+    const breakdown_uid = try id_format.formatUuidV7(&breakdown_uid_buf);
     var q = PgQuery.from(try conn.query(RENEW_METER_SQL, .{
         lease_id,
         runner_id,
@@ -230,6 +235,8 @@ pub fn renew(
         telemetry.ChargeType.stage.label(),
         MS_PER_SECOND,
         TOKENS_PER_MTOK,
+        ledger_uid,
+        breakdown_uid,
     }));
     defer q.deinit();
     const row = try q.next() orelse return .lost;

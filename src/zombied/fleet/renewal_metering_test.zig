@@ -394,16 +394,19 @@ test "metering-periods read is tenant-scoped: own tenant sees slices, a foreign 
     // Stage telemetry carries the tenant; the store's EXISTS guard keys off it. Seed 1 stage + 2 slices.
     _ = try s.conn.exec(
         \\INSERT INTO core.zombie_execution_telemetry
-        \\  (id, tenant_id, workspace_id, zombie_id, event_id, charge_type, posture,
+        \\  (uid, id, tenant_id, workspace_id, zombie_id, event_id, charge_type, posture,
         \\   model, credit_deducted_nanos, recorded_at)
-        \\VALUES ('mtr_' || $2, $1::uuid, 'ws', 'z', $2, 'stage', 'platform', 'm', 225, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4101'::uuid,
+        \\        'mtr_' || $2, $1::uuid, 'ws', 'z', $2, 'stage', 'platform', 'm', 225, 0)
     , .{ base.TEST_TENANT_ID, EVENT_ID });
     _ = try s.conn.exec(
         \\INSERT INTO fleet.metering_periods
-        \\  (event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
+        \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
         \\   run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-        \\VALUES ($1, 1, 10, 0, 20, $2, 100, 50, 150, 0),
-        \\       ($1, 2, 5, 0, 10, 500, 50, 25, 75, 0)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4102'::uuid,
+        \\        $1, 1, 10, 0, 20, $2, 100, 50, 150, 0),
+        \\       ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4103'::uuid,
+        \\        $1, 2, 5, 0, 10, 500, 50, 25, 75, 0)
     , .{ EVENT_ID, PRIMARY_RUN_MS });
 
     // Owning tenant: both slices, ordered by slice_seq.

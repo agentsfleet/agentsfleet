@@ -13,12 +13,12 @@ const pg = @import("pg");
 const parseUrl = @import("../db/pool.zig").parseUrl;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-// `id host_id token_hash sandbox_tier status labels tenant_id last_seen_at
+// `uid id host_id token_hash sandbox_tier status labels tenant_id last_seen_at
 //  created_at updated_at` — the frozen `fleet.runners` column set.
-const EXPECTED_COLUMN_COUNT: i64 = 10;
+const EXPECTED_COLUMN_COUNT: i64 = 11;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 
-// `id runner_id zombie_id workspace_id tenant_id event_id actor event_type
+// `uid id runner_id zombie_id workspace_id tenant_id event_id actor event_type
 //  request_json event_created_at posture provider model metered_input_tokens
 //  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
@@ -26,7 +26,7 @@ const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 //  stored so a reclaim can re-lease the event from Postgres alone (no Redis
 //  re-read); `provider` keys the composite rate lookup; the `metered_*` +
 //  `last_metered_at_ms` cursor backs the incremental renewal metering.
-const EXPECTED_LEASE_COLUMN_COUNT: i64 = 22;
+const EXPECTED_LEASE_COLUMN_COUNT: i64 = 23;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
@@ -75,11 +75,11 @@ test "runner schema: fleet.runners is migrated with its columns and constraints"
         "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'fleet' AND table_name = 'runners'",
     ));
 
-    // Named constraints: token-hash uniqueness + the UUIDv7 id check.
-    // pin test: constraint names are the schema contract.
+    // Named constraints: token-hash uniqueness + the Universally Unique Identifier version 7
+    // (UUIDv7) Unique Identifier (UID) check. Pin test: constraint names are the schema rule.
     try std.testing.expectEqual(EXPECTED_NAMED_CONSTRAINTS, try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_id_uuidv7')",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_uid_uuidv7')",
     ));
 }
 
@@ -98,10 +98,10 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
         "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'fleet' AND table_name = 'runner_leases'",
     ));
 
-    // Named UUIDv7 id check constraint.
-    // pin test: constraint name is the schema contract.
+    // Named UUIDv7 UID check constraint.
+    // Pin test: constraint name is the schema rule.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_uid_uuidv7'",
     ));
 }

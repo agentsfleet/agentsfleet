@@ -13,14 +13,18 @@ CREATE SCHEMA IF NOT EXISTS billing;
 CREATE SCHEMA IF NOT EXISTS audit;
 
 CREATE TABLE IF NOT EXISTS core.tenants (
-    tenant_id    UUID PRIMARY KEY,
+    uid          UUID GENERATED ALWAYS AS (tenant_id) STORED PRIMARY KEY,
+    CONSTRAINT ck_tenants_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    tenant_id    UUID NOT NULL UNIQUE,
     name         TEXT NOT NULL,
     created_at   BIGINT NOT NULL,
     updated_at   BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS core.workspaces (
-    workspace_id              UUID PRIMARY KEY,
+    uid                       UUID GENERATED ALWAYS AS (workspace_id) STORED PRIMARY KEY,
+    CONSTRAINT ck_workspaces_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    workspace_id              UUID NOT NULL UNIQUE,
     tenant_id                 UUID NOT NULL REFERENCES core.tenants(tenant_id),
     -- Human-readable workspace name (e.g. Heroku-style `jolly-harbor-482`).
     -- Nullable because most workspace rows and fixture INSERTs do not supply a

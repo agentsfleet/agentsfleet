@@ -24,23 +24,26 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 | `delete_zombie` | DELETE | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}` | — (must kill first) |
 | `post_zombie_message` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages` | steer message |
 | `list_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events` | — |
-| `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` | — (SSE) |
+| `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` | — (Server-Sent Events) |
 | `ingest_zombie_webhook` | POST | `/v1/webhooks/{zombie_id}` | provider-shaped event |
+| `get_tenant_billing` | GET | `/v1/tenants/me/billing` | — |
+| `get_tenant_billing_charges` | GET | `/v1/tenants/me/billing/charges` | — |
+| `get_tenant_metering_periods` | GET | `/v1/tenants/me/billing/charges/{event_id}/telemetry` | — |
 
 ## Authentication
 `Authorization: Bearer <api_key>`
 
 ## Machine-readable surfaces
 - OpenAPI spec: `/openapi.json`
-- Agent manifest (JSON-LD): `/agents`
+- Agent manifest (JSON Linked Data): `/agents`
 - This file: `/skill.md`
-- LLMs discovery: `/llms.txt`
+- Large Language Model (LLM) discovery: `/llms.txt`
 
 ## Policy classes
-- `safe`: `list_zombie_events`, `stream_zombie_events` — allow by default
+- `safe`: `list_zombie_events`, `stream_zombie_events`, `get_tenant_billing`, `get_tenant_billing_charges`, `get_tenant_metering_periods` — allow by default
 - `sensitive`: `create_zombie`, `update_zombie`, `stop_zombie`, `resume_zombie`, `kill_zombie`, `post_zombie_message`, `ingest_zombie_webhook` — require explicit confirmation
 - `critical`: `delete_zombie` — irreversible row + history purge; require double confirmation
 
 ## Revenue model
-self-managed (bring your own LLM API key) + credit-pool metering: $0.01 per event receipt and $0.10 per stage execution. New tenants get a $5 starter credit that never expires.
+self-managed (bring your own Large Language Model (LLM) API key) + credit-pool metering: event receipts are free; active runtime is $0.0001/sec under both postures; platform-managed also adds provider token costs. New tenants get a $5 starter credit that never expires.
 usezombie never stores or marks up LLM provider costs.

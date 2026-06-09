@@ -43,7 +43,7 @@ fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u
 }
 
 fn teardownTelemetry(conn: *pg.Conn, workspace_id: []const u8) void {
-    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Insert: idempotent on (event_id, charge_type) ───────────────────────────
@@ -62,7 +62,7 @@ test "insert_telemetry_idempotent_on_event_charge" {
     try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, MS_PER_SECOND); // duplicate — no-op
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        "SELECT COUNT(*)::BIGINT FROM zombie_execution_telemetry WHERE workspace_id = $1 AND event_id = $2",
+        "SELECT COUNT(*)::BIGINT FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND event_id = $2",
         .{ WS_A, evt },
     ));
     defer q.deinit();
@@ -86,7 +86,7 @@ test "insert_telemetry_two_rows_per_event" {
     try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, 2000);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        "SELECT COUNT(*)::BIGINT FROM zombie_execution_telemetry WHERE event_id = $1",
+        "SELECT COUNT(*)::BIGINT FROM core.zombie_execution_telemetry WHERE event_id = $1",
         .{evt},
     ));
     defer q.deinit();
@@ -110,7 +110,7 @@ test "insert_receive_has_null_tokens_and_wall_ms" {
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT token_count_input, token_count_output, wall_ms
-        \\FROM zombie_execution_telemetry
+        \\FROM core.zombie_execution_telemetry
         \\WHERE event_id = $1 AND charge_type = 'receive'
     , .{evt}));
     defer q.deinit();

@@ -14,7 +14,7 @@ const log = logging.scoped(.api_keys_list);
 
 const Hx = hx_mod.Hx;
 
-const S_CREATED_AT_DESC_ID_DESC = "created_at DESC, id DESC";
+const S_CREATED_AT_DESC_UID_DESC = "created_at DESC, uid DESC";
 
 const ListRow = struct {
     id: []const u8,
@@ -25,10 +25,15 @@ const ListRow = struct {
     revoked_at: ?i64,
 };
 
+const PageRows = struct {
+    items: []ListRow,
+    total: i64,
+};
+
 const ListQuery = struct {
     page: i32 = 1,
     page_size: i32 = pagination.DEFAULT_PAGE_SIZE,
-    order_sql: []const u8 = S_CREATED_AT_DESC_ID_DESC,
+    order_sql: []const u8 = S_CREATED_AT_DESC_UID_DESC,
 };
 
 fn parseListQuery(req: *httpz.Request) ?ListQuery {
@@ -40,10 +45,10 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
 }
 
 pub fn sortClauseFor(raw: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, raw, "created_at")) return "created_at ASC, id ASC";
-    if (std.mem.eql(u8, raw, "-created_at")) return S_CREATED_AT_DESC_ID_DESC;
-    if (std.mem.eql(u8, raw, "key_name")) return "key_name ASC, id ASC";
-    if (std.mem.eql(u8, raw, "-key_name")) return "key_name DESC, id DESC";
+    if (std.mem.eql(u8, raw, "created_at")) return "created_at ASC, uid ASC";
+    if (std.mem.eql(u8, raw, "-created_at")) return S_CREATED_AT_DESC_UID_DESC;
+    if (std.mem.eql(u8, raw, "key_name")) return "key_name ASC, uid ASC";
+    if (std.mem.eql(u8, raw, "-key_name")) return "key_name DESC, uid DESC";
     return null;
 }
 
@@ -63,34 +68,45 @@ pub fn innerListApiKeys(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const items = fetchPage(hx, conn, tenant_id, q) orelse return;
-    const total = fetchTotal(hx, conn, tenant_id, items.len) orelse return;
+    const page = fetchPage(hx, conn, tenant_id, q) orelse return;
 
     hx.ok(.ok, .{
-        .items = items,
-        .total = total,
+        .items = page.items,
+        .total = page.total,
         .page = q.page,
         .page_size = q.page_size,
     });
 }
 
-fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]ListRow {
+fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageRows {
     const offset: i64 = @as(i64, q.page - 1) * @as(i64, q.page_size);
     const limit: i64 = q.page_size;
-    // EXTRACT(EPOCH) yields seconds; the ×1000 multiplier gives the millis
-    // the API surfaces. Named so the magic number lives on a const line.
-    const SEC_TO_MILLIS = 1000;
-    const epoch_ms_cols = std.fmt.comptimePrint(
-        "(EXTRACT(EPOCH FROM created_at) * {0d})::bigint, " ++
-            "(EXTRACT(EPOCH FROM last_used_at) * {0d})::bigint, " ++
-            "(EXTRACT(EPOCH FROM revoked_at) * {0d})::bigint ",
-        .{SEC_TO_MILLIS},
-    );
     // order_sql comes from sortClauseFor's fixed allowlist, never user input.
-    const list_sql = std.fmt.allocPrint(hx.alloc, "SELECT id::text, key_name, active, " ++
-        epoch_ms_cols ++
-        "FROM core.api_keys WHERE tenant_id = $1::uuid " ++
-        "ORDER BY {s} LIMIT $2 OFFSET $3", .{q.order_sql}) catch {
+    const list_sql = std.fmt.allocPrint(hx.alloc,
+        \\WITH filtered AS (
+        \\    SELECT uid, key_name, active, created_at, last_used_at, revoked_at
+        \\    FROM core.api_keys
+        \\    WHERE tenant_id = $1::uuid
+        \\),
+        \\page AS (
+        \\    SELECT uid::text, key_name, active, created_at, last_used_at, revoked_at,
+        \\           COUNT(*) OVER()::bigint AS total, false AS count_only,
+        \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
+        \\    FROM filtered
+        \\    ORDER BY {s}
+        \\    LIMIT $2 OFFSET $3
+        \\),
+        \\total_row AS (
+        \\    SELECT ''::text, ''::text, false, 0::bigint, NULL::bigint, NULL::bigint,
+        \\           COUNT(*)::bigint, true, NULL::bigint
+        \\    FROM filtered
+        \\    WHERE NOT EXISTS (SELECT 1 FROM page)
+        \\)
+        \\SELECT * FROM page
+        \\UNION ALL
+        \\SELECT * FROM total_row
+        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
+    , .{ q.order_sql, q.order_sql }) catch {
         common.internalOperationError(hx.res, "Query build failed", hx.req_id);
         return null;
     };
@@ -101,7 +117,14 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
     defer rows_q.deinit();
 
     var items: std.ArrayListUnmanaged(ListRow) = .empty;
+    var total: i64 = 0;
     while (rows_q.next() catch null) |row| {
+        const row_total = row.get(i64, 6) catch total;
+        if (total == 0) total = row_total;
+        if (row.get(bool, 7) catch false) {
+            total = row_total;
+            continue;
+        }
         const id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const key_name = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
         items.append(hx.alloc, .{
@@ -113,18 +136,5 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
             .revoked_at = row.get(i64, 5) catch null,
         }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
-    return items.toOwnedSlice(hx.alloc) catch &[_]ListRow{};
-}
-
-fn fetchTotal(hx: Hx, conn: anytype, tenant_id: []const u8, fallback: usize) ?i64 {
-    var q = PgQuery.from(conn.query(
-        \\SELECT COUNT(*)::bigint FROM core.api_keys WHERE tenant_id = $1::uuid
-    , .{tenant_id}) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return null;
-    });
-    defer q.deinit();
-    const row = q.next() catch return @intCast(fallback);
-    if (row == null) return @intCast(fallback);
-    return row.?.get(i64, 0) catch @intCast(fallback);
+    return .{ .items = items.toOwnedSlice(hx.alloc) catch &[_]ListRow{}, .total = total };
 }

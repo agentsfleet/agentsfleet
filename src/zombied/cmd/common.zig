@@ -19,12 +19,11 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [21]db.Migration {
+pub fn canonicalMigrations() [20]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
         .{ .version = 2, .sql = schema.vault_sql },
-        .{ .version = 5, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 6, .sql = schema.platform_llm_keys_sql },
         .{ .version = 7, .sql = schema.core_zombies_sql },
         .{ .version = 8, .sql = schema.core_zombie_sessions_sql },
