@@ -290,6 +290,29 @@ test "integration: PATCH source_markdown only — overlays source body, leaves t
     cleanup(c);
 }
 
+test "integration: PATCH rejects an oversized source_markdown (same 64KiB cap as create)" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const url = try patchUrl();
+    defer ALLOC.free(url);
+
+    // 64KiB + 1 of JSON-safe filler — one byte over the create-time cap. The body
+    // now rides every lease, so PATCH must reject it like create does.
+    const filler = try ALLOC.alloc(u8, 64 * 1024 + 1);
+    defer ALLOC.free(filler);
+    @memset(filler, 'a');
+    const body = try std.fmt.allocPrint(ALLOC, "{{\"source_markdown\":\"{s}\"}}", .{filler});
+    defer ALLOC.free(body);
+
+    const r = try (try (try h.request(.PATCH, url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+}
+
 // ── §3 — both fields land in one SQL UPDATE ───────────────────────────────
 
 test "integration: PATCH trigger_markdown + source_markdown — single UPDATE, both halves" {

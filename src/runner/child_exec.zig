@@ -44,6 +44,9 @@ const SANDBOX_FAIL_EXIT: u8 = 78;
 const GENERIC_FAIL_EXIT: u8 = 1;
 const MAX_LEASE_BYTES: usize = 4 * 1024 * 1024;
 const READ_CHUNK: usize = 64 * 1024;
+/// Operator-facing outcome when a lease carries no installed instructions — the
+/// agent has no `SKILL.md` behaviour to run, so the model is not invoked.
+const NO_INSTRUCTIONS_MESSAGE = "no installed instructions: the agent has no SKILL.md behaviour to run; awaiting configuration";
 
 /// Child entry. Returns the process exit code (main calls `std.process.exit`
 /// with it); never returns an error — every failure maps to an exit code.
@@ -114,24 +117,43 @@ fn stubResult() types.ExecutionResult {
 /// stdout is the progress sink: the engine streams `activity` frames there
 /// (`pipe_proto`) while running, then `writeResult` appends the terminal frame.
 fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload, hydrated_memory: []const MemoryDelta) types.ExecutionResult {
+    // FAIL CLOSED: an installed agent with no behaviour prose must NOT run a
+    // generic model turn. NullClaw is never invoked on a no-playbook run — we
+    // report a clear "no installed instructions" outcome instead. Covers a
+    // misconfigured frontmatter-only SKILL.md AND the mixed-version rollout
+    // window where an older `zombied` omits the field; either way the agent runs
+    // its playbook or nothing, never a generic chat.
+    if (payload.instructions.len == 0) {
+        log.warn("no_installed_instructions_fail_closed", .{ .zombie_id = payload.event.zombie_id });
+        return noInstructionsResult();
+    }
+
     var args = buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
 
     // The installed SKILL.md body becomes reasoning context so NullClaw runs the
-    // installed behaviour, not a generic chat. Secrets never enter context — they
-    // stay in `ep` (provider/api_key) and the tool bridge (secrets_map). An empty
-    // body is surfaced by the engine as an explicit sentinel and warned here,
-    // never silently dropped (an installed agent must not degrade to generic chat).
-    if (payload.instructions.len == 0)
-        log.warn("empty_installed_instructions", .{ .zombie_id = payload.event.zombie_id });
+    // installed behaviour. Secrets never enter context — they stay in `ep`
+    // (provider/api_key) and the tool bridge (secrets_map). Fail closed if the
+    // instructions cannot be attached: never run a generic turn because the
+    // context build failed (the delivery is fail-closed, not fail-open).
     var ctx_obj: std.json.ObjectMap = .empty;
     defer ctx_obj.deinit(alloc);
-    ctx_obj.put(alloc, wire.installed_instructions, .{ .string = payload.instructions }) catch |err|
-        log.warn("installed_instructions_ctx_dropped", .{ .err = @errorName(err) });
-    const context_val: ?std.json.Value = if (ctx_obj.count() > 0) .{ .object = ctx_obj } else null;
+    ctx_obj.put(alloc, wire.installed_instructions, .{ .string = payload.instructions }) catch |err| {
+        log.err("installed_instructions_ctx_failed_fail_closed", .{ .err = @errorName(err) });
+        return noInstructionsResult();
+    };
+    const context_val: ?std.json.Value = .{ .object = ctx_obj };
 
     return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, context_val, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
+}
+
+/// Fail-closed result for a lease whose installed instructions are absent (an
+/// empty `SKILL.md` body, or an older `zombied` that omitted the field): the
+/// model is never invoked, so the agent never runs as a generic chat. Reported
+/// as a startup-posture failure carrying an operator-facing message.
+fn noInstructionsResult() types.ExecutionResult {
+    return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture };
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were
@@ -252,6 +274,7 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
 
 // ── tests ────────────────────────────────────────────────────────────────────
 const testing = std.testing;
+const common = @import("common");
 const ExecutionPolicy = contract.execution_policy.ExecutionPolicy;
 
 /// A minimal lease whose only inputs `buildCallArgs` reads are `policy` and
@@ -283,6 +306,18 @@ test "buildCallArgs injects the policy provider and api_key into agent_config" {
     const ac = args.agent_config.?.object;
     try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
     try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
+}
+
+test "runEngine fails closed with no model call when installed instructions are empty" {
+    const alloc = testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    // testLease defaults `instructions` to "" → the fail-closed guard returns
+    // before buildCallArgs / engine.execute, so NullClaw is never invoked.
+    const result = runEngine(&env_map, alloc, "/tmp/ws", testLease(.{ .context = .{ .model = "m" } }), &.{});
+    try testing.expect(!result.exit_ok);
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try testing.expect(std.mem.indexOf(u8, result.content, "no installed instructions") != null);
 }
 
 test "buildCallArgs treats an llm-named tool secret as a tool secret, not the provider key" {

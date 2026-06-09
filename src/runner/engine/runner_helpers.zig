@@ -147,10 +147,11 @@ pub fn buildToolsFromSpec(
     return result.tools;
 }
 
-/// Section label + empty-body sentinel for the installed `SKILL.md` instructions
-/// rendered ahead of the trigger event. Named (RULE UFS) — asserted by tests too.
+/// Section label for the installed `SKILL.md` instructions rendered ahead of the
+/// trigger event. Named (RULE UFS) — asserted by tests too. The runner fails
+/// closed on an empty body upstream (`child_exec`), so this section only renders
+/// when instructions are present.
 pub const INSTALLED_INSTRUCTIONS_LABEL = "Installed instructions";
-pub const NO_INSTALLED_INSTRUCTIONS = "(no installed instructions)";
 /// Blank line between a markdown section heading and its body (RULE UFS).
 const HEADING_GAP = "\n\n";
 
@@ -173,15 +174,17 @@ pub fn composeMessage(
     var parts: std.ArrayList(u8) = .empty;
     errdefer parts.deinit(alloc);
 
-    // Installed instructions lead the prompt. When the key is present but empty
-    // (a frontmatter-only SKILL.md), emit an explicit sentinel — never silently
-    // omit, so an installed agent never degrades to a generic chat bot.
+    // Installed instructions lead the prompt (present + non-empty only; the
+    // runner fails closed on an empty body before composing, so a no-playbook
+    // run never reaches here).
     if (json.getStr(ctx, wire.installed_instructions)) |instr| {
-        try parts.appendSlice(alloc, "## ");
-        try parts.appendSlice(alloc, INSTALLED_INSTRUCTIONS_LABEL);
-        try parts.appendSlice(alloc, HEADING_GAP);
-        try parts.appendSlice(alloc, if (instr.len > 0) instr else NO_INSTALLED_INSTRUCTIONS);
-        try parts.appendSlice(alloc, "\n\n---\n");
+        if (instr.len > 0) {
+            try parts.appendSlice(alloc, "## ");
+            try parts.appendSlice(alloc, INSTALLED_INSTRUCTIONS_LABEL);
+            try parts.appendSlice(alloc, HEADING_GAP);
+            try parts.appendSlice(alloc, instr);
+            try parts.appendSlice(alloc, "\n\n---\n");
+        }
     }
 
     try parts.appendSlice(alloc, message);

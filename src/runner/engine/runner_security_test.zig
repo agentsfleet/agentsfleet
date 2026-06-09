@@ -180,19 +180,19 @@ test "runner prompt preserves raw event payload when message field is absent" {
     try std.testing.expect(instr_at.? < event_at.?);
 }
 
-test "runner handles empty installed instructions explicitly" {
+test "composeMessage renders no instructions section when the body is empty" {
     const alloc = std.testing.allocator;
     var ctx = std.json.Value{ .object = .empty };
     defer ctx.object.deinit(alloc);
-    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "" }); // frontmatter-only SKILL.md
+    try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "" });
 
+    // The runner fails closed on an empty body BEFORE composing (see child_exec
+    // `runEngine` / `noInstructionsResult`), so composeMessage never renders a
+    // no-playbook section — if an empty body somehow reaches here it is omitted,
+    // not turned into a generic-chat prompt.
     const composed = try runner.composeMessage(alloc, "EVENT", ctx);
     defer alloc.free(composed);
-
-    // Explicit sentinel + the section label — never a silent omission, so an
-    // installed agent never degrades to a generic chat bot.
-    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.NO_INSTALLED_INSTRUCTIONS) != null);
-    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.INSTALLED_INSTRUCTIONS_LABEL) != null);
+    try std.testing.expect(std.mem.indexOf(u8, composed, helpers.INSTALLED_INSTRUCTIONS_LABEL) == null);
     try std.testing.expect(std.mem.indexOf(u8, composed, "EVENT") != null);
 }
 

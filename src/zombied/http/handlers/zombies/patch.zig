@@ -36,6 +36,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const zombie_config = @import("../../../zombie/config.zig");
+const create = @import("create.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.zombie_api);
@@ -168,12 +169,16 @@ fn validateBody(hx: Hx, body: PatchBody) bool {
             return false;
         }
     }
-    if (body.trigger_markdown) |tm| if (tm.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "trigger_markdown must be non-empty");
+    // Same 1..64KiB cap as create (`create.MAX_*_LEN`): an edit cannot smuggle an
+    // oversized body past the create-time guard. Load-bearing now that the
+    // `SKILL.md` body rides every lease — an unbounded source_markdown would
+    // inflate every lease toward MAX_LEASE_BYTES and the model context.
+    if (body.trigger_markdown) |tm| if (tm.len == 0 or tm.len > create.MAX_TRIGGER_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "trigger_markdown must be 1..64KiB");
         return false;
     };
-    if (body.source_markdown) |sm| if (sm.len == 0) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "source_markdown must be non-empty");
+    if (body.source_markdown) |sm| if (sm.len == 0 or sm.len > create.MAX_SOURCE_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "source_markdown must be 1..64KiB");
         return false;
     };
     if (body.status) |s| {
