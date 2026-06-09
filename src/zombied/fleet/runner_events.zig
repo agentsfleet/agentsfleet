@@ -18,6 +18,7 @@ pub const META_ZOMBIE_EVENT_ID = "event_id";
 pub const META_KIND = "kind";
 pub const META_FROM_ADMIN_STATE = "from_admin_state";
 pub const META_TO_ADMIN_STATE = "to_admin_state";
+pub const META_LAST_SEEN_AT = "last_seen_at";
 
 pub const Filter = struct {
     event_type: ?protocol.RunnerEventType = null,

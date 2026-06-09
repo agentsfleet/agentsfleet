@@ -105,6 +105,12 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
         ctx.conn,
         "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
     ));
+
+    // pin test: index name is the schema promise.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'runner_leases_runner_status_idx'",
+    ));
 }
 
 test "runner schema: fleet.runner_events is migrated append-only" {
