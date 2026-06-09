@@ -4,7 +4,7 @@
 **Milestone:** M88
 **Workstream:** 002
 **Date:** Jun 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a host runner executes exactly one agent at a time; this lifts per-host throughput to ~N concurrent without the async rewrite (M88_001), and is the boring lever the M88 pivot identified as the real fix.
 **Categories:** API
 **Batch:** B1 — sibling of M88_001 (gated); independent, may run concurrently.
@@ -271,6 +271,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 - **Executor-stub harness built (Path B, Indy-chosen Jun 08 2026).** The documented `-Dexecutor-provider-stub`/`ZOMBIE_RUNNER_STUB_BIN` mechanism did NOT exist; built it as a comptime-gated build flag (no env backdoor): a stub-flagged child emits a canned `result` frame (`child_exec.zig`), and a stub-flagged daemon redirects the forked child's exec target to a prebuilt stub exe (`sandbox_args.zig`), wired in `build_runner.zig`. Production builds (flag false) comptime-eliminate both seams. This lets `worker_pool_integration_test.zig` drive the real lease→fork→execute→report path with N concurrent children and no LLM.
 - **Workspace-base creation is `main.zig`'s job (Jun 08 2026).** The pool integration test drives `worker_pool.spawn` directly (bypassing `main`), so it must create `cfg.workspace_base` itself or every `prepareWorkspace` fails closed and no lease executes — captured in the test setup.
 - **Carried-in WIP (Jun 08 2026, Indy direction).** Per Indy, this PR carries his uncommitted `scaling.md` + `runner_fleet.md` WIP (the M88_002/M84_002 arch reconciliation) and the untracked `M84_008` pending spec (a separate M84 workstream — carried at his explicit request, not an M88 dependency).
+- **`/review` adversarial pass (Jun 09 2026) — ship-as-is, one P2 fixed.** Independent fresh-context review confirmed: no data race (per-worker allocator + `cp` + by-value `WorkerContext`; only the two `seq_cst` atomics are shared), the `.alloc_always` UAF fix is complete (no sibling bug — `heartbeat` returns enum-only, `report`/`activity`/`renew` escape no parsed slice), `errdefer` partial-spawn has no double-free, shutdown is bounded (the lease verb is non-blocking → `join` can't hang) and reaps all children, the stub seam is comptime-eliminated in prod (no env backdoor), and all 7 Invariants hold. **Fixed P2:** `executeAndReport` returned with no backoff on `prepareWorkspace`/`report` failure → a persistent failure hot-spun the poll loop ×N; added the existing `TRANSPORT_ERROR_BACKOFF_MS` sleep on both paths. **Noted (not fixed):** (a) the partial-spawn `errdefer` sets the process-global `stop_requested` — harmless under the one-shot `runLoop` but a latent footgun if spawn ever becomes retryable; (b) fleet `.stop`/`.drain` has up to `HEARTBEAT_INTERVAL_MS` (~10 s) control-loop detection latency before workers are told (workers then drain within one `NO_WORK_RETRY_AFTER_MS`).
 
 ---
 
