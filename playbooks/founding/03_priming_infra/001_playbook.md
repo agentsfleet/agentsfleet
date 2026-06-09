@@ -332,18 +332,11 @@ Role contract (`schema/002_vault_schema.sql`):
 - `memory_runtime` — runtime DML on the agent-memory schema
 - `ops_readonly_human`, `ops_readonly_agent` — read-only access via `ops_ro` views only
 
-### 3.2 Redis — Stream Bootstrap (Upstash)
+### 3.2 Redis — Streams (Upstash)
 
-Redis is hosted on Upstash (DEV and PROD). ACL is managed via Upstash dashboard — no custom ACL commands needed.
+Redis is hosted on Upstash (DEV and PROD). ACL is managed via the Upstash dashboard — no custom ACL commands needed.
 
-Stream setup — run once per environment:
-
-```bash
-REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
-docker run --rm redis:7-alpine redis-cli -u "$REDIS_URL" XGROUP CREATE run_queue workers 0 MKSTREAM
-```
-
-For PROD, swap `$VAULT_DEV/upstash-dev` for `$VAULT_PROD/upstash-prod`.
+No manual stream bootstrap is required. zombied creates each zombie's event stream (`zombie:{zombie_id}:events`) and its `zombie_lease` consumer group on demand, synchronously, when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream` in `src/zombied/http/handlers/zombies/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first zombie created after deploy.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
