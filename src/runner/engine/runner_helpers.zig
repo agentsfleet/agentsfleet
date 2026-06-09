@@ -147,10 +147,22 @@ pub fn buildToolsFromSpec(
     return result.tools;
 }
 
-/// Compose the agent message by appending context fields.
+/// Section label for the installed `SKILL.md` instructions rendered ahead of the
+/// trigger event. Named (RULE UFS) — asserted by tests too. The runner fails
+/// closed on an empty body upstream (`child_exec`), so this section only renders
+/// when instructions are present.
+pub const INSTALLED_INSTRUCTIONS_LABEL = "Installed instructions";
+/// Blank line between a markdown section heading and its body (RULE UFS).
+const HEADING_GAP = "\n\n";
+
+/// Compose the agent message: the installed `SKILL.md` instructions render
+/// FIRST (the agent's installed behaviour frames the trigger), then the trigger
+/// event message, then any appended coding-agent context sections.
 ///
-/// The runner does NOT interpret context semantics — it concatenates
-/// non-null fields as markdown sections so the agent receives full context.
+/// The runner does NOT interpret context semantics — it concatenates allowlisted
+/// fields as markdown sections so the agent receives full context. Only known
+/// keys render, so a secret accidentally placed in `context` never reaches the
+/// prompt.
 pub fn composeMessage(
     alloc: std.mem.Allocator,
     message: []const u8,
@@ -161,6 +173,19 @@ pub fn composeMessage(
 
     var parts: std.ArrayList(u8) = .empty;
     errdefer parts.deinit(alloc);
+
+    // Installed instructions lead the prompt (present + non-empty only; the
+    // runner fails closed on an empty body before composing, so a no-playbook
+    // run never reaches here).
+    if (json.getStr(ctx, wire.installed_instructions)) |instr| {
+        if (instr.len > 0) {
+            try parts.appendSlice(alloc, "## ");
+            try parts.appendSlice(alloc, INSTALLED_INSTRUCTIONS_LABEL);
+            try parts.appendSlice(alloc, HEADING_GAP);
+            try parts.appendSlice(alloc, instr);
+            try parts.appendSlice(alloc, "\n\n---\n");
+        }
+    }
 
     try parts.appendSlice(alloc, message);
 
@@ -177,7 +202,7 @@ pub fn composeMessage(
             if (content.len > 0) {
                 try parts.appendSlice(alloc, "\n\n---\n## ");
                 try parts.appendSlice(alloc, f.label);
-                try parts.appendSlice(alloc, "\n\n");
+                try parts.appendSlice(alloc, HEADING_GAP);
                 try parts.appendSlice(alloc, content);
             }
         }

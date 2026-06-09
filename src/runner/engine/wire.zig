@@ -30,3 +30,9 @@ pub const temperature = "temperature";
 pub const max_tokens = "max_tokens";
 pub const api_key = "api_key";
 pub const message = "message";
+
+// ── Reasoning context (composeMessage) ──────────────────────────────────────
+/// Context key carrying the installed agent's `SKILL.md` body so the child's
+/// `composeMessage` renders it ahead of the trigger event. Soft reasoning input
+/// — never a secret; written by `child_exec`, read by `runner_helpers`.
+pub const installed_instructions = "installed_instructions";

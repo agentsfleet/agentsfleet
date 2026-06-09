@@ -283,3 +283,34 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 - **Folding signal watcher / event bus / approval + liveness sweepers onto libxev** — a follow-on once the loop is proven; they stay on `std.Thread` for now.
 - **Horizontal replicas + PgBouncer + cache (Layers 1-3)** — sibling M88 workstreams.
 - **Runner worker-thread pool (~100 agents/host)** — sibling M88 workstream.
+
+---
+
+## Folded-in infra hardening: runner build-graph leak gate (F1)
+
+> Captured here per owner direction (Jun 09, 2026) as an adjacent infra-hardening
+> item. Topically it is runner **test infrastructure**, not the HTTP substrate —
+> tracked under this spec's infra umbrella rather than its own spec.
+
+**Gap.** `make memleak` (`make/bench.mk`) only valgrinds the **zombied** test
+binary (`zig build test-bin` → `zombied-tests`, `--test-filter
+finalizeWorkerAllocator`). The **`zombie-runner`** build graph
+(`zig build --build-file build_runner.zig test`) has **no** valgrind/`leaks`
+lane. Runner leak-freedom today rides entirely on `std.testing.allocator` (the
+DebugAllocator leak check, error paths included) + `checkAllAllocationFailures`
+in `test-unit-zigrunner`. That is rigorous for *allocation* leaks but never
+exercises valgrind-level coverage (uninitialised reads, OS-level definite/possible
+leaks) for runner code.
+
+**Proposed fix (own slice, own PR).**
+1. Add a `test-bin` step to `build_runner.zig` that installs a `zombie-runner-tests`
+   binary (mirroring the zombied graph's `test-bin`).
+2. Extend `make/bench.mk`'s `memleak` target to also build + valgrind (Linux) /
+   `leaks` (macOS) `zombie-runner-tests`, so both graphs get the OS-level gate.
+3. Verify the Linux valgrind path in a native arm64 container (the macOS host has
+   no valgrind; `leaks` covers the non-Linux-gated subset locally).
+
+**Why deferred, not folded into M84_008.** It is a build-graph + shared-gate
+change (`build_runner.zig` + `make/bench.mk`) with a Linux path unverifiable from
+macOS — a separate concern from the `buildCallArgs` runtime fix, and it gets its
+own PR per the split-follow-up discipline.

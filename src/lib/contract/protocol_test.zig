@@ -196,6 +196,43 @@ test "lease policy without provider or api_key fields parses to empty defaults (
     try std.testing.expectEqualStrings("", p.value.lease.?.policy.api_key);
 }
 
+test "lease payload carries the installed instructions across the round-trip" {
+    try expectStable(protocol.LeaseResponse, .{
+        .lease = .{
+            .lease_id = "l1",
+            .fencing_token = 1,
+            .lease_expires_at = 1700000030000,
+            .secret_delivery = .@"inline",
+            .event = .{
+                .event_id = "1700000000000-0",
+                .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+                .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+                .actor = "steer:kishore",
+                .event_type = .chat,
+                .request_json = "{}",
+                .created_at = 1700000000000,
+            },
+            .policy = .{ .context = .{ .model = "m" } },
+            .instructions = "Do platform ops: fetch logs, correlate, post diagnosis.",
+        },
+        .retry_after_ms = null,
+    });
+}
+
+test "lease payload without instructions parses to empty default (backward-additive)" {
+    const a = std.testing.allocator;
+    // A lease emitted by an OLD zombied — no `instructions` key. The new runner
+    // must parse it, defaulting to "" (the runner then renders an explicit
+    // no-instructions sentinel). Rollout is runners-first, so an OLD runner never
+    // receives a NEW lease carrying the field.
+    const json_old =
+        \\{"lease":{"lease_id":"l1","fencing_token":1,"lease_expires_at":1700000030000,"secret_delivery":"inline","event":{"event_id":"1700000000000-0","zombie_id":"0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee","workspace_id":"0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa","actor":"steer:kishore","event_type":"webhook","request_json":"{}","created_at":1700000000000},"policy":{"network_policy":{"allow":[]},"tools":[],"secrets_map":null,"context":{"tool_window":20,"memory_checkpoint_every":5,"stage_chunk_threshold":0.75,"model":"m","context_cap_tokens":200000}}},"retry_after_ms":null}
+    ;
+    const p = try std.json.parseFromSlice(protocol.LeaseResponse, a, json_old, .{ .ignore_unknown_fields = true });
+    defer p.deinit();
+    try std.testing.expectEqualStrings("", p.value.lease.?.instructions);
+}
+
 test "lease response carries an inline secrets_map across the round-trip" {
     const a = std.testing.allocator;
     const json_in =
