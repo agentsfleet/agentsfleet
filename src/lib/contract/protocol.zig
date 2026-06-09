@@ -21,6 +21,7 @@
 const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const FailureClass = @import("execution_result.zig").FailureClass;
+const runner_events = @import("runner_events.zig");
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -135,6 +136,10 @@ pub const RunnerAdminPatchResponse = struct {
     id: []const u8,
     admin_state: AdminState,
 };
+
+pub const RunnerEventType = runner_events.RunnerEventType;
+pub const RunnerEventItem = runner_events.RunnerEventItem;
+pub const RunnerEventsResponse = runner_events.RunnerEventsResponse;
 
 /// `fleet.runners.last_seen_at` sentinel for a runner minted but never seen.
 /// register inserts this; the heartbeat moves it to `now`. The fleet read

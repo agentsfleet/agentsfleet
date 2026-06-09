@@ -1,6 +1,6 @@
 //! Integration: the runner-fleet schema migrations land `fleet.runners` (`021`)
-//! and `fleet.runner_leases` (`022`) with their columns and constraints in a
-//! migrated database.
+//! `fleet.runner_leases` (`022`), and `fleet.runner_events` (`025`) with their
+//! columns and constraints in a migrated database.
 //!
 //! DB-gated — skips when `TEST_DATABASE_URL` is unset; the live test DB has the
 //! migrations applied by `_reset-test-db`. The migration array's ordering and
@@ -27,6 +27,7 @@ const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 //  re-read); `provider` keys the composite rate lookup; the `metered_*` +
 //  `last_metered_at_ms` cursor backs the incremental renewal metering.
 const EXPECTED_LEASE_COLUMN_COUNT: i64 = 22;
+const EXPECTED_EVENT_COLUMN_COUNT: i64 = 7;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
@@ -103,5 +104,23 @@ test "runner schema: fleet.runner_leases is migrated with its columns and constr
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
         "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
+    ));
+}
+
+test "runner schema: fleet.runner_events is migrated append-only" {
+    const alloc = std.testing.allocator;
+    const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    try std.testing.expect(try regclassExists(ctx.conn, "SELECT to_regclass('fleet.runner_events')::text"));
+    try std.testing.expectEqual(EXPECTED_EVENT_COLUMN_COUNT, try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'fleet' AND table_name = 'runner_events'",
+    ));
+    // pin test: index name is the schema promise.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'runner_events_offline_dedup_idx'",
     ));
 }

@@ -442,6 +442,15 @@ test "fleet operator-plane runner PATCH extracts the runner id" {
     try std.testing.expect(match("/v1/fleet/runners/r1/events", .PATCH) == null);
 }
 
+test "fleet operator-plane runner events extracts the runner id" {
+    const runner_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
+    const r = match("/v1/fleet/runners/0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002/events", .GET).?;
+    try std.testing.expect(r == .fleet_runner_events);
+    try std.testing.expectEqualStrings(runner_id, r.fleet_runner_events);
+    try std.testing.expect(match("/v1/fleet/runners//events", .GET) == null);
+    try std.testing.expect(match("/v1/fleet/runners/r1/events/extra", .GET) == null);
+}
+
 test "runner control-plane rejects malformed sibling paths (404, no runner_id shape)" {
     try std.testing.expect(match("/v1/runners/me/unknown", .POST) == null);
     try std.testing.expect(match("/v1/runners/r_123/leases", .POST) == null);

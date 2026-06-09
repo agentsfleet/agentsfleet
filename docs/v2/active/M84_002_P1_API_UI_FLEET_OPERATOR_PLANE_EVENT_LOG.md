@@ -197,8 +197,8 @@ Platform-admin-gated cordon → drain → revoke. Any non-active state blocks th
 
 Append-only history emitted on writes the system already performs (registered / lease_acquired / lease_released / cordoned / drained / revoked). Read via `GET …/{id}/events`. **Implementation default:** for **single-statement** writes (register, the `affinity.claim` lease-acquire, the lease-settle status flip, the `PATCH` admin_state transitions) the event INSERT joins the same statement/transaction, so history can't diverge from state. The **report finalize** path is explicitly **non-atomic by design** (`service_report.zig` — `loadLease` / `claimReportAndSettle` / `markTerminal` / checkpoint each acquire a separate connection, "best-effort and logged on failure"), so its `lease_released` event is **best-effort** (logged on failure), not transactional. The spec does **not** refactor `service_report` into one txn just to host the event.
 
-- **Dimension 3.1** — minting, leasing, reporting, and a cordon each append exactly one typed event with `occurred_at` → Test `state writes append events`.
-- **Dimension 3.2** — `GET …/{id}/events` answers "last lease_acquired" / counts over a window → Test `event history answers last-busy and counts`.
+- **Dimension 3.1** ✅ DONE — minting, leasing, reporting, and a cordon each append exactly one typed event with `occurred_at` → Tests `state writes append runner events and history route lists them`, `lease and report append acquire and release events`.
+- **Dimension 3.2** ✅ DONE — `GET …/{id}/events` returns paginated history and supports `event_type` + `since`/`until` millisecond filters for last-busy reads and window counts → Test `lease and report append acquire and release events`.
 
 ### §4 — Liveness sweeper + reassignment
 
@@ -240,7 +240,8 @@ Liveness (DERIVED from fleet.runner_leases — NO singular column on fleet.runne
 
 PATCH /v1/fleet/runners/{id}   platformAdmin; body { action: cordon|drain|revoke }; idempotent.
                                → 200 { id, admin_state }   (tenant admin / zmb_t_ → 403 UZ-AUTH-021)
-GET   /v1/fleet/runners/{id}/events  platformAdmin; paginated { items, total, page, page_size }.
+GET   /v1/fleet/runners/{id}/events  platformAdmin; optional event_type/since/until filters;
+                                      paginated { items, total, page, page_size }.
 Runner plane: a revoked/cordoned runner's authed call → 401 UZ-RUN-009.
 Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthogonal.
 ```
@@ -285,8 +286,8 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 | 2.2 | integration | `fleet runner PATCH revoke makes the next runner-plane call unauthorized` | revoke → next runner `/me` call `401 UZ-RUN-009`. |
 | 2.3 | integration | `fleet runner PATCH is platform-admin gated` | tenant admin / `zmb_t_` PATCH → `403 UZ-AUTH-021`. |
 | 2.4 | integration | `fleet runner PATCH rejects malformed actions and missing runners` | malformed action → `400 UZ-REQ-001`; missing runner → `404 UZ-RUN-014`. |
-| 3.1 | integration | `state writes append events` | register/lease-acquire/cordon → one typed event each in the same statement/txn; report → best-effort `lease_released` (logged on failure, non-atomic by design). |
-| 3.2 | integration | `event history answers last-busy and counts` | `GET …/events` → last `lease_acquired`, window count. |
+| 3.1 | integration | `state writes append runner events and history route lists them`; `lease and report append acquire and release events` | register/lease-acquire/cordon → one typed event each in the same statement/txn; report → best-effort `lease_released` (logged on failure, non-atomic by design). |
+| 3.2 | integration | `lease and report append acquire and release events` | `GET …/events?event_type=lease_acquired&page_size=1` → latest busy event; `until=0` window → `total=0`; unfiltered history returns acquire + release. |
 | 4.1 | integration | `stale runner swept and work reassigned` | stale `last_seen` → offline event + affinity expired → re-leased. |
 | 4.2 | integration | `reassignment holds when no eligible target` | no live runner → work unclaimed, no error; returns → claimed. |
 | 4.3 | integration | `liveness derives active lease set without singular column` | runner with 0/1/N active leases → `busy`/`active` correct; no runner-level lease column exists. |
@@ -300,9 +301,9 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 
 ## Acceptance Criteria
 
-- [ ] `admin_state` rename + auth gate; revoke → `401 UZ-RUN-009` — verify: `make test-integration` + `zig build test-auth`
-- [ ] `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, platform-admin-gated — verify: `make test-integration`
-- [ ] `fleet.runner_events` append-only; emitted on state writes; `GET …/events` reads — verify: `make test-integration`
+- [x] `admin_state` rename + auth gate; revoke → `401 UZ-RUN-009` — verify: `make test-integration` + `zig build test-auth`
+- [x] `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, platform-admin-gated — verify: `make test-integration`
+- [x] `fleet.runner_events` append-only; emitted on state writes; `GET …/events` reads — verify: `make test-integration`
 - [ ] Sweeper marks offline + reassigns; holds when no target — verify: `make test-integration`
 - [ ] Dashboard cordon/revoke + activity view, platform-admin-only — verify: `make acceptance-e2e`
 - [ ] `make lint` clean · `make test` passes · cross-compile both linux targets

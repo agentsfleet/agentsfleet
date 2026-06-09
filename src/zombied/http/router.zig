@@ -48,6 +48,10 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Fleet operator plane ──────────────────────────────────────────────
+    if (matchers.matchFleetRunnerEvents(p)) |runner_id| return switch (method) {
+        .GET => .{ .fleet_runner_events = runner_id },
+        else => null,
+    };
     if (matchers.matchFleetRunner(p)) |runner_id| return .{ .fleet_runner_patch = runner_id };
 
     // ── Runner control plane (the one self-plane verb with a path param) ──

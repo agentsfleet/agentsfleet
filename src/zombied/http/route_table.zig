@@ -130,6 +130,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // admin / `zmb_t_` is rejected 403); never the runnerBearer plane.
         .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
         .fleet_runner_patch => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerPatch },
+        .fleet_runner_events => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerEvents },
         .runner_self => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerSelf },
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },
@@ -188,6 +189,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg) != null);
     try testing.expect(specFor(.register_runner, &reg) != null);
     try testing.expect(specFor(.{ .fleet_runner_patch = "r1" }, &reg) != null);
+    try testing.expect(specFor(.{ .fleet_runner_events = "r1" }, &reg) != null);
     try testing.expect(specFor(.runner_heartbeat, &reg) != null);
     try testing.expect(specFor(.runner_lease, &reg) != null);
     try testing.expect(specFor(.runner_report, &reg) != null);

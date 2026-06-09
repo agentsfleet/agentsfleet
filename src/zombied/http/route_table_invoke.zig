@@ -314,6 +314,7 @@ const runner_invokes = @import("route_table_invoke_runner.zig");
 pub const invokeRegisterRunner = runner_invokes.invokeRegisterRunner;
 pub const invokeFleetRunnersList = runner_invokes.invokeFleetRunnersList;
 pub const invokeFleetRunnerPatch = runner_invokes.invokeFleetRunnerPatch;
+pub const invokeFleetRunnerEvents = runner_invokes.invokeFleetRunnerEvents;
 pub const invokeRunnerSelf = runner_invokes.invokeRunnerSelf;
 pub const invokeRunnerHeartbeat = runner_invokes.invokeRunnerHeartbeat;
 pub const invokeRunnerLease = runner_invokes.invokeRunnerLease;
