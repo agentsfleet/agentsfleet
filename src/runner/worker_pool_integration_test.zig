@@ -43,10 +43,15 @@ const ControlPlaneStub = struct {
     heartbeats: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     in_lease: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
     max_in_lease: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     fn acceptLoop(self: *ControlPlaneStub) void {
         while (true) {
             const conn = self.listener.accept(self.io) catch return; // listener closed → exit
+            if (self.stop.load(.seq_cst)) { // the shutdown wake connection — drain and exit
+                conn.close(self.io);
+                return;
+            }
             const t = std.Thread.spawn(.{}, handleConn, .{ self, conn }) catch {
                 conn.close(self.io);
                 continue;
@@ -172,9 +177,15 @@ test "worker pool runs N leases concurrently and reports them all, then drains c
 
     drain.store(true, .seq_cst); // graceful: finish in-flight, take no new lease
     pool.join();
-    listener.deinit(io); // unblocks the acceptor's accept(), then its handlers drain
+    // Deinit'ing the listener does NOT reliably unblock a concurrent accept() on
+    // Linux (it does on macOS/BSD), and deinit-during-accept races the acceptor.
+    // So: flag stop, wake the blocked accept() with a throwaway self-connection,
+    // join the acceptor, then deinit the listener once nothing is in accept().
+    stub.stop.store(true, .seq_cst);
+    wakeAcceptor(io, port);
     acceptor.join();
     stub.joinHandlers();
+    listener.deinit(io);
 
     try std.testing.expectEqual(WORKER_COUNT, stub.reports.load(.seq_cst)); // all N executed + reported
     try std.testing.expect(stub.max_in_lease.load(.seq_cst) >= 2); // genuinely concurrent, not serialized
@@ -256,6 +267,15 @@ fn writeJson(io: std.Io, conn: anytype, body: []const u8) void {
 
 /// Kernel-assigned local port off a bound listener handle (no getsockname on the
 /// 0.16 Server; go through libc on the raw fd — mirrors loop_test).
+/// Unblock the acceptor's blocking `accept()` by making one throwaway loopback
+/// connection. With `stop` already set, the acceptor accepts this, sees stop,
+/// closes it, and returns — portable where `listener.deinit` alone is not.
+fn wakeAcceptor(io: std.Io, port: u16) void {
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return;
+    const stream = addr.connect(io, .{ .mode = .stream }) catch return;
+    stream.close(io);
+}
+
 fn boundPort(handle: std.Io.net.Socket.Handle) !u16 {
     // SAFETY: getsockname fills sa before sa.port is read on success; the !=0
     // branch returns an error without reading sa.
