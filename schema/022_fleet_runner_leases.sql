@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     updated_at        BIGINT NOT NULL
 );
 
+-- Sweeper lookup: enumerate one runner's active lease set for slot expiry.
+CREATE INDEX IF NOT EXISTS runner_leases_runner_status_idx
+    ON fleet.runner_leases (runner_id, status);
+
 -- api_runtime: the serve tier owns /v1/runners/me/{leases,reports}; it inserts
 -- a lease at lease-issue and reads + updates status at report.
 GRANT SELECT, INSERT, UPDATE ON fleet.runner_leases TO api_runtime;
