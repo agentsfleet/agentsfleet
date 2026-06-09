@@ -24,8 +24,11 @@ const log = logging.scoped(.zombie_api);
 
 const Hx = hx_mod.Hx;
 
-const MAX_SOURCE_LEN: usize = 64 * 1024; // 64KB
-const MAX_TRIGGER_LEN: usize = 64 * 1024; // 64KB
+/// Max `SKILL.md` / `TRIGGER.md` body sizes — shared with `patch.zig` so an
+/// edit cannot smuggle an oversized body past the create-time cap (the body now
+/// rides every lease, so the cap is a lease-size guard too).
+pub const MAX_SOURCE_LEN: usize = 64 * 1024; // 64KB
+pub const MAX_TRIGGER_LEN: usize = 64 * 1024; // 64KB
 
 /// Install request shape. The server is the single parser of TRIGGER.md
 /// frontmatter — `name` and `config_json` are derived here, not sent by

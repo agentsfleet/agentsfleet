@@ -86,8 +86,8 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     // Seed one memory row for the zombie. No FK to core.zombies, so only the
     // teardown's explicit DELETE removes it.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1, 'canary', 'should not survive teardown', 'core', $2::uuid, NULL, '1700000000', '1700000000')
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, NULL, '1700000000', '1700000000')
     , .{ "account-teardown-canary", ZOMBIE_ID });
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, ZOMBIE_ID));
 

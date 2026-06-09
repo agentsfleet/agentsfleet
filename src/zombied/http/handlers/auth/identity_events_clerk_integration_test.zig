@@ -30,7 +30,7 @@ const OIDC_REPLAY: []const u8 = "oidc-clerk-http-replay-02";
 const OIDC_DELETE_ZOMBIES: []const u8 = "oidc-clerk-http-del-zmb-03";
 
 // Valid UUIDv7 (version char '7' at position 15) for the seeded zombie row;
-// satisfies core.zombies' ck_zombies_id_uuidv7 CHECK.
+// satisfies core.zombies' ck_zombies_uid_uuidv7 CHECK.
 const SEED_ZOMBIE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
 
 fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {

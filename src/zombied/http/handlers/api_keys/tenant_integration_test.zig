@@ -5,7 +5,7 @@
 //   - Duplicate key_name within a tenant: 409 UZ-APIKEY-005.
 //   - Round-trip auth: a minted zmb_t_ key authenticates a subsequent GET.
 //   - PATCH {active:false} revokes; the same key can no longer authenticate.
-//   - DELETE on an active key is 409; DELETE on a revoked key is 204.
+//   - Re-revoke is 409; DELETE on active/revoked/missing keys is 409/204/404.
 //   - Tenant isolation: GET as tenant A does not return tenant B's rows.
 //
 // Uses the shared TestHarness (src/http/test_harness.zig) — see
@@ -198,7 +198,37 @@ test "integration: minted zmb_t_ key authenticates GET, revoked by PATCH {active
     finalCleanup(h);
 }
 
-test "integration: DELETE active key → 409, revoked key → 204" {
+test "integration: PATCH already-revoked key returns 409 UZ-APIKEY-006" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const create_resp = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR))
+        .json("{\"key_name\":\"already-revoked\"}")).send();
+    defer create_resp.deinit();
+    try create_resp.expectStatus(.created);
+    const id = (try parseJsonString(ALLOC, create_resp.body, "id")) orelse return error.TestExpectedEqual;
+    defer ALLOC.free(id);
+
+    const patch_path = try std.fmt.allocPrint(ALLOC, "/v1/api-keys/{s}", .{id});
+    defer ALLOC.free(patch_path);
+
+    const first_revoke = try (try (try h.request(.PATCH, patch_path).bearer(TOKEN_OPERATOR))
+        .json("{\"active\":false}")).send();
+    defer first_revoke.deinit();
+    try first_revoke.expectStatus(.ok);
+
+    const second_revoke = try (try (try h.request(.PATCH, patch_path).bearer(TOKEN_OPERATOR))
+        .json("{\"active\":false}")).send();
+    defer second_revoke.deinit();
+    try second_revoke.expectStatus(.conflict);
+    try std.testing.expect(second_revoke.bodyContains("UZ-APIKEY-006"));
+    finalCleanup(h);
+}
+
+test "integration: DELETE active key → 409, revoked key → 204, missing key → 404" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -227,6 +257,11 @@ test "integration: DELETE active key → 409, revoked key → 204" {
     const del_revoked = try (try h.delete(del_path).bearer(TOKEN_OPERATOR)).send();
     defer del_revoked.deinit();
     try del_revoked.expectStatus(.no_content);
+
+    const del_missing = try (try h.delete(del_path).bearer(TOKEN_OPERATOR)).send();
+    defer del_missing.deinit();
+    try del_missing.expectStatus(.not_found);
+    try std.testing.expect(del_missing.bodyContains("UZ-APIKEY-003"));
     finalCleanup(h);
 }
 
@@ -242,9 +277,9 @@ test "integration: GET /v1/api-keys returns only the calling tenant's rows" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         _ = try conn.exec(
-            \\INSERT INTO core.api_keys (id, tenant_id, key_name, key_hash, created_by, active)
-            \\VALUES ($1::uuid, $2::uuid, 'other-tenant-key', 'deadbeef' , 'user_other', TRUE)
-        , .{ FOREIGN_KEY_ID, OTHER_TENANT_ID });
+            \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+            \\VALUES ($1::uuid, $2::uuid, 'other-tenant-key', '', 'deadbeef' , 'user_other', TRUE, $3, $3)
+        , .{ FOREIGN_KEY_ID, OTHER_TENANT_ID, clock.nowMillis() });
     }
 
     // Operator for TEST_TENANT_ID mints one key of their own.

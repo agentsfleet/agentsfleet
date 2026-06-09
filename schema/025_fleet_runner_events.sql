@@ -11,8 +11,9 @@
 -- one offline event.
 
 CREATE TABLE IF NOT EXISTS fleet.runner_events (
-    id           UUID   PRIMARY KEY,
-    CONSTRAINT ck_runner_events_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid          UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    id           UUID   NOT NULL UNIQUE,
+    CONSTRAINT ck_runner_events_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     runner_id    UUID   NOT NULL REFERENCES fleet.runners(id) ON DELETE CASCADE,
     event_type   TEXT   NOT NULL,
     occurred_at  BIGINT NOT NULL,

@@ -16,6 +16,7 @@ const std = @import("std");
 const pg = @import("pg");
 const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const id_format = @import("../types/id_format.zig");
 
 /// The wire shape of one memory item, reused verbatim for the hydrate read so the
 /// handler serializes it directly into `MemoryHydrateResponse` (RULE UFS).
@@ -67,15 +68,17 @@ pub fn storeEntry(
     category: []const u8,
     ts: []const u8,
 ) !void {
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $5::uuid, NULL, $6, $6)
+        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, NULL, $7, $7)
         \\ON CONFLICT (key, zombie_id) DO UPDATE
         \\  SET content = EXCLUDED.content,
         \\      category = EXCLUDED.category,
         \\      updated_at = EXCLUDED.updated_at
-    , .{ id, key, content, category, zombie_id, ts });
+    , .{ uid, id, key, content, category, zombie_id, ts });
 }
 
 /// Evict the coldest entries beyond `max` for `zombie_id` (the per-zombie durable-set

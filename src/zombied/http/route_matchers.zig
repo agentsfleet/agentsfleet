@@ -125,7 +125,7 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
 }
 
 // Tenant + admin billing matchers (/admin/platform-keys, /api-keys,
-// /tenants/me/billing/charges/.../metering-periods) live in
+// /tenants/me/billing/charges/.../telemetry) live in
 // route_matchers_billing.zig (RULE FLL). Re-exported so call sites stay unchanged.
 pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
 pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;

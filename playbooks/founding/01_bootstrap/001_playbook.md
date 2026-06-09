@@ -170,7 +170,7 @@ This is a one-time human step. GitHub has no API endpoint to change org package 
 
 > **Why public?** The image contains only the compiled binary. All secrets come from env vars at runtime. There is no secret in the image.
 
-### 2.3a Fly.io — API + Worker Services (Agent-executed via CLI)
+### 2.3a Fly.io — API Service (Agent-executed via CLI)
 
 **Architecture:**
 ```
@@ -184,8 +184,9 @@ zombied-dev.internal:3000  ← Fly anycast LB (automatic)
     ├── Machine 1 (iad, shared-cpu-1x 512MB)
     └── Machine 2 (iad, shared-cpu-1x 512MB)  ← auto-scaled up to N
 
-zombied-dev-worker (separate Fly app, scaled independently)
-    └── Machine 1..N running `zombied worker`
+zombie-runner (host-resident daemon on a bare-metal node — NOT a Fly app)
+    └── leases work over HTTPS, sandboxes in bubblewrap, control plane over Tailscale
+        (bootstrapped via 06_/07_runner_bootstrap_*; CI-deployed via deploy-dev.yml)
 ```
 
 **Why Fly.io:**
@@ -201,10 +202,10 @@ Agent executes via Fly CLI (see M2_002 §2.0 for full steps):
 # Authenticate (human does fly auth login once; agent uses deploy token from vault)
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
-# Create apps
+# Create apps (API + tunnel connector — execution runs on the bare-metal
+# zombie-runner, not a Fly app; see 06_/07_runner_bootstrap_*)
 fly apps create zombied-dev       --org <org>
 fly apps create cloudflared-dev   --org <org>
-fly apps create zombied-dev-worker --org <org>
 
 # Set secrets from vault
 fly secrets set \
@@ -305,7 +306,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 | `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
-**`zombied` API + worker + `zombiectl`:**
+**`zombied` + `zombiectl`:**
 
 | Variable | Preview | Production |
 |---|---|---|

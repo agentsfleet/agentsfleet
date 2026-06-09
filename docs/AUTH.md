@@ -303,7 +303,7 @@ Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  zo
    does NOT call register — it authenticates every later call with that zrn_
 ```
 
-`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `status='revoked'` (M84_002 renames this column to `admin_state` and adds the cordon/drain states).
+`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
 ### Validation — a separate middleware, on purpose
 
@@ -311,9 +311,9 @@ Every later call carries `Bearer zrn_` and hits a dedicated `runnerBearer` middl
 
 ```
 parse Bearer → require "zrn_" prefix          (else 401 — no JWKS fall-through)
-SELECT id, status FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
-  status='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
-  miss / revoked  → 401
+SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
+  admin_state='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
+  miss / non-active    → 401 UZ-RUN-009
 ```
 
 This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `zrn_` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.

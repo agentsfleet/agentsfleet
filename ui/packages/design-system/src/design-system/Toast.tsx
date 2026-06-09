@@ -101,10 +101,8 @@ export function Toast({
     }
     fadeTimer.current = setTimeout(() => setRendered(false), fadeMs);
     return () => {
-      if (fadeTimer.current) {
-        clearTimeout(fadeTimer.current);
-        fadeTimer.current = null;
-      }
+      clearTimeout(fadeTimer.current!);
+      fadeTimer.current = null;
     };
   }, [visible, fadeMs]);
 

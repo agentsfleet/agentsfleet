@@ -131,16 +131,16 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
     , .{ TENANT_ID, now_ms });
     const key_hash = api_key.sha256Hex(ZMB_T_KEY);
     _ = try conn.exec(
-        \\INSERT INTO core.api_keys (id, tenant_id, key_name, key_hash, created_by, active)
-        \\VALUES ($1::uuid, $2::uuid, 'runner-enroll-test-key', $3, 'user_enroll_test', TRUE)
+        \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'runner-enroll-test-key', '', $3, 'user_enroll_test', TRUE, $4, $4)
         \\ON CONFLICT (key_hash) DO NOTHING
-    , .{ API_KEY_ROW_ID, TENANT_ID, key_hash[0..] });
+    , .{ API_KEY_ROW_ID, TENANT_ID, key_hash[0..], now_ms });
 }
 
 fn cleanup(h: *TestHarness) void {
     const conn = h.acquireConn() catch return;
     defer h.releaseConn(conn);
-    _ = conn.exec("DELETE FROM core.api_keys WHERE id = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
+    _ = conn.exec("DELETE FROM core.api_keys WHERE uid = $1::uuid", .{API_KEY_ROW_ID}) catch |err|
         std.log.warn("cleanup api_keys ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runners WHERE host_id = 'host-enroll-test'", .{}) catch |err|
         std.log.warn("cleanup runners ignored: {s}", .{@errorName(err)});

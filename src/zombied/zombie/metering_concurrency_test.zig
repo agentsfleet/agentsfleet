@@ -67,7 +67,7 @@ test "should drain every concurrent receive debit without lost writes" {
 
     try uc1.seed(db_ctx.conn, WS_RECEIVE_RACE);
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_RACE);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_RACE}) catch {};
+    defer _ = db_ctx.conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_RACE}) catch {};
 
     // Ample balance so no receive debit can exhaust — receive charges
     // EVENT_NANOS (0) per event, so the balance never moves, but every call
@@ -100,7 +100,7 @@ test "should drain every concurrent receive debit without lost writes" {
 
     // Exactly N receive telemetry rows — one per distinct event_id, no losses.
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM zombie_execution_telemetry
+        \\SELECT COUNT(*)::BIGINT FROM core.zombie_execution_telemetry
         \\WHERE workspace_id = $1 AND charge_type = 'receive'
     , .{WS_RECEIVE_RACE}));
     defer q.deinit();

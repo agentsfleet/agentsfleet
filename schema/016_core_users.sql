@@ -7,7 +7,9 @@
 -- for team accounts later.
 
 CREATE TABLE IF NOT EXISTS core.users (
-    user_id       UUID PRIMARY KEY,
+    uid           UUID GENERATED ALWAYS AS (user_id) STORED PRIMARY KEY,
+    CONSTRAINT ck_users_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    user_id       UUID NOT NULL UNIQUE,
     tenant_id     UUID NOT NULL REFERENCES core.tenants(tenant_id),
     -- Clerk user subject ("user_2aXy..."). Immutable — rotation is out of scope.
     oidc_subject  TEXT NOT NULL,
@@ -22,13 +24,16 @@ CREATE INDEX IF NOT EXISTS idx_users_tenant
     ON core.users(tenant_id);
 
 CREATE TABLE IF NOT EXISTS core.memberships (
+    uid         UUID NOT NULL,
     tenant_id   UUID NOT NULL REFERENCES core.tenants(tenant_id),
     user_id     UUID NOT NULL REFERENCES core.users(user_id),
     -- Role is a free-form lowercase label for now; enum/constraint can land
     -- with the team-accounts milestone when the role vocabulary is fixed.
     role        TEXT NOT NULL,
     created_at  BIGINT NOT NULL,
-    PRIMARY KEY (tenant_id, user_id)
+    PRIMARY KEY (uid),
+    CONSTRAINT ck_memberships_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    CONSTRAINT uq_memberships_tenant_user UNIQUE (tenant_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_memberships_user
     ON core.memberships(user_id);

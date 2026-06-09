@@ -1778,6 +1778,102 @@
         }
       }
     },
+    "/v1/tenants/me/billing/charges/{event_id}/telemetry": {
+      "get": {
+        "operationId": "get_tenant_metering_periods",
+        "summary": "Tenant metering periods for one charge",
+        "description": "Returns the oldest-first renewal slices behind one `stage` charge. The route is scoped to the caller's tenant through the matching `zombie_execution_telemetry` row; unknown or foreign `event_id` values return an empty `items` list.\n",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "description": "Event Identifier (ID) from a `get_tenant_billing_charges` response.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metering slices for the requested event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "slice_seq",
+                          "d_input_tokens",
+                          "d_cached_tokens",
+                          "d_output_tokens",
+                          "run_ms",
+                          "run_fee_nanos",
+                          "token_cost_nanos",
+                          "charged_nanos",
+                          "created_at"
+                        ],
+                        "properties": {
+                          "slice_seq": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "d_input_tokens": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "d_cached_tokens": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "d_output_tokens": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "run_ms": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "run_fee_nanos": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "token_cost_nanos": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "charged_nanos": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/tenants/me/workspaces": {
       "get": {
         "operationId": "list_tenant_workspaces",
@@ -3114,7 +3210,7 @@
       "post": {
         "operationId": "request_integration_grant",
         "summary": "Request a new integration grant",
-        "description": "Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack, GitHub). Creates a pending grant that a human approves via the grant-approval webhook.",
+        "description": "Called by a zombie (or on its behalf) to request permission to use a third-party integration (e.g. Slack, Gmail). Creates a pending grant that a human approves via the grant-approval webhook.",
         "tags": [
           "Integration Grants"
         ],
@@ -3152,7 +3248,14 @@
                 ],
                 "properties": {
                   "service": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "slack",
+                      "gmail",
+                      "agentmail",
+                      "discord",
+                      "grafana"
+                    ]
                   },
                   "reason": {
                     "type": "string"
@@ -4211,7 +4314,13 @@
           },
           "service": {
             "type": "string",
-            "description": "e.g. slack, github"
+            "enum": [
+              "slack",
+              "gmail",
+              "agentmail",
+              "discord",
+              "grafana"
+            ]
           },
           "status": {
             "type": "string",
@@ -4414,110 +4523,6 @@
             }
           }
         ]
-      },
-      "AgentProfile": {
-        "type": "object",
-        "description": "Agent profile including trust and improvement metadata",
-        "properties": {
-          "agent_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable agent name"
-          },
-          "status": {
-            "type": "string",
-            "description": "Agent operational status"
-          },
-          "workspace_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "trust_level": {
-            "type": "string",
-            "description": "Current trust level (e.g. low, medium, high)"
-          },
-          "trust_streak_runs": {
-            "type": "integer",
-            "description": "Number of consecutive successful runs contributing to trust"
-          },
-          "improvement_stalled_warning": {
-            "type": "boolean",
-            "description": "True if the agent's self-improvement has plateaued"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "AgentRelayRequest": {
-        "type": "object",
-        "description": "Request body for Agent Relay LLM endpoints (spec template and preview). The workspace_id is provided via the path parameter.",
-        "required": [
-          "messages"
-        ],
-        "properties": {
-          "messages": {
-            "type": "array",
-            "description": "Conversation messages for the LLM",
-            "items": {
-              "type": "object",
-              "required": [
-                "role",
-                "content"
-              ],
-              "properties": {
-                "role": {
-                  "type": "string",
-                  "enum": [
-                    "user",
-                    "assistant",
-                    "system"
-                  ],
-                  "description": "Message role"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "Message content"
-                }
-              }
-            }
-          },
-          "tools": {
-            "type": "array",
-            "description": "Optional tool definitions for the LLM to use during generation",
-            "items": {
-              "type": "object",
-              "required": [
-                "name",
-                "description",
-                "input_schema"
-              ],
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "Tool name"
-                },
-                "description": {
-                  "type": "string",
-                  "description": "What the tool does"
-                },
-                "input_schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "description": "JSON Schema for the tool's input"
-                }
-              }
-            }
-          }
-        }
       }
     }
   }

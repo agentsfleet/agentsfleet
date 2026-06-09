@@ -214,6 +214,14 @@ pub const LeasePayload = struct {
     secret_delivery: SecretDelivery,
     event: EventEnvelope,
     policy: ExecutionPolicy,
+    /// The installed agent's behaviour prose (the `SKILL.md` body after
+    /// frontmatter extraction), so the sandboxed NullClaw turn runs the
+    /// installed behaviour and not a generic chat. Soft reasoning input —
+    /// hard tool/secret policy stays in `policy`. Additive + defaulted so a
+    /// mixed-version fleet is safe: a new runner reading an older lease that
+    /// omits the field gets `""` (rollout is runners-first — an older runner
+    /// reading a newer lease rejects the unknown field and runs no work).
+    instructions: []const u8 = "",
 };
 
 /// POST /v1/runners/me/leases (Bearer runner_token, long-poll). Always 200:

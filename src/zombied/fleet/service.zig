@@ -33,6 +33,7 @@ const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
+const lease_row = @import("service_lease_row.zig");
 const ZombieSession = @import("zombie_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const context_resolve = @import("context_resolve.zig");
@@ -44,13 +45,16 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
-const lease_issue_store = @import("lease_issue_store.zig");
 const event_envelope = @import("contract").event_envelope;
 const execution_policy = @import("contract").execution_policy;
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_lease);
-const Billed = lease_issue_store.Billed;
+
+/// The lease-row billing fields, defined alongside the row write in
+/// `service_lease_row.zig` (RULE FLL split); aliased here so the billing
+/// helpers keep naming the type.
+const Billed = lease_row.Billed;
 
 /// POST /v1/runners/me/leases — claim the next event across all active zombies
 /// (sticky-preferred), bill it (or reuse a reclaim's billing), and hand back the
@@ -211,18 +215,25 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
     };
 
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
-    try lease_issue_store.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
+    try lease_row.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
-    hx.ok(.ok, protocol.LeaseResponse{ .lease = .{
-        .lease_id = lease_id,
-        .fencing_token = acq.fencing_token,
-        .lease_expires_at = acq.leased_until,
-        .secret_delivery = .@"inline",
-        .event = envelope,
-        .policy = resolveExecutionPolicy(hx, session, resolved),
-    } });
+    hx.ok(.ok, protocol.LeaseResponse{
+        .lease = .{
+            .lease_id = lease_id,
+            .fencing_token = acq.fencing_token,
+            .lease_expires_at = acq.leased_until,
+            .secret_delivery = .@"inline",
+            .event = envelope,
+            .policy = resolveExecutionPolicy(hx, session, resolved),
+            // The installed SKILL.md body (extracted by ZombieSession), so the runner
+            // delivers it to NullClaw. `claimZombie` resolves the session before the
+            // fresh/reclaim split, so this is set identically on both paths. Borrowed
+            // from `session`, which lives until the response serialises (deinit defer).
+            .instructions = session.instructions,
+        },
+    });
 }
 
 /// Resolve the tenant's active provider+key for the lease. Called for BOTH

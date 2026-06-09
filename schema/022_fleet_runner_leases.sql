@@ -37,8 +37,9 @@
 --   stopped (no double-charge, no gap).
 
 CREATE TABLE IF NOT EXISTS fleet.runner_leases (
-    id                UUID   PRIMARY KEY,
-    CONSTRAINT ck_runner_leases_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    uid               UUID   GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
+    CONSTRAINT ck_runner_leases_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
+    id                UUID   NOT NULL UNIQUE,
     runner_id         UUID   NOT NULL REFERENCES fleet.runners(id) ON DELETE CASCADE,
     zombie_id         UUID   NOT NULL,
     workspace_id      UUID   NOT NULL,

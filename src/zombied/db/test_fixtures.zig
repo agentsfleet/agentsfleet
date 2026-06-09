@@ -160,8 +160,10 @@ pub fn seedZombieSession(
 pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
     // Sessions first (FK to zombies), then zombies.
     _ = conn.exec(
-        \\DELETE FROM core.zombie_sessions WHERE zombie_id IN
-        \\  (SELECT id FROM core.zombies WHERE workspace_id = $1)
+        \\DELETE FROM core.zombie_sessions s
+        \\USING core.zombies z
+        \\WHERE s.zombie_id = z.id
+        \\  AND z.workspace_id = $1
     , .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec(
         "DELETE FROM core.zombies WHERE workspace_id = $1",

@@ -65,7 +65,6 @@ export function ConfirmDialog({
   const descId = useId();
 
   const handleConfirm = useCallback(async () => {
-    if (pending) return;
     setPending(true);
     try {
       await onConfirm?.();
@@ -74,7 +73,7 @@ export function ConfirmDialog({
     } finally {
       setPending(false);
     }
-  }, [pending, onConfirm, onError]);
+  }, [onConfirm, onError]);
 
   return (
     <Dialog
