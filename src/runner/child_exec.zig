@@ -22,11 +22,10 @@ const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
 const context_budget = @import("engine/context_budget.zig");
 const wire = @import("engine/wire.zig");
-const client_errors = @import("engine/client_errors.zig");
+const input = @import("child_exec_input.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
 const log = logging.scoped(.runner_exec);
-const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 const LeasePayload = contract.protocol.LeasePayload;
 const RunnerChildInput = contract.protocol.RunnerChildInput;
 const MemoryDelta = contract.protocol.MemoryDelta;
@@ -128,24 +127,22 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
         return noInstructionsResult();
     }
 
-    var args = buildCallArgs(alloc, payload);
-    defer args.deinit(alloc);
-    const ep: context_budget.ExecutionPolicy = payload.policy;
-
-    // The installed SKILL.md body becomes reasoning context so NullClaw runs the
-    // installed behaviour. Secrets never enter context — they stay in `ep`
-    // (provider/api_key) and the tool bridge (secrets_map). Fail closed if the
-    // instructions cannot be attached: never run a generic turn because the
-    // context build failed (the delivery is fail-closed, not fail-open).
-    var ctx_obj: std.json.ObjectMap = .empty;
-    defer ctx_obj.deinit(alloc);
-    ctx_obj.put(alloc, wire.installed_instructions, .{ .string = payload.instructions }) catch |err| {
+    // Build the reasoning context FIRST (cheap, fail-fast) so a context-build
+    // failure fails closed before the heavier buildCallArgs / engine call. The
+    // installed SKILL.md body becomes reasoning context; secrets never enter it
+    // (they stay in `ep` / the tool bridge). Fail closed if it cannot be attached
+    // — never run a generic turn because the delivery failed (fail-closed, not -open).
+    var ctx_obj = input.buildInstructionsContext(alloc, payload.instructions) catch |err| {
         log.err("installed_instructions_ctx_failed_fail_closed", .{ .err = @errorName(err) });
         return noInstructionsResult();
     };
-    const context_val: ?std.json.Value = .{ .object = ctx_obj };
+    defer ctx_obj.deinit(alloc);
 
-    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, context_val, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
+    var args = input.buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ep: context_budget.ExecutionPolicy = payload.policy;
+
+    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
 }
 
 /// Fail-closed result for a lease whose installed instructions are absent (an
@@ -209,69 +206,6 @@ fn applyNoNewPrivs() error{NoNewPrivsFailed}!void {
         return error.NoNewPrivsFailed;
 }
 
-/// Engine-call args resolved from the lease. `deinit` releases the two JSON
-/// containers (caller-owned allocator pattern).
-const CallArgs = struct {
-    agent_config: ?std.json.Value,
-    tools_spec: ?std.json.Value,
-    message: ?[]const u8,
-    agent_obj: std.json.ObjectMap,
-    tools_arr: std.json.Array,
-    req_parsed: ?std.json.Parsed(std.json.Value),
-
-    fn deinit(self: CallArgs, alloc: std.mem.Allocator) void {
-        var a = self.agent_obj;
-        a.deinit(alloc);
-        var t = self.tools_arr;
-        t.deinit();
-        if (self.req_parsed) |p| p.deinit();
-    }
-};
-
-/// Build engine args from the leased policy + event. Agent-config keys reuse
-/// the `wire` constants the engine reads them back with (RULE UFS).
-fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
-    var agent_obj: std.json.ObjectMap = .empty;
-    if (payload.policy.context.model.len > 0)
-        agent_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model }) catch |err| log.warn("agent_model_arg_dropped", .{ .err = @errorName(err) });
-    // Provider + key are the authoritative resolved values delivered on the
-    // lease (the key the tenant is billed for) — atomic: the resolver always
-    // produces both or neither. A half-populated pair is a malformed lease; we
-    // inject nothing so the engine fails to authenticate cleanly rather than
-    // running against the wrong provider. `secrets_map` carries tool credentials
-    // only — a tool secret named "llm" is NOT the provider key.
-    if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
-        agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider }) catch |err| log.warn("agent_provider_arg_dropped", .{ .err = @errorName(err) });
-        agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
-    } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
-        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0 });
-    }
-
-    var tools_arr = std.json.Array.init(alloc);
-    for (payload.policy.tools) |name|
-        tools_arr.append(.{ .string = name }) catch |err| log.warn("agent_tool_arg_dropped", .{ .err = @errorName(err) });
-
-    const req_parsed: ?std.json.Parsed(std.json.Value) =
-        std.json.parseFromSlice(std.json.Value, alloc, payload.event.request_json, .{}) catch null;
-
-    const message: ?[]const u8 = blk: {
-        const pv = if (req_parsed) |p| p.value else break :blk payload.event.request_json;
-        if (pv != .object) break :blk payload.event.request_json;
-        const mv = pv.object.get(wire.message) orelse break :blk payload.event.request_json;
-        if (mv != .string) break :blk payload.event.request_json;
-        break :blk mv.string;
-    };
-
-    return .{
-        .agent_config = if (agent_obj.count() > 0) .{ .object = agent_obj } else null,
-        .tools_spec = if (tools_arr.items.len > 0) .{ .array = tools_arr } else null,
-        .message = message,
-        .agent_obj = agent_obj,
-        .tools_arr = tools_arr,
-        .req_parsed = req_parsed,
-    };
-}
-
 // ── tests ────────────────────────────────────────────────────────────────────
 const testing = std.testing;
 const common = @import("common");
@@ -301,7 +235,7 @@ fn testLease(policy: ExecutionPolicy) LeasePayload {
 test "buildCallArgs injects the policy provider and api_key into agent_config" {
     const alloc = testing.allocator;
     const payload = testLease(.{ .provider = "fireworks", .api_key = "fw_secret_key" });
-    var args = buildCallArgs(alloc, payload);
+    var args = input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ac = args.agent_config.?.object;
     try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
@@ -320,6 +254,41 @@ test "runEngine fails closed with no model call when installed instructions are 
     try testing.expect(std.mem.indexOf(u8, result.content, "no installed instructions") != null);
 }
 
+test "runEngine fails closed with no model call when the instructions context cannot be built" {
+    const alloc = testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    // fail_index 0 fails the FIRST allocation — `buildInstructionsContext`'s put,
+    // which runs before buildCallArgs/engine — so runEngine takes the ctx-build
+    // fail-closed branch and NEVER reaches `engine.execute` (no model call, no
+    // network). Proves the fail-open OOM path the codex review flagged is closed.
+    var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    var payload = testLease(.{ .context = .{ .model = "m" } });
+    payload.instructions = "do platform ops"; // non-empty → past the empty guard
+    const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
+    try testing.expect(!result.exit_ok);
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+}
+
+test "buildInstructionsContext attaches the installed instructions under the wire key" {
+    const alloc = testing.allocator;
+    var ctx = try input.buildInstructionsContext(alloc, "do platform ops");
+    defer ctx.deinit(alloc);
+    try testing.expectEqualStrings("do platform ops", ctx.get(wire.installed_instructions).?.string);
+}
+
+test "buildInstructionsContext leaks nothing on allocation failure (every alloc site)" {
+    // checkAllAllocationFailures fails each allocation site in turn and asserts
+    // the function returns error.OutOfMemory and frees everything (the errdefer
+    // is correct) — the canonical Zig zero-leak proof for the error path.
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(a: std.mem.Allocator) !void {
+            var ctx = try input.buildInstructionsContext(a, "do platform ops");
+            ctx.deinit(a);
+        }
+    }.run, .{});
+}
+
 test "buildCallArgs treats an llm-named tool secret as a tool secret, not the provider key" {
     const alloc = testing.allocator;
     // The retired heuristic used to pull the provider key from secrets_map["llm"].
@@ -327,7 +296,7 @@ test "buildCallArgs treats an llm-named tool secret as a tool secret, not the pr
     var sm = try std.json.parseFromSlice(std.json.Value, alloc, "{\"llm\":{\"api_key\":\"sk-should-not-leak\"}}", .{});
     defer sm.deinit();
     const payload = testLease(.{ .secrets_map = sm.value, .context = .{ .model = "claude-x" } });
-    var args = buildCallArgs(alloc, payload);
+    var args = input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ac = args.agent_config.?.object;
     try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string); // agent_config is populated…
@@ -340,7 +309,7 @@ test "buildCallArgs injects neither half of an incomplete provider key pair" {
     // api_key present, provider empty — a malformed lease. Inject nothing so the
     // engine fails to authenticate cleanly rather than running the wrong provider.
     const payload = testLease(.{ .api_key = "fw_orphan_key", .context = .{ .model = "claude-x" } });
-    var args = buildCallArgs(alloc, payload);
+    var args = input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
     const ac = args.agent_config.?.object;
     try testing.expect(ac.get(wire.api_key) == null);
