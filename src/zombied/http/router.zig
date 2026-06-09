@@ -139,6 +139,7 @@ test "match resolves per-charge telemetry route (carries event_id)" {
     );
     // The bare charges collection must NOT match the telemetry route.
     try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET) == null);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {

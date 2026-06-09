@@ -125,8 +125,8 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
 
     _ = conn.exec(
         \\INSERT INTO core.agent_keys
-        \\  (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
-        \\VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7)
+        \\  (uid, agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, $4, $5, $6, $7)
     , .{ agent_id, workspace_id, body.zombie_id, body.name, desc, key_hash, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;

@@ -194,8 +194,8 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     , .{ zombie_in_b, ws_b });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
+        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
         \\ON CONFLICT (grant_id) DO NOTHING
     , .{ grant_id, zombie_in_b, S_PENDING, now });
 

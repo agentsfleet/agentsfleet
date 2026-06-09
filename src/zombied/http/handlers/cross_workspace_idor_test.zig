@@ -556,8 +556,8 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
         \\ON CONFLICT DO NOTHING
     , .{ zombie_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.agent_keys (agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
-        \\VALUES ($1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
+        \\INSERT INTO core.agent_keys (uid, agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
         \\ON CONFLICT (agent_id) DO NOTHING
     , .{ agent_id, TEST_WORKSPACE_ID, zombie_for_agent });
     srv.pool.release(conn);
@@ -601,8 +601,8 @@ test "no-content: DELETE integration-grant returns 204 with empty body" {
     , .{ zombie_for_grant, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (grant_id, zombie_id, service, status, requested_at, requested_reason)
-        \\VALUES ($1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
+        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\VALUES ($1::uuid, $1, $2::uuid, 'slack', 'pending', 0, 'm26 test')
         \\ON CONFLICT (grant_id) DO NOTHING
     , .{ grant_id, zombie_for_grant });
     srv.pool.release(conn);
