@@ -33,7 +33,7 @@ pub fn innerRunnerSelf(hx: Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        \\SELECT id::text, status, host_id, sandbox_tier, last_seen_at
+        \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at
         \\FROM fleet.runners WHERE id = $1::uuid
     , .{runner_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
@@ -61,7 +61,9 @@ pub fn innerRunnerSelf(hx: Hx, req: *httpz.Request) void {
 }
 
 /// Map the SELECTed row to the wire shape (`row.get` is fallible — a shape
-/// mismatch surfaces as a DB error rather than a panic).
+/// mismatch surfaces as a DB error rather than a panic). The `admin_state` column
+/// (renamed from `status`) feeds the `status` self-view field unchanged — the
+/// runner-facing label stays stable; the daemon's wire shape does not move.
 fn readRow(row: pg.Row) !protocol.SelfResponse {
     return .{
         .id = try row.get([]const u8, 0),

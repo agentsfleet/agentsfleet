@@ -49,7 +49,7 @@
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | ZIG GATE | yes | cross-compile; the reassignment write stays atomic under the existing fence. |
-| SCHEMA | yes | two migrations: rename `status`→`admin_state` (+ expand values, app-enforced) and add `fleet.runner_events` (with the offline-event partial unique index for cross-replica sweeper single-flight). Update `schema/embed.zig` + array. |
+| SCHEMA | yes | pre-v2.0 teardown-rebuild (VERSION 0.x — no ALTER, enforced by `check-schema-gate`): rename `status`→`admin_state` **in place** in `021_fleet_runners.sql`; add the `fleet.runner_leases (runner_id, status)` index **in place** in `022_fleet_runner_leases.sql` (sweeper lookup + derived `busy`/`active` counts, unindexed today); add new `025_fleet_runner_events.sql` (with the offline-event partial unique index for cross-replica sweeper single-flight) + register it in `schema/embed.zig` + the migration array. |
 | ERROR REGISTRY | yes | wire `UZ-RUN-009` (runner revoked → 401 on the runner plane); `UZ-AUTH-021` reused for the platform-admin gate. |
 | LIFECYCLE | yes | event-log + sweeper reads drain before release; the sweeper job's lifecycle (start/stop) is owned like the existing background workers. |
 | LOGGING | yes | state transitions logged via the logfmt envelope; never log a `zrn_`/`token_hash`. |
@@ -65,7 +65,7 @@
 
 **Problem:** After M84_001 an operator can *see* the fleet but can't *act* on it (no way to cordon a misbehaving host, drain it, or revoke a leaked `zrn_`) and can't *audit* it (the derived snapshot can't answer "when was it last busy", "how many runs this period", "how long offline"). A dead runner's work also waits on the lease TTL backstop rather than being proactively reassigned.
 
-**Solution summary:** Three clean, separately-typed concerns (the CTO-validated model): **intent** → a typed `admin_state` column (rename of the overloaded `status`) driving cordon/drain/revoke and the runner-auth gate; **runtime** → liveness stays *derived* (M84_001), never stored; **history** → an append-only `fleet.runner_events` log emitted on the writes the system already does. A single background **liveness sweeper** marks stale runners offline (emitting events) and expires their affinity so work re-leases (closing the M80_006 §2 reassignment deferral). "Busy" stays **derived** from `fleet.runner_leases` — under M88_002's worker pool a runner holds 0..N active leases, so there is no singular live-lease column to drift; the scheduler thinks in **capacity** (`available = worker_count − active`), and reassignment targets a specific lease row, not a runner column. **No JSONB status object** — that complexity is imported only if many independent subsystems ever write runner conditions (they don't, yet).
+**Solution summary:** Three clean, separately-typed concerns (the CTO-validated model): **intent** → a typed `admin_state` column (rename of the overloaded `status`) driving cordon/drain/revoke and the runner-auth gate; **runtime** → liveness stays *derived* (M84_001), never stored; **history** → an append-only `fleet.runner_events` log emitted on the writes the system already does. A single background **liveness sweeper** marks stale runners offline (emitting events) and expires their affinity so work re-leases (closing the M80_006 §2 reassignment deferral). "Busy" stays **derived** from `fleet.runner_leases` — under M88_002's worker pool a runner holds 0..N active leases, so there is no singular live-lease column to drift; `busy = EXISTS(active lease)` and `active = COUNT(active)` both derive server-side, and reassignment targets a specific lease row, not a runner column. (Capacity-aware scheduling — `available = worker_count − active` — is **out of scope here**: it needs a runner-reported `worker_count` that no spec transports yet, and there is no scheduler in this workstream; it lands with M85_001.) **No JSONB status object** — that complexity is imported only if many independent subsystems ever write runner conditions (they don't, yet).
 
 **Visual model.** Three separately-typed concerns; a linear operator state machine that gates runner-auth; one sweeper that detects offline *and* drives reassignment.
 
@@ -147,9 +147,10 @@ Liveness sweeper + reassignment (§4) — one periodic job:
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/0NN_runner_admin_state.sql` | CREATE | Rename `fleet.runners.status` → `admin_state`; values active\|cordoned\|draining\|drained\|revoked (app-enforced). |
-| `schema/0NN_fleet_runner_events.sql` | CREATE | Append-only `fleet.runner_events` (id, runner_id FK, event_type, occurred_at, metadata JSONB, `dedup_key` BIGINT NULL) + a partial unique index `(runner_id, dedup_key) WHERE event_type='runner_offline'` — the offline-event idempotency key (stale `last_seen_at`) for cross-replica sweeper single-flight. |
-| `schema/embed.zig` + migration array | EDIT | Register the two migrations. |
+| `schema/021_fleet_runners.sql` | EDIT | In-place rename `status` → `admin_state` (pre-v2.0 teardown-rebuild — no ALTER migration); values active\|cordoned\|draining\|drained\|revoked, app-enforced. |
+| `schema/022_fleet_runner_leases.sql` | EDIT | Add the `(runner_id, status)` index in place (pre-v2.0 teardown — no separate migration file): the sweeper's "find this runner's active leases" query + the derived `busy`/`active` counts scan by `runner_id`, unindexed today. |
+| `schema/025_fleet_runner_events.sql` | CREATE | Append-only `fleet.runner_events` (id, runner_id FK, event_type, occurred_at, metadata JSONB, `dedup_key` BIGINT NULL) + a partial unique index `(runner_id, dedup_key) WHERE event_type='runner_offline'` — the offline-event idempotency key (stale `last_seen_at`) for cross-replica sweeper single-flight. |
+| `schema/embed.zig` + migration array | EDIT | Register the new `025_fleet_runner_events.sql` (021 + 022 are edited in place — already registered). |
 | `src/zombied/cmd/serve_runner_lookup.zig` | EDIT | Gate on `admin_state == 'active'`; non-active → `401 UZ-RUN-009`. |
 | `src/zombied/http/handlers/fleet/runner_patch.zig` | CREATE | `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke; platform-admin gated; emits events. |
 | `src/zombied/http/handlers/fleet/runner_events.zig` | CREATE | `GET /v1/fleet/runners/{id}/events` (paginated history). |
@@ -162,6 +163,7 @@ Liveness sweeper + reassignment (§4) — one periodic job:
 | `ui/packages/app/app/(dashboard)/admin/runners/*` | EDIT | Row actions (cordon/drain/revoke via ConfirmDialog) + an activity/history view. |
 | `ui/packages/app/lib/api/runners.ts` | EDIT | `patchRunner` + `listRunnerEvents`. |
 | `docs/architecture/runner_fleet.md` + `roadmap.md` | EDIT | Document the realised operator plane + event model; clear the M80_006 §1/§2 deferral. |
+| `docs/AUTH.md` | EDIT | Update the runner-auth gate prose (DOCUMENT stage): the lookup selects `admin_state` (renamed from `status`); `admin_state='active'` admits, else 401. |
 
 ---
 
@@ -179,8 +181,8 @@ Liveness sweeper + reassignment (§4) — one periodic job:
 
 Rename the overloaded `status` to `admin_state` and expand its values (active|cordoned|draining|drained|revoked, app-enforced). The runner-auth lookup gates on `admin_state == 'active'`, so non-active becomes the revoke/cordon mechanism. **Implementation default:** rename in place (pre-2.0 clean break, no alias).
 
-- **Dimension 1.1** — `admin_state` replaces `status`; mint writes `active`; the runner-auth lookup admits only `active` → Test `runner auth admits only active admin state`.
-- **Dimension 1.2** — every old `status`/`RUNNER_STATUS_ACTIVE` reference is migrated (orphan sweep zero) → Test `no orphaned status references`.
+- **Dimension 1.1** ✅ DONE — `admin_state` replaces `status`; mint writes `active`; the runner-auth lookup admits only `active` → Test `runner auth admits an active admin_state and rejects a revoked one` (integration, `runner_enrollment_integration_test.zig`).
+- **Dimension 1.2** ✅ DONE — every old `status`/`RUNNER_STATUS_ACTIVE` reference is migrated (orphan sweep zero) → verified by the `RUNNER_STATUS_ACTIVE` + `sandbox_tier, status` greps (Eval E4): 3 production sites + 12 test seeds swept, `RUNNER_STATUS_ACTIVE` 0 refs.
 
 ### §2 — Operator-plane mutation (`PATCH /v1/fleet/runners/{id}`)
 
@@ -192,7 +194,7 @@ Platform-admin-gated cordon → drain → revoke. Cordon stops new leases; in-fl
 
 ### §3 — Immutable event log (`fleet.runner_events`)
 
-Append-only history emitted on writes the system already performs (registered / lease_acquired / lease_released / cordoned / drained / revoked). Read via `GET …/{id}/events`. **Implementation default:** events are emitted in the same transaction as the state write so history can't diverge from state.
+Append-only history emitted on writes the system already performs (registered / lease_acquired / lease_released / cordoned / drained / revoked). Read via `GET …/{id}/events`. **Implementation default:** for **single-statement** writes (register, the `affinity.claim` lease-acquire, the lease-settle status flip, the `PATCH` admin_state transitions) the event INSERT joins the same statement/transaction, so history can't diverge from state. The **report finalize** path is explicitly **non-atomic by design** (`service_report.zig` — `loadLease` / `claimReportAndSettle` / `markTerminal` / checkpoint each acquire a separate connection, "best-effort and logged on failure"), so its `lease_released` event is **best-effort** (logged on failure), not transactional. The spec does **not** refactor `service_report` into one txn just to host the event.
 
 - **Dimension 3.1** — minting, leasing, reporting, and a cordon each append exactly one typed event with `occurred_at` → Test `state writes append events`.
 - **Dimension 3.2** — `GET …/{id}/events` answers "last lease_acquired" / counts over a window → Test `event history answers last-busy and counts`.
@@ -201,11 +203,13 @@ Append-only history emitted on writes the system already performs (registered / 
 
 One periodic job: a runner whose `last_seen_at` is stale beyond the threshold gets an `offline` event and its affinity slot expired so its work re-leases to a healthy host (closing the M80_006 §2 reassignment deferral). "Busy" stays **derived** from `fleet.runner_leases` (no singular live-lease column — a pooled runner holds 0..N leases), and the sweeper frees the **per-zombie** affinity slot, not a runner-level column. **Invariant:** if no healthy runner exists, work **holds** (no thrash/fail) until capacity returns.
 
+**Reassignment latency reality (the sweeper is audit-first, reclaim-second).** Demand-driven reclaim already re-leases a dead runner's work at the affinity slot's `leased_until` expiry (`LEASE_TTL_MS` = 30 s): the next healthy poller wins the zombie and `reclaim.reclaimPriorActive` fences it — *faster* than this sweeper's stale threshold (`RUNNER_OFFLINE_AFTER_MS` = 90 s). So the sweeper does **not** make heartbeat-lapse reassignment work (the TTL already does); its deliverables are (1) the `runner_offline` **audit event**, (2) reassignment for the **admin-driven** path — cordon/drain/revoke has no TTL lapse to trigger reclaim — and (3) the all-runners-down hold (§4.2). To expire a dead/cordoned runner's slots it enumerates that runner's active leases: `SELECT zombie_id FROM fleet.runner_leases WHERE runner_id = $id AND status = 'active'` (**0..N** rows under the pool), which needs an index on `fleet.runner_leases (runner_id, status)` — `runner_id` is unindexed today.
+
 **Cross-replica single-flight — a unique constraint, not an advisory lock.** Every `zombied` replica runs this sweeper, so a stale runner is detected by all of them on the same tick. The `runner_offline` event carries an idempotency key — the stale `last_seen_at` snapshot — under a partial unique index on `fleet.runner_events`; each replica `INSERT … ON CONFLICT DO NOTHING RETURNING`s, so exactly one wins and emits the event + drives the (already lease-fenced) reassignment, and the rest no-op. An advisory lock is **rejected** (it serializes the sweeper across replicas, defeating the horizontal scale replicas exist for); a stored `offline_notified_at` CAS column is **rejected** (it reintroduces the runtime-shadow the `current_lease_id` drop just removed, and is discipline-enforced, not DB-enforced). The key is immutable while the runner is dead (no heartbeat updates `last_seen_at`) and distinct across episodes (revival requires a heartbeat that bumps it).
 
 - **Dimension 4.1** — a runner gone stale is swept → `offline` event + affinity expired; its zombie re-leases to a live runner → Test `stale runner swept and work reassigned`.
 - **Dimension 4.2** — all-runners-down: a swept runner's work holds (stays unclaimed, no error) until a live runner returns → Test `reassignment holds when no eligible target`.
-- **Dimension 4.3** — "busy"/"available" derive from the `fleet.runner_leases` active-lease set (`busy = EXISTS(active lease)`, `available = worker_count − COUNT(active)`); a pooled runner reports 0/1/N active leases correctly with **no** runner-level lease column → Test `liveness derives active lease set without singular column`.
+- **Dimension 4.3** — "busy"/"active" derive from the `fleet.runner_leases` active-lease set (`busy = EXISTS(active lease)`, `active = COUNT(active)`); a pooled runner reports 0/1/N active leases correctly with **no** runner-level lease column → Test `liveness derives active lease set without singular column`. (`available = worker_count − active` is out of scope — no `worker_count` source exists; see Interfaces.)
 - **Dimension 4.4** — N replicas sweeping the same stale runner concurrently emit exactly one `runner_offline` event (the partial unique index admits one INSERT; the rest no-op) → Test `concurrent sweepers emit one offline event`.
 
 ### §5 — Dashboard: row actions + activity history
@@ -225,10 +229,11 @@ fleet.runner_events : (id, runner_id FK, event_type, occurred_at BIGINT, metadat
   Partial unique: (runner_id, dedup_key) WHERE event_type='runner_offline' — one offline event per
   offline episode across replicas; dedup_key = the stale last_seen_at snapshot the sweeper read.
 
-Capacity / liveness (DERIVED from fleet.runner_leases — NO singular column on fleet.runners):
-  busy      = EXISTS(active lease for runner)         capacity  = worker_count (runner-reported; M88_002)
-  active    = COUNT(active lease for runner)          available = capacity − active
+Liveness (DERIVED from fleet.runner_leases — NO singular column on fleet.runners):
+  busy   = EXISTS(active lease for runner)     active = COUNT(active lease for runner)
   Reassignment targets a specific fleet.runner_leases row, never a runner-level lease pointer.
+  OUT OF SCOPE: capacity-aware scheduling (available = worker_count − active). No spec transports a
+  runner-reported worker_count yet (heartbeat body is empty); it lands with the scheduler (M85_001).
   event_type ∈ {runner_registered, runner_online, runner_offline, lease_acquired, lease_released,
                 runner_cordoned, runner_draining, runner_drained, runner_revoked}.
 
@@ -258,9 +263,9 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 
 ## Invariants
 
-1. **Liveness stays derived, never stored** — `admin_state` is intent, `runner_events` is history; no runtime-state column, and **no singular `current_lease_id`** — a pooled runner (M88_002) holds 0..N active leases, so `busy`/`active`/`available` derive from `fleet.runner_leases`. Enforced by review + the absence of an `online/offline` column and of any runner-level lease pointer.
+1. **Liveness stays derived, never stored** — `admin_state` is intent, `runner_events` is history; no runtime-state column, and **no singular `current_lease_id`** — a pooled runner (M88_002) holds 0..N active leases, so `busy = EXISTS(active lease)` and `active = COUNT(active)` derive from `fleet.runner_leases`. Enforced by review + the absence of an `online/offline` column and of any runner-level lease pointer. (`available = worker_count − active` is **not** in scope — no `worker_count` is transported; capacity-aware scheduling is M85_001.)
 2. **`admin_state != 'active'` ⇒ runner-auth rejects** (`401 UZ-RUN-009`) — enforced by §1.1/§2.2 + the lookup gate.
-3. **Event ⇄ state consistency** — every state-change event is written in the same transaction as the state change — enforced by §3.1 + the integration test injecting a mid-write failure.
+3. **Event ⇄ state consistency** — for **single-statement** state changes (register, lease-acquire claim, lease-settle, the admin_state `PATCH`es) the event is written in the same statement/transaction — enforced by §3.1 + the integration test injecting a mid-write failure. The non-atomic **report finalize** path (`service_report.zig`, by design) emits its `lease_released` event **best-effort** (logged on failure); reconstructing a missed release event is possible from the lease row's terminal state.
 4. **Operator plane is platform-admin-only** (Layer-1 authz, never a Postgres GRANT) — enforced by §2.3.
 5. **Reassignment holds, never thrashes/fails** when no eligible target — enforced by §4.2.
 6. **`runner_events` is append-only** (no UPDATE/DELETE grant) — enforced by the migration's GRANTs + review.
@@ -278,7 +283,7 @@ Liveness (derived, M84_001) is UNCHANGED — admin_state and liveness are orthog
 | 2.1 | integration | `cordon stops new leases keeps in-flight` | cordon → no new claim; existing lease still reports. |
 | 2.2 | integration | `revoke 401s the runner plane` | revoke → next runner call `401 UZ-RUN-009`. |
 | 2.3 | integration | `operator mutation is platform-admin-gated` | tenant admin / `zmb_t_` PATCH → `403 UZ-AUTH-021`. |
-| 3.1 | integration | `state writes append events` | mint/lease/report/cordon → one typed event each, same txn. |
+| 3.1 | integration | `state writes append events` | register/lease-acquire/cordon → one typed event each in the same statement/txn; report → best-effort `lease_released` (logged on failure, non-atomic by design). |
 | 3.2 | integration | `event history answers last-busy and counts` | `GET …/events` → last `lease_acquired`, window count. |
 | 4.1 | integration | `stale runner swept and work reassigned` | stale `last_seen` → offline event + affinity expired → re-leased. |
 | 4.2 | integration | `reassignment holds when no eligible target` | no live runner → work unclaimed, no error; returns → claimed. |
@@ -339,8 +344,9 @@ gitleaks detect 2>&1 | tail -3
 
 - **Provenance (Jun 04 2026)** — authored in PR `feat/m84-dashboard-runner-enrollment` after Indy's CTO consult on runner state. Indy: *"Yes author the event-log + operator-plane as second pending in this PR."* The no-JSONB-status model was cross-validated (Indy stress-tested it against another model; both agreed: typed `admin_state` + derived liveness + `runner_events`, conditions-JSONB only if many independent subsystems ever write runner state).
 - **Builds the M80_006 deferral** — `roadmap.md`'s "Fleet operator plane + proactive reassignment" (the cordon/drain/revoke surface, `RUNNER_STATUS_{cordoned,revoked}`, `UZ-RUN-009`, and heartbeat-lapse reassignment) was deferred after a design study; this is that spec.
-- **Re-scope (Jun 08 2026) — `current_lease_id` dropped; "busy" stays derived.** The original draft proposed a singular `fleet.runners.current_lease_id` column as a cheap busy-marker + reassignment target. M88_002's worker pool makes a runner hold **0..N** concurrent leases, so a singular column is fundamentally wrong (there is no single "current" lease). Ratified with Indy (ChatGPT + CTO review): `runner_leases` is the sole assignment truth; `busy = EXISTS(active lease)`, `active = COUNT(active)`, `available = worker_count − active` all **derive** from it — no column, no counter, no drift, no migration tear-out when M88_002 lands. The scheduler thinks in **capacity** (`active < worker_count`), not a boolean. A materialized active-count is explicitly deferred (for scheduler scale only, if ever). This removed one migration (`schema/0NN_runner_current_lease.sql`) and Dimension 4.3's column-tracking test.
+- **Re-scope (Jun 08 2026) — `current_lease_id` dropped; "busy" stays derived.** The original draft proposed a singular `fleet.runners.current_lease_id` column as a cheap busy-marker + reassignment target. M88_002's worker pool makes a runner hold **0..N** concurrent leases, so a singular column is fundamentally wrong (there is no single "current" lease). Ratified with Indy (ChatGPT + CTO review): `runner_leases` is the sole assignment truth; `busy = EXISTS(active lease)` and `active = COUNT(active)` **derive** from it — no column, no counter, no drift, no migration tear-out when M88_002 lands. The capacity predicate `available = worker_count − active` is the *direction* (a capacity-based scheduler) but is **out of scope here**: no spec transports a runner-reported `worker_count` (the heartbeat body is empty, M88_002), and this workstream has no scheduler — capacity-aware placement is M85_001. A materialized active-count is likewise deferred (for scheduler scale only, if ever). This removed one migration (`schema/0NN_runner_current_lease.sql`) and Dimension 4.3's column-tracking test. (Adversarial review Jun 09 caught the dangling `worker_count` reference — fixed by scoping capacity out, keeping only the two derivable signals.)
 - **Sweeper single-flight — X (unique constraint) chosen over Y (CAS column) + advisory lock (Jun 08 2026, Orly CTO review, ratified Indy).** Under N `zombied` replicas every replica runs the liveness sweeper, so the `runner_offline` audit event must be exactly-once per offline episode (the reassignment side-effect is already lease-fenced via `reclaim.zig`). **Chosen (X):** a partial unique index on `fleet.runner_events` keyed by the stale `last_seen_at` (the offline-episode idempotency key) — `INSERT … ON CONFLICT DO NOTHING RETURNING`; the winning replica emits + drives reassignment. **Rejected:** an advisory lock (serializes the sweeper across replicas, defeating horizontal scale) and a CAS on a stored `fleet.runners.offline_notified_at` column (reintroduces the runtime-shadow the `current_lease_id` drop removed; discipline-enforced, not DB-enforced; `approval_gate`'s CAS flips *real state*, this would be pure dedup bookkeeping). The idempotency key lives on the append-only event table — where idempotency keys belong — leaving `fleet.runners` column-free. Key correctness: immutable while dead (no heartbeat), distinct across episodes (revival bumps `last_seen_at`).
+- **§1 implemented (Jun 08 2026) — teardown-rebuild rename, not an ALTER migration.** VERSION is 0.37.0 (major 0 < 2), so `check-schema-gate` forbids `ALTER`/`DROP` — the `status`→`admin_state` rename is an **in-place edit of `021_fleet_runners.sql`** (and §4's sweeper index lands in-place in `022`), not new migration files. The ORP sweep was wider than first scoped: **12 test seeds** (not 3) plus 3 production sites (register insert, runnerBearer lookup, `GET /me`) referenced `fleet.runners.status`; all swept, `RUNNER_STATUS_ACTIVE` removed (0 refs). `SelfResponse.status` wire field **kept** (sourced from the renamed column) — renaming it ripples cross-binary to the runner daemon, out of this spec's blast radius; `docs/AUTH.md` gate prose updates at DOCUMENT stage. `AdminState` is a typed enum; `ADMIN_STATE_ACTIVE` derives from it via `@tagName` (UFS). §1 verified GREEN (DB integration + cross-compile both linux); commit pending the UFS whole-file-cascade pin on the touched test seeds.
 - **Deferrals** — populate during implementation; none at authoring.
 
 ---

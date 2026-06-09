@@ -13,7 +13,7 @@ const pg = @import("pg");
 const parseUrl = @import("../db/pool.zig").parseUrl;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-// `id host_id token_hash sandbox_tier status labels tenant_id last_seen_at
+// `id host_id token_hash sandbox_tier admin_state labels tenant_id last_seen_at
 //  created_at updated_at` — the frozen `fleet.runners` column set.
 const EXPECTED_COLUMN_COUNT: i64 = 10;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
