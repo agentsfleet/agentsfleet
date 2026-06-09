@@ -71,7 +71,7 @@
 
 **User outcome lens:** This preserves the one-time install behavior: a user installs an agent from `SKILL.md` + `TRIGGER.md` once, then later steer/webhook/cron events inherit that behavior without the user re-pasting instructions into every trigger. The setup step that gets easier is trigger wiring: after credentials and webhook/cron registration, the event only carries facts about what happened, not the full operating playbook. The first successful user moment is a deploy-failure or smoke-test event waking the installed platform-ops agent and receiving an answer that follows the stored `SKILL.md` body: fetch the right logs, correlate the right systems, and post or return a concrete diagnosis.
 
-**Concurrency posture:** Current `zombie-runner` is serial: one daemon loop holds one live lease, forks one sandboxed child, waits/renews/reports, then polls again. The Postgres/Redis control-plane primitives are already concurrent enough for racing lease calls (`fleet.runner_affinity` conditional claim + fencing, Redis pooled per-command connections), and the runner memory plane is **already lease/zombie-scoped** (hydrate keyed by `zombie_id`, capture fenced by `lease_id` + `fencing_token`, idempotent server-side writes) — it does **not** assume one live lease, resting instead on the control-plane invariant `unique(active lease per zombie)`. This spec fixes the per-lease instruction payload and must not introduce a multi-lease runner scheduler; the additive `instructions` field makes each lease **more** self-contained, which is a prerequisite the multi-lease worker pool (M88_002) builds on. The remaining gate to running N children in one runner process is the daemon loop split (M88_002), not the memory plane.
+**Concurrency posture:** Current `zombie-runner` is serial: one daemon loop holds one live lease, forks one sandboxed child, waits/renews/reports, then polls again. The Postgres/Redis control-plane primitives are already concurrent enough for racing lease calls (`fleet.runner_affinity` conditional claim + fencing, Redis pooled per-command connections), and the runner memory plane is **already lease/zombie-scoped** (hydrate keyed by `zombie_id`, capture fenced by `lease_id` + `fencing_token` server-side, idempotent writes) — it does **not** assume one live lease, resting instead on the per-zombie **affinity-slot single-holder** claim (`uq_runner_affinity_zombie` + the `leased_until` time-gate) plus capture-time fencing (not a unique constraint on the leases table). This spec fixes the per-lease instruction payload and must not introduce a multi-lease runner scheduler; the additive `instructions` field makes each lease **more** self-contained, which is a prerequisite the multi-lease worker pool (M88_002) builds on. The remaining gate to running N children in one runner process is the daemon loop split (M88_002), not the memory plane.
 
 ---
 
@@ -88,7 +88,7 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/lib/contract/protocol.zig` | EDIT | Add installed instructions to `LeasePayload` and update comments/child input serialization. |
+| `src/lib/contract/protocol.zig` | EDIT | Add `instructions: []const u8 = ""` (additive + **defaulted**, mixed-version-safe) to `LeasePayload`; update comments/child input serialization. |
 | `src/lib/contract/protocol_test.zig` | EDIT | Add protocol roundtrip coverage proving instructions survive JSON serialization. |
 | `src/zombied/fleet/service.zig` | EDIT | Populate the lease field from `ZombieSession.instructions` during fresh and reclaimed leases. |
 | `src/zombied/fleet/control_plane_integration_test.zig` or nearest lease integration test | EDIT | Assert a created agent's `source_markdown` body appears in the issued lease. |
@@ -117,17 +117,17 @@ No CLI or UI install-surface change is expected: both already submit `{trigger_m
 
 The lease reply becomes self-contained for reasoning input: event, hard policy, and installed instructions all cross together. The field is populated from the already-extracted session value.
 
-- **Dimension 1.1** — `LeasePayload` has an additive `instructions` field that JSON roundtrips unchanged → Test `lease payload preserves installed instructions`
+- **Dimension 1.1** — `LeasePayload` gains an additive, **defaulted** `instructions: []const u8 = ""` field (matching the protocol's existing mixed-version-safe additive fields, e.g. `ReportRequest.failure_reason`/`input_tokens`) that JSON roundtrips unchanged, **and a payload omitting `instructions` parses to `""`** (not an error) → Test `lease payload preserves installed instructions` + `lease payload defaults instructions when absent`
 - **Dimension 1.2** — `issueLease` sets the field from `ZombieSession.instructions` for fresh leases → Test `lease issuance includes extracted skill body`
 - **Dimension 1.3** — reclaimed leases use the same session extraction path and do not lose instructions → Test `reclaimed lease keeps installed instructions`
 
 ### §2 — Runner prompt assembly uses instructions plus event
 
-The sandboxed child gives NullClaw explicit, ordered input: installed instructions first, trigger/event second. Manual steer, webhook, cron, and continuation all use the same assembly.
+The sandboxed child gives NullClaw explicit, ordered input: installed instructions first, trigger/event second. Manual steer, webhook, cron, and continuation all use the same assembly. **Implementation route (preserve the secret boundary by construction):** extend the existing `composeMessage` **allowlist** (`runner_helpers.zig` — the fixed `fields` array, today 5 keys) with an `instructions` key rather than building a new assembly path, and pass a populated `context` object into `engine.execute` instead of `null`. This keeps the existing secret-non-injection allowlist test (`runner_security_test.zig` "composeMessage allowlist is tight") covering the new field — a fresh assembly path would bypass exactly the guard §3 relies on.
 
 - **Dimension 2.1** — child prompt includes the installed instructions before the event message/payload → Test `runner prompt includes installed instructions before trigger event`
 - **Dimension 2.2** — non-JSON and JSON event bodies still reach the prompt after instructions → Test `runner prompt preserves raw event payload when message field is absent`
-- **Dimension 2.3** — missing instructions fail clearly or produce an explicit empty-instructions section; the agent must not silently run as a generic chat bot → Test `runner handles empty installed instructions explicitly`
+- **Dimension 2.3** — when `instructions` is empty (frontmatter-only `SKILL.md`), the runner emits an **explicit sentinel section** (`## Installed instructions` followed by `(no installed instructions)`) **and logs a warning** — it never silently omits the section or degrades to a generic chat bot. (Create/install-time rejection of an empty body is a complementary upstream guard — Out of Scope here.) → Test `runner handles empty installed instructions explicitly`
 
 ### §3 — Secret boundary remains unchanged
 
@@ -159,6 +159,8 @@ LeasePayload
   event
   policy
   instructions    installed SKILL.md body after frontmatter extraction
+                  (additive + DEFAULTED: `instructions: []const u8 = ""`, like the
+                   protocol's existing mixed-version-safe additive fields)
 ```
 
 Prompt assembly shape, observable in tests but not exposed as a public API:
@@ -182,8 +184,8 @@ The engine continues to receive provider config and hard tool policy through `ag
 | Generic-agent run | lease omits instructions or runner ignores them | Tests fail; at runtime the runner must not silently strip the installed behavior. |
 | Secret prompt leak | implementation serializes `ExecutionPolicy` or `secrets_map` into the prompt | Security tests fail; raw secret bytes remain only in policy/tool-bridge memory. |
 | Placeholder pre-substitution | runner replaces `${secrets.NAME.FIELD}` before the tool call | Negative test fails; placeholders stay harmless text until a permitted tool bridge call. |
-| Older runner receives new lease | mixed deploy sends `instructions` to a binary that ignores unknown fields | If backward compatibility is required, old runner behavior is documented as unsafe for launch and rollout order must update runner before relying on triggers. |
-| Empty `SKILL.md` body | install or dashboard accepts frontmatter-only source markdown | Runner surfaces explicit missing-instructions behavior or create/install validation rejects it; no generic chat fallback. |
+| Old runner receives new lease (mixed deploy) | new `zombied` emits `instructions`; an **old** runner parses `LeaseResponse` with `std.json` **default** options (`control_plane_client.zig` — *not* `ignore_unknown_fields`) | the old runner gets `error.UnknownField` → `MalformedResponse` → it runs **no work** (fails loud, NOT a silent generic chatbot). Mitigation: the field is additive+defaulted (so new-runner/old-`zombied` parses `""` cleanly), and **rollout is runners-first** — deploy all runners before `zombied` starts emitting `instructions`. |
+| Empty `SKILL.md` body | install/dashboard accepts frontmatter-only source markdown | Runner emits the explicit `(no installed instructions)` sentinel section + a warning log (never a silent generic-chat fallback). Create/install-time rejection of an empty body is a complementary upstream guard (Out of Scope here). |
 | Oversized instruction body | operator installs a huge `SKILL.md` | Existing request/lease size limits apply; if a new limit is added, it is named and tested with a clear error. |
 
 ---
@@ -203,12 +205,12 @@ The engine continues to receive provider config and hard tool policy through `ag
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `lease payload preserves installed instructions` | JSON encode/decode of `LeasePayload` keeps `instructions = "Do platform ops"`. |
+| 1.1 | unit | `lease payload preserves installed instructions` + `lease payload defaults instructions when absent` | JSON encode/decode of `LeasePayload` keeps `instructions = "Do platform ops"`; a payload **omitting** `instructions` decodes to `""` (defaulted, not an error). |
 | 1.2 | integration | `lease issuance includes extracted skill body` | Create agent with frontmatter + body; lease response contains body text without frontmatter. |
 | 1.3 | integration | `reclaimed lease keeps installed instructions` | Expire/reclaim a lease; replacement lease still carries the same instructions. |
 | 2.1 | unit | `runner prompt includes installed instructions before trigger event` | Composed prompt contains instruction text before `workflow_run failure`. |
 | 2.2 | unit | `runner prompt preserves raw event payload when message field is absent` | Webhook payload without `message` appears after instructions as JSON text. |
-| 2.3 | unit | `runner handles empty installed instructions explicitly` | Empty instructions produce explicit failure/section behavior chosen in PLAN; not silent generic chat. |
+| 2.3 | unit | `runner handles empty installed instructions explicitly` | empty instructions → explicit `(no installed instructions)` sentinel section + warning log; never silent generic chat. |
 | 3.1 | unit | `composed prompt excludes tool secret bytes` | Planted `secrets_map.github.api_token = ghs_secret` is absent from prompt. |
 | 3.2 | unit | `composed prompt excludes provider key` | Planted provider key is absent from prompt. |
 | 3.3 | unit | `skill placeholders are not pre-substituted in prompt` | `${secrets.github.api_token}` remains literal in instructions. |
@@ -240,8 +242,8 @@ git grep -nE 'installed instructions|SKILL.md body|skill body' src/lib/contract 
 # E2: runner unit/security lane
 make test-unit-zigrunner
 
-# E3: fleet integration lane covering lease issuance
-make test-integration-runner
+# E3: fleet integration lane covering lease issuance (DB-backed; Redis tests self-skip)
+make test-integration-db
 
 # E4: Zig lint and cross-compile
 make lint-zig
@@ -275,7 +277,8 @@ gitleaks detect
 - **Architecture consult:** `docs/architecture/scenarios/01_default_install.md` says `zombiectl install --from` stores `source_markdown`, later webhook/steer use the same reasoning loop, and NullClaw runs the `SKILL.md` prose. `docs/architecture/runner_fleet.md` and `data_flow.md` describe the lease as event + `ExecutionPolicy`, but are silent on the exact field carrying instructions. This spec extends those docs and requires same-commit doc repair.
 - **Code-grounded facts:** `load-skill-from-path.ts` reads `SKILL.md` and `TRIGGER.md`; CLI and UI send `{trigger_markdown, source_markdown}`; `create.zig` stores both; `ZombieSession.claimZombie` extracts `instructions`; `protocol.LeasePayload` currently lacks instructions; `child_exec.buildCallArgs` currently derives only event message/request JSON and passes `context = null`.
 - **Concurrency finding:** current `zombie-runner` loop is serial (`heartbeat → lease → executeAndReport → report`); multi-agent concurrency today comes from multiple runner daemons/hosts. Postgres assignment is concurrent via `fleet.runner_affinity` claim/fencing and `fleet.runner_leases` reclaim/report fences. Redis request-path operations are pooled and per-command, and event reads use `XREADGROUP` only after the Postgres slot is claimed. The blocker for one runner process holding many leases is runner-side state ownership, especially memory hydrate/capture, which `runner_fleet.md` documents as safe because the loop is strictly serial.
-- **Memory-plane reconcile (Jun 08 2026):** the earlier "blocker is memory hydrate/capture" framing was over-cautious. Code-grounded re-check for the M88_002 re-scope confirms the memory plane is already multi-lease-safe: hydrate keyed by `zombie_id` (`loop.zig`), capture fenced by `lease_id` + `fencing_token` (`runner/memory.zig`), idempotent `ON CONFLICT (key, zombie_id)`, durable store in `zombied` Postgres. M84_005's Jun 06 decision already removed the one-live-lease dependency. The true multi-lease gate is the daemon loop split (M88_002), and memory isolation rests on the invariant `unique(active lease per zombie)` — NOT `zombie_id` isolation alone. This spec's `instructions` field is a multi-lease **enabler**, not a serial-only change.
+- **Memory-plane reconcile (Jun 08 2026):** the earlier "blocker is memory hydrate/capture" framing was over-cautious. Code-grounded re-check for the M88_002 re-scope confirms the memory plane is already multi-lease-safe: hydrate keyed by `zombie_id` (runner `loop.zig`), capture fenced by `lease_id` + `fencing_token` server-side (`src/zombied/http/handlers/runner/memory.zig`), idempotent `ON CONFLICT (key, zombie_id)`, durable store in `zombied` Postgres. M84_005's Jun 06 decision already removed the one-live-lease dependency. The true multi-lease gate is the daemon loop split (M88_002), and memory isolation rests on the per-zombie affinity-slot single-holder claim + capture-time fencing — NOT `zombie_id` isolation alone, and NOT a unique constraint on `fleet.runner_leases`. This spec's `instructions` field is a multi-lease **enabler**, not a serial-only change.
+- **Adversarial review fixes (Jun 09 2026):** a pre-implementation skeptic pass against `main` corrected five things now baked into the spec: (1) **BLOCKER** — the mixed-version Failure Mode was inverted; `control_plane_client.zig` parses `LeaseResponse` with `std.json` *default* options (no `ignore_unknown_fields`), so an **old** runner getting a new `instructions` field hard-fails `error.UnknownField` → `MalformedResponse` → **no work** (loud, not silent generic); the field is additive+`= ""` defaulted (new-runner/old-`zombied` parses cleanly) and **rollout is runners-first**. (2) `instructions: []const u8 = ""` is explicitly defaulted (§1.1 tests the absent→`""` path). (3) prompt assembly extends `composeMessage`'s existing allowlist (6th key) rather than a new path, so §3's secret-non-injection allowlist test keeps covering it. (4) empty-`SKILL.md` behavior is pinned concretely (explicit `(no installed instructions)` sentinel + warning), not deferred to PLAN. (5) `make test-integration-runner` does not exist → corrected to `make test-integration-db`.
 - **Deferrals:** none. Any future claim that mixed-version rollout, empty-body validation, or doc repair is deferred needs an Indy-acked verbatim quote here.
 
 ---
@@ -295,7 +298,7 @@ gitleaks detect
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
 | Runner unit/security | `make test-unit-zigrunner` | to be filled during VERIFY | |
-| Fleet integration | `make test-integration-runner` | to be filled during VERIFY | |
+| Fleet integration | `make test-integration-db` | to be filled during VERIFY | |
 | Lint | `make lint-zig` | to be filled during VERIFY | |
 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | to be filled during VERIFY | |
 | Gitleaks | `gitleaks detect` | to be filled during VERIFY | |
