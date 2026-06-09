@@ -204,7 +204,13 @@ fn executeAndReport(
     });
 
     var ws_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const workspace_path = prepareWorkspace(io, &ws_buf, cfg.workspace_base, payload.lease_id) orelse return;
+    // Back off on a workspace-prep failure before returning: otherwise a
+    // persistent failure (e.g. an unwritable workspace base) hot-spins the
+    // worker's poll loop — amplified ×worker_count under the pool.
+    const workspace_path = prepareWorkspace(io, &ws_buf, cfg.workspace_base, payload.lease_id) orelse {
+        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
+        return;
+    };
     defer cleanupWorkspace(io, workspace_path);
 
     var forwarder = ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id };
@@ -251,6 +257,7 @@ fn executeAndReport(
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
     }) catch |err| {
         log.err("report_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS); // back off so a down report endpoint can't hot-spin the pool
         return;
     };
 
