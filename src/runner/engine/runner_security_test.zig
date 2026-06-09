@@ -2,8 +2,8 @@
 //!
 //! Split from runner_test.zig to keep each file under 500 lines.
 //! Covers:
-//! - T9: DRY helpers — getFloat edge cases
-//! - T8: OWASP Agent Security — credential non-leakage through composeMessage,
+//! - DRY helpers — getFloat edge cases
+//! - OWASP Agent Security — credential non-leakage through composeMessage,
 //!        fail-closed execute when api_key / github_token present but message null
 
 const std = @import("std");
@@ -14,16 +14,16 @@ const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const common = @import("common");
 
-// ── T9: DRY — getFloat returns null for missing key ──────────────────
-test "T9: getFloat returns null for missing key" {
+// ── DRY — getFloat returns null for missing key ──────────────────
+test "getFloat returns null for missing key" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = .empty };
     defer obj.object.deinit(alloc);
     try std.testing.expect(json.getFloat(obj, "nope") == null);
 }
 
-// ── T9: DRY — getFloat returns float for float value ─────────────────
-test "T9: getFloat returns float for float value" {
+// ── DRY — getFloat returns float for float value ─────────────────
+test "getFloat returns float for float value" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = .empty };
     defer obj.object.deinit(alloc);
@@ -31,8 +31,8 @@ test "T9: getFloat returns float for float value" {
     try std.testing.expectEqual(@as(f64, 0.42), json.getFloat(obj, "temp").?);
 }
 
-// ── T9: DRY — getFloat returns null for string value ──────────────────
-test "T9: getFloat returns null for string value" {
+// ── DRY — getFloat returns null for string value ──────────────────
+test "getFloat returns null for string value" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = .empty };
     defer obj.object.deinit(alloc);
@@ -40,14 +40,14 @@ test "T9: getFloat returns null for string value" {
     try std.testing.expect(json.getFloat(obj, "temp") == null);
 }
 
-// ── T8 — OWASP Agent Security additions for M16_003 ──────────────────
+// ── OWASP Agent Security additions ──────────────────
 
-// T8.1 — composeMessage silently ignores unknown context keys.
+// composeMessage silently ignores unknown context keys.
 // Guards against a caller injecting api_key or github_token into the agent prompt
 // by using those as context field names — composeMessage only processes the 5
 // documented fields (spec_content, plan_content, memory_context,
 // defects_content, implementation_summary).
-test "T8: composeMessage ignores unknown context keys — api_key not injected into prompt" {
+test "composeMessage ignores unknown context keys — api_key not injected into prompt" {
     const alloc = std.testing.allocator;
     var ctx = std.json.Value{ .object = .empty };
     defer ctx.object.deinit(alloc);
@@ -65,10 +65,10 @@ test "T8: composeMessage ignores unknown context keys — api_key not injected i
     try std.testing.expect(std.mem.indexOf(u8, composed, "REAL SPEC") != null);
 }
 
-// T8.2 — composeMessage with prompt injection in a known field preserves the content
+// composeMessage with prompt injection in a known field preserves the content
 // verbatim. This test documents the current behaviour so a future sanitizer has
 // a baseline to compare against.
-test "T8: composeMessage preserves prompt injection verbatim in known fields (baseline)" {
+test "composeMessage preserves prompt injection verbatim in known fields (baseline)" {
     const alloc = std.testing.allocator;
     var ctx = std.json.Value{ .object = .empty };
     defer ctx.object.deinit(alloc);
@@ -84,10 +84,10 @@ test "T8: composeMessage preserves prompt injection verbatim in known fields (ba
     try std.testing.expect(composed.len > "work".len);
 }
 
-// T8.3 — execute with api_key in agent_config but null message fails closed.
+// execute with api_key in agent_config but null message fails closed.
 // Guards against a path where a valid api_key is present but the message
 // validation hasn't run yet — the system must reject before any credential injection.
-test "T8: execute with api_key in agent_config and null message fails closed (startup_posture)" {
+test "execute with api_key in agent_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
@@ -102,8 +102,8 @@ test "T8: execute with api_key in agent_config and null message fails closed (st
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
 
-// T8.4 — execute with github_token in agent_config but null message fails closed.
-test "T8: execute with github_token in agent_config and null message fails closed (startup_posture)" {
+// execute with github_token in agent_config but null message fails closed.
+test "execute with github_token in agent_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
@@ -116,19 +116,22 @@ test "T8: execute with github_token in agent_config and null message fails close
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
 
-// T8.5 — composeMessage with exactly 5 unknown keys plus 1 known key.
-// Verifies the allowlist boundary is tight: only the 5 documented keys pass through.
-test "T8: composeMessage allowlist is tight — only 5 known keys produce sections" {
+// composeMessage with 5 unknown keys plus 1 known key.
+// Verifies the boundary is tight. Six keys produce sections: installed_instructions
+// (prepended) plus the 5 coding-agent append fields (spec_content, plan_content,
+// memory_context, defects_content, implementation_summary). Everything else is
+// dropped — this test injects 5 unknown keys and one append field (plan_content).
+test "composeMessage allowlist is tight — only the 6 known keys produce sections" {
     const alloc = std.testing.allocator;
     var ctx = std.json.Value{ .object = .empty };
     defer ctx.object.deinit(alloc);
-    // 5 unknown keys.
+    // 5 unknown keys (none of the 6 known section-producing keys).
     try ctx.object.put(alloc, "api_key", .{ .string = "secret1" });
     try ctx.object.put(alloc, "github_token", .{ .string = "secret2" });
     try ctx.object.put(alloc, "database_url", .{ .string = "secret3" });
     try ctx.object.put(alloc, "redis_url", .{ .string = "secret4" });
     try ctx.object.put(alloc, "private_key", .{ .string = "secret5" });
-    // 1 known key.
+    // 1 known key (plan_content, one of the 5 append fields).
     try ctx.object.put(alloc, "plan_content", .{ .string = "PLAN" });
 
     const composed = try runner.composeMessage(alloc, "base", ctx);

@@ -133,11 +133,13 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // Build the reasoning context FIRST (cheap, fail-fast) so a context-build
     // failure fails closed before the heavier buildCallArgs / engine call. The
     // installed SKILL.md body becomes reasoning context; secrets never enter it
-    // (they stay in `ep` / the tool bridge). Fail closed if it cannot be attached
-    // — never run a generic turn because the delivery failed (fail-closed, not -open).
+    // (they stay in `ep` / the tool bridge). The only error here is OOM, and the
+    // instructions ARE configured (len > 0, checked above) — this is resource
+    // exhaustion, NOT a missing playbook, so report configBuildFailed rather than
+    // sending the operator to chase a missing SKILL.md. Fail closed either way.
     var ctx_obj = input.buildInstructionsContext(alloc, payload.instructions) catch |err| {
         log.err("installed_instructions_ctx_failed_fail_closed", .{ .err = @errorName(err) });
-        return noInstructionsResult();
+        return configBuildFailedResult();
     };
     defer ctx_obj.deinit(alloc);
 
@@ -264,6 +266,11 @@ test "runEngine fails closed with no model call when the instructions context ca
     const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
     try testing.expect(!result.exit_ok);
     try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    // The instructions ARE configured (len > 0) — a ctx-build OOM is resource
+    // exhaustion, so the operator message must be configBuildFailed, NOT the
+    // missing-playbook "no installed instructions" (which would misdirect triage).
+    try testing.expect(std.mem.indexOf(u8, result.content, "engine configuration could not be assembled") != null);
+    try testing.expect(std.mem.indexOf(u8, result.content, "no installed instructions") == null);
 }
 
 test "runEngine fails closed with no model call when the engine config cannot be assembled" {
