@@ -87,11 +87,14 @@ test "buildCallArgs leaks nothing on allocation failure (every alloc site)" {
 }
 
 test "buildCallArgs never yields a half-built provider/key pair under OOM (atomic at every alloc site)" {
-    // The strongest proof of the fix: at EVERY allocation-failure point the
-    // function either returns error.OutOfMemory (checkAllAllocationFailures also
-    // asserts no leak) or succeeds with the provider/key pair atomic — present
-    // together or absent together. A provider-without-key agent_config (the
-    // "wrong provider" hazard) can never escape, even under memory pressure.
+    // Two proofs combine here. (1) The success-path assertion below: whenever the
+    // build succeeds, provider and api_key are present together or absent together.
+    // (2) The rollback under OOM — if the api_key `put` fails after the provider
+    // `put` succeeded, the function returns error.OutOfMemory (the `try` below
+    // propagates it before the `if`) and the errdefer frees the partial map — is
+    // proven by checkAllAllocationFailures asserting zero leak at every alloc site.
+    // Together: a provider-without-key agent_config (the "wrong provider" hazard)
+    // can never escape, even under memory pressure.
     try testing.checkAllAllocationFailures(testing.allocator, struct {
         fn run(a: std.mem.Allocator) !void {
             const payload = testLease(.{
@@ -131,4 +134,73 @@ test "buildCallArgs assembles a complete engine config from a production-shaped 
     try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
     try testing.expectEqual(@as(usize, 3), args.tools_spec.?.array.items.len);
     try testing.expectEqualStrings("hi", args.message.?); // resolved from the event's "message" field
+}
+
+// ── message-resolution fallback branches ─────────────────────────────────────
+// Each case drives one fall-through in the `message` blk; without these the only
+// covered path is "valid object with a string message field" and a mutant on any
+// fallback survives. The fixture's request_json is overridden per case.
+
+fn leaseWithBody(body: []const u8) @TypeOf(testLease(.{})) {
+    var payload = testLease(.{ .context = .{ .model = "m" } });
+    payload.event.request_json = body;
+    return payload;
+}
+
+test "buildCallArgs falls back to the raw body as the message when request JSON is malformed" {
+    const alloc = testing.allocator;
+    // Malformed JSON → parseFromSlice returns a syntax error (NOT OutOfMemory),
+    // so the `else => null` arm runs and the message is the raw body. This is the
+    // ONLY test that exercises that arm — checkAllAllocationFailures cannot, since
+    // it only ever induces OutOfMemory at the parse site.
+    var args = try input.buildCallArgs(alloc, leaseWithBody("{not valid json"));
+    defer args.deinit(alloc);
+    try testing.expectEqualStrings("{not valid json", args.message.?);
+}
+
+test "buildCallArgs uses the raw body as the message when no message field is present" {
+    const alloc = testing.allocator;
+    var args = try input.buildCallArgs(alloc, leaseWithBody("{\"action\":\"push\"}"));
+    defer args.deinit(alloc);
+    try testing.expectEqualStrings("{\"action\":\"push\"}", args.message.?);
+}
+
+test "buildCallArgs uses the raw body when the message field is not a string" {
+    const alloc = testing.allocator;
+    var args = try input.buildCallArgs(alloc, leaseWithBody("{\"message\":42}"));
+    defer args.deinit(alloc);
+    try testing.expectEqualStrings("{\"message\":42}", args.message.?);
+}
+
+test "buildCallArgs uses the raw body when the request JSON is not an object" {
+    const alloc = testing.allocator;
+    var args = try input.buildCallArgs(alloc, leaseWithBody("[1,2,3]"));
+    defer args.deinit(alloc);
+    try testing.expectEqualStrings("[1,2,3]", args.message.?);
+}
+
+test "buildCallArgs yields null agent_config and tools_spec for an empty policy" {
+    const alloc = testing.allocator;
+    // No model, no provider/key, no tools → the `count() > 0`/`items.len > 0`
+    // guards take their null side; a mutant that wraps an empty object/array
+    // (e.g. `if (true)`) is caught here.
+    var args = try input.buildCallArgs(alloc, testLease(.{}));
+    defer args.deinit(alloc);
+    try testing.expect(args.agent_config == null);
+    try testing.expect(args.tools_spec == null);
+    try testing.expectEqualStrings("hi", args.message.?); // message still resolves
+}
+
+test "buildCallArgs leaks nothing under OOM even when the request JSON is malformed" {
+    // The malformed-body path has a different alloc/free shape (parse fails, no
+    // req_parsed arena to deinit). Prove it is leak-clean at every alloc-failure
+    // index too, so the `else => null` arm never strands memory under pressure.
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(a: std.mem.Allocator) !void {
+            var payload = testLease(.{ .provider = "fireworks", .api_key = "fw_key", .context = .{ .model = "m" } });
+            payload.event.request_json = "{not valid json";
+            var args = try input.buildCallArgs(a, payload);
+            args.deinit(a);
+        }
+    }.run, .{});
 }

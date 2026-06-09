@@ -17,10 +17,19 @@ const LeasePayload = contract.protocol.LeasePayload;
 /// Engine-call args resolved from the lease. `deinit` releases the two JSON
 /// containers (caller-owned allocator pattern).
 pub const CallArgs = struct {
+    /// NON-OWNING view of `agent_obj` (the same backing map) — never `deinit`
+    /// this; it is freed only via `agent_obj`. Null when the policy contributed
+    /// no agent-config keys.
     agent_config: ?std.json.Value,
+    /// NON-OWNING view of `tools_arr` — never `deinit` this; freed via `tools_arr`.
     tools_spec: ?std.json.Value,
+    /// Borrows either `req_parsed`'s arena (the parsed-string path) or
+    /// `payload.event.request_json` (every fallback path). Path-dependent, so it
+    /// is valid only until `deinit` — never use it after the struct is freed.
     message: ?[]const u8,
+    /// Owns the `agent_config` backing map.
     agent_obj: std.json.ObjectMap,
+    /// Owns the `tools_spec` backing array.
     tools_arr: std.json.Array,
     req_parsed: ?std.json.Parsed(std.json.Value),
 
@@ -57,7 +66,7 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
         try agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
         try agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
-        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0 });
+        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .zombie_id = payload.event.zombie_id });
     }
 
     var tools_arr = std.json.Array.init(alloc);

@@ -529,6 +529,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    zombie-runner — sandboxed child (child_exec.zig):
        apply mandatory Landlock (fail-closed on the required tier) →
        build NullClaw config + tool set from the policy → run the agent turn.
+       (fail-closed: an empty installed playbook OR a config-build allocation
+        failure reports startup_posture and never invokes the model — the
+        provider/key pair is assembled atomically, so a half-built config
+        never reaches the engine.)
 
           args_redacted is built INSIDE the child before any frame leaves:
           any byte range from a secrets_map[NAME][FIELD] substitution is

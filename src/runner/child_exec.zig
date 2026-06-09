@@ -152,6 +152,11 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
 
+    // `.{ .object = ctx_obj }` BORROWS ctx_obj's backing map (the struct copy
+    // shares the same hash-map arrays). engine.execute is synchronous, so it must
+    // fully consume `context` before this frame unwinds and `defer ctx_obj.deinit`
+    // frees those arrays. A future async or context-retaining engine would have to
+    // own or dupe the context instead of borrowing it here.
     return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
 }
 
@@ -265,13 +270,20 @@ test "runEngine fails closed with no model call when the engine config cannot be
     const alloc = testing.allocator;
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
-    // A production-shaped lease (instructions present, full provider/key/tools
-    // policy). The FailingAllocator fails from `fail_index` onward and STAYS
-    // failed, so the small instructions-context build succeeds first and the
-    // larger buildCallArgs is then guaranteed to fail — runEngine must take the
-    // config-build fail-closed branch and return BEFORE engine.execute (no model
-    // call, no network). The CONFIG_BUILD_FAILED content distinguishes this from
-    // the no-instructions / ctx-build branches.
+
+    // Derive — don't guess — the allocation index where buildCallArgs begins.
+    // runEngine builds the instructions context FIRST, so the count of allocations
+    // that build performs is exactly the first index buildCallArgs touches. The
+    // FailingAllocator stays failed from `fail_index` onward, so failing there
+    // guarantees the ctx build succeeds and buildCallArgs fails — self-adjusting
+    // if std's allocation shape changes, no magic number.
+    const ctx_alloc_count = blk: {
+        var probe = std.testing.FailingAllocator.init(alloc, .{ .fail_index = std.math.maxInt(usize) });
+        var ctx = try input.buildInstructionsContext(probe.allocator(), "do platform ops");
+        ctx.deinit(probe.allocator());
+        break :blk probe.alloc_index;
+    };
+
     var payload = testLease(.{
         .provider = "fireworks",
         .api_key = "fw_secret_key",
@@ -279,9 +291,12 @@ test "runEngine fails closed with no model call when the engine config cannot be
         .context = .{ .model = "claude-x" },
     });
     payload.instructions = "do platform ops";
-    var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 2 });
+    var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = ctx_alloc_count });
     const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
     try testing.expect(!result.exit_ok);
     try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    // Specifically the config-build branch — not the no-instructions / ctx-build
+    // branch (proves the ctx build succeeded and the failure came from assembly).
     try testing.expect(std.mem.indexOf(u8, result.content, "engine configuration could not be assembled") != null);
+    try testing.expect(std.mem.indexOf(u8, result.content, "no installed instructions") == null);
 }
