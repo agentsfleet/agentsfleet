@@ -21,7 +21,6 @@ const engine = @import("engine/runner.zig");
 const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
 const context_budget = @import("engine/context_budget.zig");
-const wire = @import("engine/wire.zig");
 const input = @import("child_exec_input.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
@@ -46,6 +45,10 @@ const READ_CHUNK: usize = 64 * 1024;
 /// Operator-facing outcome when a lease carries no installed instructions — the
 /// agent has no `SKILL.md` behaviour to run, so the model is not invoked.
 const NO_INSTRUCTIONS_MESSAGE = "no installed instructions: the agent has no SKILL.md behaviour to run; awaiting configuration";
+/// Operator-facing outcome when the engine config could not be assembled from the
+/// lease (allocation failure mid-build) — the model is not invoked with a partial
+/// config. Distinct from the no-instructions outcome for triage.
+const CONFIG_BUILD_FAILED_MESSAGE = "engine configuration could not be assembled (resource exhaustion): the run was stopped before the model was invoked";
 
 /// Child entry. Returns the process exit code (main calls `std.process.exit`
 /// with it); never returns an error — every failure maps to an exit code.
@@ -138,7 +141,14 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     };
     defer ctx_obj.deinit(alloc);
 
-    var args = input.buildCallArgs(alloc, payload);
+    // FAIL CLOSED: if the engine config cannot be assembled (allocation failure
+    // mid-build), do not invoke the model with a partial config — report a
+    // startup-posture failure. buildCallArgs is atomic, so a half-built
+    // agent_config (e.g. provider-without-key) never reaches the engine.
+    var args = input.buildCallArgs(alloc, payload) catch |err| {
+        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .zombie_id = payload.event.zombie_id });
+        return configBuildFailedResult();
+    };
     defer args.deinit(alloc);
     const ep: context_budget.ExecutionPolicy = payload.policy;
 
@@ -151,6 +161,14 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
 /// as a startup-posture failure carrying an operator-facing message.
 fn noInstructionsResult() types.ExecutionResult {
     return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture };
+}
+
+/// Fail-closed result when the engine config could not be assembled from the
+/// lease (allocation failure mid-build): the model is never invoked with a
+/// partial config. A distinct operator message from `noInstructionsResult` so
+/// triage can tell "no SKILL.md to run" from "couldn't build the config".
+fn configBuildFailedResult() types.ExecutionResult {
+    return .{ .content = CONFIG_BUILD_FAILED_MESSAGE, .exit_ok = false, .failure = .startup_posture };
 }
 
 /// Write the terminal `result` frame to stdout. Activity frames (if any) were
@@ -209,38 +227,11 @@ fn applyNoNewPrivs() error{NoNewPrivsFailed}!void {
 // ── tests ────────────────────────────────────────────────────────────────────
 const testing = std.testing;
 const common = @import("common");
-const ExecutionPolicy = contract.execution_policy.ExecutionPolicy;
+const testLease = @import("child_exec_test_fixtures.zig").testLease;
 
-/// A minimal lease whose only inputs `buildCallArgs` reads are `policy` and
-/// `event.request_json`.
-fn testLease(policy: ExecutionPolicy) LeasePayload {
-    return .{
-        .lease_id = "l1",
-        .fencing_token = 1,
-        .lease_expires_at = 0,
-        .secret_delivery = .@"inline",
-        .event = .{
-            .event_id = "1700000000000-0",
-            .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
-            .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
-            .actor = "steer:test",
-            .event_type = .chat,
-            .request_json = "{\"message\":\"hi\"}",
-            .created_at = 1700000000000,
-        },
-        .policy = policy,
-    };
-}
-
-test "buildCallArgs injects the policy provider and api_key into agent_config" {
-    const alloc = testing.allocator;
-    const payload = testLease(.{ .provider = "fireworks", .api_key = "fw_secret_key" });
-    var args = input.buildCallArgs(alloc, payload);
-    defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
-    try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
-    try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
-}
+// The `buildCallArgs` / `buildInstructionsContext` pub-surface tests live in
+// `child_exec_input_test.zig` (kept out of this file for the RULE FLL limit). The
+// tests below stay here because they exercise the private `runEngine`.
 
 test "runEngine fails closed with no model call when installed instructions are empty" {
     const alloc = testing.allocator;
@@ -270,48 +261,27 @@ test "runEngine fails closed with no model call when the instructions context ca
     try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
 
-test "buildInstructionsContext attaches the installed instructions under the wire key" {
+test "runEngine fails closed with no model call when the engine config cannot be assembled" {
     const alloc = testing.allocator;
-    var ctx = try input.buildInstructionsContext(alloc, "do platform ops");
-    defer ctx.deinit(alloc);
-    try testing.expectEqualStrings("do platform ops", ctx.get(wire.installed_instructions).?.string);
-}
-
-test "buildInstructionsContext leaks nothing on allocation failure (every alloc site)" {
-    // checkAllAllocationFailures fails each allocation site in turn and asserts
-    // the function returns error.OutOfMemory and frees everything (the errdefer
-    // is correct) — the canonical Zig zero-leak proof for the error path.
-    try testing.checkAllAllocationFailures(testing.allocator, struct {
-        fn run(a: std.mem.Allocator) !void {
-            var ctx = try input.buildInstructionsContext(a, "do platform ops");
-            ctx.deinit(a);
-        }
-    }.run, .{});
-}
-
-test "buildCallArgs treats an llm-named tool secret as a tool secret, not the provider key" {
-    const alloc = testing.allocator;
-    // The retired heuristic used to pull the provider key from secrets_map["llm"].
-    // A tool secret literally named `llm` must now be left alone.
-    var sm = try std.json.parseFromSlice(std.json.Value, alloc, "{\"llm\":{\"api_key\":\"sk-should-not-leak\"}}", .{});
-    defer sm.deinit();
-    const payload = testLease(.{ .secrets_map = sm.value, .context = .{ .model = "claude-x" } });
-    var args = input.buildCallArgs(alloc, payload);
-    defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
-    try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string); // agent_config is populated…
-    try testing.expect(ac.get(wire.api_key) == null); // …but the llm tool secret is NOT promoted to the provider key
-    try testing.expect(ac.get(wire.provider) == null);
-}
-
-test "buildCallArgs injects neither half of an incomplete provider key pair" {
-    const alloc = testing.allocator;
-    // api_key present, provider empty — a malformed lease. Inject nothing so the
-    // engine fails to authenticate cleanly rather than running the wrong provider.
-    const payload = testLease(.{ .api_key = "fw_orphan_key", .context = .{ .model = "claude-x" } });
-    var args = input.buildCallArgs(alloc, payload);
-    defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
-    try testing.expect(ac.get(wire.api_key) == null);
-    try testing.expect(ac.get(wire.provider) == null);
+    var env_map = try common.env.fromPairs(alloc, &.{});
+    defer env_map.deinit();
+    // A production-shaped lease (instructions present, full provider/key/tools
+    // policy). The FailingAllocator fails from `fail_index` onward and STAYS
+    // failed, so the small instructions-context build succeeds first and the
+    // larger buildCallArgs is then guaranteed to fail — runEngine must take the
+    // config-build fail-closed branch and return BEFORE engine.execute (no model
+    // call, no network). The CONFIG_BUILD_FAILED content distinguishes this from
+    // the no-instructions / ctx-build branches.
+    var payload = testLease(.{
+        .provider = "fireworks",
+        .api_key = "fw_secret_key",
+        .tools = &.{ "bash", "read", "write" },
+        .context = .{ .model = "claude-x" },
+    });
+    payload.instructions = "do platform ops";
+    var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 2 });
+    const result = runEngine(&env_map, fa.allocator(), "/tmp/ws", payload, &.{});
+    try testing.expect(!result.exit_ok);
+    try testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
+    try testing.expect(std.mem.indexOf(u8, result.content, "engine configuration could not be assembled") != null);
 }

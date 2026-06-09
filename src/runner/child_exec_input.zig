@@ -34,30 +34,46 @@ pub const CallArgs = struct {
 };
 
 /// Build engine args from the leased policy + event. Agent-config keys reuse
-/// the `wire` constants the engine reads them back with (RULE UFS).
-pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
+/// the `wire` constants the engine reads them back with (RULE UFS). Fails closed
+/// on allocation failure: a partial `agent_config` never escapes — the caller
+/// reports a startup-posture failure instead of invoking the model with a
+/// half-built config (e.g. a provider with no key). Caller owns the returned
+/// value (deinit with the same allocator).
+pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutOfMemory}!CallArgs {
     var agent_obj: std.json.ObjectMap = .empty;
+    errdefer agent_obj.deinit(alloc);
     if (payload.policy.context.model.len > 0)
-        agent_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model }) catch |err| log.warn("agent_model_arg_dropped", .{ .err = @errorName(err) });
+        try agent_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model });
     // Provider + key are the authoritative resolved values delivered on the
     // lease (the key the tenant is billed for) — atomic: the resolver always
     // produces both or neither. A half-populated pair is a malformed lease; we
     // inject nothing so the engine fails to authenticate cleanly rather than
-    // running against the wrong provider. `secrets_map` carries tool credentials
-    // only — a tool secret named "llm" is NOT the provider key.
+    // running against the wrong provider. The pair is atomic under OOM too: if
+    // the api_key `put` fails, `try` unwinds the whole build (the errdefer frees
+    // the already-inserted provider) so a provider-without-key never reaches the
+    // engine. `secrets_map` carries tool credentials only — a tool secret named
+    // "llm" is NOT the provider key.
     if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
-        agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider }) catch |err| log.warn("agent_provider_arg_dropped", .{ .err = @errorName(err) });
-        agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
+        try agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
+        try agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
         log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0 });
     }
 
     var tools_arr = std.json.Array.init(alloc);
+    errdefer tools_arr.deinit();
     for (payload.policy.tools) |name|
-        tools_arr.append(.{ .string = name }) catch |err| log.warn("agent_tool_arg_dropped", .{ .err = @errorName(err) });
+        try tools_arr.append(.{ .string = name });
 
+    // Malformed request JSON falls back to the raw body as the message (a defined,
+    // safe behaviour) — but an OOM during the parse fails closed like any other
+    // allocation failure, rather than silently degrading to the raw body under
+    // memory pressure.
     const req_parsed: ?std.json.Parsed(std.json.Value) =
-        std.json.parseFromSlice(std.json.Value, alloc, payload.event.request_json, .{}) catch null;
+        std.json.parseFromSlice(std.json.Value, alloc, payload.event.request_json, .{}) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => null,
+        };
 
     const message: ?[]const u8 = blk: {
         const pv = if (req_parsed) |p| p.value else break :blk payload.event.request_json;
@@ -85,4 +101,8 @@ pub fn buildInstructionsContext(alloc: std.mem.Allocator, instructions: []const 
     errdefer ctx_obj.deinit(alloc);
     try ctx_obj.put(alloc, wire.installed_instructions, .{ .string = instructions });
     return ctx_obj;
+}
+
+test {
+    _ = @import("child_exec_input_test.zig");
 }
