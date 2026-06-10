@@ -515,6 +515,46 @@ describe("app analytics", () => {
     expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
   });
 
+  it("a sign-in queued after a deferred sweep survives the flush (reset does not cancel it)", async () => {
+    const sharedWindow = createWindow("/workspaces");
+    // Session 1: identify normally so the marker is persisted.
+    {
+      const { mod } = await loadModule({
+        windowObj: sharedWindow,
+        env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+      });
+      await mod.initAnalytics();
+      mod.identifyAnalyticsUser({ id: "user_old", email: null });
+    }
+
+    // Session 2 (hard navigation): the sweep defers while the chunk is in
+    // flight, then the user completes a same-page sign-in before it lands.
+    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", sharedWindow);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+    mod.resetAnalyticsIdentity();
+    mod.identifyAnalyticsUser({ id: "user_new", email: null });
+
+    resolveImport({ default: client });
+    await initPromise;
+
+    // The replayed sign-out must not cancel the newer sign-in.
+    expect(client.reset).toHaveBeenCalledTimes(1);
+    expect(client.identify).toHaveBeenCalledTimes(1);
+    expect(client.identify).toHaveBeenCalledWith("user_new", { user_id: "user_new" });
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+  });
+
   it("an identify that races the chunk load is queued and flushes once the client lands", async () => {
     const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
     let resolveImport!: (value: { default: MockClient }) => void;

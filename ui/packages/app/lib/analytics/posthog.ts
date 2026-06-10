@@ -146,14 +146,16 @@ export async function initAnalytics(): Promise<void> {
     capture_pageleave: true,
   });
   posthogClient = posthog;
-  // Flush identity work that raced the chunk load — reset first, so a
-  // sign-in that followed a sign-out supersedes it.
+  // Flush identity work that raced the chunk load — replay the reset first,
+  // then any identify that arrived after it. The queue must be captured
+  // before the replay: resetAnalyticsIdentity() clears pendingIdentify, but
+  // a queued identify is always newer than the queued reset (a reset that
+  // follows an identify already cancelled it at call time), so the sign-in
+  // survives the replayed sign-out.
+  const queuedIdentify = pendingIdentify;
+  pendingIdentify = null;
   if (pendingReset) resetAnalyticsIdentity();
-  if (pendingIdentify !== null) {
-    const user = pendingIdentify;
-    pendingIdentify = null;
-    identifyAnalyticsUser(user);
-  }
+  if (queuedIdentify !== null) identifyAnalyticsUser(queuedIdentify);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
