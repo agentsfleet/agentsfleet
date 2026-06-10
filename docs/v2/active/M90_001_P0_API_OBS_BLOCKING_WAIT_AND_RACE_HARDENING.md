@@ -183,9 +183,9 @@ Dispatch increments/decrements the in-flight counter; above `api_max_in_flight_r
 
 Replace `thread_pool.zig`'s per-Worker private rings + blind round-robin `flush()` with ONE shared bounded multi-producer/multi-consumer (MPMC) queue on the existing `Io.Mutex`/`Io.Condition` primitives, so any idle worker can execute any queued batch and a parked worker can never black-hole its round-robin share (the §6 pivot's root cause, kept reachable by any future long-running handler). Preserve `spawn`/`spawnOne`/`flush`/`empty`/`stop` semantics and the websocket `acquireProcessing` path; delete the dead `peer` field (its `i + i` wiring typo means stealing never worked). Expose a `pending()` depth read for §9. Document in `vendor/httpz/CHANGES.md` per the `vendor/pg/CHANGES.md` precedent; upstream filing is flagged in Discovery for the owner's call.
 
-- **Dimension 7.1** — a worker parked inside a job cannot starve queued batches: remaining workers drain them → Test `test_pool_parked_worker_no_starvation` (vendor pool test)
-- **Dimension 7.2** — `spawn`/`spawnOne`/`flush`/`empty`/`stop` semantics and full-queue producer backpressure preserved → existing vendor pool tests (`batch add`, `small fuzz`, `large fuzz`) green unmodified
-- **Dimension 7.3** — patch documented in `vendor/httpz/CHANGES.md`; `peer` field gone; `pending()` exposed → CHANGES.md entry + `grep -n "peer" vendor/httpz/src/thread_pool.zig` → 0
+- **Dimension 7.1** — a worker parked inside a job cannot starve queued batches: remaining workers drain them → Test `test_pool_parked_worker_no_starvation` (vendor pool test) — ✅ DONE (`ThreadPool: parked thread cannot starve queued jobs`; vendor suite 125/125)
+- **Dimension 7.2** — `spawn`/`spawnOne`/`flush`/`empty`/`stop` semantics and full-queue producer backpressure preserved → existing vendor pool tests (`batch add`, `small fuzz`, `large fuzz`) green unmodified — ✅ DONE (plus the full httpz request/response suite over the new pool)
+- **Dimension 7.3** — patch documented in `vendor/httpz/CHANGES.md`; `peer` field gone; `pending()` exposed → CHANGES.md entry + `grep -n "peer" vendor/httpz/src/thread_pool.zig` → 0 — ✅ DONE (CHANGES.md Patch 2; `pending()` pinned by `ThreadPool: pending reports queued depth`)
 
 ### §8 — SubscriptionHub: one shared Redis pub/sub connection
 
