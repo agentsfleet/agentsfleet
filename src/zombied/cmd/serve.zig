@@ -118,6 +118,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             runtime_config.ValidationError.InvalidApiHttpWorkers,
             runtime_config.ValidationError.InvalidApiMaxClients,
             runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
+            runtime_config.ValidationError.InvalidSseMaxStreams,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
             => {
@@ -215,6 +216,8 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
+        .sse_in_flight_streams = std.atomic.Value(u32).init(0),
+        .sse_max_streams = serve_cfg.sse_max_streams,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
         .balance_policy = balance_policy.resolveFromEnv(env_map, alloc),
@@ -222,6 +225,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .telemetry = undefined,
     };
     metrics.setApiInFlightRequests(0);
+    metrics.setSseInFlightStreams(0);
 
     var tel = preflight.initTelemetry(env_map, alloc);
     defer tel.deinit(alloc);
@@ -303,6 +307,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_workers = serve_cfg.api_http_workers,
         .api_max_clients = serve_cfg.api_max_clients,
         .api_max_in_flight = serve_cfg.api_max_in_flight_requests,
+        .sse_max_streams = serve_cfg.sse_max_streams,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
     const srv = http_server.Server.init(io, &ctx, &registry, .{

@@ -15,6 +15,8 @@ pub const addAgentTokens = mc.addAgentTokens;
 pub const addBackoffWaitMs = mc.addBackoffWaitMs;
 pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
+pub const incSseBackpressureRejections = mc.incSseBackpressureRejections;
+pub const setSseInFlightStreams = mc.setSseInFlightStreams;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 // M17_001 §1.3
@@ -76,12 +78,16 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
     const alloc = std.testing.allocator;
     setApiInFlightRequests(3);
     incApiBackpressureRejections();
+    setSseInFlightStreams(2);
+    incSseBackpressureRejections();
 
     const body = try renderPrometheus(alloc, true);
     defer alloc.free(body);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_in_flight_requests 3"));
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_sse_in_flight_streams 2"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_sse_backpressure_rejections_total"));
 }
 
 // All zombie counters + histogram render in Prometheus output after increment.
