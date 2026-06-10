@@ -1,9 +1,9 @@
 //! Route table for the middleware pipeline.
 //!
-//! Maps each `Route` variant to a `RouteSpec` that declares the middleware
-//! chain and invoke function. `specFor` is called by the dispatcher; if it
-//! returns non-null, the middleware chain runs and the invoke function
-//! handles the request.
+//! Maps each `Route` variant to a `RouteSpec` (middleware chain + invoke
+//! function) and to its admission `RouteClass` (ops never shed / stream /
+//! api). Both switches are total over `Route` — adding a variant fails
+//! compilation until it is registered AND classified.
 //!
 //! All Route variants are registered here; `specFor` is the single dispatch
 //! source the router calls.
@@ -33,11 +33,79 @@ const RouteSpec = struct {
     invoke: InvokeFn,
 };
 
+// ── Admission classes ─────────────────────────────────────────────────────
+
+/// Shed behaviour at dispatch. Exhaustive on purpose: a new Route variant
+/// fails compilation until its class is chosen.
+pub const RouteClass = enum { ops, stream, api };
+
+/// Total over Route. ops = never shed (an admission storm must not blind
+/// the operators diagnosing it); stream = answers to the dedicated SSE cap,
+/// exempt from the api ceiling; api = in-flight ceiling → 429.
+pub fn classFor(route: router.Route) RouteClass {
+    return switch (route) {
+        .healthz, .readyz, .metrics => .ops,
+        .workspace_zombie_events_stream => .stream,
+        .model_caps,
+        .create_auth_session,
+        .poll_auth_session,
+        .approve_auth_session,
+        .verify_auth_session,
+        .delete_auth_session,
+        .delete_all_auth_sessions,
+        .create_workspace,
+        .get_tenant_billing,
+        .get_tenant_billing_charges,
+        .get_tenant_metering_periods,
+        .list_tenant_workspaces,
+        .tenant_provider,
+        .receive_webhook,
+        .receive_svix_webhook,
+        .auth_identity_event_clerk,
+        .approval_webhook,
+        .grant_approval_webhook,
+        .github_webhook,
+        .admin_platform_keys,
+        .delete_admin_platform_key,
+        .workspace_zombies,
+        .patch_workspace_zombie,
+        .workspace_credentials,
+        .delete_workspace_credential,
+        .workspace_zombie_messages,
+        .workspace_zombie_events,
+        .workspace_events,
+        .workspace_approvals,
+        .workspace_approval_detail,
+        .workspace_approval_resolve,
+        .workspace_zombie_memories,
+        .request_integration_grant,
+        .list_integration_grants,
+        .revoke_integration_grant,
+        .agent_keys,
+        .delete_agent_key,
+        .tenant_api_keys,
+        .tenant_api_key_by_id,
+        .register_runner,
+        .fleet_runners_list,
+        .fleet_runner_patch,
+        .fleet_runner_events,
+        .runner_self,
+        .runner_heartbeat,
+        .runner_lease,
+        .runner_report,
+        .runner_activity,
+        .runner_renew,
+        .runner_memory_hydrate,
+        .runner_memory_capture,
+        => .api,
+    };
+}
+
 // ── Dispatch table ────────────────────────────────────────────────────────
 
-/// Return the RouteSpec for a matched route. Always returns non-null after
-/// Batch D — the legacy switch in server.zig becomes dead code.
-pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?RouteSpec {
+/// Return the RouteSpec for a matched route. Total over Route — the switch
+/// below has a prong for every variant.
+pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) RouteSpec {
     return switch (route) {
         // Health / observability (no auth)
         .healthz => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeHealthz },
@@ -146,51 +214,64 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
 const testing = std.testing;
 
-test "specFor returns a RouteSpec for every Route variant (Batch D — full table)" {
+test "specFor resolves a RouteSpec for a representative sample of every route family" {
+    // Totality over Route is compiler-enforced (exhaustive switch, no
+    // optional); this test keeps the runtime-reachability pin per family.
     // Minimal registry: initChains not called — specFor only reads registry
     // for non-none policies via method calls that return pointers into the
     // pre-built chain arrays. Using undefined here is safe because the chain
     // arrays in MiddlewareRegistry are fixed-size arrays with stable addresses
-    // even without initChains; we only test that specFor returns non-null.
+    // even without initChains.
     var reg: auth_mw.MiddlewareRegistry = undefined;
     // Spot-check a representative sample of route families.
-    try testing.expect(specFor(.healthz, &reg) != null);
-    try testing.expect(specFor(.readyz, &reg) != null);
-    try testing.expect(specFor(.metrics, &reg) != null);
-    try testing.expect(specFor(.create_auth_session, &reg) != null);
-    try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.{ .approve_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.{ .verify_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.{ .delete_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.delete_all_auth_sessions, &reg) != null);
-    try testing.expect(specFor(.create_workspace, &reg) != null);
-    try testing.expect(specFor(.get_tenant_billing, &reg) != null);
-    try testing.expect(specFor(.get_tenant_billing_charges, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.admin_platform_keys, &reg) != null);
-    try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
-    try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.auth_identity_event_clerk, &reg) != null);
-    try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .agent_keys = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_approvals = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg) != null);
-    try testing.expect(specFor(.register_runner, &reg) != null);
-    try testing.expect(specFor(.{ .fleet_runner_patch = "r1" }, &reg) != null);
-    try testing.expect(specFor(.{ .fleet_runner_events = "r1" }, &reg) != null);
-    try testing.expect(specFor(.runner_heartbeat, &reg) != null);
-    try testing.expect(specFor(.runner_lease, &reg) != null);
-    try testing.expect(specFor(.runner_report, &reg) != null);
+    _ = specFor(.healthz, &reg);
+    _ = specFor(.readyz, &reg);
+    _ = specFor(.metrics, &reg);
+    _ = specFor(.create_auth_session, &reg);
+    _ = specFor(.{ .poll_auth_session = "s1" }, &reg);
+    _ = specFor(.{ .approve_auth_session = "s1" }, &reg);
+    _ = specFor(.{ .verify_auth_session = "s1" }, &reg);
+    _ = specFor(.{ .delete_auth_session = "s1" }, &reg);
+    _ = specFor(.delete_all_auth_sessions, &reg);
+    _ = specFor(.create_workspace, &reg);
+    _ = specFor(.get_tenant_billing, &reg);
+    _ = specFor(.get_tenant_billing_charges, &reg);
+    _ = specFor(.{ .workspace_zombies = "ws1" }, &reg);
+    _ = specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .workspace_credentials = "ws1" }, &reg);
+    _ = specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.admin_platform_keys, &reg);
+    _ = specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg);
+    _ = specFor(.{ .receive_webhook = "z1" }, &reg);
+    _ = specFor(.{ .receive_svix_webhook = "z1" }, &reg);
+    _ = specFor(.auth_identity_event_clerk, &reg);
+    _ = specFor(.{ .approval_webhook = "z1" }, &reg);
+    _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
+    _ = specFor(.{ .github_webhook = "z1" }, &reg);
+    _ = specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg);
+    _ = specFor(.{ .agent_keys = "ws1" }, &reg);
+    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg);
+    _ = specFor(.{ .workspace_approvals = "ws1" }, &reg);
+    _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
+    _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);
+    _ = specFor(.register_runner, &reg);
+    _ = specFor(.{ .fleet_runner_patch = "r1" }, &reg);
+    _ = specFor(.{ .fleet_runner_events = "r1" }, &reg);
+    _ = specFor(.runner_heartbeat, &reg);
+    _ = specFor(.runner_lease, &reg);
+    _ = specFor(.runner_report, &reg);
+}
+
+test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
+    try testing.expectEqual(RouteClass.ops, classFor(.healthz));
+    try testing.expectEqual(RouteClass.ops, classFor(.readyz));
+    try testing.expectEqual(RouteClass.ops, classFor(.metrics));
+    try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_zombie_events_stream = .{ .workspace_id = "ws1", .zombie_id = "z1" } }));
+    try testing.expectEqual(RouteClass.api, classFor(.model_caps));
+    try testing.expectEqual(RouteClass.api, classFor(.create_workspace));
+    try testing.expectEqual(RouteClass.api, classFor(.runner_lease));
+    try testing.expectEqual(RouteClass.api, classFor(.{ .receive_webhook = "z1" }));
 }

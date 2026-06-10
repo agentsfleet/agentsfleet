@@ -138,10 +138,27 @@ var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 
 // ── Request dispatch ──────────────────────────────────────────────────────
 
-/// Top-level request handler — dispatches based on method + path prefix.
-/// Every request claims an in-flight slot first; above the configured ceiling
-/// the request is shed with 429 before any routing or per-request allocation.
+/// Top-level request handler. Match first (cheap), then class-gate before
+/// invoke: ops routes are never shed — an admission storm must not blind the
+/// operators diagnosing it; stream routes answer to the dedicated SSE cap
+/// instead of the api ceiling; api routes claim an in-flight slot and shed
+/// 429 above it. Unmatched paths 404 without consuming admission (a 404
+/// costs less than the gate).
 fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response) void {
+    const path = req.url.path;
+    const matched = router.match(path, req.method) orelse {
+        respondNotFound(res);
+        return;
+    };
+    switch (route_table.classFor(matched)) {
+        .ops, .stream => invokeMatched(ctx, registry, req, res, matched, path),
+        .api => dispatchApi(ctx, registry, req, res, matched, path),
+    }
+}
+
+/// api-class admission: claim an in-flight slot; above the ceiling the
+/// request is shed with 429 before any per-request allocation.
+fn dispatchApi(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route, path: []const u8) void {
     // safe because: pure admission counter — no memory is published through
     // it, over-claimers release in the paired defer below.
     const live = ctx.api_in_flight_requests.fetchAdd(1, .monotonic) + 1;
@@ -153,21 +170,18 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
     }
     metrics.setApiInFlightRequests(live);
     if (live > ctx.api_max_in_flight_requests) {
-        respondBackpressureShed(ctx, res, live, req.url.path);
+        respondBackpressureShed(ctx, res, live, path);
         return;
     }
+    invokeMatched(ctx, registry, req, res, matched, path);
+}
 
-    const path = req.url.path;
-
+fn invokeMatched(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route, path: []const u8) void {
     // Resolve trace context from inbound traceparent header or generate root.
     const tctx = common.resolveTraceContext(req);
     const start_ns: u64 = @intCast(clock.nowNanos());
-
-    if (dispatchMatchedRoute(ctx, registry, req, res, path)) {
-        emitRequestSpan(tctx, path, start_ns);
-        return;
-    }
-    respondNotFound(res);
+    dispatchMatchedRoute(ctx, registry, req, res, matched);
+    emitRequestSpan(tctx, path, start_ns);
 }
 
 /// 429 shed: problem+json envelope + Retry-After + X-RateLimit-* (instance
@@ -204,58 +218,47 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
     otel_traces.enqueueSpan(span);
 }
 
-fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
-    const matched = router.match(path, req.method) orelse return false;
+fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, matched: router.Route) void {
+    const spec = route_table.specFor(matched, registry);
+    var arena = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    const req_id = common.requestId(alloc);
+    var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-    // route_table.specFor covers all Route variants.
-    if (route_table.specFor(matched, registry)) |spec| {
-        var arena = std.heap.ArenaAllocator.init(ctx.alloc);
-        defer arena.deinit();
-        const alloc = arena.allocator();
-        const req_id = common.requestId(alloc);
-        var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
-
-        // Populate the webhook zombie slot before running the middleware
-        // chain. The webhook_sig + svix middlewares read it; all other
-        // middlewares ignore the field.
-        switch (matched) {
-            .receive_webhook => |zombie_id| {
-                auth.webhook_zombie_id = zombie_id;
-            },
-            .receive_svix_webhook => |zombie_id| {
-                auth.webhook_zombie_id = zombie_id;
-            },
-            .github_webhook => |zombie_id| {
-                auth.webhook_zombie_id = zombie_id;
-            },
-            else => {},
-        }
-
-        const outcome = auth_mw.run(auth_mw.AuthCtx, spec.middlewares, &auth, req) catch |e| {
-            common.internalOperationError(res, @errorName(e), req_id);
-            return true;
-        };
-        if (outcome == .short_circuit) return true;
-
-        // Build Hx from auth context — principal is set by bearer/admin middleware
-        // for authenticated routes; zero-value (.mode=.api_key) for none-policy
-        // routes (those handlers do not access hx.principal).
-        var hx = hx_mod.Hx{
-            .alloc = alloc,
-            .principal = auth.principal orelse .{ .mode = .api_key },
-            .req_id = req_id,
-            .ctx = ctx,
-            .res = res,
-        };
-        spec.invoke(&hx, req, matched);
-        return true;
+    // Populate the webhook zombie slot before running the middleware
+    // chain. The webhook_sig + svix middlewares read it; all other
+    // middlewares ignore the field.
+    switch (matched) {
+        .receive_webhook => |zombie_id| {
+            auth.webhook_zombie_id = zombie_id;
+        },
+        .receive_svix_webhook => |zombie_id| {
+            auth.webhook_zombie_id = zombie_id;
+        },
+        .github_webhook => |zombie_id| {
+            auth.webhook_zombie_id = zombie_id;
+        },
+        else => {},
     }
-    return false;
-}
 
-fn respondMethodNotAllowed(res: *httpz.Response) void {
-    res.status = @intFromEnum(std.http.Status.method_not_allowed);
-    res.body = "";
+    const outcome = auth_mw.run(auth_mw.AuthCtx, spec.middlewares, &auth, req) catch |e| {
+        common.internalOperationError(res, @errorName(e), req_id);
+        return;
+    };
+    if (outcome == .short_circuit) return;
+
+    // Build Hx from auth context — principal is set by bearer/admin middleware
+    // for authenticated routes; zero-value (.mode=.api_key) for none-policy
+    // routes (those handlers do not access hx.principal).
+    var hx = hx_mod.Hx{
+        .alloc = alloc,
+        .principal = auth.principal orelse .{ .mode = .api_key },
+        .req_id = req_id,
+        .ctx = ctx,
+        .res = res,
+    };
+    spec.invoke(&hx, req, matched);
 }
 
 fn respondNotFound(res: *httpz.Response) void {

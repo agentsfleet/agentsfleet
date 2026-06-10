@@ -201,9 +201,9 @@ One boot-started hub (in `serve_background`, like the OTel exporters) owns the p
 
 Every route carries a class on the route table: `healthz`/`readyz`/`metrics` = **ops** (never shed — an admission storm must not blind the operators diagnosing it), the SSE tail = **stream** (gated by its own §6 cap, exempt from the api ceiling), everything else = **api** (in-flight ceiling → 429). Dispatch order: match first (cheap), class-gate before invoke — unmatched paths 404 without consuming admission (documented choice: a 404 costs less than the gate). If §7's `pending()` composes cleanly at the dispatch seam, queue depth becomes the api admission signal and the in-flight counter stays as telemetry; otherwise the counter remains the signal — decision recorded in Discovery.
 
-- **Dimension 9.1** — at api saturation, `/healthz` + `/readyz` + `/metrics` answer 200 while api routes shed 429 → Test `test_ops_routes_never_shed`
-- **Dimension 9.2** — stream class is exempt from the api ceiling (gated only by the SSE cap) → Test `test_stream_class_exempt_from_api_ceiling`
-- **Dimension 9.3** — every Route variant maps to a class (exhaustive switch — compile-enforced); 404s bypass admission → Test `test_route_class_exhaustive_and_404_ungated`
+- **Dimension 9.1** — at api saturation, `/healthz` + `/readyz` + `/metrics` answer 200 while api routes shed 429 → Test `test_ops_routes_never_shed` — ✅ DONE (`integration: api-class requests shed 429 at the ceiling; ops routes and 404s never shed`)
+- **Dimension 9.2** — stream class is exempt from the api ceiling (gated only by the SSE cap) → Test `test_stream_class_exempt_from_api_ceiling` — ✅ DONE (`integration: the SSE stream class is exempt from the api ceiling` — stream admitted while an api probe sheds in the same instant)
+- **Dimension 9.3** — every Route variant maps to a class (exhaustive switch — compile-enforced); 404s bypass admission → Test `test_route_class_exhaustive_and_404_ungated` — ✅ DONE (`classFor: ops probes never shed, the SSE tail is stream, the rest api` + the 404/rejection-counter assertions in the 9.1 test; totality is a compile error on any new Route variant)
 
 ### §10 — StreamRegistry: drain on shutdown + admin listing
 
