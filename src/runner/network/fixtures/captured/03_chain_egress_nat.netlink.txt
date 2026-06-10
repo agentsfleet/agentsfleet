@@ -1,0 +1,1 @@
+inet uz_egress egress_nat use 0

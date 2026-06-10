@@ -1,0 +1,9 @@
+family 1 allow0 uz_egress 0
+inet uz_egress egress_fwd
+  [ meta load iifname => reg 1 ]
+  [ cmp eq reg 1 0x65767a75 0x00306874 0x00000000 0x00000000 ]
+  [ meta load nfproto => reg 1 ]
+  [ cmp eq reg 1 0x00000002 ]
+  [ payload load 4b @ network header + 16 => reg 1 ]
+  [ lookup reg 1 set allow0 ]
+  [ immediate reg 0 accept ]
