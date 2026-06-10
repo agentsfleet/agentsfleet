@@ -21,6 +21,7 @@ const id_format = @import("../../../types/id_format.zig");
 const api_key = @import("../../../auth/api_key.zig");
 const protocol = @import("contract").protocol;
 const runner_bearer = @import("../../../auth/middleware/runner_bearer.zig");
+const runner_events = @import("../../../fleet/runner_events.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_register);
@@ -73,6 +74,8 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     const raw_token = mintRunnerToken(hx.alloc) catch return error.OperationError;
     const token_hash = api_key.sha256Hex(raw_token);
     const runner_id = id_format.generateRunnerId(hx.alloc) catch return error.OperationError;
+    const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch return error.OperationError;
+    defer hx.alloc.free(event_row_id);
     const labels_json = std.json.Stringify.valueAlloc(hx.alloc, body.labels, .{}) catch return error.OperationError;
     const now_ms = clock.nowMillis();
 
@@ -81,19 +84,32 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
     // connected, so the fleet read derives `registered` (not a fake `online`)
     // until its first heartbeat moves last_seen forward. created/updated = now.
     _ = conn.exec(
-        \\INSERT INTO fleet.runners
-        \\  (id, host_id, token_hash, sandbox_tier, status, labels, tenant_id,
+        \\WITH inserted AS (
+        \\  INSERT INTO fleet.runners
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
         \\   last_seen_at, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, NULL, $7, $8, $8)
+        \\VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::jsonb, NULL, $7::bigint, $8::bigint, $8::bigint)
+        \\  RETURNING id
+        \\)
+        \\INSERT INTO fleet.runner_events
+        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\SELECT $9::uuid, id, $10::text, $8::bigint,
+        \\       jsonb_build_object($11::text, $2::text, $12::text, $4::text),
+        \\       NULL, $8::bigint
+        \\FROM inserted
     , .{
         runner_id,
         body.host_id,
         token_hash[0..],
         @tagName(body.sandbox_tier),
-        protocol.RUNNER_STATUS_ACTIVE,
+        protocol.ADMIN_STATE_ACTIVE,
         labels_json,
         protocol.RUNNER_LAST_SEEN_NEVER,
         now_ms,
+        event_row_id,
+        @tagName(protocol.RunnerEventType.runner_registered),
+        runner_events.META_HOST_ID,
+        runner_events.META_SANDBOX_TIER,
     }) catch return error.DbError;
 
     log.info("registered", .{

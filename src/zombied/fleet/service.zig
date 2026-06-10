@@ -219,19 +219,21 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
-    hx.ok(.ok, protocol.LeaseResponse{ .lease = .{
-        .lease_id = lease_id,
-        .fencing_token = acq.fencing_token,
-        .lease_expires_at = acq.leased_until,
-        .secret_delivery = .@"inline",
-        .event = envelope,
-        .policy = resolveExecutionPolicy(hx, session, resolved),
-        // The installed SKILL.md body (extracted by ZombieSession), so the runner
-        // delivers it to NullClaw. `claimZombie` resolves the session before the
-        // fresh/reclaim split, so this is set identically on both paths. Borrowed
-        // from `session`, which lives until the response serialises (deinit defer).
-        .instructions = session.instructions,
-    } });
+    hx.ok(.ok, protocol.LeaseResponse{
+        .lease = .{
+            .lease_id = lease_id,
+            .fencing_token = acq.fencing_token,
+            .lease_expires_at = acq.leased_until,
+            .secret_delivery = .@"inline",
+            .event = envelope,
+            .policy = resolveExecutionPolicy(hx, session, resolved),
+            // The installed SKILL.md body (extracted by ZombieSession), so the runner
+            // delivers it to NullClaw. `claimZombie` resolves the session before the
+            // fresh/reclaim split, so this is set identically on both paths. Borrowed
+            // from `session`, which lives until the response serialises (deinit defer).
+            .instructions = session.instructions,
+        },
+    });
 }
 
 /// Resolve the tenant's active provider+key for the lease. Called for BOTH

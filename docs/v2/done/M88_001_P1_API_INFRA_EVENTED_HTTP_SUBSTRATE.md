@@ -3,8 +3,8 @@
 **Prototype:** v2.0.0
 **Milestone:** M88
 **Workstream:** 001
-**Date:** Jun 08, 2026
-**Status:** PENDING
+**Date:** Jun 08, 2026 (DEFERRED → `done/` Jun 10, 2026)
+**Status:** DEFERRED — parked in `docs/v2/done/`; re-activates on the evidence gate
 **Priority:** P1 — one zombied caps out on threads held by idle long-lived connections (Server-Sent Events viewers, runner long-polls), not on CPU; this lifts the per-node ceiling.
 **Categories:** API, INFRA
 **Batch:** B1
@@ -15,6 +15,10 @@
 > **Provenance is load-bearing.** LLM-drafted — cross-check every claim against the codebase. The substrate (libxev) is a new dependency whose shape this spec defines.
 
 > **⚠️ STATUS — GATED, not the flagship (updated Jun 08, 2026).** A code-grounded eng review + a codex adversarial pass reframed this milestone. The felt "httpz is slow" pain was a config default: `API_HTTP_THREADS`/`API_HTTP_WORKERS` shipped at **1/1** on the prod 1gb box, so a single Server-Sent Events (SSE) stream saturated the per-worker handler pool. That is **fixed by config** — the boring lever, now landed (fly.toml `[env]` raising the handler pool to 32 on a single worker, + playbooks). This async-substrate workstream is **deferred behind an evidence gate** (see Discovery, Jun 08): implement only when metrics prove per-node SSE-tail density is the binding constraint *after* the thread bump, a larger VM, and horizontal replicas — and even then the design below needs the §2 fix. Several original premises were wrong (httpz is already evented at the connection layer; the runner lease does NOT pin a thread). Do **not** CHORE(open) this without re-reading Discovery.
+>
+> **DEFERRED → parked in `docs/v2/done/` (Indy, Jun 10, 2026).** A code-grounded adversarial review (Jun 10) confirmed **SAFE-TO-DEFER** and found **nothing to pull**: the one correctness item that could have justified a pull — the §2 "dead client wedges a worker thread forever" hole — **already shipped** to `main` (commit `3e8b75b7`: a 15s `SO_RCVTIMEO` heartbeat in `events_stream.zig` releases the worker + Redis connection on a dead client). The per-node ceiling is workers×threads = 2×32 = **64** concurrent SSE tails (~128–192 fleet-wide) vs a handful at launch scale, with three cheaper levers (threads / VM / replicas) in reserve; the runner long-poll is genuinely non-blocking (`XREADGROUP` without `BLOCK`) and does not consume the budget. **Re-activation trigger:** the evidence gate — metrics prove per-node SSE-tail density binds *after* the thread bump, a larger VM, and horizontal replicas.
+>
+> **Spec nit (fix on re-activation):** the Files-Changed table wrongly lists `create_stream.zig` as a Server-Sent Events (SSE) migration target — it is install-time `XGROUP CREATE` retry logic (zero `text/event-stream`); the only long-lived SSE handler is `events_stream.zig`.
 
 **Canonical architecture:** `docs/architecture/scaling.md` (the binding constraint — API replicas + Postgres write throughput — and the `API_HTTP_THREADS/WORKERS` handler-pool knobs, which this spec reconciles with) + `docs/architecture/data_flow.md` (the synchronous request → handler → pg/redis write model this preserves). A NEW `docs/architecture/concurrency.md` (the event-loop + blocking-worker-pool model) is **deferred with this workstream**, created only if the gate opens. The threaded executor seam is `src/lib/common/sync.zig:8`.
 

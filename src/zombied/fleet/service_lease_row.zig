@@ -8,6 +8,8 @@ const clock = @import("common").clock;
 const protocol = @import("contract").protocol;
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
+const id_format = @import("../types/id_format.zig");
+const runner_events = @import("runner_events.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const Hx = @import("../http/handlers/hx.zig").Hx;
 
@@ -28,6 +30,8 @@ pub const Billed = struct {
 pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: Billed, lease_id: []const u8) !void {
     const conn = hx.ctx.pool.acquire() catch return error.DbError;
     defer hx.ctx.pool.release(conn);
+    const event_row_id = try id_format.generateRunnerEventId(hx.alloc);
+    defer hx.alloc.free(event_row_id);
     const now_ms = clock.nowMillis();
     // Fresh event → reset the per-zombie metering cursor (the slot may carry a
     // prior run's preserved cursor); a reclaim leaves it so the re-leased run
@@ -42,7 +46,8 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
     // re-lease carries the dead holder's cursor forward instead (wired with the
     // /renew Δ-charge), so the new holder meters from where it stopped.
     _ = conn.exec(
-        \\INSERT INTO fleet.runner_leases
+        \\WITH inserted AS (
+        \\  INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id,
         \\   actor, event_type, request_json, event_created_at,
         \\   posture, provider, model,
@@ -53,6 +58,14 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         \\        $7, $8, $9, $10, $11, $12, $13,
         \\        0, 0, 0, $17,
         \\        $14, $15, $16, $17, $17)
+        \\  RETURNING id, runner_id, zombie_id, event_id
+        \\)
+        \\INSERT INTO fleet.runner_events
+        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
+        \\       jsonb_build_object($20::text, id::text, $21::text, zombie_id::text, $22::text, event_id, $23::text, $24::text),
+        \\       NULL, $17::bigint
+        \\FROM inserted
     , .{
         lease_id,
         runner_id,
@@ -71,5 +84,12 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         acq.leased_until,
         protocol.RUNNER_LEASE_STATUS_ACTIVE,
         now_ms,
+        event_row_id,
+        @tagName(protocol.RunnerEventType.lease_acquired),
+        runner_events.META_LEASE_ID,
+        runner_events.META_ZOMBIE_ID,
+        runner_events.META_ZOMBIE_EVENT_ID,
+        runner_events.META_KIND,
+        @tagName(acq.kind),
     }) catch return error.DbError;
 }

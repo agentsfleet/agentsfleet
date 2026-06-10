@@ -23,5 +23,6 @@ pub const ERR_APPROVAL_INVALID_SIGNATURE = auth_codes.ERR_APPROVAL_INVALID_SIGNA
 pub const ERR_WEBHOOK_SIG_INVALID = auth_codes.ERR_WEBHOOK_SIG_INVALID;
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = auth_codes.ERR_WEBHOOK_TIMESTAMP_STALE;
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = auth_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED;
-// Runner plane — every runnerBearer rejection maps to invalid_runner_token.
+// Runner plane — unknown tokens stay invalid; known non-active runners are distinct.
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = auth_codes.ERR_RUN_INVALID_RUNNER_TOKEN;
+pub const ERR_RUN_ADMIN_STATE_BLOCKED = auth_codes.ERR_RUN_ADMIN_STATE_BLOCKED;
