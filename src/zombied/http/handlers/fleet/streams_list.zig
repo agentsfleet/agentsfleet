@@ -1,0 +1,29 @@
+//! GET /v1/fleet/streams — platform-admin listing of this instance's live
+//! SSE streams (operator diagnostics for the stream cap and shutdown drain).
+//!
+//! Rows come straight from the StreamRegistry: workspace, zombie, and start
+//! time per live stream. The registry's client fd never leaves the process.
+//! Fleet-plane endpoint — like the rest of /v1/fleet it is deliberately
+//! absent from the public OpenAPI document (customer surface only).
+
+const httpz = @import("httpz");
+
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+
+const Hx = hx_mod.Hx;
+
+const MSG_OUT_OF_MEMORY = "Out of memory";
+
+pub fn innerListFleetStreams(hx: Hx, req: *httpz.Request) void {
+    _ = req;
+    const rows = hx.ctx.stream_registry.listAlloc(hx.alloc) catch {
+        common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
+        return;
+    };
+    common.writeJson(hx.res, .ok, .{
+        .streams = rows,
+        .count = rows.len,
+        .max = hx.ctx.sse_max_streams,
+    });
+}

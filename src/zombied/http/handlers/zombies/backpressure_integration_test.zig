@@ -30,6 +30,7 @@ const ALLOC = std.testing.allocator;
 
 const ZOMBIE_BACKPRESSURE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001";
 const ZOMBIE_STREAM_CLASS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb002";
+const ZOMBIE_DRAIN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb003";
 /// api-class, none-auth probe route — sheds at the ceiling where the
 /// ops-class probes below must not.
 const API_PROBE_PATH = model_caps.MODEL_CAPS_PATH;
@@ -143,6 +144,50 @@ test "integration: api-class requests shed 429 at the ceiling; ops routes and 40
     defer scrape.deinit();
     try scrape.expectStatus(.ok);
     try std.testing.expect(scrape.bodyContains("zombie_api_in_flight_requests 0"));
+}
+
+test "integration: registry drain closes live streams and rejects new ones" {
+    const h = fixtures.startHarnessWithWorkspace(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fixtures.seedZombie(conn, ZOMBIE_DRAIN, "bp-drain");
+    }
+
+    const path = try fixtures.streamPath(ALLOC, ZOMBIE_DRAIN);
+    defer ALLOC.free(path);
+
+    var sc = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    common.sleepNanos(fixtures.SUBSCRIBE_SETTLE_NS);
+    try std.testing.expectEqual(@as(usize, 1), h.streams.count());
+
+    // The shutdown choreography: drain marks the registry draining and
+    // shuts the client socket (that alone wakes only write-BLOCKED threads —
+    // a stream parked in its subscription pop is a futex wait, not a socket
+    // read), the hub's close broadcast wakes the parked thread, and
+    // awaitEmpty bounds the wait for its deregistration.
+    h.streams.drain();
+
+    // Draining registry sheds new streams with the cap's 503 immediately —
+    // before the live stream has even finished tearing down.
+    const denied = SseClient.connect(ALLOC, h.port, path, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    try std.testing.expectError(error.SseUnexpectedStatus, denied);
+
+    h.hub.stop();
+    h.streams.awaitEmpty();
+    try std.testing.expectEqual(@as(usize, 0), h.streams.count());
+    try std.testing.expectEqual(@as(u64, 0), metrics.snapshot().sse_in_flight_streams);
+
+    sc.closeStream();
+    sc.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    fixtures.cleanupWorkspaceData(conn);
 }
 
 test "integration: the SSE stream class is exempt from the api ceiling" {

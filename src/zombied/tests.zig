@@ -38,6 +38,7 @@ test {
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
     _ = @import("http/fleet_operator_integration_test.zig");
+    _ = @import("http/stream_registry.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("hmac_sig");

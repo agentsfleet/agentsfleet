@@ -15,6 +15,7 @@ const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
 const subscription_hub = @import("../../events/subscription_hub.zig");
+const stream_registry = @import("../stream_registry.zig");
 const authz = @import("common_authz.zig");
 /// Request-id sentinel for responses written before a request id exists
 /// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
@@ -53,17 +54,19 @@ pub const Context = struct {
     api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
-    /// Live SSE stream count vs its ceiling (SSE_MAX_STREAMS env knob, parsed
-    /// in runtime_loader). Streams run on dedicated detached threads, so the
-    /// cap bounds threads + Redis connections — not handler-pool occupancy.
-    /// Defaults so test/fixture Contexts that omit them get the production
-    /// default.
-    sse_in_flight_streams: std.atomic.Value(u32) = .{ .raw = 0 },
+    /// Ceiling for live SSE streams (SSE_MAX_STREAMS env knob, parsed in
+    /// runtime_loader). Streams run on dedicated detached threads, so the cap
+    /// bounds threads + memory — not handler-pool occupancy. Defaults so
+    /// test/fixture Contexts that omit it get the production default.
     sse_max_streams: u32 = runtime_loader.SSE_MAX_STREAMS_DEFAULT,
     /// The process's shared Redis pub/sub fan-out — SSE streams subscribe
     /// through it instead of dialing per-stream connections. Boot-owned
     /// (serve.zig / TestHarness), started before the server listens.
     hub: *subscription_hub,
+    /// Owner of the live SSE streams: cap admission, the in-flight gauge,
+    /// the shutdown drain, and the fleet listing all read from it.
+    /// Boot-owned, like the hub.
+    stream_registry: *stream_registry,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,

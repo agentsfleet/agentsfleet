@@ -2,8 +2,8 @@
 //! Events tail of the Redis pub/sub channel `zombie:{id}:activity`.
 //!
 //! Connection lifecycle:
-//!   1. Claim a stream slot (cap → 503) and authorize (Bearer middleware +
-//!      path-workspace ownership).
+//!   1. Claim a StreamRegistry slot (cap or shutdown drain → 503) and
+//!      authorize (Bearer middleware + path-workspace ownership).
 //!   2. Subscribe to the channel through the process's SubscriptionHub —
 //!      the hub owns the ONE shared Redis pub/sub connection; opening a
 //!      stream costs a map entry, never a Redis dial or TLS handshake.
@@ -15,8 +15,11 @@
 //!   4. Loop: timed-pop the subscription queue → write one SSE frame;
 //!      timeout → heartbeat comment (probes client liveness); hub closed →
 //!      exit (shutdown drain).
-//!   5. On client disconnect (write error) or hub close, the thread
-//!      unsubscribes, frees its job, and releases the slot.
+//!   5. On client disconnect (write error), hub close, or a registry drain
+//!      (shutdown() of the client socket at process shutdown), the thread
+//!      unsubscribes, releases its registry slot, and closes the socket —
+//!      ownership of the fd is the thread's from startEventStream's disown
+//!      onward, so the close here is what returns it to the OS.
 //!
 //! Hub-loss behaviour: a dead shared connection is invisible here — the
 //! queue goes quiet, heartbeats keep the client alive, and the hub's
@@ -36,6 +39,7 @@
 //! ignores `Last-Event-ID` request headers.
 
 const std = @import("std");
+const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -82,43 +86,33 @@ pub fn innerEventsStream(
         return;
     }
 
-    // Claim a stream slot before any backend work — shedding must stay cheap
-    // under a tab-storm. Bearer authn already ran in the middleware chain.
-    // safe because: pure admission counter — no memory is published through
-    // it; the paired release runs in the defer below, or on the detached
-    // stream thread once ownership hands off.
-    const live = hx.ctx.sse_in_flight_streams.fetchAdd(1, .monotonic) + 1;
-    var handed_off = false;
-    defer if (!handed_off) releaseStreamSlot(hx.ctx);
-    metrics.setSseInFlightStreams(live);
-    if (live > hx.ctx.sse_max_streams) {
+    // Claim a registry slot before any backend work — shedding must stay
+    // cheap under a tab-storm (one mutexed check-and-insert; bearer authn
+    // already ran in the middleware chain). Null = at cap OR draining.
+    const reg_id = (hx.ctx.stream_registry.tryRegister(workspace_id, zombie_id, clock.nowMillis(), hx.ctx.sse_max_streams) catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    }) orelse {
         metrics.incSseBackpressureRejections();
         log.warn("stream_cap_rejected", .{
             .error_code = ec.ERR_SSE_STREAM_CAP,
-            .live = live,
+            .live = hx.ctx.stream_registry.count(),
             .max = hx.ctx.sse_max_streams,
         });
         hx.fail(ec.ERR_SSE_STREAM_CAP, ec.MSG_SSE_STREAM_CAP);
         return;
-    }
+    };
+    var handed_off = false;
+    defer if (!handed_off) hx.ctx.stream_registry.deregister(reg_id);
 
     if (!authorize(hx, workspace_id, zombie_id)) return;
-    handed_off = startStreamThread(hx, zombie_id);
-}
-
-/// Paired with the claim in innerEventsStream. Runs on the request thread
-/// for rejected/failed streams, on the detached stream thread otherwise.
-fn releaseStreamSlot(ctx: *common.Context) void {
-    // safe because: same admission counter as the claim; the gauge store
-    // tolerates last-writer staleness between concurrent streams.
-    const after = ctx.sse_in_flight_streams.fetchSub(1, .monotonic) - 1;
-    metrics.setSseInFlightStreams(after);
+    handed_off = startStreamThread(hx, zombie_id, reg_id);
 }
 
 /// Returns true when stream ownership (job + slot) transferred to the
 /// detached thread; false when a response was written on the request path.
-fn startStreamThread(hx: Hx, zombie_id: []const u8) bool {
-    const job = StreamJob.create(hx.ctx, zombie_id) catch |err| {
+fn startStreamThread(hx: Hx, zombie_id: []const u8, reg_id: u64) bool {
+    const job = StreamJob.create(hx.ctx, zombie_id, reg_id) catch |err| {
         switch (err) {
             error.ChannelTooLong => common.internalDbError(hx.res, hx.req_id),
             // OOM or a hub already in shutdown — the stream surface is
@@ -141,11 +135,17 @@ fn startStreamThread(hx: Hx, zombie_id: []const u8) bool {
 
 fn streamThreadMain(job: *StreamJob, stream: std.Io.net.Stream) void {
     const ctx = job.ctx; // borrowed: boot-owned, outlives every stream thread
-    // LIFO defers: destroy runs first (unsubscribes from the hub), the slot
-    // release last — an observer of the freed slot (test drain-polls) has
-    // also observed the job teardown.
-    defer releaseStreamSlot(ctx);
+    const reg_id = job.reg_id;
+    // LIFO teardown: destroy first (hub unsubscribe + job free), then the
+    // registry slot (the test drain-polls' ordering guarantee: a freed slot
+    // implies the job is gone), and the socket close LAST — an entry still
+    // in the registry guarantees its fd is open, so a concurrent drain can
+    // never shutdown() a reused descriptor. The close itself returns the
+    // disowned fd to the OS (it leaked before the registry owned shutdown).
+    defer stream.close(ctx.io);
+    defer ctx.stream_registry.deregister(reg_id);
     defer job.destroy();
+    ctx.stream_registry.attachFd(reg_id, stream.socket.handle);
     streamLoop(ctx.io, ctx.alloc, job.sub, stream) catch |err| {
         // Most "errors" here are client disconnects mid-write (broken pipe).
         // Log at debug — the operator-visible event is the connection close,
@@ -162,10 +162,11 @@ fn streamThreadMain(job: *StreamJob, stream: std.Io.net.Stream) void {
 const StreamJob = struct {
     ctx: *common.Context,
     sub: *subscription_hub.Subscription,
+    reg_id: u64,
 
     const CreateError = error{ OutOfMemory, ChannelTooLong, HubStopped };
 
-    fn create(ctx: *common.Context, zombie_id: []const u8) CreateError!*StreamJob {
+    fn create(ctx: *common.Context, zombie_id: []const u8, reg_id: u64) CreateError!*StreamJob {
         const alloc = ctx.alloc;
         var channel_buf: [CHANNEL_BUF_LEN]u8 = undefined;
         const name = std.fmt.bufPrint(&channel_buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix }) catch
@@ -176,7 +177,7 @@ const StreamJob = struct {
             log.warn("hub_subscribe_failed", .{ .channel = name, .err = @errorName(err) });
             return err;
         };
-        job.* = .{ .ctx = ctx, .sub = sub };
+        job.* = .{ .ctx = ctx, .sub = sub, .reg_id = reg_id };
         return job;
     }
 

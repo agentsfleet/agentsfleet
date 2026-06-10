@@ -89,6 +89,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .fleet_runners_list,
         .fleet_runner_patch,
         .fleet_runner_events,
+        .fleet_streams_list,
         .runner_self,
         .runner_heartbeat,
         .runner_lease,
@@ -199,6 +200,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
         .fleet_runner_patch => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerPatch },
         .fleet_runner_events => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerEvents },
+        // Live SSE streams on this instance — same operator plane + gate as
+        // the fleet runner reads.
+        .fleet_streams_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetStreamsList },
         .runner_self => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerSelf },
         .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },

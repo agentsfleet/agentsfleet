@@ -38,6 +38,7 @@ const handler = @import("handler.zig");
 const http_server = @import("server.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
+const stream_registry = @import("stream_registry.zig");
 const message = @import("test_http_message.zig");
 const server_bringup = @import("test_harness_server.zig");
 
@@ -81,6 +82,9 @@ pub const TestHarness = struct {
     /// `connectRedis` once the queue config exists. SSE suites gate on the
     /// Redis env anyway, so a cold hub only ever serves non-SSE routes.
     hub: subscription_hub,
+    /// Live-stream owner, mirroring serve.zig (cap admission, gauge, drain,
+    /// fleet listing). Cheap init, no Redis dependency.
+    streams: stream_registry,
     telemetry: telemetry_mod.Telemetry,
     registry: auth_mw.MiddlewareRegistry,
     ctx: handler.Context,
@@ -161,6 +165,7 @@ pub const TestHarness = struct {
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .queue = undefined,
             .hub = subscription_hub.init(alloc, constants.globalIo()),
+            .streams = stream_registry.init(alloc, constants.globalIo()),
             .telemetry = telemetry_mod.Telemetry.initTest(),
             // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .registry = undefined,
@@ -199,6 +204,7 @@ pub const TestHarness = struct {
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
             .api_max_in_flight_requests = 64,
             .hub = &h.hub,
+            .stream_registry = &h.streams,
             .ready_max_queue_depth = null,
             .ready_max_queue_age_ms = null,
             .telemetry = &h.telemetry,
@@ -247,10 +253,17 @@ pub const TestHarness = struct {
         self.server.stop();
         self.thread.join();
         self.server.deinit();
+        // Stream teardown choreography (mirrors serve.zig): drain shuts the
+        // client sockets (wakes write-blocked threads), hub.stop's close
+        // broadcast wakes pop-parked threads, awaitEmpty bounds the wait for
+        // their deregistration — then storage teardown is race-free.
+        self.streams.drain();
         // Hub before queue: its connection + borrowed pool config must not
         // outlive the queue client. stop() is a no-op on a never-started hub.
         self.hub.stop();
+        self.streams.awaitEmpty();
         self.hub.deinit();
+        self.streams.deinit();
         self.verifier.deinit();
         // Redis-backed SessionStore is a pure facade — no per-instance
         // teardown. `queue.deinit()` below releases the underlying pool.
