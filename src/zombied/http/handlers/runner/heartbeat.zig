@@ -5,7 +5,8 @@
 //! with the fleet-failover slice. Side effect: bump `fleet.runners.last_seen_at`
 //! (liveness is written here, not on every authed call, per docs/AUTH.md).
 
-const clock = @import("common").clock;
+const constants = @import("common");
+const clock = constants.clock;
 const logging = @import("log");
 const httpz = @import("httpz");
 
@@ -13,9 +14,12 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
 const metrics_runner = @import("../../../observability/metrics_runner.zig");
+const id_format = @import("../../../types/id_format.zig");
+const runner_events = @import("../../../fleet/runner_events.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_heartbeat);
+const LOG_EVENT_HEARTBEAT_BUMP_FAILED = "heartbeat_bump_failed";
 
 pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
     _ = req; // S0 request body is empty.
@@ -37,9 +41,46 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
     };
     defer hx.ctx.pool.release(conn);
     const now_ms = clock.nowMillis();
+    const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch |err| {
+        log.warn("heartbeat_online_event_id_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        bumpOnly(conn, runner_id, now_ms);
+        return;
+    };
+    defer hx.alloc.free(event_row_id);
+    _ = conn.exec(
+        \\WITH locked AS (
+        \\  SELECT id, last_seen_at FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
+        \\), bumped AS (
+        \\  UPDATE fleet.runners r
+        \\  SET last_seen_at = $2::bigint, updated_at = $2::bigint
+        \\  FROM locked
+        \\  WHERE r.id = locked.id
+        \\  RETURNING locked.last_seen_at
+        \\)
+        \\INSERT INTO fleet.runner_events
+        \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
+        \\SELECT $3::uuid, $1::uuid, $4::text, $2::bigint,
+        \\       jsonb_build_object($5::text, last_seen_at), NULL, $2::bigint
+        \\FROM bumped
+        \\WHERE last_seen_at = $6::bigint OR ($2::bigint - last_seen_at) > $7::bigint
+    , .{
+        runner_id,
+        now_ms,
+        event_row_id,
+        @tagName(protocol.RunnerEventType.runner_online),
+        runner_events.META_LAST_SEEN_AT,
+        protocol.RUNNER_LAST_SEEN_NEVER,
+        constants.RUNNER_OFFLINE_AFTER_MS,
+    }) catch |err| {
+        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .runner_id = runner_id, .err = @errorName(err) });
+        bumpOnly(conn, runner_id, now_ms);
+    };
+}
+
+fn bumpOnly(conn: anytype, runner_id: []const u8, now_ms: i64) void {
     _ = conn.exec(
         \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
     , .{ runner_id, now_ms }) catch |err| {
-        log.warn("heartbeat_bump_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .runner_id = runner_id, .err = @errorName(err) });
     };
 }

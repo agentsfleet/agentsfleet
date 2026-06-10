@@ -16,7 +16,8 @@
 -- sandbox_tier: isolation strength reported at register
 --   (landlock_full | container_nested | macos_seatbelt | dev_none) — values
 --   enforced in application code (RULE STS forbids static-string CHECKs).
--- status: runner lifecycle state — app-enforced values, no static CHECK.
+-- admin_state: operator intent — active|cordoned|draining|drained|revoked,
+--   app-enforced values, no static CHECK (RULE STS). Renamed from `status`.
 -- labels: free-form capability labels, app-supplied JSON array (never NULL).
 -- tenant_id: OPTIONAL registration scope. NULL = trusted fleet (secrets ship
 --   inline over TLS, the only mode wired today). A non-NULL scope reserves the
@@ -33,7 +34,7 @@ CREATE TABLE IF NOT EXISTS fleet.runners (
     host_id       TEXT   NOT NULL,
     token_hash    TEXT   NOT NULL,
     sandbox_tier  TEXT   NOT NULL,
-    status        TEXT   NOT NULL,
+    admin_state   TEXT   NOT NULL,
     labels        JSONB  NOT NULL,
     tenant_id     UUID   NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
     last_seen_at  BIGINT NOT NULL,
@@ -43,7 +44,7 @@ CREATE TABLE IF NOT EXISTS fleet.runners (
 );
 
 -- api_runtime: the serve tier owns /v1/runners (register/heartbeat/lease/report);
--- it inserts at register, updates last_seen_at/status on heartbeat, and reads on
+-- it inserts at register, updates last_seen_at on heartbeat, and reads admin_state on
 -- every authed call to resolve the runner from its presented token.
 GRANT USAGE ON SCHEMA fleet TO api_runtime;
 GRANT SELECT, INSERT, UPDATE ON fleet.runners TO api_runtime;

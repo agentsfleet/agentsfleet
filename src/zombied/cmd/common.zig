@@ -19,7 +19,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [20]db.Migration {
+pub fn canonicalMigrations() [21]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -42,6 +42,7 @@ pub fn canonicalMigrations() [20]db.Migration {
         .{ .version = 22, .sql = schema.fleet_runner_leases_sql },
         .{ .version = 23, .sql = schema.fleet_runner_affinity_sql },
         .{ .version = 24, .sql = schema.fleet_metering_periods_sql },
+        .{ .version = 25, .sql = schema.fleet_runner_events_sql },
     };
 }
 
@@ -102,18 +103,21 @@ pub fn runCanonicalMigrations(pool: *db.Pool) !void {
 
 test "migrateOnStartEnabledFromEnv parses known values" {
     const alloc = std.testing.allocator;
+    var empty = try common.env.fromPairs(alloc, &.{});
+    defer empty.deinit();
+    try std.testing.expect(!try migrateOnStartEnabledFromEnv(&empty, alloc));
 
-    try std.testing.expect(!try migrateOnStartEnabledFromEnv(alloc));
+    var enabled = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "1" }});
+    defer enabled.deinit();
+    try std.testing.expect(try migrateOnStartEnabledFromEnv(&enabled, alloc));
 
-    try std.posix.setenv("MIGRATE_ON_START", "1", true);
-    try std.testing.expect(try migrateOnStartEnabledFromEnv(alloc));
+    var disabled = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "false" }});
+    defer disabled.deinit();
+    try std.testing.expect(!try migrateOnStartEnabledFromEnv(&disabled, alloc));
 
-    try std.posix.setenv("MIGRATE_ON_START", "false", true);
-    try std.testing.expect(!try migrateOnStartEnabledFromEnv(alloc));
-
-    try std.posix.setenv("MIGRATE_ON_START", "bad", true);
-    try std.testing.expectError(MigrationGuardError.InvalidMigrateOnStart, migrateOnStartEnabledFromEnv(alloc));
-    try std.posix.unsetenv("MIGRATE_ON_START");
+    var invalid = try common.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "bad" }});
+    defer invalid.deinit();
+    try std.testing.expectError(MigrationGuardError.InvalidMigrateOnStart, migrateOnStartEnabledFromEnv(&invalid, alloc));
 }
 
 test "unit: migration guard allows startup when schema is clean" {
@@ -191,9 +195,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 24" {
+test "canonical schema bootstrap: last version is 25" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 24), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 25), migrations[migrations.len - 1].version);
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {

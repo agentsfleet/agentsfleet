@@ -87,7 +87,7 @@ Routing in `bearer_or_api_key.zig`: `zmb_t_` → tenant-key DB lookup; anything 
 
 Authorization is **role-based** today: `AuthRole = user < operator < admin` (`src/zombied/auth/rbac.zig`), enforced by `RequireRole`. Scope-based authz (`fleet:write`, finer tenant scopes) is a v2.1 item — see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
-One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on usezombie's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is usezombie-the-operator authority. It gates exactly one endpoint — runner enrollment (`POST /v1/runners`) — fail-closed when the claim is absent, and the `zmb_t_` api_key path never sets it (so no tenant key can enroll a host). See *Runner token → Provisioning* below.
+One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on usezombie's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is usezombie-the-operator authority. It gates runner enrollment (`POST /v1/runners`) and the fleet operator plane (`GET /v1/fleet/runners`, `PATCH /v1/fleet/runners/{id}`, `GET /v1/fleet/runners/{id}/events`); those routes fail closed when the claim is absent, and the `zmb_t_` api_key path never sets it (so no tenant key can enroll, mutate, or audit hosts). See *Runner token → Provisioning* below.
 
 Everything below is per-surface detail. For the CLI device-flow threat model + crypto, see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md).
 
@@ -284,7 +284,7 @@ Flows 1–3 and agent keys all act *on behalf of* a human or a tenant. The **run
 
 ### Provisioning (register)
 
-A runner has no credential until **usezombie's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the one endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleet/runners` (M84_001) and the operator-plane mutation `PATCH /v1/fleet/runners/{id}` (M84_002).
+A runner has no credential until **usezombie's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleet/runners` (M84_001), the operator-plane mutation `PATCH /v1/fleet/runners/{id}`, and the runner event history `GET /v1/fleet/runners/{id}/events` (M84_002).
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `zrn_` and installs it on the host as `ZOMBIE_RUNNER_TOKEN`; the daemon validates the `zrn_` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
@@ -303,7 +303,7 @@ Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  zo
    does NOT call register — it authenticates every later call with that zrn_
 ```
 
-`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `status='revoked'` (M84_002 renames this column to `admin_state` and adds the cordon/drain states).
+`fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
 ### Validation — a separate middleware, on purpose
 
@@ -311,9 +311,9 @@ Every later call carries `Bearer zrn_` and hits a dedicated `runnerBearer` middl
 
 ```
 parse Bearer → require "zrn_" prefix          (else 401 — no JWKS fall-through)
-SELECT id, status FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
-  status='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
-  miss / revoked  → 401
+SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
+  admin_state='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
+  miss / non-active    → 401 UZ-RUN-009
 ```
 
 This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `zrn_` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.

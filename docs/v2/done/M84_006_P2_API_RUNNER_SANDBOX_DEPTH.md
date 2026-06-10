@@ -3,8 +3,8 @@
 **Prototype:** v2.0.0
 **Milestone:** M84
 **Workstream:** 006
-**Date:** Jun 05, 2026
-**Status:** PENDING
+**Date:** Jun 05, 2026 (DEFERRED → `done/` Jun 10, 2026)
+**Status:** DEFERRED — parked in `docs/v2/done/`; re-activates on untrusted-runner GA
 **Priority:** P2 — defense-in-depth, **deferred behind the untrusted-runner GA trigger** (becomes P1 when usezombie commits to untrusted / customer-operated runners). Not launch-blocking: v2 launches platform-operated (trusted) runners on the primary boundary (`--unshare-all` user/pid/net namespaces + Landlock + cgroup), which all ship in M84_003.
 **Categories:** API
 **Batch:** B1 — standalone; lands after M84_003 (depends on its `no_new_privs`).
@@ -15,6 +15,13 @@
 > **Provenance is load-bearing.** All claims were code-grounded against `main` during the M84_003 reviews. Re-confirm at PLAN: `landlock.zig` sets no `prctl` (rides userns `CAP_SYS_ADMIN`); `network.zig`/`landlock.zig` containment mechanisms.
 
 **Canonical architecture:** [`docs/architecture/runner_fleet.md`](../../architecture/runner_fleet.md) §Sandbox tiers / §Egress model. This spec hardens the **capability surface** and **verifies** containment; it does not change the namespace/Landlock/cgroup mechanisms (M80-owned), implement egress (M84_004), or prove fd hygiene (M84_007).
+
+> **DEFERRED → parked in `docs/v2/done/` (Indy, Jun 10, 2026).** A code-grounded adversarial review (Jun 10) confirmed **SAFE-TO-DEFER for the trusted-runner launch**: every host-facing thing the child's namespace-local capabilities could touch is already fenced by the shipped M84_003 stack (`--unshare-all` user/pid/net namespaces + in-child `no_new_privs` + Landlock + cgroup + filtered `environ_map`) plus the M84_007 fd-proof. `--cap-drop ALL` is genuine belt-on-belt only against a *kernel* user-namespace privilege-escalation 0-day — the post-untrusted-GA threat this spec's trigger names. **Re-activation trigger:** usezombie commits to untrusted / customer-operated runners (then this becomes P1).
+>
+> **Scope corrections folded in (Jun 10 review):**
+> 1. This spec's fd-proof scope (former §2 + its Invariant) is **fully redundant** — it shipped via [`M84_007`](./M84_007_P1_API_RUNNER_CREDENTIAL_FD_PROOF.md) (#374) + the marker-fd / no-stray-fd tests in `sandbox_integration_test.zig:182-269`. Treat it as **CUT**; implement only §1 (cap-drop) + §3 (containment characterization) when re-activated.
+> 2. The runtime sandbox proofs `test_child_no_new_privs` + `test_child_no_controlling_tty` (re-homed here from M84_003's CHORE(close), Jun 10) close the "no executable runtime proof that the shipped sandbox holds" gap — author them on a privileged Linux harness when this re-activates (low-risk characterization of already-shipped behaviour, no mechanism change).
+> 3. **Bigger untrusted-GA item, flagged separately:** there is **no seccomp filter** anywhere in the runner — it widens the kernel syscall surface for a userns escape and matters more than cap-drop. Scope it with this milestone when untrusted-GA opens.
 
 ---
 
