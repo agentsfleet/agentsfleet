@@ -64,6 +64,8 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
+    // info (not debug) by design: credential store/retrieve stays visible in default prod logs for
+    // security-access monitoring — key_name only, never the secret value. LOGGING_STANDARD §4 exception.
     log.info("stored", .{ .workspace_id = workspace_id, .key_name = key_name });
 }
 
@@ -132,6 +134,7 @@ pub fn load(
         });
         return err;
     };
+    // info (not debug) by design — security-access visibility, see store() above (§4 exception).
     log.info("retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
     return plaintext_result;
 }
