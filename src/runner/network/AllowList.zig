@@ -1,4 +1,4 @@
-//! Allowlist.zig — the merged egress allowlist for one lease.
+//! AllowList.zig — the merged egress allowlist for one lease.
 //!
 //! The single source the kernel layer (nftables) and the L7 tool checks
 //! (`http_request`/`web_fetch`) both consume: the operator-fed registry baseline
@@ -11,7 +11,7 @@
 //! `DEFAULT_REGISTRY` is the fallback the daemon substitutes only when the
 //! operator sets nothing.
 
-const Allowlist = @This();
+const AllowList = @This();
 
 /// Merged, deduped, validated hostnames (first-seen order). Owned by `alloc`.
 names: []const []const u8,
@@ -43,7 +43,7 @@ pub fn build(
     registry: []const []const u8,
     network_allow: []const []const u8,
     inference_host: []const u8,
-) Error!Allowlist {
+) Error!AllowList {
     var seen = std.StringHashMap(void).init(alloc);
     defer seen.deinit();
 
@@ -64,12 +64,12 @@ pub fn build(
 
 /// Exact-hostname membership — the one predicate the L7 tool checks and the nft
 /// installer agree on (closes the historical split-brain).
-pub fn contains(self: Allowlist, host: []const u8) bool {
+pub fn contains(self: AllowList, host: []const u8) bool {
     for (self.names) |n| if (std.mem.eql(u8, n, host)) return true;
     return false;
 }
 
-pub fn deinit(self: *Allowlist) void {
+pub fn deinit(self: *AllowList) void {
     for (self.names) |n| self.alloc.free(n);
     self.alloc.free(self.names);
     self.names = &.{};
