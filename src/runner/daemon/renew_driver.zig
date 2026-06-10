@@ -68,7 +68,7 @@ pub fn RenewDriver(comptime Client: type) type {
             switch (res) {
                 .renewed => |new_deadline| {
                     self.deadline_ms = new_deadline;
-                    log.info("lease_renewed", .{ .lease_id = self.lease_id, .lease_expires_at = new_deadline });
+                    log.debug("lease_renewed", .{ .lease_id = self.lease_id, .lease_expires_at = new_deadline });
                     return .{ .extend = new_deadline };
                 },
                 .terminal => |status| {
