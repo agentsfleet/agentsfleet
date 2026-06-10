@@ -150,9 +150,9 @@ fn supervise(
     };
 
     // Egress strategy (network/Policy.Mode):
-    //   deny_all           → unshared netns, no veth (handled in sandbox_args).
-    //   registry_allowlist → interim allow-all (`--share-net` in sandbox_args).
-    //   *_strict           → kernel-enforced EgressScope boundary (option D).
+    //   deny_all_egress     → unshared netns, no veth (handled in sandbox_args).
+    //   allow_all (default) → interim allow-all (`--share-net` in sandbox_args).
+    //   allow_list_egress   → kernel-enforced EgressScope boundary (option D).
     // The strict posture's per-lease establishment (resolve allowlist → named
     // netns + veth + nft + rendered resolver files) is unbuilt (2.0.1). Fail
     // CLOSED when it is selected — refuse the lease rather than run as if the

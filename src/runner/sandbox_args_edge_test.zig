@@ -33,7 +33,7 @@ fn cfgWithTier(tier: []const u8) Config {
         .host_id = "host-edge",
         .sandbox_tier = tier,
         .workspace_base = "/tmp/zombie-runner",
-        .network_policy = .deny_all,
+        .network_policy = .deny_all_egress,
         .worker_count = 1,
         .registry_allowlist = &.{},
         .alloc = std.testing.allocator,
@@ -133,44 +133,33 @@ test "should skip bwrap on non-Linux even when tier is required" {
     try std.testing.expect(std.mem.startsWith(u8, ws_flag, child_exec.WORKSPACE_FLAG_PREFIX));
 }
 
-test "should omit --share-net under the default deny_all network policy on Linux" {
+test "should omit --share-net under the deny_all network policy on Linux" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // buildArgv reads RUNNER_NETWORK_POLICY via network/Policy.fromMap; absent
-    // or unset it resolves to deny_all, so the bwrap wrapper unshares the net
-    // and adds NO --share-net (host network stays isolated). Skip if the test
-    // host has explicitly opted into registry_allowlist via the env var, since
-    // then --share-net is the correct output. The positive --share-net arm is
-    // covered deterministically in network.zig against appendBwrapNetworkArgs
-    // directly (no env coupling).
-    const opted_in = blk: {
-        const raw = common.env.testLiveValue("RUNNER_NETWORK_POLICY") orelse break :blk false;
-        break :blk std.ascii.eqlIgnoreCase(raw, "registry_allowlist");
-    };
-    if (opted_in) return error.SkipZigTest;
-
+    // cfgWithTier pins network_policy = .deny_all_egress, so buildArgv unshares the net
+    // and adds NO --share-net (host network stays isolated) regardless of env.
     const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
     defer sandbox_args.freeArgv(alloc, argv);
 
-    // deny_all (default): --unshare-all isolates the net, no --share-net added.
     try std.testing.expect(indexOfStr(argv, "--unshare-all") != null);
     try std.testing.expect(indexOfStr(argv, "--share-net") == null);
 }
 
-/// Like `cfgWithTier` but re-shares the network (registry_allowlist) — used to
-/// prove the tty-detach flag is emitted on every sandboxed tier, not just deny_all.
+/// `allow_all` (the default posture) re-shares the host network (`--share-net`).
 fn cfgAllowAll(tier: []const u8) Config {
     var c = cfgWithTier(tier);
     c.network_policy = .allow_all;
     return c;
 }
 
-fn cfgRegistryAllowlist(tier: []const u8) Config {
+/// `allow_list_egress` — the kernel-enforced posture (own netns, no
+/// `--share-net`).
+fn cfgAllowListEgress(tier: []const u8) Config {
     var c = cfgWithTier(tier);
-    c.network_policy = .registry_allowlist; // strict, kernel-enforced
+    c.network_policy = .allow_list_egress; // strict, kernel-enforced
     return c;
 }
 
@@ -191,7 +180,7 @@ test "should detach the controlling terminal with --new-session in the bwrap pre
     try std.testing.expect(ns.? < sep);
 }
 
-test "allow_all (default) re-shares host net; registry_allowlist (strict) does NOT" {
+test "allow_all (default) re-shares host net; allow_list_egress does NOT" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // allow_all (the default posture): re-shares the host netns (--share-net)
@@ -205,8 +194,8 @@ test "allow_all (default) re-shares host net; registry_allowlist (strict) does N
     try std.testing.expect(indexOfStr(open, "--unshare-all") != null);
     try std.testing.expect(indexOfStr(open, "--new-session") != null);
 
-    // registry_allowlist (strict) keeps its own (filtered) netns — never re-shares.
-    const strict = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE, null);
+    // allow_list_egress keeps its own (filtered) netns — never re-shares.
+    const strict = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowListEgress(LANDLOCK_FULL), WORKSPACE, null);
     defer sandbox_args.freeArgv(alloc, strict);
     try std.testing.expect(indexOfStr(strict, "--share-net") == null);
     try std.testing.expect(indexOfStr(strict, "--unshare-all") != null);
@@ -220,7 +209,7 @@ test "egress files are ro-bound over /etc/hosts + /etc/resolv.conf when supplied
         .resolv_path = "/run/uz/lease0/resolv.conf",
     };
     // Strict posture: resolver files bound + no --share-net (the option-D path).
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE, egress) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowListEgress(LANDLOCK_FULL), WORKSPACE, egress) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };

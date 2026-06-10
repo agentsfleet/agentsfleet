@@ -21,7 +21,7 @@ fn staticCfg(worker_count: u32) Config {
         .host_id = "pool-test-host",
         .sandbox_tier = "dev_none",
         .workspace_base = "/tmp/zombie-runner-pool-test",
-        .network_policy = .deny_all,
+        .network_policy = .deny_all_egress,
         .worker_count = worker_count,
         .registry_allowlist = &.{},
         .alloc = testing.allocator,

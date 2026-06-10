@@ -1,53 +1,56 @@
 //! Policy.zig — the egress posture for a sandboxed lease: the switch between
 //! egress *implementations*, selected by `RUNNER_NETWORK_POLICY`.
 //!
-//! A stateless namespace (the `std.mem` shape — no owned state). Three postures:
-//!   allow_all          — DEFAULT (unset → here). Re-shares the host net
-//!                        namespace (`--share-net`): the lease reaches anything.
-//!                        Honest name for the interim, unenforced egress while
-//!                        the kernel allowlist (`registry_allowlist`) is unbuilt.
-//!   deny_all           — net namespace unshared, NO veth: zero egress.
-//!   registry_allowlist — STRICT, kernel-enforced: own netns + veth gated by the
-//!                        default-deny nftables allowlist (`EgressScope`,
-//!                        option D). Opt-in; **fails closed (`UZ-RUN-007`)**
-//!                        until that wiring lands — it never silently pretends
-//!                        to enforce. (This is the posture whose name is *true*:
-//!                        an actual allowlist, not "allow everything".)
+//! A stateless namespace (the `std.mem` shape — no owned state). Three modes,
+//! named so an operator reads the behaviour off the value (no "strict"/"secure"/
+//! "mode" words that decay into mystery):
+//!   allow_all          — DEFAULT (unset → here). Everything outbound allowed:
+//!                        re-shares the host net namespace (`--share-net`). The
+//!                        interim, unenforced posture while `allow_list_egress`
+//!                        is unbuilt.
+//!   deny_all_egress    — no outbound traffic: net namespace unshared, NO veth.
+//!   allow_list_egress  — outbound only to explicitly permitted destinations:
+//!                        own netns + veth gated by the default-deny nftables
+//!                        allowlist (`EgressScope`, option D). The allowlist is
+//!                        the FULL per-lease set — operator registry baseline ∪
+//!                        the zombie's `network.allow` ∪ the inference host.
+//!                        Opt-in; **fails closed (`UZ-RUN-007`)** until that
+//!                        wiring lands — it never silently pretends to enforce.
 //!
-//! `allow_all` and `registry_allowlist` are the abstraction's two
-//! implementations of "the lease has network": flip the env var to move from
-//! unenforced (interim) to kernel-enforced without code churn. `deny_all` is
-//! the no-network short-circuit. **Default is `allow_all`** (open) for the
-//! pre-enforcement interim; it should flip to the enforced posture once the
+//! `allow_all` and `allow_list_egress` are the abstraction's two implementations
+//! of "the lease has network": flip the env var to move from unenforced
+//! (interim) to kernel-enforced without code churn. `deny_all_egress` is the
+//! no-network short-circuit. **Default is `allow_all`** (open) for the
+//! pre-enforcement interim; it should flip to `allow_list_egress` once the
 //! `EgressScope` wiring lands.
 
 const std = @import("std");
 const log = @import("log").scoped(.egress_policy);
 
 const ALLOW_ALL = "allow_all";
-const DENY_ALL = "deny_all";
-const REGISTRY_ALLOWLIST = "registry_allowlist";
+const DENY_ALL_EGRESS = "deny_all_egress";
+const ALLOW_LIST_EGRESS = "allow_list_egress";
 
 pub const Mode = enum {
-    /// Default: re-shares the host net namespace (`--share-net`) — full egress.
+    /// Default: everything outbound allowed (re-shares host netns, `--share-net`).
     allow_all,
-    /// No network: the net namespace is unshared and given no veth.
-    deny_all,
-    /// Strict, kernel-enforced egress (own netns + veth + nftables allowlist).
-    /// Opt-in; fails closed until the `EgressScope` wiring lands.
-    registry_allowlist,
+    /// No outbound traffic: net namespace unshared, no veth.
+    deny_all_egress,
+    /// Outbound only to permitted destinations: own netns + veth + nftables
+    /// allowlist. Opt-in; fails closed until the `EgressScope` wiring lands.
+    allow_list_egress,
 
-    /// The posture re-shares the host network namespace (`--share-net`). Only
-    /// `allow_all` does; `registry_allowlist` keeps its own (filtered) netns and
-    /// `deny_all` has no network at all.
+    /// The mode re-shares the host network namespace (`--share-net`). Only
+    /// `allow_all` does; `allow_list_egress` keeps its own (filtered) netns and
+    /// `deny_all_egress` has no network at all.
     pub fn sharesHostNet(self: Mode) bool {
         return self == .allow_all;
     }
 
-    /// The posture routes through the kernel-enforced egress boundary
+    /// The mode routes through the kernel-enforced egress boundary
     /// (`EgressScope`). The supervisor establishes egress iff this is true.
     pub fn enforcesEgress(self: Mode) bool {
-        return self == .registry_allowlist;
+        return self == .allow_list_egress;
     }
 };
 
@@ -60,44 +63,46 @@ pub fn fromMap(env_map: *const std.process.Environ.Map) Mode {
     return fromSlice(raw);
 }
 
-/// Parse a posture string (exact, case-insensitive). Exported for testing.
+/// Parse a mode string (exact, case-insensitive). Exported for testing.
 pub fn fromSlice(raw: []const u8) Mode {
     if (std.ascii.eqlIgnoreCase(raw, ALLOW_ALL)) return .allow_all;
-    if (std.ascii.eqlIgnoreCase(raw, DENY_ALL)) return .deny_all;
-    if (std.ascii.eqlIgnoreCase(raw, REGISTRY_ALLOWLIST)) return .registry_allowlist;
+    if (std.ascii.eqlIgnoreCase(raw, DENY_ALL_EGRESS)) return .deny_all_egress;
+    if (std.ascii.eqlIgnoreCase(raw, ALLOW_LIST_EGRESS)) return .allow_list_egress;
     log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = ALLOW_ALL });
     return .allow_all;
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-test "fromSlice parses all three postures, case-insensitively" {
+test "fromSlice parses all three modes, case-insensitively" {
     try std.testing.expectEqual(Mode.allow_all, fromSlice("allow_all"));
     try std.testing.expectEqual(Mode.allow_all, fromSlice("ALLOW_ALL"));
-    try std.testing.expectEqual(Mode.deny_all, fromSlice("deny_all"));
-    try std.testing.expectEqual(Mode.registry_allowlist, fromSlice("registry_allowlist"));
-    try std.testing.expectEqual(Mode.registry_allowlist, fromSlice("Registry_Allowlist"));
+    try std.testing.expectEqual(Mode.deny_all_egress, fromSlice("deny_all_egress"));
+    try std.testing.expectEqual(Mode.allow_list_egress, fromSlice("allow_list_egress"));
+    try std.testing.expectEqual(Mode.allow_list_egress, fromSlice("Allow_List_Egress"));
 }
 
 test "fromSlice falls back to the allow_all default on unknown / empty / typo" {
+    // The retired `registry_allowlist` value is now unrecognized → allow_all
+    // (so a stale prod env keeps egress rather than failing closed).
     const fallback = [_][]const u8{
-        "",                    "open_internet",
-        " registry_allowlist", "registry_allowlist ",
-        "registry_alowlist",   "deny",
+        "",                   "open_internet",
+        "registry_allowlist", " allow_list_egress",
+        "allow_list_egress ", "deny_all",
     };
     for (fallback) |raw| try std.testing.expectEqual(Mode.allow_all, fromSlice(raw));
 }
 
-test "strategy helpers: only allow_all shares host net; only registry_allowlist enforces" {
+test "strategy helpers: only allow_all shares host net; only allow_list_egress enforces" {
     try std.testing.expect(Mode.allow_all.sharesHostNet());
-    try std.testing.expect(!Mode.registry_allowlist.sharesHostNet());
-    try std.testing.expect(!Mode.deny_all.sharesHostNet());
+    try std.testing.expect(!Mode.allow_list_egress.sharesHostNet());
+    try std.testing.expect(!Mode.deny_all_egress.sharesHostNet());
 
-    try std.testing.expect(Mode.registry_allowlist.enforcesEgress());
+    try std.testing.expect(Mode.allow_list_egress.enforcesEgress());
     try std.testing.expect(!Mode.allow_all.enforcesEgress());
-    try std.testing.expect(!Mode.deny_all.enforcesEgress());
+    try std.testing.expect(!Mode.deny_all_egress.enforcesEgress());
 }
 
-test "Mode has exactly three postures (no silent fourth)" {
+test "Mode has exactly three modes (no silent fourth)" {
     try std.testing.expectEqual(@as(usize, 3), @typeInfo(Mode).@"enum".fields.len);
 }

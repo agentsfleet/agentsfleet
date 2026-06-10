@@ -233,7 +233,7 @@ fn stubCfg(url: []const u8) Config {
         .host_id = "pool-integ-host",
         .sandbox_tier = "dev_none",
         .workspace_base = "/tmp/zombie-runner-pool-integ",
-        .network_policy = .deny_all,
+        .network_policy = .deny_all_egress,
         .registry_allowlist = &.{},
         .worker_count = WORKER_COUNT,
         .alloc = std.testing.allocator,
