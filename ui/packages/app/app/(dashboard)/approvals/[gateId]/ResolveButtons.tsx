@@ -7,6 +7,8 @@ import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 import { approveApprovalAction, denyApprovalAction } from "../actions";
 import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals";
 import { presentErrorString } from "@/lib/errors";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = {
   workspaceId: string;
@@ -24,7 +26,10 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
     startTransition(async () => {
       const isApprove = decision === APPROVAL_DECISION.APPROVE;
       const action = isApprove ? approveApprovalAction : denyApprovalAction;
-      const result = await action(workspaceId, gateId, reason || undefined);
+      // One trimmed value feeds both the action and has_reason, so the
+      // analytics flag cannot disagree with what the server stored.
+      const trimmedReason = reason.trim();
+      const result = await action(workspaceId, gateId, trimmedReason || undefined);
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -42,6 +47,11 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
         return;
       }
       // Success — bounce back to the inbox so they see the fresh queue.
+      captureProductEvent(EVENTS.approval_resolved, {
+        gate_id: gateId,
+        decision,
+        has_reason: trimmedReason.length > 0,
+      });
       router.push("/approvals");
       router.refresh();
     });

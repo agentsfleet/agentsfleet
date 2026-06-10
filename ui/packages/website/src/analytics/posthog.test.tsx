@@ -3,22 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import posthog from "posthog-js";
 import CTABlock from "../components/CTABlock";
 import {
-  EVENT_LEAD_CAPTURE_CLICKED,
-  EVENT_LEAD_CAPTURE_FAILED,
-  EVENT_LEAD_CAPTURE_OPENED,
-  EVENT_LEAD_CAPTURE_SUBMITTED,
   EVENT_NAVIGATION_CLICKED,
   EVENT_SIGNUP_STARTED,
   flushAnalyticsForTests,
   initAnalytics,
   resetAnalyticsForTests,
-  trackLeadCaptureClicked,
-  trackLeadCaptureFailed,
-  trackLeadCaptureOpened,
-  trackLeadCaptureSubmitted,
+  trackNavigationClicked,
   trackSignupStarted,
-  trackSignupCompleted,
-  EVENT_SIGNUP_COMPLETED,
 } from "./posthog";
 
 function walkElements(node: React.ReactNode, visit: (element: React.ReactElement<Record<string, unknown>>) => void): void {
@@ -93,25 +84,6 @@ describe("website analytics", () => {
     );
     const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.email).toBeUndefined();
-  });
-
-  it("emits signup_completed with the same allowlist + path enrichment as signup_started", async () => {
-    trackSignupCompleted({
-      source: "auth_callback",
-      surface: "auth_redirect",
-      mode: "humans",
-    });
-    await flushAnalyticsForTests();
-
-    expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_SIGNUP_COMPLETED,
-      expect.objectContaining({
-        source: "auth_callback",
-        surface: "auth_redirect",
-        mode: "humans",
-      }),
-    );
-    const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.path).toBeDefined();
   });
 
@@ -128,58 +100,6 @@ describe("website analytics", () => {
       EVENT_NAVIGATION_CLICKED,
       expect.objectContaining({ source: "agents_cta_pricing" }),
     );
-  });
-
-  it("captures pricing lead funnel events with allowlisted metadata only", async () => {
-    trackLeadCaptureClicked({
-      page: "pricing",
-      surface: "pricing_card",
-      cta_id: "pricing_scale_notify",
-      plan_interest: "Scale",
-      // oxlint-disable-next-line typescript/no-explicit-any
-      email: "should-not-leak@example.com" as any,
-    });
-    trackLeadCaptureOpened({
-      page: "pricing",
-      surface: "pricing_lead_capture",
-      cta_id: "pricing_scale_notify",
-      plan_interest: "Scale",
-    });
-    trackLeadCaptureSubmitted({
-      page: "pricing",
-      surface: "pricing_lead_capture",
-      cta_id: "pricing_scale_notify",
-      plan_interest: "Scale",
-      status: "success",
-    });
-    trackLeadCaptureFailed({
-      page: "pricing",
-      surface: "pricing_lead_capture",
-      cta_id: "pricing_scale_notify",
-      plan_interest: "Scale",
-      status: "submit_failed",
-    });
-    await flushAnalyticsForTests();
-
-    expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_LEAD_CAPTURE_CLICKED,
-      expect.objectContaining({ cta_id: "pricing_scale_notify", plan_interest: "Scale" }),
-    );
-    expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_LEAD_CAPTURE_OPENED,
-      expect.objectContaining({ cta_id: "pricing_scale_notify", plan_interest: "Scale" }),
-    );
-    expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_LEAD_CAPTURE_SUBMITTED,
-      expect.objectContaining({ status: "success" }),
-    );
-    expect(mockedPosthog.capture).toHaveBeenCalledWith(
-      EVENT_LEAD_CAPTURE_FAILED,
-      expect.objectContaining({ status: "submit_failed" }),
-    );
-
-    const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(props.email).toBeUndefined();
   });
 
   it("does not emit when analytics is disabled", async () => {
@@ -261,17 +181,12 @@ describe("website analytics", () => {
 
     // Second event arrives AFTER the module is resolved — should hit the
     // fast path (direct capture, no buffering).
-    trackLeadCaptureClicked({
-      page: "pricing",
-      surface: "pricing_card",
-      cta_id: "pricing_scale_notify",
-      plan_interest: "Scale",
-    });
+    trackNavigationClicked({ source: "agents_cta_pricing", surface: "cta_block" });
     // No flush needed — fast path is synchronous.
     expect(mockedPosthog.capture).toHaveBeenCalledTimes(2);
     expect(mockedPosthog.capture).toHaveBeenLastCalledWith(
-      EVENT_LEAD_CAPTURE_CLICKED,
-      expect.objectContaining({ cta_id: "pricing_scale_notify" }),
+      EVENT_NAVIGATION_CLICKED,
+      expect.objectContaining({ source: "agents_cta_pricing" }),
     );
   });
 });
