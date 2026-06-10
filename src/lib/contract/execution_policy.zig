@@ -63,5 +63,33 @@ pub const ExecutionPolicy = struct {
     /// never logged, never persisted to the lease row, redacted from activity
     /// frames (engine keys redaction off `agent_config.api_key`).
     api_key: []const u8 = "",
+    /// Resolved inference endpoint HOST (e.g. "api.fireworks.ai"); "" = none.
+    /// Control-plane-authored from the SAME provider→URL table the engine dials
+    /// (`nullclaw.providers.compatibleProviderUrl`), so the runner's egress
+    /// allowlist permits exactly the host the agent's LLM call will reach — no
+    /// drift. Additive + defaulted so old/new leases stay parseable both ways.
+    inference_host: []const u8 = "",
     context: ContextBudget = .{},
 };
+
+/// Extract the bare host from a provider base URL (`https://api.fireworks.ai/
+/// inference/v1` → `api.fireworks.ai`). Returns "" when `url` has no
+/// recognizable authority. Pure; used control-plane-side to author
+/// `inference_host` and reusable for any host-from-URL need on the contract.
+pub fn hostFromUrl(url: []const u8) []const u8 {
+    const after_scheme = if (std.mem.indexOf(u8, url, "://")) |i| url[i + 3 ..] else url;
+    const authority_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
+    const authority = after_scheme[0..authority_end];
+    // Strip optional userinfo@ and :port — a hostname carries neither.
+    const after_userinfo = if (std.mem.lastIndexOfScalar(u8, authority, '@')) |i| authority[i + 1 ..] else authority;
+    const host_end = std.mem.indexOfScalar(u8, after_userinfo, ':') orelse after_userinfo.len;
+    return after_userinfo[0..host_end];
+}
+
+test "hostFromUrl extracts the bare host across URL shapes" {
+    try std.testing.expectEqualStrings("api.fireworks.ai", hostFromUrl("https://api.fireworks.ai/inference/v1"));
+    try std.testing.expectEqualStrings("api.x.ai", hostFromUrl("https://api.x.ai"));
+    try std.testing.expectEqualStrings("api.openai.com", hostFromUrl("https://api.openai.com:443/v1"));
+    try std.testing.expectEqualStrings("host", hostFromUrl("host")); // schemeless
+    try std.testing.expectEqualStrings("", hostFromUrl("")); // empty → no host
+}

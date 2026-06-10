@@ -29,6 +29,7 @@ pub const provider = "provider";
 pub const temperature = "temperature";
 pub const max_tokens = "max_tokens";
 pub const api_key = "api_key";
+pub const inference_host = "inference_host";
 pub const message = "message";
 
 // ── Reasoning context (composeMessage) ──────────────────────────────────────
