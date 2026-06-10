@@ -38,6 +38,8 @@ fn fakeHarness(alloc: std.mem.Allocator) TestHarness {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .ctx = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
+        .hub = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .server = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .thread = undefined,

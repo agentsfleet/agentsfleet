@@ -36,6 +36,7 @@ const auth_mw = @import("../../auth/middleware/mod.zig");
 const common = @import("common.zig");
 const handler = @import("../../http/handler.zig");
 const http_server = @import("../../http/server.zig");
+const subscription_hub = @import("../../events/subscription_hub.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const test_port = @import("../test_port.zig");
 
@@ -91,6 +92,9 @@ const LISTEN_OTHER_ERR: u8 = 2;
 
 const TestServer = struct {
     pool: *pg.Pool,
+    /// Cold shared-SSE hub (never started): IDOR tests exercise no SSE
+    /// route, but Context.hub must point at a valid hub.
+    hub: subscription_hub,
     session_store: session_store_redis.SessionStore,
     verifier: oidc.Verifier,
     // SAFETY: test fixture; field is populated by the surrounding builder before any read.
@@ -108,6 +112,8 @@ const TestServer = struct {
         self.server.stop();
         self.thread.join();
         self.server.deinit();
+        self.hub.stop();
+        self.hub.deinit();
         self.verifier.deinit();
         // Redis-backed SessionStore is a pure facade — no per-instance teardown.
         if (self.has_redis) self.queue.deinit();
@@ -217,6 +223,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     const srv = try alloc.create(TestServer);
     srv.* = TestServer{
         .pool = db_ctx.pool,
+        .hub = subscription_hub.init(alloc, @import("common").globalIo()),
         // SAFETY: session_store is populated in-place after the queue connects below.
         // IDOR tests never hit /v1/auth/* so leaving it undefined when Redis
         // is absent does not crash anything; the field is only read by the
@@ -229,7 +236,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .io = @import("common").globalIo(), .clerk_webhook_secret = null, .approval_signing_secret = null, .clerk_secret_key = null, .oidc = undefined, .auth_sessions = undefined, .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_PEPPER), .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .io = @import("common").globalIo(), .clerk_webhook_secret = null, .approval_signing_secret = null, .clerk_secret_key = null, .oidc = undefined, .auth_sessions = undefined, .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_PEPPER), .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .hub = undefined, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
@@ -240,6 +247,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     };
     srv.telemetry = telemetry_mod.Telemetry.initTest();
     srv.ctx.telemetry = &srv.telemetry;
+    srv.ctx.hub = &srv.hub;
     var idor_env = try @import("common").env.testLiveSnapshot(alloc);
     defer idor_env.deinit();
     if (queue_redis.Client.connectFromEnv(@import("common").globalIo(), &idor_env, alloc, .default)) |client| {

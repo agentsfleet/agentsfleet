@@ -104,6 +104,8 @@ pub fn renderPrometheus(
     try appendMetric(writer, "zombie_api_in_flight_requests", S_GAUGE, "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
     try appendMetric(writer, "zombie_sse_backpressure_rejections_total", S_COUNTER, "Total SSE stream requests rejected at the stream cap.", s.sse_backpressure_rejections_total);
     try appendMetric(writer, "zombie_sse_in_flight_streams", S_GAUGE, "Current live SSE event streams held below the stream cap.", s.sse_in_flight_streams);
+    try appendMetric(writer, "zombie_sse_dropped_frames_total", S_COUNTER, "Total SSE frames dropped against slow consumers (bounded per-stream queues).", s.sse_dropped_frames_total);
+    try appendMetric(writer, "zombie_sse_hub_reconnects_total", S_COUNTER, "Total successful redials of the shared SSE pub/sub connection.", s.sse_hub_reconnects_total);
     try appendMetric(writer, "zombie_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
 
     try appendMetric(writer, "zombie_gate_repair_exhausted_total", S_COUNTER, "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);

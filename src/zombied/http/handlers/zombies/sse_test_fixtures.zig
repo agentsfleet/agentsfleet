@@ -110,12 +110,11 @@ pub fn activityChannel(alloc: std.mem.Allocator, zombie_id: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, "zombie:{s}:activity", .{zombie_id});
 }
 
-/// Close the client socket, then PUBLISH one sentinel frame so the handler's
-/// streamLoop wakes from `subscriber.nextMessage()`, attempts a write, hits
-/// BrokenPipe, and releases its httpz worker thread. Without this the worker
-/// stays wedged on the Redis read until the next channel publish — which
-/// for a single-test channel never arrives, starving the worker pool
-/// before `h.deinit()` runs.
+/// Close the client socket, then PUBLISH one sentinel frame so the stream
+/// thread wakes from its subscription pop, attempts a write, hits
+/// BrokenPipe, and tears down promptly. Without the publish the thread
+/// would idle until its next heartbeat tick before noticing the dead
+/// client, slowing every teardown by up to that interval.
 pub fn closeAndWakeSubscriber(sc: *SseClient, pub_client: *queue_redis.Client, channel: []const u8) void {
     sc.closeStream();
     pub_client.publish(channel, "{\"kind\":\"drain\",\"event_id\":\"_\"}") catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});

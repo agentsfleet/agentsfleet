@@ -4,17 +4,25 @@
 //! Connection lifecycle:
 //!   1. Claim a stream slot (cap → 503) and authorize (Bearer middleware +
 //!      path-workspace ownership).
-//!   2. Issue `SUBSCRIBE zombie:{id}:activity` on a dedicated Redis
-//!      connection — pub/sub blocks the conn, so we can NOT share the
-//!      request-handler queue client.
+//!   2. Subscribe to the channel through the process's SubscriptionHub —
+//!      the hub owns the ONE shared Redis pub/sub connection; opening a
+//!      stream costs a map entry, never a Redis dial or TLS handshake.
 //!   3. Hand the TCP stream to a DEDICATED detached thread via
 //!      `startEventStream` — never the pool-parking sync variant: httpz's
 //!      handler pool round-robins private per-thread queues with no
 //!      work-stealing, so one pool thread parked on a stream black-holes its
 //!      queue's share of every later request.
-//!   4. Loop: read pub/sub message → write one SSE frame.
-//!   5. On client disconnect (write error) or any read error, the thread
-//!      frees its job and releases the slot.
+//!   4. Loop: timed-pop the subscription queue → write one SSE frame;
+//!      timeout → heartbeat comment (probes client liveness); hub closed →
+//!      exit (shutdown drain).
+//!   5. On client disconnect (write error) or hub close, the thread
+//!      unsubscribes, frees its job, and releases the slot.
+//!
+//! Hub-loss behaviour: a dead shared connection is invisible here — the
+//! queue goes quiet, heartbeats keep the client alive, and the hub's
+//! reconnect sweep resumes delivery. Frames published during the gap follow
+//! the documented pub/sub loss semantics (clients backfill via the events
+//! cursor).
 //!
 //! Auth (this slice):
 //!   Bearer token via the `bearer()` middleware (CLI / programmatic
@@ -28,7 +36,6 @@
 //! ignores `Last-Event-ID` request headers.
 
 const std = @import("std");
-const clock = @import("common").clock;
 const httpz = @import("httpz");
 const pg = @import("pg");
 const logging = @import("log");
@@ -39,7 +46,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const metrics = @import("../../../observability/metrics.zig");
-const redis_subscriber = @import("../../../queue/redis_subscriber.zig");
+const subscription_hub = @import("../../../events/subscription_hub.zig");
 
 const log = logging.scoped(.http_zombie_events_stream);
 
@@ -48,30 +55,16 @@ const Hx = hx_mod.Hx;
 const channel_prefix = "zombie:";
 const channel_suffix = ":activity";
 
-/// Idle wake-up cadence for the SSE subscriber. Each tick with no pub/sub
-/// traffic sends a heartbeat comment so a vanished client is detected by the
-/// failing write — without it the stream thread parks on the Redis read
-/// forever, holding its thread + a Redis connection until a publish that may
-/// never come (dead client + idle zombie = a leaked stream slot).
+/// Idle wake-up cadence for the subscription pop. Each tick with no frames
+/// sends a heartbeat comment so a vanished client is detected by the failing
+/// write — without it a stream over a dead client would hold its thread and
+/// slot until a publish that may never come.
 const SSE_HEARTBEAT_INTERVAL_MS: u32 = 15_000;
-/// Channel name scratch carried inside StreamJob: prefix + UUID + suffix.
+/// Channel name scratch: prefix + UUID + suffix.
 const CHANNEL_BUF_LEN: usize = 128;
-/// A `nextMessage` null returning in under half the heartbeat window is a
-/// closed/RST socket, not an elapsed read timeout → exit instead of busy-
-/// looping heartbeats against a dead Redis.
-const SSE_TIMEOUT_MIN_ELAPSED_MS: i64 = SSE_HEARTBEAT_INTERVAL_MS / 2;
 /// SSE comment frame — ignored by EventSource clients, but the write probes
 /// client liveness and keeps intermediaries from idling the connection out.
 const SSE_HEARTBEAT_FRAME = ": heartbeat\n\n";
-
-const IdleAction = enum { heartbeat, close };
-
-/// Read a null `nextMessage` from how long the read blocked: a full idle window
-/// means SO_RCVTIMEO elapsed (heartbeat the client); a near-instant null means
-/// the socket closed or reset (exit the loop).
-fn classifyIdle(elapsed_ms: i64) IdleAction {
-    return if (elapsed_ms < SSE_TIMEOUT_MIN_ELAPSED_MS) .close else .heartbeat;
-}
 
 pub fn innerEventsStream(
     hx: Hx,
@@ -128,7 +121,9 @@ fn startStreamThread(hx: Hx, zombie_id: []const u8) bool {
     const job = StreamJob.create(hx.ctx, zombie_id) catch |err| {
         switch (err) {
             error.ChannelTooLong => common.internalDbError(hx.res, hx.req_id),
-            else => common.internalDbUnavailable(hx.res, hx.req_id),
+            // OOM or a hub already in shutdown — the stream surface is
+            // momentarily unavailable, not the client's fault.
+            error.OutOfMemory, error.HubStopped => common.internalDbUnavailable(hx.res, hx.req_id),
         }
         return false;
     };
@@ -146,59 +141,50 @@ fn startStreamThread(hx: Hx, zombie_id: []const u8) bool {
 
 fn streamThreadMain(job: *StreamJob, stream: std.Io.net.Stream) void {
     const ctx = job.ctx; // borrowed: boot-owned, outlives every stream thread
-    // LIFO defers: destroy runs first, the slot release last — an observer of
-    // the freed slot (test drain-polls) has also observed the job teardown.
+    // LIFO defers: destroy runs first (unsubscribes from the hub), the slot
+    // release last — an observer of the freed slot (test drain-polls) has
+    // also observed the job teardown.
     defer releaseStreamSlot(ctx);
     defer job.destroy();
-    streamLoop(ctx.io, ctx.alloc, &job.subscriber, stream) catch |err| {
+    streamLoop(ctx.io, ctx.alloc, job.sub, stream) catch |err| {
         // Most "errors" here are client disconnects mid-write (broken pipe).
         // Log at debug — the operator-visible event is the connection close,
         // not the inner write error.
         log.debug("sse_stream_loop_exit", .{ .err = @errorName(err) });
     };
-    job.subscriber.unsubscribe(job.channel());
 }
 
 /// Everything the detached stream thread owns once the request returns: the
-/// dedicated pub/sub connection and the channel name. Allocated on ctx.alloc,
-/// NOT the request arena — the arena dies when the handler returns, the
-/// thread does not. Single owner: created on the request thread, destroyed by
-/// the stream thread (or by startStreamThread when the spawn fails).
+/// hub subscription handle. Allocated on ctx.alloc, NOT the request arena —
+/// the arena dies when the handler returns, the thread does not. Single
+/// owner: created on the request thread, destroyed by the stream thread (or
+/// by startStreamThread when the spawn fails).
 const StreamJob = struct {
     ctx: *common.Context,
-    subscriber: redis_subscriber,
-    channel_buf: [CHANNEL_BUF_LEN]u8,
-    channel_len: usize,
+    sub: *subscription_hub.Subscription,
 
-    const CreateError = error{ OutOfMemory, ChannelTooLong, SubscriberConnectFailed, SubscribeFailed };
+    const CreateError = error{ OutOfMemory, ChannelTooLong, HubStopped };
 
     fn create(ctx: *common.Context, zombie_id: []const u8) CreateError!*StreamJob {
         const alloc = ctx.alloc;
+        var channel_buf: [CHANNEL_BUF_LEN]u8 = undefined;
+        const name = std.fmt.bufPrint(&channel_buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix }) catch
+            return error.ChannelTooLong;
         const job = alloc.create(StreamJob) catch return error.OutOfMemory;
         errdefer alloc.destroy(job);
-        job.ctx = ctx;
-        const name = std.fmt.bufPrint(&job.channel_buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix }) catch
-            return error.ChannelTooLong;
-        job.channel_len = name.len;
-        job.subscriber = redis_subscriber.connectFromConfig(ctx.io, alloc, ctx.queue.pool.cfg, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
-            log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
-            return error.SubscriberConnectFailed;
+        const sub = ctx.hub.subscribe(name) catch |err| {
+            log.warn("hub_subscribe_failed", .{ .channel = name, .err = @errorName(err) });
+            return err;
         };
-        errdefer job.subscriber.deinit();
-        job.subscriber.subscribe(job.channel()) catch |err| {
-            log.err("subscriber_subscribe_failed", .{ .channel = job.channel(), .err = @errorName(err) });
-            return error.SubscribeFailed;
-        };
+        job.* = .{ .ctx = ctx, .sub = sub };
         return job;
-    }
-
-    fn channel(self: *const StreamJob) []const u8 {
-        return self.channel_buf[0..self.channel_len];
     }
 
     fn destroy(self: *StreamJob) void {
         const alloc = self.ctx.alloc;
-        self.subscriber.deinit();
+        // unsubscribe consumes the handle: refcount drop, wire UNSUBSCRIBE
+        // on the channel's last viewer, subscription freed.
+        self.ctx.hub.unsubscribe(self.sub);
         alloc.destroy(self);
     }
 };
@@ -206,27 +192,24 @@ const StreamJob = struct {
 fn streamLoop(
     io: std.Io,
     alloc: std.mem.Allocator,
-    subscriber: *redis_subscriber,
+    sub: *subscription_hub.Subscription,
     stream: std.Io.net.Stream,
 ) !void {
     var seq: u64 = 0;
     var w = stream.writer(io, &.{});
     while (true) {
-        const before_ms = clock.nowMillis();
-        if (try subscriber.nextMessage()) |raw| {
-            var msg = raw;
-            defer msg.deinit(alloc);
-            const kind = extractKind(msg.payload) orelse "message";
-            try writeFrame(&w, seq, kind, msg.payload);
-            seq +%= 1;
-            continue;
-        }
-        // null = idle read timeout OR a closed/broken socket; the block time
-        // tells them apart. A heartbeat write to a vanished client fails and
-        // unwinds the loop, releasing the worker thread + Redis connection.
-        switch (classifyIdle(clock.nowMillis() - before_ms)) {
-            .close => return,
-            .heartbeat => try w.interface.writeAll(SSE_HEARTBEAT_FRAME),
+        switch (sub.pop(SSE_HEARTBEAT_INTERVAL_MS)) {
+            .message => |payload| {
+                defer alloc.free(payload);
+                const kind = extractKind(payload) orelse "message";
+                try writeFrame(&w, seq, kind, payload);
+                seq +%= 1;
+            },
+            // A heartbeat write to a vanished client fails and unwinds the
+            // loop, releasing the thread + subscription.
+            .timeout => try w.interface.writeAll(SSE_HEARTBEAT_FRAME),
+            // Hub shutdown drain: exit promptly so stop() never waits on us.
+            .closed => return,
         }
     }
 }
@@ -313,7 +296,7 @@ test "extractKind: returns null when field missing" {
 test "extractKind: ignores embedded kind inside a string value" {
     // If a chunk's text happens to contain the kind-needle literal, the
     // anchored prefix scan must not pick it up — the real kind comes
-    // first per publisher contract.
+    // first per the publisher's frame shape.
     const poisoned = "{\"kind\":\"chunk\",\"text\":\"\\\"kind\\\":\\\"fake\\\"\"}";
     try testing.expectEqualStrings("chunk", extractKind(poisoned).?);
 }
@@ -325,11 +308,4 @@ test "extractKind: returns null when kind is not the leading field" {
 test "extractKind: handles short payloads without panicking" {
     try testing.expect(extractKind("") == null);
     try testing.expect(extractKind("{\"k\"") == null);
-}
-
-test "classifyIdle: a near-instant null closes, a full idle window heartbeats" {
-    try testing.expectEqual(IdleAction.close, classifyIdle(0));
-    try testing.expectEqual(IdleAction.close, classifyIdle(SSE_TIMEOUT_MIN_ELAPSED_MS - 1));
-    try testing.expectEqual(IdleAction.heartbeat, classifyIdle(SSE_TIMEOUT_MIN_ELAPSED_MS));
-    try testing.expectEqual(IdleAction.heartbeat, classifyIdle(@as(i64, SSE_HEARTBEAT_INTERVAL_MS)));
 }

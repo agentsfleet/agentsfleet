@@ -52,6 +52,7 @@ test {
     _ = @import("session/session_store_redis_integration_test.zig");
     _ = @import("session/session_store_redis_ttl_integration_test.zig");
     _ = @import("events/bus.zig");
+    _ = @import("events/subscription_hub.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
     _ = @import("observability/otel_logs.zig");

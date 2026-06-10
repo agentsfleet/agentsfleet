@@ -22,6 +22,7 @@ const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
+const subscription_hub = @import("../events/subscription_hub.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const env_resolve = @import("../config/env_resolve.zig");
@@ -56,26 +57,6 @@ fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
-/// Minimal `.next()`-yielding iterator over the threaded argv. Zig 0.16
-/// removed `std.process.args()`; argv now arrives via `std.process.Init`.
-const ArgvIter = struct {
-    argv: []const [:0]const u8,
-    i: usize = 0,
-
-    pub fn next(self: *ArgvIter) ?[:0]const u8 {
-        if (self.i >= self.argv.len) return null;
-        defer self.i += 1;
-        return self.argv[self.i];
-    }
-};
-
-fn parseServeArgOverrides(argv: []const [:0]const u8) serve_args.ServeArgError!?u16 {
-    var it = ArgvIter{ .argv = argv };
-    _ = it.next(); // binary name
-    _ = it.next(); // subcommand
-    return serve_args.parseArgs(&it);
-}
-
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
     preflight.initOtelLogs(env_map, alloc);
     defer preflight.deinitOtelLogs();
@@ -83,7 +64,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer preflight.deinitOtelTraces();
     log.info("startup.serve_start", .{});
 
-    const serve_port_override = parseServeArgOverrides(argv) catch |err| {
+    const serve_port_override = serve_args.parseServeArgOverrides(argv) catch |err| {
         switch (err) {
             serve_args.ServeArgError.InvalidServeArgument => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "invalid_argument" }),
             serve_args.ServeArgError.MissingPortValue => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "missing_port_value" }),
@@ -191,6 +172,21 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         serve_cfg.audit_log_pepper,
     );
 
+    // The one shared pub/sub connection every SSE stream fans out from.
+    // Borrows the queue pool's resolved config; LIFO defers stop it (and
+    // drain its streams) before the queue client goes away.
+    var hub = subscription_hub.init(alloc, io);
+    defer hub.deinit();
+    hub.start(api_queue.pool.cfg) catch |err| {
+        log.err("startup.subscription_hub_failed", .{
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
+        std.process.exit(1);
+    };
+    defer hub.stop();
+    log.info("startup.subscription_hub_ok", .{});
+
     // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
     // middleware borrow these (Context owns them for the process lifetime)
     // instead of re-reading env per request. Null = unset → consumer fails closed.
@@ -218,6 +214,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .sse_in_flight_streams = std.atomic.Value(u32).init(0),
         .sse_max_streams = serve_cfg.sse_max_streams,
+        .hub = &hub,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
         .balance_policy = balance_policy.resolveFromEnv(env_map, alloc),

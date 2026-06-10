@@ -17,6 +17,8 @@ pub const incApiBackpressureRejections = mc.incApiBackpressureRejections;
 pub const setApiInFlightRequests = mc.setApiInFlightRequests;
 pub const incSseBackpressureRejections = mc.incSseBackpressureRejections;
 pub const setSseInFlightStreams = mc.setSseInFlightStreams;
+pub const incSseDroppedFrames = mc.incSseDroppedFrames;
+pub const incSseHubReconnects = mc.incSseHubReconnects;
 pub const observeAgentDurationSeconds = mc.observeAgentDurationSeconds;
 pub const incGateRepairExhausted = mc.incGateRepairExhausted;
 // M17_001 §1.3

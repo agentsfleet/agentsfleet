@@ -191,11 +191,11 @@ Replace `thread_pool.zig`'s per-Worker private rings + blind round-robin `flush(
 
 One boot-started hub (in `serve_background`, like the OTel exporters) owns the process's single pub/sub connection and reader thread. Mutex-protected `channel → subscribers + refcount` map: refcount 0→1 issues the wire SUBSCRIBE, 1→0 the UNSUBSCRIBE; everything between is map-only. The reader thread fans each `["message", channel, payload]` out by copy into each subscriber's **bounded** local queue — full queue drops oldest + counts (the §2 ring discipline); the reader never blocks on a slow consumer. `StreamJob` consumes a hub subscription instead of dialing its own connection (no Redis dial, no TLS handshake on the request path); the stream thread's loop becomes a timed wait on its local queue — timeout → heartbeat write, preserving RULE TIM. Connection loss: reader logs, redials with backoff, re-SUBSCRIBEs every channel with refcount > 0; streams heartbeat through the gap (messages in the gap are lost — same loss semantics as today's per-stream connection drop; clients backfill via the events cursor).
 
-- **Dimension 8.1** — N streams (mixed channels) share exactly ONE Redis connection; no per-stream dial → Test `test_hub_n_streams_one_connection`
-- **Dimension 8.2** — per-channel refcount: first subscriber SUBSCRIBEs, last UNSUBSCRIBEs, middle ones are wire-silent → Test `test_hub_refcount_subscribe_unsubscribe`
-- **Dimension 8.3** — slow consumer: drop-oldest + drop counter; sibling subscribers receive everything → Test `test_hub_slow_consumer_drops_counted`
-- **Dimension 8.4** — reader reconnects on connection loss and re-subscribes live channels → Test `test_hub_reconnect_resubscribes`
-- **Dimension 8.5** — `StreamJob` rides the hub; teardown ordering (job freed before slot release) and SSE heartbeat cadence preserved → existing SSE streaming + backpressure integration suites green
+- **Dimension 8.1** — N streams (mixed channels) share exactly ONE Redis connection; no per-stream dial → Test `test_hub_n_streams_one_connection` — ✅ DONE (`integration: hub holds one wire subscriber per channel for N viewers; fan-out reaches all` — `PUBSUB NUMSUB` == 1 with 3 local viewers, live Redis)
+- **Dimension 8.2** — per-channel refcount: first subscriber SUBSCRIBEs, last UNSUBSCRIBEs, middle ones are wire-silent → Test `test_hub_refcount_subscribe_unsubscribe` — ✅ DONE (cold-hub map test + the wire NUMSUB edges in the integration test above)
+- **Dimension 8.3** — slow consumer: drop-oldest + drop counter; sibling subscribers receive everything → Test `test_hub_slow_consumer_drops_counted` — ✅ DONE (`subscription: full ring drops oldest, counts it, keeps newest` + `zombie_sse_dropped_frames_total`)
+- **Dimension 8.4** — reader reconnects on connection loss and re-subscribes live channels → Test `test_hub_reconnect_resubscribes` — ✅ DONE (`integration: hub reconnects after its connection is killed and delivery resumes` — `CLIENT KILL TYPE pubsub`, live Redis)
+- **Dimension 8.5** — `StreamJob` rides the hub; teardown ordering (job freed before slot release) and SSE heartbeat cadence preserved → existing SSE streaming + backpressure integration suites green — ✅ DONE (`make test-integration` ✓ on the hub-backed path)
 
 ### §9 — route-class admission {ops, stream, api}
 

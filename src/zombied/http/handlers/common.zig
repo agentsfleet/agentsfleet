@@ -14,6 +14,7 @@ const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
 const runtime_loader = @import("../../config/runtime_loader.zig");
+const subscription_hub = @import("../../events/subscription_hub.zig");
 const authz = @import("common_authz.zig");
 /// Request-id sentinel for responses written before a request id exists
 /// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
@@ -59,6 +60,10 @@ pub const Context = struct {
     /// default.
     sse_in_flight_streams: std.atomic.Value(u32) = .{ .raw = 0 },
     sse_max_streams: u32 = runtime_loader.SSE_MAX_STREAMS_DEFAULT,
+    /// The process's shared Redis pub/sub fan-out — SSE streams subscribe
+    /// through it instead of dialing per-stream connections. Boot-owned
+    /// (serve.zig / TestHarness), started before the server listens.
+    hub: *subscription_hub,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,
