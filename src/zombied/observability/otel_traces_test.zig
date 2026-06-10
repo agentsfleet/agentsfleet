@@ -61,6 +61,79 @@ test "ring buffer drops when full" {
     try std.testing.expectEqual(@as(u64, 1), ring.dropped.load(.acquire));
 }
 
+// Encodes (thread, seq) into the span timing pair and name so a torn entry
+// (fields mixed from two writers) is detectable on pop.
+const ENCODE_BASE: u64 = 1_000_000;
+const NAME_FMT = "t{d}.s{d}";
+
+test "ring buffer concurrent pushes never tear, lose, or duplicate entries" {
+    const alloc = std.testing.allocator;
+    const ring = try alloc.create(Ring);
+    defer alloc.destroy(ring);
+    ring.* = .{};
+
+    const THREADS: usize = 4;
+    const PER_THREAD: usize = 200; // 800 total < capacity-1 → zero drops expected
+
+    const Pusher = struct {
+        fn run(r: *Ring, thread_idx: usize) void {
+            const ctx = trace.TraceContext.generate();
+            var seq: usize = 0;
+            while (seq < PER_THREAD) : (seq += 1) {
+                var name_buf: [32]u8 = undefined;
+                const name = std.fmt.bufPrint(&name_buf, NAME_FMT, .{ thread_idx, seq }) catch unreachable;
+                const encoded = @as(u64, thread_idx) * ENCODE_BASE + seq;
+                const entry = buildSpan(ctx, name, encoded, encoded + 1);
+                _ = r.push(entry);
+            }
+        }
+    };
+
+    var threads: [THREADS]std.Thread = undefined;
+    for (&threads, 0..) |*t, idx| t.* = try std.Thread.spawn(.{}, Pusher.run, .{ ring, idx });
+    for (&threads) |*t| t.join();
+
+    try std.testing.expectEqual(@as(u64, 0), ring.dropped.load(.acquire));
+
+    var seen = [_]bool{false} ** (THREADS * PER_THREAD);
+    var popped_count: usize = 0;
+    while (ring.pop()) |entry| {
+        popped_count += 1;
+        const thread_idx: usize = @intCast(entry.start_ns / ENCODE_BASE);
+        const seq: usize = @intCast(entry.start_ns % ENCODE_BASE);
+        // Cross-field consistency: a torn slot mixes (thread, seq) across fields.
+        try std.testing.expectEqual(entry.start_ns + 1, entry.end_ns);
+        var name_buf: [32]u8 = undefined;
+        const want_name = std.fmt.bufPrint(&name_buf, NAME_FMT, .{ thread_idx, seq }) catch unreachable;
+        try std.testing.expectEqualStrings(want_name, entry.name[0..entry.name_len]);
+        const key = thread_idx * PER_THREAD + seq;
+        try std.testing.expect(!seen[key]); // duplicate delivery
+        seen[key] = true;
+    }
+    try std.testing.expectEqual(THREADS * PER_THREAD, popped_count); // lost entry
+}
+
+test "pop returns null on a claimed-but-unready head slot, then delivers once published" {
+    const alloc = std.testing.allocator;
+    const ring = try alloc.create(Ring);
+    defer alloc.destroy(ring);
+    ring.* = .{};
+
+    // Simulate a producer that claimed slot 0 (head advanced) but has not yet
+    // published its write: head=1, ready[0]=0.
+    ring.head.store(1, .release);
+    try std.testing.expect(ring.pop() == null);
+
+    const ctx = trace.TraceContext.generate();
+    const entry = buildSpan(ctx, "late.publish", 7, 8);
+    ring.buffer[0] = entry;
+    ring.ready[0].store(1, .release);
+
+    const popped = ring.pop();
+    try std.testing.expect(popped != null);
+    try std.testing.expectEqual(@as(u64, 7), popped.?.start_ns);
+}
+
 test "enqueueSpan is no-op when exporter not installed" {
     const ctx = trace.TraceContext.generate();
     const entry = buildSpan(ctx, "noop", 0, 0);

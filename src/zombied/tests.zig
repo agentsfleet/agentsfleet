@@ -53,6 +53,7 @@ test {
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
     _ = @import("observability/otel_logs.zig");
+    _ = @import("observability/otel_traces.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/account_teardown.zig");

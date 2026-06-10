@@ -131,8 +131,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 Producers claim a slot via CAS on head, write, then release-store a per-slot ready flag; the flush thread skips unready slots. Mirror `metrics_workspace.zig`. Applies to both logs and traces rings; drop counter still counts overflow.
 
-- **Dimension 2.1** — N threads × M pushes: every flushed entry intact, none torn, drops counted exactly → Test `test_otel_ring_concurrent_push_integrity`
-- **Dimension 2.2** — flush during push storm never reads a half-written slot → Test `test_otel_ring_flush_skips_unready`
+- **Dimension 2.1** — N threads × M pushes: every flushed entry intact, none torn, drops counted exactly → Test `test_otel_ring_concurrent_push_integrity` — ✅ DONE
+- **Dimension 2.2** — flush during push storm never reads a half-written slot → Test `test_otel_ring_flush_skips_unready` — ✅ DONE
 
 ### §3 — JWKS rotation resilience
 
@@ -272,6 +272,7 @@ Per RULE NLR, files opened by this diff shed any other dead surface they carry (
 
 - **Consults** — (append Architecture/Legacy-Design/gate-flag consults + Indy decisions here.)
 - Jun 10, 2026 — §1 landed. Dimension 1.1's assertion is carried by the pre-existing test `"integration: event bus run thread exits when stopped while idle"` (parked consumer + stop → join), made race-free by this fix; Dimension 1.2 is the new no-sleep start/stop stress loop `"integration: stop never loses the wakeup under repeated start/stop"`. `stop()` now orders its `running` store under the bus mutex; all weak orderings in the file carry pairing comments. Discovery bonus: `events/bus.zig` was missing from `src/zombied/tests.zig`'s explicit import list, so its four pre-existing tests had **never executed** (same class as M90_003 §3's dead src/lib lane) — import added in the same diff per RULE TST; zombied suite grew 1516 → 1521, all passing.
+- Jun 10, 2026 — §2 landed. Both rings now CAS-claim the head slot and publish a per-slot ready flag (mirrors `metrics_workspace.zig`); pop treats an unready head-of-line slot as empty for the pass. Tests: 4-thread integrity (no torn/lost/duplicate entries, drops exact), wraparound flag recycle, claimed-but-unready delivery — duplicated across both rings since the code is duplicated. Second discovery gap: `observability/otel_traces.zig` was also missing from `tests.zig` — its ten pre-existing tests had never run; wired in this diff (RULE TST). NLR cleanup on touch: `postWithBasicAuth`'s dead no-op tail branch now returns `error.OtlpExportRejected` so the existing caller warn logs non-2xx rejections (module-header claim becomes true). **Surfaced, not bundled** (per the NLR perf/structure discipline): (a) the two rings are byte-identical and want a shared `Ring(comptime Entry, capacity)` module — structure follow-up for Indy's fold-in-or-file call; (b) the audit's boot-time config-string leak in both `uninstall`s is a cross-file ownership question — proposed home: M90_003 §4 (amend at its CHORE(open)).
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
