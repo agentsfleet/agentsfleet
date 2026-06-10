@@ -7,11 +7,13 @@ const {
   resetProviderActionMock,
   routerRefresh,
   createCredentialActionMock,
+  captureProductEventMock,
 } = vi.hoisted(() => ({
   setProviderSelfManagedActionMock: vi.fn(),
   resetProviderActionMock: vi.fn(),
   routerRefresh: vi.fn(),
   createCredentialActionMock: vi.fn(),
+  captureProductEventMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -24,6 +26,9 @@ vi.mock("@/app/(dashboard)/settings/models/actions", () => ({
 vi.mock("@/app/(dashboard)/credentials/actions", () => ({
   createCredentialAction: createCredentialActionMock,
 }));
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
+}));
 vi.mock("lucide-react", () => ({
   Loader2Icon: (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": "Loader2Icon" }),
@@ -35,6 +40,7 @@ import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model"
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
 import { RadioGroup } from "@usezombie/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
+import { EVENTS } from "@/lib/analytics/events";
 
 // ModeRadio renders a Radix RadioGroupItem internally; render it inside a
 // RadioGroup at the test boundary to mirror the production composition.
@@ -50,6 +56,7 @@ beforeEach(() => {
   resetProviderActionMock.mockReset();
   routerRefresh.mockReset();
   createCredentialActionMock.mockReset();
+  captureProductEventMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -252,7 +259,7 @@ describe("ProviderSelector", () => {
   it("submits self-managed PUT with the picked credential and refreshes the route", async () => {
     setProviderSelfManagedActionMock.mockResolvedValue({
       ok: true,
-      data: { mode: PROVIDER_MODE.self_managed },
+      data: { mode: PROVIDER_MODE.self_managed, provider: "anthropic", model: "claude-sonnet-4-6" },
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
 
@@ -265,6 +272,12 @@ describe("ProviderSelector", () => {
       model: undefined,
     });
     expect(routerRefresh).toHaveBeenCalled();
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.model_added, {
+      provider: "anthropic",
+      mode: PROVIDER_MODE.self_managed,
+      model: "claude-sonnet-4-6",
+    });
     await waitFor(() =>
       expect(screen.getByText(/Saved\. Run a test event/)).toBeTruthy(),
     );
@@ -285,6 +298,8 @@ describe("ProviderSelector", () => {
     fireEvent.click(screen.getByRole("radio", { name: /platform defaults/i }));
     fireEvent.click(screen.getByRole("button", { name: /use platform defaults/i }));
     await waitFor(() => expect(resetProviderActionMock).toHaveBeenCalledTimes(1));
+    // Reverting to platform defaults removes the BYOK setup — no add event.
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("surfaces API errors as an alert and does not refresh", async () => {
@@ -300,6 +315,7 @@ describe("ProviderSelector", () => {
       expect(screen.getByRole("alert").textContent).toContain("credential_data_malformed"),
     );
     expect(routerRefresh).not.toHaveBeenCalled();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("returns a 'Not authenticated' alert when the server action reports unauth", async () => {

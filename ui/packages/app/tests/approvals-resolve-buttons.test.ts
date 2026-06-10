@@ -6,12 +6,13 @@ const WORKSPACE_ID = "ws_resolve_001";
 const GATE_ID = "01999999-0000-7000-8000-000000000001";
 const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 
-const { approveActionMock, denyActionMock, routerPush, routerRefresh } =
+const { approveActionMock, denyActionMock, routerPush, routerRefresh, captureProductEventMock } =
   vi.hoisted(() => ({
     approveActionMock: vi.fn(),
     denyActionMock: vi.fn(),
     routerPush: vi.fn(),
     routerRefresh: vi.fn(),
+    captureProductEventMock: vi.fn(),
   }));
 
 vi.mock("next/navigation", () => ({
@@ -21,14 +22,20 @@ vi.mock("@/app/(dashboard)/approvals/actions", () => ({
   approveApprovalAction: approveActionMock,
   denyApprovalAction: denyActionMock,
 }));
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
+}));
 
 import ResolveButtons from "@/app/(dashboard)/approvals/[gateId]/ResolveButtons";
+import { APPROVAL_DECISION } from "@/lib/api/approvals";
+import { EVENTS } from "@/lib/analytics/events";
 
 beforeEach(() => {
   approveActionMock.mockReset();
   denyActionMock.mockReset();
   routerPush.mockReset();
   routerRefresh.mockReset();
+  captureProductEventMock.mockReset();
 });
 
 afterEach(() => cleanup());
@@ -71,6 +78,14 @@ describe("ResolveButtons — approve happy path", () => {
       expect(routerPush).toHaveBeenCalledWith("/approvals");
       expect(routerRefresh).toHaveBeenCalled();
     });
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
+      gate_id: GATE_ID,
+      decision: APPROVAL_DECISION.APPROVE,
+      has_reason: true,
+    });
+    // The free-text reason must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("looks good");
   });
 
   it("omits reason when textarea is empty", async () => {
@@ -93,6 +108,11 @@ describe("ResolveButtons — approve happy path", () => {
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await waitFor(() => {
       expect(approveActionMock).toHaveBeenCalledWith(WORKSPACE_ID, GATE_ID, undefined);
+    });
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
+      gate_id: GATE_ID,
+      decision: APPROVAL_DECISION.APPROVE,
+      has_reason: false,
     });
   });
 });
@@ -119,6 +139,11 @@ describe("ResolveButtons — deny happy path", () => {
     await waitFor(() => {
       expect(denyActionMock).toHaveBeenCalled();
       expect(routerPush).toHaveBeenCalledWith("/approvals");
+    });
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.approval_resolved, {
+      gate_id: GATE_ID,
+      decision: APPROVAL_DECISION.DENY,
+      has_reason: false,
     });
   });
 });
@@ -148,6 +173,8 @@ describe("ResolveButtons — 409 already_resolved", () => {
       expect(routerRefresh).toHaveBeenCalled();
       expect(routerPush).not.toHaveBeenCalled();
     });
+    // This click did not resolve the gate — no event.
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 });
 
@@ -161,6 +188,7 @@ describe("ResolveButtons — error paths", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
     });
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("shows alert when approve action returns a network-level error", async () => {

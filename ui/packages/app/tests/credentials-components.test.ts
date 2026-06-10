@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { EVENTS } from "../lib/analytics/events";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -16,6 +17,11 @@ const deleteCredentialActionMock = vi.fn();
 vi.mock("@/app/(dashboard)/credentials/actions", () => ({
   createCredentialAction: createCredentialActionMock,
   deleteCredentialAction: deleteCredentialActionMock,
+}));
+
+const captureProductEventMock = vi.fn();
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
 }));
 
 // Use the real ConfirmDialog (for errorMessage rendering) and lucide stubs;
@@ -198,6 +204,10 @@ describe("AddCredentialForm component", () => {
       ),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.credential_added, { credential_name: "fly" });
+    // The secret payload must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("api_token");
   });
 
   it("API error renders apiError below the form", async () => {
@@ -217,6 +227,7 @@ describe("AddCredentialForm component", () => {
     await waitFor(() =>
       expect(screen.getByText(/data too large/i)).toBeTruthy(),
     );
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("API error with empty string falls back to default message (covers `||` short-circuit)", async () => {
