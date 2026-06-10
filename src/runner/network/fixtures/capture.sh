@@ -78,6 +78,15 @@ commit 'add rule inet uz_egress egress_fwd oifname "uzveth0" ct state establishe
 run 10_rule_masquerade add rule inet uz_egress egress_nat ip saddr 10.69.0.0/30 oifname != '"uzveth0"' masquerade
 commit 'add rule inet uz_egress egress_nat ip saddr 10.69.0.0/30 oifname != "uzveth0" masquerade'
 
+# 11. Teardown: delete the whole table (drops chains/sets/rules in one shot).
+# (The veth delete is rtnetlink — no nft dump exists for it.)
+nft flush ruleset
+replay_prefix
+nft --debug=netlink delete table inet uz_egress > "$OUT/11_del_table.netlink.txt" 2>&1
+nft flush ruleset
+replay_prefix
+nft --debug=mnl delete table inet uz_egress 2>&1 | strip_ansi > "$OUT/11_del_table.mnl.txt"
+
 # Final state: human-readable ruleset with handles, for cross-reference.
 nft flush ruleset
 replay_prefix

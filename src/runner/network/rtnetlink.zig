@@ -13,6 +13,7 @@ const native_endian = @import("builtin").cpu.arch.endian();
 
 // Message types (linux/rtnetlink.h).
 pub const RTM_NEWLINK: u16 = 16;
+pub const RTM_DELLINK: u16 = 17;
 pub const RTM_NEWADDR: u16 = 20;
 pub const RTM_NEWROUTE: u16 = 24;
 
@@ -120,6 +121,14 @@ pub fn newAddr(mb: *MessageBuilder, index: u32, addr: [4]u8, prefixlen: u8, seq:
     mb.attr(IFA_ADDRESS, &addr);
 }
 
+/// Delete link `ifname` (either veth end tears down the pair; teardown path).
+pub fn delLink(mb: *MessageBuilder, ifname: []const u8, seq: u32) void {
+    mb.start(RTM_DELLINK, REQ_ACK, seq);
+    const base = ifinfomsg(AF_UNSPEC, 0, 0, 0);
+    mb.familyHeader(&base);
+    mb.attrStr(IFLA_IFNAME, ifname);
+}
+
 /// Add the default route via IPv4 gateway `gw` out interface `oif`.
 pub fn newDefaultRoute(mb: *MessageBuilder, oif: u32, gw: [4]u8, seq: u32) void {
     mb.start(RTM_NEWROUTE, REQ_NEW, seq);
@@ -173,6 +182,16 @@ test "newVethPair is RTM_NEWLINK and carries the veth kind + both names" {
     try std.testing.expect(std.mem.indexOf(u8, msg, "veth") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "uzveth0") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "uzveth0p") != null);
+}
+
+test "delLink frames RTM_DELLINK with the interface name" {
+    if (native_endian != .little) return error.SkipZigTest;
+    var buf: [64]u8 = undefined;
+    var mb = MessageBuilder.init(&buf);
+    delLink(&mb, "uzveth0", 1);
+    const msg = try mb.finish();
+    try std.testing.expectEqual(RTM_DELLINK, std.mem.readInt(u16, msg[4..6], .little));
+    try std.testing.expect(std.mem.indexOf(u8, msg, "uzveth0") != null);
 }
 
 test "setLinkUp sets IFF_UP in both flags and change" {

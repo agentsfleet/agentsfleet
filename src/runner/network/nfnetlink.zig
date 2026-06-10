@@ -23,6 +23,7 @@ pub fn nftType(msg: u16) u16 {
 
 // NFT_MSG_* (linux/netfilter/nf_tables.h).
 const NFT_MSG_NEWTABLE: u16 = 0;
+const NFT_MSG_DELTABLE: u16 = 2;
 const NFT_MSG_NEWCHAIN: u16 = 3;
 const NFT_MSG_NEWSET: u16 = 9;
 const NFT_MSG_NEWSETELEM: u16 = 12;
@@ -104,14 +105,30 @@ pub fn newTable(mb: *MessageBuilder, name: []const u8, seq: u32) void {
     mb.attrStr(NFTA_TABLE_NAME, name);
 }
 
-/// Create a base `filter` chain on `hooknum`/`priority` with base `policy`.
+/// Delete `inet` table `name` — one message tears down its chains, sets and
+/// rules (the teardown path; oracle: fixtures/captured/11_del_table.mnl.txt).
+pub fn delTable(mb: *MessageBuilder, name: []const u8, seq: u32) void {
+    mb.start(nftType(NFT_MSG_DELTABLE), MessageBuilder.NLM_F_REQUEST, seq);
+    const g = nfgenmsg(NFPROTO_INET, 0);
+    mb.familyHeader(&g);
+    mb.attrStr(NFTA_TABLE_NAME, name);
+}
+
+pub const CHAIN_TYPE_FILTER = "filter";
+pub const CHAIN_TYPE_NAT = "nat";
+
+/// Create a base chain of `chain_type` on `hooknum`/`priority`. Attribute
+/// order (NAME, POLICY?, TYPE, HOOK) and the policy-less NAT shape follow the
+/// oracle (fixtures/captured/02+03_chain_*.mnl.txt) — nat chains carry no
+/// POLICY attr; pass null.
 pub fn newChain(
     mb: *MessageBuilder,
     table: []const u8,
     name: []const u8,
+    chain_type: []const u8,
     hooknum: u32,
     priority: i32,
-    policy: u32,
+    policy: ?u32,
     seq: u32,
 ) void {
     mb.start(nftType(NFT_MSG_NEWCHAIN), REQ_CREATE, seq);
@@ -119,12 +136,12 @@ pub fn newChain(
     mb.familyHeader(&g);
     mb.attrStr(NFTA_CHAIN_TABLE, table);
     mb.attrStr(NFTA_CHAIN_NAME, name);
+    if (policy) |p| attrU32Be(mb, NFTA_CHAIN_POLICY, p);
+    mb.attrStr(NFTA_CHAIN_TYPE, chain_type);
     const hook = mb.nestBegin(NFTA_CHAIN_HOOK);
     attrU32Be(mb, NFTA_HOOK_HOOKNUM, hooknum);
     attrU32Be(mb, NFTA_HOOK_PRIORITY, @bitCast(priority));
     mb.nestEnd(hook);
-    mb.attrStr(NFTA_CHAIN_TYPE, "filter");
-    attrU32Be(mb, NFTA_CHAIN_POLICY, policy);
 }
 
 /// Create a named IPv4-key set (`set_id` ties later elements to this set within
@@ -172,6 +189,18 @@ test "newTable frames the nftables subsystem type + inet family + name" {
     try std.testing.expect(std.mem.indexOf(u8, msg, "uz_egress") != null);
 }
 
+test "delTable frames NFT_MSG_DELTABLE + inet family + name (oracle 11)" {
+    if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
+    var buf: [64]u8 = undefined;
+    var mb = MessageBuilder.init(&buf);
+    delTable(&mb, "uz_egress", 1);
+    const msg = try mb.finish();
+    try std.testing.expectEqual(@as(u16, 0x0A02), std.mem.readInt(u16, msg[4..6], .little)); // (10<<8)|2
+    try std.testing.expectEqual(NFPROTO_INET, msg[16]);
+    // Full name TLV {len 14, NFTA_TABLE_NAME} byte-matches the mnl capture.
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 14, 0, 1, 0 } ++ "uz_egress".* ++ [_]u8{0}) != null);
+}
+
 test "newSet encodes an ipv4_addr key type and key_len of 4" {
     if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
     var buf: [128]u8 = undefined;
@@ -197,14 +226,31 @@ test "addSetElems carries each IPv4 address as an element key" {
     try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 10, 69, 0, 1 }) != null);
 }
 
-test "newChain carries a big-endian forward hooknum and drop policy" {
+test "newChain (filter) carries policy, type, then the hook nest (oracle 02)" {
     if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
     var buf: [256]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
-    newChain(&mb, "uz_egress", "egress_fwd", NF_INET_FORWARD, 0, NF_DROP, 1);
+    newChain(&mb, "uz_egress", "egress_fwd", CHAIN_TYPE_FILTER, NF_INET_FORWARD, 0, NF_DROP, 1);
     const msg = try mb.finish();
     try std.testing.expectEqual(@as(u16, 0x0A03), std.mem.readInt(u16, msg[4..6], .little)); // (10<<8)|3
-    // hooknum=2 big-endian = 00 00 00 02 present (inside NFTA_CHAIN_HOOK).
+    // Oracle order: POLICY TLV {8,0,5,0, drop=0 be} precedes TYPE "filter".
+    const policy_at = std.mem.indexOf(u8, msg, &[_]u8{ 8, 0, 5, 0, 0, 0, 0, 0 }) orelse return error.TestExpectedEqual;
+    const type_at = std.mem.indexOf(u8, msg, "filter") orelse return error.TestExpectedEqual;
+    try std.testing.expect(policy_at < type_at);
+    // hooknum=2 big-endian inside NFTA_CHAIN_HOOK.
     try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 0, 0, 0, 2 }) != null);
-    try std.testing.expect(std.mem.indexOf(u8, msg, "filter") != null);
+}
+
+test "newChain (nat) has no policy attr and a srcnat-priority hook (oracle 03)" {
+    if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
+    var buf: [256]u8 = undefined;
+    var mb = MessageBuilder.init(&buf);
+    newChain(&mb, "uz_egress", "egress_nat", CHAIN_TYPE_NAT, NF_INET_POST_ROUTING, 100, null, 1);
+    const msg = try mb.finish();
+    try std.testing.expect(std.mem.indexOf(u8, msg, "nat") != null);
+    // No NFTA_CHAIN_POLICY TLV header anywhere in the payload.
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 8, 0, 5, 0 }) == null);
+    // hooknum=4, priority=100 (0x64) big-endian inside the hook nest.
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 0, 0, 0, 4 }) != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 0, 0, 0, 0x64 }) != null);
 }

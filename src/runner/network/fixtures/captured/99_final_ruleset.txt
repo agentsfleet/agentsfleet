@@ -1,4 +1,4 @@
-table inet uz_egress { # handle 12
+table inet uz_egress { # handle 14
 	set allow0 { # handle 3
 		type ipv4_addr
 		elements = { 1.2.3.4, 10.20.30.40 }
