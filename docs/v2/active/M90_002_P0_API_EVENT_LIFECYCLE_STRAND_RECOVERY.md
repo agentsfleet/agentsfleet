@@ -93,8 +93,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/zombied/fleet/service.zig` | EDIT | gate refusals → terminal write + XACK; secret-missing refuses lease |
 | `src/zombied/fleet/event_rows.zig` | EDIT | blocked terminal write (status + failure_label, guarded UPDATE) |
 | `src/zombied/fleet/secrets_resolve.zig` | EDIT | all-or-nothing failure surfaces a typed refusal (no silent null map) |
-| `src/zombied/fleet/assign.zig` | EDIT | stable consumer identity threaded into reads |
-| `src/zombied/queue/redis_client.zig` | EDIT | consumer id minted once per runner identity, reused |
+| `src/zombied/fleet/assign.zig` | EDIT | stable consumer identity threaded into reads; own-PEL (`"0"`) read before `">"` |
+| `src/zombied/fleet/reclaim_sweeper.zig` | CREATE | background reclaim sweep loop (mirrors `liveness_sweeper`; needs `pg.Pool` for zombie enumeration — wrong layer for `queue/`) |
+| `src/zombied/queue/redis_client.zig` | EDIT | consumer id stable per `zombied` instance (host-derived, timestamp-free), reused across probes |
 | `src/zombied/queue/redis_zombie.zig` | EDIT | sweep caller wiring; delete dead blocking-read variant (RULE NLR) |
 | `src/zombied/queue/constants.zig` | EDIT | sweep cadence/min-idle consts; delete dead block-ms const |
 | `src/zombied/cmd/serve_background.zig` | EDIT | reclaim sweep joins the background worker set |
@@ -127,7 +128,7 @@ Every lease-path refusal that is not retryable-by-waiting writes the documented 
 
 ### §2 — Stranded-delivery reclaim under stable consumer identity
 
-Consumer id is minted once per runner identity and reused across probes (no per-probe minting → consumer-group growth bounded by fleet size, PEL entries reclaimable). The existing `xautoclaimZombie` gains its production caller: a background sweep (mirrors `liveness_sweeper`) reclaims entries idle past a min-idle bound that comptime-relates to the lease window (reclaim must never race a live lease), re-enters them into the lease flow, and logs each reclaim. Dead blocking-read variant + its constant are deleted in the same diff (RULE NLR).
+**Amended at PLAN (see Discovery):** Redis streams have no requeue — an entry XAUTOCLAIMed by a sweep lands in the claiming consumer's Pending Entries List (PEL) and stays invisible to `XREADGROUP ">"`, so a background sweep alone cannot re-enter events into the lease flow. Per `docs/architecture/data_flow.md` (`zombied` is the Redis consumer; runners never touch Redis), the consumer identity is stable per `zombied` instance (host-derived, timestamp-free — no per-probe minting → consumer-group growth bounded, PEL entries recoverable). The lease read checks the stable consumer's own PEL (`"0"`) before `">"` — this is what makes M90_001's "next lease poll re-evaluates the recorded gate ref" true. The existing `xautoclaimZombie` gains its production caller: a background sweep (new `fleet/reclaim_sweeper.zig`, mirrors `liveness_sweeper`, joins `serve_background.Threads`) claims entries idle past a min-idle bound that comptime-relates to the lease window (reclaim must never race a live lease; the per-zombie `affinity.claim` is the first belt — the PEL read runs only after winning a claim with no active lease) from dead consumer names into the live consumer, re-entering them into the lease flow, logging each reclaim. Dead blocking-read variant + its constant are deleted in the same diff (RULE NLR).
 
 - **Dimension 2.1** — repeated probes use one consumer id; group size stays constant → Test `test_consumer_identity_stable_across_probes`
 - **Dimension 2.2** — delivery in a dead consumer's PEL beyond min-idle → reclaimed, re-leased, processed → Test `test_reclaim_sweep_recovers_stranded_delivery`
@@ -246,7 +247,7 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append Architecture/Legacy-Design/gate-flag consults + Indy decisions here.)
+- **Consults** — Architecture consult at PLAN (Jun 11, 2026, agent): §2's literal "background sweep re-enters events into the lease flow" is unimplementable — Redis streams have no requeue; XAUTOCLAIM moves an entry into the claiming consumer's PEL, invisible to `XREADGROUP ">"`. Reconciled against `data_flow.md` ("`zombied` is the consumer"; dead-RUNNER reclaim stays lease-layer via `reclaim.zig`, untouched): stable per-instance consumer id + own-PEL-first read + sweep consolidating dead-consumer strays. "Per runner identity" wording dropped — runners are not Redis consumers, and per-runner ids would orphan entries on runner retirement. ECL split: transient failures (pool acquire, Redis blip, gate `.unavailable`) and `.auto_killed` (zombie paused, event retained for resume) stay no-work, never terminal. §3 ordering: `EXISTS` pre-check → XADD → `SET NX` claim; claim failure after durable enqueue still 202 (at-least-once). Surfaced to Indy in the PLAN message; auto-mode proceed.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
