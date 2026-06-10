@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 002
 **Date:** Jun 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — accepted deliveries can silently strand forever on the golden path (gate refusals, crashed runners, paused zombies, failed enqueues after dedup-claim); the architecture docs promise the missing half
 **Categories:** API
 **Batch:** B2 — after M90_001 (consumes its async-gate outcome variants in `fleet/service.zig`)
-**Branch:** — (set at CHORE(open))
+**Branch:** feat/m90-002-event-lifecycle (stacked on feat/m90-001-hardening at f18fa582 — rebase onto main after M90_001 merges)
+**Test Baseline:** unit=1901 integration=168
 **Depends on:** M90_001 (gate outcome seam: pending/denied/expired variants this workstream persists as terminal rows)
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 10, 2026) — from the Jun 10 full audit of `src/lib`, `src/zombied`, `src/runner`
 
