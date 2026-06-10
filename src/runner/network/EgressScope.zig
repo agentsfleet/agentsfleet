@@ -25,10 +25,16 @@ pub const Error = error{
 } || Socket.Error || MessageBuilder.Error;
 
 // Single source for the nftables object names (tests + capture.sh mirror these).
-pub const TABLE = "uz_egress";
+// The TABLE is PER-WORKER (`uz_egress<idx>`): each worker owns its own table so
+// one worker's teardown (`destroy` → `delTable`) drops only its own chains/
+// rules, never another concurrent worker's (RUNNER_WORKER_COUNT > 1). Chains are
+// scoped within the per-worker table, so their names can stay constant.
+pub const TABLE_PREFIX = "uz_egress";
 pub const CHAIN_FWD = "egress_fwd";
 pub const CHAIN_NAT = "egress_nat";
 pub const SET_PREFIX = "allow";
+/// `<prefix><worker_index>` format for the per-worker set + table names.
+const PREFIXED_NAME_FMT = "{s}{d}";
 const PRIO_FILTER: i32 = 0;
 const PRIO_SRCNAT: i32 = 100;
 const SET_ID: u32 = 1; // ties NEWSETELEM to NEWSET within one transaction
@@ -41,8 +47,15 @@ const SIOCGIFINDEX: u32 = 0x8933;
 /// `allow<worker_index>` into `buf`. Plan caps worker_index at one octet, so
 /// IFNAMSIZ can never overflow — overflowing is a programmer bug.
 pub fn setName(buf: []u8, worker_index: u32) []const u8 {
-    return std.fmt.bufPrint(buf, "{s}{d}", .{ SET_PREFIX, worker_index }) catch
+    return std.fmt.bufPrint(buf, PREFIXED_NAME_FMT, .{ SET_PREFIX, worker_index }) catch
         @panic("egress set name exceeds IFNAMSIZ");
+}
+
+/// `uz_egress<worker_index>` into `buf` — the per-worker nftables table name.
+/// Per-worker so a worker's `destroy` deletes only its own table.
+pub fn tableName(buf: []u8, worker_index: u32) []const u8 {
+    return std.fmt.bufPrint(buf, PREFIXED_NAME_FMT, .{ TABLE_PREFIX, worker_index }) catch
+        @panic("egress table name exceeds buffer");
 }
 
 /// Host-side setup: veth pair + host address/up + the nftables ruleset.
@@ -102,7 +115,7 @@ pub fn attachChild(self: *const EgressScope, pid: std.posix.pid_t) Error!void {
 pub fn destroy(self: *EgressScope) void {
     if (builtin.os.tag != .linux or self.destroyed) return;
     self.destroyed = true;
-    deleteTable() catch |err|
+    deleteTable(self.plan.worker_index) catch |err|
         log.debug("nft_teardown_skipped", .{ .err = @errorName(err) });
     deleteVeth(self.plan.host_ifname);
     log.info("egress_destroyed", .{ .host_if = self.plan.host_ifname });
@@ -125,30 +138,32 @@ fn installRuleset(plan: *const Plan, addrs: []const [4]u8) Error!void {
 
     var name_buf: [IFNAMSIZ]u8 = undefined;
     const set = setName(&name_buf, plan.worker_index);
+    var table_buf: [IFNAMSIZ]u8 = undefined;
+    const table = tableName(&table_buf, plan.worker_index);
     var batch: [BATCH_BUF_LEN]u8 = undefined;
     var bw = BatchWriter{ .buf = &batch };
 
     nfnetlink.batchBegin(bw.next(), bw.seq);
     try bw.commit();
-    nfnetlink.newTable(bw.next(), TABLE, bw.seq);
+    nfnetlink.newTable(bw.next(), table, bw.seq);
     try bw.commit();
-    nfnetlink.newChain(bw.next(), TABLE, CHAIN_FWD, nfnetlink.CHAIN_TYPE_FILTER, nfnetlink.NF_INET_FORWARD, PRIO_FILTER, nfnetlink.NF_DROP, bw.seq);
+    nfnetlink.newChain(bw.next(), table, CHAIN_FWD, nfnetlink.CHAIN_TYPE_FILTER, nfnetlink.NF_INET_FORWARD, PRIO_FILTER, nfnetlink.NF_DROP, bw.seq);
     try bw.commit();
-    nfnetlink.newChain(bw.next(), TABLE, CHAIN_NAT, nfnetlink.CHAIN_TYPE_NAT, nfnetlink.NF_INET_POST_ROUTING, PRIO_SRCNAT, null, bw.seq);
+    nfnetlink.newChain(bw.next(), table, CHAIN_NAT, nfnetlink.CHAIN_TYPE_NAT, nfnetlink.NF_INET_POST_ROUTING, PRIO_SRCNAT, null, bw.seq);
     try bw.commit();
-    nfnetlink.newSet(bw.next(), TABLE, set, SET_ID, bw.seq);
+    nfnetlink.newSet(bw.next(), table, set, SET_ID, bw.seq);
     try bw.commit();
-    nfnetlink.addSetElems(bw.next(), TABLE, set, addrs, bw.seq);
+    nfnetlink.addSetElems(bw.next(), table, set, addrs, bw.seq);
     try bw.commit();
-    nfnetlink_rule.newRuleDnsDrop(bw.next(), TABLE, CHAIN_FWD, plan.host_ifname, .udp, bw.seq);
+    nfnetlink_rule.newRuleDnsDrop(bw.next(), table, CHAIN_FWD, plan.host_ifname, .udp, bw.seq);
     try bw.commit();
-    nfnetlink_rule.newRuleDnsDrop(bw.next(), TABLE, CHAIN_FWD, plan.host_ifname, .tcp, bw.seq);
+    nfnetlink_rule.newRuleDnsDrop(bw.next(), table, CHAIN_FWD, plan.host_ifname, .tcp, bw.seq);
     try bw.commit();
-    nfnetlink_rule.newRuleAllowSet(bw.next(), TABLE, CHAIN_FWD, plan.host_ifname, set, SET_ID, bw.seq);
+    nfnetlink_rule.newRuleAllowSet(bw.next(), table, CHAIN_FWD, plan.host_ifname, set, SET_ID, bw.seq);
     try bw.commit();
-    nfnetlink_rule.newRuleCtReturn(bw.next(), TABLE, CHAIN_FWD, plan.host_ifname, bw.seq);
+    nfnetlink_rule.newRuleCtReturn(bw.next(), table, CHAIN_FWD, plan.host_ifname, bw.seq);
     try bw.commit();
-    nfnetlink_rule.newRuleMasquerade(bw.next(), TABLE, CHAIN_NAT, ip4Bytes(plan.host_addr), plan.prefix_len, plan.host_ifname, bw.seq);
+    nfnetlink_rule.newRuleMasquerade(bw.next(), table, CHAIN_NAT, ip4Bytes(plan.host_addr), plan.prefix_len, plan.host_ifname, bw.seq);
     try bw.commit();
     nfnetlink.batchEnd(bw.next(), bw.seq);
     try bw.commit();
@@ -194,16 +209,18 @@ fn ifIndex(name: []const u8) Error!u32 {
     return @intCast(req.ivalue);
 }
 
-fn deleteTable() Error!void {
+fn deleteTable(worker_index: u32) Error!void {
     var nf = try Socket.open(.netfilter);
     defer nf.close();
+    var table_buf: [IFNAMSIZ]u8 = undefined;
+    const table = tableName(&table_buf, worker_index);
     var batch: [MSG_BUF_LEN]u8 = undefined;
     var blen: usize = 0;
     var mb = MessageBuilder.init(batch[blen..]);
     nfnetlink.batchBegin(&mb, 0);
     blen += (try mb.finish()).len;
     mb = MessageBuilder.init(batch[blen..]);
-    nfnetlink.delTable(&mb, TABLE, 1);
+    nfnetlink.delTable(&mb, table, 1);
     blen += (try mb.finish()).len;
     mb = MessageBuilder.init(batch[blen..]);
     nfnetlink.batchEnd(&mb, 2);

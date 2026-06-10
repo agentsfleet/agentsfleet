@@ -80,8 +80,15 @@ pub fn hostFromUrl(url: []const u8) []const u8 {
     const after_scheme = if (std.mem.indexOf(u8, url, "://")) |i| url[i + 3 ..] else url;
     const authority_end = std.mem.indexOfAny(u8, after_scheme, "/?#") orelse after_scheme.len;
     const authority = after_scheme[0..authority_end];
-    // Strip optional userinfo@ and :port — a hostname carries neither.
+    // Strip optional userinfo@ — a hostname carries none.
     const after_userinfo = if (std.mem.lastIndexOfScalar(u8, authority, '@')) |i| authority[i + 1 ..] else authority;
+    // IPv6 literal: `[::1]:443` → return the bracketed host as-is (the `:`s are
+    // address bytes, not a port). Splitting on the first `:` would mangle it.
+    if (after_userinfo.len > 0 and after_userinfo[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, after_userinfo, ']') orelse return after_userinfo;
+        return after_userinfo[0 .. close + 1];
+    }
+    // Otherwise strip `:port` (a hostname/IPv4 carries no other colon).
     const host_end = std.mem.indexOfScalar(u8, after_userinfo, ':') orelse after_userinfo.len;
     return after_userinfo[0..host_end];
 }
@@ -92,4 +99,8 @@ test "hostFromUrl extracts the bare host across URL shapes" {
     try std.testing.expectEqualStrings("api.openai.com", hostFromUrl("https://api.openai.com:443/v1"));
     try std.testing.expectEqualStrings("host", hostFromUrl("host")); // schemeless
     try std.testing.expectEqualStrings("", hostFromUrl("")); // empty → no host
+    // IPv6 literal: the bracketed host is returned intact, port stripped (the
+    // inner colons are address bytes, not a port). greptile P2 edge case.
+    try std.testing.expectEqualStrings("[::1]", hostFromUrl("https://[::1]:443/v1"));
+    try std.testing.expectEqualStrings("[2001:db8::1]", hostFromUrl("https://[2001:db8::1]/v1"));
 }
