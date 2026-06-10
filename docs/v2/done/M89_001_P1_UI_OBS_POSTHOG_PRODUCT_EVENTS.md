@@ -4,7 +4,7 @@
 **Milestone:** M89
 **Workstream:** 001
 **Date:** Jun 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** **P1 — launch-relevant.** PostHog is wired app-wide for autocapture + pageviews, but the dashboard's core product actions emit **zero first-class (client-side) events** — so at launch the **activation funnel** (zombie created → run → key minted → model added) would be measured off fragile autocapture Document-Object-Model (DOM) clicks. This closes that gap with single-sourced, typed **client-side** events. *(Server-side / conversion truth — billing, signup completion — is **already** captured by the zombied backend via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, …); extending it is a separate backend workstream, NOT a `posthog-node` path in the web app.)*
 **Categories:** UI, OBS
 **Batch:** B1 — standalone; no backend (Zig) change, no schema. Pure UI/analytics instrumentation.
@@ -230,14 +230,14 @@ Contract: the product behaves identically; events are additive side-effects. No 
 
 ## Acceptance Criteria
 
-- [ ] `events.ts` catalog (as-const) is the single source of event names; no bare event-name literals at call sites — verify: Dim 1.1 test + grep
-- [ ] No event prop carries a token/API key/raw credential/secret — verify: Dim 1.2 + `EventProps` types
-- [ ] Each launch dashboard action emits its first-class **client** event on success, not on failure — verify: §2 tests
-- [ ] `reset()` fires on logout — verify: Dim 4.1
-- [ ] Website dead funnel exports deleted (`trackSignupCompleted` + `trackLeadCapture*`); every remaining `track*` export live — verify: Dim 5.1 + 5.2
-- [ ] `make test-unit-app` + `make dry-app` green · aggregate coverage gate met
-- [ ] Event taxonomy documented (naming convention + catalog index)
-- [ ] No PostHog key → capture is a no-op (env-gated, unchanged)
+- [x] `events.ts` catalog (as-const) is the single source of event names; no bare event-name literals at call sites — verify: Dim 1.1 test + grep
+- [x] No event prop carries a token/API key/raw credential/secret — verify: Dim 1.2 + `EventProps` types
+- [x] Each launch dashboard action emits its first-class **client** event on success, not on failure — verify: §2 tests
+- [x] `reset()` fires on logout — verify: Dim 4.1
+- [x] Website dead funnel exports deleted (`trackSignupCompleted` + `trackLeadCapture*`); every remaining `track*` export live — verify: Dim 5.1 + 5.2
+- [x] `make test-unit-app` + `make dry-app` green · aggregate coverage gate met
+- [x] Event taxonomy documented (naming convention + catalog index)
+- [x] No PostHog key → capture is a no-op (env-gated, unchanged)
 
 ---
 
@@ -273,7 +273,10 @@ make test-unit-app 2>&1 | tail -5 && make dry-app 2>&1 | tail -5
 - **PLAN verification + greenlight (Indy, Jun 10, 2026):** all provenance anchors re-confirmed exact. Four code-reality amendments ratified with the greenlight: (1) **`zombie_run` dropped** — no "Run now" UI exists (trigger cards are read-only; the funnel's run leg is zombied's `ZombieTriggered`); (2) **`checkout_started`/`checkout_completed` dropped** — no checkout UI exists ("Purchase Credits" is a disabled contact-support placeholder; billing conversion stays a `posthog-zig` follow-up); (3) **`runner_registered` → `runner_token_minted`** — the dialog mints a one-time `zrn_` token; the runner goes live only when the host calls in (honest-liveness naming, consistent with M84_001); (4) **§5 inverted to deletion** — the website funnel is redirect-based (completion happens on the app origin under Clerk; localStorage-only persistence does not cross subdomains), so the dead exports are structurally unwireable; conversion truth = `SignupBootstrapped`. **Indy greenlight (verbatim):** _"yes greenlgith"_ — full lifecycle authorized (commit/push/PR).
 - **Launch relevance + client-only scope (Indy, Jun 10, 2026):** flagged as the **one launch-relevant** gap from the audit. Scoped to **client-side activation-funnel events only** — `posthog-node` / server-side capture is **dropped**: server-truth conversions (billing, signup completion) already flow from zombied via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`), so a Next.js server path would duplicate the backend. **Indy decision (verbatim):** _"client-only for activation funnel only. drop the posthog-node now"_ — server-side coverage extends via `posthog-zig` later, a separate backend workstream.
 - **Deferrals** — session recording is **out of scope** (the cookie-less GDPR posture may be deliberate; a separate decision). Any other "deferred to follow-up" needs an Indy-acked verbatim quote here.
-- **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
+- **Skill chain outcomes (Jun 10, 2026):**
+  - `/write-unit-test` — ledger 24/24 resolved (24 tested, 0 won't-test); negative-path share ~55% of the new tests; mutation pass skipped (Change-set mode, no-new-deps constraint). All lanes green — see Verification Evidence.
+  - `/review` — 4 specialist reviewers + Claude adversarial pass + Codex. Every finding FIXED in `fba98368`: marker-burn race → deferred reset/identify flush on posthog-js chunk load; exception-contained `captureProductEvent` + reveal-before-capture ordering in the one-time reveal dialogs; runtime `EVENT_PROP_KEYS` payload allowlist (§1.3 hardening); quota-safe localStorage marker ops; `has_reason` trim unification; stray `next-env.d.ts` revert. KEPT-by-decision: `credential_name` free text (Indy-ratified taxonomy — names allowed, never `data_json`); per-file test mocks (house convention). Residual risks documented in `docs/architecture/product_analytics.md` as review dispositions (localStorage-cleared-but-cookies-kept identity without marker; multi-tab sign-out cross-fire; Clerk multi-session switch — not enabled): documented, not coded around. Noted intentional gap: `Step1Credential`'s inline credential-create emits no `credential_added` — outside the ratified six-component call-site list; `model_added` covers that wizard funnel leg.
+  - `/review-pr` — runs after `gh pr create`; outcome lands in the PR comments + Session Notes.
 
 ## Skill-Driven Review Chain (mandatory)
 
@@ -285,12 +288,18 @@ make test-unit-app 2>&1 | tail -5 && make dry-app 2>&1 | tail -5
 
 ## Verification Evidence
 
+> Re-run fresh at CHORE(close), Jun 10, 2026: 12:57 PM (worktree root). The pre-push hook re-runs the full monorepo suite at push.
+
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| App unit | `make test-unit-app` | {paste snippet} | |
-| Dry lane | `make dry-app` | {paste snippet} | |
-| Coverage | `make test-coverage-all` | {paste snippet} | |
-| No bare literals | E1 grep | {paste snippet} | |
+| App unit | `make test-unit-app` | `✓ [app] Unit tests passed` — Duration 39.60s | ✅ |
+| Dry lane | `make dry-app` | `32 passed, 2 skipped (56.7s)` · `✓ [app] Dry lane passed` | ✅ |
+| Coverage | `make test-coverage-all` | `Statements/Branches/Functions/Lines: 100%` · `✓ All package coverage gates passed` (all four packages) | ✅ |
+| No bare literals | E1 grep | zero hits outside `lib/analytics/events.ts` (grep exit 1) | ✅ |
+| Client-only | E2 grep | `PASS (client-only)` — no `posthog-node` in `ui/packages/app/package.json` | ✅ |
+| Reset wired | E3 grep | `posthogClient.reset()` at `posthog.ts:205` inside `resetAnalyticsIdentity()`; bootstrap call `AnalyticsBootstrap.tsx:25`; deferred flush `posthog.ts:151` | ✅ |
+| Dead exports gone | E4 grep | `PASS (deleted)` — zero `trackSignupCompleted`/`trackLeadCapture*` hits | ✅ |
+| Version sync | `make check-version` | `✓ all versions match 0.37.0` | ✅ |
 
 ---
 
