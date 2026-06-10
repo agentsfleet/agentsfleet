@@ -35,6 +35,7 @@ pub fn printValidationError(err: ValidationError) void {
         ValidationError.InvalidApiHttpWorkers => logging.fatalStderr("fatal: invalid API_HTTP_WORKERS value\n", .{}),
         ValidationError.InvalidApiMaxClients => logging.fatalStderr("fatal: invalid API_MAX_CLIENTS value\n", .{}),
         ValidationError.InvalidApiMaxInFlightRequests => logging.fatalStderr("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
+        ValidationError.InvalidSseMaxStreams => logging.fatalStderr("fatal: invalid SSE_MAX_STREAMS value\n", .{}),
         ValidationError.InvalidReadyMaxQueueDepth => logging.fatalStderr("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
         ValidationError.InvalidReadyMaxQueueAgeMs => logging.fatalStderr("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
     }

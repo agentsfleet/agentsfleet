@@ -104,6 +104,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/zombied/http/handlers/common.zig` | EDIT | backpressure fields become enforced state |
 | `src/zombied/http/handlers/zombies/events_stream.zig` | EDIT | SSE stream cap → 503 at cap |
 | `src/zombied/config/runtime_loader.zig` | EDIT | cap/timeout knobs parsed + validated at boot |
+| `src/zombied/config/runtime_types.zig` + `runtime_validate.zig` | EDIT | `InvalidSseMaxStreams` error + printer row |
 | `src/zombied/observability/metrics.zig` (+ counters file) | EDIT | wire `incApiBackpressureRejections` to the shed branch |
 | `src/zombied/errors/error_registry.zig` + `error_entries.zig` | EDIT | registry codes for 429 shed + SSE cap |
 | sibling `*_test.zig` per touched module | CREATE/EDIT | per Test Specification |
@@ -160,10 +161,10 @@ Every control-plane call constructs with a required deadline (compiler-enforced 
 
 ### §6 — HTTP backpressure made real
 
-Dispatch increments/decrements the in-flight counter; above `api_max_in_flight_requests` respond 429 with `Retry-After` and increment `incApiBackpressureRejections` (today flatlined). SSE streams get a dedicated lower cap (named const) → 503 at cap, so dashboard tabs cannot starve `/healthz`. Boot validation: SSE cap < worker thread count, else clamp + warn.
+Dispatch increments/decrements the in-flight counter; above `api_max_in_flight_requests` respond 429 with `Retry-After` and increment `incApiBackpressureRejections` (today flatlined). SSE streams get a dedicated cap (`SSE_MAX_STREAMS`, default 64, 0 rejected at boot) → 503 at cap, and run on **dedicated detached threads** (`startEventStream`) so a stream can never occupy — or poison — the handler pool (amended mid-EXECUTE: the original "cap < thread count, clamp + warn" design presumed `startEventStreamSync`; a vendor thread-pool defect invalidated parking outright — Discovery, Jun 10).
 
-- **Dimension 6.1** — requests above the ceiling get 429 + `Retry-After`; metric increments; gauge tracks live count → Test `test_dispatch_backpressure_429`
-- **Dimension 6.2** — SSE connections at cap get 503; non-SSE routes still served; boot clamps a misconfigured cap → Test `test_sse_cap_503_healthz_alive`
+- **Dimension 6.1** — requests above the ceiling get 429 + `Retry-After`; metric increments; gauge tracks live count → Test `test_dispatch_backpressure_429` — ✅ DONE
+- **Dimension 6.2** — SSE connections at cap get 503; non-SSE routes still served while streams are parked; cap knob validated at boot (0 rejected) → Test `test_sse_cap_503_healthz_alive` — ✅ DONE
 
 ---
 
@@ -177,6 +178,8 @@ NEW HTTP responses (error envelope per REST guidelines, codes registered):
   503 {"error":{"code":"UZ-…","message":…}}                            (SSE stream cap)
 Gate check outcome (internal): tagged union { proceed, pending, denied, expired } — RULE TGU.
 control_plane_client call signatures: deadline parameter required at every call site.
+NEW env knob: SSE_MAX_STREAMS (u32, default 64, 0 rejected) — concurrent SSE
+  streams per instance; streams run on dedicated detached threads.
 ```
 
 ---
@@ -203,7 +206,7 @@ control_plane_client call signatures: deadline parameter required at every call 
 2. `grep -rn "waitForDecision" src/` returns zero — the blocking gate wait is structurally gone (Eval E8).
 3. OTel ring slots are readable only after their ready flag's release-store — RULE CAS shape + concurrency test.
 4. Bus predicate mutations happen under the bus mutex — concurrency test + ordering comments; zlint-clean.
-5. SSE cap < HTTP worker threads — boot-time validation clamps and warns (runtime check, logged).
+5. Concurrent SSE streams ≤ `sse_max_streams` (env knob, default 64, 0 rejected at boot) — and every stream runs on a dedicated detached thread (`startEventStream`), never on a handler-pool thread, so pool poisoning is structurally impossible (vendor pool round-robins private queues with no stealing — Discovery).
 6. JWKS mutex is never held across a network fetch — single-flight test with injected slow fetcher proves hot-path latency independent of fetch latency.
 
 ---
@@ -234,13 +237,13 @@ Regression: existing SSE heartbeat, lease/renewal, and gate-resolution integrati
 
 ## Acceptance Criteria
 
-- [ ] `make lint` clean · `make test` passes
-- [ ] `make test-integration` passes (HTTP + Redis surfaces touched)
-- [ ] `make memleak` clean (threads/allocator wiring touched)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` + linux test graphs per façade
-- [ ] `gitleaks detect` clean · no production file over 350 lines
-- [ ] `grep -rn "waitForDecision" src/` → 0 — verify: Eval E8
-- [ ] 429/503 codes present in registry with hints — verify: `make check-openapi` if response shapes touch OpenAPI
+- [x] `make lint-all` clean · `make test-unit-all` passes (all lanes)
+- [x] `make test-integration` passes (HTTP + Redis surfaces touched)
+- [x] `make memleak` clean (threads/allocator wiring touched)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` + linux test graphs per façade
+- [x] `gitleaks detect` clean · no production file over 350 lines
+- [x] `grep -rn "waitForDecision" src/` → 0 — verify: Eval E8
+- [x] 429/503 codes present in registry with hints — `make check-openapi` green (existing ErrorBody shape, no YAML churn)
 
 ## Eval Commands (post-implementation)
 
@@ -277,6 +280,9 @@ Per RULE NLR, files opened by this diff shed any other dead surface they carry (
 - Jun 10, 2026 — **Pre-existing suite flake — diagnosis corrected:** the "expected .worker_started / expected 5, found 1" stderr lines are noise from *passing* negative tests (`expectError` catches the assert, the message still prints) — red herrings. The real failure: `zig build test` intermittently reports `failed command` while the binary itself reports `1216 passed; 0 failed` and **exits 0 when run standalone** — the failure exists only under the build-runner's `--listen=-` result protocol, i.e. something in the suite writes to stdout and intermittently corrupts the protocol stream. Reproduced on the unmodified base commit (`ebe6b4f6`, main + specs only) — pre-existing on main, not this branch. Follow-up candidate: find the stdout writer (CLI command tests / harness prints) and route it to stderr; until then `make test` can flake repo-wide.
 - Jun 10, 2026 — §4 landed. The blocking `waitForDecision` poll loop is deleted; gate state machine: first encounter requests approval + records a `zombie:gate:byevent:` ref (`action_id|deadline_ms`, TTL ≥ deadline + grace) and answers `pending` → lease returns no-work; every later poll evaluates the ref (`approval_gate_async.zig`): approved → proceeds, denied → blocked, deadline passed → resolves `timed_out` via the existing single-winner `resolve()` (sweeper-compatible attribution). Redis blips stay `pending` — a transient read failure can never deny an approved gate. `GateResult` deleted with its pin test (only the wait consumed it); gate `timeout_ms` parse clamps at new `GATE_TIMEOUT_MS_MAX` (24h) + warn. Live-Redis tests gate on `REDIS_URL` (skip otherwise); ref parsing is covered pure. Terminal `gate_blocked` rows for denied/expired remain M90_002 scope, consuming this seam.
 - Jun 10, 2026 — §5 landed. The client is persistent per owner (keep-alive pool; one TCP handshake across verbs — pinned by a two-heartbeats-one-accept test) and every verb takes a REQUIRED `deadline_ms` (compile-enforced). Design discovery: SO_RCVTIMEO is unusable — the threaded Io's recv path panics on EAGAIN ("programmer bug caused syscall error") — so the bound is a per-client watchdog (`daemon/call_deadline.zig`) that `shutdown()`s the in-flight pooled socket at deadline (the repo's accept-wake pattern); residual unbounded window: name-resolution/TCP-connect inside fetch. A second design bug was caught by the upgraded guard test: `Client.connect` checks the connection out into the pool's used list — the pre-fix arming would have leaked one connection per call; fixed with connect→pin→release. Deadlines are env-configurable (`RUNNER_CP_*_DEADLINE_MS`, parse+clamp per the worker-count template; renew clamped into the `renew + tick < window` relation, comptime-asserted on the defaults; per Indy: only deadlines with distinct rationale get names — default/report/activity/renew). Activity frames batch per flush window (16 frames / 64 KiB / 1s, tick-driven staleness flush via TickFanout, final flush before report). FLL splits: `daemon/forwarders.zig` (both forwarders) + `daemon/call_deadline.zig`; orphaned `activity(frames)` wrapper deleted (NDC). **Harness note for Indy:** the fd-statelessness tripwire in `control_plane_client_test.zig` fired on the new fields, as designed — 🎯 flagged: persistent pool fields + watchdog · 🔧 fix: guard upgraded to a live FD_CLOEXEC pin (stdlib threaded Io opens sockets SOCK_CLOEXEC; bwrap closes unpassed fds besides) + field allowlist with review notes · 🏆 gain: the property that actually protects the forked child is now asserted on a real pooled connection · ⚠️ if reverted: per-call handshakes return and no call bound exists.
+- Jun 10, 2026 — §6 landed. Dispatch claims an in-flight slot before any routing (paired defer releases it); above the ceiling the request sheds an allocation-light 429. Per `docs/REST_API_DESIGN_GUIDELINES.md` §4 the 429 carries the full header set — `Retry-After: 1` plus `X-RateLimit-Limit`/`-Remaining`/`-Reset` with instance-ceiling semantics (dynamic values on the request arena; httpz borrows header slices) — and the body is the canonical problem+json envelope via `common.errorResponse` (the spec's Interfaces sketch showed the older `{"error":…}` shape; Prior-Art's `common.errorResponse` instruction wins, rules-over-spec). New registry codes `UZ-API-001` (429) / `UZ-API-002` (503) with paired `MSG_*` consts (RULE EMS). SSE streams claim a dedicated slot before any backend work (bearer authn already ran in middleware; shedding precedes the two authorize queries so a tab-storm can't hammer the pool) — cap is the named const `SSE_MAX_STREAMS_DEFAULT = 16` (half the prod 32-thread pool), boot-clamped to `threads − 1` with a `sse_cap_clamped` warn (RULE TIM relation documented at the const). `API_HTTP_THREADS=1` (the local default) clamps to 0 — SSE structurally disabled there, which is the M88 incident invariant, not a bug; the warn names the fix. 6.2 got dedicated metrics (`zombie_sse_in_flight_streams` gauge + `zombie_sse_backpressure_rejections_total`) rather than reusing the api counter: SSE-tab storms and API backpressure want different operator knobs, and the gauge is the exact per-node SSE-density evidence M88's deferral gate asks for. **Dormant-guard consult, resolved:** with prod config (`API_HTTP_WORKERS=2 × API_HTTP_THREADS=32` = 64 concurrent dispatch; dev 1×32 = 32) the 429 guard is *dormant* — httpz bounds concurrent dispatch at workers×threads, which never exceeds the 256 default ceiling; the guard only fires when the knob is set below that product. Wiring is correct and tested (tests override the ceiling). Options put to Indy: (A) lower the prod default below the pool, (B) keep the default and document the relation as an incident lever. > Indy (2026-06-10): "B" — context: ceiling default stays 256; relation + incident-lever semantics documented in `deploy/fly/zombied-{prod,dev}/fly.toml` comment blocks in this branch; tuning a live shed ceiling deferred until real traffic data exists.
+- Jun 10, 2026 — §6 discovery bonus, third dark test lane this milestone (same class as §1 bus.zig / §2 otel_traces.zig): `config/runtime.zig` was missing from `src/zombied/tests.zig`, so its four-file test fan-out (`runtime_loader_test`, `runtime_env_parse_test`, `runtime_validate_test`, `runtime_pepper_loader_test`) had **never compiled** — 12 stale one-arg `ServeConfig.load` calls plus `std.posix.setenv` (removed in 0.16) survived two migrations unnoticed. Wired per RULE TST and repaired: tests now build hermetic env maps via `common.env.fromPairs` (the seam built for exactly this — no process-env mutation, no cross-test pollution); tests of the M11_006-deleted `api_keys` env auth were removed and replaced with an `OidcRequired` assertion the current loader actually has; clamp coverage added (32→16 pass, 17→16 boundary, 16→15 clamp, 8→7, defaults→0). Zombied suite grew 1253 standalone-green. NLR cleanup on touch: `server.zig`'s `max_body_size = 2 * DEFAULT_MAX_CLIENTS * DEFAULT_MAX_CLIENTS` (a units pun that happened to equal 2 MiB) now references `common.MAX_BODY_SIZE`, deleting the "must match" drift hazard its comment admitted. UFS extraction: the operator token/JWKS/workspace fixtures the new backpressure suite shares with the SSE streaming suite moved to `sse_test_fixtures.zig` (webhook_test_fixtures precedent) instead of duplicating the literals.
+- Jun 10, 2026 — **§6.2 mid-EXECUTE pivot: production pool-poisoning defect found via the new integration test; SSE moved to dedicated stream threads.** The first-ever live run of `test_sse_cap_503_healthz_alive` wedged: after one parked stream, roughly every other request to the harness server was accepted but never served (and never timed out). Traced with throwaway instrumentation in the vendored worker loop (reverted; `vendor/` ships untouched): httpz's `ThreadPool.flush` assigns each request batch to ONE pool worker by blind round-robin; each pool worker has a private queue and **no work-stealing** (a vestigial `peer` field is wired with an `i + i` typo — stealing was never finished). Our `startEventStreamSync` usage parked the pool thread for the stream's lifetime, so the parked worker's queue black-holed its round-robin share of all later requests. **Platform-independent (queues sit above kqueue/epoll) and live in prod today**: at `API_HTTP_THREADS=32`, each open dashboard tail poisons ~1/32 of its httpz-worker's request batches for as long as the tab is open. No prior test ever issued a request *while* a stream was parked — the spec's `/healthz`-alive assertion was the first observer. Bonus defect the pivot also fixes: `server.stop()` joins pool threads, so a parked stream hung clean shutdown. Fix: switch to httpz's intended primitive `startEventStream` (headers + blocking mode + disown + **dedicated detached thread** per stream) — no vendor patch. Ownership shape: `StreamJob` (subscriber + channel) allocated on `ctx.alloc` (NOT the request arena, which dies at handler return — the old sync code's `hx.alloc` use would have been a use-after-free under the new design and was a latent smell anyway), created on the request thread, destroyed by the stream thread; slot release is the thread's last defer so an observer of a freed slot has also observed teardown (test drain-polls rely on this). Consult: options 1 (keep the now-vestigial boot clamp) vs 2 (drop the clamp, amend the spec) put to Indy with diagrams. > Indy (2026-06-10): "Option 2" — and on the cap value: "that means just 16 users? that is pretty low… we must with more number of connection or do an adverse review to see the optimal count" — resolved as: default raised 16 → **64** with budget math at the const (~0.5 MiB + 1 Redis conn + 2 fds per stream ≈ 32 MiB total on the 4 GB box), promoted to an **env knob `SSE_MAX_STREAMS`** (0 rejected, `InvalidSseMaxStreams`) so capacity moves without a rebuild, and the empirical optimum (Redis fan-out CPU) deferred to the M88-gated load test, fed by the new `zombie_sse_in_flight_streams` gauge. Invariant 5 + §6.2 amended accordingly; fly.toml comment blocks rewritten to the dedicated-thread truth. **Vendor follow-up surfaced, not bundled:** the pool's missing work-stealing (and the `i + i` peer typo) is an upstream httpz issue worth filing/patching independently — any future long-running handler would re-trip it; Indy's call on filing upstream vs vendor-patching in a follow-up workstream.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
@@ -292,13 +298,15 @@ Per RULE NLR, files opened by this diff shed any other dead surface they carry (
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | — | |
-| Integration tests | `make test-integration` | — | |
-| Memleak | `make memleak` | — | |
-| Lint | `make lint` | — | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | — | |
-| Gitleaks | `gitleaks detect` | — | |
-| Dead code sweep | `grep -rn waitForDecision src/` | — | |
+| Unit tests | `make test-unit-all` (the `make test` name in older docs is stale) | all lanes ✓ — zombied 1253 pass / 0 fail (324 skip), runner 268 (6 skip), lib 28, website 883 + 149 + 403, coverage + bundle gates ✓ | ✅ |
+| Integration tests | `make test-integration` | ✓ passed (live Postgres + Redis); suite binary re-run standalone → exit 0, incl. all four SSE tests on the dedicated-thread design + the 429 dispatch test. Build-runner `--listen` stderr flake observed mid-run (pre-existing, Discovery Jun 10) | ✅ |
+| Memleak | `make memleak` | ✓ gate passed — 1253/0 under the leaks pass; detached stream threads drain before teardown (fixture gauge-poll); SIP "not debuggable" notice expected per façade | ✅ |
+| Lint | `make lint-all` | ✓ all linters + quality gates (zig fmt, ZLint, pg-drain, line-limit, openapi, schema gate, gh-actions, playbooks) | ✅ |
+| Cross-compile | both targets × `zig build` + `build_runner.zig` graphs; linux test graphs | all clean; test graphs end at `unable to execute binaries from the target` (the documented pass signal) | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found (2563 commits) | ✅ |
+| Dead code sweep | `grep -rn "waitForDecision\|startEventStreamSync" src/` | 0 matches (incl. stale sweeper comment cleaned per RULE ORP) | ✅ |
+| Harness gates | `make harness-verify` (staged) | ALL GATES GREEN (UFS, DESIGN TOKEN, SPEC TEMPLATE, ERROR REGISTRY, LOGGING, LIFECYCLE, CROSS-TIER RATES, MS-ID + UI) | ✅ |
+| Test depth | `make _lint_zig_test_depth` | zombied_test_cases=1886, integration_cases=164 (no CHORE(open) baseline header in this spec — predates the convention; suite grew +37 from the resurrected config lane alone) | ✅ |
 
 ## Out of Scope
 

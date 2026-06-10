@@ -13,8 +13,11 @@ const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
+const runtime_loader = @import("../../config/runtime_loader.zig");
 const authz = @import("common_authz.zig");
-const UNKNOWN_REQUEST_ID = "req_unknown";
+/// Request-id sentinel for responses written before a request id exists
+/// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
+pub const UNKNOWN_REQUEST_ID = "req_unknown";
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -49,6 +52,13 @@ pub const Context = struct {
     api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
+    /// Live SSE stream count vs its ceiling (SSE_MAX_STREAMS env knob, parsed
+    /// in runtime_loader). Streams run on dedicated detached threads, so the
+    /// cap bounds threads + Redis connections — not handler-pool occupancy.
+    /// Defaults so test/fixture Contexts that omit them get the production
+    /// default.
+    sse_in_flight_streams: std.atomic.Value(u32) = .{ .raw = 0 },
+    sse_max_streams: u32 = runtime_loader.SSE_MAX_STREAMS_DEFAULT,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,

@@ -17,6 +17,11 @@ primary_region = "iad"
 # surfaces pool-saturation before prod does (the 512mb box absorbs it — thread
 # stacks are virtual/lazily committed). API_HTTP_WORKERS kept at 1 so there is
 # a single shared handler pool (the pool is per-worker; 2 workers = 2 pools).
+# Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only when
+# set BELOW WORKERS x THREADS (32 here) — dormant by default, an incident
+# lever (full rationale in the prod fly.toml block). SSE_MAX_STREAMS (default
+# 64) caps concurrent event streams per instance with 503; streams run on
+# dedicated detached threads and never occupy the handler pool.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "1"

@@ -92,7 +92,9 @@ pub const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 pub const ERR_INVALID_CIPHERTEXT = "UZ-AUTH-019";
 pub const ERR_INVALID_NONCE = "UZ-AUTH-020";
 pub const ERR_PLATFORM_ADMIN_REQUIRED = "UZ-AUTH-021";
-// API
+// API (serving-plane backpressure)
+pub const ERR_API_BACKPRESSURE = "UZ-API-001";
+pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
 // WORKSPACE
 pub const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
 pub const ERR_WORKSPACE_PAUSED = "UZ-WORKSPACE-002";
@@ -248,6 +250,9 @@ pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
 pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
 pub const MSG_CREDENTIAL_DATA_TOO_LARGE = "credential data exceeds 4KB when stringified";
+// Serving-plane backpressure messages
+pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
+pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";
 // Approval messages
 pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";

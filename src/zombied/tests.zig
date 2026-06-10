@@ -16,6 +16,7 @@ test {
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
+    _ = @import("config/runtime.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
@@ -124,6 +125,7 @@ test {
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
+    _ = @import("http/handlers/zombies/backpressure_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)

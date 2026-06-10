@@ -2,13 +2,19 @@
 //! Events tail of the Redis pub/sub channel `zombie:{id}:activity`.
 //!
 //! Connection lifecycle:
-//!   1. Authorize (Bearer middleware + path-workspace ownership).
+//!   1. Claim a stream slot (cap → 503) and authorize (Bearer middleware +
+//!      path-workspace ownership).
 //!   2. Issue `SUBSCRIBE zombie:{id}:activity` on a dedicated Redis
 //!      connection — pub/sub blocks the conn, so we can NOT share the
 //!      request-handler queue client.
-//!   3. Hand the TCP stream to the handler via `startEventStreamSync`.
+//!   3. Hand the TCP stream to a DEDICATED detached thread via
+//!      `startEventStream` — never the pool-parking sync variant: httpz's
+//!      handler pool round-robins private per-thread queues with no
+//!      work-stealing, so one pool thread parked on a stream black-holes its
+//!      queue's share of every later request.
 //!   4. Loop: read pub/sub message → write one SSE frame.
-//!   5. On client disconnect (write error) or any read error, close.
+//!   5. On client disconnect (write error) or any read error, the thread
+//!      frees its job and releases the slot.
 //!
 //! Auth (this slice):
 //!   Bearer token via the `bearer()` middleware (CLI / programmatic
@@ -32,6 +38,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
+const metrics = @import("../../../observability/metrics.zig");
 const redis_subscriber = @import("../../../queue/redis_subscriber.zig");
 
 const log = logging.scoped(.http_zombie_events_stream);
@@ -43,10 +50,12 @@ const channel_suffix = ":activity";
 
 /// Idle wake-up cadence for the SSE subscriber. Each tick with no pub/sub
 /// traffic sends a heartbeat comment so a vanished client is detected by the
-/// failing write — without it the worker parks on the Redis read forever,
-/// holding an httpz worker + a Redis connection until a publish that may never
-/// come (dead client + idle zombie = a wedged worker, eventually pool-starving).
+/// failing write — without it the stream thread parks on the Redis read
+/// forever, holding its thread + a Redis connection until a publish that may
+/// never come (dead client + idle zombie = a leaked stream slot).
 const SSE_HEARTBEAT_INTERVAL_MS: u32 = 15_000;
+/// Channel name scratch carried inside StreamJob: prefix + UUID + suffix.
+const CHANNEL_BUF_LEN: usize = 128;
 /// A `nextMessage` null returning in under half the heartbeat window is a
 /// closed/RST socket, not an elapsed read timeout → exit instead of busy-
 /// looping heartbeats against a dead Redis.
@@ -80,41 +89,119 @@ pub fn innerEventsStream(
         return;
     }
 
+    // Claim a stream slot before any backend work — shedding must stay cheap
+    // under a tab-storm. Bearer authn already ran in the middleware chain.
+    // safe because: pure admission counter — no memory is published through
+    // it; the paired release runs in the defer below, or on the detached
+    // stream thread once ownership hands off.
+    const live = hx.ctx.sse_in_flight_streams.fetchAdd(1, .monotonic) + 1;
+    var handed_off = false;
+    defer if (!handed_off) releaseStreamSlot(hx.ctx);
+    metrics.setSseInFlightStreams(live);
+    if (live > hx.ctx.sse_max_streams) {
+        metrics.incSseBackpressureRejections();
+        log.warn("stream_cap_rejected", .{
+            .error_code = ec.ERR_SSE_STREAM_CAP,
+            .live = live,
+            .max = hx.ctx.sse_max_streams,
+        });
+        hx.fail(ec.ERR_SSE_STREAM_CAP, ec.MSG_SSE_STREAM_CAP);
+        return;
+    }
+
     if (!authorize(hx, workspace_id, zombie_id)) return;
+    handed_off = startStreamThread(hx, zombie_id);
+}
 
-    var subscriber = redis_subscriber.connectFromConfig(hx.ctx.io, hx.alloc, hx.ctx.queue.pool.cfg, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
-        log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
+/// Paired with the claim in innerEventsStream. Runs on the request thread
+/// for rejected/failed streams, on the detached stream thread otherwise.
+fn releaseStreamSlot(ctx: *common.Context) void {
+    // safe because: same admission counter as the claim; the gauge store
+    // tolerates last-writer staleness between concurrent streams.
+    const after = ctx.sse_in_flight_streams.fetchSub(1, .monotonic) - 1;
+    metrics.setSseInFlightStreams(after);
+}
+
+/// Returns true when stream ownership (job + slot) transferred to the
+/// detached thread; false when a response was written on the request path.
+fn startStreamThread(hx: Hx, zombie_id: []const u8) bool {
+    const job = StreamJob.create(hx.ctx, zombie_id) catch |err| {
+        switch (err) {
+            error.ChannelTooLong => common.internalDbError(hx.res, hx.req_id),
+            else => common.internalDbUnavailable(hx.res, hx.req_id),
+        }
+        return false;
     };
-    defer subscriber.deinit();
-
-    var channel_buf: [128]u8 = undefined;
-    const channel = std.fmt.bufPrint(&channel_buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix }) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-
-    subscriber.subscribe(channel) catch |err| {
-        log.err("subscriber_subscribe_failed", .{ .channel = channel, .err = @errorName(err) });
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    };
-
-    const stream = hx.res.startEventStreamSync() catch |err| {
+    // startEventStream writes the SSE headers, flips the socket to blocking
+    // mode, disowns the response, and runs streamThreadMain on a detached
+    // thread — the handler-pool thread returns immediately (see the module
+    // header for why a stream must never park a pool thread).
+    hx.res.startEventStream(job, streamThreadMain) catch |err| {
         log.warn("sse_start_failed", .{ .err = @errorName(err) });
-        return;
+        job.destroy();
+        return false;
     };
+    return true;
+}
 
-    streamLoop(hx.ctx.io, hx.alloc, &subscriber, stream) catch |err| {
+fn streamThreadMain(job: *StreamJob, stream: std.Io.net.Stream) void {
+    const ctx = job.ctx; // borrowed: boot-owned, outlives every stream thread
+    // LIFO defers: destroy runs first, the slot release last — an observer of
+    // the freed slot (test drain-polls) has also observed the job teardown.
+    defer releaseStreamSlot(ctx);
+    defer job.destroy();
+    streamLoop(ctx.io, ctx.alloc, &job.subscriber, stream) catch |err| {
         // Most "errors" here are client disconnects mid-write (broken pipe).
         // Log at debug — the operator-visible event is the connection close,
         // not the inner write error.
         log.debug("sse_stream_loop_exit", .{ .err = @errorName(err) });
     };
-
-    subscriber.unsubscribe(channel);
+    job.subscriber.unsubscribe(job.channel());
 }
+
+/// Everything the detached stream thread owns once the request returns: the
+/// dedicated pub/sub connection and the channel name. Allocated on ctx.alloc,
+/// NOT the request arena — the arena dies when the handler returns, the
+/// thread does not. Single owner: created on the request thread, destroyed by
+/// the stream thread (or by startStreamThread when the spawn fails).
+const StreamJob = struct {
+    ctx: *common.Context,
+    subscriber: redis_subscriber,
+    channel_buf: [CHANNEL_BUF_LEN]u8,
+    channel_len: usize,
+
+    const CreateError = error{ OutOfMemory, ChannelTooLong, SubscriberConnectFailed, SubscribeFailed };
+
+    fn create(ctx: *common.Context, zombie_id: []const u8) CreateError!*StreamJob {
+        const alloc = ctx.alloc;
+        const job = alloc.create(StreamJob) catch return error.OutOfMemory;
+        errdefer alloc.destroy(job);
+        job.ctx = ctx;
+        const name = std.fmt.bufPrint(&job.channel_buf, "{s}{s}{s}", .{ channel_prefix, zombie_id, channel_suffix }) catch
+            return error.ChannelTooLong;
+        job.channel_len = name.len;
+        job.subscriber = redis_subscriber.connectFromConfig(ctx.io, alloc, ctx.queue.pool.cfg, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
+            log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
+            return error.SubscriberConnectFailed;
+        };
+        errdefer job.subscriber.deinit();
+        job.subscriber.subscribe(job.channel()) catch |err| {
+            log.err("subscriber_subscribe_failed", .{ .channel = job.channel(), .err = @errorName(err) });
+            return error.SubscribeFailed;
+        };
+        return job;
+    }
+
+    fn channel(self: *const StreamJob) []const u8 {
+        return self.channel_buf[0..self.channel_len];
+    }
+
+    fn destroy(self: *StreamJob) void {
+        const alloc = self.ctx.alloc;
+        self.subscriber.deinit();
+        alloc.destroy(self);
+    }
+};
 
 fn streamLoop(
     io: std.Io,

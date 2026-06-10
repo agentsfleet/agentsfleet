@@ -12,11 +12,26 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const auth_adapter = @import("handlers/auth/adapter.zig");
 const route_table = @import("route_table.zig");
 const hx_mod = @import("handlers/hx.zig");
+const error_codes = @import("../errors/error_registry.zig");
+const metrics = @import("../observability/metrics.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.http);
 
 const DEFAULT_MAX_CLIENTS = 1024;
+
+// 429 shed headers — the REST guidelines bind 429 to Retry-After + X-RateLimit-*.
+// Semantics here are the instance-wide in-flight ceiling, not a per-client quota.
+const HEADER_RETRY_AFTER = "Retry-After";
+const HEADER_RATELIMIT_LIMIT = "X-RateLimit-Limit";
+const HEADER_RATELIMIT_REMAINING = "X-RateLimit-Remaining";
+const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
+/// Shed responses point clients at an immediate short backoff: in-flight
+/// pressure clears in milliseconds-to-seconds, unlike quota windows.
+const BACKPRESSURE_RETRY_AFTER_SECONDS: u32 = 1;
+const FMT_UNSIGNED = "{d}";
+const S_RETRY_AFTER_VALUE = std.fmt.comptimePrint(FMT_UNSIGNED, .{BACKPRESSURE_RETRY_AFTER_SECONDS});
+const S_RATELIMIT_REMAINING_NONE = "0";
 
 const ServerConfig = struct {
     port: u16 = 3000,
@@ -78,7 +93,7 @@ pub const Server = struct {
                     .count = @intCast(cfg.threads),
                 },
                 .request = .{
-                    .max_body_size = 2 * DEFAULT_MAX_CLIENTS * DEFAULT_MAX_CLIENTS, // 2MB
+                    .max_body_size = common.MAX_BODY_SIZE,
                 },
             }, .{ .ctx = ctx, .registry = registry }),
             .cfg = cfg,
@@ -124,7 +139,24 @@ var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 // ── Request dispatch ──────────────────────────────────────────────────────
 
 /// Top-level request handler — dispatches based on method + path prefix.
+/// Every request claims an in-flight slot first; above the configured ceiling
+/// the request is shed with 429 before any routing or per-request allocation.
 fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response) void {
+    // safe because: pure admission counter — no memory is published through
+    // it, over-claimers release in the paired defer below.
+    const live = ctx.api_in_flight_requests.fetchAdd(1, .monotonic) + 1;
+    defer {
+        // safe because: same admission counter; the gauge store tolerates
+        // last-writer staleness between concurrent requests.
+        const after = ctx.api_in_flight_requests.fetchSub(1, .monotonic) - 1;
+        metrics.setApiInFlightRequests(after);
+    }
+    metrics.setApiInFlightRequests(live);
+    if (live > ctx.api_max_in_flight_requests) {
+        respondBackpressureShed(ctx, res, live, req.url.path);
+        return;
+    }
+
     const path = req.url.path;
 
     // Resolve trace context from inbound traceparent header or generate root.
@@ -136,6 +168,33 @@ fn dispatch(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *
         return;
     }
     respondNotFound(res);
+}
+
+/// 429 shed: problem+json envelope + Retry-After + X-RateLimit-* (instance
+/// ceiling semantics). Dynamic header values live on the request arena —
+/// httpz borrows header slices until the response is written.
+fn respondBackpressureShed(ctx: *handler.Context, res: *httpz.Response, live: u32, path: []const u8) void {
+    metrics.incApiBackpressureRejections();
+    log.warn("request_shed", .{
+        .error_code = error_codes.ERR_API_BACKPRESSURE,
+        .in_flight = live,
+        .max = ctx.api_max_in_flight_requests,
+        .path = path,
+    });
+    res.header(HEADER_RETRY_AFTER, S_RETRY_AFTER_VALUE);
+    res.header(HEADER_RATELIMIT_REMAINING, S_RATELIMIT_REMAINING_NONE);
+    headerUint(res, HEADER_RATELIMIT_LIMIT, ctx.api_max_in_flight_requests);
+    const reset_epoch_s: u64 = @intCast(@divTrunc(clock.nowMillis(), std.time.ms_per_s) + BACKPRESSURE_RETRY_AFTER_SECONDS);
+    headerUint(res, HEADER_RATELIMIT_RESET, reset_epoch_s);
+    common.errorResponse(res, error_codes.ERR_API_BACKPRESSURE, error_codes.MSG_API_BACKPRESSURE, common.UNKNOWN_REQUEST_ID);
+}
+
+/// Best-effort numeric header on the request arena; a failed print drops the
+/// advisory header rather than the shed response.
+fn headerUint(res: *httpz.Response, name: []const u8, value: u64) void {
+    if (std.fmt.allocPrint(res.arena, FMT_UNSIGNED, .{value})) |s| {
+        res.header(name, s);
+    } else |_| {}
 }
 
 fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) void {

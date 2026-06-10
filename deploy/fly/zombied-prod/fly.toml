@@ -26,6 +26,27 @@ primary_region = "iad"
 # sit easily in 4gb: the 16MiB stacks are virtual / lazily committed, plus
 # ~64MiB of large buffers across 2 workers. Watch pool saturation on /metrics;
 # the next lever is more replicas (the binding constraint per scaling.md).
+#
+# Backpressure knobs (enforced at dispatch since the M90 hardening):
+#   API_MAX_IN_FLIGHT_REQUESTS — shed ceiling (default 256, runtime_loader.zig).
+#                      Requests above this many concurrently in dispatch are
+#                      answered 429 + Retry-After instead of queueing. Concurrent
+#                      dispatch is physically bounded by WORKERS x THREADS (64
+#                      here), so the guard fires ONLY when this knob is set
+#                      BELOW that product. At the 256 default it is a dormant
+#                      incident lever by deliberate owner choice: drop it below
+#                      64 and redeploy to shed load fast during an overload
+#                      event. Watch zombie_api_backpressure_rejections_total.
+#   SSE_MAX_STREAMS  — concurrent event streams per instance (default 64,
+#                      runtime_loader.zig); over-cap streams get 503. Streams
+#                      run on DEDICATED detached threads (httpz
+#                      startEventStream) and never occupy the handler pool —
+#                      the pool round-robins private per-thread queues with no
+#                      stealing, so a parked pool thread would black-hole its
+#                      queue's share of requests. Budget ~0.5 MiB + 1 Redis
+#                      pub/sub conn + 2 fds per stream; the empirical ceiling
+#                      is Redis fan-out (deferred load test, evidence-gated).
+#                      Watch zombie_sse_in_flight_streams.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "2"
