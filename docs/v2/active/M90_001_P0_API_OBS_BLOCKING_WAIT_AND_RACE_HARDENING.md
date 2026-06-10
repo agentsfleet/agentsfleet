@@ -124,8 +124,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 `Bus.stop()` must take the mutex around the `running` store so a consumer between predicate check and waiter registration cannot sleep forever; broadcast after release. Ordering comments document the release-store/acquire-load pairing per the Concurrency rule.
 
-- **Dimension 1.1** — stop-during-wait always joins → Test `test_bus_stop_joins_with_blocked_consumer`
-- **Dimension 1.2** — repeated start/stop under contention never hangs or double-frees → Test `test_bus_stop_start_stress`
+- **Dimension 1.1** — stop-during-wait always joins → Test `test_bus_stop_joins_with_blocked_consumer` — ✅ DONE
+- **Dimension 1.2** — repeated start/stop under contention never hangs or double-frees → Test `test_bus_stop_start_stress` — ✅ DONE
 
 ### §2 — OTel ring multi-producer safety
 
@@ -270,7 +270,8 @@ Per RULE NLR, files opened by this diff shed any other dead surface they carry (
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append Architecture/Legacy-Design/gate-flag consults + Indy decisions here.)
+- **Consults** — (append Architecture/Legacy-Design/gate-flag consults + Indy decisions here.)
+- Jun 10, 2026 — §1 landed. Dimension 1.1's assertion is carried by the pre-existing test `"integration: event bus run thread exits when stopped while idle"` (parked consumer + stop → join), made race-free by this fix; Dimension 1.2 is the new no-sleep start/stop stress loop `"integration: stop never loses the wakeup under repeated start/stop"`. `stop()` now orders its `running` store under the bus mutex; all weak orderings in the file carry pairing comments. Discovery bonus: `events/bus.zig` was missing from `src/zombied/tests.zig`'s explicit import list, so its four pre-existing tests had **never executed** (same class as M90_003 §3's dead src/lib lane) — import added in the same diff per RULE TST; zombied suite grew 1516 → 1521, all passing.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
