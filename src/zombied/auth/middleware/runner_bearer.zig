@@ -96,7 +96,7 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
     };
 
     if (!row.active) {
-        log.info(S_AUTH_REJECTED, .{ .reason = "revoked", .runner_id = row.runner_id });
+        log.info(S_AUTH_REJECTED, .{ .reason = "non_active", .runner_id = row.runner_id });
         ctx.alloc.free(row.runner_id);
         ctx.fail(errors.ERR_RUN_ADMIN_STATE_BLOCKED, S_RUNNER_ADMIN_STATE_BLOCKED);
         return .short_circuit;
