@@ -7,6 +7,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
+const logging = @import("log");
+const log = logging.scoped(.zombie_config_gates);
 const MAX_BUDGET_UNITS = 10000;
 const MAX_THRESHOLD_WINDOW_SECONDS_TEXT = "100000";
 const SECONDS_PER_DAY = 86400;
@@ -50,7 +52,12 @@ pub fn parseGatePolicy(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Err
     const timeout_ms: u64 = blk: {
         const val = obj.get("timeout_ms") orelse break :blk ec.GATE_DEFAULT_TIMEOUT_MS;
         break :blk switch (val) {
-            .integer => |i| if (i > 0) @intCast(i) else ec.GATE_DEFAULT_TIMEOUT_MS,
+            .integer => |i| if (i <= 0)
+                ec.GATE_DEFAULT_TIMEOUT_MS
+            else if (i > @as(i64, @intCast(ec.GATE_TIMEOUT_MS_MAX))) clamped: {
+                log.warn("gate_timeout_clamped", .{ .configured_ms = i, .max_ms = ec.GATE_TIMEOUT_MS_MAX });
+                break :clamped ec.GATE_TIMEOUT_MS_MAX;
+            } else @intCast(i),
             else => ec.GATE_DEFAULT_TIMEOUT_MS,
         };
     };
@@ -214,6 +221,18 @@ test "parseGatePolicy: valid policy with rules and anomaly" {
     try std.testing.expectEqual(@as(u32, 10), policy.anomaly_rules[0].threshold_count);
     try std.testing.expectEqual(@as(u32, 60), policy.anomaly_rules[0].threshold_window_s);
     try std.testing.expectEqual(@as(u64, 1_800_000), policy.timeout_ms);
+}
+
+test "parseGatePolicy: timeout above the cap clamps to GATE_TIMEOUT_MS_MAX" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"timeout_ms": 999999999999}
+    ;
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch unreachable;
+    defer parsed.deinit();
+    const policy = try parseGatePolicy(alloc, parsed.value.object);
+    defer freeGatePolicy(alloc, policy);
+    try std.testing.expectEqual(ec.GATE_TIMEOUT_MS_MAX, policy.timeout_ms);
 }
 
 test "parseGatePolicy: empty rules defaults" {

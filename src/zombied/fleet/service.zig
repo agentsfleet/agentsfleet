@@ -28,7 +28,8 @@ const logging = @import("log");
 const hx_mod = @import("../http/handlers/hx.zig");
 const common = @import("../http/handlers/common.zig");
 const ec = @import("../errors/error_registry.zig");
-const protocol = @import("contract").protocol;
+const wire = @import("contract");
+const protocol = wire.protocol;
 const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
@@ -45,8 +46,8 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
-const event_envelope = @import("contract").event_envelope;
-const execution_policy = @import("contract").execution_policy;
+const event_envelope = wire.event_envelope;
+const execution_policy = wire.execution_policy;
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_lease);
@@ -157,7 +158,13 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     if (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy) != .deducted) return null;
     switch (approval_gate.checkApprovalGate(alloc, session, event, pool, hx.ctx.queue)) {
         .passed => {},
-        else => {
+        .pending => {
+            // Human decision outstanding: answer no-work; the next lease poll
+            // re-evaluates the recorded gate ref. No thread waits.
+            log.info("lease_gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            return null;
+        },
+        .blocked, .auto_killed => {
             log.info("lease_gate_blocked", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
             return null;
         },

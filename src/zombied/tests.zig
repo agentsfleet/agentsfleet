@@ -27,6 +27,7 @@ test {
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
+    _ = @import("zombie/approval_gate_async.zig");
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");

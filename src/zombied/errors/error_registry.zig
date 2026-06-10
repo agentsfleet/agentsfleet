@@ -266,9 +266,13 @@ pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
 pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
 // Gate constants
 pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
+/// Upper bound for a configured gate timeout — larger values clamp + warn.
+pub const GATE_TIMEOUT_MS_MAX: u64 = 86_400_000;
 pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
 pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
 pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+/// event_id → "action_id|deadline_ms" ref the async lease-path gate check reads.
+pub const GATE_EVENT_REF_KEY_PREFIX = "zombie:gate:byevent:";
 pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
 pub const GATE_DECISION_APPROVE = "approve";
 pub const GATE_DECISION_DENY = "deny";
