@@ -85,7 +85,7 @@
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/app/lib/analytics/events.ts` | CREATE | The single-sourced as-const event catalog (names + per-event prop types). UFS-by-hand. |
-| `ui/packages/app/lib/analytics/posthog.ts` | EDIT | Add typed client `capture(event, props)` helper that consults the catalog. |
+| `ui/packages/app/lib/analytics/posthog.ts` | EDIT | Add typed client `capture(event, props)` helper that consults the catalog. **It must NOT route catalog-event props through the existing `sanitizeProps` closed allowlist (`ALLOWED_PROP_KEYS`, `posthog.ts:33`/`:77`) — that would silently drop event-specific keys (`zombie_id`, `template`, `api_key_id`); the `EventProps` types are the compile-time PII guard instead (§1.3).** Also **extend the `PostHogLike` interface (`posthog.ts:28`) with `reset?: () => void`** so §4's `posthog.reset()` type-checks. |
 | `ui/packages/app/lib/analytics/posthog-server.ts` | CREATE | `posthog-node` server client + typed `captureServer(distinctId, event, props)` + `flush`. |
 | `ui/packages/app/components/analytics/AnalyticsBootstrap.tsx` | EDIT | `posthog.reset()` on Clerk sign-out (§4). |
 | `ui/packages/app/app/(dashboard)/**/actions.ts` (subset that mutates) | EDIT | Server-side `captureServer` at the mutation points (zombie run, billing, runner register, key mint, BYOK add, credential add, approval resolve) (§3). |
@@ -113,6 +113,7 @@ One `events.ts` exports `EVENTS` (as-const, snake_case `verb_noun`) + a per-even
 
 - **Dimension 1.1** — the catalog enumerates the launch event set and is the only source of event-name strings → Test `events catalog is the single source (no bare event-name literals at call sites)`
 - **Dimension 1.2** — no prop type admits a secret/token/raw-credential field (compile-time + a lint/test check) → Test `event props carry no PII/secret fields`
+- **Dimension 1.3 (sanitizer interaction)** — the app's existing `sanitizeProps` drops any key not in the **closed** `ALLOWED_PROP_KEYS` set (`posthog.ts:33`,`:77`); routing the catalog's event-specific keys (`zombie_id`, `template`, `api_key_id`, …) through it would **silently emit empty prop bags**. The typed `capture` therefore **bypasses `sanitizeProps` for catalog events** — the `EventProps` types are the (type-enforced) PII guard. *(Alternative if a single sink is preferred: extend `ALLOWED_PROP_KEYS` with every catalog key before wiring any call site — PLAN picks one; default is bypass.)* → Test `catalog event props survive the emit path (not dropped by ALLOWED_PROP_KEYS)`
 
 ### §2 — Dashboard first-class events (client-side, user-driven)
 
@@ -132,7 +133,7 @@ A server `posthog-node` client captures events that complete without a click —
 
 `AnalyticsBootstrap` (or the logout handler) calls `posthog.reset()` when Clerk transitions to signed-out, so a subsequent anonymous/other session does not stitch to the prior `distinct_id`.
 
-- **Dimension 4.1** — on sign-out, `posthog.reset()` is called exactly once → Test (`reset` called on auth→null transition)
+- **Dimension 4.1** — `posthog.reset()` is called **exactly once on the `isSignedIn: true → false` edge** — NOT on every signed-out render. The current `AnalyticsBootstrap` effect early-returns `if (!isLoaded || !isSignedIn || !userId)` (`AnalyticsBootstrap.tsx:11`); a naive `else { reset() }` would fire on every render while signed out. **Required pattern:** a `useRef(prevSignedIn)` (or a dedicated effect keyed on `isSignedIn`) that calls `reset()` only when the previous value was `true` and the current is `false`. → Test (`reset` fired once on the sign-in→sign-out transition; NOT fired on repeated signed-out renders)
 
 ### §5 — Website funnel completion
 
@@ -169,6 +170,8 @@ export type EventProps = {
 };
 
 // client capture (ui/packages/app/lib/analytics/posthog.ts)
+// NOTE: bypasses the existing sanitizeProps/ALLOWED_PROP_KEYS allowlist for catalog events
+// (those keys are not allowlisted → would be silently dropped); EventProps is the PII guard. §1.3
 export function capture<E extends EventName>(event: E, props: EventProps[E]): void;
 
 // server capture (ui/packages/app/lib/analytics/posthog-server.ts)
@@ -187,6 +190,7 @@ Contract: the product behaves identically; events are additive side-effects. No 
 |------|-------|----------|
 | Server event dropped | serverless returns before `posthog-node` flushes | `captureServer` **awaits** `flush()`; Dim 3.2 asserts it. |
 | PII leak in a prop | a dev adds `{ token }` / `{ api_key }` to a prop bag | the `EventProps` types forbid secret fields; reviewer audits every new `capture`; Dim 1.2 test. |
+| Event props silently dropped | the typed `capture` routes catalog props through `sanitizeProps`' closed `ALLOWED_PROP_KEYS` | **every event emits an empty prop bag, silently** — the catalog keys aren't allowlisted. Closed by §1.3: catalog `capture` bypasses `sanitizeProps` (types are the PII guard), or `ALLOWED_PROP_KEYS` is extended first. Caught by the §1.3 test. |
 | Event name drift | a call site re-spells `"zombie_created"` | only `EVENTS.x` is allowed; Dim 1.1 test + grep for bare event literals. |
 | No PostHog key (dev/preview) | env unset | capture is a no-op (env-gated); product unaffected. |
 | Double-count (autocapture + first-class) | autocapture click + explicit event for the same action | acceptable — first-class events are the funnel source of truth; PLAN notes the overlap, optionally excludes the action's element from autocapture (`ph-no-capture`) only if it pollutes a funnel. |
@@ -198,7 +202,7 @@ Contract: the product behaves identically; events are additive side-effects. No 
 1. **Single-sourced events** — every emitted event name comes from the `EVENTS` catalog; no bare event-name literal at any call site. Enforced by Dim 1.1.
 2. **No PII/secret in props** — no event prop carries a token, API key, raw credential, or full secret; IDs/names/enums only. Enforced by `EventProps` types + Dim 1.2 + reviewer audit.
 3. **Server events flush** — every `captureServer` awaits `flush()` before its caller returns. Enforced by Dim 3.2.
-4. **Identity cleared on logout** — `reset()` fires on sign-out. Enforced by Dim 4.1.
+4. **Identity cleared on logout** — `reset()` fires **once, on the `isSignedIn: true → false` edge** (not every signed-out render). Enforced by Dim 4.1.
 5. **No dead funnel exports** — every `track*` export in the website analytics module has ≥1 call site. Enforced by Dim 5.2 + grep.
 6. **Env-gated no-op** — without a PostHog key, capture is inert; the product is unchanged. (Existing behaviour, preserved.)
 
@@ -212,11 +216,12 @@ Contract: the product behaves identically; events are additive side-effects. No 
 |-----------|------|------|---------|
 | 1.1 | unit | `events catalog single source` | call sites reference `EVENTS.*`; grep finds no bare event-name literals |
 | 1.2 | unit | `event props carry no PII` | `EventProps` admits no `token`/`api_key`/`secret`/`password` field; a sample capture has only IDs/names |
+| 1.3 | unit | `catalog props survive the emit path` | a catalog `capture` with `{ zombie_id, template }` emits those keys (NOT dropped by `ALLOWED_PROP_KEYS`) |
 | 2.1 | unit | `client capture per action` | each click-driven action calls `capture(EVENTS.x, props)` on success |
 | 2.2 | unit | `no capture on error path` | a failed/aborted action does NOT capture |
 | 3.1 | unit | `server capture via posthog-node` | a server-completed action calls `captureServer(distinctId, EVENTS.x, props)` |
 | 3.2 | unit | `server flush awaited` | `captureServer` awaits `flush()` before resolving |
-| 4.1 | unit | `reset on logout` | auth→null transition calls `posthog.reset()` exactly once |
+| 4.1 | unit | `reset on logout edge` | `reset()` fires once on the `isSignedIn: true→false` edge (via `useRef(prevSignedIn)`); NOT fired on repeated signed-out renders |
 | 5.1 | unit | `signup_completed fires` | a successful marketing signup fires `signup_completed` |
 | 5.2 | unit + grep | `no dead funnel exports` | every `track*` export has a call site |
 
