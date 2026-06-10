@@ -4,11 +4,11 @@
 **Milestone:** M84
 **Workstream:** 004
 **Date:** Jun 05, 2026 (re-scoped to the launch slice Jun 10, 2026 after a code-grounded adversarial review)
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** **P1 — launch-critical security boundary (re-classified Jun 10, 2026).** Closes the **day-1** tenant-secret exfiltration path that M84_003 leaves open *on trusted runners*: a prompt-injectable agent holding the lease's own secrets (LLM `api_key`, a GitHub Personal Access Token (PAT), tool secrets) can exfiltrate them to **any** host because the network-enabled tier shares the host network namespace with no egress restriction. The launch compensating control ("least-privilege / short-lived tool secrets") is **not implemented in code** (`secrets_resolve.zig:48` reads vault credentials verbatim; `docs/AUTH.md:204` — tenant credentials are "static, long-lived, never expires by default"), so the hole is effectively unbounded without this slice.
 **Categories:** API
 **Batch:** B1 — standalone; rides M84_003's `appendBwrap` argv + the `test-integration-runner` lane (both merged, #370).
-**Branch:** {feat/m84-runner-egress-allowlist — added at CHORE(open)}
+**Branch:** feat/m84-runner-egress-allowlist
 **Depends on:** **M84_003 — DONE (merged #370).** M84_003 stopped the *daemon's* `ZOMBIE_RUNNER_TOKEN` getting *in* (filtered `environ_map`); this slice stops the *tenant's own* secrets getting *out*. They share the `appendBwrap` / network-policy surface; M84_003 has landed, so there is no rebase wait.
 **Provenance:** agent-surfaced in the Orly Chief Technology Officer (CTO) adverse review of M84_003 (Jun 05, 2026); **re-scoped to a launch pull-forward in the Jun 10, 2026 adversarial review** (three-agent, code-grounded against `main`) which refuted the deferral — the stated compensating control is unbuilt and the exfil is trivially exploitable on a trusted runner day-1.
 
