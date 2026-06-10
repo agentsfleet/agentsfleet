@@ -40,7 +40,8 @@ test {
     _ = @import("engine/landlock.zig");
     _ = @import("engine/network.zig");
     // runner egress networking
-    _ = @import("network/Allowlist.zig");
+    _ = @import("network/AllowList.zig");
+    _ = @import("network/Plan.zig");
     // W1 runner-daemon coverage
     _ = @import("child_supervisor_edge_test.zig");
     _ = @import("child_supervisor_concurrency_test.zig");
