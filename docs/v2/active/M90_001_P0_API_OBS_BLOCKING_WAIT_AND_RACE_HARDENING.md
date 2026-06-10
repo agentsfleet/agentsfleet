@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 001
 **Date:** Jun 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — three production-reachable defects: shutdown deadlock, auth outage on signing-key rotation, unkillable runner child past its lease deadline
 **Categories:** API, OBS
 **Batch:** B1 — lands first; M90_002 builds on the gate-outcome seam this workstream reshapes
-**Branch:** — (set at CHORE(open))
+**Branch:** feat/m90-001-hardening
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 10, 2026) — from the Jun 10 full audit of `src/lib`, `src/zombied`, `src/runner`
 
