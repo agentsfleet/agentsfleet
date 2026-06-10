@@ -28,7 +28,8 @@ const logging = @import("log");
 const hx_mod = @import("../http/handlers/hx.zig");
 const common = @import("../http/handlers/common.zig");
 const ec = @import("../errors/error_registry.zig");
-const protocol = @import("contract").protocol;
+const contract = @import("contract");
+const protocol = contract.protocol;
 const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
@@ -44,9 +45,10 @@ const activity_publisher = @import("../zombie/activity_publisher.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
+const nullclaw = @import("nullclaw");
 const metrics_runner = @import("../observability/metrics_runner.zig");
-const event_envelope = @import("contract").event_envelope;
-const execution_policy = @import("contract").execution_policy;
+const event_envelope = contract.event_envelope;
+const execution_policy = contract.execution_policy;
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_lease);
@@ -280,7 +282,23 @@ fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_pro
         .context = budget,
         .provider = if (resolved) |r| r.provider else "",
         .api_key = if (resolved) |r| r.api_key else "",
+        // Author the inference host from the SAME table NullClaw dials, so the
+        // runner's egress allowlist permits exactly what the agent reaches (no
+        // drift). compatibleProviderUrl is comptime-static → the host slice is
+        // 'static and safe to carry on the lease without allocation. Custom /
+        // unrecognized providers resolve to "" (the author must then declare
+        // their host in network.allow); the launch provider set is covered.
+        .inference_host = inferenceHost(resolved),
     };
+}
+
+/// Resolve the inference endpoint host for the lease's provider via NullClaw's
+/// own provider→URL table (single source — never a duplicate map). "" when no
+/// provider resolved or the provider is not in the OpenAI-compatible table.
+fn inferenceHost(resolved: ?tenant_provider.ResolvedProvider) []const u8 {
+    const r = resolved orelse return "";
+    const url = nullclaw.providers.compatibleProviderUrl(r.provider) orelse return "";
+    return execution_policy.hostFromUrl(url);
 }
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued

@@ -44,6 +44,7 @@ pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
     // by std.json struct reflection). Both paths must agree on these fields.
     if (json.getStr(p, wire.provider)) |prov| policy.provider = prov;
     if (json.getStr(p, wire.api_key)) |key| policy.api_key = key;
+    if (json.getStr(p, wire.inference_host)) |host| policy.inference_host = host;
 
     if (p.object.get(wire.context)) |ctx_val| {
         if (ctx_val == .object) {
@@ -89,6 +90,15 @@ test "fromJson defaults provider and api_key to empty when absent" {
     const policy = try fromJson(alloc, parsed.value);
     try std.testing.expectEqualStrings("", policy.provider);
     try std.testing.expectEqualStrings("", policy.api_key);
+    try std.testing.expectEqualStrings("", policy.inference_host); // default empty
+}
+
+test "fromJson round-trips the control-plane-authored inference_host" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"inference_host\":\"api.fireworks.ai\"}", .{});
+    defer parsed.deinit();
+    const policy = try fromJson(alloc, parsed.value);
+    try std.testing.expectEqualStrings("api.fireworks.ai", policy.inference_host);
 }
 
 test "ContextBudget.applyDefaults substitutes the three auto-sentinel knobs" {
