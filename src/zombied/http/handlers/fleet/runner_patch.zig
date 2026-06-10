@@ -107,7 +107,7 @@ fn updateState(
     event_row_id: []const u8,
 ) !void {
     const now_ms = clock.nowMillis();
-    const allows_non_revoked = target == .revoked;
+    const bypass_revoked_guard = target == .revoked;
     const event_type = runner_events.eventTypeForAdminState(target);
     var q = PgQuery.from(conn.query(
         \\WITH current_state AS (
@@ -137,7 +137,7 @@ fn updateState(
         runner_id,
         @tagName(target),
         now_ms,
-        allows_non_revoked,
+        bypass_revoked_guard,
         @tagName(protocol.AdminState.revoked),
         event_row_id,
         @tagName(event_type),
