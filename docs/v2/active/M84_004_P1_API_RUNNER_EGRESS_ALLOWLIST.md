@@ -127,6 +127,27 @@
 
 ## Sections (implementation slices)
 
+### Build status at PARK (Jun 11, 2026) — per Dimension
+
+Legend: ✅ **done** (built + tested + production-wired, or doc-complete) · 🟡 **built, not wired** (code + unit/datapath-tested, but no production caller — needs `establishEgress`) · ⏳ **pending** (not built) · ⏸️ **deferred by design**. **No Dimension is production-DONE** because `establishEgress` (option D) is unbuilt — the kernel boundary is never established on a real lease yet. The pure layer + datapath proof are the 🟡 substrate it sits on.
+
+| Dim | What | Status at park | Evidence / gap |
+|---|---|---|---|
+| **Foundation** | netlink layer (`MessageBuilder`/`rtnetlink`/`nfnetlink`/`nfnetlink_rule`/`AllowList`/`Plan`/`Policy`/`Socket`/`EgressScope`) | 🟡 built+tested | golden-byte tests vs real `nft`; `egress_integration_test.zig` proves create/attach/destroy on Linux. No prod caller. |
+| **1.1** | no `--share-net` on any sandboxed tier | 🟡 done-but-unmerged | `test_no_share_net_on_any_sandboxed_tier` passes; the drop lives on this branch, **`main` still has `--share-net`** (the park's allow-all interim). Own-netns egress half = pending wiring. |
+| **1.2** | fail-closed when no rules installed | ⏳ pending | needs `establishEgress`; `test_egress_fails_closed_without_rules` not built. |
+| **2.1** | allowed IP reachable | 🟡 datapath proven, behavioural test pending | `create()` ACK + veth proven; `test_allowed_ip_reachable` (listener+forwarding rig) not built; not wired. |
+| **2.2** | non-allowed IP dropped | 🟡 / ⏳ | nft drop-policy + rules golden-tested; packet-level `test_denied_ip_dropped` (the allow/deny contrast rig) not built; not wired. |
+| **2.3** | link-local / RFC1918 dropped | ⏳ pending | `test_link_local_and_private_denied` not built. |
+| **3.1** | inference host always allowlisted (control-plane authored) | 🟡 hoist done, enforcement pending | `ExecutionPolicy.inference_host` + zombied author + `hostFromUrl` + parse **built+tested**; the "always in the resolved set / fail-closed if unresolvable" enforcement needs `establishEgress` resolution. |
+| **3.2** | allowlist not child-extendable | ⏳ pending | inherent once parent-owned `establishEgress` lands; no test yet. |
+| **3.3** | DNS-tunnel closure (static `/etc/hosts` + drop :53) | 🟡 builders done, wiring/test pending | `Plan.resolvConf` (resolver-less) + the two DNS-drop rules in `nfnetlink_rule` are built+golden-tested; binding the files + behavioural test need `establishEgress`. |
+| **3.4** | denial communicated to the user (fast-fail) | ⏳ pending | **not built, no test** — launch form (fast-fail at resolution) needs `establishEgress` to bind the resolver files; structured `blocked_egress` chip deferred per Indy. |
+| **4.1** | honest residual (write-capable allowed host) | ✅ done (doc-only) | documented in Discovery + §4; no code by design. |
+| **§5** | eBPF/FQDN name-layer | ⏸️ deferred | untrusted-GA, by design. |
+
+**Resume for 2.0.1:** build `establishEgress` via the validated option-D recipe (Discovery) → flips 1.1/1.2/2.x/3.1/3.2/3.3 from 🟡/⏳ to production-DONE as their behavioural tests land; 3.4 fast-fail rides the same wiring.
+
 ### §1 — The sandboxed child runs in its own network namespace (no `--share-net`)
 
 The child must never join the host network namespace. On a network-enabled tier it keeps an **unshared** net namespace whose only route out is a veth pair to the host, gated by the §2 nftables rules; with no rules installed it has no egress at all (fail-closed). This removes the "full host egress" property at its root — direct connects to anywhere (host loopback, the host LAN, the wider internet) fail unless the destination IP is in the allowlist.
