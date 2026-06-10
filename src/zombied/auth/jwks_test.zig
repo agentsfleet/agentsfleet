@@ -1,5 +1,6 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
+const clock = @import("common").clock;
 
 const VerifyError = jwks.VerifyError;
 const Verifier = jwks.Verifier;
@@ -22,6 +23,11 @@ const TEST_SIG_VALID = "R5EaetratAEMN3VcDRDyR3KM9dKU3FYGEvzajPdmMUB_3T3qE0G0xZ_I
 const TEST_SIG_EXPIRED = "CCjR252liw1fHwmo4kBmHH0nw1uPUBtibZx9BSPKPdzU_4oDmSrJyFP4LJtd9THDIVV8JyE5r1I9a8nuyLe66Wfr_N_tiiNAzYQ0voN_B2AQ-iy8DHhVAJibflv5eaGRXxh4pfn7uV3vY1ZGGDxwyjOXWPy_ULwSwtaDGDQNeWWYgVaaKp1B0-l__oIiMmRgsCiMOE6qyU2SFCQKG05vF54fgg7Pp4hpOgR9guE-rYKoLo39qE0RJvnaf5MTz2WbsPRxrvGurJ1lgnPrxGSXDMT2xJATkof6hP3Hv3QuSRlfCQwLEvlHKZG5ANpe7dxQ00KGf3RJiv0ly9mPapsD5g";
 const TEST_VALID_TOKEN = TEST_HEADER ++ "." ++ TEST_PAYLOAD_VALID ++ "." ++ TEST_SIG_VALID;
 const TEST_EXPIRED_TOKEN = TEST_HEADER ++ "." ++ TEST_PAYLOAD_EXPIRED ++ "." ++ TEST_SIG_EXPIRED;
+// Same RSA key as TEST_JWKS but published under a different kid — models the
+// pre-rotation key set that does NOT contain the test token's kid.
+const WRONG_KID_JWKS =
+    \\{"keys":[{"kty":"RSA","kid":"wrong-kid","use":"sig","alg":"RS256","n":"kEge9Llezx-onM-jdO1fw85yTFmDDHWaZVdihVqMVAvRDGFvHbyoPrp5F-ZaDTqVEd1_pH12HM3abE6HRyYwSRxPcSKf2GlGWBVPtFbidOezLupgspHs8-yXBFKkGQEGBTWspJ4Obd0g9u1EX-cQqzy-lXiGd8gt1oK8Rxx5YBohNbaQMs5dbJ61J9c0afrG0dx-xOOx2tb95izx_m-sB83-aj7mX_r3ClpbZYcOY8ZKA3QNwR9tattkTiowpgzBZ0PGw5wuzrQayjWQRooolW4kzYMVWOI5K4GVPoabBDZDPs2nfet290iFHkNRu8cc2xPDmty0cDIhbS9Mq33qsQ","e":"AQAB"}]}
+;
 
 fn makeTestVerifier(inline_jwks: ?[]const u8) Verifier {
     return Verifier.init(std.testing.allocator, .{
@@ -159,13 +165,93 @@ test "verifyAndDecode: Bearer with no token" {
 }
 
 test "verifyAndDecode: token with wrong kid" {
-    // Use a JWKS that has a different kid than the test token
-    const wrong_kid_jwks =
-        \\{"keys":[{"kty":"RSA","kid":"wrong-kid","use":"sig","alg":"RS256","n":"kEge9Llezx-onM-jdO1fw85yTFmDDHWaZVdihVqMVAvRDGFvHbyoPrp5F-ZaDTqVEd1_pH12HM3abE6HRyYwSRxPcSKf2GlGWBVPtFbidOezLupgspHs8-yXBFKkGQEGBTWspJ4Obd0g9u1EX-cQqzy-lXiGd8gt1oK8Rxx5YBohNbaQMs5dbJ61J9c0afrG0dx-xOOx2tb95izx_m-sB83-aj7mX_r3ClpbZYcOY8ZKA3QNwR9tattkTiowpgzBZ0PGw5wuzrQayjWQRooolW4kzYMVWOI5K4GVPoabBDZDPs2nfet290iFHkNRu8cc2xPDmty0cDIhbS9Mq33qsQ","e":"AQAB"}]}
-    ;
-    var v = makeTestVerifier(wrong_kid_jwks);
+    // The forced kid-miss refresh re-reads the same wrong-kid key set, so the
+    // outcome is still JwkNotFound — pins that a refresh is not a free pass.
+    var v = makeTestVerifier(WRONG_KID_JWKS);
     defer v.deinit();
     try std.testing.expectError(VerifyError.JwkNotFound, v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN));
+}
+
+test "verifyAndDecode: kid miss on fresh cache forces refresh (key rotation)" {
+    const alloc = std.testing.allocator;
+    var v = makeTestVerifier(WRONG_KID_JWKS);
+    defer v.deinit();
+    // Prime the cache with the pre-rotation key set (token's kid absent).
+    try v.checkJwksConnectivity();
+    // Rotation: the endpoint now serves the new key set.
+    alloc.free(v.inline_jwks_json.?);
+    v.inline_jwks_json = try alloc.dupe(u8, TEST_JWKS);
+    v.last_refresh_attempt_ms = 0; // outside the rate-limit window
+    const vc = try v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN);
+    defer freeClaims(vc);
+    try std.testing.expectEqualStrings("user_test", vc.subject);
+}
+
+test "verifyAndDecode: kid-miss refresh is rate-limited within the window" {
+    const alloc = std.testing.allocator;
+    var v = makeTestVerifier(WRONG_KID_JWKS);
+    defer v.deinit();
+    try v.checkJwksConnectivity();
+    alloc.free(v.inline_jwks_json.?);
+    v.inline_jwks_json = try alloc.dupe(u8, TEST_JWKS);
+    // Last attempt just happened: a kid-miss storm must not refetch.
+    v.last_refresh_attempt_ms = clock.nowMillis();
+    try std.testing.expectError(VerifyError.JwkNotFound, v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN));
+    try std.testing.expectEqual(@as(u64, 1), v.refresh_fetch_count); // priming fetch only
+    // Past the window the refresh fires and the rotated key verifies.
+    v.last_refresh_attempt_ms = clock.nowMillis() - jwks.JWKS_REFRESH_MIN_INTERVAL_MS - 1;
+    const vc = try v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN);
+    defer freeClaims(vc);
+    try std.testing.expectEqual(@as(u64, 2), v.refresh_fetch_count);
+}
+
+test "verifyAndDecode: failed refresh serves stale keys (identity provider down)" {
+    const alloc = std.testing.allocator;
+    var v = makeTestVerifier(null);
+    defer v.deinit();
+    try v.checkJwksConnectivity();
+    // Identity provider goes dark: no inline fixture, no fetchable URL.
+    alloc.free(v.inline_jwks_json.?);
+    v.inline_jwks_json = null;
+    alloc.free(v.jwks_url);
+    v.jwks_url = try alloc.dupe(u8, "");
+    // Cache expired and the refresh attempt is eligible — it fires and fails.
+    v.cache.?.fetched_at_ms = 0;
+    v.last_refresh_attempt_ms = 0;
+    const vc = try v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN);
+    defer freeClaims(vc);
+    try std.testing.expectEqualStrings("user_test", vc.subject); // stale-served
+}
+
+test "verifyAndDecode: no cache and unreachable endpoint fails closed" {
+    const alloc = std.testing.allocator;
+    var v = Verifier.init(alloc, .{ .jwks_url = "" });
+    defer v.deinit();
+    try std.testing.expectError(VerifyError.JwksFetchFailed, v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN));
+}
+
+test "concurrent verifies on a cold cache fetch exactly once (single-flight)" {
+    var v = makeTestVerifier(null);
+    defer v.deinit();
+
+    const THREADS = 8;
+    var oks = std.atomic.Value(u32).init(0);
+    const Worker = struct {
+        fn run(ver: *Verifier, ok_count: *std.atomic.Value(u32)) void {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
+            _ = ver.verifyAndDecode(arena.allocator(), "Bearer " ++ TEST_VALID_TOKEN) catch return;
+            // safe because: independent success tally; no ordering required.
+            _ = ok_count.fetchAdd(1, .monotonic);
+        }
+    };
+
+    var threads: [THREADS]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Worker.run, .{ &v, &oks });
+    for (&threads) |*t| t.join();
+
+    try std.testing.expectEqual(@as(u32, THREADS), oks.load(.acquire));
+    try std.testing.expectEqual(@as(u64, 1), v.refresh_fetch_count);
 }
 
 test "verifyAndDecode: audience mismatch" {

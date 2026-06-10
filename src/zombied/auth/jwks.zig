@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const common = @import("common");
-const clock = @import("common").clock;
+const clock = common.clock;
 const logging = @import("log");
 const jwks_types = @import("jwks_types.zig");
 const jwks_token = @import("jwks_token.zig");
@@ -21,6 +21,16 @@ pub const extractBearerToken = jwks_token.extractBearerToken;
 pub const splitJwt = jwks_token.splitJwt;
 pub const decodeBase64UrlOwned = jwks_token.decodeBase64UrlOwned;
 pub const verifyRs256 = jwks_crypto.verifyRs256;
+pub const parseStandardClaims = jwks_standard_claims.parseStandardClaims;
+pub const getString = jwks_standard_claims.getString;
+pub const getInt = jwks_standard_claims.getInt;
+
+const jwks_standard_claims = @import("jwks_standard_claims.zig");
+
+/// Minimum interval between JWKS fetch attempts, successful or not. Rate-limits
+/// kid-miss-forced refreshes (key-rotation storms) and failure retries while the
+/// identity provider is down; the 6h TTL refresh is always far above this.
+pub const JWKS_REFRESH_MIN_INTERVAL_MS: i64 = 30 * MS_PER_SECOND;
 
 pub const Config = struct {
     jwks_url: []const u8,
@@ -56,6 +66,12 @@ pub const Verifier = struct {
     cache_ttl_ms: i64,
     mutex: common.Mutex = .{},
     cache: ?JwksCache = null,
+    // Single-flight refresh state, all guarded by `mutex`. `refresh_fetch_count`
+    // is written only by the flight leader (serialized by `refresh_inflight`).
+    refresh_inflight: bool = false,
+    refresh_cond: common.Condition = .{},
+    last_refresh_attempt_ms: i64 = 0,
+    refresh_fetch_count: u64 = 0,
 
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
         return .{
@@ -126,55 +142,110 @@ pub const Verifier = struct {
     }
 
     pub fn checkJwksConnectivity(self: *Verifier) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-        _ = try self.refreshCacheLocked();
+        try self.refreshSingleFlight(.expired);
     }
+
+    const CacheScan = enum { fresh_only, allow_stale };
+    const RefreshReason = enum { expired, kid_miss };
+    const CacheLookup = union(enum) { hit: JwkKey, miss_fresh, miss_stale_or_none };
 
     fn lookupKey(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8) !JwkKey {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-        const cache = try self.refreshCacheLocked();
-
-        for (cache.keys) |key| {
-            if (std.mem.eql(u8, key.kid, kid)) {
-                return .{
-                    .kid = try alloc.dupe(u8, key.kid),
-                    .modulus = try alloc.dupe(u8, key.modulus),
-                    .exponent = try alloc.dupe(u8, key.exponent),
-                };
-            }
+        switch (try self.cachedKey(alloc, kid, .fresh_only)) {
+            .hit => |key| return key,
+            // Fresh cache without this kid: the issuer likely rotated keys —
+            // force a (rate-limited) refresh before giving up. AUTH.md pins
+            // this "refresh on kid miss" behaviour.
+            .miss_fresh => return self.lookupAfterRefresh(alloc, kid, .kid_miss),
+            .miss_stale_or_none => return self.lookupAfterRefresh(alloc, kid, .expired),
         }
-
-        return VerifyError.JwkNotFound;
     }
 
-    fn refreshCacheLocked(self: *Verifier) !*JwksCache {
-        const now_ms = clock.nowMillis();
-        if (self.cache) |*cache| {
-            if (now_ms - cache.fetched_at_ms <= self.cache_ttl_ms) {
-                log.debug("jwks_cache_hit", .{ .age_ms = now_ms - cache.fetched_at_ms });
-                return cache;
+    fn lookupAfterRefresh(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8, reason: RefreshReason) !JwkKey {
+        if (self.refreshSingleFlight(reason)) |_| {
+            switch (try self.cachedKey(alloc, kid, .allow_stale)) {
+                .hit => |key| return key,
+                else => return VerifyError.JwkNotFound,
             }
-            log.debug("jwks_cache_expired", .{});
-            cache.deinit(self.alloc);
-            self.cache = null;
+        } else |err| {
+            // Stale-serve: a failed refresh keeps the prior key set; verifying
+            // against known keys beats a hard auth outage while the identity
+            // provider is unreachable.
+            switch (try self.cachedKey(alloc, kid, .allow_stale)) {
+                .hit => |key| {
+                    log.warn("jwks_stale_serve", .{ .err = @errorName(err) });
+                    return key;
+                },
+                else => return err,
+            }
         }
+    }
 
-        const raw = self.fetchJwksJson() catch |err| {
+    fn cachedKey(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8, scan: CacheScan) !CacheLookup {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        const cache = if (self.cache) |*c| c else return .miss_stale_or_none;
+        const fresh = clock.nowMillis() - cache.fetched_at_ms <= self.cache_ttl_ms;
+        if (scan == .fresh_only and !fresh) return .miss_stale_or_none;
+        for (cache.keys) |key| {
+            if (!std.mem.eql(u8, key.kid, kid)) continue;
+            const kid_copy = try alloc.dupe(u8, key.kid);
+            errdefer alloc.free(kid_copy);
+            const modulus = try alloc.dupe(u8, key.modulus);
+            errdefer alloc.free(modulus);
+            const exponent = try alloc.dupe(u8, key.exponent);
+            return .{ .hit = .{ .kid = kid_copy, .modulus = modulus, .exponent = exponent } };
+        }
+        return if (fresh) .miss_fresh else .miss_stale_or_none;
+    }
+
+    /// Exactly one thread fetches at a time; the others wait and then re-read
+    /// the cache. The network round-trip happens with the mutex RELEASED, so
+    /// cache-hit verification never blocks behind a slow identity provider.
+    /// A failed fetch (or parse) leaves the previous cache in place.
+    fn refreshSingleFlight(self: *Verifier, reason: RefreshReason) !void {
+        const entered_ms = clock.nowMillis();
+        self.mutex.lock();
+        while (self.refresh_inflight) self.refresh_cond.wait(&self.mutex);
+        const fresh = if (self.cache) |*c| clock.nowMillis() - c.fetched_at_ms <= self.cache_ttl_ms else false;
+        if (reason == .expired and fresh) {
+            // Another flight refreshed while we waited (or raced us to it).
+            self.mutex.unlock();
+            return;
+        }
+        if (entered_ms - self.last_refresh_attempt_ms < JWKS_REFRESH_MIN_INTERVAL_MS) {
+            // Rate-limited: the caller serves whatever key set we still hold.
+            self.mutex.unlock();
+            return;
+        }
+        self.refresh_inflight = true;
+        self.last_refresh_attempt_ms = entered_ms;
+        self.mutex.unlock();
+
+        const fetched = self.fetchJwksJson();
+
+        self.mutex.lock();
+        defer {
+            self.refresh_inflight = false;
+            self.refresh_cond.broadcast();
+            self.mutex.unlock();
+        }
+        const raw = fetched catch |err| {
             log.warn("jwks_fetch_failed", .{ .err = @errorName(err) });
             return err;
         };
         defer self.alloc.free(raw);
-
-        var parsed = try parseJwks(self.alloc, raw);
-        parsed.fetched_at_ms = now_ms;
+        var parsed = parseJwks(self.alloc, raw) catch |err| {
+            log.warn("jwks_parse_failed", .{ .err = @errorName(err) });
+            return err;
+        };
+        parsed.fetched_at_ms = clock.nowMillis();
+        if (self.cache) |*old| old.deinit(self.alloc);
         self.cache = parsed;
-        log.info("jwks_fetched", .{ .keys = parsed.keys.len });
-        return &self.cache.?;
+        log.info("jwks_fetched", .{ .keys = parsed.keys.len, .reason = @tagName(reason) });
     }
 
     fn fetchJwksJson(self: *Verifier) ![]u8 {
+        self.refresh_fetch_count += 1;
         if (self.inline_jwks_json) |raw| return self.alloc.dupe(u8, raw);
 
         if (self.jwks_url.len == 0) return VerifyError.JwksFetchFailed;
@@ -235,70 +306,6 @@ pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
         .fetched_at_ms = 0,
         .keys = try keys.toOwnedSlice(alloc),
     };
-}
-
-pub fn parseStandardClaims(
-    alloc: std.mem.Allocator,
-    payload_raw: []u8,
-    expected_issuer: ?[]const u8,
-    expected_audience: ?[]const u8,
-) !VerifiedClaims {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, payload_raw, .{}) catch return VerifyError.TokenMalformed;
-    defer parsed.deinit();
-
-    if (parsed.value != .object) return VerifyError.TokenMalformed;
-    const obj = parsed.value.object;
-
-    const subject = getString(obj, "sub") orelse return VerifyError.MissingSubject;
-    const issuer = getString(obj, "iss") orelse return VerifyError.MissingIssuer;
-
-    if (expected_issuer) |want| {
-        if (!std.mem.eql(u8, issuer, want)) return VerifyError.IssuerMismatch;
-    }
-
-    if (expected_audience) |want_aud| {
-        if (!audienceMatches(obj, want_aud)) return VerifyError.AudienceMismatch;
-    }
-
-    const exp = getInt(obj, "exp") orelse return VerifyError.MissingExpiry;
-    const now_s = clock.nowSeconds();
-    if (exp <= now_s) return VerifyError.TokenExpired;
-
-    return .{
-        .subject = try alloc.dupe(u8, subject),
-        .issuer = try alloc.dupe(u8, issuer),
-        .claims_json = payload_raw,
-    };
-}
-
-pub fn getString(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
-    const value = obj.get(key) orelse return null;
-    return switch (value) {
-        .string => |s| s,
-        else => null,
-    };
-}
-
-pub fn getInt(obj: std.json.ObjectMap, key: []const u8) ?i64 {
-    const value = obj.get(key) orelse return null;
-    return switch (value) {
-        .integer => |i| i,
-        else => null,
-    };
-}
-
-fn audienceMatches(obj: std.json.ObjectMap, wanted: []const u8) bool {
-    const aud = obj.get("aud") orelse return false;
-    switch (aud) {
-        .string => |value| return std.mem.eql(u8, value, wanted),
-        .array => |arr| {
-            for (arr.items) |item| {
-                if (item == .string and std.mem.eql(u8, item.string, wanted)) return true;
-            }
-            return false;
-        },
-        else => return false,
-    }
 }
 
 test {
