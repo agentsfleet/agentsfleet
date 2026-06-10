@@ -52,7 +52,7 @@ fn indexOfStr(argv: []const []const u8, needle: []const u8) ?usize {
 
 test "should build dev_none argv without bwrap when tier is dev_none" {
     const alloc = std.testing.allocator;
-    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE);
+    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE, null);
     defer sandbox_args.freeArgv(alloc, argv);
 
     // dev_none: [ self_exe, __execute, --workspace=<ws> ] — exactly 3 entries,
@@ -72,7 +72,7 @@ test "should build landlock_full argv with bwrap wrapper on Linux when tier is r
     const alloc = std.testing.allocator;
     // On Linux a missing bwrap binary makes buildArgv fail-closed; only assert
     // the wrapper shape when bwrap is actually present on this host.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -111,7 +111,7 @@ test "should fail with BwrapUnavailable when required tier has no bwrap on Linux
     const alloc = std.testing.allocator;
     try std.testing.expectError(
         error.BwrapUnavailable,
-        sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE),
+        sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null),
     );
 }
 
@@ -122,7 +122,7 @@ test "should skip bwrap on non-Linux even when tier is required" {
     // argv: bwrap is Linux-only, so no wrapper and no --sandboxed flag are
     // added here. The in-process sandbox is established by child_exec.run, not
     // signalled through this argv on a non-Linux build.
-    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(CONTAINER_NESTED), WORKSPACE);
+    const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(CONTAINER_NESTED), WORKSPACE, null);
     defer sandbox_args.freeArgv(alloc, argv);
 
     try std.testing.expectEqual(@as(usize, 3), argv.len);
@@ -136,7 +136,7 @@ test "should skip bwrap on non-Linux even when tier is required" {
 test "should omit --share-net under the default deny_all network policy on Linux" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // buildArgv reads RUNNER_NETWORK_POLICY via network.policyFromEnv; absent
+    // buildArgv reads RUNNER_NETWORK_POLICY via network/Policy.fromMap; absent
     // or unset it resolves to deny_all, so the bwrap wrapper unshares the net
     // and adds NO --share-net (host network stays isolated). Skip if the test
     // host has explicitly opted into registry_allowlist via the env var, since
@@ -149,7 +149,7 @@ test "should omit --share-net under the default deny_all network policy on Linux
     };
     if (opted_in) return error.SkipZigTest;
 
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -171,7 +171,7 @@ fn cfgRegistryAllowlist(tier: []const u8) Config {
 test "should detach the controlling terminal with --new-session in the bwrap prefix on Linux" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -185,19 +185,47 @@ test "should detach the controlling terminal with --new-session in the bwrap pre
     try std.testing.expect(ns.? < sep);
 }
 
-test "should emit --new-session under registry_allowlist as well as deny_all on Linux" {
+test "no sandboxed tier emits --share-net; net namespace stays unshared (Dimension 1.1)" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE) catch |err| {
+    // registry_allowlist no longer re-shares the host network — the retired
+    // --share-net model is gone; egress is the filtered veth (EgressScope).
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
     defer sandbox_args.freeArgv(alloc, argv);
 
-    // registry_allowlist re-shares the net (--share-net) but the tty stays
-    // detached — the flag is not gated on the network policy.
-    try std.testing.expect(indexOfStr(argv, "--share-net") != null);
+    try std.testing.expect(indexOfStr(argv, "--share-net") == null);
+    try std.testing.expect(indexOfStr(argv, "--unshare-all") != null);
+    // --new-session (tty detach) is not gated on the network policy.
     try std.testing.expect(indexOfStr(argv, "--new-session") != null);
+}
+
+test "egress files are ro-bound over /etc/hosts + /etc/resolv.conf when supplied" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const egress = sandbox_args.EgressFiles{
+        .hosts_path = "/run/uz/lease0/hosts",
+        .resolv_path = "/run/uz/lease0/resolv.conf",
+    };
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgRegistryAllowlist(LANDLOCK_FULL), WORKSPACE, egress) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // The host-side rendered file is the source; the in-sandbox target is the
+    // canonical /etc path. Both binds precede the `--` exec separator.
+    const sep = indexOfStr(argv, "--").?;
+    const hosts_src = indexOfStr(argv, "/run/uz/lease0/hosts").?;
+    const hosts_dst = indexOfStr(argv, "/etc/hosts").?;
+    const resolv_dst = indexOfStr(argv, "/etc/resolv.conf").?;
+    try std.testing.expect(hosts_src < sep);
+    try std.testing.expect(hosts_dst < sep);
+    try std.testing.expect(resolv_dst < sep);
+    // still no --share-net even with egress files present.
+    try std.testing.expect(indexOfStr(argv, "--share-net") == null);
 }
 
 test "should have no memory leaks freeing dev_none argv over many iterations" {
@@ -205,7 +233,7 @@ test "should have no memory leaks freeing dev_none argv over many iterations" {
     // std.testing.allocator panics on any leak; 100 create-free cycles prove
     // every dup'd entry is reclaimed by freeArgv.
     for (0..100) |_| {
-        const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE);
+        const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE, null);
         sandbox_args.freeArgv(alloc, argv);
     }
 }
@@ -216,7 +244,7 @@ test "should have no memory leaks freeing bwrap argv over many iterations" {
     // The bwrap path allocates many more entries (namespaces + ro binds); prove
     // freeArgv reclaims all of them across 50 cycles. Skip if bwrap is absent.
     for (0..50) |_| {
-        const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE) catch |err| {
+        const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
             try std.testing.expectEqual(error.BwrapUnavailable, err);
             return error.SkipZigTest;
         };
@@ -233,7 +261,7 @@ test "should surface OutOfMemory under allocation failure without leaking" {
         std.testing.allocator,
         struct {
             fn run(alloc: std.mem.Allocator) !void {
-                const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE) catch |err| {
+                const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE, null) catch |err| {
                     if (err == error.OutOfMemory) return err;
                     return; // BwrapUnavailable etc. — not an allocation outcome
                 };

@@ -4,6 +4,7 @@
 //! serializers, the Linux-only `Socket`, and the `EgressScope` lifecycle.
 
 pub const AllowList = @import("AllowList.zig");
+pub const Policy = @import("Policy.zig");
 pub const Plan = @import("Plan.zig");
 pub const EgressScope = @import("EgressScope.zig");
 pub const Socket = @import("Socket.zig");
@@ -14,6 +15,7 @@ pub const nfnetlink_rule = @import("nfnetlink_rule.zig");
 
 test {
     _ = AllowList;
+    _ = Policy;
     _ = Plan;
     _ = EgressScope;
     _ = Socket;

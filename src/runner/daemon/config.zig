@@ -30,7 +30,7 @@ workspace_base: []const u8,
 /// at load. sandbox_args owns the `--share-net` decision and reads it per-lease
 /// off `cfg`; Zig 0.16 routes the env read through `Environ.Map` at startup,
 /// so the daemon hot path never touches the environment.
-network_policy: network.PolicyMode,
+network_policy: network.Mode,
 /// Number of concurrent worker threads the daemon runs (env
 /// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
 /// the per-zombie `affinity.claim` keeps two off the same zombie. Default 1 is
@@ -93,7 +93,7 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         .host_id = host_id,
         .sandbox_tier = tier,
         .workspace_base = workspace_base,
-        .network_policy = network.policyFromMap(env_map),
+        .network_policy = network.fromMap(env_map),
         .worker_count = worker_count,
         .registry_allowlist = registry_allowlist,
         .alloc = alloc,
@@ -176,7 +176,7 @@ fn getOwned(env_map: *const std.process.Environ.Map, alloc: Allocator, name: []c
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
-const network = @import("../engine/network.zig");
+const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.zombie_runner);

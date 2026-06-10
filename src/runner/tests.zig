@@ -38,7 +38,6 @@ test {
     _ = @import("engine/tool_bridge.zig");
     _ = @import("engine/cgroup.zig");
     _ = @import("engine/landlock.zig");
-    _ = @import("engine/network.zig");
     // runner egress networking — the facade's test block fans out to leaves
     _ = @import("network/network.zig");
     // W1 runner-daemon coverage
