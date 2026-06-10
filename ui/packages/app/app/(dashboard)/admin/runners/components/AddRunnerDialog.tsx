@@ -37,6 +37,8 @@ import {
 } from "@/lib/api/runners";
 import { presentErrorString } from "@/lib/errors";
 import { createRunnerAction } from "../actions";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 const DEFAULT_TIER: SandboxTier = "landlock_full";
 
@@ -90,7 +92,13 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "enroll the runner" }));
         return;
       }
+      // Reveal first, capture second — the one-time token must render even if
+      // analytics misbehaves.
       setCreated(r.data);
+      captureProductEvent(EVENTS.runner_token_minted, {
+        runner_id: r.data.runner_id,
+        sandbox_tier: values.sandbox_tier,
+      });
     });
   }
 

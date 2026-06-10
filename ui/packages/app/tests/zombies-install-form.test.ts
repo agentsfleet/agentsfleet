@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
+import { EVENTS } from "../lib/analytics/events";
+
+const captureProductEventMock = vi.fn();
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
+}));
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.stubGlobal("fetch", fetchMock);
@@ -95,6 +101,8 @@ describe("InstallZombieForm interactions", () => {
     // No router.refresh() — InstallZombieForm intentionally drops the refresh
     // after push to avoid racing the destination URL commit.
     expect(routerRefresh).not.toHaveBeenCalled();
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.zombie_created, { zombie_id: "zom_new" });
   });
 
   it("409 conflict renders a name-collision hint", async () => {
@@ -113,6 +121,7 @@ describe("InstallZombieForm interactions", () => {
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
     );
     expect(routerPush).not.toHaveBeenCalled();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("non-409 errors render the raw error message", async () => {

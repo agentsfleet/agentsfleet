@@ -21,6 +21,8 @@ import {
 import { createCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credential-data";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = { workspaceId: string };
 
@@ -75,6 +77,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
         );
         return;
       }
+      captureProductEvent(EVENTS.credential_added, { credential_name: values.name.trim() });
       form.reset({ name: "", data_json: "" });
       router.refresh();
     });

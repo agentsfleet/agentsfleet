@@ -1,7 +1,13 @@
 "use client";
 
+import { EVENT_PROP_KEYS, type EventName, type EventProps } from "./events";
+
 const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
 const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
+// Set on identify, cleared on reset — lets a signed-out mount after a hard
+// navigation or session expiry detect "this browser still carries a prior
+// session's identity" without reaching into posthog-js internals.
+const IDENTIFIED_MARKER_KEY = "uz_analytics_identified";
 
 type AnalyticsValue = string | number | boolean;
 
@@ -28,6 +34,7 @@ type PostHogLike = {
   capture: (event: string, properties?: Record<string, AnalyticsValue>) => void;
   identify?: (distinctId: string, properties?: Record<string, AnalyticsValue>) => void;
   group?: (groupType: string, groupKey: string, properties?: Record<string, AnalyticsValue>) => void;
+  reset?: () => void;
 };
 
 const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
@@ -49,9 +56,17 @@ const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
 ]);
 
 let analyticsEnabled = false;
+// True when env config says analytics is on, even while the posthog-js chunk
+// is still loading (or failed) — distinguishes "off by config" from "not live
+// yet", which the deferred reset/identify below depend on.
+let analyticsConfigured = false;
 let posthogClient: PostHogLike | null = null;
 let initialized = false;
 let identifiedUserId: string | null = null;
+// Identity work that raced the posthog-js chunk load; initAnalytics flushes
+// both the moment the client lands so neither is silently lost.
+let pendingIdentify: { id: string; email?: string | null } | null = null;
+let pendingReset = false;
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === "") return fallback;
@@ -87,6 +102,20 @@ function sanitizeProps(properties: Partial<AnalyticsProps>): Record<string, Anal
   return out;
 }
 
+// localStorage can be absent (server, stubbed test windows) or throw on read
+// AND on write (locked-down privacy modes; full quota — posthog-js itself
+// fills storage) — every marker operation is best-effort. lib.dom types it
+// non-nullish, so model the maybe-absent reality structurally.
+function withMarkerStore<T>(fn: (store: Storage) => T): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const store = (window as { localStorage?: Storage }).localStorage;
+    return store ? fn(store) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function initAnalytics(): Promise<void> {
   if (initialized) return;
   initialized = true;
@@ -96,9 +125,19 @@ export async function initAnalytics(): Promise<void> {
   const cfg = resolveConfig(process.env);
   analyticsEnabled = cfg.enabled;
   if (!cfg.enabled || !cfg.key) return;
+  analyticsConfigured = true;
 
-  const loaded = await import("posthog-js");
-  const posthog = loaded.default as PostHogLike;
+  let posthog: PostHogLike;
+  try {
+    const loaded = await import("posthog-js");
+    posthog = loaded.default as PostHogLike;
+  } catch {
+    // Chunk load failed (offline, blocked client): analytics is off for this
+    // session. A deferred reset keeps its marker, so the identity sweep
+    // retries on the next load instead of being silently lost.
+    analyticsEnabled = false;
+    return;
+  }
   posthog.init(cfg.key, {
     api_host: cfg.host,
     person_profiles: "identified_only",
@@ -107,10 +146,28 @@ export async function initAnalytics(): Promise<void> {
     capture_pageleave: true,
   });
   posthogClient = posthog;
+  // Flush identity work that raced the chunk load — replay the reset first,
+  // then any identify that arrived after it. The queue must be captured
+  // before the replay: resetAnalyticsIdentity() clears pendingIdentify, but
+  // a queued identify is always newer than the queued reset (a reset that
+  // follows an identify already cancelled it at call time), so the sign-in
+  // survives the replayed sign-out.
+  const queuedIdentify = pendingIdentify;
+  pendingIdentify = null;
+  if (pendingReset) resetAnalyticsIdentity();
+  if (queuedIdentify !== null) identifyAnalyticsUser(queuedIdentify);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
-  if (!analyticsEnabled || !posthogClient?.identify) return;
+  if (!analyticsEnabled) return;
+  if (posthogClient === null) {
+    // posthog-js is still loading: queue the identify — the effect deps never
+    // change again this session, so dropping it here would leave the whole
+    // single-page session anonymous. initAnalytics flushes it.
+    pendingIdentify = user;
+    return;
+  }
+  if (!posthogClient.identify) return;
   if (identifiedUserId === user.id) return;
 
   const properties = sanitizeProps({
@@ -120,6 +177,61 @@ export function identifyAnalyticsUser(user: { id: string; email?: string | null 
 
   posthogClient.identify(user.id, properties);
   identifiedUserId = user.id;
+  withMarkerStore((store) => store.setItem(IDENTIFIED_MARKER_KEY, "1"));
+}
+
+// True when this browser still carries an identified analytics session —
+// identified during this page load, or flagged by the persisted marker from a
+// prior load (hard navigation / expired session).
+export function hasStaleAnalyticsIdentity(): boolean {
+  if (identifiedUserId !== null) return true;
+  return withMarkerStore((store) => store.getItem(IDENTIFIED_MARKER_KEY)) != null;
+}
+
+// Clears identity state (marker + cached user id) so a later sign-in
+// re-identifies. The marker is consumed only when the posthog reset can
+// actually run — burning it while the chunk is still loading would silently
+// re-open the cross-session stitching this exists to close.
+export function resetAnalyticsIdentity(): void {
+  identifiedUserId = null;
+  pendingIdentify = null;
+  if (analyticsConfigured && posthogClient === null) {
+    // posthog-js is still loading (or its import failed — the next load
+    // retries): keep the marker and let initAnalytics complete the reset.
+    pendingReset = true;
+    return;
+  }
+  pendingReset = false;
+  withMarkerStore((store) => store.removeItem(IDENTIFIED_MARKER_KEY));
+  if (!analyticsEnabled || !posthogClient?.reset) return;
+  posthogClient.reset();
+}
+
+// Typed product-event capture. Catalog props deliberately bypass sanitizeProps
+// (its closed ALLOWED_PROP_KEYS allowlist would silently drop event-specific
+// keys like zombie_id); instead the payload is allowlisted against the
+// catalog's own EVENT_PROP_KEYS mirror — compile-time excess-property checks
+// only cover object literals, so a spread or widened argument must not be
+// able to smuggle extra fields (a raw token is one property away at several
+// call sites). Events that race the posthog-js chunk load are dropped, not
+// buffered — every call site fires after a completed server round-trip, so
+// the window is effectively unreachable.
+export function captureProductEvent<E extends EventName>(event: E, props: EventProps[E]): void {
+  if (!analyticsEnabled || !posthogClient || typeof window === "undefined") return;
+  try {
+    const payload: Record<string, AnalyticsValue> = { path: window.location.pathname };
+    const bag = props as Record<string, unknown>;
+    for (const key of EVENT_PROP_KEYS[event]) {
+      const value = bag[key];
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        payload[key] = value;
+      }
+    }
+    posthogClient.capture(event, payload);
+  } catch {
+    // Analytics must never break the product flow it instruments — several
+    // call sites sit beside one-time secret reveals.
+  }
 }
 
 export function trackAppEvent(event: string, properties: Partial<AnalyticsProps> = {}): void {
