@@ -9,6 +9,7 @@
 **Categories:** API
 **Batch:** B1 — standalone; rides M84_003's `appendBwrap` argv + the `test-integration-runner` lane (both merged, #370).
 **Branch:** feat/m84-runner-egress-allowlist
+**Test Baseline:** unit=1857 integration=161 — reconstructed from the `origin/main` branch point (`make _lint_zig_test_depth` counter); spec predates the Test Delta rule (dotfiles `71840a7`, Jun 10, 2026).
 **Depends on:** **M84_003 — DONE (merged #370).** M84_003 stopped the *daemon's* `ZOMBIE_RUNNER_TOKEN` getting *in* (filtered `environ_map`); this slice stops the *tenant's own* secrets getting *out*. They share the `appendBwrap` / network-policy surface; M84_003 has landed, so there is no rebase wait.
 **Provenance:** agent-surfaced in the Orly Chief Technology Officer (CTO) adverse review of M84_003 (Jun 05, 2026); **re-scoped to a launch pull-forward in the Jun 10, 2026 adversarial review** (three-agent, code-grounded against `main`) which refuted the deferral — the stated compensating control is unbuilt and the exfil is trivially exploitable on a trusted runner day-1.
 
