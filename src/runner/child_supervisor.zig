@@ -149,11 +149,22 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    // egress=null for now: the per-lease EgressScope establishment (resolve the
-    // NetworkPolicy allowlist → veth + nft + rendered resolver files, then
-    // attachChild post-fork) lands with the Linux integration lane. With null,
-    // registry_allowlist leases get an unshared netns and NO veth — fail-closed
-    // (no egress) rather than the retired --share-net full-host-egress.
+    // Egress strategy (network/Policy.Mode):
+    //   deny_all           → unshared netns, no veth (handled in sandbox_args).
+    //   registry_allowlist → interim allow-all (`--share-net` in sandbox_args).
+    //   *_strict           → kernel-enforced EgressScope boundary (option D).
+    // The strict posture's per-lease establishment (resolve allowlist → named
+    // netns + veth + nft + rendered resolver files) is unbuilt (2.0.1). Fail
+    // CLOSED when it is selected — refuse the lease rather than run as if the
+    // boundary were enforced. The other postures pass egress=null (no
+    // EgressScope; --share-net or nothing per mode).
+    if (cfg.network_policy.enforcesEgress()) {
+        log.err("egress_strict_unimplemented_fail_closed", .{
+            .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
+            .lease_id = payload.lease_id,
+        });
+        return failed(.startup_posture);
+    }
     var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path, null);
     var reaped = false;
     // Zig 0.16 removed raw posix.waitpid/close; the process.Child wrapper is the
