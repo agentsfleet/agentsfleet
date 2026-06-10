@@ -38,6 +38,7 @@ const RunnerItem = struct {
     id: []const u8,
     host_id: []const u8,
     sandbox_tier: []const u8,
+    admin_state: protocol.AdminState,
     liveness: protocol.RunnerLiveness,
     labels: []const []const u8,
     last_seen_at: i64,
@@ -111,7 +112,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
     // order_sql is from sortClauseFor's fixed allowlist, never user input.
     const list_sql = std.fmt.allocPrint(hx.alloc,
         \\WITH filtered AS (
-        \\    SELECT r.id, r.host_id, r.sandbox_tier, r.labels, r.last_seen_at, r.created_at,
+        \\    SELECT r.id, r.host_id, r.sandbox_tier, r.admin_state, r.labels, r.last_seen_at, r.created_at,
         \\           EXISTS (
         \\               SELECT 1
         \\               FROM fleet.runner_leases l
@@ -122,7 +123,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
         \\    FROM fleet.runners r
         \\),
         \\page AS (
-        \\    SELECT r.id::text, r.host_id, r.sandbox_tier, r.labels::text, r.last_seen_at, r.created_at,
+        \\    SELECT r.id::text, r.host_id, r.sandbox_tier, r.admin_state, r.labels::text, r.last_seen_at, r.created_at,
         \\           r.has_live_lease, COUNT(*) OVER()::bigint AS total, false AS count_only,
         \\           ROW_NUMBER() OVER (ORDER BY {s})::bigint AS page_ord
         \\    FROM filtered r
@@ -130,7 +131,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
         \\    LIMIT $3 OFFSET $4
         \\),
         \\total_row AS (
-        \\    SELECT ''::text, ''::text, ''::text, '[]'::text, 0::bigint, 0::bigint,
+        \\    SELECT ''::text, ''::text, ''::text, 'active'::text, '[]'::text, 0::bigint, 0::bigint,
         \\           false, COUNT(*)::bigint, true, NULL::bigint
         \\    FROM filtered
         \\    WHERE NOT EXISTS (SELECT 1 FROM page)
@@ -173,9 +174,9 @@ fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) !PageRows 
     errdefer items.deinit(alloc);
     var total: i64 = 0;
     while (try rows.next()) |row| {
-        const row_total = try row.get(i64, 7);
+        const row_total = try row.get(i64, 8);
         if (total == 0) total = row_total;
-        if (try row.get(bool, 8)) {
+        if (try row.get(bool, 9)) {
             total = row_total;
             continue;
         }
@@ -195,9 +196,11 @@ fn readItem(alloc: std.mem.Allocator, row: anytype, now_ms: i64) !RunnerItem {
     // Read the scalar columns first (fallible, no allocation), then dupe the
     // borrowed slices with an errdefer per owned slice — a decode error on a
     // later column frees the earlier dupes instead of leaking them on partial init.
-    const last_seen_at = try row.get(i64, 4);
-    const created_at = try row.get(i64, 5);
-    const has_live_lease = try row.get(bool, 6);
+    const raw_admin_state = try row.get([]u8, 3);
+    const admin_state = std.meta.stringToEnum(protocol.AdminState, raw_admin_state) orelse return error.DbRowShape;
+    const last_seen_at = try row.get(i64, 5);
+    const created_at = try row.get(i64, 6);
+    const has_live_lease = try row.get(bool, 7);
     const id = try alloc.dupe(u8, try row.get([]u8, 0));
     errdefer alloc.free(id);
     const host_id = try alloc.dupe(u8, try row.get([]u8, 1));
@@ -208,7 +211,8 @@ fn readItem(alloc: std.mem.Allocator, row: anytype, now_ms: i64) !RunnerItem {
         .id = id,
         .host_id = host_id,
         .sandbox_tier = sandbox_tier,
-        .labels = parseLabels(alloc, try row.get([]u8, 3)),
+        .admin_state = admin_state,
+        .labels = parseLabels(alloc, try row.get([]u8, 4)),
         .last_seen_at = last_seen_at,
         .created_at = created_at,
         .liveness = deriveLiveness(last_seen_at, has_live_lease, now_ms),
@@ -221,17 +225,11 @@ fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
     return std.json.parseFromSliceLeaky([]const []const u8, alloc, text, .{ .allocate = .alloc_always }) catch &.{};
 }
 
-// ── Row-iteration error paths (fault-injected via a fake iterator) ───────────
-//
-// fetchPage's real transport is pg.Result; here a scriptable FakeRow + FakeRows
-// drive collectItems + readItem through every branch — clean read, one bad row
-// skipped, a mid-iteration transport error propagated, and the partial-init
-// errdefer leak-cleanliness — without a database.
-
 const FakeRow = struct {
     id: []const u8 = "r1",
     host_id: []const u8 = "h1",
     sandbox_tier: []const u8 = "landlock_full",
+    admin_state: []const u8 = "active",
     labels_json: []const u8 = "[]",
     last_seen_at: i64 = 0,
     created_at: i64 = 0,
@@ -248,18 +246,19 @@ const FakeRow = struct {
             0 => self.id,
             1 => self.host_id,
             2 => self.sandbox_tier,
-            3 => self.labels_json,
+            3 => self.admin_state,
+            4 => self.labels_json,
             else => unreachable,
         });
         if (T == i64) return switch (col) {
-            4 => self.last_seen_at,
-            5 => self.created_at,
-            7 => self.total,
+            5 => self.last_seen_at,
+            6 => self.created_at,
+            8 => self.total,
             else => unreachable,
         };
         if (T == bool) return switch (col) {
-            6 => self.has_live_lease,
-            8 => self.count_only,
+            7 => self.has_live_lease,
+            9 => self.count_only,
             else => unreachable,
         };
         unreachable;
@@ -291,6 +290,7 @@ test "collectItems: a clean read returns every row in order" {
     try std.testing.expectEqual(@as(usize, 2), items.len);
     try std.testing.expectEqual(@as(i64, 1), page.total);
     try std.testing.expectEqualStrings("a", items[0].id);
+    try std.testing.expectEqual(protocol.AdminState.active, items[0].admin_state);
     try std.testing.expectEqualStrings("b", items[1].id);
 }
 
@@ -341,8 +341,4 @@ test "parseLabels: malformed JSONB degrades to an empty set, not an error" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     try std.testing.expectEqual(@as(usize, 0), parseLabels(arena.allocator(), "{not valid").len);
-}
-
-test {
-    _ = @import("runners_list_test.zig");
 }

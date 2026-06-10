@@ -3,8 +3,8 @@
 **Prototype:** v2.0.0
 **Milestone:** M84
 **Workstream:** 003
-**Date:** Jun 03, 2026 (amended Jun 05, 2026 after plan-eng-review)
-**Status:** IN_PROGRESS
+**Date:** Jun 03, 2026 (amended Jun 05, 2026 after plan-eng-review; CHORE(close) Jun 10, 2026)
+**Status:** DONE
 **Priority:** P1 — security boundary. Closes a daemon-credential / file-descriptor exfiltration path open to an untrusted sandboxed agent, and pins the containment kill domain. No customer-facing behaviour change; gates untrusted/local-runner General Availability (GA).
 **Categories:** API
 **Batch:** B1 — runs **in parallel** with M84_005 (memory); disjoint trees (`src/runner/` here vs `src/zombied/`+contract there), two shared touchpoints to coordinate (`build_runner.zig`, `make/test-integration.mk` — second to land rebases).
@@ -282,19 +282,19 @@ Contract: the legitimate execution path (allowlisted env present, absolute `argv
 
 ## Acceptance Criteria
 
-- [ ] Filtered `environ_map` passed to `spawn`; child environ is allowlist-only; `ZOMBIE_*` absent — verify: `test_child_env_filtered_to_allowlist` + `test_child_env_omits_daemon_secrets`
-- [ ] Allowlist derived from a verified in-child env-read enumeration (engine + tool subprocesses, not the illustrative list); a `PATH`-needing tool runs under the filter — verify: integration smoke + the PLAN enumeration recorded in Discovery
-- [ ] Planted-token integration test green — verify: `make test-integration-runner` (`test_planted_token_absent_from_child_env`)
-- [ ] Child has `NoNewPrivs:1` — verify: `test_child_no_new_privs`
-- [ ] `--new-session` present under BOTH `deny_all` and `registry_allowlist` (Dim 1.7) — verify: `test_env_filter_and_new_session_under_registry_allowlist`
-- [ ] Child has no controlling terminal — verify: `test_child_no_controlling_tty`
-- [ ] Relative `argv[0]` rejected fail-closed — verify: `test_relative_argv0_rejected`
-- [ ] Kill domain never silently empty (both fixes) — verify: `test_kill_survives_cgroup_enrollment_failure` + `test_pgroup_kill_reaps_descendant_tree`
-- [ ] (cap-drop `CapEff:0`, fd-proof, network/fs containment → re-homed to [`M84_006`](./M84_006_P2_API_RUNNER_SANDBOX_DEPTH.md))
-- [ ] New `test-integration-runner` lane wired (`build_runner.zig` step + `make/test-integration.mk`) AND run by a dedicated CI job on Linux; runner TEST graph cross-compiles for both linux targets
-- [ ] `make lint` clean · `make test-unit-zigrunner` + `make test-integration-runner` pass · cross-compile both linux targets
-- [ ] `gitleaks detect` clean · no file over 350 lines added
-- [ ] `docs/AUTH.md` notes the token is `environ_map`-isolated (filtered allowlist) from the sandbox
+- [x] Filtered `environ_map` passed to `spawn`; child environ is allowlist-only; `ZOMBIE_*` absent — `test_child_env_filtered_to_allowlist` + `test_child_env_omits_daemon_secrets` (merged #370)
+- [x] Allowlist derived from a verified in-child env-read enumeration (engine + tool subprocesses) — recorded in the Discovery PLAN handshake: `{ HOME, PATH, NULLCLAW_OBSERVER, SSL_CERT_FILE, SSL_CERT_DIR, LANG, LC_ALL }`
+- [x] Planted-token integration test green — `test_planted_token_absent_from_child_env` (`sandbox_integration_test.zig`, CI Linux lane)
+- [~] Child has `NoNewPrivs:1` — mechanism shipped (`applyNoNewPrivs`, merged #370) + unit-covered; **end-to-end runtime proof `test_child_no_new_privs` re-homed to M84_006** (needs privileged Linux `__execute`-stub harness)
+- [x] `--new-session` present under BOTH `deny_all` and `registry_allowlist` (Dim 1.7) — `test_env_filter_and_new_session_under_registry_allowlist`
+- [~] Child has no controlling terminal — `--new-session` shipped (merged #370); **runtime proof `test_child_no_controlling_tty` re-homed to M84_006** (needs bwrap + pty parent)
+- [x] Relative `argv[0]` rejected fail-closed — `test_relative_argv0_rejected` (`requireAbsoluteArgv0`, merged #370)
+- [x] Kill domain never silently empty (both fixes) — `test_kill_survives_cgroup_enrollment_failure` + `test_pgroup_kill_reaps_descendant_tree` (CI Linux lane)
+- [→] cap-drop `CapEff:0`, fd-proof, network/fs containment → re-homed to M84_006 (fd-proof in fact already shipped via M84_007 #374)
+- [x] New `test-integration-runner` lane wired (`build_runner.zig` step + `make/test-integration.mk`) AND run by a dedicated CI job on Linux; runner TEST graph cross-compiles for both linux targets (re-confirmed Jun 10)
+- [x] `make lint` clean · `make test-unit-zigrunner` pass (re-confirmed Jun 10, green on `main`) · cross-compile both linux targets (compile-clean; macOS run-step skips by design, executed on CI Linux lane)
+- [x] `gitleaks detect` clean · no file over 350 lines added (`child_supervisor.zig` 348/350)
+- [x] `docs/AUTH.md` notes the token is `environ_map`-isolated (filtered allowlist) from the sandbox — `docs/AUTH.md:329`
 
 ---
 
@@ -401,9 +401,11 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 - `build_runner.zig` `test-integration` step (separate root from the unit `test` step) + `make test-integration-runner` lane (no datastore/docker — a distinct privileged-Linux execution environment). Native macOS run compiles + skips both (`SkipZigTest`); both linux targets compile (the run step can't cross-exec on macOS, as designed).
 - **Authored real-process proofs** (`sandbox_integration_test.zig`, Linux-gated, no bwrap/root needed): **Dim 1.3** planted-token — spawns a real child with the live `buildChildEnviron` filter, reads its `/proc/self/environ`, asserts the planted `ZOMBIE_RUNNER_TOKEN` absent + `HOME` present; **Dim 4.1** kill-tree — `sh` backgrounds two sleeps holding a piped stdout, `killChild` signals the pgroup, the pipe hitting EOF proves every descendant was reaped (a survivor would hold the pipe open → bounded-wait timeout = fail); **Dim 4.2** cgroup-fault — points a `CgroupScope` at a non-existent cgroup dir so `addProcess` fails deterministically (no root/real cgroup), asserts `enrollOrFail` refuses the lease (`CgroupEnrollFailed`, Fix A) **and** the child's whole group is still reaped via the Fix-B `killChild` (pipe EOF), so the kill domain is never silently empty.
 
-**Pending (privileged CI-runtime authoring — need the `__execute`-stub child / pty harness; NOT authorable blind on macOS):**
-- **Dim 1.5** NoNewPrivs:1 (needs a real `__execute` child + landlock + `/proc/<pid>/status` read) and **Dim 1.6b** no controlling tty (needs a bwrap + pty parent). Their *logic* is unit-covered (`applyNoNewPrivs` path); the end-to-end runtime proofs require a Linux host with the stub harness. *(Dim 4.2 cgroup-fault is no longer pending — it is authored above; the non-existent-scope trick reproduces the `addProcess` failure with no root or real cgroup, so it needed no privileged harness.)*
-- `docs/AUTH.md` note; optional `docs/architecture/runner_fleet.md` process-boundary subsection (pending Indy); CHORE(close) (spec→done/, changelog).
+**Re-homed to M84_006 (CHORE(close), Jun 10, 2026 — Indy-acked):**
+- **Dim 1.5** `NoNewPrivs:1` runtime proof + **Dim 1.6b** no-controlling-tty runtime proof. The *mechanism is shipped + merged* (`applyNoNewPrivs` runs before `landlock.applyPolicy`; `--new-session` in `appendBwrap`; #370) and unit/golden-covered — only the end-to-end runtime assertions move to M84_006's sandbox-depth characterization slice, where they sit alongside the deferred `CapEff:0` proof. They need a privileged Linux `__execute`-stub child + pty parent (NOT authorable on macOS). *(Dim 4.2 cgroup-fault was NOT deferred — it is authored on the lane via the non-existent-scope trick, no root/real cgroup needed.)*
+  - **Indy ack (verbatim, Jun 10, 2026):** _"yes take M84_003 to close out."_ — context: the prior turn offered "author the two runtime proofs on a Linux box, or record them as an explicit deferral with your ack (they gate proof-depth, not the launch)"; Indy chose the close-out path.
+
+**Done at close (Jun 10, 2026):** `docs/AUTH.md:329` environ_map-isolation note shipped (#370); `make test-unit-zigrunner` re-confirmed green on `main` + both linux targets compile-clean; spec moved `active/` → `done/`; Status → DONE. **Changelog skipped** — internal security change, no user-facing behaviour (pre-PR gate: skip iff internal-only).
 
 ## Verification Evidence
 
@@ -414,7 +416,7 @@ git grep -n 'ZOMBIE_RUNNER_TOKEN' src/runner/sandbox_args.zig | head
 | Cross-compile (prod, both targets) | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | both exit 0 — compile-checks the Linux `prctl`/`environ_map`/`killChild`/`enrollOrFail` paths | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found (2403 commits scanned) | ✅ |
 | Runner integration lane | `make test-integration-runner` | lane wired + run by a dedicated `test-integration-runner` CI job (ubuntu, `ci-zig-ubuntu:0.16.0`, no datastore) so the 3 proofs execute on Linux; native macOS: 3 tests skip (Linux-gated: planted-token, kill-tree, cgroup-fault) + compile clean; both linux targets compile | ✅ |
-| App suite (regression) | `make test` | {pending — run at CHORE(close)} | ⏳ |
+| App suite (regression) | `make test` | green at PR #370 merge CI (full app + DB/Redis lane); the runner change is datastore-free so the app suite is unaffected — local re-run needs Docker/PG/Redis, covered by the merge CI | ✅ |
 
 ---
 

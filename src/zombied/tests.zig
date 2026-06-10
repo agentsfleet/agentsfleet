@@ -34,6 +34,9 @@ test {
     _ = @import("fleet/control_plane_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
+    _ = @import("fleet/liveness_sweeper_integration_test.zig");
+    _ = @import("http/fleet_operator_integration_test.zig");
+    _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -102,6 +105,7 @@ test {
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
     _ = @import("http/handlers/fleet/runners_list.zig");
+    _ = @import("http/handlers/fleet/runners_list_test.zig");
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_caps.zig");
     _ = @import("http/handlers/model_caps_integration_test.zig");

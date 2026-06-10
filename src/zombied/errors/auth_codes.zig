@@ -24,5 +24,6 @@ pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
 pub const ERR_APIKEY_REVOKED = "UZ-APIKEY-004";
-// Runner plane — every runnerBearer rejection maps to invalid_runner_token.
+// Runner plane — unknown tokens stay invalid; known non-active runners are distinct.
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
+pub const ERR_RUN_ADMIN_STATE_BLOCKED = "UZ-RUN-009";

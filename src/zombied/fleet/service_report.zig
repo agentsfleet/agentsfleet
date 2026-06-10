@@ -39,6 +39,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../zombie/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
+const runner_events = @import("runner_events.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_report);
@@ -91,7 +92,7 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     }
     log.info("report_settled", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
 
-    finalize(hx, lease, body);
+    finalize(hx, runner_id, lease, body);
     // Per-runner telemetry (best-effort, in-memory — never gates the report).
     // The lease is now released, so drop the active-leases gauge; bucket the run
     // by outcome and stamp liveness; on failure, also bucket the granular reason.
@@ -164,7 +165,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
 /// design, matching the deleted direct path's finalize). The narrowed
 /// `report_rows` writers take the few fields they read, so no partial-struct
 /// shims are needed.
-fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
+fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRequest) void {
     const pool = hx.ctx.pool;
     const alloc = hx.alloc;
     const wall_ms = body.telemetry.wall_ms;
@@ -206,6 +207,7 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
         log.warn("report_xack_failed", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .err = @errorName(err) });
     };
     releaseAffinity(hx, lease.zombie_id, lease.fencing_token);
+    runner_events.appendLeaseReleasedBestEffort(hx.ctx.pool, hx.alloc, runner_id, body.lease_id, lease.zombie_id, lease.event_id);
     log.info("report_finalized", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .lease_id = body.lease_id });
 }
 
