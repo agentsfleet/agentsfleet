@@ -21,6 +21,7 @@
 const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const FailureClass = @import("execution_result.zig").FailureClass;
+const runner_events = @import("runner_events.zig");
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -113,10 +114,32 @@ pub const Outcome = enum { processed, agent_error };
 /// reserved for fleet failover so that workstream needn't recut the type.
 pub const HeartbeatStatus = enum { ok, drain, stop };
 
-/// `fleet.runners.status` lifecycle value — app-enforced (no SQL CHECK, per
-/// RULE STS). Single-sourced here for register (insert) and the runnerBearer
-/// lookup (active gate). Not a wire value.
-pub const RUNNER_STATUS_ACTIVE = "active";
+/// `fleet.runners.admin_state` — operator intent, a typed enum, app-enforced (no
+/// SQL CHECK, per RULE STS). `active` admits the runner plane; cordoned/draining/
+/// drained/revoked all reject it (→ 401 UZ-RUN-009). Renamed from `status`. The
+/// enum is the single source for the operator PATCH; the string consts below are
+/// derived from it (RULE UFS) for the SQL insert + the active gate. Not a wire value.
+pub const AdminState = enum { active, cordoned, draining, drained, revoked };
+/// The only `admin_state` that admits a runner-plane call — derived from the enum
+/// (RULE UFS). Used by register (insert) and the runnerBearer lookup (active gate).
+pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
+
+/// Platform-admin mutation actions for `PATCH /v1/fleet/runners/{id}`. These
+/// are wire enum values, so std.json accepts/serializes the tag names verbatim.
+pub const RunnerAdminAction = enum { cordon, drain, revoke };
+
+pub const RunnerAdminPatchRequest = struct {
+    action: RunnerAdminAction,
+};
+
+pub const RunnerAdminPatchResponse = struct {
+    id: []const u8,
+    admin_state: AdminState,
+};
+
+pub const RunnerEventType = runner_events.RunnerEventType;
+pub const RunnerEventItem = runner_events.RunnerEventItem;
+pub const RunnerEventsResponse = runner_events.RunnerEventsResponse;
 
 /// `fleet.runners.last_seen_at` sentinel for a runner minted but never seen.
 /// register inserts this; the heartbeat moves it to `now`. The fleet read
