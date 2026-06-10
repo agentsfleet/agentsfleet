@@ -8,16 +8,21 @@ import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
 const listRunnersActionMock = vi.fn();
 const createRunnerActionMock = vi.fn();
+const updateRunnerAdminStateActionMock = vi.fn();
+const listRunnerEventsActionMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnersAction: listRunnersActionMock,
   createRunnerAction: createRunnerActionMock,
+  updateRunnerAdminStateAction: updateRunnerAdminStateActionMock,
+  listRunnerEventsAction: listRunnerEventsActionMock,
 }));
 
 const REGISTERED: RunnerListItem = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   host_id: "web-fresh-1",
   sandbox_tier: "landlock_full",
+  admin_state: "active",
   liveness: "registered",
   labels: [],
   last_seen_at: 0,
@@ -27,6 +32,7 @@ const ONLINE: RunnerListItem = {
   id: "0190bbbb-bbbb-7bbb-bbbb-bbbbbbbbbbbb",
   host_id: "web-idle-2",
   sandbox_tier: "container_nested",
+  admin_state: "active",
   liveness: "online",
   labels: ["gpu", "us-east"],
   last_seen_at: 1_716_500_000_000,
@@ -36,6 +42,7 @@ const BUSY: RunnerListItem = {
   id: "0190cccc-cccc-7ccc-cccc-cccccccccccc",
   host_id: "web-busy-3",
   sandbox_tier: "macos_seatbelt",
+  admin_state: "draining",
   liveness: "busy",
   labels: [],
   last_seen_at: 1_716_400_000_000,
@@ -45,6 +52,7 @@ const OFFLINE: RunnerListItem = {
   id: "0190dddd-dddd-7ddd-dddd-dddddddddddd",
   host_id: "web-dead-4",
   sandbox_tier: "dev_none",
+  admin_state: "revoked",
   liveness: "offline",
   labels: ["legacy"],
   last_seen_at: 1_700_000_000_000,
@@ -58,6 +66,8 @@ function listResponse(items: RunnerListItem[], total = items.length, page = 1): 
 beforeEach(() => {
   vi.clearAllMocks();
   listRunnersActionMock.mockResolvedValue({ ok: true, data: listResponse([REGISTERED, ONLINE]) });
+  updateRunnerAdminStateActionMock.mockResolvedValue({ ok: true, data: { id: REGISTERED.id, admin_state: "cordoned" } });
+  listRunnerEventsActionMock.mockResolvedValue({ ok: true, data: { items: [], total: 0, page: 1, page_size: 25 } });
 });
 afterEach(() => {
   cleanup();
@@ -88,21 +98,24 @@ describe("RunnerList component", () => {
     expect(screen.getByLabelText(/sort runners/i)).toBeTruthy();
   });
 
-  it("renders every derived-liveness badge, the tier, labels, and the never-connected line", async () => {
+  it("renders every derived-liveness badge, admin-state badge, tier, labels, and the never-connected line", async () => {
     await renderList(listResponse([REGISTERED, ONLINE, BUSY, OFFLINE]));
     // All four derived liveness states surface as badge text.
     expect(screen.getByText("registered")).toBeTruthy();
     expect(screen.getByText("online")).toBeTruthy();
     expect(screen.getByText("busy")).toBeTruthy();
     expect(screen.getByText("offline")).toBeTruthy();
+    expect(screen.getAllByText("active").length).toBeGreaterThan(0);
+    expect(screen.getByText("draining")).toBeTruthy();
+    expect(screen.getByText("revoked")).toBeTruthy();
     // Host ids + a tier render.
     expect(screen.getByText("web-fresh-1")).toBeTruthy();
     expect(screen.getByText("container_nested")).toBeTruthy();
     // last_seen_at == 0 → "never connected"; > 0 → a "last seen" timestamp line.
     expect(screen.getByText(/never connected/i)).toBeTruthy();
     expect(screen.getAllByText(/last seen/i).length).toBeGreaterThan(0);
-    // Labels are joined onto the meta line.
-    expect(screen.getByText(/gpu, us-east/i)).toBeTruthy();
+    expect(screen.getByText("gpu")).toBeTruthy();
+    expect(screen.getByText("us-east")).toBeTruthy();
   });
 
   it("picking a different sort re-fetches page 1 with that sort", async () => {

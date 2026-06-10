@@ -3,7 +3,6 @@ const common = @import("common");
 const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
 const balance_policy = @import("../config/balance_policy.zig");
-const events_bus = @import("../events/bus.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
@@ -20,8 +19,8 @@ const preflight = @import("preflight.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
 const serve_shutdown = @import("serve_shutdown.zig");
+const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
-const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
@@ -294,23 +293,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     serve_shutdown.reset();
     preflight.installSignalHandlers(serve_shutdown.onSignal);
 
-    var event_bus = events_bus.Bus.init();
-    events_bus.install(&event_bus);
-    defer events_bus.uninstall();
-
-    var signal_thread: ?std.Thread = null;
-    var event_thread: ?std.Thread = null;
-    var approval_sweeper_thread: ?std.Thread = null;
-    errdefer {
-        serve_shutdown.request();
-        event_bus.stop();
-        if (signal_thread) |*t| t.join();
-        if (event_thread) |*t| t.join();
-        if (approval_sweeper_thread) |*t| t.join();
-    }
-    signal_thread = try std.Thread.spawn(.{}, serve_shutdown.signalWatcher, .{});
-    event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
-    approval_sweeper_thread = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{ api_pool, &api_queue, alloc, serve_shutdown.flag() });
+    var background = serve_background.Threads.init();
+    try background.start(api_pool, &api_queue, alloc);
+    defer background.stop();
 
     log.info("http.server_starting", .{
         .port = serve_cfg.port,
@@ -337,11 +322,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         log.err("http.server_exit_failed", .{ .err = @errorName(err) });
     };
 
-    serve_shutdown.request();
-    event_bus.stop();
-    if (signal_thread) |*t| t.join();
-    if (event_thread) |*t| t.join();
-    if (approval_sweeper_thread) |*t| t.join();
+    background.stop();
 }
 
 // Arg-parsing tests live in serve_test.zig.

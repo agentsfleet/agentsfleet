@@ -41,7 +41,7 @@ const N_CLAIMERS = 100;
 fn seedRunner(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runners
-        \\  (id, host_id, token_hash, sandbox_tier, status, labels, tenant_id,
+        \\  (id, host_id, token_hash, sandbox_tier, admin_state, labels, tenant_id,
         \\   last_seen_at, created_at, updated_at)
         \\VALUES ($1::uuid, 'conc-lease-host', 'conc-lease-hash', 'dev_none', 'active', '[]'::jsonb, NULL, 0, 0, 0)
         \\ON CONFLICT (id) DO NOTHING

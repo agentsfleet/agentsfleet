@@ -13,6 +13,7 @@ const std = @import("std");
 const runner_protocol = @import("contract").protocol;
 const webhook = @import("route_matchers_webhook.zig");
 const billing = @import("route_matchers_billing.zig");
+const fleet = @import("route_matchers_fleet.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
@@ -301,6 +302,9 @@ pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
 pub const matchWebhookAction = webhook.matchWebhookAction;
 pub const matchSvixWebhook = webhook.matchSvixWebhook;
 pub const matchWebhook = webhook.matchWebhook;
+
+pub const matchFleetRunner = fleet.matchFleetRunner;
+pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
 
 /// Match `/runners/me/leases/{lease_id}/activity` (the only runner verb with a
 /// path param). `me` is the self-plane segment; identity is the Bearer token.
