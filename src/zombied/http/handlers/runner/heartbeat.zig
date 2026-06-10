@@ -73,6 +73,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         constants.RUNNER_OFFLINE_AFTER_MS,
     }) catch |err| {
         log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .runner_id = runner_id, .err = @errorName(err) });
+        bumpOnly(conn, runner_id, now_ms);
     };
 }
 

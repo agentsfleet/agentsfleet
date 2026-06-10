@@ -32,6 +32,29 @@ const LARGE_BALANCE_NANOS: i64 = 1_000_000_000_000;
 const REPORT_TOKENS: u64 = 10;
 const REPORT_WALL_MS: u64 = 100;
 const REPORT_TTFT_MS: u32 = 5;
+const SQL_INSTALL_HEARTBEAT_EVENT_REJECTOR =
+    \\DROP TRIGGER IF EXISTS reject_runner_event_test ON fleet.runner_events;
+    \\DROP FUNCTION IF EXISTS fleet.reject_runner_event_test();
+    \\CREATE FUNCTION fleet.reject_runner_event_test()
+    \\RETURNS trigger
+    \\LANGUAGE plpgsql
+    \\AS $$
+    \\BEGIN
+    \\  RAISE EXCEPTION 'reject runner event test';
+    \\END;
+    \\$$;
+    \\CREATE TRIGGER reject_runner_event_test
+    \\BEFORE INSERT ON fleet.runner_events
+    \\FOR EACH ROW EXECUTE FUNCTION fleet.reject_runner_event_test();
+;
+const SQL_DROP_HEARTBEAT_EVENT_REJECTOR =
+    \\DROP TRIGGER IF EXISTS reject_runner_event_test ON fleet.runner_events;
+    \\DROP FUNCTION IF EXISTS fleet.reject_runner_event_test();
+;
+const SQL_SELECT_RUNNER_LAST_SEEN =
+    \\SELECT last_seen_at FROM fleet.runners WHERE id = $1::uuid
+;
+const CLEANUP_HEARTBEAT_REJECTOR_IGNORED_FMT = "cleanup heartbeat event rejector ignored: {s}";
 
 const CONFIG_NO_GATES =
     \\{"name":"runner-events-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
@@ -193,6 +216,22 @@ fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
     base.teardownTenant(conn);
 }
 
+fn installHeartbeatEventRejector(conn: anytype) !void {
+    _ = try conn.exec(SQL_INSTALL_HEARTBEAT_EVENT_REJECTOR, .{});
+}
+
+fn dropHeartbeatEventRejector(conn: anytype) void {
+    _ = conn.exec(SQL_DROP_HEARTBEAT_EVENT_REJECTOR, .{}) catch |err|
+        std.log.warn(CLEANUP_HEARTBEAT_REJECTOR_IGNORED_FMT, .{@errorName(err)});
+}
+
+fn runnerLastSeen(conn: anytype, runner_id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(SQL_SELECT_RUNNER_LAST_SEEN, .{runner_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    return row.get(i64, 0);
+}
+
 test "state writes append runner events and history route lists them" {
     const h = try startHarness();
     defer h.deinit();
@@ -274,4 +313,24 @@ test "lease and report append acquire and release events" {
     defer no_events.deinit();
     try no_events.expectStatus(.ok);
     try std.testing.expect(no_events.bodyContains("\"total\":0"));
+}
+
+test "heartbeat keeps liveness update when runner event insert fails" {
+    const h = try startHarness();
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupFleetWork(h, conn);
+    defer dropHeartbeatEventRejector(conn);
+
+    try seedRunner(conn);
+    try installHeartbeatEventRejector(conn);
+    try std.testing.expectEqual(protocol.RUNNER_LAST_SEEN_NEVER, try runnerLastSeen(conn, RUNNER_ID));
+
+    const heartbeat = try (try h.post(protocol.PATH_RUNNER_HEARTBEATS).bearer(RUNNER_TOKEN)).rawBody("").send();
+    defer heartbeat.deinit();
+    try heartbeat.expectStatus(.ok);
+
+    try std.testing.expect((try runnerLastSeen(conn, RUNNER_ID)) > protocol.RUNNER_LAST_SEEN_NEVER);
+    try std.testing.expectEqual(@as(i64, 0), try eventCount(conn, RUNNER_ID, .runner_online));
 }
