@@ -7,6 +7,8 @@ import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 import { approveApprovalAction, denyApprovalAction } from "../actions";
 import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals";
 import { presentErrorString } from "@/lib/errors";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = {
   workspaceId: string;
@@ -42,6 +44,11 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
         return;
       }
       // Success — bounce back to the inbox so they see the fresh queue.
+      captureProductEvent(EVENTS.approval_resolved, {
+        gate_id: gateId,
+        decision,
+        has_reason: reason.trim().length > 0,
+      });
       router.push("/approvals");
       router.refresh();
     });

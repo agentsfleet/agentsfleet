@@ -37,6 +37,8 @@ import {
 } from "@/lib/api/runners";
 import { presentErrorString } from "@/lib/errors";
 import { createRunnerAction } from "../actions";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 const DEFAULT_TIER: SandboxTier = "landlock_full";
 
@@ -90,6 +92,10 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "enroll the runner" }));
         return;
       }
+      captureProductEvent(EVENTS.runner_token_minted, {
+        runner_id: r.data.runner_id,
+        sandbox_tier: values.sandbox_tier,
+      });
       setCreated(r.data);
     });
   }

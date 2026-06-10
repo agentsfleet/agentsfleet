@@ -1,7 +1,13 @@
 "use client";
 
+import type { EventName, EventProps } from "./events";
+
 const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
 const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
+// Set on identify, cleared on reset — lets a signed-out mount after a hard
+// navigation or session expiry detect "this browser still carries a prior
+// session's identity" without reaching into posthog-js internals.
+const IDENTIFIED_MARKER_KEY = "uz_analytics_identified";
 
 type AnalyticsValue = string | number | boolean;
 
@@ -28,6 +34,7 @@ type PostHogLike = {
   capture: (event: string, properties?: Record<string, AnalyticsValue>) => void;
   identify?: (distinctId: string, properties?: Record<string, AnalyticsValue>) => void;
   group?: (groupType: string, groupKey: string, properties?: Record<string, AnalyticsValue>) => void;
+  reset?: () => void;
 };
 
 const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
@@ -87,6 +94,18 @@ function sanitizeProps(properties: Partial<AnalyticsProps>): Record<string, Anal
   return out;
 }
 
+// localStorage can be absent (server, stubbed test windows) or throw
+// (locked-down privacy modes) — treat both as "no marker store". lib.dom
+// types it non-nullish, so model the maybe-absent reality structurally.
+function markerStore(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return (window as { localStorage?: Storage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function initAnalytics(): Promise<void> {
   if (initialized) return;
   initialized = true;
@@ -120,6 +139,39 @@ export function identifyAnalyticsUser(user: { id: string; email?: string | null 
 
   posthogClient.identify(user.id, properties);
   identifiedUserId = user.id;
+  markerStore()?.setItem(IDENTIFIED_MARKER_KEY, "1");
+}
+
+// True when this browser still carries an identified analytics session —
+// identified during this page load, or flagged by the persisted marker from a
+// prior load (hard navigation / expired session).
+export function hasStaleAnalyticsIdentity(): boolean {
+  if (identifiedUserId !== null) return true;
+  return markerStore()?.getItem(IDENTIFIED_MARKER_KEY) != null;
+}
+
+// Clears identity state unconditionally (marker + cached user id) so a later
+// sign-in re-identifies; the posthog reset itself only runs when a client is
+// live and exposes it.
+export function resetAnalyticsIdentity(): void {
+  markerStore()?.removeItem(IDENTIFIED_MARKER_KEY);
+  identifiedUserId = null;
+  if (!analyticsEnabled || !posthogClient?.reset) return;
+  posthogClient.reset();
+}
+
+// Typed product-event capture. Catalog props deliberately bypass sanitizeProps:
+// its closed ALLOWED_PROP_KEYS allowlist would silently drop event-specific
+// keys (zombie_id, api_key_id, …); the EventProps types are the guard.
+export function captureProductEvent<E extends EventName>(event: E, props: EventProps[E]): void {
+  if (!analyticsEnabled || !posthogClient || typeof window === "undefined") return;
+  const payload: Record<string, AnalyticsValue> = { path: window.location.pathname };
+  const entries = Object.entries(props) as Array<[string, AnalyticsValue | undefined]>;
+  for (const [key, value] of entries) {
+    if (value == null) continue;
+    payload[key] = value;
+  }
+  posthogClient.capture(event, payload);
 }
 
 export function trackAppEvent(event: string, properties: Partial<AnalyticsProps> = {}): void {

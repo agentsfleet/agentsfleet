@@ -12,22 +12,14 @@
 // without bringing the runtime import along.
 type Posthog = typeof import("posthog-js").default;
 
+// Signup *completion* is captured server-side by zombied (posthog-zig,
+// SignupBootstrapped) — the funnel is redirect-based, so this origin can
+// never observe it. No completion or lead-capture events exist here by
+// design; see docs/architecture/product_analytics.md.
 export const EVENT_SIGNUP_STARTED = "signup_started";
-export const EVENT_SIGNUP_COMPLETED = "signup_completed";
 export const EVENT_NAVIGATION_CLICKED = "navigation_clicked";
-export const EVENT_LEAD_CAPTURE_CLICKED = "lead_capture_clicked";
-export const EVENT_LEAD_CAPTURE_OPENED = "lead_capture_opened";
-export const EVENT_LEAD_CAPTURE_SUBMITTED = "lead_capture_submitted";
-export const EVENT_LEAD_CAPTURE_FAILED = "lead_capture_failed";
 
-type AnalyticsEventName =
-  | typeof EVENT_SIGNUP_STARTED
-  | typeof EVENT_SIGNUP_COMPLETED
-  | typeof EVENT_NAVIGATION_CLICKED
-  | typeof EVENT_LEAD_CAPTURE_CLICKED
-  | typeof EVENT_LEAD_CAPTURE_OPENED
-  | typeof EVENT_LEAD_CAPTURE_SUBMITTED
-  | typeof EVENT_LEAD_CAPTURE_FAILED;
+type AnalyticsEventName = typeof EVENT_SIGNUP_STARTED | typeof EVENT_NAVIGATION_CLICKED;
 
 type AnalyticsPrimitive = string | number | boolean;
 type AnalyticsProps = Record<string, AnalyticsPrimitive>;
@@ -169,43 +161,8 @@ export function trackSignupStarted(properties: Omit<AnalyticsProps, "path">): vo
   });
 }
 
-export function trackSignupCompleted(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_SIGNUP_COMPLETED, {
-    ...properties,
-    path: window.location.pathname,
-  });
-}
-
 export function trackNavigationClicked(properties: Omit<AnalyticsProps, "path">): void {
   track(EVENT_NAVIGATION_CLICKED, {
-    ...properties,
-    path: window.location.pathname,
-  });
-}
-
-export function trackLeadCaptureClicked(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_LEAD_CAPTURE_CLICKED, {
-    ...properties,
-    path: window.location.pathname,
-  });
-}
-
-export function trackLeadCaptureOpened(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_LEAD_CAPTURE_OPENED, {
-    ...properties,
-    path: window.location.pathname,
-  });
-}
-
-export function trackLeadCaptureSubmitted(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_LEAD_CAPTURE_SUBMITTED, {
-    ...properties,
-    path: window.location.pathname,
-  });
-}
-
-export function trackLeadCaptureFailed(properties: Omit<AnalyticsProps, "path">): void {
-  track(EVENT_LEAD_CAPTURE_FAILED, {
     ...properties,
     path: window.location.pathname,
   });

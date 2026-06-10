@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { EVENTS } from "../lib/analytics/events";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // Only the server-action module is stubbed; lib/api/runners (HOST_ID_REGEX,
@@ -9,10 +10,15 @@ import userEvent from "@testing-library/user-event";
 // client-side validation + error voice are exercised, not faked.
 
 const createRunnerActionMock = vi.fn();
+const captureProductEventMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnersAction: vi.fn(),
   createRunnerAction: createRunnerActionMock,
+}));
+
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
 }));
 
 // happy-dom ships a real (no-op) navigator.clipboard.writeText; defining a fresh
@@ -93,6 +99,14 @@ describe("AddRunnerDialog component", () => {
     await user.click(screen.getByRole("button", { name: /stored it/i }));
     await waitFor(() => expect(screen.queryByDisplayValue("zrn_deadbeef")).toBeNull());
     expect(onCreated).toHaveBeenCalled();
+
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.runner_token_minted, {
+      runner_id: "r1",
+      sandbox_tier: "landlock_full",
+    });
+    // The one-time zrn_ token must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("zrn_deadbeef");
   });
 
   it("a server 403 keeps the dialog open, reveals no token, and does not signal onCreated", async () => {
@@ -107,6 +121,7 @@ describe("AddRunnerDialog component", () => {
     await waitFor(() => expect(screen.getByText(/platform-admin access/i)).toBeTruthy());
     expect(screen.queryByLabelText("Runner token")).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   it("copies the raw token to the clipboard on demand", async () => {

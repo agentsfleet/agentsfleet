@@ -107,41 +107,41 @@
 
 ## Sections (implementation slices)
 
-### §1 — Single-sourced typed event catalog
+### §1 — Single-sourced typed event catalog — DONE
 
-One `events.ts` exports `EVENTS` (as-const, snake_case `verb_noun`) + a per-event prop-type map. Every call site references the catalog; no bare event-name strings; no PII in any prop type (IDs/names/enums only).
+One `events.ts` exports `EVENTS` (as-const, snake_case object-first past tense — `zombie_created`) + a per-event prop-type map. Every call site references the catalog; no bare event-name strings; no PII in any prop type (IDs/names/enums only).
 
-- **Dimension 1.1** — the catalog enumerates the launch event set and is the only source of event-name strings → Test `events catalog is the single source (no bare event-name literals at call sites)`
-- **Dimension 1.2** — no prop type admits a secret/token/raw-credential field (compile-time + a lint/test check) → Test `event props carry no PII/secret fields`
-- **Dimension 1.3 (sanitizer interaction)** — the app's existing `sanitizeProps` drops any key not in the **closed** `ALLOWED_PROP_KEYS` set (`posthog.ts:33`,`:77`); routing the catalog's event-specific keys (`zombie_id`, `api_key_id`, …) through it would **silently emit empty prop bags**. The typed `captureProductEvent` therefore **bypasses `sanitizeProps` for catalog events** — the `EventProps` types are the (type-enforced) PII guard, with the `EVENT_PROP_KEYS` runtime mirror giving the tests teeth. *(PLAN picked bypass; extending `ALLOWED_PROP_KEYS` was the rejected alternative.)* → Test `catalog event props survive the emit path (not dropped by ALLOWED_PROP_KEYS)`
+- **Dimension 1.1 — DONE** — the catalog enumerates the launch event set and is the only source of event-name strings → Test `events catalog is the single source (no bare event-name literals at call sites)`
+- **Dimension 1.2 — DONE** — no prop type admits a secret/token/raw-credential field (compile-time + a lint/test check) → Test `event props carry no PII/secret fields`
+- **Dimension 1.3 (sanitizer interaction) — DONE** — the app's existing `sanitizeProps` drops any key not in the **closed** `ALLOWED_PROP_KEYS` set (`posthog.ts:33`,`:77`); routing the catalog's event-specific keys (`zombie_id`, `api_key_id`, …) through it would **silently emit empty prop bags**. The typed `captureProductEvent` therefore **bypasses `sanitizeProps` for catalog events** — the `EventProps` types are the (type-enforced) PII guard, with the `EVENT_PROP_KEYS` runtime mirror giving the tests teeth. *(PLAN picked bypass; extending `ALLOWED_PROP_KEYS` was the rejected alternative.)* → Test `catalog event props survive the emit path (not dropped by ALLOWED_PROP_KEYS)`
 
-### §2 — Dashboard first-class events (client-side, user-driven)
+### §2 — Dashboard first-class events (client-side, user-driven) — DONE
 
 At each click-driven action, the component calls the typed client `captureProductEvent(EVENTS.x, props)`. Covers the actions a user triggers in the browser (create-zombie submit, runner-token mint, key mint, BYOK model add, credential add, approval resolve). The approvals `already_resolved` race branch does **not** capture — that click did not resolve the gate.
 
-- **Dimension 2.1** — each click-driven action emits its catalog event with the documented props on success → Test per action (`captureProductEvent` called with `EVENTS.zombie_created` + props)
-- **Dimension 2.2** — capture is **not** fired on validation failure / aborted action (event = success signal) → Test (no capture on error path; no capture on approvals `already_resolved`)
+- **Dimension 2.1 — DONE** — each click-driven action emits its catalog event with the documented props on success → Test per action (`captureProductEvent` called with `EVENTS.zombie_created` + props)
+- **Dimension 2.2 — DONE** — capture is **not** fired on validation failure / aborted action (event = success signal) → Test (no capture on error path; no capture on approvals `already_resolved`)
 
 ### §3 — Server-side conversions — OUT OF SCOPE (zombied's `posthog-zig`)
 
 Server-completed conversions (billing confirmed, signup completion, zombie run finished) are **not** captured here. They already flow from the zombied backend via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, …), where the state-owning code lives and the event is authoritative (browser events get ad-blocked / lost on tab close). **No `posthog-node` path is added to the web app.** Extending the backend's server-event coverage (e.g. a dedicated billing-conversion event) is a separate Zig / `posthog-zig` workstream.
 
-### §4 — Identity hygiene: `reset()` on logout
+### §4 — Identity hygiene: `reset()` on logout — DONE
 
 `AnalyticsBootstrap` (or the logout handler) calls `posthog.reset()` when Clerk transitions to signed-out, so a subsequent anonymous/other session does not stitch to the prior `distinct_id`.
 
-- **Dimension 4.1** — `posthog.reset()` is called **exactly once on the `isSignedIn: true → false` edge** — NOT on every signed-out render. The current `AnalyticsBootstrap` effect early-returns `if (!isLoaded || !isSignedIn || !userId)` (`AnalyticsBootstrap.tsx:11`); a naive `else { reset() }` would fire on every render while signed out. **Required pattern:** a `useRef(prevSignedIn)` (or a dedicated effect keyed on `isSignedIn`) that calls `reset()` only when the previous value was `true` and the current is `false`. → Test (`reset` fired once on the sign-in→sign-out transition; NOT fired on repeated signed-out renders)
+- **Dimension 4.1 — DONE** — `posthog.reset()` is called **exactly once on the `isSignedIn: true → false` edge** — NOT on every signed-out render. The current `AnalyticsBootstrap` effect early-returns `if (!isLoaded || !isSignedIn || !userId)` (`AnalyticsBootstrap.tsx:11`); a naive `else { reset() }` would fire on every render while signed out. **Required pattern:** a `useRef(prevSignedIn)` (or a dedicated effect keyed on `isSignedIn`) that calls `reset()` only when the previous value was `true` and the current is `false`. → Test (`reset` fired once on the sign-in→sign-out transition; NOT fired on repeated signed-out renders)
 
 Reset routes through `resetAnalyticsIdentity()` (`posthog.ts`), which **also nulls the module-cached `identifiedUserId`** — `identifyAnalyticsUser` caches it, so without clearing a same-user re-login would never re-identify. → Test (sign-out then sign-in re-identifies)
 
-**Hard-navigation contingency (verify at EXECUTE):** if Clerk sign-out hard-navigates (full reload — the ref never observes the edge), add a localStorage identified-marker sweep — set on identify, cleared on reset; a signed-out mount with the marker present resets once. Guarded so anonymous visitors never churn anonymous ids.
+**Marker sweep (shipped — EXECUTE decision):** the localStorage identified-marker sweep — set on identify, cleared on reset; a signed-out mount with the marker present resets once — shipped unconditionally rather than as a hard-navigation contingency: session expiry and cross-tab sign-out also make the edge unobservable in-page, so the sweep is required regardless of Clerk's navigation mode. Guarded so anonymous visitors never churn anonymous ids. The shipped pattern is the spec's allowed alternative — a single effect keyed on `isSignedIn` with the staleness predicate (`hasStaleAnalyticsIdentity`) in the analytics module — same exactly-once edge semantics as the `useRef` sketch, plus hard-nav/expiry coverage.
 
-### §5 — Website funnel: delete the dead exports (PLAN-ratified inversion)
+### §5 — Website funnel: delete the dead exports (PLAN-ratified inversion) — DONE
 
 The Jun 09 audit assumed the dead exports needed call sites. PLAN verification (Jun 10) showed they are **structurally unwireable**: the marketing funnel is redirect-based — the "get early access" Call-To-Action (CTA) links navigate to the app origin where Clerk completes signup, so the website can never observe completion (and the deliberate localStorage-only persistence does not cross subdomains). No lead-capture surface exists for the four `trackLeadCapture*` events. Conversion truth is zombied's `SignupBootstrapped` (`posthog-zig`). Per RULE NDC the five dead exports, their `EVENT_*` constants, union members, and dead-only tests are **deleted**. `signup_started` + `navigation_clicked` call sites are live and stay.
 
-- **Dimension 5.1** — `trackSignupCompleted` + `trackLeadCaptureClicked/Opened/Submitted/Failed`, their `EVENT_*` constants, and union members are removed; zero references remain → Test (website suite green after deletion) + grep (zero hits)
-- **Dimension 5.2** — every **remaining** `track*` export has ≥1 production call site → Test + grep
+- **Dimension 5.1 — DONE** — `trackSignupCompleted` + `trackLeadCaptureClicked/Opened/Submitted/Failed`, their `EVENT_*` constants, and union members are removed; zero references remain → Test (website suite green after deletion) + grep (zero hits)
+- **Dimension 5.2 — DONE** — every **remaining** `track*` export has ≥1 production call site → Test + grep
 
 ---
 

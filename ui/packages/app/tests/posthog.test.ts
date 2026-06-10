@@ -3,18 +3,32 @@
 // "no window / server-side" branch of the analytics module. Under happy-dom
 // `window` is always defined, which defeats that assertion.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EVENTS } from "../lib/analytics/events";
 
 type MockClient = {
   init: ReturnType<typeof vi.fn>;
   capture: ReturnType<typeof vi.fn>;
   identify: ReturnType<typeof vi.fn>;
+  reset?: ReturnType<typeof vi.fn>;
 };
+
+// Minimal in-memory localStorage so the identified-marker logic is exercisable
+// from the node environment (this file avoids happy-dom on purpose — see top).
+function createLocalStorage() {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+  };
+}
 
 function createWindow(pathname = "/workspaces") {
   return {
     location: { pathname },
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
+    localStorage: createLocalStorage(),
   };
 }
 
@@ -298,5 +312,165 @@ describe("app analytics", () => {
       target: "/workspaces/ws_123",
       path: "/workspaces",
     }));
+  });
+
+  it("captures typed product events with every catalog prop intact (no allowlist drop)", async () => {
+    const { mod, client } = await loadModule({
+      pathname: "/zombies/new",
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+
+    await mod.initAnalytics();
+    mod.captureProductEvent(EVENTS.runner_token_minted, {
+      runner_id: "r1",
+      sandbox_tier: "landlock_full",
+    });
+
+    // Event-specific keys are NOT in the legacy ALLOWED_PROP_KEYS allowlist —
+    // they must survive the emit path untouched.
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.runner_token_minted, {
+      path: "/zombies/new",
+      runner_id: "r1",
+      sandbox_tier: "landlock_full",
+    });
+  });
+
+  it("drops undefined optional props from product events", async () => {
+    const { mod, client } = await loadModule({
+      pathname: "/settings/models",
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+
+    await mod.initAnalytics();
+    mod.captureProductEvent(EVENTS.model_added, {
+      provider: "anthropic",
+      mode: "self_managed",
+      model: undefined,
+    });
+
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.model_added, {
+      path: "/settings/models",
+      provider: "anthropic",
+      mode: "self_managed",
+    });
+  });
+
+  it("product capture is a no-op when analytics is disabled", async () => {
+    const { mod, client } = await loadModule({
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live", NEXT_PUBLIC_POSTHOG_ENABLED: "0" },
+    });
+
+    await mod.initAnalytics();
+    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_1" });
+
+    expect(client.capture).not.toHaveBeenCalled();
+  });
+
+  it("reset clears the posthog identity, the marker, and re-arms identify", async () => {
+    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+    const { mod } = await loadModule({
+      client,
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+
+    await mod.initAnalytics();
+    mod.identifyAnalyticsUser({ id: "user_123", email: null });
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+
+    mod.resetAnalyticsIdentity();
+    expect(client.reset).toHaveBeenCalledTimes(1);
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+
+    // The cached identifiedUserId must clear too — a same-user re-login
+    // re-identifies instead of being deduped against the pre-reset session.
+    mod.identifyAnalyticsUser({ id: "user_123", email: null });
+    expect(client.identify).toHaveBeenCalledTimes(2);
+  });
+
+  it("the identified marker persists across module reloads (hard-navigation sweep)", async () => {
+    const sharedWindow = createWindow("/workspaces");
+    vi.resetModules();
+    vi.doMock("posthog-js", () => ({
+      default: { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() },
+    }));
+    vi.stubGlobal("window", sharedWindow);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    let mod = await import("../lib/analytics/posthog");
+    await mod.initAnalytics();
+    mod.identifyAnalyticsUser({ id: "user_123", email: null });
+
+    // Simulate the hard navigation: fresh module state, same localStorage.
+    vi.resetModules();
+    vi.doMock("posthog-js", () => ({
+      default: { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() },
+    }));
+    mod = await import("../lib/analytics/posthog");
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+    mod.resetAnalyticsIdentity();
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+  });
+
+  it("reset is safe when the client lacks reset or analytics is disabled", async () => {
+    const { mod } = await loadModule({ env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" } });
+    await mod.initAnalytics();
+    mod.identifyAnalyticsUser({ id: "user_9", email: null });
+    // The default mock client has no reset() — must not throw, still clears state.
+    mod.resetAnalyticsIdentity();
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+  });
+
+  it("treats a throwing localStorage as no marker store (locked-down privacy mode)", async () => {
+    const windowWithLockedStorage = {
+      location: { pathname: "/workspaces" },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      get localStorage(): Storage {
+        throw new Error("denied");
+      },
+    };
+    vi.resetModules();
+    vi.doMock("posthog-js", () => ({
+      default: { init: vi.fn(), capture: vi.fn(), identify: vi.fn() },
+    }));
+    vi.stubGlobal("window", windowWithLockedStorage);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    await mod.initAnalytics();
+
+    // identify still works; the marker write is silently skipped…
+    mod.identifyAnalyticsUser({ id: "user_locked", email: null });
+    // …the module cache still reports staleness this page-load, and reset
+    // clears it without throwing on the locked storage.
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+    mod.resetAnalyticsIdentity();
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+  });
+
+  it("marker helpers are inert without a usable localStorage", async () => {
+    // Window present but no localStorage at all (bare embeds / stubbed hosts).
+    const bareWindow = {
+      location: { pathname: "/workspaces" },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    vi.resetModules();
+    vi.doMock("posthog-js", () => ({
+      default: { init: vi.fn(), capture: vi.fn(), identify: vi.fn() },
+    }));
+    vi.stubGlobal("window", bareWindow);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    let mod = await import("../lib/analytics/posthog");
+    await mod.initAnalytics();
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+
+    // No window at all (server): same answer, no throw.
+    vi.resetModules();
+    vi.doMock("posthog-js", () => ({
+      default: { init: vi.fn(), capture: vi.fn(), identify: vi.fn() },
+    }));
+    vi.unstubAllGlobals();
+    mod = await import("../lib/analytics/posthog");
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+    mod.resetAnalyticsIdentity();
   });
 });

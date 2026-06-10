@@ -26,6 +26,8 @@ import {
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 const schema = z.object({
   key_name: z
@@ -70,6 +72,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "create the API key" }));
         return;
       }
+      captureProductEvent(EVENTS.api_key_minted, { api_key_id: r.data.id });
       setCreated(r.data);
     });
   }
