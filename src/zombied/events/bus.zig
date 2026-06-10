@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const common = @import("common");
-const clock = @import("common").clock;
+const clock = common.clock;
 const logging = @import("log");
 
 const log = logging.scoped(.event_bus);
@@ -64,7 +64,14 @@ pub const Bus = struct {
     }
 
     pub fn stop(self: *Bus) void {
+        self.mutex.lock();
+        // safe because: the .release store pairs with waitNext's .acquire loads; holding
+        // the mutex orders it against the consumer's predicate check — the consumer is
+        // either already parked (the broadcast below wakes it) or re-checks after unlock
+        // and sees running == false. An unlocked store can land between predicate check
+        // and waiter registration: broadcast then has no waiter and the join hangs.
         self.running.store(false, .release);
+        self.mutex.unlock();
         self.cond.broadcast();
     }
 
@@ -110,6 +117,7 @@ pub const Bus = struct {
     fn waitNext(self: *Bus) ?NextEvent {
         self.mutex.lock();
         defer self.mutex.unlock();
+        // safe because: both .acquire loads here pair with stop()'s mutex-ordered .release store.
         while (self.len == 0 and self.running.load(.acquire)) {
             self.cond.wait(&self.mutex);
         }
@@ -134,15 +142,18 @@ pub const Bus = struct {
 var global_bus = std.atomic.Value(?*Bus).init(null);
 
 pub fn install(bus: *Bus) void {
+    // safe because: .acq_rel publishes the fully-initialized bus to emit()'s .acquire load.
     const previous = global_bus.swap(bus, .acq_rel);
     std.debug.assert(previous == null);
 }
 
 pub fn uninstall() void {
+    // safe because: .acq_rel pairs with emit()'s .acquire load; later emits see null and drop.
     _ = global_bus.swap(null, .acq_rel);
 }
 
 pub fn emit(kind: []const u8, run_id: ?[]const u8, detail: []const u8) void {
+    // safe because: .acquire pairs with install/uninstall's .acq_rel swaps.
     const bus = global_bus.load(.acquire) orelse return;
     bus.publish(BusEvent.init(kind, run_id, detail));
 }
@@ -173,7 +184,7 @@ test "event slices are truncated to bounded limits" {
 test "integration: event bus run thread exits when stopped while idle" {
     var bus = Bus.init();
     const thread = try std.Thread.spawn(.{}, runThread, .{&bus});
-    @import("common").sleepNanos(5 * std.time.ns_per_ms);
+    common.sleepNanos(5 * std.time.ns_per_ms);
     bus.stop();
     thread.join();
 
@@ -186,12 +197,26 @@ test "integration: event bus drains queued events before shutdown completes" {
 
     bus.publish(BusEvent.init("k1", "run-1", "d1"));
     bus.publish(BusEvent.init("k2", "run-2", "d2"));
-    @import("common").sleepNanos(5 * std.time.ns_per_ms);
+    common.sleepNanos(5 * std.time.ns_per_ms);
     bus.stop();
     thread.join();
 
     try std.testing.expectEqual(@as(usize, 0), bus.pendingCount());
     try std.testing.expectEqual(@as(u64, 0), bus.droppedCount());
+}
+
+test "integration: stop never loses the wakeup under repeated start/stop" {
+    // Rolls the predicate-check-vs-stop window with no sleeps; a lost wakeup
+    // would hang this join and time the test out.
+    var i: usize = 0;
+    while (i < 200) : (i += 1) {
+        var bus = Bus.init();
+        const thread = try std.Thread.spawn(.{}, runThread, .{&bus});
+        bus.publish(BusEvent.init("k", "r", "d"));
+        bus.stop();
+        thread.join();
+        try std.testing.expectEqual(@as(usize, 0), bus.pendingCount());
+    }
 }
 
 test "integration: emit is ignored after uninstall" {
