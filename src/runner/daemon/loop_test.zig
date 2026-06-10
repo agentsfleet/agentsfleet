@@ -131,8 +131,9 @@ test "runner boots from a zrn_ token straight into the lease loop with no regist
         .host_id = try alloc.dupe(u8, "boot-test-host"),
         .sandbox_tier = try alloc.dupe(u8, "dev_none"),
         .workspace_base = try alloc.dupe(u8, "/tmp/zombie-runner-boot-test"),
-        .network_policy = .deny_all,
+        .network_policy = .deny_all_egress,
         .worker_count = 1,
+        .registry_allowlist = &.{},
         .alloc = alloc,
     };
     defer cfg.deinit();

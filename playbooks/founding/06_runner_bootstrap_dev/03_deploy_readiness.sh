@@ -143,6 +143,13 @@ check_remote_file "/opt/zombie/.env" "env file" "600"
 echo "-- checking systemd units (step 6.3)"
 check_remote_file "/etc/systemd/system/$RUNNER_UNIT" "systemd runner unit"
 
+# 6.4 Egress host dependencies — records bwrap/nftables/iproute2
+# versions in the CI log and fails loud if a box cannot enforce per-lease egress.
+echo "-- checking egress host deps (step 6.4)"
+# shellcheck source=../../lib/egress_host_deps.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/egress_host_deps.sh"
+egress_probe_remote remote_cmd || missing=$((missing + 1))
+
 if [ "$missing" -gt 0 ]; then
   echo ""
   echo "❌ section 3 failed: $missing issue(s) detected"

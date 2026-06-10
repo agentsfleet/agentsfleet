@@ -31,8 +31,8 @@ const log = logging.scoped(.runner_supervisor);
 /// via `environ_map`), so `ZOMBIE_RUNNER_TOKEN` and every other daemon-only var
 /// never reach a prompt-injectable agent. `argv[0]` is asserted absolute before
 /// spawn so a relative path can never be resolved via the parent `$PATH`.
-pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8) !std.process.Child {
-    const argv = try sandbox.buildArgv(io, alloc, cfg, workspace_path);
+pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8, egress: ?sandbox.EgressFiles) !std.process.Child {
+    const argv = try sandbox.buildArgv(io, alloc, cfg, workspace_path, egress);
     defer sandbox.freeArgv(alloc, argv);
 
     try requireAbsoluteArgv0(argv);
