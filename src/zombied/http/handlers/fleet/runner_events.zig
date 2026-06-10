@@ -38,15 +38,11 @@ pub fn innerListFleetRunnerEvents(hx: Hx, req: *httpz.Request, runner_id: []cons
         return;
     }
 
-    const items = runner_events.listForRunner(conn, hx.alloc, runner_id, q.filter, q.page, q.page_size) catch {
+    const page = runner_events.listForRunner(conn, hx.alloc, runner_id, q.filter, q.page, q.page_size) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    const total = runner_events.countForRunner(conn, runner_id, q.filter) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    hx.ok(.ok, protocol.RunnerEventsResponse{ .items = items, .total = total, .page = q.page, .page_size = q.page_size });
+    hx.ok(.ok, protocol.RunnerEventsResponse{ .items = page.items, .total = page.total, .page = q.page, .page_size = q.page_size });
 }
 
 const ListQuery = struct {

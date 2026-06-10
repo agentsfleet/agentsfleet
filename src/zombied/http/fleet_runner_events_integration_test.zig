@@ -252,6 +252,14 @@ test "lease and report append acquire and release events" {
     try std.testing.expect(events.bodyContains("\"lease_released\""));
     try std.testing.expect(events.bodyContains("\"total\":2"));
 
+    const beyond_page = try eventsPathWithQuery(RUNNER_ID, "page=2&page_size=10");
+    defer ALLOC.free(beyond_page);
+    const beyond_events = try (try h.get(beyond_page).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer beyond_events.deinit();
+    try beyond_events.expectStatus(.ok);
+    try std.testing.expect(beyond_events.bodyContains("\"items\":[]"));
+    try std.testing.expect(beyond_events.bodyContains("\"total\":2"));
+
     const last_busy = try eventsPathWithQuery(RUNNER_ID, "event_type=lease_acquired&since=0&page=1&page_size=1");
     defer ALLOC.free(last_busy);
     const busy_events = try (try h.get(last_busy).bearer(PLATFORM_ADMIN_TOKEN)).send();

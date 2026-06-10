@@ -1,8 +1,8 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
+import type { RunnerEventsResponse, RunnerListItem, RunnerListResponse } from "@/lib/api/runners";
 
 const PAGE_SIZE = 25;
 const PAGINATED_TOTAL = 30;
@@ -10,6 +10,10 @@ const PAGINATED_TOTAL = 30;
 const listRunnersActionMock = vi.fn();
 const updateRunnerAdminStateActionMock = vi.fn();
 const listRunnerEventsActionMock = vi.fn();
+
+type EventsActionResult =
+  | { ok: true; data: RunnerEventsResponse }
+  | { ok: false; error: string; errorCode: string };
 
 vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnersAction: listRunnersActionMock,
@@ -74,6 +78,34 @@ const OFFLINE: RunnerListItem = {
 
 function listResponse(items: RunnerListItem[], total = items.length, page = 1): RunnerListResponse {
   return { items, total, page, page_size: PAGE_SIZE };
+}
+
+function deferredEvents() {
+  let resolve: (value: EventsActionResult) => void = () => {};
+  const promise = new Promise<EventsActionResult>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+function eventResponse(
+  runner: RunnerListItem,
+  eventType: RunnerEventsResponse["items"][number]["event_type"],
+): RunnerEventsResponse {
+  return {
+    items: [
+      {
+        id: runner.id,
+        runner_id: runner.id,
+        event_type: eventType,
+        occurred_at: runner.last_seen_at,
+        metadata: { host_id: runner.host_id },
+      },
+    ],
+    total: 1,
+    page: 1,
+    page_size: PAGE_SIZE,
+  };
 }
 
 function rowFor(hostId: string) {
@@ -221,6 +253,35 @@ describe("RunnerList activity dialog", () => {
     await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
     expect(await screen.findByText("runner_online")).toBeTruthy();
     expect(screen.getByText(/last_seen_at/i)).toBeTruthy();
+  });
+
+  it("ignores stale activity responses from a previously selected runner", async () => {
+    const onlineEvents = deferredEvents();
+    const busyEvents = deferredEvents();
+    listRunnerEventsActionMock
+      .mockReturnValueOnce(onlineEvents.promise)
+      .mockReturnValueOnce(busyEvents.promise);
+
+    const user = userEvent.setup();
+    await renderList(listResponse([ONLINE, BUSY]));
+    await user.click(within(rowFor(ONLINE.host_id)).getByRole("button", { name: /activity/i }));
+    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(ONLINE.id, { page: 1, page_size: PAGE_SIZE }));
+    await user.click(screen.getByRole("button", { name: /^close$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /runner activity/i })).toBeNull());
+    await user.click(within(rowFor(BUSY.host_id)).getByRole("button", { name: /activity/i }));
+    await waitFor(() => expect(listRunnerEventsActionMock).toHaveBeenCalledWith(BUSY.id, { page: 1, page_size: PAGE_SIZE }));
+
+    await act(async () => {
+      busyEvents.resolve({ ok: true, data: eventResponse(BUSY, "runner_draining") });
+    });
+    expect(await screen.findByText("runner_draining")).toBeTruthy();
+
+    await act(async () => {
+      onlineEvents.resolve({ ok: true, data: eventResponse(ONLINE, "runner_online") });
+    });
+    const dialog = await screen.findByRole("dialog", { name: /runner activity/i });
+    expect(screen.queryByText("runner_online")).toBeNull();
+    expect(within(dialog).getByText(BUSY.host_id)).toBeTruthy();
   });
 
   it("opens runner activity with an empty event list", async () => {

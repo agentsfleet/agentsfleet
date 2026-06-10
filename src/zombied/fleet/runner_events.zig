@@ -26,6 +26,11 @@ pub const Filter = struct {
     until: ?i64 = null,
 };
 
+const RunnerEventPage = struct {
+    items: []protocol.RunnerEventItem,
+    total: i64,
+};
+
 pub fn eventTypeForAdminState(state: protocol.AdminState) protocol.RunnerEventType {
     return switch (state) {
         .active => .runner_online,
@@ -43,43 +48,56 @@ pub fn listForRunner(
     filter: Filter,
     page: i32,
     page_size: i32,
-) ![]protocol.RunnerEventItem {
+) !RunnerEventPage {
     const offset: i64 = @as(i64, page - 1) * @as(i64, page_size);
     const limit: i64 = page_size;
     const event_type = eventTypeName(filter);
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
-        \\FROM fleet.runner_events
-        \\WHERE runner_id = $1::uuid
-        \\  AND ($2::text IS NULL OR event_type = $2::text)
-        \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-        \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
-        \\ORDER BY occurred_at DESC, id DESC
-        \\LIMIT $5 OFFSET $6
+        \\WITH filtered AS (
+        \\  SELECT id::text, runner_id::text, event_type, occurred_at, metadata::text
+        \\  FROM fleet.runner_events
+        \\  WHERE runner_id = $1::uuid
+        \\    AND ($2::text IS NULL OR event_type = $2::text)
+        \\    AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
+        \\    AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
+        \\),
+        \\page AS (
+        \\  SELECT id, runner_id, event_type, occurred_at, metadata,
+        \\    COUNT(*) OVER()::bigint AS total,
+        \\    false AS count_only,
+        \\    ROW_NUMBER() OVER (ORDER BY occurred_at DESC, id DESC)::bigint AS page_ord
+        \\  FROM filtered
+        \\  ORDER BY occurred_at DESC, id DESC
+        \\  LIMIT $5::bigint OFFSET $6::bigint
+        \\),
+        \\total_row AS (
+        \\  SELECT NULL::text AS id, NULL::text AS runner_id, NULL::text AS event_type,
+        \\    0::bigint AS occurred_at, NULL::text AS metadata,
+        \\    (SELECT COUNT(*)::bigint FROM filtered) AS total,
+        \\    true AS count_only,
+        \\    NULL::bigint AS page_ord
+        \\  WHERE NOT EXISTS (SELECT 1 FROM page)
+        \\)
+        \\SELECT * FROM page
+        \\UNION ALL
+        \\SELECT * FROM total_row
+        \\ORDER BY count_only ASC, page_ord ASC NULLS LAST
     , .{ runner_id, event_type, filter.since, filter.until, limit, offset }));
     defer q.deinit();
 
     var items: std.ArrayList(protocol.RunnerEventItem) = .empty;
     errdefer items.deinit(alloc);
+    var total: i64 = 0;
     while (try q.next()) |row| {
+        const row_total = try row.get(i64, 5);
+        if (try row.get(bool, 6)) {
+            total = row_total;
+            continue;
+        }
+        if (total == 0) total = row_total;
         try items.append(alloc, try readItem(alloc, row));
     }
-    return items.toOwnedSlice(alloc);
-}
-
-pub fn countForRunner(conn: *pg.Conn, runner_id: []const u8, filter: Filter) !i64 {
-    const event_type = eventTypeName(filter);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT COUNT(*)::bigint
-        \\FROM fleet.runner_events
-        \\WHERE runner_id = $1::uuid
-        \\  AND ($2::text IS NULL OR event_type = $2::text)
-        \\  AND ($3::bigint IS NULL OR occurred_at >= $3::bigint)
-        \\  AND ($4::bigint IS NULL OR occurred_at <= $4::bigint)
-    , .{ runner_id, event_type, filter.since, filter.until }));
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.RowMissing;
-    return row.get(i64, 0);
+    return .{ .items = try items.toOwnedSlice(alloc), .total = total };
 }
 
 fn eventTypeName(filter: Filter) ?[]const u8 {

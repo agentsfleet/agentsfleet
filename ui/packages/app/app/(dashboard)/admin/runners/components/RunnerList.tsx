@@ -1,6 +1,6 @@
 "use client";
 
-import { type Ref, useImperativeHandle, useState, useTransition } from "react";
+import { type Ref, useImperativeHandle, useRef, useState, useTransition } from "react";
 import {
   Badge,
   type BadgeVariant,
@@ -92,6 +92,11 @@ function fmt(ms: number): string {
 
 export type RunnerListHandle = { refresh: () => void };
 
+type ActivityDataState = {
+  runnerId: string;
+  data: RunnerEventsResponse;
+};
+
 export default function RunnerList({
   initial,
   ref,
@@ -100,6 +105,7 @@ export default function RunnerList({
   ref?: Ref<RunnerListHandle>;
 }) {
   const [pending, startTransition] = useTransition();
+  const [activityPending, startActivityTransition] = useTransition();
   const [items, setItems] = useState<RunnerListItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [page, setPage] = useState(initial.page);
@@ -107,8 +113,9 @@ export default function RunnerList({
   const [error, setError] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<RunnerActionConfirmTarget>(null);
   const [activityRunner, setActivityRunner] = useState<RunnerListItem | null>(null);
-  const [activityData, setActivityData] = useState<RunnerEventsResponse | null>(null);
+  const [activityData, setActivityData] = useState<ActivityDataState | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const activityRunnerIdRef = useRef<string | null>(null);
 
   // The header "Add runner" dialog (rendered by the parent view) calls this via
   // ref on create — a targeted re-fetch of page 1, not a full-route refresh.
@@ -158,22 +165,31 @@ export default function RunnerList({
   }
 
   function loadEvents(runnerId: string, nextPage = 1) {
-    startTransition(async () => {
+    startActivityTransition(async () => {
       const r = await listRunnerEventsAction(runnerId, { page: nextPage, page_size: DEFAULT_PAGE_SIZE });
+      if (activityRunnerIdRef.current !== runnerId) return;
       if (!r.ok) {
         setActivityError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load runner activity" }));
         return;
       }
       setActivityError(null);
-      setActivityData(r.data);
+      setActivityData({ runnerId, data: r.data });
     });
   }
 
   function openActivity(runner: RunnerListItem) {
+    activityRunnerIdRef.current = runner.id;
     setActivityRunner(runner);
     setActivityData(null);
     setActivityError(null);
     loadEvents(runner.id);
+  }
+
+  function closeActivity() {
+    activityRunnerIdRef.current = null;
+    setActivityRunner(null);
+    setActivityData(null);
+    setActivityError(null);
   }
 
   return (
@@ -238,10 +254,12 @@ export default function RunnerList({
       {activityRunner ? (
         <RunnerActivityDialog
           runner={activityRunner}
-          data={activityData}
+          data={activityData?.runnerId === activityRunner.id ? activityData.data : null}
           error={activityError}
-          pending={pending}
-          onOpenChange={() => setActivityRunner(null)}
+          pending={activityPending}
+          onOpenChange={(open) => {
+            if (!open) closeActivity();
+          }}
           onPage={(nextPage) => loadEvents(activityRunner.id, nextPage)}
         />
       ) : null}
