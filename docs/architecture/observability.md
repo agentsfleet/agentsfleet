@@ -86,6 +86,7 @@ a named module). Its shape makes conformance by construction:
 
 Because the envelope and fan-out are enforced in the module, any call site that uses
 `log.scoped(...).level(...)` is conformant for free — there is no per-call
-discipline to remember. The field-level standard those calls must satisfy lives in
-[`../LOGGING_STANDARD.md`](../LOGGING_STANDARD.md); this file covers *where the
-signal goes*, that file covers *what a line must contain*.
+discipline to remember. The field-level standard those calls must satisfy lives at
+`docs/LOGGING_STANDARD.md` — a tracked symlink into the operating-model dotfiles,
+so open it locally (GitHub renders only the symlink target path, not the document).
+This file covers *where the signal goes*; that one covers *what a line must contain*.
