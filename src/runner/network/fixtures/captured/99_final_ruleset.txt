@@ -1,0 +1,19 @@
+table inet uz_egress { # handle 12
+	set allow0 { # handle 3
+		type ipv4_addr
+		elements = { 1.2.3.4, 10.20.30.40 }
+	}
+
+	chain egress_fwd { # handle 1
+		type filter hook forward priority filter; policy drop;
+		iifname "uzveth0" udp dport 53 drop # handle 4
+		iifname "uzveth0" tcp dport 53 drop # handle 5
+		iifname "uzveth0" ip daddr @allow0 accept # handle 6
+		oifname "uzveth0" ct state established,related accept # handle 7
+	}
+
+	chain egress_nat { # handle 2
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.69.0.0/30 oifname != "uzveth0" masquerade # handle 8
+	}
+}
