@@ -35,6 +35,7 @@ fn cfgWithTier(tier: []const u8) Config {
         .workspace_base = "/tmp/zombie-runner",
         .network_policy = .deny_all,
         .worker_count = 1,
+        .cp_deadlines = .{},
         .alloc = std.testing.allocator,
     };
 }

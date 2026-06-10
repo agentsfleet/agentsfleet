@@ -60,6 +60,7 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .workspace_base = "/tmp/zombie-runner",
         .network_policy = .deny_all,
         .worker_count = 1,
+        .cp_deadlines = .{},
         .alloc = alloc,
     };
     const ws = "/tmp/zombie-ws-childexec";

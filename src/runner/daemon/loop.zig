@@ -16,7 +16,8 @@ const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const worker_pool = @import("worker_pool.zig");
-const RenewDriver = @import("renew_driver.zig").RenewDriver(client_mod);
+const forwarders = @import("forwarders.zig");
+const RenewDriver = @import("renew_driver.zig").RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
 const log = logging.scoped(.zombie_runner);
@@ -68,7 +69,8 @@ pub var stop_requested = std.atomic.Value(bool).init(false);
 /// exits before a single lease is taken. Workers each run `pollAndProcess`
 /// concurrently; `cfg.worker_count == 1` is behaviourally today's single daemon.
 pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *const std.process.Environ.Map) void {
-    const cp = client_mod{ .base_url = cfg.control_plane_url, .io = io };
+    var cp = client_mod.init(alloc, io, cfg.control_plane_url);
+    defer cp.deinit();
     const runner_token: []const u8 = cfg.runner_token;
     // Reset only `stop_requested` (set solely by this control loop). `drain_requested`
     // is set by the async SIGTERM/SIGINT handler and is DELIBERATELY not reset here:
@@ -88,7 +90,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
             break;
         }
 
-        const hb = cp.heartbeat(alloc, runner_token) catch |err| {
+        const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
             heartbeat_errors += 1;
             log.warn("heartbeat_failed", .{ .err = @errorName(err), .consecutive = heartbeat_errors });
             const mult: u64 = if (heartbeat_errors >= HEARTBEAT_MAX_CONSECUTIVE_ERRORS) heartbeat_errors else 1;
@@ -127,8 +129,8 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration. Each pool worker calls this in a
 /// loop with its own allocator + client (see `worker_pool.zig`).
-pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
-    const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
+pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
+    const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
         log.warn("lease_failed", .{ .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
         return;
@@ -146,57 +148,30 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: client_mod, runn
     executeAndReport(io, alloc, cp, runner_token, cfg, env_map, lease_resp.lease.?);
 }
 
-/// Forwards each `activity` frame the sandboxed child streams to the control
-/// plane's `activity` verb. Best-effort by contract — `cp.activity` swallows
-/// transport errors, so a dropped live-tail frame never disturbs execution.
-const ActivityForwarder = struct {
-    alloc: std.mem.Allocator,
-    cp: client_mod,
-    runner_token: []const u8,
-    lease_id: []const u8,
+/// Fans the supervisor's renewal tick out to the periodic work that rides it:
+/// the activity batch's staleness flush, then the renewal decision itself.
+const TickFanout = struct {
+    forwarder: *forwarders.ActivityForwarder,
+    driver: *RenewDriver,
 
-    fn forward(ctx: *anyopaque, frame: contract.activity.ActivityFrame) void {
-        const self: *ActivityForwarder = @ptrCast(@alignCast(ctx));
-        self.cp.activity(self.alloc, self.runner_token, self.lease_id, &.{frame});
+    fn onTick(ctx: *anyopaque, now_ms: i64) child_supervisor.RenewDecision {
+        const self: *TickFanout = @ptrCast(@alignCast(ctx));
+        self.forwarder.flushIfStale(now_ms);
+        return self.driver.tick(now_ms);
+    }
+
+    fn hook(self: *TickFanout) child_supervisor.RenewHook {
+        return .{ .ctx = self, .onTick = onTick, .tick_ms = constants.RENEWAL_TICK_MS };
     }
 };
 
-/// POSTs each `.memory` capture frame the child writes to the control plane —
-/// the daemon (not the child) holds the `zrn_` token, so capture rides the
-/// trusted plane. The frame is a JSON array of deltas; the daemon wraps it with
-/// the held lease's `lease_id` + `fencing_token` so the write is fenced. A blip
-/// is logged and swallowed — the next capture re-sends the full set.
-const MemoryForwarder = struct {
-    alloc: std.mem.Allocator,
-    cp: client_mod,
-    runner_token: []const u8,
-    zombie_id: []const u8,
-    lease_id: []const u8,
-    fencing_token: u64,
-
-    fn forward(ctx: *anyopaque, payload: []const u8) void {
-        const self: *MemoryForwarder = @ptrCast(@alignCast(ctx));
-        const parsed = std.json.parseFromSlice([]protocol.MemoryDelta, self.alloc, payload, .{}) catch {
-            log.warn("memory_frame_parse_failed", .{ .zombie_id = self.zombie_id });
-            return;
-        };
-        defer parsed.deinit();
-        const req = protocol.MemoryPushRequest{
-            .lease_id = self.lease_id,
-            .fencing_token = self.fencing_token,
-            .memory = parsed.value,
-        };
-        self.cp.memoryCapture(self.alloc, self.runner_token, self.zombie_id, req) catch |err|
-            log.warn("memory_capture_post_failed", .{ .zombie_id = self.zombie_id, .err = @errorName(err) });
-    }
-};
 
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 fn executeAndReport(
     io: std.Io,
     alloc: std.mem.Allocator,
-    cp: client_mod,
+    cp: *client_mod,
     runner_token: []const u8,
     cfg: Config,
     env_map: *const std.process.Environ.Map,
@@ -217,34 +192,39 @@ fn executeAndReport(
     };
     defer cleanupWorkspace(io, workspace_path);
 
-    var forwarder = ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id };
-    const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = ActivityForwarder.forward };
-    var driver = RenewDriver.init(alloc, cp, runner_token, payload);
+    var forwarder = forwarders.ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id, .deadline_ms = cfg.cp_deadlines.activity_ms };
+    defer forwarder.deinit();
+    const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = forwarders.ActivityForwarder.forward };
+    var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
+    var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
 
     // Hydrate the zombie's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
     // and holds no token. A hydrate miss degrades to empty memory, never blocks.
-    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.zombie_id) catch |err| blk: {
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.zombie_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
         log.warn("memory_hydrate_failed", .{ .zombie_id = payload.event.zombie_id, .err = @errorName(err) });
         break :blk null;
     };
     defer if (hydrated) |h| h.deinit();
     const hydrated_memory: []const protocol.MemoryDelta = if (hydrated) |h| h.value.memory else &.{};
 
-    var mem_forwarder = MemoryForwarder{
+    var mem_forwarder = forwarders.MemoryForwarder{
         .alloc = alloc,
         .cp = cp,
         .runner_token = runner_token,
         .zombie_id = payload.event.zombie_id,
         .lease_id = payload.lease_id,
         .fencing_token = payload.fencing_token,
+        .deadline_ms = cfg.cp_deadlines.default_ms,
     };
-    const mem_sink = child_supervisor.MemorySink{ .ctx = &mem_forwarder, .forward = MemoryForwarder.forward };
+    const mem_sink = child_supervisor.MemorySink{ .ctx = &mem_forwarder, .forward = forwarders.MemoryForwarder.forward };
 
     const start_ms = clock.nowMillis();
-    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, driver.hook());
+    const result = child_supervisor.run(io, alloc, cfg, env_map, workspace_path, payload, hydrated_memory, sink, mem_sink, fanout.hook());
     const wall_ms: u64 = @intCast(@max(0, clock.nowMillis() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
+    // Ship whatever the batch still holds before the terminal report.
+    forwarder.flush();
 
     log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
 
@@ -259,7 +239,7 @@ fn executeAndReport(
         .tokens = result.token_count,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
-    }) catch |err| {
+    }, cfg.cp_deadlines.report_ms) catch |err| {
         log.err("report_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS); // back off so a down report endpoint can't hot-spin the pool
         return;

@@ -97,17 +97,18 @@ pub fn spawn(
 /// One worker: lease → execute → report (the existing `pollAndProcess`, verbatim)
 /// until `stop`/`drain` is set, each with its OWN allocator scope and client. The
 /// allocator is per-thread so workers never contend on a shared allocator mutex;
-/// the client is stateless (`{base_url, io}`, fresh `std.http.Client` per call),
-/// so sharing the `io` is safe.
+/// the client is per-worker state (persistent keep-alive connection + per-call
+/// socket deadlines), never shared across threads.
 fn workerLoop(ctx: WorkerContext) void {
     var gpa: std.heap.DebugAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const cp = client_mod{ .base_url = ctx.cfg.control_plane_url, .io = ctx.io };
+    var cp = client_mod.init(alloc, ctx.io, ctx.cfg.control_plane_url);
+    defer cp.deinit();
     log.info("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
-        loop.pollAndProcess(ctx.io, alloc, cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map);
+        loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map);
     }
     log.info("worker_stopped", .{ .index = ctx.index });
 }

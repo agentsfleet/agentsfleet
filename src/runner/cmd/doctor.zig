@@ -43,8 +43,9 @@ fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
 /// input is unset, so the env checks own that failure).
 fn reachCheck(io: std.Io, alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
     if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
-    const client = Client{ .base_url = api.?, .io = io };
-    _ = client.heartbeat(alloc, token.?) catch
+    var client = Client.init(alloc, io, api.?);
+    defer client.deinit();
+    _ = client.heartbeat(alloc, token.?, Client.DEFAULT_DEADLINE_MS) catch
         return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "unreachable or token rejected" };
     return .{ .name = CHECK_CONTROL_PLANE, .ok = true, .detail = "reachable; token valid" };
 }

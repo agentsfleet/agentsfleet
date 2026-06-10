@@ -24,7 +24,7 @@ const FakeClient = struct {
     outcomes: []const (client.ClientError!client.RenewResult),
     idx: usize = 0,
     calls: usize = 0,
-    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8) client.ClientError!client.RenewResult {
+    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: u31) client.ClientError!client.RenewResult {
         self.calls += 1;
         if (self.idx >= self.outcomes.len) return self.outcomes[self.outcomes.len - 1];
         const o = self.outcomes[self.idx];
@@ -40,6 +40,7 @@ fn driverWith(fake: *FakeClient, deadline_ms: i64) Driver {
         .runner_token = "zrn_test",
         .lease_id = "lease_test",
         .deadline_ms = deadline_ms,
+        .renew_deadline_ms = client.RENEW_DEADLINE_MS,
     };
 }
 

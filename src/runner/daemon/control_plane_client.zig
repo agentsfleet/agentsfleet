@@ -5,8 +5,16 @@
 //! operator pre-mints the `zrn_` and the daemon authenticates with it directly.
 //!
 //! Uses the high-level `std.http.Client.fetch` (cross-platform; the manual
-//! `open()`/`readVec()` path is Linux-broken under Zig 0.15). One client per
-//! call — these verbs are infrequent relative to a stage execution.
+//! `open()`/`readVec()` path is Linux-broken under Zig 0.15) over ONE
+//! persistent `std.http.Client` per owner (keep-alive connection reuse —
+//! a chatty agent run no longer pays a TCP/TLS handshake per frame).
+//!
+//! Every verb takes a required `deadline_ms`: a per-client watchdog
+//! (call_deadline.zig) shuts the in-flight pooled socket down at the bound,
+//! so a hung control plane surfaces as a retryable transport error instead of
+//! wedging the worker (and starving the child's deadline kill). Residual
+//! window: name resolution + TCP connect inside fetch are not armed (the
+//! production control plane is loopback/intra-region).
 
 const LoopbackClient = @This();
 
@@ -16,8 +24,53 @@ base_url: []const u8,
 /// a no-default field). Borrowed from the daemon's `Io.Threaded`; the client
 /// never owns or deinits it — lifetime is the process.
 io: std.Io,
+/// Persistent HTTP client (connection pool). Owned: deinit() closes it.
+http: std.http.Client,
+/// Parsed once from base_url for the pre-fetch connection pinning.
+host: []const u8,
+port: u16,
+tls: bool,
+/// Bounds the in-flight call (lazy thread; joined by deinit).
+watchdog: call_deadline.CallWatchdog = .{},
 
 pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
+
+// Re-exported call-bounding policy (defaults + resolved set) — single source
+// in call_deadline.zig; config.zig and the cmd verbs consume these names.
+pub const DEFAULT_DEADLINE_MS = call_deadline.DEFAULT_DEADLINE_MS;
+pub const REPORT_DEADLINE_MS = call_deadline.REPORT_DEADLINE_MS;
+pub const ACTIVITY_DEADLINE_MS = call_deadline.ACTIVITY_DEADLINE_MS;
+pub const RENEW_DEADLINE_MS = call_deadline.RENEW_DEADLINE_MS;
+pub const Deadlines = call_deadline.Deadlines;
+
+/// Build a client with a persistent connection pool. `alloc` must outlive the
+/// client (per-worker allocator); call `deinit()` to close pooled connections.
+pub fn init(alloc: Allocator, io: std.Io, base_url: []const u8) LoopbackClient {
+    var host: []const u8 = "";
+    var port: u16 = 80;
+    var tls = false;
+    if (std.Uri.parse(base_url)) |uri| {
+        tls = std.ascii.eqlIgnoreCase(uri.scheme, "https");
+        port = uri.port orelse @as(u16, if (tls) 443 else 80);
+        if (uri.host) |h| host = switch (h) {
+            .raw => |r| r,
+            .percent_encoded => |p| p,
+        };
+    } else |_| {}
+    return .{
+        .base_url = base_url,
+        .io = io,
+        .http = .{ .allocator = alloc, .io = io },
+        .host = host,
+        .port = port,
+        .tls = tls,
+    };
+}
+
+pub fn deinit(self: *LoopbackClient) void {
+    self.watchdog.deinit();
+    self.http.deinit();
+}
 
 /// POST /v1/runners/me/leases → the next event + resolved policy, or no-work.
 /// The whole tree (event envelope + secrets_map + budget) lives in the returned
@@ -26,8 +79,8 @@ pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
 /// `res.body`, which is freed here, leaving the returned `LeasePayload` dangling
 /// (a use-after-free the worker pool surfaces when its allocator reuses the
 /// buffer). Matches `getSelf`/`memoryHydrate`, which copy for the same reason.
-pub fn lease(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !std.json.Parsed(protocol.LeaseResponse) {
-    const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, "");
+pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.LeaseResponse) {
+    const res = try self.post(alloc, protocol.PATH_RUNNER_LEASES, runner_token, "", deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
     return std.json.parseFromSlice(protocol.LeaseResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
@@ -37,8 +90,8 @@ pub fn lease(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !
 /// POST /v1/runners/me/heartbeats → signal liveness + receive fleet directives.
 /// Request body is empty in S0 (capacity/version fields are a later workstream).
 /// Returns the parsed HeartbeatResponse so the daemon can act on status==drain/stop.
-pub fn heartbeat(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !protocol.HeartbeatResponse {
-    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, "");
+pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !protocol.HeartbeatResponse {
+    const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, "", deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
     const parsed = std.json.parseFromSlice(protocol.HeartbeatResponse, alloc, res.body, .{}) catch
@@ -50,8 +103,8 @@ pub fn heartbeat(self: LoopbackClient, alloc: Allocator, runner_token: []const u
 /// GET /v1/runners/me → the runner's own row, read-only (no liveness bump). The
 /// caller deinits the parsed value. `.alloc_always`: the response strings (id,
 /// status, host_id, sandbox_tier) must outlive `res.body`, which is freed here.
-pub fn getSelf(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !std.json.Parsed(protocol.SelfResponse) {
-    const res = try self.get(alloc, protocol.PATH_RUNNER_SELF, runner_token);
+pub fn getSelf(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.SelfResponse) {
+    const res = try self.get(alloc, protocol.PATH_RUNNER_SELF, runner_token, deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
     return std.json.parseFromSlice(protocol.SelfResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
@@ -60,10 +113,10 @@ pub fn getSelf(self: LoopbackClient, alloc: Allocator, runner_token: []const u8)
 
 /// POST /v1/runners/me/reports → finalize one execution. Body is `{ok:true}`;
 /// only the 2xx status matters to the caller.
-pub fn report(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, req: protocol.ReportRequest) !void {
+pub fn report(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, req: protocol.ReportRequest, deadline_ms: u31) !void {
     const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
     defer alloc.free(payload);
-    const res = try self.post(alloc, protocol.PATH_RUNNER_REPORTS, runner_token, payload);
+    const res = try self.post(alloc, protocol.PATH_RUNNER_REPORTS, runner_token, payload, deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
 }
@@ -73,10 +126,10 @@ pub fn report(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, 
 /// this; the sandboxed child never makes the call. `.alloc_always` so the
 /// returned deltas outlive `res.body` (freed here) — they ride the child input.
 /// Caller deinits the parsed value after the run.
-pub fn memoryHydrate(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8) !std.json.Parsed(protocol.MemoryHydrateResponse) {
+pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.MemoryHydrateResponse) {
     const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, zombie_id });
     defer alloc.free(path);
-    const res = try self.get(alloc, path, runner_token);
+    const res = try self.get(alloc, path, runner_token, deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
     return std.json.parseFromSlice(protocol.MemoryHydrateResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
@@ -87,12 +140,12 @@ pub fn memoryHydrate(self: LoopbackClient, alloc: Allocator, runner_token: []con
 /// zombie. `lease_id` + `fencing_token` ride the body (like `report`) so the
 /// control plane fences the write. Only the 2xx status matters to the caller;
 /// the daemon swallows + logs a failure (a memory blip never fails the run).
-pub fn memoryCapture(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8, req: protocol.MemoryPushRequest) !void {
+pub fn memoryCapture(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, zombie_id: []const u8, req: protocol.MemoryPushRequest, deadline_ms: u31) !void {
     const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, zombie_id });
     defer alloc.free(path);
     const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
     defer alloc.free(payload);
-    const res = try self.post(alloc, path, runner_token, payload);
+    const res = try self.post(alloc, path, runner_token, payload, deadline_ms);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
 }
@@ -102,20 +155,37 @@ pub fn memoryCapture(self: LoopbackClient, alloc: Allocator, runner_token: []con
 /// Best-effort by contract (202, no ack): the durable record is `report`, so a
 /// failed forward is swallowed and never disturbs execution — hence `void`, not
 /// `!void`. Allocation/transport failures drop the frame silently.
-pub fn activity(
-    self: LoopbackClient,
+const ACTIVITY_BODY_FMT = "{{\"frames\":[{s}]}}";
+
+/// Like `activity`, but the caller supplies the frames as already-serialized
+/// JSON objects (comma-joined, no brackets) — the batching forwarder serializes
+/// frames on arrival because their slices are only valid during the callback.
+pub fn activityFramesJson(
+    self: *LoopbackClient,
     alloc: Allocator,
     runner_token: []const u8,
     lease_id: []const u8,
-    frames: []const activity_wire.ActivityFrame,
+    frames_json: []const u8,
+    deadline_ms: u31,
+) void {
+    const payload = std.fmt.allocPrint(alloc, ACTIVITY_BODY_FMT, .{frames_json}) catch return;
+    defer alloc.free(payload);
+    self.activityBody(alloc, runner_token, lease_id, payload, deadline_ms);
+}
+
+fn activityBody(
+    self: *LoopbackClient,
+    alloc: Allocator,
+    runner_token: []const u8,
+    lease_id: []const u8,
+    payload: []const u8,
+    deadline_ms: u31,
 ) void {
     const path = std.fmt.allocPrint(alloc, "{s}/{s}/{s}", .{
         protocol.PATH_RUNNER_LEASES, lease_id, protocol.RUNNER_LEASE_ACTIVITY_SUFFIX,
     }) catch return;
     defer alloc.free(path);
-    const payload = std.json.Stringify.valueAlloc(alloc, activity_wire.ActivityRequest{ .frames = frames }, .{}) catch return;
-    defer alloc.free(payload);
-    const res = self.post(alloc, path, runner_token, payload) catch return;
+    const res = self.post(alloc, path, runner_token, payload, deadline_ms) catch return;
     alloc.free(res.body); // 202 expected; status ignored (best-effort, no ack).
 }
 
@@ -137,16 +207,17 @@ pub const RenewResult = union(enum) {
 /// an error so the caller simply retries on the next tick — if renewal keeps
 /// failing the lease just expires naturally and is reclaimed (never double-run).
 pub fn renew(
-    self: LoopbackClient,
+    self: *LoopbackClient,
     alloc: Allocator,
     runner_token: []const u8,
     lease_id: []const u8,
+    deadline_ms: u31,
 ) !RenewResult {
     const path = try std.fmt.allocPrint(alloc, "{s}/{s}/{s}", .{
         protocol.PATH_RUNNER_LEASES, lease_id, protocol.RUNNER_LEASE_RENEW_SUFFIX,
     });
     defer alloc.free(path);
-    const res = try self.post(alloc, path, runner_token, "");
+    const res = try self.post(alloc, path, runner_token, "", deadline_ms);
     defer alloc.free(res.body);
     return classifyRenew(alloc, res.status, res.body);
 }
@@ -178,10 +249,24 @@ pub fn isTerminalRenewStatus(status: u16) bool {
 
 const PostResult = struct { status: u16, body: []u8 };
 
-/// One bearer-authed POST. Returns the status + response body (owned by `alloc`).
-fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8) !PostResult {
-    var client: std.http.Client = .{ .allocator = alloc, .io = self.io };
-    defer client.deinit();
+/// Pin the pooled connection the next fetch will use (get-or-create, then
+/// release back to the free list so the fetch pops the same one) and return
+/// its socket handle for the watchdog. Null when the connect fails — the
+/// fetch then fails fast on its own connect attempt.
+fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
+    if (self.host.len == 0) return null;
+    const host = std.Io.net.HostName.init(self.host) catch return null;
+    const conn = self.http.connect(host, self.port, if (self.tls) .tls else .plain) catch return null;
+    const handle = conn.stream_writer.stream.socket.handle;
+    self.http.connection_pool.release(conn, self.io);
+    return handle;
+}
+
+/// One bearer-authed POST on the persistent client. Returns the status +
+/// response body (owned by `alloc`).
+fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
+    if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
+    defer self.watchdog.disarm();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
     defer alloc.free(url);
@@ -197,7 +282,7 @@ fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []cons
         .{ .name = "content-type", .value = "application/json" },
         .{ .name = "authorization", .value = auth },
     };
-    const result = client.fetch(.{
+    const result = self.http.fetch(.{
         .location = .{ .url = url },
         .method = .POST,
         .payload = payload,
@@ -208,11 +293,11 @@ fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []cons
     return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
 }
 
-/// One bearer-authed GET (no body). Returns the status + response body (owned by
-/// `alloc`). Used by the read-only `getSelf` verb.
-fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8) !PostResult {
-    var client: std.http.Client = .{ .allocator = alloc, .io = self.io };
-    defer client.deinit();
+/// One bearer-authed GET (no body) on the persistent client. Returns the status
+/// + response body (owned by `alloc`). Used by the read-only `getSelf` verb.
+fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
+    if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
+    defer self.watchdog.disarm();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
     defer alloc.free(url);
@@ -224,7 +309,7 @@ fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const
     var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
 
     const headers: [1]std.http.Header = .{.{ .name = "authorization", .value = auth }};
-    const result = client.fetch(.{
+    const result = self.http.fetch(.{
         .location = .{ .url = url },
         .method = .GET,
         .extra_headers = &headers,
@@ -236,5 +321,5 @@ fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const call_deadline = @import("call_deadline.zig");
 const protocol = @import("contract").protocol;
-const activity_wire = @import("contract").activity;
