@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { EVENTS, EVENT_PROP_KEYS } from "../lib/analytics/events";
 
@@ -34,6 +34,21 @@ describe("analytics event catalog", () => {
     }
   });
 
+  it("secret-hinting prop keys are only allowed in id/name/flag shapes", () => {
+    // Exact-match alone misses composites (access_token, secret_value, …):
+    // any key that hints at secret material must be one of the allowed
+    // reference shapes — an id, a name, or a has_* flag.
+    const SECRET_HINT = /(token|key|secret|password|credential|reason|email|json)/;
+    const ALLOWED_SHAPE = /(_id|_name)$|^has_/;
+    for (const [event, keys] of Object.entries(EVENT_PROP_KEYS)) {
+      for (const key of keys) {
+        if (SECRET_HINT.test(key)) {
+          expect(ALLOWED_SHAPE.test(key), `${event}.${key}`).toBe(true);
+        }
+      }
+    }
+  });
+
   it("event names follow snake_case object-action composition", () => {
     for (const name of Object.values(EVENTS)) {
       expect(name).toMatch(/^[a-z]+(_[a-z]+)+$/);
@@ -43,21 +58,26 @@ describe("analytics event catalog", () => {
   it("no bare catalog event-name literal exists outside the catalog module", () => {
     // Same grep-gate shape as tests/grep-gates: the catalog is the single
     // source; every other reference goes through EVENTS.*. The pattern is
-    // built from the catalog itself so this file carries no bare literal.
-    const pattern = `"(${Object.values(EVENTS).join("|")})"`;
-    let out = "";
-    try {
-      out = execSync(
-        `grep -rnE --include='*.ts' --include='*.tsx' ` +
-          `--exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist ` +
-          `-- '${pattern}' .`,
-        { cwd: APP_ROOT, encoding: "utf8" },
-      );
-    } catch (err) {
-      if ((err as { status?: number }).status === 1) return; // zero matches anywhere
-      throw err;
-    }
-    const offenders = out
+    // built from the catalog itself so this file carries no bare literal,
+    // covers all three quote forms, and runs via spawnSync (no shell quoting).
+    const pattern = `['"\`](${Object.values(EVENTS).join("|")})['"\`]`;
+    const result = spawnSync(
+      "grep",
+      [
+        "-rnE",
+        "--include=*.ts",
+        "--include=*.tsx",
+        "--exclude-dir=node_modules",
+        "--exclude-dir=.next",
+        "--exclude-dir=dist",
+        pattern,
+        ".",
+      ],
+      { cwd: APP_ROOT, encoding: "utf8" },
+    );
+    if (result.status === 1) return; // zero matches anywhere
+    expect(result.status, result.stderr).toBe(0);
+    const offenders = result.stdout
       .split("\n")
       .filter((line) => line.trim().length > 0)
       .filter((line) => !line.startsWith("./lib/analytics/events.ts:"));

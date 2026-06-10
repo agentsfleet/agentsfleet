@@ -26,7 +26,10 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
     startTransition(async () => {
       const isApprove = decision === APPROVAL_DECISION.APPROVE;
       const action = isApprove ? approveApprovalAction : denyApprovalAction;
-      const result = await action(workspaceId, gateId, reason || undefined);
+      // One trimmed value feeds both the action and has_reason, so the
+      // analytics flag cannot disagree with what the server stored.
+      const trimmedReason = reason.trim();
+      const result = await action(workspaceId, gateId, trimmedReason || undefined);
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -47,7 +50,7 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
       captureProductEvent(EVENTS.approval_resolved, {
         gate_id: gateId,
         decision,
-        has_reason: reason.trim().length > 0,
+        has_reason: trimmedReason.length > 0,
       });
       router.push("/approvals");
       router.refresh();

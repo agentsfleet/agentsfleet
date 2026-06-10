@@ -72,8 +72,10 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
         setApiError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "create the API key" }));
         return;
       }
-      captureProductEvent(EVENTS.api_key_minted, { api_key_id: r.data.id });
+      // Reveal first, capture second — the one-time key must render even if
+      // analytics misbehaves.
       setCreated(r.data);
+      captureProductEvent(EVENTS.api_key_minted, { api_key_id: r.data.id });
     });
   }
 

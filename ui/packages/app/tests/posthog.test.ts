@@ -37,6 +37,7 @@ async function loadModule(options: {
   pathname?: string;
   withWindow?: boolean;
   client?: MockClient;
+  windowObj?: object;
 } = {}) {
   vi.resetModules();
 
@@ -53,7 +54,7 @@ async function loadModule(options: {
   if (options.withWindow === false) {
     vi.unstubAllGlobals();
   } else {
-    vi.stubGlobal("window", createWindow(options.pathname));
+    vi.stubGlobal("window", options.windowObj ?? createWindow(options.pathname));
   }
 
   vi.unstubAllEnvs();
@@ -355,15 +356,19 @@ describe("app analytics", () => {
     });
   });
 
-  it("product capture is a no-op when analytics is disabled", async () => {
+  it("capture, identify, and reset are no-ops when analytics is disabled", async () => {
     const { mod, client } = await loadModule({
       env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live", NEXT_PUBLIC_POSTHOG_ENABLED: "0" },
     });
 
     await mod.initAnalytics();
     mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_1" });
+    mod.identifyAnalyticsUser({ id: "user_1", email: null });
+    mod.resetAnalyticsIdentity();
 
     expect(client.capture).not.toHaveBeenCalled();
+    expect(client.identify).not.toHaveBeenCalled();
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
   });
 
   it("reset clears the posthog identity, the marker, and re-arms identify", async () => {
@@ -472,5 +477,170 @@ describe("app analytics", () => {
     mod = await import("../lib/analytics/posthog");
     expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
     mod.resetAnalyticsIdentity();
+  });
+
+  it("a signed-out sweep that races the chunk load defers, keeps the marker, and resets once ready", async () => {
+    const sharedWindow = createWindow("/workspaces");
+    // Session 1: identify normally so the marker is persisted.
+    {
+      const { mod } = await loadModule({
+        windowObj: sharedWindow,
+        env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+      });
+      await mod.initAnalytics();
+      mod.identifyAnalyticsUser({ id: "user_123", email: null });
+    }
+
+    // Session 2 (hard navigation): the sweep fires while the chunk is in flight.
+    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", sharedWindow);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+    mod.resetAnalyticsIdentity();
+    // The marker survives the race instead of being burned before the reset ran.
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+
+    resolveImport({ default: client });
+    await initPromise;
+    expect(client.reset).toHaveBeenCalledTimes(1);
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(false);
+  });
+
+  it("an identify that races the chunk load is queued and flushes once the client lands", async () => {
+    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", createWindow("/workspaces"));
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    mod.identifyAnalyticsUser({ id: "user_9", email: null });
+    expect(client.identify).not.toHaveBeenCalled();
+
+    resolveImport({ default: client });
+    await initPromise;
+    expect(client.identify).toHaveBeenCalledTimes(1);
+    expect(client.identify).toHaveBeenCalledWith("user_9", { user_id: "user_9" });
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+  });
+
+  it("a failed chunk load disables analytics and keeps the deferred reset's marker for the next load", async () => {
+    const sharedWindow = createWindow("/workspaces");
+    {
+      const { mod } = await loadModule({
+        windowObj: sharedWindow,
+        env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+      });
+      await mod.initAnalytics();
+      mod.identifyAnalyticsUser({ id: "user_123", email: null });
+    }
+
+    vi.resetModules();
+    vi.doMock("posthog-js", () => {
+      throw new Error("chunk blocked");
+    });
+    vi.stubGlobal("window", sharedWindow);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+    mod.resetAnalyticsIdentity();
+    await initPromise;
+
+    // The session degrades to analytics-off without throwing, and the sweep's
+    // marker survives so the reset retries on the next load.
+    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_1" });
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+  });
+
+  it("a quota-throwing setItem never escapes identify", async () => {
+    const quotaWindow = createWindow("/workspaces");
+    quotaWindow.localStorage.setItem = () => {
+      throw new Error("QuotaExceededError");
+    };
+    const { mod, client } = await loadModule({
+      windowObj: quotaWindow,
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+    await mod.initAnalytics();
+
+    mod.identifyAnalyticsUser({ id: "user_q", email: null });
+
+    // identify itself succeeded; the marker write was silently skipped.
+    expect(client.identify).toHaveBeenCalledTimes(1);
+    expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
+  });
+
+  it("smuggled extra keys never reach the payload (runtime catalog allowlist)", async () => {
+    const { mod, client } = await loadModule({
+      pathname: "/zombies/new",
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+    await mod.initAnalytics();
+
+    // Excess-property checks only cover object literals — a widened bag compiles.
+    const widened = { zombie_id: "zom_1", runner_token: "zrn_smuggled" } as { zombie_id: string };
+    mod.captureProductEvent(EVENTS.zombie_created, widened);
+
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.zombie_created, {
+      path: "/zombies/new",
+      zombie_id: "zom_1",
+    });
+    expect(JSON.stringify(client.capture.mock.calls)).not.toContain("zrn_smuggled");
+  });
+
+  it("a throwing posthog capture never escapes captureProductEvent", async () => {
+    const client = {
+      init: vi.fn(),
+      capture: vi.fn(() => {
+        throw new Error("posthog exploded");
+      }),
+      identify: vi.fn(),
+    };
+    const { mod } = await loadModule({
+      client,
+      env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
+    });
+    await mod.initAnalytics();
+
+    // Call sites sit beside one-time secret reveals — a capture throw must
+    // never reach them.
+    expect(() => mod.captureProductEvent(EVENTS.api_key_minted, { api_key_id: "k1" })).not.toThrow();
+    expect(client.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("product events fired before the client resolves are dropped, not buffered", async () => {
+    const client = { init: vi.fn(), capture: vi.fn(), identify: vi.fn(), reset: vi.fn() };
+    let resolveImport!: (value: { default: MockClient }) => void;
+    const importGate = new Promise<{ default: MockClient }>((resolve) => {
+      resolveImport = resolve;
+    });
+    vi.resetModules();
+    vi.doMock("posthog-js", () => importGate);
+    vi.stubGlobal("window", createWindow("/zombies/new"));
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
+    const mod = await import("../lib/analytics/posthog");
+    const initPromise = mod.initAnalytics();
+
+    // Pins the drop contract: unlike the website module there is no pre-init
+    // buffer — every call site fires after a completed server round-trip, so
+    // this window is effectively unreachable in practice.
+    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_early" });
+    resolveImport({ default: client });
+    await initPromise;
+    expect(client.capture).not.toHaveBeenCalled();
   });
 });
