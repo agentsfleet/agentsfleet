@@ -149,7 +149,12 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path);
+    // egress=null for now: the per-lease EgressScope establishment (resolve the
+    // NetworkPolicy allowlist → veth + nft + rendered resolver files, then
+    // attachChild post-fork) lands with the Linux integration lane. With null,
+    // registry_allowlist leases get an unshared netns and NO veth — fail-closed
+    // (no egress) rather than the retired --share-net full-host-egress.
+    var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path, null);
     var reaped = false;
     // Zig 0.16 removed raw posix.waitpid/close; the process.Child wrapper is the
     // only portable reap/close path — `wait` blocks, reaps, and closes any still-
