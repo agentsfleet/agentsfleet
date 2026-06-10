@@ -16,7 +16,8 @@ const MessageBuilder = @import("MessageBuilder.zig");
 const std = @import("std");
 
 const NFNL_SUBSYS_NFTABLES: u16 = 10;
-fn nftType(msg: u16) u16 {
+/// Compose a full nlmsg type from an NFT_MSG_* id (shared with the rule builder).
+pub fn nftType(msg: u16) u16 {
     return (NFNL_SUBSYS_NFTABLES << 8) | msg;
 }
 
@@ -49,6 +50,7 @@ const NFTA_HOOK_PRIORITY: u16 = 2;
 const NFTA_SET_TABLE: u16 = 1;
 const NFTA_SET_NAME: u16 = 2;
 const NFTA_SET_FLAGS: u16 = 3;
+const NFTA_SET_KEY_TYPE: u16 = 4;
 const NFTA_SET_KEY_LEN: u16 = 5;
 const NFTA_SET_ID: u16 = 10;
 const NFTA_SET_ELEM_LIST_TABLE: u16 = 1;
@@ -59,15 +61,21 @@ const NFTA_SET_ELEM_KEY: u16 = 1;
 const NFTA_DATA_VALUE: u16 = 1;
 
 const IPV4_KEY_LEN: u32 = 4;
+// nft datatype id for ipv4_addr keys (TYPE_IPADDR) — mandatory in NEWSET; the
+// oracle capture (fixtures/captured/04_set_allow0.mnl.txt) proved its absence
+// was a real-nft divergence (Codex's NFTA_SET_KEY_TYPE catch).
+const TYPE_IPADDR: u32 = 7;
 const REQ_CREATE = MessageBuilder.NLM_F_REQUEST | MessageBuilder.NLM_F_CREATE;
 
 /// `struct nfgenmsg` (4 bytes): family, version (NFNETLINK_V0), res_id (big-endian).
-fn nfgenmsg(family: u8, res_id: u16) [4]u8 {
+/// Shared with the rule builder (`nfnetlink_rule.zig`).
+pub fn nfgenmsg(family: u8, res_id: u16) [4]u8 {
     return .{ family, 0, @intCast(res_id >> 8), @intCast(res_id & 0xff) };
 }
 
-/// A big-endian u32 attribute — the nftables integer path.
-fn attrU32Be(mb: *MessageBuilder, attr_type: u16, value: u32) void {
+/// A big-endian u32 attribute — the nftables integer path. Shared with the
+/// rule builder (`nfnetlink_rule.zig`).
+pub fn attrU32Be(mb: *MessageBuilder, attr_type: u16, value: u32) void {
     var b: [4]u8 = undefined;
     std.mem.writeInt(u32, &b, value, .big);
     mb.attr(attr_type, &b);
@@ -128,6 +136,7 @@ pub fn newSet(mb: *MessageBuilder, table: []const u8, name: []const u8, set_id: 
     mb.attrStr(NFTA_SET_TABLE, table);
     mb.attrStr(NFTA_SET_NAME, name);
     attrU32Be(mb, NFTA_SET_FLAGS, 0);
+    attrU32Be(mb, NFTA_SET_KEY_TYPE, TYPE_IPADDR);
     attrU32Be(mb, NFTA_SET_KEY_LEN, IPV4_KEY_LEN);
     attrU32Be(mb, NFTA_SET_ID, set_id);
 }
@@ -163,14 +172,17 @@ test "newTable frames the nftables subsystem type + inet family + name" {
     try std.testing.expect(std.mem.indexOf(u8, msg, "uz_egress") != null);
 }
 
-test "newSet encodes a big-endian IPv4 key_len of 4" {
+test "newSet encodes an ipv4_addr key type and key_len of 4" {
     if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
     var buf: [128]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     newSet(&mb, "uz_egress", "allow0", 1, 1);
     const msg = try mb.finish();
-    // KEY_LEN=4 big-endian appears as 00 00 00 04 in the payload.
-    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 0, 0, 0, 4 }) != null);
+    // attr hdr {len 8, type KEY_TYPE} + TYPE_IPADDR=7 big-endian — the full
+    // 8-byte TLV, byte-matching the oracle (04_set_allow0.mnl.txt).
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 8, 0, 4, 0, 0, 0, 0, 7 }) != null);
+    // KEY_LEN=4 big-endian appears as its full TLV right after.
+    try std.testing.expect(std.mem.indexOf(u8, msg, &[_]u8{ 8, 0, 5, 0, 0, 0, 0, 4 }) != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "allow0") != null);
 }
 
@@ -189,7 +201,7 @@ test "newChain carries a big-endian forward hooknum and drop policy" {
     if (@import("builtin").cpu.arch.endian() != .little) return error.SkipZigTest;
     var buf: [256]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
-    newChain(&mb, "uz_egress", "fwd", NF_INET_FORWARD, 0, NF_DROP, 1);
+    newChain(&mb, "uz_egress", "egress_fwd", NF_INET_FORWARD, 0, NF_DROP, 1);
     const msg = try mb.finish();
     try std.testing.expectEqual(@as(u16, 0x0A03), std.mem.readInt(u16, msg[4..6], .little)); // (10<<8)|3
     // hooknum=2 big-endian = 00 00 00 02 present (inside NFTA_CHAIN_HOOK).

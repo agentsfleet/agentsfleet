@@ -45,6 +45,8 @@ test {
     _ = @import("network/MessageBuilder.zig");
     _ = @import("network/rtnetlink.zig");
     _ = @import("network/nfnetlink.zig");
+    _ = @import("network/nfnetlink_rule.zig");
+    _ = @import("network/nfnetlink_rule_test.zig");
     // W1 runner-daemon coverage
     _ = @import("child_supervisor_edge_test.zig");
     _ = @import("child_supervisor_concurrency_test.zig");

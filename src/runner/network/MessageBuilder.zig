@@ -27,6 +27,7 @@ pub const NLM_F_REQUEST: u16 = 0x01;
 pub const NLM_F_ACK: u16 = 0x04;
 pub const NLM_F_EXCL: u16 = 0x200;
 pub const NLM_F_CREATE: u16 = 0x400;
+pub const NLM_F_APPEND: u16 = 0x800;
 pub const NLA_F_NESTED: u16 = 0x8000;
 
 const NLMSG_HDRLEN: usize = 16;
