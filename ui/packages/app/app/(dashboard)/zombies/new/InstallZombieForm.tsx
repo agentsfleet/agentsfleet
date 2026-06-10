@@ -20,6 +20,8 @@ import {
 } from "@usezombie/design-system";
 import { installZombieAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 
 type Props = { workspaceId: string };
 
@@ -47,6 +49,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
     startTransition(async () => {
       const result = await installZombieAction(workspaceId, values);
       if (result.ok) {
+        captureProductEvent(EVENTS.zombie_created, { zombie_id: result.data.zombie_id });
         // No router.refresh() — calling refresh immediately after push races
         // inside the same transition: refresh re-fetches the *current* route
         // (/zombies/new) before the push URL commits, leaving the browser

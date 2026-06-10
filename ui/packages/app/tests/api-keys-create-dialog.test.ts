@@ -2,16 +2,22 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { EVENTS } from "../lib/analytics/events";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
 const createApiKeyActionMock = vi.fn();
+const captureProductEventMock = vi.fn();
 
 vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
   listApiKeysAction: vi.fn(),
   createApiKeyAction: createApiKeyActionMock,
   revokeApiKeyAction: vi.fn(),
   deleteApiKeyAction: vi.fn(),
+}));
+
+vi.mock("@/lib/analytics/posthog", () => ({
+  captureProductEvent: captureProductEventMock,
 }));
 
 // happy-dom ships a real (no-op) navigator.clipboard.writeText; defining a fresh
@@ -70,6 +76,11 @@ describe("CreateApiKeyDialog component", () => {
     await user.click(screen.getByRole("button", { name: /stored it/i }));
     await waitFor(() => expect(screen.queryByDisplayValue("zmb_t_deadbeef")).toBeNull());
     expect(onCreated).toHaveBeenCalled();
+
+    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.api_key_minted, { api_key_id: "k" });
+    // The one-time raw key must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("zmb_t_deadbeef");
   });
 
   it("name collision keeps the dialog open and reveals no key", async () => {
@@ -80,6 +91,7 @@ describe("CreateApiKeyDialog component", () => {
     await waitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
     expect(screen.queryByLabelText(/API key value/i)).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();
+    expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
   async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
