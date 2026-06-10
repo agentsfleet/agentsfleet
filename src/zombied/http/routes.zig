@@ -101,6 +101,7 @@ pub const Route = union(enum) {
     fleet_runners_list, // GET /v1/fleet/runners (platform-admin operator-plane read)
     fleet_runner_patch: []const u8, // PATCH /v1/fleet/runners/{id}
     fleet_runner_events: []const u8, // GET /v1/fleet/runners/{id}/events
+    fleet_streams_list, // GET /v1/fleet/streams (platform-admin — live SSE streams on this instance)
     runner_self, // GET /v1/runners/me (read-only — no last_seen bump)
     runner_heartbeat, // POST /v1/runners/me/heartbeats
     runner_lease, // POST /v1/runners/me/leases

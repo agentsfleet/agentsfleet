@@ -23,6 +23,7 @@ const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
+const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const env_resolve = @import("../config/env_resolve.zig");
@@ -172,11 +173,20 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         serve_cfg.audit_log_pepper,
     );
 
+    // Owner of live SSE streams: cap admission, gauge, shutdown drain, and
+    // the fleet listing. Declared before the hub so its deinit runs last.
+    var streams = stream_registry.init(alloc, io);
+    defer streams.deinit();
+
     // The one shared pub/sub connection every SSE stream fans out from.
     // Borrows the queue pool's resolved config; LIFO defers stop it (and
     // drain its streams) before the queue client goes away.
     var hub = subscription_hub.init(alloc, io);
     defer hub.deinit();
+    // Runs after hub.stop() (whose close broadcast wakes parked stream
+    // threads) and before the deinits — every stream has deregistered by
+    // the time the hub and registry storage go away.
+    defer streams.awaitEmpty();
     hub.start(api_queue.pool.cfg) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
@@ -212,9 +222,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
-        .sse_in_flight_streams = std.atomic.Value(u32).init(0),
         .sse_max_streams = serve_cfg.sse_max_streams,
         .hub = &hub,
+        .stream_registry = &streams,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
         .balance_policy = balance_policy.resolveFromEnv(env_map, alloc),
@@ -319,6 +329,12 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer srv.deinit();
     serve_shutdown.publishServer(srv);
     defer serve_shutdown.clearServer();
+    // Shutdown drain, first teardown step after listen returns: shutdown()
+    // every live stream's client socket so the detached stream threads exit
+    // before the hub and registry are torn down — closing the exit window
+    // the dedicated-thread design accepted. New streams are rejected from
+    // this point.
+    defer streams.drain();
 
     srv.listen() catch |err| {
         log.err("http.server_exit_failed", .{ .err = @errorName(err) });

@@ -10,6 +10,7 @@ const hx_mod = @import("handlers/hx.zig");
 
 const runner_register = @import("handlers/runner/register.zig");
 const fleet_runners_list = @import("handlers/fleet/runners_list.zig");
+const fleet_streams_list = @import("handlers/fleet/streams_list.zig");
 const fleet_runner_patch = @import("handlers/fleet/runner_patch.zig");
 const fleet_runner_events = @import("handlers/fleet/runner_events.zig");
 const runner_self = @import("handlers/runner/self.zig");
@@ -42,6 +43,15 @@ pub fn invokeFleetRunnersList(hx: *Hx, req: *httpz.Request, route: router.Route)
         return;
     }
     fleet_runners_list.innerListFleetRunners(hx.*, req);
+}
+
+pub fn invokeFleetStreamsList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    fleet_streams_list.innerListFleetStreams(hx.*, req);
 }
 
 pub fn invokeFleetRunnerPatch(hx: *Hx, req: *httpz.Request, route: router.Route) void {

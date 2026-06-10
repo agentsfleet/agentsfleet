@@ -28,6 +28,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // the invoke fn enforces POST). `me` resolves from the Bearer token.
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNERS)) return .register_runner;
     if (std.mem.eql(u8, path, runner_protocol.PATH_FLEET_RUNNERS)) return .fleet_runners_list;
+    if (std.mem.eql(u8, path, "/v1/fleet/streams")) return .fleet_streams_list;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_SELF)) return .runner_self;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
