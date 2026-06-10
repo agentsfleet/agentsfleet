@@ -24,7 +24,10 @@ or free-text from a sensitive field. Call sites import `EVENTS` +
 `captureProductEvent`; a grep test fails on any bare event-name literal outside
 the catalog. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
 closed key set would silently drop event-specific keys) — the `EventProps`
-types are the guard.
+types are the compile-time guard, and the emit path allowlists every payload
+against the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument
+cannot smuggle extra fields. Capture is exception-contained: analytics can
+never break the product flow it instruments.
 
 | Event | Fires when | Props |
 |---|---|---|
@@ -46,7 +49,12 @@ a prior identity. Staleness is detected via the module cache plus a
 localStorage marker (`uz_analytics_identified`), which also covers hard
 navigations and session expiry — cases where the sign-out edge is never
 observable in-page. Anonymous visitors never carry the marker, so reset never
-churns anonymous ids.
+churns anonymous ids. Identity work that races the lazy posthog-js chunk load
+is deferred, not dropped: a racing reset keeps its marker until the client can
+actually reset, and a racing identify is queued and flushed at init. Accepted
+residual risk: a user who clears localStorage but keeps cookies can retain a
+posthog identity with no marker (the app's default posthog persistence is
+localStorage+cookie).
 
 ## Website (marketing)
 
