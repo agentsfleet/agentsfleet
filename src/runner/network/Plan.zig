@@ -2,8 +2,8 @@
 //!
 //! Pure derivation from `(worker_index, resolved allowlist entries)`: the veth
 //! pair's interface names + point-to-point `/30` addresses, and the two files
-//! bound into the sandbox — a static `/etc/hosts` (allowlist names → their
-//! resolved IPs) and a neutered `/etc/resolv.conf`. File-as-struct (`@This()`),
+//! bound into the sandbox — a static `/etc/hosts` (loopback preamble + allowlist
+//! names → their resolved IPs) and a neutered `/etc/resolv.conf`. File-as-struct (`@This()`),
 //! no I/O — `EgressScope` resolves names → `entries` (DNS) and consumes this.
 //!
 //! Launch slice is IPv4: `hostsFile` renders A-record entries; a v6 entry is a
@@ -67,11 +67,19 @@ pub fn build(alloc: std.mem.Allocator, worker_index: u32, entries: []const HostE
     };
 }
 
-/// Render the per-lease `/etc/hosts`: one `IP name` line per allowlist entry.
-/// Caller owns the returned slice. Fails closed on a non-IPv4 entry.
+// bwrap binds the rendered file OVER /etc/hosts; musl resolves `localhost` only
+// from /etc/hosts (no libc special-case, and resolvConf() is resolver-less), so
+// the standard loopback preamble must be explicit or `localhost` stops resolving
+// in the sandbox. Loopback never leaves the lease netns — no egress widening.
+const HOSTS_PREAMBLE = "127.0.0.1 localhost\n::1 localhost\n";
+
+/// Render the per-lease `/etc/hosts`: the loopback preamble, then one `IP name`
+/// line per allowlist entry. Caller owns the returned slice. Fails closed on a
+/// non-IPv4 entry.
 pub fn hostsFile(self: Plan, alloc: std.mem.Allocator) Error![]u8 {
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
+    try buf.appendSlice(alloc, HOSTS_PREAMBLE);
     for (self.entries) |e| try appendHostsLine(alloc, &buf, e);
     return buf.toOwnedSlice(alloc);
 }
@@ -137,7 +145,7 @@ test "build rejects a worker_index past one octet (fail closed)" {
     try std.testing.expectError(error.WorkerIndexOutOfRange, build(al, 254, &.{}));
 }
 
-test "hostsFile renders one IP-name line per entry, in order" {
+test "hostsFile renders the loopback preamble, then one IP-name line per entry, in order" {
     const al = std.testing.allocator;
     const entries = [_]HostEntry{
         entry("api.fireworks.ai", 1, 2, 3, 4),
@@ -148,18 +156,21 @@ test "hostsFile renders one IP-name line per entry, in order" {
     const hosts = try p.hostsFile(al);
     defer al.free(hosts);
     try std.testing.expectEqualStrings(
-        "1.2.3.4 api.fireworks.ai\n10.20.30.40 registry.npmjs.org\n",
+        // pin test: literal is the contract
+        "127.0.0.1 localhost\n::1 localhost\n1.2.3.4 api.fireworks.ai\n10.20.30.40 registry.npmjs.org\n",
         hosts,
     );
 }
 
-test "hostsFile on an empty allowlist is empty" {
+test "hostsFile on an empty allowlist is exactly the loopback preamble" {
     const al = std.testing.allocator;
     var p = try build(al, 0, &.{});
     defer p.deinit();
     const hosts = try p.hostsFile(al);
     defer al.free(hosts);
-    try std.testing.expectEqual(@as(usize, 0), hosts.len);
+    // pin test: literal is the contract — localhost must resolve even with zero
+    // allowlist entries, or sandbox workloads dialing their own loopback break.
+    try std.testing.expectEqualStrings("127.0.0.1 localhost\n::1 localhost\n", hosts);
 }
 
 test "hostsFile fails closed on a non-IPv4 entry (launch slice is v4)" {
