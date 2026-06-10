@@ -5,7 +5,8 @@
 //! `fleet.runners`. On an active match, populates `ctx.principal` with
 //! `.mode = .runner`, `.runner_id`, and `.tenant_id = null` — a runner holds
 //! no tenant authority of its own (secret delivery is placement, not a
-//! standing grant). Every rejection is `UZ-RUN-001` (invalid_runner_token);
+//! standing grant). Unknown/malformed tokens reject as `UZ-RUN-001`; known
+//! runners with non-active admin state reject as `UZ-RUN-009`;
 //! there is no JWKS fall-through, so a runner token can never satisfy a
 //! tenant route and a tenant/user token can never satisfy a runner route —
 //! the boundary is which middleware guards the route, not a per-handler check.
@@ -37,6 +38,7 @@ const log = logging.scoped(.runner_auth);
 
 const S_AUTH_REJECTED = "auth_rejected";
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing runner token";
+const S_RUNNER_ADMIN_STATE_BLOCKED = "Runner admin state blocks runner-plane access";
 
 /// Outcome of a token-hash lookup against `fleet.runners`. `runner_id` is
 /// owned by the allocator passed to `LookupFn`; the caller frees it — the
@@ -94,13 +96,13 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
     };
 
     if (!row.active) {
-        log.info(S_AUTH_REJECTED, .{ .reason = "revoked", .runner_id = row.runner_id });
+        log.info(S_AUTH_REJECTED, .{ .reason = "non_active", .runner_id = row.runner_id });
         ctx.alloc.free(row.runner_id);
-        ctx.fail(errors.ERR_RUN_INVALID_RUNNER_TOKEN, S_INVALID_OR_MISSING_TOKEN);
+        ctx.fail(errors.ERR_RUN_ADMIN_STATE_BLOCKED, S_RUNNER_ADMIN_STATE_BLOCKED);
         return .short_circuit;
     }
 
-    log.info("auth_succeeded", .{ .runner_id = row.runner_id });
+    log.debug("auth_succeeded", .{ .runner_id = row.runner_id });
     ctx.principal = .{
         .mode = .runner,
         .runner_id = row.runner_id,
@@ -205,7 +207,7 @@ test "runner_bearer rejects unknown token with UZ-RUN-001" {
     try testing.expect(ctx.principal == null);
 }
 
-test "runner_bearer rejects revoked runner with UZ-RUN-001 and frees the row" {
+test "runner_bearer rejects revoked runner with UZ-RUN-009 and frees the row" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
@@ -219,7 +221,7 @@ test "runner_bearer rejects revoked runner with UZ-RUN-001 and frees the row" {
     const outcome = try mw.execute(&ctx, ht.req);
 
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_RUN_INVALID_RUNNER_TOKEN, test_fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_RUN_ADMIN_STATE_BLOCKED, test_fixtures.last_code);
     try testing.expect(ctx.principal == null);
 }
 

@@ -198,10 +198,12 @@ pub const ERR_RUN_UNSUPPORTED_SECRET_DELIVERY = "UZ-RUN-003";
 pub const ERR_RUN_STALE_FENCING_TOKEN = "UZ-RUN-005";
 pub const ERR_RUN_LEASE_NOT_FOUND = "UZ-RUN-006";
 pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED = "UZ-RUN-007";
+pub const ERR_RUN_ADMIN_STATE_BLOCKED = "UZ-RUN-009";
 pub const ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME = "UZ-RUN-010";
 pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
 pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS = "UZ-RUN-012";
 pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
+pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.
@@ -313,6 +315,7 @@ comptime {
         .{ ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, auth_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED },
         .{ ERR_APIKEY_REVOKED, auth_codes.ERR_APIKEY_REVOKED },
         .{ ERR_RUN_INVALID_RUNNER_TOKEN, auth_codes.ERR_RUN_INVALID_RUNNER_TOKEN },
+        .{ ERR_RUN_ADMIN_STATE_BLOCKED, auth_codes.ERR_RUN_ADMIN_STATE_BLOCKED },
     };
     for (pairs) |p| {
         if (!std.mem.eql(u8, p[0], p[1]))

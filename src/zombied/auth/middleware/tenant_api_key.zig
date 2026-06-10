@@ -103,7 +103,7 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         return .short_circuit;
     }
 
-    log.info("auth_succeeded", .{ .api_key_id = row.api_key_id, .tenant_id = row.tenant_id });
+    log.debug("auth_succeeded", .{ .api_key_id = row.api_key_id, .tenant_id = row.tenant_id });
     ctx.alloc.free(row.api_key_id);
     ctx.principal = .{
         .mode = .api_key,

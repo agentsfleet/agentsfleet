@@ -35,7 +35,7 @@ pub fn lookup(
     defer self.pool.release(conn);
 
     var q = PgQuery.from(conn.query(
-        \\SELECT id::text, status
+        \\SELECT id::text, admin_state
         \\FROM fleet.runners
         \\WHERE token_hash = $1
         \\LIMIT 1
@@ -48,8 +48,8 @@ pub fn lookup(
 
 fn copyRow(alloc: std.mem.Allocator, row: pg.Row) !LookupResult {
     const runner_id_raw = row.get([]u8, 0) catch return error.DbRowShape;
-    const status_raw = row.get([]u8, 1) catch return error.DbRowShape;
-    const active = std.mem.eql(u8, status_raw, protocol.RUNNER_STATUS_ACTIVE);
+    const admin_state_raw = row.get([]u8, 1) catch return error.DbRowShape;
+    const active = std.mem.eql(u8, admin_state_raw, protocol.ADMIN_STATE_ACTIVE);
 
     const runner_id = try alloc.dupe(u8, runner_id_raw);
     return .{ .runner_id = runner_id, .active = active };
