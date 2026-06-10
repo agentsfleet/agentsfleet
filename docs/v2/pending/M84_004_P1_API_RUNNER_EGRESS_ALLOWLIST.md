@@ -129,7 +129,7 @@ The child must never join the host network namespace. On a network-enabled tier 
 
 ### §2 — Default-deny in-netns nftables IP-allowlist (the allowlist enforced)
 
-The child's netns carries an nftables ruleset that DROPs all egress except to the resolved allowlist IPs (plus DNS to the configured resolver, if name resolution happens in-child for allowed names — PLAN decides whether resolution is parent-only). Loopback within the netns is allowed; the host LAN, link-local, and private ranges (except the veth subnet) are denied.
+The child's netns carries an nftables ruleset that DROPs all egress except to the resolved allowlist IPs (name resolution is **parent-provided** per §3.3 — no forwarding resolver is reachable from the child). Loopback within the netns is allowed; the host LAN, link-local, and private ranges (except the veth subnet) are denied.
 
 - **Dimension 2.1** — a connect to an allowed IP (the resolved inference endpoint) succeeds → Test `test_allowed_ip_reachable`
 - **Dimension 2.2** — a connect to a non-allowed IP is dropped by nftables → Test `test_denied_ip_dropped` (+ `egress_denied` logged, IP only)
