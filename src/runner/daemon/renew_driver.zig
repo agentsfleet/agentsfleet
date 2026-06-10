@@ -15,7 +15,7 @@
 //! `LoopbackClient` and tests inject a scripted fake — deterministic, no HTTP
 //! and no wall clock (ZIG_RULES §Deterministic testing: inject the client, the
 //! decision `now_ms` is passed in). `Client` must expose
-//! `renew(alloc, runner_token, lease_id) !RenewResult`.
+//! `renew(self: *Client, alloc, runner_token, lease_id, deadline_ms) !RenewResult`.
 
 const std = @import("std");
 const logging = @import("log");
@@ -36,15 +36,19 @@ pub fn RenewDriver(comptime Client: type) type {
         runner_token: []const u8,
         lease_id: []const u8,
         deadline_ms: i64,
+        /// Read/write bound for each `/renew` call (config-resolved; the
+        /// relation to the renewal window is enforced at config load).
+        renew_deadline_ms: u31,
 
         /// Build a driver seeded with the lease's initial kill deadline.
-        pub fn init(alloc: std.mem.Allocator, cp: Client, runner_token: []const u8, lease: LeasePayload) Self {
+        pub fn init(alloc: std.mem.Allocator, cp: Client, runner_token: []const u8, lease: LeasePayload, renew_deadline_ms: u31) Self {
             return .{
                 .alloc = alloc,
                 .cp = cp,
                 .runner_token = runner_token,
                 .lease_id = lease.lease_id,
                 .deadline_ms = lease.lease_expires_at,
+                .renew_deadline_ms = renew_deadline_ms,
             };
         }
 
@@ -53,15 +57,20 @@ pub fn RenewDriver(comptime Client: type) type {
             return .{ .ctx = self, .onTick = onTick, .tick_ms = constants.RENEWAL_TICK_MS };
         }
 
-        /// Supervisor calls this on each tick / progress frame. Renew only inside
-        /// the window; map the renewal result to a decision, advancing the kill
-        /// deadline on success.
         fn onTick(ctx: *anyopaque, now_ms: i64) child_supervisor.RenewDecision {
             const self: *Self = @ptrCast(@alignCast(ctx));
+            return self.tick(now_ms);
+        }
+
+        /// One renewal decision. Called by the supervisor hook on each tick /
+        /// progress frame (and composable by callers that fan a tick out to
+        /// other periodic work). Renew only inside the window; map the renewal
+        /// result to a decision, advancing the kill deadline on success.
+        pub fn tick(self: *Self, now_ms: i64) child_supervisor.RenewDecision {
             // Equivalent to `deadline_ms - now_ms > WINDOW` but overflow-safe: a
             // garbage/extreme deadline from the wire must not panic the tick loop.
             if (self.deadline_ms > now_ms +| constants.RENEWAL_WINDOW_MS) return .keep;
-            const res = self.cp.renew(self.alloc, self.runner_token, self.lease_id) catch |err| {
+            const res = self.cp.renew(self.alloc, self.runner_token, self.lease_id, self.renew_deadline_ms) catch |err| {
                 log.warn("renew_failed_retry", .{ .lease_id = self.lease_id, .err = @errorName(err) });
                 return .keep;
             };

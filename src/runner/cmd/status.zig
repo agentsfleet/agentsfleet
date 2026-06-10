@@ -19,8 +19,9 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
         return output.fail(a, alloc, ERR_NO_TOKEN);
     defer alloc.free(token);
 
-    const client = Client{ .base_url = api, .io = io };
-    const parsed = client.getSelf(alloc, token) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
+    var client = Client.init(alloc, io, api);
+    defer client.deinit();
+    const parsed = client.getSelf(alloc, token, Client.DEFAULT_DEADLINE_MS) catch return output.fail(a, alloc, output.ERR_UNREACHABLE);
     defer parsed.deinit();
     var buf: [384]u8 = undefined;
     output.writeOut(renderStatus(&buf, a, parsed.value));
