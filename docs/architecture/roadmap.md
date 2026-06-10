@@ -24,6 +24,7 @@ Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`inte
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
 - **Dashboard token model** — the Backend-For-Frontend (BFF) direction. Deferred; detail currently lives in `AUTH.md` and should move here or into its own spec when revisited.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
+- **Trust-scoped sticky affinity** — once runners can be local / low-trust (laptops, untrusted hosts), the sticky-routing affinity (`fleet.runner_affinity.last_runner_id`) must stop being a pure performance hint. Affinity selection has to filter on the runner's **trust class + scope** (allowed tenants/workspaces) *before* applying the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility — so a host that shouldn't see sensitive work never receives it just because it ran the zombie before. Not urgent (the S0 trusted-fleet model treats every runner as equally eligible, so affinity carries no safety dimension yet); design it alongside the M85_001 scheduler and the untrusted-runner trust gating. Cross-referenced from the Fleet operator plane section below.
 
 ## Runner resilience — deferred to the Zig 0.16 toolchain bump
 
