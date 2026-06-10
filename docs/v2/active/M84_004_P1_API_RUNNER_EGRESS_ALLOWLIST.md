@@ -4,8 +4,8 @@
 **Milestone:** M84
 **Workstream:** 004
 **Date:** Jun 05, 2026 (re-scoped to the launch slice Jun 10, 2026 after a code-grounded adversarial review)
-**Status:** PARKED — enforcement deferred to 2.0.1 (Indy, Jun 11, 2026). The pure layer, datapath, and option-D recipe are built + validated; the `establishEgress` production wiring is **not** built. `main` keeps `--share-net` allow-all in the interim. See the **PARK** banner + the Discovery ack below; resume from the validated option-D recipe in Discovery.
-> **🅿️ PARKED (Jun 11, 2026).** Indy: _"i dont want to implement the D... we just allow all traffic... lets do that until 2.0.0 [enforcement to land 2.0.1]... park the spec, but push this branch as PR, so this can be used in 2.0.1."_ Branch `feat/m84-runner-egress-allowlist` is pushed as a **draft PR** for continuation. **Do NOT merge as-is** — the `network/` subsystem has no production caller until `establishEgress` (option D) is wired, so merging now ships dead code (RULE NDC/NLG). Interim posture: `main` is unchanged (`registry_allowlist` tier keeps `--share-net` = full host egress); the P1 exfil hole stays open until 2.0.1 — accepted on the basis that pre-2.0.1 exposure is bounded (Indy's call; the exposure question was left unanswered, so treat as a known carried risk).
+**Status:** IN_PROGRESS — foundation merged to `main`; full egress **enforcement (option D `establishEgress`) lands in 2.0.1** (Indy, Jun 11, 2026). The pure netlink layer, datapath proof, and validated option-D recipe are built; the production wiring is the 2.0.1 work. See the status map below + the validated recipe in Discovery.
+> **Enforcement in 2.0.1 (Indy, Jun 11, 2026).** Indy: _"i am going to merge this... add yellow circle to the one to be implemented, green to the one that is done."_ This branch merges the egress foundation; the 🟡 Dimensions below land in 2.0.1 via the option-D recipe (Discovery). **Operational note on merge:** dropping `--share-net` without the veth wired makes the `registry_allowlist` tier **fail-closed (no egress)** until option D lands — so no network-tier agent has egress between this merge and 2.0.1. (Acceptable iff no network-needing agents run pre-2.0.1; otherwise finish D first.)
 **Priority:** **P1 — launch-critical security boundary (re-classified Jun 10, 2026; threat model corrected Jun 10 against code).** Closes the **day-1** exfiltration path M84_003 leaves open *on trusted runners*: the network-enabled tier shares the host network namespace with no egress restriction, and the per-zombie allowlist is honored by **only** the `http_request` tool — `web_fetch` is allow-all (`allowed_domains = &.{}`) and `bash` is `policy = null`. A prompt-injected agent uses those unpoliced tools to exfiltrate the **workspace data it is handling** (cloned private repo, fetched files, issue/PR text) to any host and to weaponize the box against third parties. The tenant's secret **values** are better protected — materialized only inside `http_request` (substitution + L7 allowlist + redaction), so the unpoliced tools cannot route them — leaving the secret-value residual to an *allowed write-capable host* (§4.1), which scoped/short-lived tokens (still unbuilt: `secrets_resolve.zig:48` verbatim, no Time-To-Live; `docs/AUTH.md:204` static long-lived) must close, not this slice.
 **Categories:** API
 **Batch:** B1 — standalone; rides M84_003's `appendBwrap` argv + the `test-integration-runner` lane (both merged, #370).
@@ -127,26 +127,27 @@
 
 ## Sections (implementation slices)
 
-### Build status at PARK (Jun 11, 2026) — per Dimension
+### Build status — per Dimension
 
-Legend: ✅ **done** (built + tested + production-wired, or doc-complete) · 🟡 **built, not wired** (code + unit/datapath-tested, but no production caller — needs `establishEgress`) · ⏳ **pending** (not built) · ⏸️ **deferred by design**. **No Dimension is production-DONE** because `establishEgress` (option D) is unbuilt — the kernel boundary is never established on a real lease yet. The pure layer + datapath proof are the 🟡 substrate it sits on.
+Legend: 🟢 **done** (built + tested) · 🟡 **to be implemented in 2.0.1** (via the option-D `establishEgress` recipe in Discovery).
 
-| Dim | What | Status at park | Evidence / gap |
-|---|---|---|---|
-| **Foundation** | netlink layer (`MessageBuilder`/`rtnetlink`/`nfnetlink`/`nfnetlink_rule`/`AllowList`/`Plan`/`Policy`/`Socket`/`EgressScope`) | 🟡 built+tested | golden-byte tests vs real `nft`; `egress_integration_test.zig` proves create/attach/destroy on Linux. No prod caller. |
-| **1.1** | no `--share-net` on any sandboxed tier | 🟡 done-but-unmerged | `test_no_share_net_on_any_sandboxed_tier` passes; the drop lives on this branch, **`main` still has `--share-net`** (the park's allow-all interim). Own-netns egress half = pending wiring. |
-| **1.2** | fail-closed when no rules installed | ⏳ pending | needs `establishEgress`; `test_egress_fails_closed_without_rules` not built. |
-| **2.1** | allowed IP reachable | 🟡 datapath proven, behavioural test pending | `create()` ACK + veth proven; `test_allowed_ip_reachable` (listener+forwarding rig) not built; not wired. |
-| **2.2** | non-allowed IP dropped | 🟡 / ⏳ | nft drop-policy + rules golden-tested; packet-level `test_denied_ip_dropped` (the allow/deny contrast rig) not built; not wired. |
-| **2.3** | link-local / RFC1918 dropped | ⏳ pending | `test_link_local_and_private_denied` not built. |
-| **3.1** | inference host always allowlisted (control-plane authored) | 🟡 hoist done, enforcement pending | `ExecutionPolicy.inference_host` + zombied author + `hostFromUrl` + parse **built+tested**; the "always in the resolved set / fail-closed if unresolvable" enforcement needs `establishEgress` resolution. |
-| **3.2** | allowlist not child-extendable | ⏳ pending | inherent once parent-owned `establishEgress` lands; no test yet. |
-| **3.3** | DNS-tunnel closure (static `/etc/hosts` + drop :53) | 🟡 builders done, wiring/test pending | `Plan.resolvConf` (resolver-less) + the two DNS-drop rules in `nfnetlink_rule` are built+golden-tested; binding the files + behavioural test need `establishEgress`. |
-| **3.4** | denial communicated to the user (fast-fail) | ⏳ pending | **not built, no test** — launch form (fast-fail at resolution) needs `establishEgress` to bind the resolver files; structured `blocked_egress` chip deferred per Indy. |
-| **4.1** | honest residual (write-capable allowed host) | ✅ done (doc-only) | documented in Discovery + §4; no code by design. |
-| **§5** | eBPF/FQDN name-layer | ⏸️ deferred | untrusted-GA, by design. |
+| Dim | What | Status |
+|---|---|---|
+| **Foundation** | netlink layer (`MessageBuilder`/`rtnetlink`/`nfnetlink`/`nfnetlink_rule`/`AllowList`/`Plan`/`Policy`/`Socket`/`EgressScope`) — golden-byte tested vs real `nft`; `egress_integration_test.zig` proves create/attach/destroy on Linux | 🟢 |
+| **1.1** | no `--share-net` on any sandboxed tier (`test_no_share_net_on_any_sandboxed_tier` passes) | 🟢 |
+| **1.2** | fail-closed when no rules installed | 🟡 |
+| **2.1** | allowed IP reachable (behavioural test: listener + forwarding rig) | 🟡 |
+| **2.2** | non-allowed IP dropped (packet-level allow/deny contrast) | 🟡 |
+| **2.3** | link-local / RFC1918 dropped | 🟡 |
+| **3.1** | inference host on the lease, control-plane authored (`ExecutionPolicy.inference_host` + zombied author + `hostFromUrl` + parse) | 🟢 |
+| **3.1-enf** | inference host always *in the enforced set* / fail-closed if unresolvable | 🟡 |
+| **3.2** | allowlist not child-extendable | 🟡 |
+| **3.3** | DNS-tunnel closure — `Plan.resolvConf` + the two `:53` drop rules built+golden-tested; binding the files on a live lease | 🟡 |
+| **3.4** | denial communicated to the user (fast-fail at resolution) | 🟡 |
+| **4.1** | honest residual (write-capable allowed host) — documented, no code by design | 🟢 |
+| **§5** | eBPF/FQDN name-layer (untrusted-GA) | 🟡 |
 
-**Resume for 2.0.1:** build `establishEgress` via the validated option-D recipe (Discovery) → flips 1.1/1.2/2.x/3.1/3.2/3.3 from 🟡/⏳ to production-DONE as their behavioural tests land; 3.4 fast-fail rides the same wiring.
+**2.0.1 resume:** build `establishEgress` via the validated option-D recipe (Discovery); the 🟡 Dimensions land + flip 🟢 as their behavioural tests pass.
 
 ### §1 — The sandboxed child runs in its own network namespace (no `--share-net`)
 
