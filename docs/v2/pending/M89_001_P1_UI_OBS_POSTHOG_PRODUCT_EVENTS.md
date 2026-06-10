@@ -1,11 +1,11 @@
-# M89_001: PostHog product-event coverage — dashboard first-class events + server-side capture
+# M89_001: PostHog product-event coverage — dashboard first-class events (client-side activation funnel)
 
 **Prototype:** v2.0.0
 **Milestone:** M89
 **Workstream:** 001
 **Date:** Jun 10, 2026
 **Status:** PENDING
-**Priority:** **P1 — launch-relevant.** PostHog is wired app-wide for autocapture + pageviews, but the dashboard's core product actions emit **zero first-class events** and there is **no server-side capture** — so at launch, activation/conversion funnels would be measured off fragile autocapture Document-Object-Model (DOM) clicks, and billing/server-side conversions would be **invisible**. This closes the gap so usezombie can measure the launch (zombie-created → run → billing) with reliable, typed events.
+**Priority:** **P1 — launch-relevant.** PostHog is wired app-wide for autocapture + pageviews, but the dashboard's core product actions emit **zero first-class (client-side) events** — so at launch the **activation funnel** (zombie created → run → key minted → model added) would be measured off fragile autocapture Document-Object-Model (DOM) clicks. This closes that gap with single-sourced, typed **client-side** events. *(Server-side / conversion truth — billing, signup completion — is **already** captured by the zombied backend via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, …); extending it is a separate backend workstream, NOT a `posthog-node` path in the web app.)*
 **Categories:** UI, OBS
 **Batch:** B1 — standalone; no backend (Zig) change, no schema. Pure UI/analytics instrumentation.
 **Branch:** {feat/m89-posthog-product-events — added at CHORE(open)}
@@ -23,7 +23,7 @@
 1. `ui/packages/app/lib/analytics/posthog.ts` — the client init (`posthog.init`, line ~102) + `identifyAnalyticsUser` (line ~112). The typed event catalog + client capture helpers land here (or a sibling `events.ts`).
 2. `ui/packages/app/instrumentation-client.ts` — Next.js global client-instrumentation; where `initAnalytics()` + `onRouterTransitionStart` fire today. No `PostHogProvider` exists — init is global, not a React provider.
 3. `ui/packages/app/components/analytics/AnalyticsBootstrap.tsx` — `identify` on Clerk auth-state change (root layout). **`reset()` on logout lands here** (§4).
-4. `ui/packages/app/app/(dashboard)/**/actions.ts` — the 9 server-action files (zombies, runners, api-keys, models, billing, credentials, approvals, defaults, events). Today they emit **nothing**; §3 adds server-side capture at the mutation points.
+4. dashboard **client components** for the click-driven actions (create-zombie form, register-runner dialog, mint-key dialog, BYOK wizard, checkout button) — where the typed client `capture(EVENTS.x, props)` fires after the user action (§2). *(Server-action files are NOT instrumented here — server-side events are zombied's `posthog-zig` domain.)*
 5. `ui/packages/website/src/analytics/posthog.ts` — the marketing init + the **dead** `trackSignupCompleted` + `trackLeadCapture*` exports; §5 wires them to real call sites.
 6. `dispatch/write_ts_adhere_bun.md` — all `*.ts`/`*.tsx` edits (const/import discipline, the UI + DESIGN-TOKEN gates). Analytics is mostly non-visual, but the gates still fire on `.tsx`.
 
@@ -31,9 +31,9 @@
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** `feat(m89): PostHog product-event coverage — dashboard first-class events + server-side capture`
-- **Intent (one sentence):** Every meaningful product action (zombie created/run, runner registered, API key minted, Bring-Your-Own-Key (BYOK) model added, credential added, approval resolved, checkout started/completed) emits a **single-sourced, typed PostHog event** — client-side for user-driven actions, server-side (`posthog-node`) for actions that complete without a click — so launch funnels are measured on reliable events, not autocapture DOM clicks.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. **Confirm the event taxonomy** (the exact event names + props per the catalog) and **which actions are client- vs server-emitted** — a click-driven mutation (create zombie form submit) emits client-side; a server-action/webhook-driven one (billing confirmed, background state change) emits server-side via `posthog-node`. **Confirm no Personally-Identifiable-Information (PII) / secret lands in event props** (no tokens, API keys, raw credentials — IDs + names only).
+- **PR title (eventual):** `feat(m89): PostHog product-event coverage — dashboard first-class events (client-side)`
+- **Intent (one sentence):** Every meaningful **user-driven** dashboard action (zombie created/run, runner registered, API key minted, Bring-Your-Own-Key (BYOK) model added, credential added, approval resolved, checkout started) emits a **single-sourced, typed PostHog event client-side** (`posthog-js`) — so the launch activation funnel is measured on reliable events, not autocapture DOM clicks. *(Server-completed conversions are captured separately by zombied's `posthog-zig`.)*
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. **Confirm the event taxonomy** (the exact event names + props per the catalog). All events here are **client-side** (`posthog-js`), fired in a browser component at the user action — there is **no** `posthog-node` / server-side path in this workstream. **Confirm no Personally-Identifiable-Information (PII) / secret lands in event props** (no tokens, API keys, raw credentials — IDs + names only).
 
 ---
 
@@ -42,7 +42,7 @@
 - **`dispatch/write_ts_adhere_bun.md`** — `const`/import discipline; raw-HTML → design-system primitive (UI gate); `*-[...]` arbitrary → token utility (DESIGN TOKEN gate). The capture helpers are non-visual, but any touched `.tsx` still trips the gates.
 - **UFS (manual, ui/)** — the UFS audit skips `ui/`; **by hand**, extract every event-name literal + prop shape into a single-sourced **as-const** catalog (`events.ts`), referenced everywhere — never re-spell `"zombie_created"` at a call site.
 - **PII / secret discipline** (mirrors `docs/LOGGING_STANDARD.md` §6 in spirit) — event props carry IDs + names + enums only; **never** a token, API key, raw credential, or full secret. A reviewer audits every new `capture(...)` prop bag.
-- **Effect-TS / module style** — if a touched server action is Effect-style, capture within the effect; if plain async, capture + `flush` before return. Confirm per-file at PLAN (don't assume one style).
+- **Client capture only** — every `capture` runs in a browser component after the user action; there is no server-action / `posthog-node` capture in this workstream (server events are zombied's `posthog-zig`).
 
 ## Applicable Gates
 
@@ -58,15 +58,15 @@
 
 ## Overview
 
-**Goal (testable):** A defined set of product actions each emit a typed PostHog event with the documented props (no PII), single-sourced from an as-const catalog; user-driven actions capture client-side, server-completed actions capture server-side via `posthog-node` (with a flush), and `reset()` fires on logout. Verified by unit tests on the catalog/helpers + capture-call assertions, and the marketing funnel's `signup_completed` actually fires.
+**Goal (testable):** A defined set of **user-driven** product actions each emit a typed PostHog event **client-side** (`posthog-js`) with the documented props (no PII), single-sourced from an as-const catalog; `reset()` fires on logout; and the marketing funnel's `signup_completed` actually fires. Verified by unit tests on the catalog/helpers + capture-call assertions.
 
 **Problem (Jun 09 audit):** PostHog coverage is **global on the baseline** — both `app` and `website` init app-wide with `autocapture: true` + auto pageviews + pageleave, env-gated — but **thin on first-class events**:
 1. **Dashboard product actions emit ZERO explicit events.** Creating a zombie, running it, registering a runner, minting an API key, adding a BYOK model, checkout/billing — all are autocapture-only (DOM clicks), which is fragile (selector-dependent) and useless for clean funnels.
-2. **No server-side capture.** There is no `posthog-node` in the web app; the 9 `actions.ts` server-action files and the Server-Sent-Events route handler emit nothing — so any conversion that completes without a click (billing confirmed, background state change) is **invisible**.
+2. **Server-side conversions live in the backend (already captured).** zombied already emits server-truth events to PostHog via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`). So the UI gap is **only** the missing client-side first-class events (point 1) — **not** a `posthog-node` path. (Extending the backend's coverage — e.g. a billing-conversion event — is a separate Zig/`posthog-zig` workstream.)
 3. **No `reset()` on logout.** Identity is set via `identify` on sign-in but never cleared → cross-session stitching risk on shared browsers.
 4. **Website funnel is half-wired.** `trackSignupCompleted` + the four `trackLeadCapture*` events are defined/exported but **never called** — the marketing signup funnel has a start (`signup_started`) with no recorded completion.
 
-**Solution summary:** Add a **single-sourced typed event catalog** and capture helpers; emit first-class events at the action sites (client-side for click-driven, server-side `posthog-node` for server-completed); fire `reset()` on logout; and wire the dead website funnel events. No backend change.
+**Solution summary:** Add a **single-sourced typed event catalog** + a thin **client** `capture` helper; emit first-class events at the user-action sites (`posthog-js`); fire `reset()` on logout; and wire the dead website funnel events. **Client-only — no `posthog-node`.** No backend change.
 
 **Prioritization.** This is the **one launch-relevant** observability gap: without it, the launch is measured on autocapture DOM clicks with billing conversions invisible. The logging-discipline + error_code gaps from the same audit are internal hygiene (separate, post-launch).
 
@@ -74,7 +74,7 @@
 
 ## Prior-Art / Reference Implementations
 
-- **PostHog server-side `posthog-node`** — the canonical pattern for capturing events from Next.js server actions / route handlers (init once, `capture({distinctId, event, properties})`, `await flush()` before the serverless function returns so events aren't dropped). The `distinctId` is the Clerk user id, stitched to the client `identify`.
+- **Server-side already exists (`posthog-zig`)** — zombied captures server-truth events (`telemetry.zig`), so this workstream adds **no** Next.js `posthog-node` path; client events stitch to the same person via the existing `identify` (Clerk user id).
 - **Typed event catalog (as-const)** — the in-repo pattern for single-sourcing literals in `ui/` (UFS-by-hand): one `events.ts` exporting `EVENTS` as-const + a `Props<E>` map, so call sites reference `EVENTS.zombie_created`, never the bare string.
 - **`identify` / `reset` lifecycle** — PostHog's standard: `identify` on auth (already wired in `AnalyticsBootstrap`), `reset` on logout (the missing half) to prevent anonymous/next-user stitching.
 
@@ -86,23 +86,21 @@
 |------|--------|-----|
 | `ui/packages/app/lib/analytics/events.ts` | CREATE | The single-sourced as-const event catalog (names + per-event prop types). UFS-by-hand. |
 | `ui/packages/app/lib/analytics/posthog.ts` | EDIT | Add typed client `capture(event, props)` helper that consults the catalog. **It must NOT route catalog-event props through the existing `sanitizeProps` closed allowlist (`ALLOWED_PROP_KEYS`, `posthog.ts:33`/`:77`) — that would silently drop event-specific keys (`zombie_id`, `template`, `api_key_id`); the `EventProps` types are the compile-time PII guard instead (§1.3).** Also **extend the `PostHogLike` interface (`posthog.ts:28`) with `reset?: () => void`** so §4's `posthog.reset()` type-checks. |
-| `ui/packages/app/lib/analytics/posthog-server.ts` | CREATE | `posthog-node` server client + typed `captureServer(distinctId, event, props)` + `flush`. |
-| `ui/packages/app/package.json` | EDIT | **ADD `"posthog-node"` to `dependencies`** — it is NOT in `ui/` today (only `posthog-js` is; `posthog-node` exists only in `zombiectl/package.json`). Without it, `posthog-server.ts`'s import fails the Next.js build (module-not-found). Pin `^5.36.4` to match `zombiectl` (one version across the repo). |
+| *(no new server file / dependency)* | — | **Client-only — `posthog-node` dropped (Indy, Jun 10).** Server-side events are zombied's `posthog-zig`; `ui/packages/app` keeps only `posthog-js`, no new dependency. |
 | `ui/packages/app/components/analytics/AnalyticsBootstrap.tsx` | EDIT | `posthog.reset()` on Clerk sign-out (§4). |
-| `ui/packages/app/app/(dashboard)/**/actions.ts` (subset that mutates) | EDIT | Server-side `captureServer` at the mutation points (zombie run, billing, runner register, key mint, BYOK add, credential add, approval resolve) (§3). |
-| dashboard client components for click-driven actions (create-zombie form, register-runner dialog, mint-key dialog, BYOK wizard, checkout button) | EDIT | Client `capture` at the user action (§2). |
+| dashboard client components for click-driven actions (create-zombie form, register-runner dialog, mint-key dialog, BYOK wizard, checkout button) | EDIT | Client `capture(EVENTS.x, props)` at the user action (§2). |
 | `ui/packages/website/src/analytics/posthog.ts` | EDIT (small) | Keep the exports; they get wired (not re-defined). |
 | website signup/CTA/Pricing components (`Hero`, `CTABlock`, `Pricing`, signup form) | EDIT | Call `trackSignupCompleted` + `trackLeadCapture*` at the real interactions (§5). |
 | `docs/architecture/` analytics note OR `ui/packages/app/lib/analytics/README` | CREATE (small) | The event taxonomy (naming convention + catalog index). |
 
-> **PLAN must enumerate the exact action set** (which of the 9 `actions.ts` files mutate + warrant an event) and **client-vs-server** per action — the table above is the audit-derived candidate set, not the verified final list.
+> **PLAN must enumerate the exact action set** (which user-driven actions warrant a first-class event) — the table above is the audit-derived candidate set, not the verified final list. All capture is **client-side**.
 
 ---
 
 ## Decomposition & alternatives
 
-- **Chosen shape:** one workstream (B1) — catalog + client helper + server helper + call-site wiring + website funnel. It is **additive instrumentation** (no behaviour change to the product itself; events are side-effects). Separable into the 5 Sections below.
-- **Alternatives considered:** (a) **Rely on autocapture alone** — rejected: DOM-selector-fragile, no server-side conversions, no clean funnels (the status quo this closes). (b) **A heavyweight analytics abstraction / event bus** — rejected: over-engineered; a typed catalog + thin capture helpers is enough. (c) **Capture everything client-side** — rejected: server-completed conversions (billing) never reach the client, so `posthog-node` is required for those.
+- **Chosen shape:** one workstream (B1) — catalog + client `capture` helper + call-site wiring + website funnel. It is **additive instrumentation** (no behaviour change; events are side-effects). Separable into the Sections below.
+- **Alternatives considered:** (a) **Rely on autocapture alone** — rejected: DOM-selector-fragile, no clean funnels (the status quo this closes). (b) **A heavyweight analytics abstraction / event bus** — rejected: over-engineered; a typed catalog + a thin client helper is enough. (c) **Add a Next.js `posthog-node` server path** — rejected (Indy, Jun 10): server-side conversion truth already lives in zombied's `posthog-zig` (`telemetry.zig`); a second server path in the web app would duplicate it. This workstream is **client-only**.
 
 ---
 
@@ -123,12 +121,9 @@ At each click-driven action, the component calls the typed client `capture(EVENT
 - **Dimension 2.1** — each click-driven action emits its catalog event with the documented props on success → Test per action (`capture` called with `EVENTS.zombie_created` + props)
 - **Dimension 2.2** — capture is **not** fired on validation failure / aborted action (event = success signal) → Test (no capture on error path)
 
-### §3 — Server-side capture (`posthog-node`)
+### §3 — Server-side conversions — OUT OF SCOPE (zombied's `posthog-zig`)
 
-A server `posthog-node` client captures events that complete without a click — billing confirmed, background mutations — from the server actions / route handlers, with `distinctId = clerkUserId` and a `flush()` before return (serverless drops un-flushed events).
-
-- **Dimension 3.1** — a server-completed action (e.g. checkout_completed / zombie run finished server-side) emits via `posthog-node` with the Clerk `distinctId` → Test (`captureServer` called + awaited flush)
-- **Dimension 3.2** — the server client flushes before the serverless function returns (no dropped events) → Test (flush awaited on the success path)
+Server-completed conversions (billing confirmed, signup completion, zombie run finished) are **not** captured here. They already flow from the zombied backend via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, …), where the state-owning code lives and the event is authoritative (browser events get ad-blocked / lost on tab close). **No `posthog-node` path is added to the web app.** Extending the backend's server-event coverage (e.g. a dedicated billing-conversion event) is a separate Zig / `posthog-zig` workstream.
 
 ### §4 — Identity hygiene: `reset()` on logout
 
@@ -174,14 +169,10 @@ export type EventProps = {
 // NOTE: bypasses the existing sanitizeProps/ALLOWED_PROP_KEYS allowlist for catalog events
 // (those keys are not allowlisted → would be silently dropped); EventProps is the PII guard. §1.3
 export function capture<E extends EventName>(event: E, props: EventProps[E]): void;
-
-// server capture (ui/packages/app/lib/analytics/posthog-server.ts)
-export async function captureServer<E extends EventName>(
-  distinctId: string, event: E, props: EventProps[E],
-): Promise<void>; // awaits flush() before resolving
+// (No server capture here — server-side events are zombied's posthog-zig; §3.)
 ```
 
-Contract: the product behaves identically; events are additive side-effects. No prop bag carries a secret. Without a PostHog key configured, both client + server capture are no-ops (env-gated, as today).
+Contract: the product behaves identically; events are additive side-effects. No prop bag carries a secret. Without a PostHog key configured, client `capture` is a no-op (env-gated, as today).
 
 ---
 
@@ -189,7 +180,6 @@ Contract: the product behaves identically; events are additive side-effects. No 
 
 | Mode | Cause | Handling |
 |------|-------|----------|
-| Server event dropped | serverless returns before `posthog-node` flushes | `captureServer` **awaits** `flush()`; Dim 3.2 asserts it. |
 | PII leak in a prop | a dev adds `{ token }` / `{ api_key }` to a prop bag | the `EventProps` types forbid secret fields; reviewer audits every new `capture`; Dim 1.2 test. |
 | Event props silently dropped | the typed `capture` routes catalog props through `sanitizeProps`' closed `ALLOWED_PROP_KEYS` | **every event emits an empty prop bag, silently** — the catalog keys aren't allowlisted. Closed by §1.3: catalog `capture` bypasses `sanitizeProps` (types are the PII guard), or `ALLOWED_PROP_KEYS` is extended first. Caught by the §1.3 test. |
 | Event name drift | a call site re-spells `"zombie_created"` | only `EVENTS.x` is allowed; Dim 1.1 test + grep for bare event literals. |
@@ -202,10 +192,9 @@ Contract: the product behaves identically; events are additive side-effects. No 
 
 1. **Single-sourced events** — every emitted event name comes from the `EVENTS` catalog; no bare event-name literal at any call site. Enforced by Dim 1.1.
 2. **No PII/secret in props** — no event prop carries a token, API key, raw credential, or full secret; IDs/names/enums only. Enforced by `EventProps` types + Dim 1.2 + reviewer audit.
-3. **Server events flush** — every `captureServer` awaits `flush()` before its caller returns. Enforced by Dim 3.2.
-4. **Identity cleared on logout** — `reset()` fires **once, on the `isSignedIn: true → false` edge** (not every signed-out render). Enforced by Dim 4.1.
-5. **No dead funnel exports** — every `track*` export in the website analytics module has ≥1 call site. Enforced by Dim 5.2 + grep.
-6. **Env-gated no-op** — without a PostHog key, capture is inert; the product is unchanged. (Existing behaviour, preserved.)
+3. **Identity cleared on logout** — `reset()` fires **once, on the `isSignedIn: true → false` edge** (not every signed-out render). Enforced by Dim 4.1.
+4. **No dead funnel exports** — every `track*` export in the website analytics module has ≥1 call site. Enforced by Dim 5.2 + grep.
+5. **Env-gated no-op** — without a PostHog key, capture is inert; the product is unchanged. (Existing behaviour, preserved.)
 
 ---
 
@@ -220,8 +209,6 @@ Contract: the product behaves identically; events are additive side-effects. No 
 | 1.3 | unit | `catalog props survive the emit path` | a catalog `capture` with `{ zombie_id, template }` emits those keys (NOT dropped by `ALLOWED_PROP_KEYS`) |
 | 2.1 | unit | `client capture per action` | each click-driven action calls `capture(EVENTS.x, props)` on success |
 | 2.2 | unit | `no capture on error path` | a failed/aborted action does NOT capture |
-| 3.1 | unit | `server capture via posthog-node` | a server-completed action calls `captureServer(distinctId, EVENTS.x, props)` |
-| 3.2 | unit | `server flush awaited` | `captureServer` awaits `flush()` before resolving |
 | 4.1 | unit | `reset on logout edge` | `reset()` fires once on the `isSignedIn: true→false` edge (via `useRef(prevSignedIn)`); NOT fired on repeated signed-out renders |
 | 5.1 | unit | `signup_completed fires` | a successful marketing signup fires `signup_completed` |
 | 5.2 | unit + grep | `no dead funnel exports` | every `track*` export has a call site |
@@ -235,8 +222,7 @@ Contract: the product behaves identically; events are additive side-effects. No 
 
 - [ ] `events.ts` catalog (as-const) is the single source of event names; no bare event-name literals at call sites — verify: Dim 1.1 test + grep
 - [ ] No event prop carries a token/API key/raw credential/secret — verify: Dim 1.2 + `EventProps` types
-- [ ] Each launch dashboard action emits its first-class event (client or server) on success, not on failure — verify: §2/§3 tests
-- [ ] Server-completed actions capture via `posthog-node` with the Clerk `distinctId` and an awaited `flush()` — verify: Dim 3.1 + 3.2
+- [ ] Each launch dashboard action emits its first-class **client** event on success, not on failure — verify: §2 tests
 - [ ] `reset()` fires on logout — verify: Dim 4.1
 - [ ] Website `signup_completed` + `lead_capture_*` wired (no dead exports) — verify: Dim 5.1 + 5.2
 - [ ] `make test-unit-app` + `make dry-app` green · aggregate coverage gate met
@@ -250,8 +236,8 @@ Contract: the product behaves identically; events are additive side-effects. No 
 ```bash
 # E1: no bare event-name literals outside the catalog
 grep -rnE '"(zombie_created|zombie_run|runner_registered|api_key_minted|model_added|checkout_(started|completed))"' ui/packages/app --include='*.ts*' | grep -v 'lib/analytics/events.ts'
-# E2: posthog-node present + flush awaited
-grep -rnE 'posthog-node|\.flush\(' ui/packages/app/lib/analytics/posthog-server.ts
+# E2: posthog-node is NOT added to the web app (server-side is zombied's posthog-zig)
+git grep -n 'posthog-node' ui/packages/app/package.json && echo "FAIL: posthog-node should not be in ui/app" || echo "PASS (client-only)"
 # E3: reset on logout wired
 grep -rn 'posthog.reset' ui/packages/app
 # E4: no dead website funnel exports
@@ -274,7 +260,7 @@ make test-unit-app 2>&1 | tail -5 && make dry-app 2>&1 | tail -5
 
 - **Origin (Jun 09, 2026):** the observability audit (zombied/runner/UI). UI sweep verdict: "Coverage is global on the baseline, thin on explicit events." Both packages init PostHog app-wide (`autocapture:true` + pageviews + pageleave, env-gated); no route group is outside the client. Gaps: dashboard product actions emit zero first-class events; no `posthog-node` server-side (9 `actions.ts` + the SSE route handler silent); no `reset()` on logout; website `signup_completed`/`lead_capture_*` defined-but-never-called.
   - Cited anchors (re-confirm at PLAN): client init `lib/analytics/posthog.ts:102`; global init `instrumentation-client.ts`; identify `components/analytics/AnalyticsBootstrap.tsx:10-13`; dead exports `ui/packages/website/src/analytics/posthog.ts`.
-- **Launch relevance (Indy, Jun 10, 2026):** flagged as the **one launch-relevant** gap from the audit (the logging-discipline + error_code gaps are internal hygiene, separate). Without first-class events + server-side capture, launch funnels are measured on fragile autocapture DOM clicks and billing conversions are invisible. **Indy go: author this spec** (the other audit gaps stay as post-launch hygiene).
+- **Launch relevance + client-only scope (Indy, Jun 10, 2026):** flagged as the **one launch-relevant** gap from the audit. Scoped to **client-side activation-funnel events only** — `posthog-node` / server-side capture is **dropped**: server-truth conversions (billing, signup completion) already flow from zombied via `posthog-zig` (`telemetry.zig`: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`), so a Next.js server path would duplicate the backend. **Indy decision (verbatim):** _"client-only for activation funnel only. drop the posthog-node now"_ — server-side coverage extends via `posthog-zig` later, a separate backend workstream.
 - **Deferrals** — session recording is **out of scope** (the cookie-less GDPR posture may be deliberate; a separate decision). Any other "deferred to follow-up" needs an Indy-acked verbatim quote here.
 - **Skill chain outcomes** — {`/write-unit-test`, `/review`, `/review-pr` results.}
 
