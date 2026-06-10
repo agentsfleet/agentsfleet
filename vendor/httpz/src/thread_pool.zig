@@ -22,16 +22,34 @@ pub fn ThreadPool(comptime F: anytype) type {
     return struct {
         stopped: bool,
         threads: []Thread,
-        worker_index: usize,
-        workers: []Worker(F),
+        shared: *Shared,
         arena: std.heap.ArenaAllocator,
 
-        // we queue jobs here before batching them to a worker. We do this
-        // to minimze the amount of locking we need to do.
+        // we queue jobs here before batching them to the shared queue. We do
+        // this to minimze the amount of locking we need to do.
         batch: [BATCH_SIZE]Args,
         batch_size: usize,
 
         const Self = @This();
+
+        // One injector queue shared by every pool thread (vendor patch, see
+        // CHANGES.md). Any idle thread takes the next job, so a thread parked
+        // inside a long-running job can never strand queued work — the old
+        // per-thread private queues + round-robin dispatch black-holed the
+        // parked thread's share. Lives in the arena so its address is stable
+        // after init returns Self by value (threads hold pointers into it).
+        const Shared = struct {
+            io: Io,
+            mutex: Io.Mutex,
+            read_cond: Io.Condition,
+            write_cond: Io.Condition,
+            queue: []Args,
+            // position in queue to read from
+            tail: usize,
+            // position in the queue to write to
+            head: usize,
+            stopped: bool,
+        };
 
         // we expect allocator to be an Arena
         pub fn init(io: Io, allocator: Allocator, opts: Opts) !Self {
@@ -40,28 +58,44 @@ pub fn ThreadPool(comptime F: anytype) type {
 
             const aa = arena.allocator();
 
-            const threads = try aa.alloc(Thread, opts.count);
-            const workers = try aa.alloc(Worker(F), opts.count);
-
-            var started: usize = 0;
-            errdefer for (0..started) |i| {
-                workers[i].stop();
-                threads[i].join();
+            const shared = try aa.create(Shared);
+            shared.* = .{
+                .io = io,
+                .mutex = .init,
+                .read_cond = .init,
+                .write_cond = .init,
+                // the ring buffer always keeps one slot open
+                .queue = try aa.alloc(Args, if (opts.backlog < 2) 2 else opts.backlog),
+                .tail = 0,
+                .head = 0,
+                .stopped = false,
             };
 
-            for (0..workers.len) |i| {
-                workers[i] = try Worker(F).init(io, aa, &workers[@mod(i + i, workers.len)], opts);
+            const threads = try aa.alloc(Thread, opts.count);
+
+            var started: usize = 0;
+            errdefer {
+                {
+                    shared.mutex.lockUncancelable(io);
+                    defer shared.mutex.unlock(io);
+                    shared.stopped = true;
+                }
+                shared.read_cond.broadcast(io);
+                for (threads[0..started]) |*thread| {
+                    thread.join();
+                }
             }
-            for (0..workers.len) |i| {
-                threads[i] = try Thread.spawn(.{}, Worker(F).run, .{&workers[i]});
+
+            for (0..opts.count) |i| {
+                const buffer = try aa.alloc(u8, opts.buffer_size);
+                threads[i] = try Thread.spawn(.{}, run, .{ shared, buffer });
                 started += 1;
             }
 
             return .{
                 .arena = arena,
-                .worker_index = 0,
                 .stopped = false,
-                .workers = workers,
+                .shared = shared,
                 .threads = threads,
                 .batch = undefined,
                 .batch_size = 0,
@@ -77,8 +111,15 @@ pub fn ThreadPool(comptime F: anytype) type {
                 return;
             }
 
-            for (self.workers, self.threads) |*worker, *thread| {
-                worker.stop();
+            const shared = self.shared;
+            const io = shared.io;
+            {
+                shared.mutex.lockUncancelable(io);
+                defer shared.mutex.unlock(io);
+                shared.stopped = true;
+            }
+            shared.read_cond.broadcast(io);
+            for (self.threads) |*thread| {
                 thread.join();
             }
         }
@@ -96,136 +137,72 @@ pub fn ThreadPool(comptime F: anytype) type {
         }
 
         pub fn spawnOne(self: *Self, args: Args) void {
-            const worker_index = self.worker_index +% 1;
-            self.worker_index = worker_index;
-            const workers = self.workers;
-            workers[@mod(worker_index, workers.len)].spawn(&.{args});
+            push(self.shared, &.{args});
         }
 
         pub fn flush(self: *Self, batch_size: usize) void {
             self.batch_size = 0;
-
-            const worker_index = self.worker_index +% 1;
-            self.worker_index = worker_index;
-            const workers = self.workers;
-            workers[@mod(worker_index, workers.len)].spawn(self.batch[0..batch_size]);
+            push(self.shared, self.batch[0..batch_size]);
         }
 
         pub fn empty(self: *Self) bool {
-            for (self.workers) |*w| {
-                if (w.empty() == false) {
-                    return false;
-                }
-            }
-            return true;
-        }
-    };
-}
-
-fn Worker(comptime F: anytype) type {
-    // When the worker thread calls F, it'll inject its static buffer.
-    // So F would be: handle(server: *Server, conn: *Conn, buf: []u8)
-    // and FullArgs would be our 3 args....
-    const FullArgs = std.meta.ArgsTuple(@TypeOf(F));
-    const Args = SpawnArgs(FullArgs);
-
-    return struct {
-        io: Io,
-
-        // position in queue to read from
-        tail: usize,
-
-        // position in the queue to write to
-        head: usize,
-
-        // pending jobs
-        queue: []Args,
-
-        buffer: []u8,
-
-        stopped: bool,
-        mutex: Io.Mutex,
-        read_cond: Io.Condition,
-        write_cond: Io.Condition,
-        peer: *Worker(F),
-
-        const Self = @This();
-
-        // we expect allocator to be an Arena
-        pub fn init(io: Io, allocator: Allocator, peer: *Worker(F), opts: Opts) !Self {
-            const queue = try allocator.alloc(Args, if (opts.backlog == 0 or opts.backlog == 1) 2 else opts.backlog);
-            const buffer = try allocator.alloc(u8, opts.buffer_size);
-
-            return .{
-                .io = io,
-                .tail = 0,
-                .head = 0,
-                .peer = peer,
-                .mutex = .init,
-                .stopped = false,
-                .queue = queue,
-                .read_cond = .init,
-                .write_cond = .init,
-                .buffer = buffer,
-            };
+            const shared = self.shared;
+            shared.mutex.lockUncancelable(shared.io);
+            defer shared.mutex.unlock(shared.io);
+            return shared.head == shared.tail;
         }
 
-        pub fn stop(self: *Self) void {
-            const io = self.io;
-            {
-                // allow stop to be called as part of server.stop()
-                // but also in server.deinit(), or in both.
-                self.mutex.lockUncancelable(io);
-                defer self.mutex.unlock(io);
-                if (self.stopped) {
-                    return;
-                }
-                self.stopped = true;
-            }
-            self.read_cond.broadcast(io);
+        // Queued-but-not-yet-claimed job count. Excludes the producer-side
+        // batch staging and jobs currently executing. Callers use this as a
+        // load signal (e.g. admission control); it is exact only for the
+        // instant the lock was held.
+        pub fn pending(self: *Self) usize {
+            const shared = self.shared;
+            shared.mutex.lockUncancelable(shared.io);
+            defer shared.mutex.unlock(shared.io);
+            const head = shared.head;
+            const tail = shared.tail;
+            return if (head >= tail) head - tail else shared.queue.len - tail + head;
         }
 
-        pub fn empty(self: *Self) bool {
-            const io = self.io;
-            self.mutex.lockUncancelable(io);
-            defer self.mutex.unlock(io);
-            return self.head == self.tail;
-        }
+        fn push(shared: *Shared, args: []const Args) void {
+            const io = shared.io;
+            var pending_args = args;
 
-        pub fn spawn(self: *Self, args: []const Args) void {
-            const io = self.io;
-            var pending = args;
-            var capacity: usize = 0;
-
-            const queue = self.queue;
+            const queue = shared.queue;
             const queue_end = queue.len - 1;
 
             while (true) {
-                self.mutex.lockUncancelable(io);
-                var head = self.head;
-                var tail = self.tail;
+                var capacity: usize = 0;
+                shared.mutex.lockUncancelable(io);
+                var head = shared.head;
+                var tail = shared.tail;
                 while (true) {
                     capacity = if (head < tail) tail - head - 1 else queue_end - head + tail;
                     if (capacity > 0) {
                         break;
                     }
-                    self.write_cond.waitUncancelable(io, &self.mutex);
-                    head = self.head;
-                    tail = self.tail;
+                    // queue full: block the producer until a consumer frees a
+                    // slot (same backpressure as upstream's per-thread ring,
+                    // now on the single shared bound).
+                    shared.write_cond.waitUncancelable(io, &shared.mutex);
+                    head = shared.head;
+                    tail = shared.tail;
                 }
 
-                const ready = if (capacity >= pending.len) pending else pending[0..capacity];
+                const ready = if (capacity >= pending_args.len) pending_args else pending_args[0..capacity];
                 for (ready) |a| {
                     queue[head] = a;
                     head = if (head == queue_end) 0 else head + 1;
                 }
-                self.head = head;
-                self.mutex.unlock(io);
-                self.read_cond.signal(io);
-                if (ready.len == pending.len) {
+                shared.head = head;
+                shared.mutex.unlock(io);
+                // several idle threads may be needed for several jobs
+                if (ready.len == 1) shared.read_cond.signal(io) else shared.read_cond.broadcast(io);
+                if (ready.len == pending_args.len) {
                     break;
                 }
-                pending = pending[ready.len..];
+                pending_args = pending_args[ready.len..];
             }
         }
 
@@ -236,11 +213,8 @@ fn Worker(comptime F: anytype) type {
         // we need to worry about here. As far as this worker thread is
         // concerned, it has a chunk of memory (buffer) which it'll pass
         // to the callback function to do with as it wants.
-        fn run(self: *Self) void {
-            const buffer = self.buffer;
-            while (true) {
-                const args = self.getNext(true) orelse return;
-
+        fn run(shared: *Shared, buffer: []u8) void {
+            while (getNext(shared)) |args| {
                 // convert Args to FullArgs, i.e. inject buffer as the last argument
                 var full_args: FullArgs = undefined;
                 const ARG_COUNT = std.meta.fields(FullArgs).len - 1;
@@ -252,35 +226,26 @@ fn Worker(comptime F: anytype) type {
             }
         }
 
-        fn getNext(self: *Self, block: bool) ?Args {
-            const io = self.io;
-            const queue = self.queue;
+        fn getNext(shared: *Shared) ?Args {
+            const io = shared.io;
+            const queue = shared.queue;
             const queue_end = queue.len - 1;
 
-            self.mutex.lockUncancelable(io);
-            while (self.tail == self.head) {
-                if (block == false or self.stopped) {
-                    self.mutex.unlock(io);
+            shared.mutex.lockUncancelable(io);
+            while (shared.tail == shared.head) {
+                if (shared.stopped) {
+                    // drained: jobs queued before stop() have all been claimed
+                    shared.mutex.unlock(io);
                     return null;
                 }
-
-                self.mutex.unlock(io);
-                if (self.peer.getNext(false)) |args| {
-                    return args;
-                }
-                self.mutex.lockUncancelable(io);
-                if (self.tail == self.head) {
-                    self.read_cond.waitUncancelable(io, &self.mutex);
-                } else {
-                    break;
-                }
+                shared.read_cond.waitUncancelable(io, &shared.mutex);
             }
 
-            const tail = self.tail;
+            const tail = shared.tail;
             const args = queue[tail];
-            self.tail = if (tail == queue_end) 0 else tail + 1;
-            self.mutex.unlock(io);
-            self.write_cond.signal(io);
+            shared.tail = if (tail == queue_end) 0 else tail + 1;
+            shared.mutex.unlock(io);
+            shared.write_cond.signal(io);
             return args;
         }
     };
@@ -418,6 +383,67 @@ test "ThreadPool: large fuzz" {
     try t.expectEqual(10_000, testC6);
 }
 
+test "ThreadPool: parked thread cannot starve queued jobs" {
+    // Regression for the shared injector queue (CHANGES.md Patch 2): with the
+    // old per-thread private queues + round-robin dispatch, the parked
+    // thread's queue black-holed its share of these jobs and this test would
+    // never reach testCount == 100.
+    defer t.reset();
+
+    testCount = 0;
+    testParkActive.store(false, .monotonic);
+    testParkGate.store(true, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 2, .backlog = 8, .buffer_size = 512 });
+    defer tp.deinit();
+
+    tp.spawnOne(.{PARK_JOB});
+    while (testParkActive.load(.monotonic) == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    for (0..100) |_| {
+        tp.spawnOne(.{1});
+    }
+    while (@atomicLoad(u64, &testCount, .monotonic) < 100) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    testParkGate.store(false, .monotonic);
+    tp.stop();
+    try t.expectEqual(100, testCount);
+}
+
+test "ThreadPool: pending reports queued depth" {
+    defer t.reset();
+
+    testCount = 0;
+    testParkActive.store(false, .monotonic);
+    testParkGate.store(true, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 1, .backlog = 8, .buffer_size = 512 });
+    defer tp.deinit();
+
+    tp.spawnOne(.{PARK_JOB});
+    while (testParkActive.load(.monotonic) == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    // the single thread is parked, so these three can only sit in the queue
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+    try t.expectEqual(3, tp.pending());
+
+    testParkGate.store(false, .monotonic);
+    while (tp.empty() == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+    tp.stop();
+    try t.expectEqual(0, tp.pending());
+    try t.expectEqual(3, testCount);
+}
+
 var testSum: u64 = 0;
 var testCount: u64 = 0;
 var testC1: u64 = 0;
@@ -441,4 +467,19 @@ fn testIncr(c: u64, buf: []u8) void {
     }
     // let the threadpool queue get backed up
     t.io.sleep(.fromMicroseconds(20), .awake) catch unreachable;
+}
+
+const PARK_JOB: u64 = 999;
+var testParkGate = std.atomic.Value(bool).init(false);
+var testParkActive = std.atomic.Value(bool).init(false);
+fn testParkOrIncr(c: u64, buf: []u8) void {
+    _ = buf;
+    if (c == PARK_JOB) {
+        testParkActive.store(true, .monotonic);
+        while (testParkGate.load(.monotonic)) {
+            t.io.sleep(.fromMilliseconds(1), .awake) catch unreachable;
+        }
+        return;
+    }
+    _ = @atomicRmw(u64, &testCount, .Add, 1, .monotonic);
 }
