@@ -23,6 +23,7 @@ fn staticCfg(worker_count: u32) Config {
         .workspace_base = "/tmp/zombie-runner-pool-test",
         .network_policy = .deny_all,
         .worker_count = worker_count,
+        .registry_allowlist = &.{},
         .alloc = testing.allocator,
     };
 }

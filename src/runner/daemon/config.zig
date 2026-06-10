@@ -38,6 +38,11 @@ network_policy: network.PolicyMode,
 /// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
 /// is out of scope — the operator sizes N to the host.
 worker_count: u32,
+/// Operator-fed registry baseline (env `RUNNER_REGISTRY_ALLOWLIST`,
+/// comma-separated), merged into each lease's egress allowlist. Empty when unset
+/// — the caller substitutes the named default (`network/AllowList.DEFAULT_REGISTRY`).
+/// Fed from outside, never a compile-time list.
+registry_allowlist: []const []const u8,
 
 alloc: Allocator,
 
@@ -78,6 +83,10 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         },
     };
 
+    const registry_raw = getOwned(env_map, alloc, ENV_RUNNER_REGISTRY_ALLOWLIST) catch null;
+    defer if (registry_raw) |raw| alloc.free(raw);
+    const registry_allowlist = parseRegistryAllowlist(alloc, registry_raw) catch return ConfigError.OutOfMemory;
+
     return Config{
         .control_plane_url = url,
         .runner_token = token,
@@ -86,6 +95,7 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         .workspace_base = workspace_base,
         .network_policy = network.policyFromMap(env_map),
         .worker_count = worker_count,
+        .registry_allowlist = registry_allowlist,
         .alloc = alloc,
     };
 }
@@ -105,12 +115,41 @@ fn parseWorkerCount(raw: ?[]const u8) WorkerCountParse {
     return .{ .value = std.math.clamp(n, MIN_WORKER_COUNT, MAX_WORKER_COUNT) };
 }
 
+/// Parse `RUNNER_REGISTRY_ALLOWLIST` (comma-separated) into owned hostnames:
+/// whitespace-trimmed, empty tokens skipped. Null/unset → empty slice (the
+/// caller substitutes the named default). The operator feeds this from outside;
+/// it is never a compile-time list. Caller owns the result (`freeStrList`).
+fn parseRegistryAllowlist(alloc: Allocator, raw: ?[]const u8) Allocator.Error![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (list.items) |x| alloc.free(x);
+        list.deinit(alloc);
+    }
+    if (raw) |s| {
+        var it = std.mem.splitScalar(u8, s, ',');
+        while (it.next()) |tok| {
+            const trimmed = std.mem.trim(u8, tok, &std.ascii.whitespace);
+            if (trimmed.len == 0) continue;
+            const owned = try alloc.dupe(u8, trimmed);
+            errdefer alloc.free(owned);
+            try list.append(alloc, owned);
+        }
+    }
+    return list.toOwnedSlice(alloc);
+}
+
+fn freeStrList(alloc: Allocator, list: []const []const u8) void {
+    for (list) |x| alloc.free(x);
+    alloc.free(list);
+}
+
 pub fn deinit(self: Config) void {
     self.alloc.free(self.control_plane_url);
     self.alloc.free(self.runner_token);
     self.alloc.free(self.host_id);
     self.alloc.free(self.sandbox_tier);
     self.alloc.free(self.workspace_base);
+    freeStrList(self.alloc, self.registry_allowlist);
 }
 
 /// Fail loud when `ZOMBIE_RUNNER_TOKEN` is not a `zrn_` runner token — a stale
@@ -149,6 +188,7 @@ pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
 pub const ENV_RUNNER_WORKER_COUNT = "RUNNER_WORKER_COUNT";
+pub const ENV_RUNNER_REGISTRY_ALLOWLIST = "RUNNER_REGISTRY_ALLOWLIST";
 
 // Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
 // only tier that runs without isolation — dev default; prod must override.
@@ -181,4 +221,24 @@ test "worker count invalid falls back to default" {
     try std.testing.expect(parseWorkerCount("abc") == .invalid); // non-numeric → caller defaults + warns
     try std.testing.expect(parseWorkerCount("") == .invalid); // empty → invalid, never a silent 0
     try std.testing.expect(parseWorkerCount("-3") == .invalid); // signed rejected by u32 parse
+}
+
+test "parseRegistryAllowlist splits, trims, and skips empty tokens" {
+    const a = std.testing.allocator;
+    const r = try parseRegistryAllowlist(a, "registry.npmjs.org, pypi.org ,, crates.io");
+    defer freeStrList(a, r);
+    try std.testing.expectEqual(@as(usize, 3), r.len);
+    try std.testing.expectEqualStrings("registry.npmjs.org", r[0]);
+    try std.testing.expectEqualStrings("pypi.org", r[1]);
+    try std.testing.expectEqualStrings("crates.io", r[2]);
+}
+
+test "parseRegistryAllowlist on null or whitespace-only yields an empty slice" {
+    const a = std.testing.allocator;
+    const r1 = try parseRegistryAllowlist(a, null); // unset → caller substitutes the default
+    defer freeStrList(a, r1);
+    try std.testing.expectEqual(@as(usize, 0), r1.len);
+    const r2 = try parseRegistryAllowlist(a, "  ,  ");
+    defer freeStrList(a, r2);
+    try std.testing.expectEqual(@as(usize, 0), r2.len);
 }
