@@ -17,6 +17,7 @@ Principles. Each links to where it's enforced — when a spec contradicts one of
 - **Context is bounded — no unbounded growth across long-running incidents.** Three layers: memory_checkpoint (L1), tool-result rolling window (L2), run chunking (L3) with a chain cap at 10 continuations. See [`capabilities.md`](./capabilities.md) §4.
 - **Approvals are first-class.** Risky actions block at the gate; state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §C step 3.
 - **Destructive actions are never assumed safe just because the model suggested them.** The `approval_required` policy lives in `TRIGGER.md`; the runner enforces it before starting the run. SKILL.md prose may ask for approval explicitly. See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
+- **Agent-memory recall has no search infrastructure — the language model is the search engine.** Memory list/recall returns raw entries; the model reads them and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory — a plain `ILIKE` substring filter on key name is the ceiling. Sequential scans over one agent's rows are not a reason to add search infrastructure; a spec or review proposing it gets amended. See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
 The runtime keeps only a thin typed envelope:
 

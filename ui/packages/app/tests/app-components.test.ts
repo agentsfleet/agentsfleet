@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   trackAppEvent: vi.fn(),
   trackNavigationClicked: vi.fn(),
   identifyAnalyticsUser: vi.fn(),
+  resetAnalyticsIdentity: vi.fn(),
+  hasStaleAnalyticsIdentity: vi.fn(() => false),
   useUser: vi.fn(),
   usePathname: vi.fn(),
   useEffectMock: vi.fn((fn: () => void) => fn()),
@@ -22,6 +24,8 @@ vi.mock("@/lib/analytics/posthog", () => ({
   trackAppEvent: mocks.trackAppEvent,
   trackNavigationClicked: mocks.trackNavigationClicked,
   identifyAnalyticsUser: mocks.identifyAnalyticsUser,
+  resetAnalyticsIdentity: mocks.resetAnalyticsIdentity,
+  hasStaleAnalyticsIdentity: mocks.hasStaleAnalyticsIdentity,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -80,6 +84,9 @@ beforeEach(() => {
   mocks.trackAppEvent.mockReset();
   mocks.trackNavigationClicked.mockReset();
   mocks.identifyAnalyticsUser.mockReset();
+  mocks.resetAnalyticsIdentity.mockReset();
+  mocks.hasStaleAnalyticsIdentity.mockReset();
+  mocks.hasStaleAnalyticsIdentity.mockReturnValue(false);
   mocks.useEffectMock.mockClear();
   mocks.usePathname.mockReturnValue("/workspaces");
 });
@@ -141,6 +148,72 @@ describe("app components", () => {
     AnalyticsBootstrap();
 
     expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
+    expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while signed in but the user object is still resolving", async () => {
+    mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: null });
+
+    const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
+
+    AnalyticsBootstrap();
+
+    expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
+    expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
+  });
+
+  it("resets analytics identity once when signed out with a lingering identity", async () => {
+    mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
+    // The first signed-out render still carries the prior session's identity…
+    mocks.hasStaleAnalyticsIdentity.mockReturnValueOnce(true);
+
+    const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
+
+    AnalyticsBootstrap();
+    // …and once reset clears it, repeated signed-out renders are no-ops.
+    AnalyticsBootstrap();
+    AnalyticsBootstrap();
+
+    expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
+    expect(mocks.identifyAnalyticsUser).not.toHaveBeenCalled();
+  });
+
+  it("never resets for an anonymous visitor with no prior identity", async () => {
+    mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
+
+    const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
+
+    AnalyticsBootstrap();
+    AnalyticsBootstrap();
+
+    expect(mocks.resetAnalyticsIdentity).not.toHaveBeenCalled();
+  });
+
+  it("sign-out edge resets, then a fresh sign-in identifies again", async () => {
+    const { default: AnalyticsBootstrap } = await import("../components/analytics/AnalyticsBootstrap");
+
+    mocks.useUser.mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+      user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
+    });
+    AnalyticsBootstrap();
+    expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(1);
+
+    // Sign-out: the analytics module reports the identity as stale once.
+    mocks.useUser.mockReturnValue({ isLoaded: true, isSignedIn: false, user: null });
+    mocks.hasStaleAnalyticsIdentity.mockReturnValueOnce(true);
+    AnalyticsBootstrap();
+    expect(mocks.resetAnalyticsIdentity).toHaveBeenCalledTimes(1);
+
+    // Re-login: identify fires again for the new session.
+    mocks.useUser.mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+      user: { id: "user_123", primaryEmailAddress: { emailAddress: "kishore@example.com" } },
+    });
+    AnalyticsBootstrap();
+    expect(mocks.identifyAnalyticsUser).toHaveBeenCalledTimes(2);
   });
 
   it("exports stable auth appearance tokens", async () => {

@@ -8,6 +8,8 @@ import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import type { ModelCap } from "@/lib/api/model_caps";
 import { PROVIDER_MODE, type ProviderMode, type TenantProvider } from "@/lib/types";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
 import ModeRadio from "./ModeRadio";
 import Step1Credential from "./Step1Credential";
 import Step2Model from "./Step2Model";
@@ -261,6 +263,15 @@ export default function ProviderSelector({
   async function action(_prev: ActionState, _formData: FormData): Promise<ActionState> {
     const result = await strategy.run({ credentialRef, modelOverride });
     if (!result.ok) return { ok: null, error: result.error };
+    // A BYOK save is the funnel event; the platform-defaults submit removes
+    // the key setup and emits nothing.
+    if (result.data.mode === PROVIDER_MODE.self_managed) {
+      captureProductEvent(EVENTS.model_added, {
+        provider: result.data.provider,
+        mode: result.data.mode,
+        model: result.data.model,
+      });
+    }
     router.refresh();
     return { ok: strategy.successMsg, error: null };
   }
