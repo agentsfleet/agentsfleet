@@ -18,6 +18,7 @@ test {
     _ = Policy;
     _ = Plan;
     _ = EgressScope;
+    _ = @import("EgressScope_test.zig");
     _ = Socket;
     _ = MessageBuilder;
     _ = rtnetlink;

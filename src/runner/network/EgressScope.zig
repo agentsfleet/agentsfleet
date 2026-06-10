@@ -21,14 +21,15 @@ pub const Error = error{
     SetupFailed,
     AttachFailed,
     UnsupportedAddressFamily,
+    /// Allowlist exceeds `MAX_ALLOWLIST_IPS` — a clear signal, not an opaque
+    /// `BufferTooSmall`. Fails closed (no rules → no egress).
+    AllowListTooLarge,
     OutOfMemory,
 } || Socket.Error || MessageBuilder.Error;
 
-// Single source for the nftables object names (tests + capture.sh mirror these).
-// The TABLE is PER-WORKER (`uz_egress<idx>`): each worker owns its own table so
-// one worker's teardown (`destroy` → `delTable`) drops only its own chains/
-// rules, never another concurrent worker's (RUNNER_WORKER_COUNT > 1). Chains are
-// scoped within the per-worker table, so their names can stay constant.
+// nftables object names. TABLE is PER-WORKER (`uz_egress<idx>`) so a worker's
+// `destroy` drops only its own table, never a concurrent worker's; chains are
+// table-scoped so they stay constant. (tests + capture.sh mirror these.)
 pub const TABLE_PREFIX = "uz_egress";
 pub const CHAIN_FWD = "egress_fwd";
 pub const CHAIN_NAT = "egress_nat";
@@ -38,7 +39,11 @@ const PREFIXED_NAME_FMT = "{s}{d}";
 const PRIO_FILTER: i32 = 0;
 const PRIO_SRCNAT: i32 = 100;
 const SET_ID: u32 = 1; // ties NEWSETELEM to NEWSET within one transaction
-const BATCH_BUF_LEN = 4096;
+// One nft transaction shares this buffer (~1.1 KiB fixed + ~24 B/element).
+// 16 KiB holds MAX_ALLOWLIST_IPS with margin; over-cap addrs are rejected up
+// front (AllowListTooLarge), not left to overflow into an opaque BufferTooSmall.
+const BATCH_BUF_LEN = 16384;
+const MAX_ALLOWLIST_IPS = 256;
 const MSG_BUF_LEN = 512;
 const LO_IFINDEX: i32 = 1;
 const IFNAMSIZ = 16;
@@ -82,6 +87,12 @@ pub fn create(alloc: std.mem.Allocator, plan: *const Plan) Error!EgressScope {
     mb = MessageBuilder.init(&buf);
     rtnetlink.setLinkUp(&mb, @intCast(host_if), 3);
     try rt.roundTrip(buf[0..(try mb.finish()).len]);
+
+    // Best-effort pre-clean: drop a stale per-worker table left by an unclean
+    // prior run (SIGKILL skipped `destroy`), so rebuilt rules don't pile up as
+    // APPEND duplicates over old chains. (Full boot sweep = 2.0.1; spec §Failure.)
+    deleteTable(plan.worker_index) catch |err|
+        log.debug("egress_preclean_skipped", .{ .err = @errorName(err) });
 
     try installRuleset(plan, addrs);
     log.info("egress_created", .{ .host_if = plan.host_ifname, .allow_count = addrs.len });
@@ -133,6 +144,13 @@ pub fn isAvailable() bool {
 
 /// The full default-deny ruleset as ONE nftables transaction.
 fn installRuleset(plan: *const Plan, addrs: []const [4]u8) Error!void {
+    // Reject an oversize allowlist up front with a clear signal, before it
+    // overflows the transaction buffer into an opaque BufferTooSmall.
+    if (addrs.len > MAX_ALLOWLIST_IPS) {
+        log.err("egress_allowlist_too_large", .{ .count = addrs.len, .max = MAX_ALLOWLIST_IPS });
+        return error.AllowListTooLarge;
+    }
+
     var nf = try Socket.open(.netfilter);
     defer nf.close();
 
@@ -241,7 +259,7 @@ fn deleteVeth(host_ifname: []const u8) void {
 
 /// IPv4 bytes of every allowlist entry; a v6 entry fails setup closed (the
 /// launch slice is v4 — same refusal Plan.hostsFile makes).
-fn collectV4(alloc: std.mem.Allocator, entries: []const Plan.HostEntry) Error![]const [4]u8 {
+pub fn collectV4(alloc: std.mem.Allocator, entries: []const Plan.HostEntry) Error![]const [4]u8 {
     const addrs = try alloc.alloc([4]u8, entries.len);
     errdefer alloc.free(addrs);
     for (entries, 0..) |e, i| {
@@ -302,35 +320,8 @@ const ChildNetnsSetup = struct {
     }
 };
 
-// ── Tests (pure halves; behavior is the Linux integration lane) ─────────────
-
-test "create is fail-closed off Linux" {
-    if (builtin.os.tag == .linux) return error.SkipZigTest;
-    var p = try Plan.build(std.testing.allocator, 0, &.{});
-    defer p.deinit();
-    try std.testing.expectError(error.UnsupportedPlatform, create(std.testing.allocator, &p));
-}
-
-test "setName derives the per-worker set name" {
-    var buf: [IFNAMSIZ]u8 = undefined;
-    try std.testing.expectEqualStrings("allow0", setName(&buf, 0));
-    try std.testing.expectEqualStrings("allow253", setName(&buf, 253));
-}
-
-test "collectV4 gathers v4 bytes and fails closed on a v6 entry" {
-    const al = std.testing.allocator;
-    const v4 = [_]Plan.HostEntry{
-        .{ .name = "a", .addr = .{ .ip4 = .{ .bytes = .{ 1, 2, 3, 4 }, .port = 0 } } },
-    };
-    const got = try collectV4(al, &v4);
-    defer al.free(got);
-    try std.testing.expectEqual([4]u8{ 1, 2, 3, 4 }, got[0]);
-
-    const v6 = [_]Plan.HostEntry{
-        .{ .name = "b", .addr = try std.Io.net.IpAddress.parseIp6("::1", 0) },
-    };
-    try std.testing.expectError(error.UnsupportedAddressFamily, collectV4(al, &v6));
-}
+// Pure-half tests live in the sibling `EgressScope_test.zig` (FLL-exempt);
+// behaviour is the Linux integration lane (`egress_integration_test.zig`).
 
 const Plan = @import("Plan.zig");
 const Socket = @import("Socket.zig");
