@@ -6,43 +6,16 @@
 //! can implement the same engine API.
 
 const std = @import("std");
-const common = @import("common");
-const clock = common.clock;
 
 /// Opaque handle returned by CreateExecution.
 pub const ExecutionId = [16]u8;
 
-/// Correlation context threaded through one execution.
-/// Zombie-native fields: zombie_id identifies the agent, session_id identifies
-/// the conversation turn within that zombie.
-pub const CorrelationContext = struct {
-    trace_id: []const u8,
-    zombie_id: []const u8,
-    workspace_id: []const u8,
-    session_id: []const u8,
-};
-
 /// Failure classification + terminal stage result are the shared contract with
 /// the report path — canonical in `contract.execution_result`, re-exported here
 /// so engine code keeps referring to `types.FailureClass`/`types.ExecutionResult`.
-pub const FailureClass = @import("contract").execution_result.FailureClass;
-pub const ExecutionResult = @import("contract").execution_result.ExecutionResult;
-
-/// Lease state for heartbeat-based orphan cleanup.
-pub const LeaseState = struct {
-    execution_id: ExecutionId,
-    last_heartbeat_ms: i64,
-    lease_timeout_ms: u64,
-
-    pub fn isExpired(self: LeaseState) bool {
-        const now = clock.nowMillis();
-        return (now - self.last_heartbeat_ms) > @as(i64, @intCast(self.lease_timeout_ms));
-    }
-
-    pub fn touch(self: *LeaseState) void {
-        self.last_heartbeat_ms = clock.nowMillis();
-    }
-};
+const contract_execution_result = @import("contract").execution_result;
+pub const FailureClass = contract_execution_result.FailureClass;
+pub const ExecutionResult = contract_execution_result.ExecutionResult;
 
 /// Default per-lease disk-write ceiling (mebibytes) — bounds a runaway agent's
 /// scratch writes without starving a legitimate build/checkout.
@@ -62,50 +35,15 @@ pub const ResourceLimits = struct {
 // Consumers import context_budget directly; types.zig is identity +
 // resource-limits + lease state only.
 
-pub fn generateExecutionId() ExecutionId {
-    // SAFETY: written by surrounding init logic before any read of this storage.
-    var id: ExecutionId = undefined;
-    // Infallible by contract (callers don't handle entropy errors); degrade to
-    // a zeroed id only on catastrophic CSPRNG failure, matching the host's
-    // other infallible id paths (e.g. observability trace ids).
-    common.secureRandomBytes(&id) catch @memset(&id, 0);
-    return id;
-}
-
 pub fn executionIdHex(id: ExecutionId) [32]u8 {
     return std.fmt.bytesToHex(id, .lower);
 }
 
-pub fn parseExecutionId(hex: []const u8) ?ExecutionId {
-    if (hex.len != 32) return null;
-    // SAFETY: written by surrounding init logic before any read of this storage.
-    var id: ExecutionId = undefined;
-    _ = std.fmt.hexToBytes(&id, hex) catch return null;
-    return id;
-}
-
-test "generateExecutionId produces unique ids" {
-    const a = generateExecutionId();
-    const b = generateExecutionId();
-    try std.testing.expect(!std.mem.eql(u8, &a, &b));
-}
-
-test "LeaseState.isExpired detects stale leases" {
-    var lease = LeaseState{
-        .execution_id = generateExecutionId(),
-        .last_heartbeat_ms = clock.nowMillis() - 60_000,
-        .lease_timeout_ms = 30_000,
-    };
-    try std.testing.expect(lease.isExpired());
-
-    lease.touch();
-    try std.testing.expect(!lease.isExpired());
-}
-
-test "executionIdHex round trips" {
-    const id = generateExecutionId();
+test "executionIdHex renders 32 lowercase hex chars" {
+    const id: ExecutionId = .{ 0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xa, 0xb };
     const hex = executionIdHex(id);
     try std.testing.expectEqual(@as(usize, 32), hex.len);
+    try std.testing.expectEqualStrings("deadbeef", hex[0..8]);
 }
 
 test "ResourceLimits has sensible defaults" {

@@ -71,9 +71,9 @@ test "readResult should forward frames in order then honor terminate without pro
     // runs after each forwarded frame, so frames 1–3 are delivered in order and
     // the terminate fires right after frame 3 — frame 4 (the result) is left
     // unread in the pipe. A far deadline proves the stop came from the hook.
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
-    defer pipe_proto.osClose(fds[1]); // keep write end open → no spurious EOF
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    defer pipe_proto.testOsClose(fds[1]); // keep write end open → no spurious EOF
 
     try writeToolCall(fds[1], "alpha");
     try writeToolCall(fds[1], "bravo");

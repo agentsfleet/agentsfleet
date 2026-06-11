@@ -24,9 +24,6 @@ fn e(
 
 pub const ENTRIES_RUNTIME = [_]Entry{
     // ── SANDBOX ──────────────────────────────────────────────────────────────
-    e("UZ-SANDBOX-001", .service_unavailable, "Sandbox backend unavailable", "Sandbox backend is not available. Check that bubblewrap (bwrap) is installed and accessible."),
-    e("UZ-SANDBOX-002", .forbidden, "Sandbox kill switch triggered", "Sandbox kill switch has been triggered. Contact the administrator."),
-    e("UZ-SANDBOX-003", .forbidden, "Sandbox command blocked", "The command is blocked by sandbox policy."),
     // ── RUNNER ─────────────────────────────────────────────────────────────
     e("UZ-EXEC-001", .internal_server_error, "Execution session create failed", "Execution session creation failed. Check runner availability."),
     e("UZ-EXEC-002", .internal_server_error, "Run start failed", "Run failed to start. Check runner configuration."),
@@ -42,7 +39,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-013", .internal_server_error, "Runner agent run failed", "Runner agent execution failed. Check logs for details."),
     e("UZ-EXEC-014", .bad_request, "Runner invalid config", "Runner configuration is invalid. Check config_json fields."),
     // ── RELAY ────────────────────────────────────────────────────────────────
-    e("UZ-RELAY-001", .bad_request, "No LLM provider configured", "No LLM provider configured. Set one via admin platform keys or workspace credentials."),
     // ── APPROVAL GATE ────────────────────────────────────────────────────────
     e("UZ-APPROVAL-001", .bad_request, "Approval parse failed", "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section."),
     e("UZ-APPROVAL-002", .not_found, "Approval not found", "Approval action not found or already resolved. " ++
@@ -60,7 +56,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
     // ── AGENT KEYS (workspace-scoped, zmb_ prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Create one with: zombiectl agent create --workspace {ws} --name my-agent"),
-    e("UZ-APIKEY-002", .forbidden, "API key lacks execute permission", "This API key does not have execute permission. Re-create with the correct permissions."),
     // ── TENANT API KEYS (tenant-scoped, zmb_t_ prefix) ────────────────────────
     e("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys"),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"),
@@ -71,7 +66,4 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This zombie has no approved grant for the target service. " ++
         "Request one with: POST /v1/zombies/{id}/integration-requests"),
-    e("UZ-GRANT-002", .forbidden, "Integration grant pending approval", "A grant request for this service is pending human approval. " ++
-        "Approve it in Slack, Discord, or the dashboard."),
-    e("UZ-GRANT-003", .forbidden, "Integration grant denied", "The integration grant for this service was denied or revoked by the workspace owner."),
 };

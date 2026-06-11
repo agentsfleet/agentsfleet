@@ -170,7 +170,7 @@ fn fetchPage(hx: Hx, conn: anytype, q: ListQuery, now_ms: i64) ?PageRows {
 /// caller-owned request arena, so partial items on the error path are reclaimed
 /// when that arena is released.
 fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) !PageRows {
-    var items: std.ArrayListUnmanaged(RunnerItem) = .empty;
+    var items: std.ArrayList(RunnerItem) = .empty;
     errdefer items.deinit(alloc);
     var total: i64 = 0;
     while (try rows.next()) |row| {

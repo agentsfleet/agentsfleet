@@ -9,7 +9,6 @@ const logging = @import("log");
 
 test {
     _ = @import("main.zig");
-    _ = @import("types.zig");
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
@@ -125,6 +124,7 @@ test {
     _ = @import("http/handlers/zombies/messages_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
+    _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");

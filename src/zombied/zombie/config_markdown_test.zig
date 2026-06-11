@@ -3,12 +3,11 @@ const config_markdown = @import("config_markdown.zig");
 const config_types = @import("config_types.zig");
 
 const extractZombieInstructions = config_markdown.extractZombieInstructions;
-const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
 const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
 const parseSkillMetadata = config_markdown.parseSkillMetadata;
 const ZombieConfigError = config_types.ZombieConfigError;
 
-test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
+test "parseTriggerMarkdownWithJson: parses frontmatter into config" {
     const alloc = std.testing.allocator;
     const trigger_md =
         \\---
@@ -27,26 +26,27 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
         \\
         \\## Trigger Logic
     ;
-    var cfg = try parseZombieFromTriggerMarkdown(alloc, trigger_md);
-    defer cfg.deinit(alloc);
+    var parsed = try parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     try std.testing.expectEqualStrings("platform-ops", cfg.name);
     try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
     try std.testing.expectEqualStrings("agentmail", cfg.triggers[0].webhook.source);
 }
 
-test "parseZombieFromTriggerMarkdown: no frontmatter returns error" {
+test "parseTriggerMarkdownWithJson: no frontmatter returns error" {
     const alloc = std.testing.allocator;
     try std.testing.expectError(
         ZombieConfigError.MissingRequiredField,
-        parseZombieFromTriggerMarkdown(alloc, "No frontmatter."),
+        parseTriggerMarkdownWithJson(alloc, "No frontmatter."),
     );
 }
 
-test "parseZombieFromTriggerMarkdown: unterminated frontmatter returns error" {
+test "parseTriggerMarkdownWithJson: unterminated frontmatter returns error" {
     const alloc = std.testing.allocator;
     try std.testing.expectError(
         ZombieConfigError.MissingRequiredField,
-        parseZombieFromTriggerMarkdown(alloc, "---\nname: x\n"),
+        parseTriggerMarkdownWithJson(alloc, "---\nname: x\n"),
     );
 }
 

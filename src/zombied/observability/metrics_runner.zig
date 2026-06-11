@@ -10,8 +10,8 @@
 //! No allocator at runtime — compile-time capacity. Counter overflow past the
 //! table routes to runner_id="_other" (reason/outcome preserved); the per-runner
 //! gauges (last-seen, active-leases) are simply not tracked for overflow runners.
-//! Thread-safe: CAS slot claim, lock-free atomic counters. Mirrors
-//! metrics_workspace.zig. Tests live in metrics_runner_test.zig.
+//! Thread-safe: CAS slot claim, lock-free atomic counters. Tests live in
+//! metrics_runner_test.zig.
 //!
 //! active_leases is best-effort: it is decremented on a runner's report, but a
 //! lease abandoned by a dead runner expires by the clock with no report, so that
@@ -22,6 +22,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const contract = @import("contract");
+const metrics_memory = @import("metrics_memory.zig");
 const FailureClass = contract.execution_result.FailureClass;
 const Outcome = contract.protocol.Outcome;
 
@@ -42,18 +43,11 @@ const LAST_SEEN_NAME = "zombie_runner_last_seen_seconds";
 const LAST_SEEN_HELP = "Seconds since a runner was last seen (report or heartbeat); computed at render.";
 const ACTIVE_LEASES_NAME = "zombie_runner_active_leases";
 const ACTIVE_LEASES_HELP = "Leases a runner currently holds (best-effort; abandoned leases self-heal on restart).";
-// Memory-capture families are GLOBAL (unlabelled): per-zombie labels would explode
-// cardinality. The zombie scope rides the structured log line, never a metric label.
-const MEM_CAPTURED_NAME = "zombie_memory_entries_captured_total";
-const MEM_CAPTURED_HELP = "Durable memory entries persisted via the runner-plane capture push.";
-const MEM_PUSH_FAIL_NAME = "zombie_memory_push_failures_total";
-const MEM_PUSH_FAIL_HELP = "Memory capture pushes that failed to persist (ERR_MEM_UNAVAILABLE).";
-const MEM_HYDRATION_NAME = "zombie_memory_hydration_window_entries";
-const MEM_HYDRATION_HELP = "Entry count in the most recent hydration window served to a runner.";
-// Prometheus exposition format strings — single-sourced (RULE UFS). The format arg
-// to writer.print must be comptime; a container-level const satisfies that.
-const FMT_HELP_TYPE = "# HELP {s} {s}\n# TYPE {s} {s}\n";
-const FMT_HELP_TYPE_VALUE = "# HELP {s} {s}\n# TYPE {s} {s}\n{s} {d}\n";
+// The zombie_memory_* families (GLOBAL, unlabelled — per-zombie labels would
+// explode cardinality) live in metrics_memory.zig; renderPrometheus appends them.
+// Prometheus exposition format strings are single-sourced there (RULE UFS).
+const FMT_HELP_TYPE = metrics_memory.FMT_HELP_TYPE;
+const FMT_HELP_TYPE_VALUE = metrics_memory.FMT_HELP_TYPE_VALUE;
 const FMT_SERIES_2LABEL = "{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n";
 const FMT_SERIES_1LABEL = "{s}{{{s}=\"{s}\"}} {d}\n";
 const LABEL_RUNNER = "runner_id";
@@ -61,8 +55,8 @@ const LABEL_REASON = "reason";
 const LABEL_OUTCOME = "outcome";
 const REASON_UNKNOWN = "unknown";
 const ID_OTHER = "_other";
-const TYPE_COUNTER = "counter";
-const TYPE_GAUGE = "gauge";
+const TYPE_COUNTER = metrics_memory.TYPE_COUNTER;
+const TYPE_GAUGE = metrics_memory.TYPE_GAUGE;
 
 const reason_fields = @typeInfo(FailureClass).@"enum".fields;
 const N_REASONS: usize = reason_fields.len + 1;
@@ -106,11 +100,6 @@ var g_overflow: Counters = .{};
 /// Total failure overflow increments, surfaced as an explicit counter.
 var g_overflow_total = std.atomic.Value(u64).init(0);
 var g_slot_count = std.atomic.Value(u32).init(0);
-
-/// Global memory-capture telemetry (low cardinality, no per-zombie label).
-var g_memory_captured_total = std.atomic.Value(u64).init(0);
-var g_memory_push_failures_total = std.atomic.Value(u64).init(0);
-var g_memory_hydration_entries = std.atomic.Value(i64).init(0);
 
 fn bucketIndex(reason: ?FailureClass) usize {
     return if (reason) |r| @intFromEnum(r) else UNKNOWN_IDX;
@@ -218,22 +207,6 @@ pub fn decRunnerActiveLeases(runner_id: []const u8) void {
     }
 }
 
-/// `n` memory entries were persisted by a capture push. Global counter (no label).
-pub fn incMemoryCaptured(n: usize) void {
-    if (n == 0) return;
-    _ = g_memory_captured_total.fetchAdd(@intCast(n), .monotonic); // safe because: independent counter
-}
-
-/// A memory capture push failed to persist (ERR_MEM_UNAVAILABLE). Global counter.
-pub fn incMemoryPushFailure() void {
-    _ = g_memory_push_failures_total.fetchAdd(1, .monotonic); // safe because: independent counter
-}
-
-/// Record the entry count of the most recent hydration window (gauge, last-writer-wins).
-pub fn setMemoryHydrationEntries(n: usize) void {
-    g_memory_hydration_entries.store(@intCast(n), .monotonic); // safe because: lone gauge, last-writer-wins
-}
-
 // ── Prometheus rendering (in-memory; called by metrics_render) ───────────────
 
 fn renderFailureSeries(writer: anytype, runner: []const u8, c: *const Counters) !void {
@@ -289,31 +262,21 @@ fn renderGaugeFamilies(writer: anytype) !void {
     }
 }
 
-/// Global memory-capture families (unlabelled, low cardinality). Counters render
-/// even at 0 once any runner/memory activity exists; the gauge clamps transient <0.
-fn renderMemoryFamilies(writer: anytype) !void {
-    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_CAPTURED_NAME, MEM_CAPTURED_HELP, MEM_CAPTURED_NAME, TYPE_COUNTER, MEM_CAPTURED_NAME, g_memory_captured_total.load(.acquire) });
-    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_PUSH_FAIL_NAME, MEM_PUSH_FAIL_HELP, MEM_PUSH_FAIL_NAME, TYPE_COUNTER, MEM_PUSH_FAIL_NAME, g_memory_push_failures_total.load(.acquire) });
-    try writer.print(FMT_HELP_TYPE_VALUE, .{ MEM_HYDRATION_NAME, MEM_HYDRATION_HELP, MEM_HYDRATION_NAME, TYPE_GAUGE, MEM_HYDRATION_NAME, @max(0, g_memory_hydration_entries.load(.acquire)) });
-}
-
-/// Render every per-runner family. Emits nothing until a runner has been seen or a
-/// memory capture has occurred.
+/// Render every per-runner family plus the zombie_memory_* families. Emits
+/// nothing until a runner has been seen or a memory counter has moved.
 pub fn renderPrometheus(writer: anytype) !void {
-    const mem_active = g_memory_captured_total.load(.acquire) != 0 or g_memory_push_failures_total.load(.acquire) != 0;
-    if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0 and !mem_active) return;
+    if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0 and !metrics_memory.anyActive()) return;
     try renderCounterFamilies(writer);
     try renderGaugeFamilies(writer);
-    try renderMemoryFamilies(writer);
+    try metrics_memory.renderFamilies(writer);
 }
 
-// Test-only reset, consumed by metrics_runner_test.zig.
+// Test-only reset, consumed by metrics_runner_test.zig. Resets the memory
+// families too so existing call sites keep their pre-split behaviour.
 pub fn resetForTest() void {
     g_slots = [_]Slot{.{}} ** MAX_SLOTS;
     g_overflow = .{};
     g_overflow_total.store(0, .release);
     g_slot_count.store(0, .release);
-    g_memory_captured_total.store(0, .release);
-    g_memory_push_failures_total.store(0, .release);
-    g_memory_hydration_entries.store(0, .release);
+    metrics_memory.resetForTest();
 }

@@ -50,7 +50,6 @@ pub const EventType = enum {
     }
 };
 
-pub const continuation_actor_prefix = "continuation:";
 
 /// Build the XADD field/value argv for a fresh envelope (event_id is
 /// assigned by Redis via `*`, so it is omitted here).
@@ -92,16 +91,6 @@ pub fn freeXAddArgv(alloc: Allocator, argv: []const []const u8) void {
 /// `actor=continuation:steer:kishore` on every continuation, not
 /// `continuation:continuation:continuation:steer:kishore`.
 ///
-/// Caller owns the returned slice.
-pub fn buildContinuationActor(alloc: Allocator, source_actor: []const u8) ![]u8 {
-    if (std.mem.startsWith(u8, source_actor, continuation_actor_prefix)) {
-        return alloc.dupe(u8, source_actor);
-    }
-    var buf = try alloc.alloc(u8, continuation_actor_prefix.len + source_actor.len);
-    @memcpy(buf[0..continuation_actor_prefix.len], continuation_actor_prefix);
-    @memcpy(buf[continuation_actor_prefix.len..], source_actor);
-    return buf;
-}
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

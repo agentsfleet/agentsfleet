@@ -19,8 +19,8 @@ test "a memory checkpoint-due tick flushes the in-run store as a .memory frame" 
     defer rt.deinit();
     try rt.memory.store("learned", "a durable fact", .core, null);
 
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
 
     var capturer = inrun_memory.MemoryCapturer{ .mem = rt.memory, .fd = fds[1], .alloc = alloc };
     var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = alloc };
@@ -36,7 +36,7 @@ test "a memory checkpoint-due tick flushes the in-run store as a .memory frame" 
     const ev = observability.ObserverEvent{ .tool_call = .{ .tool = "fs_read", .duration_ms = 1, .success = true } };
     const obs = adapter.observer();
     obs.vtable.record_event(obs.ptr, &ev);
-    pipe_proto.osClose(fds[1]); // small frames fit the pipe buffer; no producer block
+    pipe_proto.testOsClose(fds[1]); // small frames fit the pipe buffer; no producer block
 
     // Drain every frame; assert a `.memory` frame carrying the entry appeared.
     var saw_memory = false;

@@ -3163,7 +3163,7 @@
       "delete": {
         "operationId": "revoke_integration_grant",
         "summary": "Revoke an integration grant",
-        "description": "Immediately revokes a grant. A revoked grant surfaces `UZ-GRANT-003` to the zombie on its next execute attempt against the affected service.",
+        "description": "Immediately revokes a grant. A revoked grant blocks the zombie on its next execute attempt against the affected service.",
         "tags": [
           "Integration Grants"
         ],

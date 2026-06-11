@@ -15,6 +15,13 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+
+/// Transaction-scoped opt-out of the gates append-only trigger (schema/026).
+/// ONLY the two hard-purge paths (account teardown, zombie hard-delete) may
+/// execute this, immediately after BEGIN — SET LOCAL dies with the
+/// transaction, so the bypass can never leak to a pooled connection's next
+/// acquirer. Every other DELETE on the gates table still raises.
+pub const SET_GATE_PURGE_BYPASS_SQL = "SET LOCAL zombie.allow_gate_purge = 'on'";
 const logging = @import("log");
 
 const log = logging.scoped(.approval_gate_db);
@@ -65,7 +72,6 @@ pub const ResolveDbOutcome = union(enum) {
 // Re-exports from the reads sibling so callers get a single import surface.
 pub const PendingRow = reads.PendingRow;
 pub const ListFilter = reads.ListFilter;
-pub const ListResult = reads.ListResult;
 pub const listPending = reads.listPending;
 pub const getByGateId = reads.getByGateId;
 

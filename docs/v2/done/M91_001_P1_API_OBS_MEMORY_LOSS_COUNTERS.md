@@ -4,11 +4,12 @@
 **Milestone:** M91
 **Workstream:** 001
 **Date:** Jun 11, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — the platform sells durable memory; today a zombie's learned fact can vanish (evicted, windowed out, truncated) with zero signal, and the vector-escape-hatch evidence `direction.md:20` demands is unmeasurable
 **Categories:** API, OBS
 **Batch:** B1 — first in M91; its counters are the evidence feed every later workstream (and the Bucket-B escalation ladder) reads. Runs **in parallel** with M91_004 (disjoint trees: `src/zombied/` here vs `zombiectl/` there)
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m91-001-counters
+**Test Baseline:** unit=1966 integration=172
 **Depends on:** none (M84_005 shipped the capture/hydrate loop this instruments)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026; Indy directive "spec the memory updates") — code-grounded against `metrics_runner.zig`, `runner/memory.zig`, `zombie_memory.zig`, `memory/handler.zig`; re-confirm at PLAN.
 
@@ -37,7 +38,7 @@
 ## Product Clarity
 
 1. **Successful user moment** — an operator's dashboard answers "is my zombie losing memory?" the day it starts: the eviction counter moves when entry 1001 lands, instead of a support ticket three weeks later.
-2. **Preserved user behaviour** — zero behaviour change: counters only; the hydrate/capture loop, API shapes, and tools are byte-identical.
+2. **Preserved user behaviour** — zero behaviour change on the hydrate/capture loop, API shapes, and tools. One deliberate exposition change: any memory-loss counter movement now un-gates the `/metrics` runner+memory block (previously only captures/push-failures did) — loss is never invisible, even before the first runner is seen.
 3. **Optimal-way check** — counters at the four loss points is the minimal evidence engine; the unconstrained-optimal adds per-zombie attribution, rejected for metric cardinality (see Decomposition).
 4. **Rebuild-vs-iterate** — iterate: extends the existing `metrics_runner` seam; determinism untouched.
 5. **What we build** — six global counters + their increment call sites + render.
@@ -93,6 +94,7 @@
 | `src/zombied/memory/zombie_memory.zig` | EDIT | `enforceCap` returns the evicted-row count |
 | `src/zombied/http/handlers/runner/memory.zig` | EDIT | hydrate computes dropped entries/bytes and increments; capture increments truncation, skip, and eviction counters |
 | `src/zombied/http/handlers/memory/handler.zig` | EDIT | query path increments zero-hit counter |
+| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | `collectEntries` reports clean-drain so a truncated collect (database blip/OOM) never counts as a zero-hit — added at `/review` (adversarial finding F1) |
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | eviction-count assertions ride the existing cap test |
 | `make/`-driven integration test for handlers (existing memory integration suite) | EDIT | per-class counter assertions |
 
@@ -108,43 +110,43 @@
 
 ## Sections (implementation slices)
 
-### §1 — Hydration-window drop counters
+### §1 — Hydration-window drop counters — DONE
 
 The hydrate handler already holds both the full row set and the compacted slice; the difference is the loss. Two counters: dropped entries, dropped bytes (key+content+category, same arithmetic as `windowByBytes`).
 
-- **Dimension 1.1** — over-budget durable set increments both counters by the exact dropped entry/byte amounts → `test_hydrate_drop_counters_exact`
-- **Dimension 1.2** — set within budget increments neither → `test_hydrate_no_drop_when_fits`
-- **Dimension 1.3** — tenant list path (passthrough, no window) never touches hydration-drop counters → `test_tenant_list_never_counts_drops`
+- **Dimension 1.1** — DONE — over-budget durable set increments both counters by the exact dropped entry/byte amounts → `test_hydrate_drop_counters_exact`
+- **Dimension 1.2** — DONE — set within budget increments neither → `test_hydrate_no_drop_when_fits`
+- **Dimension 1.3** — DONE — tenant list path (passthrough, no window) never touches hydration-drop counters → `test_tenant_list_never_counts_drops`
 
-### §2 — Cap-eviction counter
+### §2 — Cap-eviction counter — DONE
 
 `enforceCap` returns how many rows its DELETE removed; the capture handler increments by that count. **Implementation default:** rows-affected from the driver's exec result, because a second counting query would double the write-path cost — verify the driver call shape at PLAN.
 
-- **Dimension 2.1** — push that lands N entries over the cap increments by exactly N → `test_cap_eviction_counter_exact`
-- **Dimension 2.2** — push under the cap increments zero → `test_under_cap_no_eviction_count`
-- **Dimension 2.3** — eviction failure keeps the existing warn-and-continue behaviour and increments nothing → `test_eviction_failure_counts_nothing`
+- **Dimension 2.1** — DONE — push that lands N entries over the cap increments by exactly N → `test_cap_eviction_counter_exact`
+- **Dimension 2.2** — DONE — push under the cap increments zero → `test_under_cap_no_eviction_count`
+- **Dimension 2.3** — DONE — eviction failure keeps the existing warn-and-continue behaviour and increments nothing → covered at the adapter tier (`enforceCap failure propagates as an error, deleting nothing`) + the unit no-op guard (`zero-count increments are no-ops`); see Discovery — HTTP-path fault injection is not reachable from the harness
 
-### §3 — Capture-loss counters
+### §3 — Capture-loss counters — DONE
 
 Two events in `innerRunnerMemoryCapture`: the byte-budget truncation branch (push stops early) and per-delta validation skips (oversized/empty key, content, category).
 
-- **Dimension 3.1** — push exceeding `MAX_MEMORY_PUSH_BYTES` increments the truncation counter once per truncated push → `test_capture_truncation_counter`
-- **Dimension 3.2** — each invalid delta increments the skip counter; valid deltas in the same push still persist → `test_capture_skip_counter_per_delta`
+- **Dimension 3.1** — DONE — push exceeding `MAX_MEMORY_PUSH_BYTES` increments the truncation counter once per truncated push → `test_capture_truncation_counter`
+- **Dimension 3.2** — DONE — each invalid delta increments the skip counter; valid deltas in the same push still persist → `test_capture_skip_counter_per_delta`
 
-### §4 — Zero-hit search counter
+### §4 — Zero-hit search counter — DONE
 
 Tenant `innerListMemories` with a `query` param returning zero rows is a recall miss signal (the model or operator searched for something the store couldn't substring-match).
 
-- **Dimension 4.1** — query with no match increments → `test_search_zero_hit_counts`
-- **Dimension 4.2** — query with ≥1 match increments nothing → `test_search_hit_no_count`
-- **Dimension 4.3** — list path without `query` never increments → `test_list_never_counts_zero_hit`
+- **Dimension 4.1** — DONE — query with no match increments → `test_search_zero_hit_counts`
+- **Dimension 4.2** — DONE — query with ≥1 match increments nothing → `test_search_hit_no_count`
+- **Dimension 4.3** — DONE — list path without `query` never increments → `test_list_never_counts_zero_hit`
 
-### §5 — Render and naming
+### §5 — Render and naming — DONE
 
 All six families on `/metrics` with `HELP` strings, names single-sourced as constants in the `zombie_memory_*` prefix family.
 
-- **Dimension 5.1** — a scrape renders all six families with `HELP` lines → `test_metrics_render_memory_loss_families`
-- **Dimension 5.2** — render reads atomics only; no allocator, no database touch → `test_render_no_db_no_alloc` (existing render-test pattern)
+- **Dimension 5.1** — DONE — a scrape renders all six families with `HELP` lines → `test_metrics_render_memory_loss_families` (unit) + `test_metrics_render_memory_loss_families_http` (live `/metrics` scrape)
+- **Dimension 5.2** — DONE — render reads atomics only; no allocator, no database touch → `test_render_no_db_no_alloc` (existing render-test pattern)
 
 ---
 
@@ -174,6 +176,9 @@ zombie_memory_search_zero_hits_total            counter
 | eviction DELETE fails | database blip | existing behaviour preserved: warn + continue; counter does not move (Dimension 2.3) |
 | concurrent scrapes during increments | parallel requests | atomics, monotonic loads — same guarantee as existing families |
 | counter overflow | very long uptime | u64 monotonic; Prometheus rate() handles wrap — accepted, matches existing families |
+| search collect truncated mid-stream | database blip / OOM during row collection | NOT counted as a zero hit — `collectEntries` reports clean-drain and the counter moves only on a clean empty result; failure noise must not fabricate recall-miss evidence |
+| retried failed push re-counts skips | store failure mid-push → runner retries whole push (upsert-idempotent) | `capture_skipped_total` over-counts by the skip count per retry and `entries_captured_total` under-counts the failed attempt's stored rows — accepted: counters are trend signals, not row accounting |
+| zero-hit counter is tenant-influenceable | any tenant scripting non-matching searches inflates the global counter | accepted by the label-free design; M91_002 / Bucket-B consumers must treat it as adversarially influenceable evidence, not ground truth |
 
 ---
 
@@ -181,7 +186,7 @@ zombie_memory_search_zero_hits_total            counter
 
 1. **No database call on the `/metrics` scrape path** — render reads atomics only; enforced by the render function taking no connection parameter (compile-level) + the existing render test.
 2. **No per-zombie labels** — enforced by the `inc*` API shape: the functions take counts only, no identifier parameter exists to leak.
-3. **Counters are monotonic** — only `fetchAdd` is exposed; no public reset/store; enforced by the module's pub surface.
+3. **Counters are monotonic** — production paths expose only `fetchAdd`; the lone reset is the test-only `resetForTest` (named, never called from production — same convention as every existing metrics module) and the declared gauge keeps its store.
 4. **No memory content in logs or metrics** — counts, byte totals, caps only; enforced by LOGGING gate review + existing log-discipline tests.
 
 ---
@@ -195,7 +200,7 @@ zombie_memory_search_zero_hits_total            counter
 | 1.3 | integration | `test_tenant_list_never_counts_drops` | tenant GET list → hydration-drop counters unchanged |
 | 2.1 | integration | `test_cap_eviction_counter_exact` | push cap+N entries → eviction counter +N; evicted rows are the coldest |
 | 2.2 | integration | `test_under_cap_no_eviction_count` | push under cap → counter unchanged |
-| 2.3 | integration | `test_eviction_failure_counts_nothing` | injected eviction failure → capture returns success, counter unchanged, warn logged |
+| 2.3 | integration + unit | `enforceCap failure propagates as an error, deleting nothing` + `zero-count increments are no-ops and never activate render` | injected eviction failure (adapter tier) → error propagates, nothing deleted; handler catch breaks to 0 → increment no-op; warn-and-continue unchanged (see Discovery — HTTP-path injection unreachable) |
 | 3.1 | integration | `test_capture_truncation_counter` | push exceeding `MAX_MEMORY_PUSH_BYTES` → truncation counter +1, stored count matches kept prefix |
 | 3.2 | integration | `test_capture_skip_counter_per_delta` | push with 2 invalid + 1 valid delta → skip counter +2, one row persisted |
 | 4.1 | integration | `test_search_zero_hit_counts` | tenant query with no match → zero-hit counter +1, HTTP 200 empty items |
@@ -210,13 +215,13 @@ Regression: existing three `zombie_memory_*` families keep their names, types, a
 
 ## Acceptance Criteria
 
-- [ ] All six families render on `/metrics` with `HELP` — verify: integration scrape test green in `make test-integration`
-- [ ] Each loss class moves only its own counter, by exact amounts — verify: `make test-integration` (Dimensions 1.1–4.3)
-- [ ] `enforceCap` returns evicted count; all callers updated — verify: `make test` + `grep -rn "enforceCap" src/`
-- [ ] `make lint` clean · `make test` passes · `make test-integration` passes
-- [ ] `make check-pg-drain` passes (touched query paths)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no file over 350 lines
+- [x] All six families render on `/metrics` with `HELP` — verified: `test_metrics_render_memory_loss_families` (unit) + `test_metrics_render_memory_loss_families_http` (live scrape) green in `make test-integration`
+- [x] Each loss class moves only its own counter, by exact amounts — verified: `make test-integration` exit 0 (Dimensions 1.1–4.3 + category-arm guard)
+- [x] `enforceCap` returns evicted count; all callers updated — verified: `make test-unit-zombied` + grep (callers: `runner/memory.zig`, `zombie_memory_integration_test.zig`)
+- [x] Lint clean (`make lint-zig`) · unit lane passes (`make test-unit-zombied`, 1291 pass/0 fail) · `make test-integration` passes (exit 0) — note: the repo's targets are `lint-zig`/`test-unit-*`; `make test`/`make lint` per VERIFY_TIERS.md are stale names (Discovery)
+- [x] pg-drain check passes (folded into `make lint-zig`, 460 files)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` → XC-PASS
+- [x] `gitleaks detect` clean · no source file over 350 lines (`metrics_runner` 282, `metrics_memory` ~180)
 
 ---
 
@@ -249,9 +254,19 @@ N/A — no files deleted; `enforceCap`'s old void return is replaced in the same
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append as work proceeds)
-- **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
-- **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
+- **Consults** —
+  - *Handshake resolved (PLAN):* rows-affected comes from the vendored `pg.zig` driver — `conn.exec()` returns `!?i64` parsed from the Postgres `CommandComplete` tag (`vendor/pg/src/conn.zig:362,401-416`); null only when the tag carries no count → `enforceCap` warns (`memory_cap_evict_count_unavailable`) and reports 0, per Failure Modes.
+  - *LENGTH split exercised:* `metrics_runner.zig` (319 lines pre-diff) would cross 350 with six families → split `metrics_memory.zig` per this spec's LENGTH gate row. All nine `zombie_memory_*` families (three existing + six new) moved there; `metrics_runner.renderPrometheus` delegates, so the `/metrics` composition and family names are byte-identical (pinned by `test_existing_memory_families_unchanged`). Exposition-format constants single-sourced in the new module (RULE UFS).
+  - *Dimension 2.3 decomposition:* an eviction DELETE failure cannot be injected through the in-process HTTP harness. Coverage split: adapter tier proves the error propagates and deletes nothing (driver rejects a malformed zombie_id with `error.InvalidUUID` before the bind — the handler catch treats every error identically); the handler's catch path breaks to 0 and `incCapEvictions(0)` is a proven no-op (unit). Warn-and-continue behaviour unchanged.
+  - *Test-fixture constraint:* `memory.memory_entries.uid` carries `ck_memory_entries_uid_uuidv7` (version nibble = 7), so the bulk seed composes deterministic v7-shaped uids in SQL — `gen_random_uuid()` (v4) is rejected.
+  - *Doc drift (not fixed here, out of scope):* `docs/VERIFY_TIERS.md` tier 1 says `make test`, but the Makefile's lanes are `test-unit-*` (`test-unit-zombied` used as tier 1 here); same for `make lint` → `lint-zig`/`lint-all` and `make check-pg-drain` → folded into `lint-zig`. Surfaced for Indy.
+- **Skill chain outcomes** —
+  - `/write-unit-test` (Change-set mode): diff ledger 27/27 resolved — 24 tested, 3 `won't-test` with reasons (driver-unreachable `orelse`/`n<0` arms in `enforceCap`; log-field assertions per repo convention). One gap closed during the audit: `test_category_filter_never_counts_zero_hit`. Negative-path ratio ~53%; no structural perf/concurrency findings (lock-free fetchAdds, zero new DB round-trips).
+  - `/review` (adversarial, Claude subagent + Codex cross-model): 5 FIXABLE fixed in `23a6e87b` — F1 zero-hit integrity (`collectEntries` clean-drain), F2 fixture uid/id uniqueness, F3 spec test-name drift, F4 invariant wording, F5 atomic-ordering honesty; 4 INVESTIGATE dispositioned into Failure Modes / Product Clarity (F6 torn-pair scrape skew — same guarantee as existing families; F7 retried-push skip over-count; F8 tenant-influenceable zero-hit; F9 render-gating widening, owned). Codex verdict: "Ship as-is". The F1 no-count-on-truncated-collect branch is compile-enforced at the call site; runtime injection of a mid-collect failure is `needs-infra` (same class as the eviction HTTP injection).
+  - `/review-pr` + `kishore-babysit-prs` — pending PR creation (blocked on `main` push; see Deferrals/handoff).
+- **Deferrals** — no spec Section/Dimension deferred. Two rule-blocked CHORE(close) outputs await Indy (not scope cuts — both are Hard-Safety/handoff gates only Indy can release):
+  1. **Changelog `<Update>` in `~/Projects/docs/changelog.mdx`** — cross-repo writes to the docs repo need an explicit per-session ask (AGENTS.md Hard Safety); land on `chore/m91-001-counters-changelog` once authorized.
+  2. **PR creation** — local `main` is ahead of `origin/main` by the two M91 spec commits; the handoff requires Indy to push (or authorize pushing) `main` before any PR opens. `/review-pr` + `kishore-babysit-prs` fire immediately after.
 
 ---
 
@@ -270,11 +285,13 @@ N/A — no files deleted; `enforceCap`'s old void return is replaced in the same
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Lint + drain | `make lint && make check-pg-drain` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Gitleaks | `gitleaks detect` | | |
+| Unit tests | `make test-unit-zombied` | 1291 pass / 0 fail / 359 skipped (no-DB lane) | ✅ |
+| Integration tests | `make test-integration` | exit 0 — "All integration tests passed" (live DB + Redis) | ✅ |
+| Lint + drain | `make lint-zig` (fmt + ZLint + pg-drain + depth + line-limit + role/legacy) | all green; pg-drain 460 files | ✅ |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | XC-PASS | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| Test delta | `make _lint_zig_test_depth` vs CHORE(open) baseline | unit 1966→1986 (+20) · integration 172→173 (+1 suite file) | ✅ |
+| Coverage lanes | `make test-coverage-all` | app 883 + website 149 + zombiectl 403 pass (first run flaked on a cold-cache vitest timeout; clean on re-run) | ✅ |
 
 ---
 
