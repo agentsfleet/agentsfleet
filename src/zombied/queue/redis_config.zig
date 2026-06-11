@@ -108,3 +108,19 @@ pub fn parseRedisUrl(alloc: std.mem.Allocator, url: []const u8) !Config {
 
     return cfg;
 }
+
+/// Boot-path env knob for the request-path read timeout. Read in `serve.zig`
+/// and threaded through `Client.connectFromEnvWithOptions`; the env-name
+/// string is shared with operator docs verbatim.
+pub const REDIS_REQUEST_TIMEOUT_MS_ENV = "REDIS_REQUEST_TIMEOUT_MS";
+pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT: u32 = 5000;
+
+/// Typed parse error for `parseRequestTimeoutMs` — carries the env-var
+/// identity so the boot-path log site stays honest about which knob misparsed.
+pub const ParseRequestTimeoutError = error{InvalidRequestTimeout};
+
+/// Parse a raw env-string into a request-timeout millisecond value. Pure
+/// helper — serve.zig wraps the env-read + log-and-exit ceremony around it.
+pub fn parseRequestTimeoutMs(raw: []const u8) ParseRequestTimeoutError!u32 {
+    return std.fmt.parseInt(u32, raw, 10) catch error.InvalidRequestTimeout;
+}

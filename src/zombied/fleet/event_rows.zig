@@ -18,6 +18,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const id_format = @import("../types/id_format.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 const logging = @import("log");
 const redis_zombie = @import("../queue/redis_zombie.zig");
@@ -32,6 +33,19 @@ const ExecutionResult = contract.execution_result.ExecutionResult;
 /// zombied-side and never runner-reported.
 pub const STATUS_PROCESSED = "processed";
 pub const STATUS_AGENT_ERROR = "agent_error";
+/// Non-terminal ingress status; the guarded blocked-transition keys on it.
+pub const STATUS_RECEIVED = "received";
+/// zombied-side terminal status for lease-path gate refusals (scenario 03).
+pub const STATUS_GATE_BLOCKED = "gate_blocked";
+
+/// `failure_label` values for `gate_blocked` rows — single ownership site
+/// (RULE UFS); webhook/steer/tests import these, never restate them.
+/// `balance_exhausted` spelling is pinned by billing_and_provider_keys.md.
+pub const LABEL_BALANCE_EXHAUSTED = "balance_exhausted";
+pub const LABEL_TENANT_RESOLVE_FAILED = "tenant_resolve_failed";
+pub const LABEL_SECRET_MISSING = "secret_missing";
+pub const LABEL_APPROVAL_DENIED = "approval_denied";
+pub const LABEL_APPROVAL_EXPIRED = "approval_expired";
 
 const EVENT_TYPE_CONTINUATION = "continuation";
 const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
@@ -39,13 +53,15 @@ const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
 /// INSERT the `received` event row at lease issue (the lease verb's first
 /// durable write, mirroring the deleted worker's write path step 1). Keeps the
 /// full `*ZombieSession` + `*ZombieEvent` because the lease has both. Idempotent
-/// via the (zombie_id, event_id) PK.
+/// via the (zombie_id, event_id) PK; returns false on the conflict no-op so the
+/// caller can tell a re-delivered stream entry from a first delivery (and skip
+/// the receive debit + the duplicate `event_received` frame).
 pub fn insertReceivedRow(
     alloc: Allocator,
     pool: *pg.Pool,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
-) !void {
+) !bool {
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
@@ -64,11 +80,11 @@ pub fn insertReceivedRow(
         break :blk if (v == .string) v.string else null;
     };
 
-    _ = try conn.exec(
+    const affected = try conn.exec(
         \\INSERT INTO core.zombie_events
         \\  (uid, zombie_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, resumes_event_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, 'received', $7::jsonb, $8, $9, $9)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
         \\ON CONFLICT (zombie_id, event_id) DO NOTHING
     , .{
         uid,
@@ -80,7 +96,58 @@ pub fn insertReceivedRow(
         event.request_json,
         resumes_event_id,
         now_ms,
+        STATUS_RECEIVED,
     });
+    return (affected orelse 0) > 0;
+}
+
+/// UPDATE the event row to the `gate_blocked` terminal + the named failure
+/// label. Guarded on `status = 'received'`: a terminal row is never reopened
+/// (a re-request after gate_blocked is a NEW delivery — RULE IDMP). Errors
+/// propagate so the caller withholds the XACK — the terminal write must commit
+/// before the stream entry is acked, or the delivery would be lost. Returns
+/// rows affected (0 = the row was already terminal; the XACK is still owed).
+pub fn markBlocked(
+    pool: *pg.Pool,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    failure_label: []const u8,
+) !i64 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    const affected = try conn.exec(
+        \\UPDATE core.zombie_events
+        \\SET status = $3, failure_label = $4, updated_at = $5
+        \\WHERE zombie_id = $1::uuid AND event_id = $2 AND status = $6
+    , .{
+        zombie_id,
+        event_id,
+        STATUS_GATE_BLOCKED,
+        failure_label,
+        clock.nowMillis(),
+        STATUS_RECEIVED,
+    });
+    return affected orelse 0;
+}
+
+/// Status class of an existing event row, for the lease path's PEL re-delivery
+/// branch. A re-delivery is a genuine re-poll only while the row is still
+/// `received` (a pending-gate re-poll or a reclaimed strand); a `terminal` row
+/// means a settled or `gate_blocked` entry whose XACK was lost — it must be
+/// re-acked, never re-executed (spec Invariant 2). `absent` cannot follow a
+/// conflicting insert but is treated as a proceed.
+pub const RowClass = enum { absent, received, terminal };
+
+pub fn classifyStatus(pool: *pg.Pool, zombie_id: []const u8, event_id: []const u8) !RowClass {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT status FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2
+    , .{ zombie_id, event_id }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return .absent;
+    const status = try row.get([]const u8, 0);
+    return if (std.mem.eql(u8, status, STATUS_RECEIVED)) .received else .terminal;
 }
 
 /// UPDATE the event row to its terminal status + response + telemetry + the
@@ -103,10 +170,15 @@ pub fn markTerminal(
     const now_ms = clock.nowMillis();
     const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
     const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
-    _ = conn.exec(
+    // Guarded on `status = 'received'`: a terminal row is never reopened
+    // (spec Invariant 2 — same one-way-door discipline as markBlocked). The
+    // happy path always transitions a single received→terminal; a 0-row write
+    // means the row was already terminal (a re-delivery whose XACK was lost)
+    // and is logged rather than silently overwriting the settled result.
+    const affected = conn.exec(
         \\UPDATE core.zombie_events
         \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
-        \\WHERE zombie_id = $1::uuid AND event_id = $2
+        \\WHERE zombie_id = $1::uuid AND event_id = $2 AND status = $9
     , .{
         zombie_id,
         event_id,
@@ -116,9 +188,14 @@ pub fn markTerminal(
         @as(i64, @intCast(wall_ms)),
         now_ms,
         failure_label,
+        STATUS_RECEIVED,
     }) catch |err| {
         log.warn("terminal_update_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+        return;
     };
+    if ((affected orelse 0) == 0) {
+        log.warn("terminal_write_skipped_nonreceived", .{ .zombie_id = zombie_id, .event_id = event_id });
+    }
 }
 
 /// UPSERT the session resume cursor. Reads only `zombie_id` + the pre-built

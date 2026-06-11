@@ -113,7 +113,8 @@ pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 // WEBHOOK
 pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
-pub const ERR_WEBHOOK_ZOMBIE_PAUSED = "UZ-WH-003";
+// UZ-WH-003 retired (paused-ingress rework) — paused webhook ingress answers 200-ignored;
+// steer uses ERR_ZOMBIE_PAUSED_INGRESS (UZ-ZMB-012).
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
@@ -132,6 +133,7 @@ pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
 pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
 pub const ERR_ZOMBIE_ALREADY_TERMINAL = "UZ-ZMB-010";
 pub const ERR_ZOMBIE_NAME_MISMATCH = "UZ-ZMB-011";
+pub const ERR_ZOMBIE_PAUSED_INGRESS = "UZ-ZMB-012";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -261,8 +263,14 @@ pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'"
 // Webhook constants
 pub const BEARER_PREFIX = "Bearer ";
 pub const DEDUP_TTL_SECONDS: u32 = 86400;
+/// Redis key prefix for webhook idempotency slots (RULE UFS — one site; both
+/// webhook handlers + tests import it).
+pub const WEBHOOK_DEDUP_KEY_PREFIX = "webhook:dedup:";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
+/// Webhook 200-ignored reason for a paused/non-active zombie:
+/// sender retry queues add no value for an intentionally paused zombie.
+pub const IGNORED_REASON_ZOMBIE_PAUSED = "zombie_paused";
 pub const STATUS_ACCEPTED = "accepted";
 // Slack signature constants
 pub const SLACK_SIG_VERSION = "v0";

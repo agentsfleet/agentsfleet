@@ -56,12 +56,19 @@ _ensure-test-infra:
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
 # fixture rows behind (paused zombies, lingering secrets) that break subsequent runs.
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
+# Redis is flushed in the same reset: fixture zombie ids are fixed, so streams,
+# consumer groups, and unacked PEL entries persist across runs — and the strand
+# recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
+# replaying prior-run events into a freshly reset DB (shared-tenant balance drift).
 _reset-test-db: _ensure-test-infra
 	@echo "→ [infra] Resetting test database schemas to a clean state..."
 	@docker compose cp playbooks/operations/teardown/database/teardown.sql postgres:/tmp/teardown.sql >/dev/null
 	@out=$$(docker compose exec -T postgres psql -U usezombie -d usezombiedb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
+	@echo "→ [infra] Flushing test Redis (prior-run streams/groups/PELs)..."
+	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a usezombie --no-auth-warning FLUSHALL >/dev/null
+	@echo "✓ [infra] Redis flushed"
 
 _test-integration-zombied:
 	@echo "→ [zombied] Running Zig integration tests..."

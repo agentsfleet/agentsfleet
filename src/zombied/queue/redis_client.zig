@@ -50,27 +50,6 @@ const XADD_ZOMBIE_PREFIX_LEN: usize = 2 + XADD_ZOMBIE_TRIM_TAIL.len;
 /// at-least-once delivery.
 const MAX_ATTEMPTS: u8 = 2;
 
-/// Boot-path env knob for the request-path read timeout (spec §6).
-/// Read in `serve.zig` and threaded through `connectFromEnvWithOptions`.
-/// Constant lives here because the queue layer owns the semantics; the
-/// env-name string is shared with operator docs verbatim.
-pub const REDIS_REQUEST_TIMEOUT_MS_ENV = "REDIS_REQUEST_TIMEOUT_MS";
-pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT: u32 = 5000;
-
-/// Typed parse error for `parseRequestTimeoutMs`. `std.fmt.parseInt`'s
-/// variants leak across crates and don't carry the env-var identity;
-/// wrapping in a queue-layer error keeps the boot-path log site honest
-/// about which env knob misparsed.
-pub const ParseRequestTimeoutError = error{InvalidRequestTimeout};
-
-/// Parse a raw env-string into a request-timeout millisecond value.
-/// Pure helper — serve.zig wraps the env-read + log-and-exit ceremony
-/// around this. Tests can exercise the parser directly without env
-/// state or process-exit side effects.
-pub fn parseRequestTimeoutMs(raw: []const u8) ParseRequestTimeoutError!u32 {
-    return std.fmt.parseInt(u32, raw, 10) catch error.InvalidRequestTimeout;
-}
-
 pub const InitOptions = struct {
     /// `SO_RCVTIMEO` for every pooled Connection. Null = block forever
     /// (legacy / test harness). Production callers pass the env-derived
@@ -191,6 +170,16 @@ pub fn aclWhoAmI(self: *Client) ![]u8 {
     return try self.alloc.dupe(u8, who);
 }
 
+/// DEL one key — releases an idempotency slot whose protected op failed post-claim.
+pub fn del(self: *Client, key: []const u8) !void {
+    var resp = try self.command(&.{ "DEL", key });
+    defer resp.deinit(self.alloc);
+    switch (resp) {
+        .integer => {},
+        else => return error.RedisDelFailed,
+    }
+}
+
 /// setNx sets key=value with ttl only if key does not exist.
 /// Returns true if key was set (new), false if key already existed (duplicate).
 pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !bool {
@@ -309,16 +298,32 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
     }
 }
 
-pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
+/// Buffer size for `stableConsumerId`: prefix + '-' + max hostname.
+pub const CONSUMER_ID_BUF_LEN: usize = queue_consts.consumer_prefix.len + 1 + std.posix.HOST_NAME_MAX;
+
+/// Stable consumer identity for the zombie event streams: one per zombied
+/// instance (host-derived, timestamp-free), so delivered-but-unacked entries
+/// stay recoverable in this consumer's PEL and group cardinality stays
+/// bounded — the retired per-probe minting orphaned every entry. The memcpys
+/// are infallible by construction: CONSUMER_ID_BUF_LEN = prefix + max hostname.
+pub fn stableConsumerId(buf: *[CONSUMER_ID_BUF_LEN]u8) []const u8 {
+    const prefix = queue_consts.consumer_prefix ++ "-";
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
-    const host = std.posix.gethostname(&host_buf) catch "localhost";
-    const now = clock.nowNanos();
-    return std.fmt.allocPrint(alloc, "{s}-{s}-{d}", .{ queue_consts.consumer_prefix, host, now });
+    // gethostname failure collapses this instance onto the shared `localhost`
+    // consumer (one PEL for any such instance). Correctness is unaffected — the
+    // per-zombie Postgres affinity claim is the only lease serializer — but
+    // recovery attribution blurs, so the fallback is loud.
+    const host = std.posix.gethostname(&host_buf) catch |err| blk: {
+        log.warn("consumer_id_hostname_fallback", .{ .err = @errorName(err) });
+        break :blk "localhost";
+    };
+    @memcpy(buf[0..prefix.len], prefix);
+    @memcpy(buf[prefix.len..][0..host.len], host);
+    return buf[0 .. prefix.len + host.len];
 }
 
 const std = @import("std");
 const common = @import("common");
-const clock = common.clock;
 const EnvMap = common.env.Map;
 const logging = @import("log");
 const queue_consts = @import("constants.zig");

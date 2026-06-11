@@ -18,6 +18,7 @@ const serve_webhook_lookup = @import("../cmd/serve_webhook_lookup.zig");
 const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
+const ec = @import("../errors/error_registry.zig");
 
 const TestHarness = harness_mod.TestHarness;
 
@@ -235,13 +236,19 @@ test "A5: unknown zombie_id → 404 UZ-WH-001" {
     try std.testing.expect(r.bodyContains("UZ-WH-001") or r.bodyContains("UZ-WH-020") or r.bodyContains("UZ-WH-010"));
 }
 
-test "A6: paused zombie → fail-closed UZ-WH-003" {
+test "A6: paused zombie → 200 ignored zombie_paused, trigger metric unchanged" {
+    const metrics_zombie = @import("../observability/metrics_zombie.zig");
     const alloc = std.testing.allocator;
     var s = Setup.init(alloc, "paused") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
+    const triggered_before = metrics_zombie.snapshotZombieFields().zombie_triggered_total;
     const r = try postSigned(alloc, &s, "workflow_run", "del_a6", FAILURE_BODY);
     defer r.deinit();
-    try r.expectErrorCode("UZ-WH-003");
+    // 200-ignored (not 4xx) so sender retry queues stay quiet for
+    // an intentionally paused zombie; nothing accepted → metric unchanged.
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"ignored\":\"zombie_paused\""));
+    try std.testing.expectEqual(triggered_before, metrics_zombie.snapshotZombieFields().zombie_triggered_total);
 }
 
 test "A7: completed + conclusion=success → 200 ignored non_failure_conclusion" {
@@ -497,4 +504,167 @@ test "B6: TTL on accepted dedup key falls within 5s of 72h" {
     // 72h = 259200s. Accept anything within the last 5 seconds (test latency).
     try std.testing.expect(ttl >= 259195);
     try std.testing.expect(ttl <= 259200);
+}
+
+test "B7: enqueue failure releases the dedup slot — retry of the same delivery enqueues exactly one event" {
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b7"});
+    defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b7"});
+
+    const stream_key = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{s.fx.zombie_id});
+    defer alloc.free(stream_key);
+
+    // Inject the enqueue fault (loss-proof dedup ordering): park a plain
+    // string at the stream key so XADD answers WRONGTYPE — a real server-side
+    // enqueue failure, no seam needed.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+        var set = try s.h.queue.commandAllowError(&.{ "SET", stream_key, "fault" });
+        set.deinit(s.h.queue.alloc);
+    }
+    const r1 = try postSigned(alloc, &s, "workflow_run", "del_b7", FAILURE_BODY);
+    defer r1.deinit();
+    try r1.expectStatus(.internal_server_error);
+
+    // Clear the fault; the sender retries the SAME delivery UUID — the slot
+    // was released, so the retry delivers (not "deduped"), exactly once.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+    }
+    const r2 = try postSigned(alloc, &s, "workflow_run", "del_b7", FAILURE_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.accepted);
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, s.fx.zombie_id));
+}
+
+// ── §C: generic-route twin — zombie.zig carries its own copy of the
+// loss-proof dedup ordering (claim → enqueue, release on failure), so the
+// injection proof runs against the generic `/v1/webhooks/{id}` route too,
+// signed with the linear scheme (bare-hex HMAC, no prefix). ──────────────
+
+const ZOMBIE_LINEAR = "0197a4ba-8d3a-7f13-8abc-11111111aa31";
+const LINEAR_SECRET = "topsecret-linear-key";
+const LINEAR_EVENT_ID = "lin_c1";
+const LINEAR_BODY =
+    \\{"event_id":"lin_c1","type":"issue.updated","data":{"k":"v"}}
+;
+
+fn linearSetup(alloc: std.mem.Allocator, status: []const u8) !Setup {
+    const h = try startHarness(alloc);
+    errdefer h.deinit();
+    const fx: fx_mod.Fixture = .{
+        .tenant_id = fx_mod.ID_TENANT_A,
+        .workspace_id = fx_mod.ID_WS_A,
+        .zombie_id = ZOMBIE_LINEAR,
+    };
+    const trigger = try fx_mod.buildTriggerConfig(alloc, "linear", null);
+    defer alloc.free(trigger);
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try fx_mod.insertZombie(conn, fx, trigger);
+    try fx_mod.insertWebhookCredential(alloc, conn, fx.workspace_id, "linear", LINEAR_SECRET);
+    if (!std.mem.eql(u8, status, "active")) {
+        _ = try conn.exec("UPDATE core.zombies SET status = $1 WHERE id = $2::uuid", .{ status, fx.zombie_id });
+    }
+    const url = try std.fmt.allocPrint(alloc, "/v1/webhooks/{s}", .{fx.zombie_id});
+    return .{ .h = h, .fx = fx, .url = url };
+}
+
+fn postSignedLinear(alloc: std.mem.Allocator, s: *Setup, body: []const u8) !harness_mod.Response {
+    const sig = try signers.signLinear(alloc, LINEAR_SECRET, body);
+    defer sig.deinit(alloc);
+    const r1 = s.h.post(s.url);
+    const r2 = try r1.header(sig.header_name, sig.header_value);
+    const r3 = try r2.json(body);
+    return r3.send();
+}
+
+// Generic-route dedup key carries no provider segment: webhook:dedup:{zid}:{event_id}.
+fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
+    const stream = std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR}) catch return;
+    defer alloc.free(stream);
+    var v = h.queue.commandAllowError(&.{ "DEL", stream }) catch return;
+    v.deinit(h.queue.alloc);
+    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, ZOMBIE_LINEAR, LINEAR_EVENT_ID }) catch return;
+    defer alloc.free(k);
+    var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;
+    v2.deinit(h.queue.alloc);
+}
+
+test "C1: generic route — enqueue failure releases the dedup slot; retry delivers once; replay dedupes" {
+    const alloc = std.testing.allocator;
+    var s = linearSetup(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupLinearRedis(s.h, alloc);
+    defer cleanupLinearRedis(s.h, alloc);
+
+    const stream_key = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR});
+    defer alloc.free(stream_key);
+
+    // Inject the enqueue fault: park a plain string at the stream key so
+    // XADD answers WRONGTYPE — a real server-side failure, no seam needed.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+        var set = try s.h.queue.commandAllowError(&.{ "SET", stream_key, "fault" });
+        set.deinit(s.h.queue.alloc);
+    }
+    const r1 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r1.deinit();
+    try r1.expectStatus(.internal_server_error);
+
+    // Clear the fault; the sender retries the SAME event_id — the slot was
+    // released, so the retry delivers (not "duplicate"), exactly once.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+    }
+    const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.accepted);
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+
+    // Replay after success → deduped, stream unchanged (generic-side 3.2 pin).
+    const r3 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r3.deinit();
+    try r3.expectStatus(.ok);
+    try std.testing.expect(r3.bodyContains("\"status\":\"duplicate\""));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+}
+
+test "C2: generic route — paused zombie → 200 ignored zombie_paused, dedup slot not consumed" {
+    const metrics_zombie = @import("../observability/metrics_zombie.zig");
+    const alloc = std.testing.allocator;
+    var s = linearSetup(alloc, "paused") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupLinearRedis(s.h, alloc);
+    defer cleanupLinearRedis(s.h, alloc);
+
+    const triggered_before = metrics_zombie.snapshotZombieFields().zombie_triggered_total;
+    const r1 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r1.deinit();
+    // 200-ignored (not 4xx): sender retry queues add no value for an
+    // intentionally paused zombie; nothing accepted → trigger metric unchanged.
+    try r1.expectStatus(.ok);
+    try std.testing.expect(r1.bodyContains("\"ignored\":\"zombie_paused\""));
+    try std.testing.expectEqual(triggered_before, metrics_zombie.snapshotZombieFields().zombie_triggered_total);
+
+    // The dedup slot was not consumed: after resume, the SAME event_id
+    // delivers exactly one event (an operator redelivery still works).
+    {
+        const conn = try s.h.acquireConn();
+        defer s.h.releaseConn(conn);
+        _ = try conn.exec("UPDATE core.zombies SET status = 'active' WHERE id = $1::uuid", .{ZOMBIE_LINEAR});
+    }
+    const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.accepted);
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
 }

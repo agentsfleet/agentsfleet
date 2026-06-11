@@ -33,6 +33,23 @@ pub fn signGithub(alloc: std.mem.Allocator, secret: []const u8, body: []const u8
     };
 }
 
+// Linear: `linear-signature: <hex>` over raw body bytes — bare hex, no prefix
+// (LINEAR in zombie/webhook_verify.zig). Exercises the generic webhook route.
+pub fn signLinear(alloc: std.mem.Allocator, secret: []const u8, body: []const u8) !Signed {
+    return .{
+        .header_name = "linear-signature",
+        .header_value = try hmacHex(alloc, secret, body, ""),
+    };
+}
+
+test "signLinear produces a bare 64-hex signature on the linear-signature header" {
+    const alloc = std.testing.allocator;
+    const s = try signLinear(alloc, "topsecret", "{\"event_id\":\"e1\"}");
+    defer s.deinit(alloc);
+    try std.testing.expectEqualStrings("linear-signature", s.header_name);
+    try std.testing.expectEqual(@as(usize, 64), s.header_value.len);
+}
+
 test "signGithub produces 64-hex signature with sha256= prefix" {
     const alloc = std.testing.allocator;
     const s = try signGithub(alloc, "topsecret", "{\"event\":\"ping\"}");

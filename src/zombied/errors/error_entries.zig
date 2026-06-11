@@ -106,7 +106,9 @@ pub const ENTRIES = [_]Entry{
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
     e("UZ-WH-001", .not_found, "Zombie not found for webhook", "No zombie is registered for this webhook endpoint."),
     e("UZ-WH-002", .bad_request, "Malformed webhook", "Webhook payload could not be parsed. Check Content-Type and body."),
-    e("UZ-WH-003", .conflict, "Zombie paused", "The target zombie is paused. Resume it before sending webhooks."),
+    // UZ-WH-003 retired (paused-ingress rework): a webhook to a paused zombie answers
+    // 200 {"ignored":"zombie_paused"} — sender retry queues add no value for
+    // an intentionally paused zombie. Steer ingress refuses with UZ-ZMB-012.
     e("UZ-WH-010", .unauthorized, "Invalid webhook signature", "Webhook signature verification failed. Confirm the signing secret " ++
         "stored for this provider (Slack/Clerk/other) matches the one configured " ++
         "upstream."),
@@ -132,6 +134,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-ZMB-009", .not_found, "Zombie not found", "Zombie not found. Verify the zombie_id and that it has not been killed."),
     e("UZ-ZMB-010", .conflict, "Zombie already stopped or killed", "This zombie is already stopped or has been killed. Restart it before issuing another stop."),
     e("UZ-ZMB-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per zombie bundle."),
+    e("UZ-ZMB-012", .conflict, "Zombie is paused", "This zombie is not active and refuses new work. Resume it with: zombiectl resume <zombie>, then retry."),
     // ── VAULT ────────────────────────────────────────────────────────────────
     e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
         "Bare strings, arrays, scalars, and {} are rejected."),

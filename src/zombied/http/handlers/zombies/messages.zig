@@ -19,6 +19,7 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const zombie_config = @import("../../../zombie/config.zig");
 const EventEnvelope = @import("contract").event_envelope;
 
 const log = logging.scoped(.zombie_messages);
@@ -112,8 +113,11 @@ pub fn innerZombieMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []cons
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Verify zombie exists and belongs to the path workspace. Writes a 404 on
-/// mismatch (do not leak existence across workspaces) and returns false.
+/// Verify zombie exists, belongs to the path workspace, and accepts ingress.
+/// Writes a 404 on mismatch (do not leak existence across workspaces), a 409
+/// with a resume hint on a paused/non-active zombie (a steer to
+/// a paused zombie must refuse loudly, never 202-and-strand), and returns
+/// false on every refusal.
 fn verifyZombieInWorkspace(
     hx: Hx,
     conn: *pg.Conn,
@@ -121,7 +125,7 @@ fn verifyZombieInWorkspace(
     zombie_id: []const u8,
 ) bool {
     var q = PgQuery.from(conn.query(
-        "SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid",
+        "SELECT workspace_id::text, status FROM core.zombies WHERE id = $1::uuid",
         .{zombie_id},
     ) catch {
         common.internalDbError(hx.res, hx.req_id);
@@ -144,6 +148,24 @@ fn verifyZombieInWorkspace(
 
     if (!std.mem.eql(u8, path_workspace_id, zombie_workspace)) {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        return false;
+    }
+
+    const raw_status = row.get([]const u8, 1) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return false;
+    };
+    const status = zombie_config.ZombieStatus.fromSlice(raw_status) orelse .stopped;
+    if (!status.isRunnable()) {
+        log.warn("steer_zombie_paused", .{
+            .error_code = ec.ERR_ZOMBIE_PAUSED_INGRESS,
+            .zombie_id = zombie_id,
+            .status = raw_status,
+            .req_id = hx.req_id,
+        });
+        // 409s carry current_state (REST §4) — the caller branches on
+        // paused vs stopped without re-fetching the zombie.
+        common.errorResponseConflict(hx.res, ec.ERR_ZOMBIE_PAUSED_INGRESS, ec.MSG_ZOMBIE_NOT_ACTIVE, hx.req_id, raw_status);
         return false;
     }
     return true;
