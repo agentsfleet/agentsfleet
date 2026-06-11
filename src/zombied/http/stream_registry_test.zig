@@ -194,3 +194,26 @@ test "registry: listing rows carry workspace, zombie, and start time — never t
         }
     }
 }
+
+test "registry: listAlloc unwinds partial rows under allocation failure" {
+    var reg = StreamRegistry.init(testing.allocator, common.globalIo());
+    defer reg.deinit();
+    const a = (try reg.tryRegister(WS, ZID_A, STARTED_A_MS, CAP)).?;
+    defer reg.deregister(a);
+    const b = (try reg.tryRegister(WS, ZID_B, STARTED_B_MS, CAP)).?;
+    defer reg.deregister(b);
+    // Fails the rows slice + each per-row dupe in turn; nothing may leak on
+    // any error return — the partial-rows errdefer chain is the surface
+    // under test (a non-arena caller must inherit no leak).
+    try std.testing.checkAllAllocationFailures(testing.allocator, listAndFree, .{&reg});
+    metrics.setSseInFlightStreams(0);
+}
+
+fn listAndFree(alloc: std.mem.Allocator, reg: *StreamRegistry) !void {
+    const rows = try reg.listAlloc(alloc);
+    for (rows) |row| {
+        alloc.free(row.workspace_id);
+        alloc.free(row.zombie_id);
+    }
+    alloc.free(rows);
+}

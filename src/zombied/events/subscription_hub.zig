@@ -274,20 +274,64 @@ fn dropConn(self: *SubscriptionHub) void {
     if (dead) |*c| c.deinit();
 }
 
-/// Install `fresh` as the live connection and replay SUBSCRIBE for every
-/// mapped channel. False = a send failed (socket already dead again).
+/// Replay SUBSCRIBE for every mapped channel on `fresh`, then install it.
+/// The O(N) wire sends run UNLOCKED on a duped name snapshot — a full send
+/// buffer must not stall dispatch/subscribe/unsubscribe behind the hub mutex
+/// (duped because the last unsubscribe during the window frees the map key).
+/// The install pass re-locks and sends the delta for channels subscribed
+/// during the window (attach skips its wire send while conn is null).
+/// False = send failure or hub stopped; `fresh` is consumed either way.
 fn resubscribeAll(self: *SubscriptionHub, fresh: redis_subscriber) bool {
-    self.mutex.lockUncancelable(self.io);
-    defer self.mutex.unlock(self.io);
-    self.conn = fresh;
-    var it = self.channels.keyIterator();
-    while (it.next()) |key| {
-        self.conn.?.sendSubscribe(key.*) catch |err| {
-            log.warn("hub_resubscribe_failed", .{ .channel = key.*, .err = @errorName(err) });
+    var conn = fresh;
+    const names = self.snapshotChannelNames() catch {
+        conn.deinit();
+        return false; // OOM → treat as a failed attempt; the redial loop retries
+    };
+    defer {
+        for (names) |n| self.alloc.free(n);
+        self.alloc.free(names);
+    }
+    for (names) |name| {
+        conn.sendSubscribe(name) catch |err| {
+            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = name, .err = @errorName(err) });
+            conn.deinit();
             return false;
         };
     }
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
+    if (self.stopped.load(.acquire)) {
+        conn.deinit();
+        return false;
+    }
+    self.conn = conn;
+    var it = self.channels.keyIterator();
+    while (it.next()) |key| {
+        if (containsName(names, key.*)) continue;
+        self.conn.?.sendSubscribe(key.*) catch |err| {
+            log.warn(S_RESUBSCRIBE_FAILED, .{ .channel = key.*, .err = @errorName(err) });
+            return false; // installed — the caller's dropConn tears it down
+        };
+    }
     return true;
+}
+
+/// Duped channel names under the mutex; caller owns the slice + strings.
+fn snapshotChannelNames(self: *SubscriptionHub) error{OutOfMemory}![]const []const u8 {
+    self.mutex.lockUncancelable(self.io);
+    defer self.mutex.unlock(self.io);
+    var names = try self.alloc.alloc([]const u8, self.channels.count());
+    errdefer self.alloc.free(names);
+    var i: usize = 0;
+    errdefer for (names[0..i]) |n| self.alloc.free(n);
+    var it = self.channels.keyIterator();
+    while (it.next()) |key| : (i += 1) names[i] = try self.alloc.dupe(u8, key.*);
+    return names;
+}
+
+fn containsName(names: []const []const u8, key: []const u8) bool {
+    for (names) |n| if (std.mem.eql(u8, n, key)) return true;
+    return false;
 }
 
 const std = @import("std");
@@ -298,6 +342,7 @@ const redis_config = @import("../queue/redis_config.zig");
 const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const metrics = @import("../observability/metrics.zig");
 const log = logging.scoped(.subscription_hub);
+const S_RESUBSCRIBE_FAILED = "hub_resubscribe_failed";
 
 test {
     _ = @import("subscription_hub_test.zig");

@@ -173,20 +173,11 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         serve_cfg.audit_log_pepper,
     );
 
-    // Owner of live SSE streams: cap admission, gauge, shutdown drain, and
-    // the fleet listing. Declared before the hub so its deinit runs last.
+    // Owner of live SSE streams + the shared pub/sub connection they fan out
+    // from (borrows the queue pool's resolved config — torn down before it).
     var streams = stream_registry.init(alloc, io);
-    defer streams.deinit();
-
-    // The one shared pub/sub connection every SSE stream fans out from.
-    // Borrows the queue pool's resolved config; LIFO defers stop it (and
-    // drain its streams) before the queue client goes away.
     var hub = subscription_hub.init(alloc, io);
-    defer hub.deinit();
-    // Runs after hub.stop() (whose close broadcast wakes parked stream
-    // threads) and before the deinits — every stream has deregistered by
-    // the time the hub and registry storage go away.
-    defer streams.awaitEmpty();
+    defer deinitStreaming(&hub, &streams);
     hub.start(api_queue.pool.cfg) catch |err| {
         log.err("startup.subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
@@ -194,7 +185,6 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         });
         std.process.exit(1);
     };
-    defer hub.stop();
     log.info("startup.subscription_hub_ok", .{});
 
     // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
@@ -329,11 +319,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer srv.deinit();
     serve_shutdown.publishServer(srv);
     defer serve_shutdown.clearServer();
-    // Shutdown drain, first teardown step after listen returns: shutdown()
-    // every live stream's client socket so the detached stream threads exit
-    // before the hub and registry are torn down — closing the exit window
-    // the dedicated-thread design accepted. New streams are rejected from
-    // this point.
+    // First unwind step after listen returns: shutdown() every live stream's
+    // client fd while srv.deinit() is still joining request threads; new
+    // streams are rejected from here. Rest of the choreography: deinitStreaming.
     defer streams.drain();
 
     srv.listen() catch |err| {
@@ -341,6 +329,19 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     };
 
     background.stop();
+}
+
+/// Stream/hub teardown as one explicit sequence (was four LIFO defers):
+/// stop's close broadcast wakes pop-parked stream threads (fd shutdown
+/// alone cannot), awaitEmpty bounds their deregistration, then the storage
+/// deinits. streams.drain() is deliberately NOT folded in — it is the first
+/// unwind step (declared at the server site) so client fds shut down while
+/// srv.deinit() is still joining request threads that may touch hub/registry.
+fn deinitStreaming(hub: *subscription_hub, streams: *stream_registry) void {
+    hub.stop();
+    streams.awaitEmpty();
+    hub.deinit();
+    streams.deinit();
 }
 
 // Arg-parsing tests live in serve_test.zig.

@@ -139,17 +139,25 @@ pub fn awaitEmpty(self: *StreamRegistry) void {
     }
 }
 
-/// Listing rows duped into `alloc` (a request arena) — caller frees with
-/// the arena, or not at all.
+/// Listing rows duped into `alloc`. Callers today pass a request arena (free
+/// with the arena, or not at all), but OOM unwinds the partial rows either
+/// way — a future general-purpose-allocator caller inherits no leak.
 pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMemory}![]ListedStream {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     var rows = try alloc.alloc(ListedStream, self.entries.count());
+    errdefer alloc.free(rows);
     var i: usize = 0;
+    errdefer for (rows[0..i]) |row| {
+        alloc.free(row.workspace_id);
+        alloc.free(row.zombie_id);
+    };
     var it = self.entries.valueIterator();
     while (it.next()) |entry| : (i += 1) {
+        const workspace_id = try alloc.dupe(u8, entry.workspace_id);
+        errdefer alloc.free(workspace_id);
         rows[i] = .{
-            .workspace_id = try alloc.dupe(u8, entry.workspace_id),
+            .workspace_id = workspace_id,
             .zombie_id = try alloc.dupe(u8, entry.zombie_id),
             .started_ms = entry.started_ms,
         };
