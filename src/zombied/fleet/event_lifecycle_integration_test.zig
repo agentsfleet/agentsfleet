@@ -118,6 +118,13 @@ const Env = struct {
 };
 
 fn cleanupRows(conn: *pg.Conn) void {
+    // The approval-denial test leaves a gate row, and zombie_approval_gates
+    // is append-only — DELETE raises via trigger, so a surviving row
+    // FK-blocks teardownZombies → teardownWorkspace → every later
+    // teardownTenant of the shared TEST_TENANT (billing rows then leak
+    // across suites). TRUNCATE bypasses row-level triggers; no test depends
+    // on pre-existing gate rows (each seeds its own).
+    _ = conn.exec("TRUNCATE core.zombie_approval_gates", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runner_leases WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runner_affinity WHERE zombie_id IN (SELECT id FROM core.zombies WHERE workspace_id = $1::uuid)", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});

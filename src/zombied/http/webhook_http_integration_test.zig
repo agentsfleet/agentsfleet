@@ -540,3 +540,96 @@ test "B7: enqueue failure releases the dedup slot — retry of the same delivery
     try r2.expectStatus(.accepted);
     try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, s.fx.zombie_id));
 }
+
+// ── §C: generic-route twin — zombie.zig carries its own copy of the
+// loss-proof dedup ordering (claim → enqueue, release on failure), so the
+// injection proof runs against the generic `/v1/webhooks/{id}` route too,
+// signed with the linear scheme (bare-hex HMAC, no prefix). ──────────────
+
+const ZOMBIE_LINEAR = "0197a4ba-8d3a-7f13-8abc-11111111aa31";
+const LINEAR_SECRET = "topsecret-linear-key";
+const LINEAR_EVENT_ID = "lin_c1";
+const LINEAR_BODY =
+    \\{"event_id":"lin_c1","type":"issue.updated","data":{"k":"v"}}
+;
+
+fn linearSetup(alloc: std.mem.Allocator) !Setup {
+    const h = try startHarness(alloc);
+    errdefer h.deinit();
+    const fx: fx_mod.Fixture = .{
+        .tenant_id = fx_mod.ID_TENANT_A,
+        .workspace_id = fx_mod.ID_WS_A,
+        .zombie_id = ZOMBIE_LINEAR,
+    };
+    const trigger = try fx_mod.buildTriggerConfig(alloc, "linear", null);
+    defer alloc.free(trigger);
+    const conn = try h.acquireConn();
+    try fx_mod.insertZombie(conn, fx, trigger);
+    try fx_mod.insertWebhookCredential(alloc, conn, fx.workspace_id, "linear", LINEAR_SECRET);
+    h.releaseConn(conn);
+    const url = try std.fmt.allocPrint(alloc, "/v1/webhooks/{s}", .{fx.zombie_id});
+    return .{ .h = h, .fx = fx, .url = url };
+}
+
+fn postSignedLinear(alloc: std.mem.Allocator, s: *Setup, body: []const u8) !harness_mod.Response {
+    const sig = try signers.signLinear(alloc, LINEAR_SECRET, body);
+    defer sig.deinit(alloc);
+    const r1 = s.h.post(s.url);
+    const r2 = try r1.header(sig.header_name, sig.header_value);
+    const r3 = try r2.json(body);
+    return r3.send();
+}
+
+// Generic-route dedup key carries no provider segment: webhook:dedup:{zid}:{event_id}.
+fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
+    const stream = std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR}) catch return;
+    defer alloc.free(stream);
+    var v = h.queue.commandAllowError(&.{ "DEL", stream }) catch return;
+    v.deinit(h.queue.alloc);
+    const k = std.fmt.allocPrint(alloc, "webhook:dedup:{s}:{s}", .{ ZOMBIE_LINEAR, LINEAR_EVENT_ID }) catch return;
+    defer alloc.free(k);
+    var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;
+    v2.deinit(h.queue.alloc);
+}
+
+test "C1: generic route — enqueue failure releases the dedup slot; retry delivers once; replay dedupes" {
+    const alloc = std.testing.allocator;
+    var s = linearSetup(alloc) catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupLinearRedis(s.h, alloc);
+    defer cleanupLinearRedis(s.h, alloc);
+
+    const stream_key = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR});
+    defer alloc.free(stream_key);
+
+    // Inject the enqueue fault: park a plain string at the stream key so
+    // XADD answers WRONGTYPE — a real server-side failure, no seam needed.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+        var set = try s.h.queue.commandAllowError(&.{ "SET", stream_key, "fault" });
+        set.deinit(s.h.queue.alloc);
+    }
+    const r1 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r1.deinit();
+    try r1.expectStatus(.internal_server_error);
+
+    // Clear the fault; the sender retries the SAME event_id — the slot was
+    // released, so the retry delivers (not "duplicate"), exactly once.
+    {
+        var del = try s.h.queue.commandAllowError(&.{ "DEL", stream_key });
+        del.deinit(s.h.queue.alloc);
+    }
+    const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.accepted);
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+
+    // Replay after success → deduped, stream unchanged (generic-side 3.2 pin).
+    const r3 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r3.deinit();
+    try r3.expectStatus(.ok);
+    try std.testing.expect(r3.bodyContains("\"status\":\"duplicate\""));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+}

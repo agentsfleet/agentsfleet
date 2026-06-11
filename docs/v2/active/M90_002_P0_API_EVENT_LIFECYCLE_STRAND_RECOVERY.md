@@ -106,7 +106,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `public/openapi/paths/zombies.yaml` | EDIT | messages endpoint documents 409 (UZ-ZMB-012); generic-webhook 200 documents the `ignored` shape |
 | `public/openapi/paths/webhooks.yaml` | EDIT | github 200 gains `zombie_paused` ignore reason; svix path documents its 200 duplicate/ignored shape |
 | `public/openapi.json` | REGEN | bundle-in-sync artifact (`make check-openapi`) |
-| sibling `*_test.zig` / integration tests per touched module | CREATE/EDIT | per Test Specification |
+| `make/test-integration.mk` | EDIT | `_reset-test-db` flushes Redis with the schema drop — strand recovery makes prior-run stream state reachable |
+| sibling `*_test.zig` / integration tests per touched module | CREATE/EDIT | per Test Specification; incl. C1 generic-route dedup injection + `signLinear` helper + gates-table teardown fix |
 
 ---
 
@@ -218,10 +219,10 @@ Regression: existing webhook dedup, lease/report parity, and events-API suites s
 ## Acceptance Criteria
 
 - [x] `make lint` clean · `make test` passes (`make lint-all` + `make test-unit-all`, Jun 11, 2026)
-- [ ] `make test-integration` and `make test-integration-redis` pass (DB + Redis surfaces)
+- [x] `make test-integration` and `make test-integration-redis` pass (DB + Redis surfaces) — serialized local runs, Jun 11, 2026
 - [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 - [x] `gitleaks detect` clean · no production file over 350 lines (over-350 files in diff are `*_test.zig`, exempt from the production cap)
-- [ ] Stranded-event scenario from scenario 03 reproduces the documented sequence — verify: integration tests 1.1/2.2 paste-outs in Verification Evidence
+- [x] Stranded-event scenario from scenario 03 reproduces the documented sequence — `markBlocked` guarded-transition pin (1.1 row mechanics) + `reclaim sweep recovers a stranded delivery from a dead consumer and re-leases it` (2.2) both green in the Jun 11, 2026 full-tier run
 - [x] Dead blocking-read symbols gone — verify: Eval E8 (0 matches)
 
 ## Eval Commands (post-implementation)
@@ -253,6 +254,7 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 
 - **Consults** — Architecture consult at PLAN (Jun 11, 2026, agent): §2's literal "background sweep re-enters events into the lease flow" is unimplementable — Redis streams have no requeue; XAUTOCLAIM moves an entry into the claiming consumer's PEL, invisible to `XREADGROUP ">"`. Reconciled against `data_flow.md` ("`zombied` is the consumer"; dead-RUNNER reclaim stays lease-layer via `reclaim.zig`, untouched): stable per-instance consumer id + own-PEL-first read + sweep consolidating dead-consumer strays. "Per runner identity" wording dropped — runners are not Redis consumers, and per-runner ids would orphan entries on runner retirement. ECL split: transient failures (pool acquire, Redis blip, gate `.unavailable`) and `.auto_killed` (zombie paused, event retained for resume) stay no-work, never terminal. §3 ordering: atomic `SET NX` claim + `DEL` release on every post-claim failure path (normalize + enqueue) — NOT check-then-claim-late: the existing B3 concurrency pin (5 concurrent identical deliveries → exactly one 202) and double-billing rule out a non-atomic window; the spec's §3 parenthetical blesses the release form. Surfaced to Indy in the PLAN message; auto-mode proceed.
 - **REST §4 conflict-extension consult** (Jun 11, 2026, VERIFY): the new paused-409 omitted the guide-mandated `current_state` extension (envelope had no extension support; detail string is static). Surfaced as a gate flag; Indy: "Fix now in this branch". Implemented as a private `writeProblem` core (+`emit_null_optional_fields=false`, non-409 wire shape byte-identical) with `errorResponseConflict` carrying the row's actual status; test 4.1 asserts `"current_state":"paused"`. Pre-existing 409s → Out of Scope follow-up sweep.
+- **Gates-table teardown poisoning** (Jun 11, 2026, VERIFY): two `state.tenant_billing*` tests failed deterministically in the full tier. Bisect (filtered sequential runs, no reset between): the §1 approval-denial test leaves a `core.zombie_approval_gates` row; the table is append-only (DELETE raises via trigger) and its zombie FK has no cascade → teardownZombies → teardownWorkspace → every later `teardownTenant` of the shared TEST_TENANT fails silently (`ignored: PG`) → billing rows leak across tests and insert-if-absent seeding no-ops against stale balances. Fix: `TRUNCATE core.zombie_approval_gates` in the lifecycle suite's cleanup (row triggers don't fire on truncate). Pre-existing latent twin: `approvals/inbox_integration_test.zig:92` plain DELETEs have failed silently against the trigger since they landed — follow-up, not in this diff's scope. Related infra fix in the same VERIFY pass: `_reset-test-db` now flushes Redis (fixed fixture ids persist streams/PELs across local runs; recovery makes them reachable).
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
@@ -268,9 +270,9 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-all` | all lanes passed (zombied + zigrunner + ziglib + coverage + bundle); test depth unit=1911 integration=169 vs baseline 1901/168 (+10/+1) | ✅ Jun 11, 2026 |
-| Integration tests | `make test-integration` | pending — serialized window on shared docker Postgres/Redis (M90_001 agent shares the instance) | ⏳ |
-| Redis integration | `make test-integration-redis` | pending — same serialized window | ⏳ |
+| Unit tests | `make test-unit-all` | all lanes passed (zombied + zigrunner + ziglib + coverage + bundle); final test depth unit=1913 integration=169 vs baseline 1901/168 (+12/+1). One load-induced app-component flake on the final chain re-ran green in isolation (100% coverage; no TS touched by this diff) | ✅ Jun 11, 2026 |
+| Integration tests | `make test-integration` | full suite green (1,604 tests, 10 env-skips) — after fixing the gates-table teardown poisoning (see Discovery); serialized run | ✅ Jun 11, 2026 |
+| Redis integration | `make test-integration-redis` | green, serialized run | ✅ Jun 11, 2026 |
 | Lint | `make lint-all` | all linters + quality gates green (incl. `check-openapi` after the OpenAPI edits: 42 paths, error-schema + URL-shape OK) | ✅ Jun 11, 2026 |
 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both targets build clean | ✅ Jun 11, 2026 |
 | Memleak | `make memleak` | allocator leak-guard tests + macOS `leaks` gate passed | ✅ Jun 11, 2026 |
