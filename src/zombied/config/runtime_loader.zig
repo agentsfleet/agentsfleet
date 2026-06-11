@@ -25,12 +25,26 @@ const ValidationError = runtime_types.ValidationError;
 
 const S_T_R_N = " \t\r\n";
 
+/// Default ceiling on concurrent Server-Sent-Events streams per instance,
+/// overridable via SSE_MAX_STREAMS (0 rejected). Each live stream costs one
+/// DEDICATED detached thread (16 MiB virtual stack, ~128 KiB committed), one
+/// client fd, and a 64-frame bounded queue (~64 KiB worst case) — Redis is
+/// the SubscriptionHub's ONE shared pub/sub connection process-wide, never
+/// per-stream — so ~0.25 MiB per stream, ~16 MiB at the default on the 4 GB
+/// prod box. Streams never occupy handler-pool threads (httpz
+/// `startEventStream` spawns the dedicated thread — events_stream.zig module
+/// header has the full story). The empirical ceiling is Redis fan-out CPU,
+/// not memory — the M88-gated load test refines it, fed by the
+/// zombie_sse_in_flight_streams gauge.
+pub const SSE_MAX_STREAMS_DEFAULT: u32 = 64;
+
 const SizesConfig = struct {
     port: u16,
     api_http_threads: i16,
     api_http_workers: i16,
     api_max_clients: u32,
     api_max_in_flight_requests: u32,
+    sse_max_streams: u32,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
 };
@@ -41,6 +55,7 @@ pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
     const workers = try env.parseI16Env(env_map, alloc, "API_HTTP_WORKERS", 1, ValidationError.InvalidApiHttpWorkers);
     const max_clients = try env.parseU32Env(env_map, alloc, "API_MAX_CLIENTS", 1024, ValidationError.InvalidApiMaxClients);
     const max_inflight = try env.parseU32Env(env_map, alloc, "API_MAX_IN_FLIGHT_REQUESTS", 256, ValidationError.InvalidApiMaxInFlightRequests);
+    const sse_max_streams = try env.parseU32Env(env_map, alloc, "SSE_MAX_STREAMS", SSE_MAX_STREAMS_DEFAULT, ValidationError.InvalidSseMaxStreams);
     const queue_depth = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_DEPTH", ValidationError.InvalidReadyMaxQueueDepth);
     const queue_age = try env.parseOptionalI64Env(env_map, alloc, "READY_MAX_QUEUE_AGE_MS", ValidationError.InvalidReadyMaxQueueAgeMs);
 
@@ -48,6 +63,7 @@ pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
     if (workers <= 0) return ValidationError.InvalidApiHttpWorkers;
     if (max_clients == 0) return ValidationError.InvalidApiMaxClients;
     if (max_inflight == 0) return ValidationError.InvalidApiMaxInFlightRequests;
+    if (sse_max_streams == 0) return ValidationError.InvalidSseMaxStreams;
     if (queue_depth) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueDepth;
     if (queue_age) |v| if (v <= 0) return ValidationError.InvalidReadyMaxQueueAgeMs;
 
@@ -57,6 +73,7 @@ pub fn loadSizes(env_map: *const EnvMap, alloc: Allocator) !SizesConfig {
         .api_http_workers = workers,
         .api_max_clients = max_clients,
         .api_max_in_flight_requests = max_inflight,
+        .sse_max_streams = sse_max_streams,
         .ready_max_queue_depth = queue_depth,
         .ready_max_queue_age_ms = queue_age,
     };

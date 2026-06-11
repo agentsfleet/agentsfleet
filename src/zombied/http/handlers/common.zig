@@ -13,8 +13,13 @@ const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const balance_policy = @import("../../config/balance_policy.zig");
+const runtime_loader = @import("../../config/runtime_loader.zig");
+const subscription_hub = @import("../../events/subscription_hub.zig");
+const stream_registry = @import("../stream_registry.zig");
 const authz = @import("common_authz.zig");
-const UNKNOWN_REQUEST_ID = "req_unknown";
+/// Request-id sentinel for responses written before a request id exists
+/// (e.g. the dispatch backpressure shed, which precedes the per-route arena).
+pub const UNKNOWN_REQUEST_ID = "req_unknown";
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -22,6 +27,12 @@ pub const TraceContext = trace_ctx.TraceContext;
 // canonical Content-Type strings used by the error envelope.
 pub const HEADER_CONTENT_TYPE = "Content-Type";
 pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
+pub const HEADER_RETRY_AFTER = "Retry-After";
+/// Capacity rejections (429 in-flight shed, 503 SSE cap) point clients at an
+/// immediate short backoff: instance pressure clears in seconds, unlike
+/// quota windows. Consumed by the dispatch shed and the stream-cap path.
+pub const RETRY_AFTER_BRIEF_SECONDS: u32 = 1;
+pub const RETRY_AFTER_BRIEF_VALUE = std.fmt.comptimePrint("{d}", .{RETRY_AFTER_BRIEF_SECONDS});
 
 const S_AUTHORIZATION = "authorization";
 const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
@@ -49,6 +60,19 @@ pub const Context = struct {
     api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
+    /// Ceiling for live SSE streams (SSE_MAX_STREAMS env knob, parsed in
+    /// runtime_loader). Streams run on dedicated detached threads, so the cap
+    /// bounds threads + memory — not handler-pool occupancy. Defaults so
+    /// test/fixture Contexts that omit it get the production default.
+    sse_max_streams: u32 = runtime_loader.SSE_MAX_STREAMS_DEFAULT,
+    /// The process's shared Redis pub/sub fan-out — SSE streams subscribe
+    /// through it instead of dialing per-stream connections. Boot-owned
+    /// (serve.zig / TestHarness), started before the server listens.
+    hub: *subscription_hub,
+    /// Owner of the live SSE streams: cap admission, the in-flight gauge,
+    /// the shutdown drain, and the fleet listing all read from it.
+    /// Boot-owned, like the hub.
+    stream_registry: *stream_registry,
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,

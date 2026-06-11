@@ -19,6 +19,7 @@ pub const ValidationError = error{
     InvalidApiHttpWorkers,
     InvalidApiMaxClients,
     InvalidApiMaxInFlightRequests,
+    InvalidSseMaxStreams,
     InvalidReadyMaxQueueDepth,
     InvalidReadyMaxQueueAgeMs,
 };

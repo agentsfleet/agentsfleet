@@ -16,7 +16,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | Target | Producer | Consumer |
 |---|---|---|
 | `zombie:{id}:events` | `zombied-api` on steer / webhook / continuation; NullClaw cron-tool fires; `zombied` on chunk-continuation | **`zombied`** — non-blocking `XREADGROUP` on each `lease`, `XACK` on each `report` |
-| `zombie:{id}:activity` | `zombied` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | Server-Sent-Events handler in `zombied-api` on a dedicated Redis connection |
+| `zombie:{id}:activity` | `zombied` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | SSE streams in `zombied-api`, fanned out from the SubscriptionHub's one shared pub/sub connection (refcounted SUBSCRIBE per channel) |
 | `core.zombie_events` | `zombied` lease path (INSERT received) → report path (UPDATE terminal) | `zombied-api` `GET /events` endpoints, dashboard, `zombiectl events` |
 | `core.zombies` | `zombied-api` only | `zombied` at lease (config resolved fresh per lease) |
 | `core.zombie_sessions` | `zombied` lease path (mark busy) + report path (checkpoint) | `zombied` at lease + `zombiectl status` |
@@ -284,7 +284,7 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
 | `zombie:{id}:events` | Stream + consumer group `zombie_workers` | One per agent | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `zombied` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the agent handles. |
-| `zombie:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per agent | Best-effort live tail — `zombied` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `zombied`; the mid-run frames are forwarded from the runner over the `activity` verb. SSE handler `SUBSCRIBE`s and forwards. No buffer, no ACK, no resume. | High during execution, zero when idle. |
+| `zombie:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per agent | Best-effort live tail — `zombied` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `zombied`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `zombie:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-agent threads — and there are no per-agent threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_zombie.ensureZombieConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
 `zombie:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live user UIs — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.zombie_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
@@ -318,22 +318,26 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 
   ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │              DEDICATED CONNECTIONS  (NOT in the pool) — SSE only now              │
+  │       DEDICATED CONNECTION  (NOT in the pool) — ONE SubscriptionHub conn          │
   │                    ──── long-lived blocking SUBSCRIBE ────                         │
   │                                                                                   │
-  │   ┌──────────────────────┐       ┌──────────────────────┐                         │
-  │   │ SUBSCRIBE            │       │ SUBSCRIBE            │  ...                    │
-  │   │ zombie:Z1:activity   │       │ zombie:Z2:activity   │                         │
-  │   │  (held while SSE     │       │  (held while SSE     │                         │
-  │   │   client is open)    │       │   client is open)    │                         │
-  │   └──────────────────────┘       └──────────────────────┘                         │
+  │   ┌──────────────────────────────────────────────┐                                │
+  │   │ SubscriptionHub reader thread                │   one wire SUBSCRIBE per       │
+  │   │   SUBSCRIBE zombie:Z1:activity               │   channel-with-viewers,        │
+  │   │   SUBSCRIBE zombie:Z2:activity   ...         │   refcounted (first viewer     │
+  │   │   → fan-out by copy into each SSE stream's   │   subscribes, last viewer      │
+  │   │     bounded queue; never blocks on a slow    │   unsubscribes)                │
+  │   │     viewer (drop-oldest + counter)           │                                │
+  │   └──────────────────────────────────────────────┘                                │
   │                                                                                   │
+  │   The per-SSE-stream SUBSCRIBE connections that used to live here are GONE —      │
+  │   N viewers cost one connection per replica, not one each.                        │
   │   The per-agent XREADGROUP-BLOCK connection that used to live here is GONE.       │
   │   A dead runner is reclaimed by lease expiry + fencing_token, not consumer idle.  │
   └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The rule that survives.** A connection held across a Redis call that blocks the server (`SUBSCRIBE`) cannot return to a pool — its lifetime is tied to the consumer, not the request. The pool is reserved for commands that complete in milliseconds: `XADD`, the non-blocking `XREADGROUP`, `PUBLISH`, `XACK`. The SSE subscriber is the only remaining dedicated-connection consumer.
+**The rule that survives.** A connection held across a Redis call that blocks the server (`SUBSCRIBE`) cannot return to a pool — its lifetime is tied to the consumer, not the request. The pool is reserved for commands that complete in milliseconds: `XADD`, the non-blocking `XREADGROUP`, `PUBLISH`, `XACK`. The SubscriptionHub's reader is the only remaining dedicated-connection consumer; when its connection dies it redials with stop-checked pacing and replays SUBSCRIBE from the refcount map, while streams heartbeat through the gap (`zombie_sse_hub_reconnects_total` counts recoveries).
 
 **What this changed at scale.** The pre-cutover idle cost was dominated by N blocking `XREADGROUP BLOCK 5000` loops iterating every five seconds; the fleet's Upstash bill scaled with `(agents + workers)`, not throughput. After the cutover there are no idle blocking loops — the idle cost is driven by runner **lease poll frequency** (each idle `lease` does one non-blocking `XREADGROUP`), tunable by the runner's `retry_after_ms` backoff rather than a Redis `BLOCK` constant. [`scaling.md`](./scaling.md) re-derives the math.
 

@@ -11,12 +11,19 @@ primary_region = "iad"
   app = "/usr/local/bin/zombied serve"
 
 # HTTP concurrency tuning — see deploy/fly/zombied-prod/fly.toml for the full
-# rationale. API_HTTP_THREADS is the per-worker handler-pool size; the default
-# of 1 means the one long-lived handler (the SSE stream) saturates the pool
-# after a single connection. Pinned to 32 to MATCH prod's ceiling so dev
-# surfaces pool-saturation before prod does (the 512mb box absorbs it — thread
-# stacks are virtual/lazily committed). API_HTTP_WORKERS kept at 1 so there is
-# a single shared handler pool (the pool is per-worker; 2 workers = 2 pools).
+# rationale. API_HTTP_THREADS is the per-worker handler-pool size; pool threads
+# serve short-lived requests only (SSE runs on dedicated detached threads).
+# Pinned to 32 to MATCH prod's ceiling so dev surfaces pool-saturation before
+# prod does (the 512mb box absorbs it — thread stacks are virtual/lazily
+# committed). API_HTTP_WORKERS kept at 1 so there is a single shared handler
+# pool (the pool is per-worker; 2 workers = 2 pools).
+# Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only for
+# api-class routes (/healthz, /readyz, /metrics are ops-class and never shed;
+# SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
+# here) — dormant by default, an incident lever (full rationale in the prod
+# fly.toml block). SSE_MAX_STREAMS (default 64) caps concurrent event streams
+# per instance with 503; streams run on dedicated detached threads, sharing
+# ONE SubscriptionHub Redis connection per instance.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "1"

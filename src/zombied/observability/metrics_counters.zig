@@ -42,6 +42,10 @@ pub const Snapshot = struct {
     backoff_wait_ms_total: u64,
     api_backpressure_rejections_total: u64,
     api_in_flight_requests: u64,
+    sse_backpressure_rejections_total: u64,
+    sse_in_flight_streams: u64,
+    sse_dropped_frames_total: u64,
+    sse_hub_reconnects_total: u64,
     gate_repair_exhausted_total: u64,
     // M17_001 §1.3: per-limit-type termination counters
     run_limit_token_budget_exceeded_total: u64,
@@ -69,6 +73,10 @@ var g_agent_tokens_total = std.atomic.Value(u64).init(0);
 var g_backoff_wait_ms_total = std.atomic.Value(u64).init(0);
 var g_api_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
+var g_sse_backpressure_rejections_total = std.atomic.Value(u64).init(0);
+var g_sse_in_flight_streams = std.atomic.Value(u64).init(0);
+var g_sse_dropped_frames_total = std.atomic.Value(u64).init(0);
+var g_sse_hub_reconnects_total = std.atomic.Value(u64).init(0);
 var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
@@ -100,6 +108,24 @@ pub fn incApiBackpressureRejections() void {
 
 pub fn setApiInFlightRequests(v: u32) void {
     g_api_in_flight_requests.store(@as(u64, @intCast(v)), .release);
+}
+
+// safe because: independent stat counter/gauge — readers (the /metrics scrape)
+// tolerate staleness; no memory is published through these stores.
+pub fn incSseBackpressureRejections() void {
+    _ = g_sse_backpressure_rejections_total.fetchAdd(1, .monotonic);
+}
+
+pub fn setSseInFlightStreams(v: u32) void {
+    g_sse_in_flight_streams.store(@as(u64, @intCast(v)), .release);
+}
+
+pub fn incSseDroppedFrames() void {
+    _ = g_sse_dropped_frames_total.fetchAdd(1, .monotonic);
+}
+
+pub fn incSseHubReconnects() void {
+    _ = g_sse_hub_reconnects_total.fetchAdd(1, .monotonic);
 }
 
 pub fn incGateRepairExhausted() void {
@@ -145,6 +171,10 @@ pub fn snapshot() Snapshot {
         .backoff_wait_ms_total = g_backoff_wait_ms_total.load(.acquire),
         .api_backpressure_rejections_total = g_api_backpressure_rejections_total.load(.acquire),
         .api_in_flight_requests = g_api_in_flight_requests.load(.acquire),
+        .sse_backpressure_rejections_total = g_sse_backpressure_rejections_total.load(.acquire),
+        .sse_in_flight_streams = g_sse_in_flight_streams.load(.acquire),
+        .sse_dropped_frames_total = g_sse_dropped_frames_total.load(.acquire),
+        .sse_hub_reconnects_total = g_sse_hub_reconnects_total.load(.acquire),
         .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
         .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
         .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),

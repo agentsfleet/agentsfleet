@@ -3,8 +3,9 @@
 // Background thread that walks core.zombie_approval_gates every SCAN_INTERVAL,
 // transitioning rows whose timeout_at has passed from `pending` to `timed_out`
 // via the channel-agnostic resolve core. The DB UPDATE precondition + Redis
-// decision write happen atomically, so worker threads blocked on the gate
-// observe the timeout via their existing waitForDecision poll within one cycle.
+// decision write happen atomically; the gate is async (no blocking wait), so
+// the next lease poll's gate re-evaluation observes the timeout within one
+// cycle.
 //
 // Resolver attribution is `system:timeout` so the dashboard can distinguish
 // auto-denials from operator-initiated denials. Worker treats `.timed_out`

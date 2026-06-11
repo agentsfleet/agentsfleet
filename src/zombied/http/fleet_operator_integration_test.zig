@@ -13,6 +13,8 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
+const SseClient = @import("handlers/zombies/test_sse_client.zig");
+const sse_fixtures = @import("handlers/zombies/sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -216,4 +218,74 @@ test "fleet runner PATCH rejects malformed actions and missing runners" {
     defer missing.deinit();
     try missing.expectStatus(.not_found);
     try missing.expectErrorCode(error_registry.ERR_RUNNER_NOT_FOUND);
+}
+
+// ── Fleet streams listing (StreamRegistry operator surface) ─────────────────
+
+const STREAMS_PATH = "/v1/fleet/streams";
+const ZOMBIE_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+
+test "fleet streams: non-GET methods are 405" {
+    // router.match resolves /v1/fleet/streams for ANY method; the invoke fn
+    // is the only 405 gate — without this pin a POST would fall through to
+    // the listing handler.
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const denied = try (try (try h.request(.POST, STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).json("{}")).send();
+    defer denied.deinit();
+    try denied.expectStatus(.method_not_allowed);
+}
+
+test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
+    sse_fixtures.requireRedisEnvOrSkip() catch return error.SkipZigTest;
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try sse_fixtures.seedWorkspace(conn);
+        try sse_fixtures.seedZombie(conn, ZOMBIE_FLEET_STREAM, "fleet-streams");
+    }
+
+    // tenant admin (verified JWT, but no platform_admin claim) → 403
+    const denied = try (try h.get(STREAMS_PATH).bearer(TENANT_ADMIN_TOKEN)).send();
+    defer denied.deinit();
+    try denied.expectStatus(.forbidden);
+
+    // platform admin, no live streams → empty listing
+    const empty = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer empty.deinit();
+    try empty.expectStatus(.ok);
+    try std.testing.expect(empty.bodyContains("\"total\":0"));
+
+    // a live stream appears with its workspace + zombie (the platform-admin
+    // token's workspace metadata matches the seeded fixture workspace)
+    const stream_path = try sse_fixtures.streamPath(ALLOC, ZOMBIE_FLEET_STREAM);
+    defer ALLOC.free(stream_path);
+    var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = PLATFORM_ADMIN_TOKEN });
+    @import("common").sleepNanos(sse_fixtures.SUBSCRIBE_SETTLE_NS);
+
+    const listed = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
+    defer listed.deinit();
+    try listed.expectStatus(.ok);
+    try std.testing.expect(listed.bodyContains(ZOMBIE_FLEET_STREAM));
+    try std.testing.expect(listed.bodyContains(sse_fixtures.TEST_WORKSPACE_ID));
+    try std.testing.expect(listed.bodyContains("\"total\":1"));
+
+    // teardown via the drain (no publisher client in this suite): the
+    // stream socket is shut, the thread deregisters, drain returns settled
+    h.streams.drain();
+    sc.closeStream();
+    sc.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    sse_fixtures.cleanupWorkspaceData(conn);
 }

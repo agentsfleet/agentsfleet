@@ -38,6 +38,11 @@ network_policy: network.Mode,
 /// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
 /// is out of scope — the operator sizes N to the host.
 worker_count: u32,
+/// Control-plane call deadlines, env-overridable (`RUNNER_CP_*_DEADLINE_MS`);
+/// defaults single-sourced from the client. Renew is clamped strictly under
+/// the renewal tick at load so a hung control plane can never starve the
+/// child's deadline kill.
+cp_deadlines: client_mod.Deadlines,
 /// Operator-fed registry baseline (env `RUNNER_REGISTRY_ALLOWLIST`,
 /// comma-separated), merged into each lease's egress allowlist. Empty when unset
 /// — the caller substitutes the named default (`network/AllowList.DEFAULT_REGISTRY`).
@@ -95,9 +100,50 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         .workspace_base = workspace_base,
         .network_policy = network.fromMap(env_map),
         .worker_count = worker_count,
+        .cp_deadlines = loadDeadlines(env_map),
         .registry_allowlist = registry_allowlist,
         .alloc = alloc,
     };
+}
+
+/// Resolve the four control-plane deadlines from the environment over the
+/// client defaults. Borrowed env slices only — nothing to free.
+fn loadDeadlines(env_map: *const std.process.Environ.Map) client_mod.Deadlines {
+    var d = client_mod.Deadlines{};
+    d.default_ms = resolveDeadline(env_map, ENV_RUNNER_CP_DEADLINE_MS, d.default_ms);
+    d.report_ms = resolveDeadline(env_map, ENV_RUNNER_CP_REPORT_DEADLINE_MS, d.report_ms);
+    d.activity_ms = resolveDeadline(env_map, ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS, d.activity_ms);
+    d.renew_ms = resolveDeadline(env_map, ENV_RUNNER_CP_RENEW_DEADLINE_MS, d.renew_ms);
+    if (d.renew_ms + common_constants.RENEWAL_TICK_MS >= common_constants.RENEWAL_WINDOW_MS) {
+        log.warn("runner_cp_renew_deadline_clamped", .{ .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
+        d.renew_ms = client_mod.RENEW_DEADLINE_MS;
+    }
+    return d;
+}
+
+fn resolveDeadline(env_map: *const std.process.Environ.Map, name: []const u8, default: u31) u31 {
+    const raw = env_map.get(name);
+    return switch (parseDeadlineMs(raw, default)) {
+        .value => |v| v,
+        .invalid => blk: {
+            log.warn("runner_cp_deadline_invalid", .{ .env = name, .raw = raw.?, .fallback_ms = default });
+            break :blk default;
+        },
+    };
+}
+
+/// Result of reading one `RUNNER_CP_*_DEADLINE_MS` var: a clamped value, or
+/// `.invalid` when a present value does not parse. Unset → the default.
+pub const DeadlineParse = union(enum) { value: u31, invalid };
+
+/// Pure parse+clamp (RULE UFS: bounds single-sourced). null/unset → default;
+/// non-numeric/empty → `.invalid`; out-of-range → clamped into
+/// `[MIN_CP_DEADLINE_MS, MAX_CP_DEADLINE_MS]`. No logging — unit-testable.
+fn parseDeadlineMs(raw: ?[]const u8, default: u31) DeadlineParse {
+    const s = raw orelse return .{ .value = default };
+    const trimmed = std.mem.trim(u8, s, &std.ascii.whitespace);
+    const n = std.fmt.parseInt(u31, trimmed, 10) catch return .invalid;
+    return .{ .value = std.math.clamp(n, MIN_CP_DEADLINE_MS, MAX_CP_DEADLINE_MS) };
 }
 
 /// Result of reading `RUNNER_WORKER_COUNT`: a usable clamped count, or `.invalid`
@@ -176,6 +222,8 @@ fn getOwned(env_map: *const std.process.Environ.Map, alloc: Allocator, name: []c
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
+const common_constants = @import("common");
+const client_mod = @import("control_plane_client.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
@@ -188,7 +236,17 @@ pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
 pub const ENV_RUNNER_WORKER_COUNT = "RUNNER_WORKER_COUNT";
+pub const ENV_RUNNER_CP_DEADLINE_MS = "RUNNER_CP_DEADLINE_MS";
+pub const ENV_RUNNER_CP_REPORT_DEADLINE_MS = "RUNNER_CP_REPORT_DEADLINE_MS";
+pub const ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS = "RUNNER_CP_ACTIVITY_DEADLINE_MS";
+pub const ENV_RUNNER_CP_RENEW_DEADLINE_MS = "RUNNER_CP_RENEW_DEADLINE_MS";
 pub const ENV_RUNNER_REGISTRY_ALLOWLIST = "RUNNER_REGISTRY_ALLOWLIST";
+
+/// Deadline override bounds (RULE UFS: the clamp is single-sourced). The floor
+/// keeps a typo'd tiny value from failing every call; the ceiling keeps a huge
+/// one from re-creating the unbounded-call problem these exist to solve.
+pub const MIN_CP_DEADLINE_MS: u31 = 100;
+pub const MAX_CP_DEADLINE_MS: u31 = 60_000;
 
 // Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
 // only tier that runs without isolation — dev default; prod must override.
@@ -221,6 +279,26 @@ test "worker count invalid falls back to default" {
     try std.testing.expect(parseWorkerCount("abc") == .invalid); // non-numeric → caller defaults + warns
     try std.testing.expect(parseWorkerCount("") == .invalid); // empty → invalid, never a silent 0
     try std.testing.expect(parseWorkerCount("-3") == .invalid); // signed rejected by u32 parse
+}
+
+test "deadline parses default, clamps bounds, rejects garbage" {
+    const default = client_mod.DEFAULT_DEADLINE_MS;
+    try std.testing.expectEqual(default, parseDeadlineMs(null, default).value); // unset → default
+    try std.testing.expectEqual(@as(u31, 2_500), parseDeadlineMs("2500", default).value);
+    try std.testing.expectEqual(MIN_CP_DEADLINE_MS, parseDeadlineMs("1", default).value); // below floor → clamp up
+    try std.testing.expectEqual(MAX_CP_DEADLINE_MS, parseDeadlineMs("999999", default).value); // above ceiling → clamp down
+    try std.testing.expect(parseDeadlineMs("abc", default) == .invalid);
+    try std.testing.expect(parseDeadlineMs("", default) == .invalid);
+}
+
+test "renew deadline override above the tick clamps back to the default" {
+    const alloc = std.testing.allocator;
+    var env_map = try common_constants.env.fromPairs(alloc, &.{
+        .{ ENV_RUNNER_CP_RENEW_DEADLINE_MS, "59000" }, // ≥ RENEWAL_TICK_MS
+    });
+    defer env_map.deinit();
+    const d = loadDeadlines(&env_map);
+    try std.testing.expectEqual(client_mod.RENEW_DEADLINE_MS, d.renew_ms);
 }
 
 test "parseRegistryAllowlist splits, trims, and skips empty tokens" {

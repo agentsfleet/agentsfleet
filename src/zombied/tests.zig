@@ -16,6 +16,7 @@ test {
     _ = @import("config/env_vars.zig");
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
+    _ = @import("config/runtime.zig");
     _ = @import("zombie/config.zig");
     _ = @import("zombie/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
@@ -27,6 +28,7 @@ test {
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
+    _ = @import("zombie/approval_gate_async.zig");
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
@@ -36,6 +38,7 @@ test {
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
     _ = @import("http/fleet_operator_integration_test.zig");
+    _ = @import("http/stream_registry.zig");
     _ = @import("http/fleet_runner_events_integration_test.zig");
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("hmac_sig");
@@ -49,9 +52,12 @@ test {
     _ = @import("session/session_store_redis_proto_test.zig");
     _ = @import("session/session_store_redis_integration_test.zig");
     _ = @import("session/session_store_redis_ttl_integration_test.zig");
+    _ = @import("events/bus.zig");
+    _ = @import("events/subscription_hub.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
     _ = @import("observability/otel_logs.zig");
+    _ = @import("observability/otel_traces.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/account_teardown.zig");
@@ -121,6 +127,7 @@ test {
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
+    _ = @import("http/handlers/zombies/backpressure_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)

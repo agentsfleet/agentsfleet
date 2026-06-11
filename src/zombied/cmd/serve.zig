@@ -22,6 +22,8 @@ const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
+const subscription_hub = @import("../events/subscription_hub.zig");
+const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const env_resolve = @import("../config/env_resolve.zig");
@@ -56,26 +58,6 @@ fn readRedisRequestTimeoutMs(env_map: *const EnvMap, alloc: std.mem.Allocator) u
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
-/// Minimal `.next()`-yielding iterator over the threaded argv. Zig 0.16
-/// removed `std.process.args()`; argv now arrives via `std.process.Init`.
-const ArgvIter = struct {
-    argv: []const [:0]const u8,
-    i: usize = 0,
-
-    pub fn next(self: *ArgvIter) ?[:0]const u8 {
-        if (self.i >= self.argv.len) return null;
-        defer self.i += 1;
-        return self.argv[self.i];
-    }
-};
-
-fn parseServeArgOverrides(argv: []const [:0]const u8) serve_args.ServeArgError!?u16 {
-    var it = ArgvIter{ .argv = argv };
-    _ = it.next(); // binary name
-    _ = it.next(); // subcommand
-    return serve_args.parseArgs(&it);
-}
-
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
     preflight.initOtelLogs(env_map, alloc);
     defer preflight.deinitOtelLogs();
@@ -83,7 +65,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer preflight.deinitOtelTraces();
     log.info("startup.serve_start", .{});
 
-    const serve_port_override = parseServeArgOverrides(argv) catch |err| {
+    const serve_port_override = serve_args.parseServeArgOverrides(argv) catch |err| {
         switch (err) {
             serve_args.ServeArgError.InvalidServeArgument => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "invalid_argument" }),
             serve_args.ServeArgError.MissingPortValue => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "missing_port_value" }),
@@ -118,6 +100,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             runtime_config.ValidationError.InvalidApiHttpWorkers,
             runtime_config.ValidationError.InvalidApiMaxClients,
             runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
+            runtime_config.ValidationError.InvalidSseMaxStreams,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
             => {
@@ -190,6 +173,20 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         serve_cfg.audit_log_pepper,
     );
 
+    // Owner of live SSE streams + the shared pub/sub connection they fan out
+    // from (borrows the queue pool's resolved config — torn down before it).
+    var streams = stream_registry.init(alloc, io);
+    var hub = subscription_hub.init(alloc, io);
+    defer deinitStreaming(&hub, &streams);
+    hub.start(api_queue.pool.cfg) catch |err| {
+        log.err("startup.subscription_hub_failed", .{
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
+        std.process.exit(1);
+    };
+    log.info("startup.subscription_hub_ok", .{});
+
     // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
     // middleware borrow these (Context owns them for the process lifetime)
     // instead of re-reading env per request. Null = unset → consumer fails closed.
@@ -215,6 +212,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
+        .sse_max_streams = serve_cfg.sse_max_streams,
+        .hub = &hub,
+        .stream_registry = &streams,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
         .balance_policy = balance_policy.resolveFromEnv(env_map, alloc),
@@ -222,6 +222,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .telemetry = undefined,
     };
     metrics.setApiInFlightRequests(0);
+    metrics.setSseInFlightStreams(0);
 
     var tel = preflight.initTelemetry(env_map, alloc);
     defer tel.deinit(alloc);
@@ -303,6 +304,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .api_workers = serve_cfg.api_http_workers,
         .api_max_clients = serve_cfg.api_max_clients,
         .api_max_in_flight = serve_cfg.api_max_in_flight_requests,
+        .sse_max_streams = serve_cfg.sse_max_streams,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
     const srv = http_server.Server.init(io, &ctx, &registry, .{
@@ -317,12 +319,29 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer srv.deinit();
     serve_shutdown.publishServer(srv);
     defer serve_shutdown.clearServer();
+    // First unwind step after listen returns: shutdown() every live stream's
+    // client fd while srv.deinit() is still joining request threads; new
+    // streams are rejected from here. Rest of the choreography: deinitStreaming.
+    defer streams.drain();
 
     srv.listen() catch |err| {
         log.err("http.server_exit_failed", .{ .err = @errorName(err) });
     };
 
     background.stop();
+}
+
+/// Stream/hub teardown as one explicit sequence (was four LIFO defers):
+/// stop's close broadcast wakes pop-parked stream threads (fd shutdown
+/// alone cannot), awaitEmpty bounds their deregistration, then the storage
+/// deinits. streams.drain() is deliberately NOT folded in — it is the first
+/// unwind step (declared at the server site) so client fds shut down while
+/// srv.deinit() is still joining request threads that may touch hub/registry.
+fn deinitStreaming(hub: *subscription_hub, streams: *stream_registry) void {
+    hub.stop();
+    streams.awaitEmpty();
+    hub.deinit();
+    streams.deinit();
 }
 
 // Arg-parsing tests live in serve_test.zig.

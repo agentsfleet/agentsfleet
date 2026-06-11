@@ -1,5 +1,5 @@
 #!/bin/sh
-# capture.sh — M84_004 nftables netlink oracle (run INSIDE a privileged Linux
+# capture.sh — nftables netlink oracle (run INSIDE a privileged Linux
 # container; see fixtures/README.md). Replays the exact per-lease ruleset
 # `nfnetlink_rule.zig` must serialize and captures, per statement:
 #   *.netlink.txt — `nft --debug=netlink` mnemonic expression dump
@@ -59,7 +59,7 @@ commit "add set inet uz_egress allow0 { type ipv4_addr ; }"
 run 05_elem_allow0 add element inet uz_egress allow0 '{ 1.2.3.4, 10.20.30.40 }'
 commit "add element inet uz_egress allow0 { 1.2.3.4, 10.20.30.40 }"
 
-# 6+7. DNS-tunnel closure (§3.3): ALL port-53 egress from the child dropped,
+# 6+7. DNS-tunnel closure: ALL port-53 egress from the child dropped,
 # BEFORE the allowlist accept — an allowed IP must not be reachable on :53.
 run 06_rule_drop_dns_udp add rule inet uz_egress egress_fwd iifname '"uzveth0"' udp dport 53 drop
 commit 'add rule inet uz_egress egress_fwd iifname "uzveth0" udp dport 53 drop'

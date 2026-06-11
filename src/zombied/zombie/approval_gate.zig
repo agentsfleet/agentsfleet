@@ -1,16 +1,16 @@
 // Approval gate — 3D Secure model for high-stakes Zombie actions.
 //
-// Evaluates tool invocations against a gate policy. Matching actions
-// pause the event loop, emit a Slack message, and block on Redis for
-// human approval. Anomaly patterns (runaway loops) trigger auto-kill.
+// Evaluates tool invocations against a gate policy. Matching actions emit a
+// Slack message and park the event as pending; the lease path re-evaluates
+// the recorded gate on every poll (approval_gate_async.zig) — no thread ever
+// blocks waiting for a human. Anomaly patterns (runaway loops) auto-kill.
 //
-// Call order: checkAnomaly() → evaluateGate() → requestApproval() → waitForDecision().
+// Call order: checkAnomaly() → evaluateGate() → requestApproval() → record ref.
 // Resolution: dashboard handler OR Slack callback OR sweeper calls resolve(),
-// which atomically transitions pending → terminal status and wakes the worker.
+// which atomically transitions pending → terminal status; the next lease poll
+// observes the stored decision.
 
 const std = @import("std");
-const constants = @import("common");
-const clock = constants.clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const queue_redis = @import("../queue/redis_client.zig");
@@ -27,8 +27,6 @@ const MS_PER_SECOND = 1000;
 const log = logging.scoped(.approval_gate);
 
 pub const GateDecision = enum { auto_approve, requires_approval, auto_kill };
-
-pub const GateResult = enum { approved, denied, timed_out };
 
 /// Status values stored in core.zombie_approval_gates.status column.
 /// Typed enum — no raw strings for gate status (RULES.md #36).
@@ -151,7 +149,8 @@ fn getContextField(obj: std.json.ObjectMap, field: []const u8) ?[]const u8 {
 // ── Approval flow ───────────────────────────────────────────────────────
 
 /// Serialize pending action to Redis and return the action_id.
-/// Caller should then send Slack message and call waitForDecision().
+/// Caller then sends the Slack message and records the event→gate ref
+/// (approval_gate_async.recordEventGateRef) so later polls can resolve it.
 pub fn requestApproval(
     alloc: Allocator,
     redis: *queue_redis.Client,
@@ -192,53 +191,8 @@ pub fn requestApproval(
     return action_id;
 }
 
-/// Block on Redis for a human decision. Returns the gate result.
-/// Uses polling with short sleeps since BRPOP is not available in
-/// the current Redis client (single-connection, locked).
-pub fn waitForDecision(
-    redis: *queue_redis.Client,
-    action_id: []const u8,
-    timeout_ms: u64,
-) GateResult {
-    var response_key_buf: [256]u8 = undefined;
-    const response_key = std.fmt.bufPrint(&response_key_buf, S_S_S, .{
-        ec.GATE_RESPONSE_KEY_PREFIX, action_id,
-    }) catch return .timed_out;
-
-    const start_ms = @as(u64, @intCast(clock.nowMillis()));
-    const poll_interval_ns: u64 = 2_000_000_000; // 2 seconds
-
-    while (true) {
-        const elapsed = @as(u64, @intCast(clock.nowMillis())) -| start_ms;
-        if (elapsed >= timeout_ms) {
-            log.info("timeout", .{ .action_id = action_id, .elapsed_ms = elapsed });
-            return .timed_out;
-        }
-
-        const decision = getDecision(redis, response_key) catch {
-            log.warn("redis_poll_fail", .{ .action_id = action_id });
-            return .timed_out;
-        };
-        if (decision) |d| return d;
-
-        constants.sleepNanos(poll_interval_ns);
-    }
-}
-
-fn getDecision(redis: *queue_redis.Client, key: []const u8) !?GateResult {
-    var resp = try redis.commandAllowError(&.{ "GET", key });
-    defer resp.deinit(redis.alloc);
-    const val = switch (resp) {
-        .bulk => |b| b orelse return null,
-        .simple => |s| s,
-        else => return null,
-    };
-    if (std.mem.eql(u8, val, ec.GATE_DECISION_APPROVE)) return .approved;
-    if (std.mem.eql(u8, val, ec.GATE_DECISION_DENY)) return .denied;
-    return null;
-}
-
-/// Write a gate decision to Redis. Wakes the worker loop polling waitForDecision.
+/// Write a gate decision to Redis. The lease path's next poll observes it
+/// via approval_gate_async.readDecision.
 /// Used internally by resolve() and by callers that want Redis-only semantics.
 pub fn resolveApproval(
     redis: *queue_redis.Client,

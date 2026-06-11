@@ -1,13 +1,6 @@
 // Unit tests for approval_gate.zig — gate evaluation, condition parsing,
-// anomaly detection types, and message builder.
-//
-// Tests mapped to spec sections:
-//   §1.0 — evaluateGate (1.1-1.4)
-//   §3.0 — checkAnomaly types (3.1, 3.3 — unit portions only)
-//   §5.0 — ActionDetail struct, GateResult enum
-//   §6.0 — error paths (condition parsing edge cases)
-//
-// Integration tests requiring Redis are in the integration test suite.
+// anomaly detection types, ActionDetail defaults, and the Slack message
+// builder. Integration tests requiring Redis live in the integration suite.
 
 const std = @import("std");
 const approval_gate = @import("approval_gate.zig");
@@ -330,14 +323,6 @@ test "T10: gate decision constants match expected values" {
 }
 
 // ── T11: Memory safety — leak detection ─────────────────────────────────
-
-// ── T5: GateResult enum exhaustiveness ──────────────────────────────────
-
-test "T5: GateResult has exactly 3 variants (no auto_killed)" {
-    // Verify the enum fields to catch if someone adds back auto_killed
-    const fields = @typeInfo(approval_gate.GateResult).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 3), fields.len);
-}
 
 // ── T2: Multiple rules with conditions — complex policy ─────────────────
 

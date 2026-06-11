@@ -15,17 +15,43 @@ primary_region = "iad"
 #                      vendor/httpz/src/worker.zig). 2 workers across the 4
 #                      cores for accept parallelism, leaving cores for the
 #                      handler pool + background threads.
-#   API_HTTP_THREADS — per-worker handler-pool size. The one long-lived handler
-#                      that holds a thread for the whole connection is the SSE
-#                      stream (events_stream.zig). The runner lease is a
-#                      non-blocking single poll and does NOT hold a thread
-#                      (docs/architecture/scaling.md).
+#   API_HTTP_THREADS — per-worker handler-pool size. Pool threads serve
+#                      short-lived requests only: SSE streams run on dedicated
+#                      detached threads (SSE_MAX_STREAMS below) and the runner
+#                      lease is a non-blocking single poll, so neither holds a
+#                      pool thread (docs/architecture/scaling.md).
 # Total handler concurrency = WORKERS x THREADS = 2 x 32 = 64 per machine
-# (~192 across 3 machines). Both knobs default to 1 (runtime_loader.zig),
-# where one SSE stream saturates the pool. 64 mostly-I/O-parked handler threads
-# sit easily in 4gb: the 16MiB stacks are virtual / lazily committed, plus
-# ~64MiB of large buffers across 2 workers. Watch pool saturation on /metrics;
-# the next lever is more replicas (the binding constraint per scaling.md).
+# (~192 across 3 machines). Both knobs default to 1 (runtime_loader.zig).
+# 64 mostly-I/O-parked handler threads sit easily in 4gb: the 16MiB stacks are
+# virtual / lazily committed, plus ~64MiB of large buffers across 2 workers.
+# Watch pool saturation on /metrics; the next lever is more replicas (the
+# binding constraint per scaling.md).
+#
+# Backpressure knobs (enforced at dispatch since the M90 hardening):
+#   API_MAX_IN_FLIGHT_REQUESTS — shed ceiling (default 256, runtime_loader.zig)
+#                      for API-CLASS routes only: /healthz, /readyz and
+#                      /metrics are ops-class and are NEVER shed (an overload
+#                      must not blind the operators), and the SSE stream is
+#                      gated by its own cap below, not this one. api requests
+#                      above the ceiling are answered 429 + Retry-After
+#                      instead of queueing. Concurrent dispatch is physically
+#                      bounded by WORKERS x THREADS (64 here), so the guard
+#                      fires ONLY when this knob is set BELOW that product. At
+#                      the 256 default it is a dormant incident lever by
+#                      deliberate owner choice: drop it below 64 and redeploy
+#                      to shed load fast during an overload event. Watch
+#                      zombie_api_backpressure_rejections_total.
+#   SSE_MAX_STREAMS  — concurrent event streams per instance (default 64,
+#                      runtime_loader.zig); over-cap streams get 503. Streams
+#                      run on DEDICATED detached threads (httpz
+#                      startEventStream) so a viewer's lifetime never consumes
+#                      request capacity (the old pool-poisoning defect is also
+#                      fixed at the vendor layer — shared injector queue,
+#                      vendor/httpz/CHANGES.md). Budget ~0.5 MiB + 1 client fd
+#                      per stream; the Redis side is ONE shared SubscriptionHub
+#                      pub/sub connection per instance regardless of viewers.
+#                      Watch zombie_sse_in_flight_streams +
+#                      zombie_sse_dropped_frames_total.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "2"

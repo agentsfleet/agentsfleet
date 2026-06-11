@@ -1,7 +1,10 @@
 // Approval gate integration for the lease verb's pre-execution billing path.
 //
-// Checks anomaly counters and gate policy before a lease is issued.
-// If approval is required, blocks until human responds or timeout.
+// Checks anomaly counters and gate policy before a lease is issued. An action
+// requiring approval parks the event as `pending` (the lease answers no-work)
+// and every later poll re-evaluates the recorded gate ref — approval proceeds,
+// denial blocks, deadline expiry resolves timed_out. No thread ever sleeps
+// waiting for a human decision.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -10,6 +13,7 @@ const Allocator = std.mem.Allocator;
 
 const zombie_config = @import("../zombie/config.zig");
 const approval_gate = @import("../zombie/approval_gate.zig");
+const approval_gate_async = @import("../zombie/approval_gate_async.zig");
 const resolver = @import("../zombie/approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
@@ -24,12 +28,16 @@ const AutoKillTrigger = enum { anomaly, policy };
 
 const GateCheckResult = union(enum) {
     passed: void,
+    /// A human decision is outstanding — the lease answers no-work and the
+    /// next poll re-evaluates the recorded gate ref.
+    pending: void,
     blocked: BlockReason,
     auto_killed: AutoKillTrigger,
 };
 
 /// Check the approval gate for an incoming event.
-/// Returns .passed if execution should proceed, .blocked or .auto_killed otherwise.
+/// Returns .passed if execution should proceed; .pending while a human
+/// decision is outstanding; .blocked or .auto_killed otherwise.
 pub fn checkApprovalGate(
     alloc: Allocator,
     session: *ZombieSession,
@@ -87,6 +95,25 @@ fn handleApprovalFlow(
     redis: *queue_redis.Client,
     gates: zombie_config.GatePolicy,
 ) GateCheckResult {
+    // Re-encounter: this event already has a recorded gate — evaluate it.
+    if (approval_gate_async.lookupEventGateRef(redis, session.zombie_id, event.event_id)) |maybe_ref| {
+        if (maybe_ref) |ref| return evaluatePendingGate(alloc, session, pool, redis, &ref);
+    } else |err| {
+        // Redis blip: stay pending rather than re-notify or fail the gate.
+        log.warn("gate_ref_lookup_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        return .{ .pending = {} };
+    }
+    return requestNewGate(alloc, session, event, pool, redis, gates);
+}
+
+fn requestNewGate(
+    alloc: Allocator,
+    session: *ZombieSession,
+    event: *const redis_zombie.ZombieEvent,
+    pool: *pg.Pool,
+    redis: *queue_redis.Client,
+    gates: zombie_config.GatePolicy,
+) GateCheckResult {
     const detail = approval_gate.ActionDetail{
         .tool = event.event_type,
         .action = event.actor,
@@ -135,28 +162,49 @@ fn handleApprovalFlow(
         detail,
     );
 
-    const result = approval_gate.waitForDecision(redis, action_id, gates.timeout_ms);
-    return switch (result) {
-        .approved => blk: {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_APPROVED, action_id);
-            break :blk .{ .passed = {} };
-        },
-        .denied => blk: {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, action_id);
-            break :blk .{ .blocked = .approval_denied };
-        },
-        .timed_out => blk: {
-            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, action_id);
-            // Worker detects its own expiry ~60s before the sweeper's next
-            // cycle, so this path wins the race in every non-crash case;
-            // attribution must be the canonical "system:timeout" string the
-            // sweeper also writes, not "" (which would render blank in the
-            // dashboard's "resolved by" surface).
-            approval_gate.resolveGateDecision(pool, action_id, .timed_out, resolver.SYSTEM_TIMEOUT, "");
-            cleanupPendingKey(redis, session.zombie_id, action_id);
-            break :blk .{ .blocked = .timeout };
-        },
+    const deadline_ms = clock.nowMillis() + @as(i64, @intCast(gates.timeout_ms));
+    approval_gate_async.recordEventGateRef(redis, session.zombie_id, event.event_id, action_id, deadline_ms) catch |err| {
+        // Without the ref the lease path could never resolve this gate —
+        // fail toward unavailable like the requestApproval failure above.
+        log.warn("gate_ref_record_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        return .{ .blocked = .unavailable };
     };
+
+    log.info("gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .action_id = action_id });
+    return .{ .pending = {} };
+}
+
+fn evaluatePendingGate(
+    alloc: Allocator,
+    session: *ZombieSession,
+    pool: *pg.Pool,
+    redis: *queue_redis.Client,
+    ref: *const approval_gate_async.EventGateRef,
+) GateCheckResult {
+    const eval = approval_gate_async.evaluateRef(redis, ref, clock.nowMillis()) catch |err| {
+        // Redis blip: a transient read failure must not deny an approved gate.
+        log.warn("gate_decision_read_fail", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
+        return .{ .pending = {} };
+    };
+    switch (eval) {
+        .approved => {
+            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_APPROVED, ref.actionId());
+            return .{ .passed = {} };
+        },
+        .denied => {
+            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, ref.actionId());
+            return .{ .blocked = .approval_denied };
+        },
+        .expired => {
+            logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_TIMEOUT, ref.actionId());
+            // Attribution must be the canonical "system:timeout" string the
+            // sweeper also writes (resolve() dedups whichever lands first).
+            approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "");
+            cleanupPendingKey(redis, session.zombie_id, ref.actionId());
+            return .{ .blocked = .timeout };
+        },
+        .pending => return .{ .pending = {} },
+    }
 }
 
 /// Best-effort gate-event log. Gate transitions currently emit structured

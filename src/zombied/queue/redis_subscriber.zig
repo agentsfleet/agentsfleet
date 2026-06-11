@@ -15,6 +15,8 @@
 pub const Subscriber = @This();
 
 const S_AUTH = "AUTH";
+const S_SUBSCRIBE = "SUBSCRIBE";
+const S_UNSUBSCRIBE = "UNSUBSCRIBE";
 
 alloc: std.mem.Allocator,
 /// Io backing this subscriber's socket (Zig 0.16 Stream ops take Io).
@@ -104,7 +106,7 @@ pub fn deinit(self: *Subscriber) void {
 /// After this returns, the connection is in subscribe mode — only
 /// `nextMessage()` and `unsubscribe()` are valid until disconnect.
 pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
-    try self.sendCommand(&.{ "SUBSCRIBE", channel });
+    try self.sendCommand(&.{ S_SUBSCRIBE, channel });
 
     var ack = try redis_protocol.readRespValue(self.alloc, self.transport.reader());
     defer ack.deinit(self.alloc);
@@ -158,7 +160,26 @@ pub fn nextMessage(self: *Subscriber) !?Message {
 
 /// UNSUBSCRIBE from all channels. Best-effort — connection is about to close.
 pub fn unsubscribe(self: *Subscriber, channel: []const u8) void {
-    self.sendCommand(&.{ "UNSUBSCRIBE", channel }) catch return;
+    self.sendCommand(&.{ S_UNSUBSCRIBE, channel }) catch return;
+}
+
+/// Send SUBSCRIBE without reading the ack — for owners whose dedicated reader
+/// thread consumes every inbound frame (`nextMessage` skips the ack via its
+/// message-kind filter). Synchronous-ack `subscribe()` would race that reader.
+pub fn sendSubscribe(self: *Subscriber, channel: []const u8) !void {
+    try self.sendCommand(&.{ S_SUBSCRIBE, channel });
+}
+
+/// UNSUBSCRIBE counterpart of `sendSubscribe` — ack consumed by the reader.
+pub fn sendUnsubscribe(self: *Subscriber, channel: []const u8) !void {
+    try self.sendCommand(&.{ S_UNSUBSCRIBE, channel });
+}
+
+/// Install the configured read timeout now. `subscribe()` installs it after
+/// its ack; owners that never call `subscribe()` (reader-thread consumers
+/// using `sendSubscribe`) call this once after connect.
+pub fn installReadTimeout(self: *Subscriber) void {
+    if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
 fn sendCommand(self: *Subscriber, argv: []const []const u8) !void {

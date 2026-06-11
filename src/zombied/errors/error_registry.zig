@@ -92,7 +92,9 @@ pub const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 pub const ERR_INVALID_CIPHERTEXT = "UZ-AUTH-019";
 pub const ERR_INVALID_NONCE = "UZ-AUTH-020";
 pub const ERR_PLATFORM_ADMIN_REQUIRED = "UZ-AUTH-021";
-// API
+// API (serving-plane backpressure)
+pub const ERR_API_BACKPRESSURE = "UZ-API-001";
+pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
 // WORKSPACE
 pub const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
 pub const ERR_WORKSPACE_PAUSED = "UZ-WORKSPACE-002";
@@ -248,6 +250,9 @@ pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
 pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
 pub const MSG_CREDENTIAL_DATA_TOO_LARGE = "credential data exceeds 4KB when stringified";
+// Serving-plane backpressure messages
+pub const MSG_API_BACKPRESSURE = "Server is at its in-flight request ceiling";
+pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this instance";
 // Approval messages
 pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
@@ -266,9 +271,13 @@ pub const SLACK_TS_HEADER = "x-slack-request-timestamp";
 pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
 // Gate constants
 pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
+/// Upper bound for a configured gate timeout — larger values clamp + warn.
+pub const GATE_TIMEOUT_MS_MAX: u64 = 86_400_000;
 pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
 pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
 pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+/// event_id → "action_id|deadline_ms" ref the async lease-path gate check reads.
+pub const GATE_EVENT_REF_KEY_PREFIX = "zombie:gate:byevent:";
 pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
 pub const GATE_DECISION_APPROVE = "approve";
 pub const GATE_DECISION_DENY = "deny";
