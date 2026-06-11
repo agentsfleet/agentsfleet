@@ -73,7 +73,9 @@ test "RedisRole carries no worker variant" {
 const queue_consts = @import("constants.zig");
 
 test "queue constants: consumer prefix is stable" {
-    try std.testing.expectEqualStrings("worker", queue_consts.consumer_prefix);
+    // pin test: literal is the contract — the stable-consumer rework retired the per-probe
+    // "worker-{host}-{ts}" identity for the stable per-instance "zombied-{host}".
+    try std.testing.expectEqualStrings("zombied", queue_consts.consumer_prefix);
 }
 
 // pin test: literal is the contract — install/lease/report (redis_zombie.zig)
@@ -88,22 +90,20 @@ test "queue constants: XAUTOCLAIM cursor seed and batch size" {
     try std.testing.expectEqualStrings("1", queue_consts.xautoclaim_count);
 }
 
-// ── makeConsumerId tests ─────────────────────────────────────────────────
+// ── stableConsumerId tests ───────────────────────────────────────────────
 
-test "makeConsumerId starts with consumer prefix" {
-    const alloc = std.testing.allocator;
-    const id = try redis.makeConsumerId(alloc);
-    defer alloc.free(id);
+test "stableConsumerId starts with consumer prefix" {
+    var buf: [redis.Client.CONSUMER_ID_BUF_LEN]u8 = undefined;
+    const id = redis.stableConsumerId(&buf);
     try std.testing.expect(std.mem.startsWith(u8, id, queue_consts.consumer_prefix ++ "-"));
 }
 
-test "makeConsumerId produces unique IDs across calls" {
-    const alloc = std.testing.allocator;
-    const id1 = try redis.makeConsumerId(alloc);
-    defer alloc.free(id1);
-    const id2 = try redis.makeConsumerId(alloc);
-    defer alloc.free(id2);
-    try std.testing.expect(!std.mem.eql(u8, id1, id2));
+test "stableConsumerId is identical across calls — PEL entries stay recoverable" {
+    var buf1: [redis.Client.CONSUMER_ID_BUF_LEN]u8 = undefined;
+    var buf2: [redis.Client.CONSUMER_ID_BUF_LEN]u8 = undefined;
+    const id1 = redis.stableConsumerId(&buf1);
+    const id2 = redis.stableConsumerId(&buf2);
+    try std.testing.expectEqualStrings(id1, id2);
 }
 
 // ── Keepalive + reconnect tests ──────────────────────────────────────────

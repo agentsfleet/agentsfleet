@@ -114,11 +114,10 @@ test "ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
     try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.unauthorized));
 }
 
-test "UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
-    try std.testing.expectEqual(
-        std.http.Status.conflict,
-        reg.lookup(reg.ERR_WEBHOOK_ZOMBIE_PAUSED).http_status,
-    );
+test "UZ-ZMB-012 is 409 (paused steer = conflict, with a resume hint)" {
+    const entry = reg.lookup(reg.ERR_ZOMBIE_PAUSED_INGRESS);
+    try std.testing.expectEqual(std.http.Status.conflict, entry.http_status);
+    try std.testing.expect(std.mem.indexOf(u8, entry.hint, "zombiectl resume") != null);
 }
 
 // ── REGISTRY format invariants ─────────────────────────────────────────────

@@ -81,7 +81,3 @@ comptime {
 /// Backoff hint handed to a runner when there is no work to lease. The lease
 /// verb is always 200; this rides `retry_after_ms` (no 204).
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
-
-/// Consumer-id fallback when an ephemeral id cannot be allocated; a fixed id is
-/// acceptable because zombied is the single Redis consumer for the stream.
-pub const RUNNER_CONSUMER_FALLBACK = "runner-local";

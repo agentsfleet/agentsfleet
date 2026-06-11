@@ -1,6 +1,10 @@
-/// Stable prefix for `makeConsumerId` ("worker-{host}-{ts}"). Used by the
-/// zombie event-loop's per-thread consumer-id generation.
-pub const consumer_prefix = "worker";
+const std = @import("std");
+const constants_common = @import("common");
+
+/// Stable prefix for `stableConsumerId` ("zombied-{host}"): one consumer per
+/// zombied instance, timestamp-free, so Pending Entries List (PEL) entries
+/// survive probes and restarts and group cardinality stays bounded.
+pub const consumer_prefix = "zombied";
 
 /// XAUTOCLAIM cursor seed + per-call batch size. Shared with the zombie
 /// stream XAUTOCLAIM in `redis_zombie.zig`.
@@ -31,6 +35,17 @@ pub const zombie_field_created_at = "created_at";
 
 /// XREADGROUP settings for zombie streams.
 pub const zombie_xread_count = "1";
-pub const zombie_xread_block_ms = "5000";
-pub const zombie_xautoclaim_min_idle_ms = "300000";
+
+/// Reclaim min-idle: a PEL entry younger than this is never auto-claimed. The
+/// per-zombie affinity claim is the first belt against double-leasing; this
+/// comptime relation is the second — the sweep can never race the lease
+/// window of a just-delivered entry.
+pub const zombie_xautoclaim_min_idle_ms_int: i64 = 300_000;
+comptime {
+    if (zombie_xautoclaim_min_idle_ms_int <= constants_common.LEASE_TTL_MS)
+        @compileError("zombie_xautoclaim_min_idle_ms_int must exceed LEASE_TTL_MS — reclaim must never race a live lease window");
+}
+pub const zombie_xautoclaim_min_idle_ms = std.fmt.comptimePrint("{d}", .{zombie_xautoclaim_min_idle_ms_int});
+
+/// Background reclaim sweep cadence.
 pub const zombie_reclaim_interval_ms: i64 = 60_000;

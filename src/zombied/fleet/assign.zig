@@ -125,8 +125,11 @@ fn tryCandidate(hx: Hx, conn: *pg.Conn, runner_id: []const u8, zombie_id: []cons
     return acquireFresh(hx, conn, zombie_id, won, runner_id);
 }
 
-/// Pull a fresh undelivered event for the claimed zombie. No event ⇒ release the
-/// claim so the next event (and other runners) are not blocked, and return null.
+/// Pull the next event for the claimed zombie: the stable consumer's own PEL
+/// first (re-delivering pending-gate re-polls and sweep-recovered strands —
+/// safe because this claim win proves no live lease exists), then a fresh
+/// undelivered entry. No event ⇒ release the claim so the next event (and
+/// other runners) are not blocked, and return null.
 fn acquireFresh(hx: Hx, conn: *pg.Conn, zombie_id: []const u8, won: affinity.Won, runner_id: []const u8) !?Acquired {
     _ = runner_id;
     redis_zombie.ensureZombieConsumerGroup(hx.ctx.queue, zombie_id) catch |err| {
@@ -134,12 +137,22 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, zombie_id: []const u8, won: affinity.Won
         try affinity.release(conn, zombie_id, won.token);
         return null;
     };
-    const consumer_id = queue_redis.makeConsumerId(hx.alloc) catch constants.RUNNER_CONSUMER_FALLBACK;
-    var event = (redis_zombie.xreadgroupZombieOnce(hx.ctx.queue, zombie_id, consumer_id) catch |err| {
-        log.warn("assign_xreadgroup_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
-        try affinity.release(conn, zombie_id, won.token);
-        return null;
-    }) orelse {
+    var consumer_buf: [queue_redis.CONSUMER_ID_BUF_LEN]u8 = undefined;
+    const consumer_id = queue_redis.stableConsumerId(&consumer_buf);
+    var maybe_event = redis_zombie.xreadgroupZombiePending(hx.ctx.queue, zombie_id, consumer_id) catch |err| blk: {
+        log.warn("assign_pel_read_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+        break :blk null;
+    };
+    if (maybe_event) |ev| {
+        log.debug("assign_pel_redelivered", .{ .zombie_id = zombie_id, .event_id = ev.event_id });
+    } else {
+        maybe_event = redis_zombie.xreadgroupZombieOnce(hx.ctx.queue, zombie_id, consumer_id) catch |err| {
+            log.warn("assign_xreadgroup_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+            try affinity.release(conn, zombie_id, won.token);
+            return null;
+        };
+    }
+    var event = maybe_event orelse {
         try affinity.release(conn, zombie_id, won.token);
         return null;
     };

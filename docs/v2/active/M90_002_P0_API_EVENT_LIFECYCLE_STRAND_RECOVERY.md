@@ -121,32 +121,32 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 Every lease-path refusal that is not retryable-by-waiting writes the documented terminal row (status `gate_blocked`, named `failure_label`, guarded `UPDATE … WHERE status='received'`), XACKs the stream entry, and publishes the `event_complete` frame with the blocked status — mirroring `markTerminal`. Labels (named consts, one ownership site): balance exhausted, tenant resolve failed, secret missing, approval denied, approval expired. Secret-missing is a behaviour change: the lease is refused instead of issued with a null secrets map (RULE ESO — no silent default substitution). Every branch logs per RULE OBS.
 
-- **Dimension 1.1** — balance-exhausted delivery → gate_blocked row + label + XACK + frame → Test `test_balance_gate_writes_terminal_row`
-- **Dimension 1.2** — tenant-resolve failure → same shape, its own label → Test `test_tenant_resolve_failure_blocks_event`
-- **Dimension 1.3** — missing credential → lease refused, gate_blocked + secret-missing label; no lease ships without its declared secrets → Test `test_secret_missing_refuses_lease`
-- **Dimension 1.4** — denied/expired gate outcome (M90_001 variants) → gate_blocked + label → Test `test_approval_denied_blocks_event`
+- **Dimension 1.1** — balance-exhausted delivery → gate_blocked row + label + XACK + frame → Test `test_balance_gate_writes_terminal_row` — **DONE**
+- **Dimension 1.2** — tenant-resolve failure → same shape, its own label → Test `test_tenant_resolve_failure_blocks_event` — **DONE**
+- **Dimension 1.3** — missing credential → lease refused, gate_blocked + secret-missing label; no lease ships without its declared secrets → Test `test_secret_missing_refuses_lease` — **DONE**
+- **Dimension 1.4** — denied/expired gate outcome (M90_001 variants) → gate_blocked + label → Test `test_approval_denied_blocks_event` — **DONE**
 
 ### §2 — Stranded-delivery reclaim under stable consumer identity
 
 **Amended at PLAN (see Discovery):** Redis streams have no requeue — an entry XAUTOCLAIMed by a sweep lands in the claiming consumer's Pending Entries List (PEL) and stays invisible to `XREADGROUP ">"`, so a background sweep alone cannot re-enter events into the lease flow. Per `docs/architecture/data_flow.md` (`zombied` is the Redis consumer; runners never touch Redis), the consumer identity is stable per `zombied` instance (host-derived, timestamp-free — no per-probe minting → consumer-group growth bounded, PEL entries recoverable). The lease read checks the stable consumer's own PEL (`"0"`) before `">"` — this is what makes M90_001's "next lease poll re-evaluates the recorded gate ref" true. The existing `xautoclaimZombie` gains its production caller: a background sweep (new `fleet/reclaim_sweeper.zig`, mirrors `liveness_sweeper`, joins `serve_background.Threads`) claims entries idle past a min-idle bound that comptime-relates to the lease window (reclaim must never race a live lease; the per-zombie `affinity.claim` is the first belt — the PEL read runs only after winning a claim with no active lease) from dead consumer names into the live consumer, re-entering them into the lease flow, logging each reclaim. Dead blocking-read variant + its constant are deleted in the same diff (RULE NLR).
 
-- **Dimension 2.1** — repeated probes use one consumer id; group size stays constant → Test `test_consumer_identity_stable_across_probes`
-- **Dimension 2.2** — delivery in a dead consumer's PEL beyond min-idle → reclaimed, re-leased, processed → Test `test_reclaim_sweep_recovers_stranded_delivery`
-- **Dimension 2.3** — entry inside a live lease window is never reclaimed (min-idle > lease deadline, comptime-asserted) → Test `test_reclaim_respects_live_lease`
+- **Dimension 2.1** — repeated probes use one consumer id; group size stays constant → Test `test_consumer_identity_stable_across_probes` — **DONE**
+- **Dimension 2.2** — delivery in a dead consumer's PEL beyond min-idle → reclaimed, re-leased, processed → Test `test_reclaim_sweep_recovers_stranded_delivery` — **DONE**
+- **Dimension 2.3** — entry inside a live lease window is never reclaimed (min-idle > lease deadline, comptime-asserted) → Test `test_reclaim_respects_live_lease` — **DONE**
 
 ### §3 — Loss-proof webhook dedup ordering
 
 The dedup slot is claimed only after the event is durably enqueued (or released on every post-claim failure path — including normalize-failure). A transient enqueue failure leaves the sender's retry deliverable; a genuinely duplicate delivery still dedupes. Applies to both webhook handlers.
 
-- **Dimension 3.1** — injected enqueue failure → 5xx, dedup not burned; sender retry delivers exactly one event → Test `test_enqueue_failure_keeps_retry_deliverable`
-- **Dimension 3.2** — duplicate delivery id after success → deduped (regression pin) → Test `test_duplicate_delivery_still_deduped`
+- **Dimension 3.1** — injected enqueue failure → 5xx, dedup not burned; sender retry delivers exactly one event → Test `test_enqueue_failure_keeps_retry_deliverable` — **DONE**
+- **Dimension 3.2** — duplicate delivery id after success → deduped (regression pin) → Test `test_duplicate_delivery_still_deduped` — **DONE**
 
 ### §4 — Paused-zombie ingress refusal
 
 Steer on a paused zombie returns 409 with a registered error code + hint (resume instruction). Webhook to a paused zombie returns the existing 200-ignored shape with a named reason const, does not increment the triggered metric, and logs. In-flight leases for a zombie paused mid-run are untouched (only ingress refuses). **Implementation default:** webhook gets 200-ignored (not 4xx) because sender retry queues add no value for an intentionally-paused zombie; steer gets 409 because an interactive caller can act on it.
 
-- **Dimension 4.1** — steer paused → 409 + code + hint; resumed zombie steers fine → Test `test_steer_paused_zombie_409`
-- **Dimension 4.2** — webhook paused → 200-ignored + reason + no trigger metric + log → Test `test_webhook_paused_zombie_ignored`
+- **Dimension 4.1** — steer paused → 409 + code + hint; resumed zombie steers fine → Test `test_steer_paused_zombie_409` — **DONE**
+- **Dimension 4.2** — webhook paused → 200-ignored + reason + no trigger metric + log → Test `test_webhook_paused_zombie_ignored` — **DONE**
 
 ---
 
@@ -247,7 +247,7 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture consult at PLAN (Jun 11, 2026, agent): §2's literal "background sweep re-enters events into the lease flow" is unimplementable — Redis streams have no requeue; XAUTOCLAIM moves an entry into the claiming consumer's PEL, invisible to `XREADGROUP ">"`. Reconciled against `data_flow.md` ("`zombied` is the consumer"; dead-RUNNER reclaim stays lease-layer via `reclaim.zig`, untouched): stable per-instance consumer id + own-PEL-first read + sweep consolidating dead-consumer strays. "Per runner identity" wording dropped — runners are not Redis consumers, and per-runner ids would orphan entries on runner retirement. ECL split: transient failures (pool acquire, Redis blip, gate `.unavailable`) and `.auto_killed` (zombie paused, event retained for resume) stay no-work, never terminal. §3 ordering: `EXISTS` pre-check → XADD → `SET NX` claim; claim failure after durable enqueue still 202 (at-least-once). Surfaced to Indy in the PLAN message; auto-mode proceed.
+- **Consults** — Architecture consult at PLAN (Jun 11, 2026, agent): §2's literal "background sweep re-enters events into the lease flow" is unimplementable — Redis streams have no requeue; XAUTOCLAIM moves an entry into the claiming consumer's PEL, invisible to `XREADGROUP ">"`. Reconciled against `data_flow.md` ("`zombied` is the consumer"; dead-RUNNER reclaim stays lease-layer via `reclaim.zig`, untouched): stable per-instance consumer id + own-PEL-first read + sweep consolidating dead-consumer strays. "Per runner identity" wording dropped — runners are not Redis consumers, and per-runner ids would orphan entries on runner retirement. ECL split: transient failures (pool acquire, Redis blip, gate `.unavailable`) and `.auto_killed` (zombie paused, event retained for resume) stay no-work, never terminal. §3 ordering: atomic `SET NX` claim + `DEL` release on every post-claim failure path (normalize + enqueue) — NOT check-then-claim-late: the existing B3 concurrency pin (5 concurrent identical deliveries → exactly one 202) and double-billing rule out a non-atomic window; the spec's §3 parenthetical blesses the release form. Surfaced to Indy in the PLAN message; auto-mode proceed.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 

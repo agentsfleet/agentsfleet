@@ -1,0 +1,223 @@
+//! Pre-execution billing + gate pass for the lease verb (RULE FLL split from
+//! service.zig). Mirrors `event_loop_writepath.run` steps 1–7 via the leaf
+//! helpers: insert-received → resolve tenant/provider → balance gate → debit
+//! receive → approval gate. A refusal that is not retryable-by-waiting writes
+//! the documented terminal half (scenario 03): a `gate_blocked` row with a
+//! named failure label, the `event_complete` frame, then XACK — the row commit
+//! lands strictly before the XACK, so a crash between the two leaves the
+//! delivery reclaimable, never acked-and-lost. Transient failures (pool/Redis
+//! blips, gate backend unavailable) return no-work WITHOUT a terminal write —
+//! the delivery stays leasable and the next poll retries (RULE ECL).
+//!
+//! Allocator: per-request arena (`hx.alloc`); see service.zig's module note.
+
+const std = @import("std");
+const logging = @import("log");
+const pg = @import("pg");
+
+const hx_mod = @import("../http/handlers/hx.zig");
+const assign = @import("assign.zig");
+const lease_row = @import("service_lease_row.zig");
+const ZombieSession = @import("zombie_session.zig");
+const approval_gate = @import("approval_gate.zig");
+const rows = @import("event_rows.zig");
+const metering = @import("../zombie/metering.zig");
+const activity_publisher = @import("../zombie/activity_publisher.zig");
+const redis_zombie = @import("../queue/redis_zombie.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
+const tenant_provider = @import("../state/tenant_provider.zig");
+
+const Hx = hx_mod.Hx;
+const Billed = lease_row.Billed;
+// service.zig sibling — one logical module split for the length gate.
+const log = logging.scoped(.runner_lease);
+
+/// Fresh → run the pre-execution write-path billing; reclaim → reuse the prior
+/// lease's billing (the original lease already debited; never re-charged).
+pub fn resolveBilling(hx: Hx, session: *ZombieSession, acq: assign.Acquired) ?Billed {
+    switch (acq.kind) {
+        .reclaim => {
+            const r = acq.reused.?;
+            return Billed{ .tenant_id = r.tenant_id, .posture = r.posture, .model = r.model };
+        },
+        .fresh => {
+            var event = eventView(acq);
+            return runBilling(hx, session, &event);
+        },
+    }
+}
+
+/// The documented terminal half for a non-retryable gate refusal: write the
+/// `gate_blocked` row (guarded; commit BEFORE XACK), publish the completion
+/// frame so live tails close, then XACK. A failed row write skips the XACK so
+/// the delivery stays reclaimable. Zero rows affected means the row was
+/// already terminal (a refused re-delivery whose earlier XACK was lost) — the
+/// XACK is still owed.
+pub fn blockEvent(hx: Hx, zombie_id: []const u8, event_id: []const u8, label: []const u8) void {
+    const affected = rows.markBlocked(hx.ctx.pool, zombie_id, event_id, label) catch |err| {
+        log.warn("lease_block_write_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
+        return;
+    };
+    var scratch = activity_publisher.Scratch.init(hx.alloc);
+    defer scratch.deinit();
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, zombie_id, event_id, rows.STATUS_GATE_BLOCKED);
+    redis_zombie.xackZombie(hx.ctx.queue, zombie_id, event_id) catch |err| {
+        log.warn("lease_block_xack_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+    };
+    log.info("lease_gate_blocked", .{ .zombie_id = zombie_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
+}
+
+/// A borrowed `ZombieEvent` view over the acquired envelope for the leaf write
+/// helpers (read-only — never mutated or freed; the slices are arena-owned).
+fn eventView(acq: assign.Acquired) redis_zombie.ZombieEvent {
+    return .{
+        .event_id = @constCast(acq.event_id),
+        .actor = @constCast(acq.actor),
+        .event_type = @constCast(acq.event_type),
+        .workspace_id = @constCast(acq.workspace_id),
+        .request_json = @constCast(acq.request_json),
+        .created_at_ms = acq.event_created_at,
+    };
+}
+
+/// Mirror `event_loop_writepath.run` steps 1–7 via the leaf helpers, then
+/// resolve the provider so the caller can build the lease. Permanent refusals
+/// (balance exhausted, unresolvable tenant/provider, gate denied/expired)
+/// write the terminal `gate_blocked` row + XACK via `blockEvent` and return
+/// null; transient failures return null with no terminal write so the
+/// delivery stays leasable. The caller releases the claim and answers no-work
+/// on every null.
+fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.ZombieEvent) ?Billed {
+    const alloc = hx.alloc;
+    const pool = hx.ctx.pool;
+
+    const first_delivery = rows.insertReceivedRow(alloc, pool, session, event) catch |err| {
+        log.err("lease_received_insert_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        return null;
+    };
+    if (first_delivery) {
+        // Open the SSE activity bracket exactly once per event — a PEL
+        // re-delivery (pending-gate re-poll, reclaimed strand) must not emit
+        // a duplicate `event_received` frame. Best-effort.
+        var scratch = activity_publisher.Scratch.init(alloc);
+        defer scratch.deinit();
+        activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.zombie_id, event.event_id, event.actor);
+    }
+
+    var tr = switch (resolveTenant(alloc, pool, session.workspace_id)) {
+        .ok => |t| t,
+        .failed_permanent => {
+            blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_TENANT_RESOLVE_FAILED);
+            return null;
+        },
+        .failed_transient => return null,
+    };
+    // Own the resolved provider for the whole billing pass: on success it is
+    // carried into `Billed` so the lease delivers the SAME key it billed (no
+    // second resolve, no rotation TOCTOU); on any gate failure the defer zeroes
+    // + frees it (arena teardown does not zero, so the secureZero is load-bearing).
+    var committed = false;
+    defer if (!committed) tr.resolved.deinit(alloc);
+    const ctx = metering.PreflightContext{
+        .workspace_id = session.workspace_id,
+        .zombie_id = session.zombie_id,
+        .event_id = event.event_id,
+        .posture = tr.resolved.mode,
+        .provider = tr.resolved.provider,
+        .model = tr.resolved.model,
+    };
+    const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
+
+    if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
+        log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+        blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
+        return null;
+    }
+    // Receive debits exactly once per event — a re-delivered entry already
+    // paid on its first delivery (the balance debit is not replay-guarded;
+    // only the telemetry row is).
+    if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
+        .deducted => {},
+        .exhausted => {
+            blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
+            return null;
+        },
+        // Operator-fixable bootstrap gap / transient DB fault: no terminal
+        // write, no XACK — the delivery redelivers once the fault clears.
+        .missing_tenant_billing, .db_error => {
+            log.warn("lease_receive_debit_unavailable", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            return null;
+        },
+    };
+    switch (approval_gate.checkApprovalGate(alloc, session, event, pool, hx.ctx.queue)) {
+        .passed => {},
+        .pending => {
+            // Human decision outstanding: answer no-work; the next lease poll
+            // re-delivers the entry from the PEL and re-evaluates the recorded
+            // gate ref. No thread waits.
+            log.info("lease_gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            return null;
+        },
+        .blocked => |reason| switch (reason) {
+            .approval_denied => {
+                blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_APPROVAL_DENIED);
+                return null;
+            },
+            .timeout => {
+                blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_APPROVAL_EXPIRED);
+                return null;
+            },
+            // Redis-unavailable default-deny is transient: no terminal write;
+            // the entry stays leasable and the next poll retries the gate.
+            .unavailable => {
+                log.warn("lease_gate_unavailable", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+                return null;
+            },
+        },
+        .auto_killed => |trigger| {
+            // The gate paused the zombie; the event is retained un-acked so a
+            // resume re-delivers it (Failure Modes: paused mid-flight).
+            log.info("lease_gate_auto_killed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .trigger = @tagName(trigger) });
+            return null;
+        },
+    }
+    // No issue-time stage debit: run fee + tokens meter on /renew + settle at report.
+
+    committed = true; // ownership of tr.resolved transfers to the returned Billed
+    return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
+}
+
+/// Tenant + provider resolution split by error class (RULE ECL): a permanent
+/// config failure earns the terminal `gate_blocked` row; a transient infra
+/// failure leaves the delivery leasable for the next poll.
+const TenantResolution = union(enum) {
+    ok: struct { tenant_id: []u8, resolved: tenant_provider.ResolvedProvider },
+    failed_permanent: void,
+    failed_transient: void,
+};
+
+/// One pooled connection resolves tenant id then active provider, mirroring
+/// `event_loop_writepath_resolve.resolveTenantAndProvider`'s drain order.
+fn resolveTenant(alloc: std.mem.Allocator, pool: *pg.Pool, workspace_id: []const u8) TenantResolution {
+    const conn = pool.acquire() catch |err| {
+        log.warn("lease_resolve_acquire_failed", .{ .err = @errorName(err) });
+        return .{ .failed_transient = {} };
+    };
+    defer pool.release(conn);
+    const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
+        log.err("lease_tenant_lookup_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
+        return if (err == error.WorkspaceNotFound) .{ .failed_permanent = {} } else .{ .failed_transient = {} };
+    };
+    const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| {
+        log.warn("lease_provider_resolve_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
+        return switch (err) {
+            error.CredentialMissing,
+            error.CredentialDataMalformed,
+            error.PlatformKeyMissing,
+            error.TenantHasNoWorkspace,
+            => .{ .failed_permanent = {} },
+            else => .{ .failed_transient = {} },
+        };
+    };
+    return .{ .ok = .{ .tenant_id = tenant_id, .resolved = resolved } };
+}

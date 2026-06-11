@@ -2,16 +2,16 @@
 //!
 //! `leaseNext` delegates assignment to `assign.select`: across all active
 //! zombies it atomically CLAIMS one (sticky-preferred), then either reclaims an
-//! expired holder's event or pulls a fresh one. For a fresh lease it
-//! re-orchestrates the worker write path's pre-execution steps (insert-received
-//! → resolve tenant/provider → balance gate → debit receive → approval gate →
-//! debit stage) plus the `secrets_map`/context-budget resolution lifted from
-//! `executeInSandbox`; a reclaim reuses the prior lease's billing (no
-//! re-charge). Either way it persists a `fleet.runner_leases` row carrying the
-//! durable event envelope + the claim's monotonic `fencing_token`. It calls the
-//! existing leaf helpers rather than refactoring `writepath.run`, so the direct
-//! path stays byte-identical at the cost of deliberate orchestration
-//! duplication — the shared control-plane abstraction is a follow-up.
+//! expired holder's event or pulls a fresh one. The pre-execution billing +
+//! gate pass (insert-received → resolve tenant/provider → balance gate → debit
+//! receive → approval gate, plus the terminal `gate_blocked` writes for
+//! non-retryable refusals) lives in `service_billing.zig` (RULE FLL split);
+//! this file keeps the lease build: `secrets_map`/context-budget resolution
+//! lifted from `executeInSandbox`, the `fleet.runner_leases` row carrying the
+//! durable event envelope + the claim's monotonic `fencing_token`, and the
+//! 200 response. A zombie that declares credentials never receives a lease
+//! without them — a missing secret refuses the lease with a terminal row
+//! instead of shipping a silent null map (RULE ESO).
 //!
 //! Faithful, non-atomic: the debit fires here (pre-execution estimate, never
 //! re-charged at report). `inline` secrets only.
@@ -34,16 +34,12 @@ const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
+const billing = @import("service_billing.zig");
 const lease_row = @import("service_lease_row.zig");
 const ZombieSession = @import("zombie_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const context_resolve = @import("context_resolve.zig");
-const approval_gate = @import("approval_gate.zig");
 const rows = @import("event_rows.zig");
-const metering = @import("../zombie/metering.zig");
-const activity_publisher = @import("../zombie/activity_publisher.zig");
-const redis_zombie = @import("../queue/redis_zombie.zig");
-const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const event_envelope = wire.event_envelope;
@@ -75,7 +71,7 @@ pub fn leaseNext(hx: Hx) void {
     };
     defer session.deinit(hx.alloc);
 
-    const billed = resolveBilling(hx, &session, acq) orelse {
+    const billed = billing.resolveBilling(hx, &session, acq) orelse {
         releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
     };
@@ -84,114 +80,6 @@ pub fn leaseNext(hx: Hx) void {
         log.err("lease_issue_failed", .{ .zombie_id = acq.zombie_id, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
-}
-
-/// Fresh → run the pre-execution write-path billing; reclaim → reuse the prior
-/// lease's billing (the original lease already debited; never re-charged).
-fn resolveBilling(hx: Hx, session: *ZombieSession, acq: assign.Acquired) ?Billed {
-    switch (acq.kind) {
-        .reclaim => {
-            const r = acq.reused.?;
-            return Billed{ .tenant_id = r.tenant_id, .posture = r.posture, .model = r.model };
-        },
-        .fresh => {
-            var event = eventView(acq);
-            return runBilling(hx, session, &event);
-        },
-    }
-}
-
-/// A borrowed `ZombieEvent` view over the acquired envelope for the leaf write
-/// helpers (read-only — never mutated or freed; the slices are arena-owned).
-fn eventView(acq: assign.Acquired) redis_zombie.ZombieEvent {
-    return .{
-        .event_id = @constCast(acq.event_id),
-        .actor = @constCast(acq.actor),
-        .event_type = @constCast(acq.event_type),
-        .workspace_id = @constCast(acq.workspace_id),
-        .request_json = @constCast(acq.request_json),
-        .created_at_ms = acq.event_created_at,
-    };
-}
-
-/// Mirror `event_loop_writepath.run` steps 1–7 via the leaf helpers, then
-/// resolve the provider so the caller can build the lease. Any blocked/failed
-/// gate returns null → the caller releases the claim and answers no-work. (A
-/// blocked-gate event stays un-acked; markBlocked/dead-letter handling is a
-/// follow-up, as in the direct path.)
-fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.ZombieEvent) ?Billed {
-    const alloc = hx.alloc;
-    const pool = hx.ctx.pool;
-
-    rows.insertReceivedRow(alloc, pool, session, event) catch |err| {
-        log.err("lease_received_insert_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
-        return null;
-    };
-    // Open the SSE activity bracket the deleted worker published on receive —
-    // the dashboard + `zombiectl steer` consume the `event_received` frame to
-    // start the live tail. Best-effort (the publisher swallows failures).
-    var scratch = activity_publisher.Scratch.init(alloc);
-    defer scratch.deinit();
-    activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.zombie_id, event.event_id, event.actor);
-
-    var tr = resolveTenant(alloc, pool, session.workspace_id) orelse return null;
-    // Own the resolved provider for the whole billing pass: on success it is
-    // carried into `Billed` so the lease delivers the SAME key it billed (no
-    // second resolve, no rotation TOCTOU); on any gate failure the defer zeroes
-    // + frees it (arena teardown does not zero, so the secureZero is load-bearing).
-    var committed = false;
-    defer if (!committed) tr.resolved.deinit(alloc);
-    const ctx = metering.PreflightContext{
-        .workspace_id = session.workspace_id,
-        .zombie_id = session.zombie_id,
-        .event_id = event.event_id,
-        .posture = tr.resolved.mode,
-        .provider = tr.resolved.provider,
-        .model = tr.resolved.model,
-    };
-    const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
-
-    if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
-        log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id });
-        return null;
-    }
-    if (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy) != .deducted) return null;
-    switch (approval_gate.checkApprovalGate(alloc, session, event, pool, hx.ctx.queue)) {
-        .passed => {},
-        .pending => {
-            // Human decision outstanding: answer no-work; the next lease poll
-            // re-evaluates the recorded gate ref. No thread waits.
-            log.info("lease_gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
-            return null;
-        },
-        .blocked, .auto_killed => {
-            log.info("lease_gate_blocked", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
-            return null;
-        },
-    }
-    // No issue-time stage debit: run fee + tokens meter on /renew + settle at report.
-
-    committed = true; // ownership of tr.resolved transfers to the returned Billed
-    return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
-}
-
-/// One pooled connection resolves tenant id then active provider, mirroring
-/// `event_loop_writepath_resolve.resolveTenantAndProvider`'s drain order.
-fn resolveTenant(alloc: std.mem.Allocator, pool: *@import("pg").Pool, workspace_id: []const u8) ?struct { tenant_id: []u8, resolved: tenant_provider.ResolvedProvider } {
-    const conn = pool.acquire() catch |err| {
-        log.warn("lease_resolve_acquire_failed", .{ .err = @errorName(err) });
-        return null;
-    };
-    defer pool.release(conn);
-    const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
-        log.err("lease_tenant_lookup_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
-        return null;
-    };
-    const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| {
-        log.warn("lease_provider_resolve_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
-        return null;
-    };
-    return .{ .tenant_id = tenant_id, .resolved = resolved };
 }
 
 /// Build the lease payload + persist the `fleet.runner_leases` row (with the
@@ -210,6 +98,24 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
         log.warn("lease_unknown_event_type", .{ .zombie_id = acq.zombie_id, .event_type = acq.event_type });
         releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
+    };
+    // Resolve declared secrets BEFORE building the lease: a missing credential
+    // refuses the lease with a terminal row (RULE ESO — no lease ships with a
+    // silent null secrets map); a transient vault/DB failure refuses without a
+    // terminal write so the delivery stays leasable (RULE ECL). Entries are
+    // arena-scoped and serialized synchronously by `hx.ok`.
+    const secret_entries: ?[]secrets_resolve.ResolvedSecret = blk: {
+        if (session.config.credentials.len == 0) break :blk null;
+        break :blk secrets_resolve.resolveSecretsMap(hx.alloc, hx.ctx.pool, session.workspace_id, session.config.credentials) catch |err| {
+            if (err == error.CredentialNotFound) {
+                log.warn("lease_secret_missing", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id });
+                billing.blockEvent(hx, acq.zombie_id, acq.event_id, rows.LABEL_SECRET_MISSING);
+            } else {
+                log.warn("lease_secrets_resolve_failed", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .err = @errorName(err) });
+            }
+            releaseClaim(hx, acq.zombie_id, acq.fencing_token);
+            return replyNoWork(hx);
+        };
     };
     const envelope = event_envelope{
         .event_id = acq.event_id,
@@ -233,7 +139,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
             .lease_expires_at = acq.leased_until,
             .secret_delivery = .@"inline",
             .event = envelope,
-            .policy = resolveExecutionPolicy(hx, session, resolved),
+            .policy = resolveExecutionPolicy(hx, session, resolved, secret_entries),
             // The installed SKILL.md body (extracted by ZombieSession), so the runner
             // delivers it to NullClaw. `claimZombie` resolves the session before the
             // fresh/reclaim split, so this is set identically on both paths. Borrowed
@@ -262,25 +168,23 @@ fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.Resol
     };
 }
 
-/// `secrets_map` (inline, parsed bodies) + context budget + the resolved
-/// provider+key — the resolution `executeInSandbox` does per execution, lifted
-/// onto the lease wire. Secret bodies and the provider key are arena-scoped and
-/// serialized synchronously by `hx.ok`; they are never logged (Invariant: no
-/// secret bytes in logs). `resolved` is owned by the caller and outlives `hx.ok`.
-fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_provider.ResolvedProvider) execution_policy.ExecutionPolicy {
+/// `secrets_map` (inline, pre-resolved parsed bodies from `issueLease`) +
+/// context budget + the resolved provider+key — the resolution
+/// `executeInSandbox` does per execution, lifted onto the lease wire. Secret
+/// bodies and the provider key are arena-scoped and serialized synchronously
+/// by `hx.ok`; they are never logged (Invariant: no secret bytes in logs).
+/// `resolved` is owned by the caller and outlives `hx.ok`. Resolution failures
+/// refused the lease upstream — by here `entries` is complete or absent.
+fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret) execution_policy.ExecutionPolicy {
     const alloc = hx.alloc;
     const budget = context_resolve.resolveContextBudget(session.config.context, session.config.model);
     var secrets_map: ?std.json.Value = null;
-    if (session.config.credentials.len > 0) {
-        if (secrets_resolve.resolveSecretsMap(alloc, hx.ctx.pool, session.workspace_id, session.config.credentials)) |entries| {
-            var obj: std.json.ObjectMap = .empty;
-            for (entries) |entry| {
-                obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
-            }
-            secrets_map = .{ .object = obj };
-        } else |err| {
-            log.warn("lease_secrets_resolve_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
+    if (entries) |list| {
+        var obj: std.json.ObjectMap = .empty;
+        for (list) |entry| {
+            obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
         }
+        secrets_map = .{ .object = obj };
     }
     return .{
         .secrets_map = secrets_map,

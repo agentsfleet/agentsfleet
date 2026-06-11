@@ -176,6 +176,53 @@ test "integration: zombie messages idle — 202 returns event_id from xadd" {
     cleanupTestData(conn);
 }
 
+// ── Paused zombie: ingress refuses loudly ) ──────────────────────────────
+
+test "integration: steer paused zombie — 409 UZ-ZMB-012; resumed zombie steers fine" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const ZOMBIE_PAUSED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa04";
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        _ = try conn.exec(
+            \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+            \\VALUES ($1, $2, 'msg-paused', '---\nname: msg-paused\n---\ntest', '{"name":"msg-paused"}', 'paused', 0, 0)
+            \\ON CONFLICT (id) DO UPDATE SET status = 'paused'
+        , .{ ZOMBIE_PAUSED, TEST_WORKSPACE_ID });
+    }
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/messages", .{ TEST_WORKSPACE_ID, ZOMBIE_PAUSED });
+    defer ALLOC.free(url);
+
+    { // paused → 409 with the registered code + nothing enqueued
+        const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"wake up\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.conflict);
+        try std.testing.expect(r.bodyContains("UZ-ZMB-012"));
+    }
+
+    if (h.has_redis) { // resume → the same steer 202s (terminal refusals never block re-request)
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        _ = try conn.exec("UPDATE core.zombies SET status = 'active' WHERE id = $1", .{ZOMBIE_PAUSED});
+        const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"wake up\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.accepted);
+        var del = h.queue.command(&.{ "DEL", "zombie:" ++ "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa04" ++ ":events" }) catch null;
+        if (del) |*d| d.deinit(h.queue.alloc);
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1", .{ZOMBIE_PAUSED}) catch {};
+    cleanupTestData(conn);
+}
+
 // ── Active zombie happy path: same single ingress as idle ───────────────────
 
 test "integration: zombie messages active — 202 returns event_id (same single ingress)" {
