@@ -7,9 +7,9 @@
 **Status:** PENDING
 **Priority:** P2 — operator tooling: today "my zombie forgot X" has no self-serve move (no Command-Line Interface (CLI) verb, no UI consumes the tenant memory endpoint); the rational-but-destructive workaround is re-pasting facts into SKILL.md every run
 **Categories:** CLI
-**Batch:** B4 — after M91_003 (the `updated_at` numeric type stabilises output fixtures)
+**Batch:** B1 — runs **in parallel** with M91_001 (disjoint trees: `zombiectl/` here vs `src/zombied/` there; the M84_003 ∥ M84_005 pattern); one shared touchpoint — the `updated_at` wire type M91_003 changes — so this PR **lands after M91_003** and rebases the render helper
 **Branch:** — added at CHORE(open)
-**Depends on:** M91_003 (tenant JSON `updated_at` becomes a number; CLI renders the final shape once)
+**Depends on:** M91_003 (merge order only — `updated_at` becomes a JSON number; development is unblocked because the parsing lives in one isolated helper, the rebase touches one spot)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026) — grounded in the tenant read endpoint (`memory/handler.zig`: list / `?query=` / `?category=` / `?limit=` already shipped and read-only) and the M14_001 CLI intent (export/import deferred; read verbs never built); re-confirm at PLAN.
 
 **Canonical architecture:** `docs/architecture/direction.md:20` (the CLI surfaces raw entries; the human — like the model — is the search engine) + the tenant memory API in `src/zombied/http/handlers/memory/`.
@@ -123,7 +123,7 @@ Positional query → endpoint `?query=`; matches across key and content (server 
 
 ### §3 — Output as a service
 
-Terminal → aligned table with content preview truncated at a named constant (full content never lost: JSON mode carries it verbatim); piped stdout → stable JSON array of full entries; `updated_at` rendered as local time in the table, raw number in JSON.
+Terminal → aligned table with content preview truncated at a named constant (full content never lost: JSON mode carries it verbatim); piped stdout → stable JSON array of full entries; `updated_at` rendered as local time in the table, raw value in JSON. **Implementation default:** isolate `updated_at` parsing in a single helper — M91_003 flips the wire type from string to number, and this PR rebases that one spot when it lands second (see Batch).
 
 - **Dimension 3.1** — piped invocation emits parseable JSON with full untruncated content → `test_memory_output_json_when_piped`
 - **Dimension 3.2** — table preview truncates at the constant; multibyte content never splits a UTF-8 sequence → `test_memory_preview_truncation_utf8_safe`

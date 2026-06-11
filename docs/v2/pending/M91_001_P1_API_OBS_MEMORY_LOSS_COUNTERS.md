@@ -7,7 +7,7 @@
 **Status:** PENDING
 **Priority:** P1 — the platform sells durable memory; today a zombie's learned fact can vanish (evicted, windowed out, truncated) with zero signal, and the vector-escape-hatch evidence `direction.md:20` demands is unmeasurable
 **Categories:** API, OBS
-**Batch:** B1 — first in M91; its counters are the evidence feed every later workstream (and the Bucket-B escalation ladder) reads
+**Batch:** B1 — first in M91; its counters are the evidence feed every later workstream (and the Bucket-B escalation ladder) reads. Runs **in parallel** with M91_004 (disjoint trees: `src/zombied/` here vs `zombiectl/` there)
 **Branch:** — added at CHORE(open)
 **Depends on:** none (M84_005 shipped the capture/hydrate loop this instruments)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026; Indy directive "spec the memory updates") — code-grounded against `metrics_runner.zig`, `runner/memory.zig`, `zombie_memory.zig`, `memory/handler.zig`; re-confirm at PLAN.
