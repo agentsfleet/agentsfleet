@@ -5,10 +5,7 @@ const json = @import("json_helpers.zig");
 
 const getStr = json.getStr;
 const getInt = json.getInt;
-const getIntOrZero = json.getIntOrZero;
 const getFloat = json.getFloat;
-const getBool = json.getBool;
-const strArray = json.strArray;
 
 test "getStr returns null for missing key" {
     const alloc = std.testing.allocator;
@@ -37,29 +34,6 @@ test "getStr returns null for non-object" {
     try std.testing.expect(getStr(.{ .integer = 1 }, "k") == null);
 }
 
-test "getIntOrZero returns 0 for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "missing"));
-}
-
-test "getIntOrZero returns 0 for negative integer" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "val", .{ .integer = -5 });
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "val"));
-}
-
-test "getIntOrZero returns value for valid integer" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "count", .{ .integer = 42 });
-    try std.testing.expectEqual(@as(u64, 42), getIntOrZero(obj, "count"));
-}
-
 test "getFloat returns null for missing key" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
@@ -81,78 +55,6 @@ test "getFloat returns float for integer value" {
     defer obj.object.deinit(alloc);
     try obj.object.put(alloc, "temp", .{ .integer = 1 });
     try std.testing.expectEqual(@as(f64, 1.0), getFloat(obj, "temp").?);
-}
-
-test "getBool returns false for missing key" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try std.testing.expect(!getBool(obj, "missing"));
-}
-
-test "getBool returns value for bool field" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "ok", .{ .bool = true });
-    try std.testing.expect(getBool(obj, "ok"));
-}
-
-test "strArray returns empty for non-array input" {
-    const out = try strArray(std.testing.allocator, .{ .integer = 1 });
-    defer std.testing.allocator.free(out);
-    try std.testing.expectEqual(@as(usize, 0), out.len);
-}
-
-test "strArray cleans up partial allocations on OutOfMemory" {
-    // Trip the ArrayList's first backing-store allocation. errdefer
-    // out.deinit(alloc) fires (no-op since the list is still empty)
-    // and OutOfMemory bubbles to the caller. With fail_index=0 plus a
-    // non-empty array, no element can be appended so the error path is
-    // forced. Any partial-buffer leak would panic via the testing
-    // allocator at the end of the test.
-    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const alloc = failing.allocator();
-
-    var arr: std.json.Array = .init(std.testing.allocator);
-    defer arr.deinit();
-    try arr.append(.{ .string = "a" });
-    try arr.append(.{ .string = "b" });
-
-    const result = strArray(alloc, .{ .array = arr });
-    try std.testing.expectError(error.OutOfMemory, result);
-}
-
-test "strArray drops non-string elements silently" {
-    const alloc = std.testing.allocator;
-    var arr: std.json.Array = .init(alloc);
-    defer arr.deinit();
-    try arr.append(.{ .string = "keep1" });
-    try arr.append(.{ .integer = 42 });
-    try arr.append(.{ .string = "keep2" });
-    try arr.append(.{ .bool = true });
-    const out = try strArray(alloc, .{ .array = arr });
-    defer alloc.free(out);
-    try std.testing.expectEqual(@as(usize, 2), out.len);
-    try std.testing.expectEqualStrings("keep1", out[0]);
-    try std.testing.expectEqualStrings("keep2", out[1]);
-}
-
-test "strArray returns empty slice for empty array" {
-    const alloc = std.testing.allocator;
-    var arr: std.json.Array = .init(alloc);
-    defer arr.deinit();
-    const out = try strArray(alloc, .{ .array = arr });
-    defer alloc.free(out);
-    try std.testing.expectEqual(@as(usize, 0), out.len);
-}
-
-test "getBoolField returns false for non-bool value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "flag", .{ .string = "true" });
-    try std.testing.expect(!getBool(obj, "flag"));
 }
 
 test "getStringField returns null for non-object input" {
@@ -191,21 +93,6 @@ test "getInt returns null for non-object input" {
     try std.testing.expect(getInt(.null, "k") == null);
 }
 
-// ── getIntOrZero invalid types ───────────────────────────────────────────
-
-test "getIntOrZero returns 0 for non-integer value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "n", .{ .string = "not a number" });
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "n"));
-}
-
-test "getIntOrZero returns 0 for non-object input" {
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(.null, "k"));
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(.{ .bool = true }, "k"));
-}
-
 // ── getFloat invalid types ───────────────────────────────────────────────
 
 test "getFloat returns null for non-numeric value" {
@@ -222,19 +109,6 @@ test "getFloat returns null for non-object input" {
 }
 
 // ── getBool invalid types ────────────────────────────────────────────────
-
-test "getBool returns false for non-object input" {
-    try std.testing.expect(!getBool(.null, "k"));
-    try std.testing.expect(!getBool(.{ .integer = 1 }, "k"));
-}
-
-test "getBool returns false for non-bool string value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "flag", .{ .string = "true" });
-    try std.testing.expect(!getBool(obj, "flag"));
-}
 
 // ── T2: Edge — unicode and empty strings ─────────────────────────────────
 
@@ -266,14 +140,6 @@ test "getInt returns zero for zero value" {
     try std.testing.expectEqual(@as(i64, 0), getInt(obj, "n").?);
 }
 
-test "getIntOrZero returns 0 for zero value" {
-    const alloc = std.testing.allocator;
-    var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
-    defer obj.object.deinit(alloc);
-    try obj.object.put(alloc, "n", .{ .integer = 0 });
-    try std.testing.expectEqual(@as(u64, 0), getIntOrZero(obj, "n"));
-}
-
 test "getInt returns max i64" {
     const alloc = std.testing.allocator;
     var obj = std.json.Value{ .object = std.json.ObjectMap.empty };
@@ -303,9 +169,7 @@ test "json helpers 100 iterations no leak" {
 
         _ = getStr(obj, "s");
         _ = getInt(obj, "i");
-        _ = getIntOrZero(obj, "i");
         _ = getFloat(obj, "f");
-        _ = getBool(obj, "b");
         _ = getStr(obj, "missing");
         _ = getInt(obj, "missing");
 

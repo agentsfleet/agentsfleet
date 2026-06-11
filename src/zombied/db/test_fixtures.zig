@@ -19,8 +19,9 @@
 /// All seed inserts use ON CONFLICT DO NOTHING — safe to call multiple times
 /// even if a prior test run panicked before teardown.
 const std = @import("std");
-const clock = @import("common").clock;
-const env = @import("common").env;
+const common = @import("common");
+const clock = common.clock;
+const env = common.env;
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const pg = @import("pg");
 const db = @import("pool.zig");
@@ -211,7 +212,6 @@ pub fn seedPlatformProviderWithKey(
 ) !void {
     setTestEncryptionKey();
 
-    const vault = @import("../state/vault.zig");
     const tenant_billing = @import("../state/tenant_billing.zig");
     const id_format = @import("../types/id_format.zig");
     const model_rate_cache = @import("../state/model_rate_cache.zig");
@@ -229,7 +229,7 @@ pub fn seedPlatformProviderWithKey(
     defer obj.deinit(alloc);
     try obj.put(alloc, "provider", .{ .string = TEST_PROVIDER_NAME });
     try obj.put(alloc, "api_key", .{ .string = api_key });
-    try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
+    try storeVaultJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.
     const key_id = try id_format.generateZombieId(alloc);
@@ -272,9 +272,27 @@ pub fn openTestConn(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *
         env.testLiveValue("DATABASE_URL") orelse return null;
 
     const opts = try db.parseUrl(std.heap.page_allocator, url);
-    const pool = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
+    const pool = try pg.Pool.init(common.globalIo(), alloc, opts);
 
     errdefer pool.deinit();
     const conn = try pool.acquire();
     return .{ .pool = pool, .conn = conn };
+}
+
+/// Validate + canonical-stringify a JSON object and persist it through the
+/// production vault write path. Test-only composition — the production
+/// writer (the credentials handler) stringifies once itself and calls
+/// `vault.storeJsonPlaintext` directly.
+pub fn storeVaultJson(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    value: std.json.Value,
+) !void {
+    const vault = @import("../state/vault.zig");
+    try vault.validateObject(value);
+    const plaintext = try std.json.Stringify.valueAlloc(alloc, value, .{});
+    defer alloc.free(plaintext);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }

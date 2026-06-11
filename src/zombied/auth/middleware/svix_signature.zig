@@ -23,18 +23,9 @@ const errors = @import("errors.zig");
 const sv = @import("../crypto/svix_verify.zig");
 const logging = @import("log");
 
-pub const AuthCtx = auth_ctx.AuthCtx;
+const AuthCtx = auth_ctx.AuthCtx;
 
-// Re-export primitives for callers that still import from this file.
-pub const SVIX_ID_HEADER = sv.SVIX_ID_HEADER;
-pub const SVIX_TS_HEADER = sv.SVIX_TS_HEADER;
-pub const SVIX_SIG_HEADER = sv.SVIX_SIG_HEADER;
-pub const SVIX_SECRET_PREFIX = sv.SVIX_SECRET_PREFIX;
-pub const SVIX_SIG_VERSION = sv.SVIX_SIG_VERSION;
-pub const SVIX_MAX_DRIFT_SECONDS = sv.SVIX_MAX_DRIFT_SECONDS;
-pub const isTimestampFresh = sv.isTimestampFresh;
-
-pub const NowSecondsFn = *const fn () i64;
+const NowSecondsFn = *const fn () i64;
 
 fn defaultNowSeconds() i64 {
     return clock.nowSeconds();

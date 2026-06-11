@@ -5,7 +5,6 @@
 // Uses constant-time comparison to prevent timing side-channels (RULE CTM).
 
 const std = @import("std");
-const hs = @import("hmac_sig");
 const ec = @import("../errors/error_registry.zig");
 
 pub const VerifyConfig = struct {
@@ -85,25 +84,3 @@ pub const NoHeaders = struct {
     }
 };
 
-/// Verify a webhook signature using the given config.
-/// Returns true if the signature is valid.
-pub fn verifySignature(
-    cfg: VerifyConfig,
-    secret: []const u8,
-    timestamp: ?[]const u8,
-    body: []const u8,
-    signature: []const u8,
-) bool {
-    if (!std.mem.startsWith(u8, signature, cfg.prefix)) return false;
-    const expected = hs.hexDecode32(signature[cfg.prefix.len..]) orelse return false;
-
-    const mac = if (cfg.includes_timestamp) blk: {
-        const ts = timestamp orelse return false;
-        break :blk hs.computeMac(secret, &.{ cfg.hmac_version, ":", ts, ":", body });
-    } else hs.computeMac(secret, &.{body});
-
-    return hs.constantTimeEql(&mac, &expected);
-}
-
-pub const isTimestampFresh = hs.isTimestampFresh;
-pub const isTimestampFreshAt = hs.isTimestampFreshAt;

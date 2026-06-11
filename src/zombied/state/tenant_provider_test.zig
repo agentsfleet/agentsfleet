@@ -9,7 +9,6 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const tenant_provider = @import("tenant_provider.zig");
-const vault = @import("vault.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
@@ -44,7 +43,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     try obj.put(alloc, "provider", .{ .string = provider });
     try obj.put(alloc, "api_key", .{ .string = api_key });
     const value = std.json.Value{ .object = obj };
-    try vault.storeJson(alloc, conn, ws_id, provider, value);
+    try base.storeVaultJson(alloc, conn, ws_id, provider, value);
 
     // Generate a UUIDv7 (required by ck_platform_llm_keys_uid_uuidv7).
     const id_format = @import("../types/id_format.zig");
@@ -74,7 +73,7 @@ fn seedSelfManagedCredential(
     try obj.put(alloc, "api_key", .{ .string = api_key });
     try obj.put(alloc, "model", .{ .string = model });
     const value = std.json.Value{ .object = obj };
-    try vault.storeJson(alloc, conn, ws_id, name, value);
+    try base.storeVaultJson(alloc, conn, ws_id, name, value);
 }
 
 // ── Mode enum + ResolvedProvider invariants ────────────────────────────────
@@ -217,7 +216,7 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     defer obj.deinit(ALLOC);
     try obj.put(ALLOC, "provider", .{ .string = TP_TEST_PROVIDER });
     try obj.put(ALLOC, "model", .{ .string = "any-model" });
-    try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
+    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
 
     try std.testing.expectError(
         tenant_provider.ResolveError.CredentialDataMalformed,

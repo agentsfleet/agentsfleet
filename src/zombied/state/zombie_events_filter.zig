@@ -73,6 +73,8 @@ pub fn parseSince(input: []const u8, now_ms: i64) SinceError!i64 {
             'm' => 60_000,
             'h' => 3_600_000,
             'd' => 86_400_000,
+            // Invariant: the enclosing `if` admits only s/m/h/d before this
+            // switch — runtime input cannot reach this arm.
             else => unreachable,
         };
         return now_ms - num * unit_ms;

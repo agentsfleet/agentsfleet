@@ -77,8 +77,6 @@ pub const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 pub const ERR_AUTH_UNAVAILABLE = "UZ-AUTH-004";
 pub const ERR_SESSION_NOT_FOUND = "UZ-AUTH-005";
 pub const ERR_SESSION_EXPIRED = "UZ-AUTH-006";
-pub const ERR_SESSION_ALREADY_COMPLETE = "UZ-AUTH-007";
-pub const ERR_SESSION_LIMIT = "UZ-AUTH-008";
 pub const ERR_INSUFFICIENT_ROLE = "UZ-AUTH-009";
 pub const ERR_UNSUPPORTED_ROLE = "UZ-AUTH-010";
 pub const ERR_VERIFICATION_FAILED = "UZ-AUTH-011";
@@ -96,15 +94,7 @@ pub const ERR_PLATFORM_ADMIN_REQUIRED = "UZ-AUTH-021";
 pub const ERR_API_BACKPRESSURE = "UZ-API-001";
 pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
 // WORKSPACE
-pub const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
-pub const ERR_WORKSPACE_PAUSED = "UZ-WORKSPACE-002";
-pub const ERR_WORKSPACE_FREE_LIMIT = "UZ-WORKSPACE-003";
 // BILLING
-pub const ERR_BILLING_UNAVAILABLE = "UZ-BILLING-001";
-pub const ERR_BILLING_STATE_MISSING = "UZ-BILLING-002";
-pub const ERR_BILLING_STATE_INVALID = "UZ-BILLING-003";
-pub const ERR_BILLING_INVALID_EVENT = "UZ-BILLING-004";
-pub const ERR_CREDIT_EXHAUSTED = "UZ-BILLING-005";
 // SCORING
 // ENTITLEMENT
 // AGENT
@@ -122,11 +112,8 @@ pub const ERR_WEBHOOK_PAYLOAD_TOO_LARGE = "UZ-WH-030";
 // TOOL
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 // ZOMBIE
-pub const ERR_ZOMBIE_BUDGET_EXCEEDED = "UZ-ZMB-001";
-pub const ERR_ZOMBIE_AGENT_TIMEOUT = "UZ-ZMB-002";
 pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
 pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
-pub const ERR_ZOMBIE_CHECKPOINT_FAILED = "UZ-ZMB-005";
 pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
 // UZ-ZMB-007 retired — superseded by UZ-VAULT-002 (credential data too large).
 pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
@@ -147,9 +134,6 @@ pub const ERR_MEM_SCOPE = "UZ-MEM-001";
 pub const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 // GATE
-pub const ERR_GATE_COMMAND_FAILED = "UZ-GATE-001";
-pub const ERR_GATE_COMMAND_TIMEOUT = "UZ-GATE-002";
-pub const ERR_GATE_REPAIR_EXHAUSTED = "UZ-GATE-003";
 // STARTUP
 pub const ERR_STARTUP_ENV_CHECK = "UZ-STARTUP-001";
 pub const ERR_STARTUP_CONFIG_LOAD = "UZ-STARTUP-002";
@@ -157,11 +141,7 @@ pub const ERR_STARTUP_DB_CONNECT = "UZ-STARTUP-003";
 pub const ERR_STARTUP_REDIS_CONNECT = "UZ-STARTUP-004";
 pub const ERR_STARTUP_MIGRATION_CHECK = "UZ-STARTUP-005";
 pub const ERR_STARTUP_ENV_ALLOC = "UZ-STARTUP-006";
-pub const ERR_STARTUP_REDIS_GROUP = "UZ-STARTUP-007";
 // SANDBOX
-pub const ERR_SANDBOX_UNAVAILABLE = "UZ-SANDBOX-001";
-pub const ERR_SANDBOX_KILL_SWITCH = "UZ-SANDBOX-002";
-pub const ERR_SANDBOX_COMMAND_BLOCKED = "UZ-SANDBOX-003";
 // RUNNER
 pub const ERR_EXEC_SESSION_CREATE_FAILED = "UZ-EXEC-001";
 pub const ERR_EXEC_STAGE_START_FAILED = "UZ-EXEC-002";
@@ -177,7 +157,6 @@ pub const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
 pub const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
 // RELAY
-pub const ERR_RELAY_NO_PROVIDER = "UZ-RELAY-001";
 // APPROVAL
 pub const ERR_APPROVAL_PARSE_FAILED = "UZ-APPROVAL-001";
 pub const ERR_APPROVAL_NOT_FOUND = "UZ-APPROVAL-002";
@@ -186,7 +165,6 @@ pub const ERR_APPROVAL_REDIS_UNAVAILABLE = "UZ-APPROVAL-004";
 pub const ERR_APPROVAL_CONDITION_INVALID = "UZ-APPROVAL-005";
 pub const ERR_APPROVAL_ALREADY_RESOLVED = "UZ-APPROVAL-006";
 pub const ERR_APIKEY_INVALID = "UZ-APIKEY-001";
-pub const ERR_APIKEY_NO_EXECUTE_PERMISSION = "UZ-APIKEY-002";
 pub const ERR_APIKEY_NOT_FOUND = "UZ-APIKEY-003";
 pub const ERR_APIKEY_REVOKED = "UZ-APIKEY-004";
 pub const ERR_APIKEY_NAME_TAKEN = "UZ-APIKEY-005";
@@ -194,11 +172,8 @@ pub const ERR_APIKEY_ALREADY_REVOKED = "UZ-APIKEY-006";
 pub const ERR_APIKEY_READONLY_FIELD = "UZ-APIKEY-007";
 pub const ERR_APIKEY_MUST_REVOKE_FIRST = "UZ-APIKEY-008";
 pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
-pub const ERR_GRANT_PENDING = "UZ-GRANT-002";
-pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
 // RUNNER (zombie-runner /v1/runners control contract)
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
-pub const ERR_RUN_UNSUPPORTED_SECRET_DELIVERY = "UZ-RUN-003";
 pub const ERR_RUN_STALE_FENCING_TOKEN = "UZ-RUN-005";
 pub const ERR_RUN_LEASE_NOT_FOUND = "UZ-RUN-006";
 pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED = "UZ-RUN-007";
@@ -208,29 +183,6 @@ pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
 pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS = "UZ-RUN-012";
 pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
-
-// ── Error mapping table (bvisor pattern) ─────────────────────────────────────
-// Shared type for modules that map Zig errors to registry codes + messages.
-// Use with `inline for` over a const table for comptime-validated dispatch.
-pub const ErrorMapping = struct {
-    err: anyerror,
-    code: []const u8,
-    message: []const u8,
-};
-
-/// Comptime-validate an error mapping table: no empty codes/messages, no duplicate errors or codes.
-pub fn validateErrorTable(comptime table: []const ErrorMapping) void {
-    for (table) |entry| {
-        if (entry.code.len == 0) @compileError("error table: empty code");
-        if (entry.message.len == 0) @compileError("error table: empty message");
-    }
-    for (table, 0..) |a, i| {
-        for (table[i + 1 ..]) |b| {
-            if (a.err == b.err) @compileError("error table: duplicate error");
-            if (std.mem.eql(u8, a.code, b.code)) @compileError("error table: duplicate code " ++ a.code);
-        }
-    }
-}
 
 // ── Non-error constants (migrated from codes.zig) ──────────────────────────
 // Webhook user-facing messages
