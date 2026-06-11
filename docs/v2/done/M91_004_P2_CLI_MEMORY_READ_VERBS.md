@@ -4,7 +4,7 @@
 **Milestone:** M91
 **Workstream:** 004
 **Date:** Jun 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — operator tooling: today "my zombie forgot X" has no self-serve move (no Command-Line Interface (CLI) verb, no UI consumes the tenant memory endpoint); the rational-but-destructive workaround is re-pasting facts into SKILL.md every run
 **Categories:** CLI
 **Batch:** B1 — runs **in parallel** with M91_001 (disjoint trees: `zombiectl/` here vs `src/zombied/` there; the M84_003 ∥ M84_005 pattern); one shared touchpoint — the `updated_at` wire type M91_003 changes — so this PR **lands after M91_003** and rebases the render helper
