@@ -108,7 +108,7 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
             metrics_memory.incCaptureSkipped();
             continue;
         }
-        bytes += d.key.len + d.content.len + d.category.len;
+        bytes += adapter.entryBytes(d);
         if (bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
             // Truncate, don't drop the whole push (Failure Modes: oversized deltas).
             metrics_memory.incCaptureTruncated();
@@ -184,9 +184,9 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
     const entries = compactor.compact(rows);
     metrics_memory.setMemoryHydrationEntries(entries.len);
     // The window's loss is the difference between the full set and the kept
-    // prefix — same key+content+category arithmetic the Compactor budgets on.
+    // prefix — entryBytes is the same formula the Compactor budgets on.
     var dropped_bytes: usize = 0;
-    for (rows[entries.len..]) |d| dropped_bytes += d.key.len + d.content.len + d.category.len;
+    for (rows[entries.len..]) |d| dropped_bytes += adapter.entryBytes(d);
     metrics_memory.incHydrationDropped(rows.len - entries.len, dropped_bytes);
     log.info("memory_hydrated", .{ .zombie_id = zombie_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
     hx.ok(.ok, protocol.MemoryHydrateResponse{ .memory = entries });

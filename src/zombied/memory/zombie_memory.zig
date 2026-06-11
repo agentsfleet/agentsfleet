@@ -45,13 +45,20 @@ pub const Compactor = union(enum) {
     }
 };
 
-/// Newest-first prefix of `rows` whose cumulative key+content+category bytes stay
-/// within `budget`. Always includes at least the newest entry (so an oversized head
+/// The bytes one entry charges against any memory byte budget — the single
+/// formula shared by the hydration window, the capture push cap, and the
+/// dropped-bytes loss counter, so the three can never silently diverge.
+pub fn entryBytes(d: MemoryDelta) usize {
+    return d.key.len + d.content.len + d.category.len;
+}
+
+/// Newest-first prefix of `rows` whose cumulative entryBytes stay within
+/// `budget`. Always includes at least the newest entry (so an oversized head
 /// still hydrates something); the remainder is the cold tail, left in the database.
 fn windowByBytes(rows: []const MemoryDelta, budget: usize) []const MemoryDelta {
     var used: usize = 0;
     for (rows, 0..) |d, i| {
-        const sz = d.key.len + d.content.len + d.category.len;
+        const sz = entryBytes(d);
         if (i > 0 and used + sz > budget) return rows[0..i];
         used += sz;
     }
