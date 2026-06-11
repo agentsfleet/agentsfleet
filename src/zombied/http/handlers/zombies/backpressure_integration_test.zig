@@ -31,6 +31,15 @@ const ALLOC = std.testing.allocator;
 const ZOMBIE_BACKPRESSURE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001";
 const ZOMBIE_STREAM_CLASS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb002";
 const ZOMBIE_DRAIN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb003";
+/// Deliberately never seeded — drives the 404-after-registration path.
+const ZOMBIE_UNSEEDED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb004";
+const ZOMBIE_FD_CYCLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb005";
+/// Open/close cycles for the fd-return proof — enough that a one-fd-per-stream
+/// leak separates clearly from the baseline.
+const FD_CYCLES: usize = 3;
+/// Probe range for the fd-liveness count — covers every descriptor the
+/// harness (pool, server, clients) plausibly holds.
+const FD_PROBE_MAX: std.c.fd_t = 1024;
 /// api-class, none-auth probe route — sheds at the ceiling where the
 /// ops-class probes below must not.
 const API_PROBE_PATH = model_caps.MODEL_CAPS_PATH;
@@ -228,6 +237,106 @@ test "integration: the SSE stream class is exempt from the api ceiling" {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     fixtures.cleanupWorkspaceData(conn);
+}
+
+test "integration: a stream rejected after registration releases its slot" {
+    // Pins the non-handoff defer in the stream handler: a request that claims
+    // a registry slot but fails authorization (unknown zombie → 404) must
+    // release the slot on the request path. A leak here silently erodes the
+    // stream cap one failed request at a time.
+    const h = fixtures.startHarnessWithWorkspace(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const path = try fixtures.streamPath(ALLOC, ZOMBIE_UNSEEDED);
+    defer ALLOC.free(path);
+
+    const denied = try (try h.get(path).bearer(fixtures.TOKEN_OPERATOR)).send();
+    defer denied.deinit();
+    try denied.expectStatus(.not_found);
+    try denied.expectErrorCode(ec.ERR_ZOMBIE_NOT_FOUND);
+
+    try std.testing.expectEqual(@as(usize, 0), h.streams.count());
+    try std.testing.expectEqual(@as(u64, 0), metrics.snapshot().sse_in_flight_streams);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    fixtures.cleanupWorkspaceData(conn);
+}
+
+fn countOpenFds() usize {
+    // fcntl(F_GETFD) probes descriptor liveness without opening, closing, or
+    // perturbing anything — portable across macOS and Linux. The fixed probe
+    // range comfortably covers the harness's pool/server/test descriptors.
+    var n: usize = 0;
+    var fd: std.c.fd_t = 0;
+    while (fd < FD_PROBE_MAX) : (fd += 1) {
+        if (std.c.fcntl(fd, std.c.F.GETFD) != -1) n += 1;
+    }
+    return n;
+}
+
+test "integration: finished streams return their socket fds to the OS" {
+    // Regression pin for the fd leak the registry work fixed: the disowned
+    // client socket is the stream thread's to close — before the fix every
+    // finished stream leaked one fd, invisible to every other suite.
+    const h = fixtures.startHarnessWithWorkspace(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try fixtures.seedZombie(conn, ZOMBIE_FD_CYCLE, "bp-fd");
+    }
+
+    var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
+    defer pub_client.deinit();
+    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_FD_CYCLE);
+    defer ALLOC.free(channel);
+    const path = try fixtures.streamPath(ALLOC, ZOMBIE_FD_CYCLE);
+    defer ALLOC.free(path);
+
+    // Warmup cycle: let lazily-created descriptors (pool checkout, caches)
+    // exist before the baseline is taken.
+    try runStreamCycle(h, &pub_client, channel, path);
+    const baseline = countOpenFds();
+
+    var n: usize = 0;
+    while (n < FD_CYCLES) : (n += 1) {
+        try runStreamCycle(h, &pub_client, channel, path);
+    }
+
+    // The slot frees before the thread's final socket close (teardown is
+    // destroy → deregister → close), so poll the fd count itself.
+    var attempt: usize = 0;
+    var fds_now = countOpenFds();
+    while (fds_now > baseline and attempt < SLOT_RELEASE_MAX_ATTEMPTS) : (attempt += 1) {
+        common.sleepNanos(SLOT_RELEASE_POLL_NS);
+        fds_now = countOpenFds();
+    }
+    try std.testing.expectEqual(baseline, fds_now);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    fixtures.cleanupWorkspaceData(conn);
+}
+
+/// One full stream lifecycle: connect, settle, close + wake, then wait for
+/// the slot release so cycles never overlap.
+fn runStreamCycle(h: *TestHarness, pub_client: anytype, channel: []const u8, path: []const u8) !void {
+    var sc = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    common.sleepNanos(fixtures.SUBSCRIBE_SETTLE_NS);
+    fixtures.closeAndWakeSubscriber(&sc, pub_client, channel);
+    sc.deinit();
+    var attempt: usize = 0;
+    while (h.streams.count() > 0 and attempt < SLOT_RELEASE_MAX_ATTEMPTS) : (attempt += 1) {
+        common.sleepNanos(SLOT_RELEASE_POLL_NS);
+    }
+    try std.testing.expectEqual(@as(usize, 0), h.streams.count());
 }
 
 // ── SSE stream cap ──────────────────────────────────────────────────────────

@@ -222,6 +222,43 @@ test "M10_002: external counters tolerate concurrent increments" {
     try std.testing.expectEqual(before.retry_after_hints_total + N, after.retry_after_hints_total);
 }
 
+// ── SSE hub counters (dropped frames + reconnects) ──────────────────────
+
+// The hub/subscription behaviour tests assert their local mirrors (dropCount,
+// delivery recovery); these pin the operator-facing counters themselves so the
+// inc call sites, the snapshot fields, and the render lines cannot silently
+// go dead while the behaviour suite stays green.
+
+test "incSseDroppedFrames increments its dedicated counter by 1" {
+    const before = mc.snapshot();
+    mc.incSseDroppedFrames();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.sse_dropped_frames_total + 1, after.sse_dropped_frames_total);
+}
+
+test "incSseHubReconnects increments its dedicated counter by 1" {
+    const before = mc.snapshot();
+    mc.incSseHubReconnects();
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.sse_hub_reconnects_total + 1, after.sse_hub_reconnects_total);
+}
+
+test "renderPrometheus carries the SSE hub counter lines with snapshot values" {
+    const alloc = std.testing.allocator;
+    const render = @import("metrics_render.zig");
+    mc.incSseDroppedFrames();
+    mc.incSseHubReconnects();
+    const snap = mc.snapshot();
+    const output = try render.renderPrometheus(alloc, false);
+    defer alloc.free(output);
+    var dropped_buf: [128]u8 = undefined;
+    const dropped = try std.fmt.bufPrint(&dropped_buf, "zombie_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
+    try std.testing.expect(std.mem.indexOf(u8, output, dropped) != null);
+    var reconnects_buf: [128]u8 = undefined;
+    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "zombie_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
+    try std.testing.expect(std.mem.indexOf(u8, output, reconnects) != null);
+}
+
 // T12: Compile-time check — every ExternalSnapshot field exists in Snapshot.
 // Catches drift if someone adds a field to ExternalSnapshot without updating Snapshot.
 comptime {

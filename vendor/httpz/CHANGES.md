@@ -73,7 +73,10 @@ rather than `count` private rings — total standing capacity is `backlog`, not
 **Tests:** existing pool tests (`batch add`, `small fuzz`, `large fuzz`) pass
 unmodified; new `parked thread cannot starve queued jobs` pins the fix (it hangs
 forever on the old dispatch) and `pending reports queued depth` pins the new
-surface. Run from this directory: `zig build test`.
+surface. A follow-up coverage pass adds four more: `stop drains jobs queued
+before it`, `stop is idempotent`, `pending counts across ring wraparound`, and
+`batch push wakes enough threads for the batch`. Run from this directory:
+`zig build test`.
 
 **Upstream PR:** TBD — Indy's call on filing (this rewrite vs a minimal
 work-stealing fix are different upstream conversations).

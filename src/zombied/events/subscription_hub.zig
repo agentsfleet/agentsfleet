@@ -130,9 +130,13 @@ pub fn subscribe(self: *SubscriptionHub, channel_name: []const u8) SubscribeErro
 
 fn attach(self: *SubscriptionHub, sub: *Subscription) SubscribeError!void {
     // Everything fallible is allocated before the lock; `consumed` routes the
-    // spares to the map or back to the allocator on the way out.
+    // spares to the map or back to the allocator on the way out. The explicit
+    // catch covers the window before the consumed-defer is registered.
     const spare_key = try self.alloc.dupe(u8, sub.channel_name);
-    const spare_entry = try self.alloc.create(ChannelEntry);
+    const spare_entry = self.alloc.create(ChannelEntry) catch |err| {
+        self.alloc.free(spare_key);
+        return err;
+    };
     spare_entry.* = .{};
     var consumed = false;
     defer if (!consumed) {

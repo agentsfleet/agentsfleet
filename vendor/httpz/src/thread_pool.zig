@@ -444,6 +444,127 @@ test "ThreadPool: pending reports queued depth" {
     try t.expectEqual(3, testCount);
 }
 
+test "ThreadPool: stop drains jobs queued before it" {
+    // Pins the drain-before-exit semantic (CHANGES.md Patch 2): getNext checks
+    // queue-empty BEFORE stopped, so jobs queued before stop() are claimed and
+    // executed before the pool threads exit. If getNext were reordered to
+    // honor stopped first, the three queued jobs below would be dropped and
+    // testCount would stay 0.
+    defer t.reset();
+
+    testCount = 0;
+    testParkActive.store(false, .monotonic);
+    testParkGate.store(true, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 1, .backlog = 8, .buffer_size = 512 });
+    defer tp.deinit();
+
+    tp.spawnOne(.{PARK_JOB});
+    while (testParkActive.load(.monotonic) == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    // the single thread is parked, so these three can only sit in the queue
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+
+    // release the parked thread and stop immediately (no waiting): stop()
+    // must join only after the already-queued jobs were claimed and executed
+    testParkGate.store(false, .monotonic);
+    tp.stop();
+    try t.expectEqual(3, testCount);
+}
+
+test "ThreadPool: stop is idempotent" {
+    defer t.reset();
+
+    testCount = 0;
+    testParkGate.store(false, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 2, .backlog = 8, .buffer_size = 512 });
+    defer tp.deinit();
+
+    tp.spawnOne(.{1});
+    while (tp.empty() == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    tp.stop();
+    // second call must return without crashing or double-joining the threads
+    tp.stop();
+    try t.expectEqual(1, testCount);
+}
+
+test "ThreadPool: pending counts across ring wraparound" {
+    // Pins the head < tail branch of pending() (queue.len - tail + head).
+    // backlog = 4 -> ring of 4 slots, one kept open -> capacity 3. The park
+    // job advances head and tail to 1; the three queued jobs walk head
+    // 1 -> 2 -> 3 -> 0 (wraps), so head(0) < tail(1) when pending() runs.
+    defer t.reset();
+
+    testCount = 0;
+    testParkActive.store(false, .monotonic);
+    testParkGate.store(true, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 1, .backlog = 4, .buffer_size = 512 });
+    defer tp.deinit();
+
+    tp.spawnOne(.{PARK_JOB});
+    while (testParkActive.load(.monotonic) == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+
+    // the single thread is parked, so these three can only sit in the queue
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+    tp.spawnOne(.{1});
+    try t.expectEqual(3, tp.pending());
+
+    testParkGate.store(false, .monotonic);
+    while (tp.empty() == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+    tp.stop();
+    try t.expectEqual(0, tp.pending());
+    try t.expectEqual(3, testCount);
+}
+
+test "ThreadPool: batch push wakes enough threads for the batch" {
+    // Pins the ready.len == 1 -> signal else broadcast choice in push(): a
+    // single push of a two-job batch needs two idle threads woken. With a
+    // signal-only mutation one thread wakes and parks in job 1 while job 2
+    // sits queued forever; the parked count never reaches 2 and the bounded
+    // poll below fails the test instead of hanging.
+    defer t.reset();
+
+    testCount = 0;
+    testParkActive.store(false, .monotonic);
+    testParkActiveCount.store(0, .monotonic);
+    testParkGate.store(true, .monotonic);
+
+    var tp = try ThreadPool(testParkOrIncr).init(t.io, t.arena.allocator(), .{ .count = 2, .backlog = 8, .buffer_size = 512 });
+    defer tp.deinit();
+
+    // one push() call with a two-element slice: spawn only stages into the
+    // producer batch, flush(2) hands batch[0..2] to push in a single call
+    tp.spawn(.{PARK_JOB});
+    tp.spawn(.{PARK_JOB});
+    tp.flush(2);
+
+    var elapsed_ms: usize = 0;
+    while (testParkActiveCount.load(.monotonic) < 2 and elapsed_ms < 2000) : (elapsed_ms += 1) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+    try t.expectEqual(2, testParkActiveCount.load(.monotonic));
+
+    testParkGate.store(false, .monotonic);
+    while (tp.empty() == false) {
+        try t.io.sleep(.fromMilliseconds(1), .awake);
+    }
+    tp.stop();
+}
+
 var testSum: u64 = 0;
 var testCount: u64 = 0;
 var testC1: u64 = 0;
@@ -472,10 +593,13 @@ fn testIncr(c: u64, buf: []u8) void {
 const PARK_JOB: u64 = 999;
 var testParkGate = std.atomic.Value(bool).init(false);
 var testParkActive = std.atomic.Value(bool).init(false);
+// concurrently-parked thread count; tests that read it reset it themselves
+var testParkActiveCount = std.atomic.Value(u32).init(0);
 fn testParkOrIncr(c: u64, buf: []u8) void {
     _ = buf;
     if (c == PARK_JOB) {
         testParkActive.store(true, .monotonic);
+        _ = testParkActiveCount.fetchAdd(1, .monotonic);
         while (testParkGate.load(.monotonic)) {
             t.io.sleep(.fromMilliseconds(1), .awake) catch unreachable;
         }

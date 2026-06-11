@@ -225,6 +225,21 @@ test "fleet runner PATCH rejects malformed actions and missing runners" {
 const STREAMS_PATH = "/v1/fleet/streams";
 const ZOMBIE_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 
+test "fleet streams: non-GET methods are 405" {
+    // router.match resolves /v1/fleet/streams for ANY method; the invoke fn
+    // is the only 405 gate — without this pin a POST would fall through to
+    // the listing handler.
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest, error.MissingRedisUrl => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const denied = try (try (try h.request(.POST, STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).json("{}")).send();
+    defer denied.deinit();
+    try denied.expectStatus(.method_not_allowed);
+}
+
 test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     sse_fixtures.requireRedisEnvOrSkip() catch return error.SkipZigTest;
     const h = startHarness() catch |err| switch (err) {
