@@ -1,0 +1,10 @@
+family 1 allow0 uz_egress 0
+inet uz_egress egress_nat
+  [ meta load nfproto => reg 1 ]
+  [ cmp eq reg 1 0x00000002 ]
+  [ payload load 4b @ network header + 12 => reg 1 ]
+  [ bitwise reg 1 = ( reg 1 & 0xfcffffff ) ^ 0x00000000 ]
+  [ cmp eq reg 1 0x0000450a ]
+  [ meta load oifname => reg 1 ]
+  [ cmp neq reg 1 0x65767a75 0x00306874 0x00000000 0x00000000 ]
+  [ masq ]

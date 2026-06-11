@@ -86,15 +86,13 @@ else
   echo "  ✓ Tailscale installed and active"
 fi
 
-# 3.0 bubblewrap installed
-echo "-- checking bubblewrap (step 3.0)"
-bwrap_result="$(remote_cmd "command -v bwrap >/dev/null 2>&1 && bwrap --version 2>&1 || echo 'bwrap_missing'")"
-if echo "$bwrap_result" | grep -q "bwrap_missing"; then
-  echo "  ✗ bubblewrap (bwrap) not installed"
-  missing=$((missing + 1))
-else
-  echo "  ✓ bubblewrap installed ($bwrap_result)"
-fi
+# 3.0 egress host deps — bubblewrap (+ --info-fd/--block-fd), nftables, iproute2
+# (egress workstream). Single-sourced with the CI deploy-readiness probe so both paths
+# assert the same versions; supersedes the prior bwrap-presence-only check.
+echo "-- checking egress host deps (step 3.0)"
+# shellcheck source=../../lib/egress_host_deps.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/egress_host_deps.sh"
+egress_probe_remote remote_cmd || missing=$((missing + 1))
 
 # 3.0 git installed
 echo "-- checking git (step 3.0)"

@@ -147,12 +147,16 @@ All remaining steps use the Tailscale hostname `zombie-dev-worker-ant`.
 
 | Package | Required by | Why |
 |---------|------------|-----|
-| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing |
+| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing; the egress handoff needs `--info-fd` + `--block-fd` (bwrap ≥ 0.8; prod boxes run 0.11) |
+| `nftables` | `zombie-runner` | **Egress allowlist (M84_004)** — the per-lease kernel egress rules on the veth |
+| `iproute2` | `zombie-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
 | `git` | `zombie-runner` | Clones repos into workspace for agent runs |
 | `ca-certificates` | `zombie-runner` | TLS connection to the zombied control plane |
 | `openssl` | `zombie-runner` | TLS runtime libraries |
 
-Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12.
+Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12. The egress boundary also needs the service to hold **CAP_NET_ADMIN** — granted by the systemd unit (`AmbientCapabilities`), not a package; the runner's own startup probe + `doctor` confirm it at runtime.
+
+The installed versions of the three egress packages (`bubblewrap` + `--info-fd`/`--block-fd`, `nftables`, `iproute2`) are **asserted and recorded** by the shared probe `playbooks/lib/egress_host_deps.sh`, called from both `02_host_readiness.sh` (manual) and `03_deploy_readiness.sh` (run in CI by `deploy-dev.yml` → recorded in the job log). A box missing any of them fails readiness loud, before first lease.
 
 ```bash
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
@@ -162,6 +166,8 @@ set -euo pipefail
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   bubblewrap \
+  nftables \
+  iproute2 \
   ca-certificates \
   git \
   openssl
@@ -180,12 +186,18 @@ REMOTE
 ```bash
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant \
-  "bwrap --version && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
+  "bwrap --version && nft --version && ip -V && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
 # Expected:
-#   bubblewrap 0.8.0 (or similar)
+#   bubblewrap 0.11.0 (prod boxes; 0.8+ suffices — needs --info-fd/--block-fd)
+#   nftables v1.x
+#   iproute2-6.x
 #   git version 2.x
 #   OpenSSL 3.x
 #   all deps ok
+#
+# The egress-specific trio (bubblewrap + flags, nftables, iproute2) is also
+# asserted programmatically by playbooks/lib/egress_host_deps.sh via
+# 02_host_readiness.sh and the CI-run 03_deploy_readiness.sh.
 ```
 
 **Gate check:** `SECTIONS=2 ./playbooks/founding/06_runner_bootstrap_dev/00_gate.sh`

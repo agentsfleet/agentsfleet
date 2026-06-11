@@ -161,10 +161,14 @@ All remaining steps use the Tailscale hostname `${WORKER_NAME}`.
 
 | Package | Required by | Why |
 |---------|------------|-----|
-| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing |
+| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all`; the egress handoff needs `--info-fd` + `--block-fd` (Trixie ships 0.11; ≥ 0.8 suffices) |
+| `nftables` | `zombie-runner` | **Egress allowlist (M84_004)** — per-lease kernel egress rules on the veth |
+| `iproute2` | `zombie-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
 | `git` | `zombie-runner` | Clones repos into workspace for agent runs |
 | `ca-certificates` | `zombie-runner` | TLS connection to the zombied control plane |
 | `openssl` | `zombie-runner` | TLS runtime libraries |
+
+The egress service also needs **CAP_NET_ADMIN** (granted by the systemd unit's `AmbientCapabilities`, not a package). The same `playbooks/lib/egress_host_deps.sh` probe used by the dev readiness scripts asserts + records the egress trio's versions here too — run it (or the acceptance one-liner below) after install; a prod box missing any of them must not take leases.
 
 ```bash
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
@@ -174,6 +178,8 @@ set -euo pipefail
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   bubblewrap \
+  nftables \
+  iproute2 \
   ca-certificates \
   git \
   openssl
@@ -189,9 +195,11 @@ REMOTE
 ```bash
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
-  "bwrap --version && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
+  "bwrap --version && nft --version && ip -V && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
 # Expected:
-#   bubblewrap 0.9.0 (or similar — Trixie ships a newer version than Bookworm)
+#   bubblewrap 0.11.0 (Trixie ships 0.11; ≥ 0.8 has --info-fd/--block-fd)
+#   nftables v1.x
+#   iproute2-6.x
 #   git version 2.x
 #   OpenSSL 3.x
 #   all deps ok

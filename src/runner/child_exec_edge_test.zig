@@ -58,13 +58,14 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .host_id = "host-edge",
         .sandbox_tier = @tagName(contract.protocol.SandboxTier.dev_none),
         .workspace_base = "/tmp/zombie-runner",
-        .network_policy = .deny_all,
+        .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},
+        .registry_allowlist = &.{},
         .alloc = alloc,
     };
     const ws = "/tmp/zombie-ws-childexec";
-    const argv = try sandbox_args.buildArgv(globalIo(), alloc, cfg, ws);
+    const argv = try sandbox_args.buildArgv(globalIo(), alloc, cfg, ws, null);
     defer sandbox_args.freeArgv(alloc, argv);
 
     const ws_flag = argv[argv.len - 1];

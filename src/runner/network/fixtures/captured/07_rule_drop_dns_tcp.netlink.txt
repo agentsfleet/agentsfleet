@@ -1,0 +1,9 @@
+family 1 allow0 uz_egress 0
+inet uz_egress egress_fwd
+  [ meta load iifname => reg 1 ]
+  [ cmp eq reg 1 0x65767a75 0x00306874 0x00000000 0x00000000 ]
+  [ meta load l4proto => reg 1 ]
+  [ cmp eq reg 1 0x00000006 ]
+  [ payload load 2b @ transport header + 2 => reg 1 ]
+  [ cmp eq reg 1 0x00003500 ]
+  [ immediate reg 0 drop ]

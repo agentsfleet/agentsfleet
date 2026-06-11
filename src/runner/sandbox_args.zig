@@ -18,7 +18,7 @@ const build_options = @import("build_options");
 const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
-const network = @import("engine/network.zig");
+const Policy = @import("network/Policy.zig");
 const child_exec = @import("child_exec.zig");
 
 /// The only tier without isolation — derived from the enum (RULE UFS).
@@ -26,9 +26,17 @@ const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// System paths bound read-only when present (`--ro-bind-try` tolerates absence).
 const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt" };
-/// Used at two bind sites (RULE UFS); the rest are single-use bwrap flags whose
-/// literal spelling IS bwrap's CLI contract.
+/// Used at several bind sites (RULE UFS); the rest are single-use bwrap flags
+/// whose literal spelling IS bwrap's CLI contract.
 const RO_BIND = "--ro-bind";
+/// In-sandbox absolute paths for the parent-rendered resolver files: the
+/// static `/etc/hosts` (allowlist names → resolved IPs) and a resolver-less
+/// `/etc/resolv.conf`. Bound only when `EgressScope` supplied host-side paths.
+const ETC_HOSTS = "/etc/hosts";
+const ETC_RESOLV = "/etc/resolv.conf";
+/// The `allow_all` posture (the default) re-shares the host network namespace
+/// so the lease has full egress while the filtered-veth enforcement
+/// (`allow_list_egress` + `establishEgress`) is unbuilt (lands 2.0.1).
 const SHARE_NET = "--share-net";
 
 /// Daemon env-var prefix that must NEVER reach a sandboxed child — the
@@ -55,11 +63,21 @@ pub const ENV_PASSTHROUGH_ALLOWLIST = [_][]const u8{
     "LC_ALL", // locale — pass-through-if-set
 };
 
+/// The host-side rendered resolver files an established `EgressScope` produced:
+/// absolute paths to the per-lease static `/etc/hosts` and the resolver-less
+/// `/etc/resolv.conf`. `null` when egress is not enabled
+/// (`deny_all`, dev_none, or not yet established) — then no resolver files are
+/// bound and the child keeps its image defaults. Borrowed; not owned here.
+pub const EgressFiles = struct {
+    hosts_path: []const u8,
+    resolv_path: []const u8,
+};
+
 /// Build the child's exec argv. Sandboxed tiers prepend a bubblewrap wrapper.
 /// Every entry is dup'd into `alloc`; free with `freeArgv`. Errors when a
 /// sandboxed tier has no `bwrap` binary — the caller then fails the lease
 /// closed (Invariant 7) rather than running unsandboxed.
-pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
+pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8, egress: ?EgressFiles) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     errdefer freeList(alloc, &list);
 
@@ -67,7 +85,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     defer alloc.free(self_exe);
 
     const sandboxed = builtin.os.tag == .linux and !std.mem.eql(u8, cfg.sandbox_tier, DEV_NONE);
-    if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, cfg.network_policy);
+    if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy);
 
     try dup(alloc, &list, self_exe);
     try dup(alloc, &list, child_exec.SUBCOMMAND);
@@ -116,8 +134,12 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 }
 
 /// Append the bubblewrap wrapper: namespaces + ro system + rw workspace + the
-/// runner binary ro-bound (so the sandbox can exec it) + network policy + `--`.
-fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, net_policy: network.PolicyMode) !void {
+/// runner binary ro-bound (so the sandbox can exec it) + the per-lease resolver
+/// files when egress is enabled + `--`. INTERIM (until 2.0.1 option D): the
+/// `allow_all` posture re-shares the host netns (`--share-net`) so the lease has
+/// full egress while filtered-veth enforcement is unbuilt; `allow_list_egress`
+/// (strict) keeps its own netns and `deny_all` stays fully unshared (no network).
+fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
@@ -143,8 +165,23 @@ fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]cons
     try dup(alloc, list, self_exe);
     try dup(alloc, list, "--chdir");
     try dup(alloc, list, workspace);
-    // deny_all is covered by --unshare-all; registry_allowlist re-shares net.
-    if (net_policy == .registry_allowlist) try dup(alloc, list, SHARE_NET);
+    // The `allow_all` (default) posture re-shares the host netns so the lease
+    // has full egress; `allow_list_egress` keeps an unshared netns
+    // (egress arrives via the EgressScope veth) and `deny_all` has no network.
+    // Driven by the Policy strategy, not a hardcoded compare.
+    if (net_policy.sharesHostNet()) try dup(alloc, list, SHARE_NET);
+    // Resolver files: bind the parent-rendered static hosts + neutered
+    // resolv.conf over the child's, so allowlist names resolve via /etc/hosts
+    // and no resolver is reachable (port 53 is dropped at nft). Bound only when
+    // EgressScope established them — the net namespace stays unshared regardless.
+    if (egress) |e| {
+        try dup(alloc, list, RO_BIND);
+        try dup(alloc, list, e.hosts_path);
+        try dup(alloc, list, ETC_HOSTS);
+        try dup(alloc, list, RO_BIND);
+        try dup(alloc, list, e.resolv_path);
+        try dup(alloc, list, ETC_RESOLV);
+    }
     try dup(alloc, list, "--");
 }
 
