@@ -14,11 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 003
 **Date:** Jun 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — metering audit rows (the future invoice substrate) over-report under concurrency; ~1,170 lines of dead/test-only surface mislead readers and reviews; 24 src/lib tests never execute
 **Categories:** API, OBS
 **Batch:** B3 — after M90_001 + M90_002 merge (they consume symbols this purge would otherwise delete; every deletion re-greps against the merged tree)
-**Branch:** — (set at CHORE(open))
+**Branch:** feat/m90-003-purge
+**Test Baseline:** unit=1966 integration=172
 **Depends on:** M90_001 (wires `incApiBackpressureRejections`; reshapes gate files), M90_002 (wires `xautoclaimZombie`, adds failure-label consumers)
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 10, 2026) — from the Jun 10 full audit of `src/lib`, `src/zombied`, `src/runner`
 
