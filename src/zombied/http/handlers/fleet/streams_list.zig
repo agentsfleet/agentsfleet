@@ -21,9 +21,11 @@ pub fn innerListFleetStreams(hx: Hx, req: *httpz.Request) void {
         common.internalOperationError(hx.res, MSG_OUT_OF_MEMORY, hx.req_id);
         return;
     };
-    common.writeJson(hx.res, .ok, .{
-        .streams = rows,
-        .count = rows.len,
-        .max = hx.ctx.sse_max_streams,
+    // List envelope per the REST guidelines and the fleet-plane sibling
+    // (runners_list): items + total, plus the cap the count runs against.
+    hx.ok(.ok, .{
+        .items = rows,
+        .total = rows.len,
+        .max_streams = hx.ctx.sse_max_streams,
     });
 }

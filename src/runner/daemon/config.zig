@@ -104,7 +104,7 @@ fn loadDeadlines(env_map: *const std.process.Environ.Map) client_mod.Deadlines {
     d.report_ms = resolveDeadline(env_map, ENV_RUNNER_CP_REPORT_DEADLINE_MS, d.report_ms);
     d.activity_ms = resolveDeadline(env_map, ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS, d.activity_ms);
     d.renew_ms = resolveDeadline(env_map, ENV_RUNNER_CP_RENEW_DEADLINE_MS, d.renew_ms);
-    if (d.renew_ms + contract_constants.RENEWAL_TICK_MS >= contract_constants.RENEWAL_WINDOW_MS) {
+    if (d.renew_ms + common_constants.RENEWAL_TICK_MS >= common_constants.RENEWAL_WINDOW_MS) {
         log.warn("runner_cp_renew_deadline_clamped", .{ .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
         d.renew_ms = client_mod.RENEW_DEADLINE_MS;
     }
@@ -183,7 +183,7 @@ fn getOwned(env_map: *const std.process.Environ.Map, alloc: Allocator, name: []c
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const contract = @import("contract");
-const contract_constants = @import("common");
+const common_constants = @import("common");
 const client_mod = @import("control_plane_client.zig");
 const network = @import("../engine/network.zig");
 const logging = @import("log");
@@ -253,7 +253,7 @@ test "deadline parses default, clamps bounds, rejects garbage" {
 
 test "renew deadline override above the tick clamps back to the default" {
     const alloc = std.testing.allocator;
-    var env_map = try contract_constants.env.fromPairs(alloc, &.{
+    var env_map = try common_constants.env.fromPairs(alloc, &.{
         .{ ENV_RUNNER_CP_RENEW_DEADLINE_MS, "59000" }, // ≥ RENEWAL_TICK_MS
     });
     defer env_map.deinit();

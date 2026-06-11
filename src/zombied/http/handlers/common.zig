@@ -27,6 +27,12 @@ pub const TraceContext = trace_ctx.TraceContext;
 // canonical Content-Type strings used by the error envelope.
 pub const HEADER_CONTENT_TYPE = "Content-Type";
 pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
+pub const HEADER_RETRY_AFTER = "Retry-After";
+/// Capacity rejections (429 in-flight shed, 503 SSE cap) point clients at an
+/// immediate short backoff: instance pressure clears in seconds, unlike
+/// quota windows. Consumed by the dispatch shed and the stream-cap path.
+pub const RETRY_AFTER_BRIEF_SECONDS: u32 = 1;
+pub const RETRY_AFTER_BRIEF_VALUE = std.fmt.comptimePrint("{d}", .{RETRY_AFTER_BRIEF_SECONDS});
 
 const S_AUTHORIZATION = "authorization";
 const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";

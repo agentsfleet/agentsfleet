@@ -263,7 +263,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     const empty = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer empty.deinit();
     try empty.expectStatus(.ok);
-    try std.testing.expect(empty.bodyContains("\"count\":0"));
+    try std.testing.expect(empty.bodyContains("\"total\":0"));
 
     // a live stream appears with its workspace + zombie (the platform-admin
     // token's workspace metadata matches the seeded fixture workspace)
@@ -277,7 +277,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     try listed.expectStatus(.ok);
     try std.testing.expect(listed.bodyContains(ZOMBIE_FLEET_STREAM));
     try std.testing.expect(listed.bodyContains(sse_fixtures.TEST_WORKSPACE_ID));
-    try std.testing.expect(listed.bodyContains("\"count\":1"));
+    try std.testing.expect(listed.bodyContains("\"total\":1"));
 
     // teardown via the drain (no publisher client in this suite): the
     // stream socket is shut, the thread deregisters, drain returns settled

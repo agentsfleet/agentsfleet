@@ -98,7 +98,9 @@ test "a hung control plane surfaces a transport error within the armed deadline"
     var c = client.init(alloc, io, url);
     defer c.deinit();
 
-    // Nobody accepts or responds: the armed SO_RCVTIMEO must bound the read.
+    // Nobody accepts or responds: the armed call-deadline watchdog must shut
+    // the socket down and bound the read (SO_RCVTIMEO was rejected — the
+    // threaded Io recv path panics on its EAGAIN; see call_deadline.zig).
     const t0 = common.clock.nowMillis();
     try testing.expectError(error.RequestFailed, c.heartbeat(alloc, "zrn_test", DEADLINE_PROBE_MS));
     const elapsed = common.clock.nowMillis() - t0;

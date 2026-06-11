@@ -21,16 +21,13 @@ const log = logging.scoped(.http);
 const DEFAULT_MAX_CLIENTS = 1024;
 
 // 429 shed headers — the REST guidelines bind 429 to Retry-After + X-RateLimit-*.
-// Semantics here are the instance-wide in-flight ceiling, not a per-client quota.
-const HEADER_RETRY_AFTER = "Retry-After";
+// Semantics here are the instance-wide in-flight ceiling, not a per-client
+// quota. Retry-After name, seconds, and rendered value live in
+// handlers/common.zig (shared with the SSE cap's 503).
 const HEADER_RATELIMIT_LIMIT = "X-RateLimit-Limit";
 const HEADER_RATELIMIT_REMAINING = "X-RateLimit-Remaining";
 const HEADER_RATELIMIT_RESET = "X-RateLimit-Reset";
-/// Shed responses point clients at an immediate short backoff: in-flight
-/// pressure clears in milliseconds-to-seconds, unlike quota windows.
-const BACKPRESSURE_RETRY_AFTER_SECONDS: u32 = 1;
 const FMT_UNSIGNED = "{d}";
-const S_RETRY_AFTER_VALUE = std.fmt.comptimePrint(FMT_UNSIGNED, .{BACKPRESSURE_RETRY_AFTER_SECONDS});
 const S_RATELIMIT_REMAINING_NONE = "0";
 
 const ServerConfig = struct {
@@ -195,12 +192,14 @@ fn respondBackpressureShed(ctx: *handler.Context, res: *httpz.Response, live: u3
         .max = ctx.api_max_in_flight_requests,
         .path = path,
     });
-    res.header(HEADER_RETRY_AFTER, S_RETRY_AFTER_VALUE);
+    res.header(common.HEADER_RETRY_AFTER, common.RETRY_AFTER_BRIEF_VALUE);
     res.header(HEADER_RATELIMIT_REMAINING, S_RATELIMIT_REMAINING_NONE);
     headerUint(res, HEADER_RATELIMIT_LIMIT, ctx.api_max_in_flight_requests);
-    const reset_epoch_s: u64 = @intCast(@divTrunc(clock.nowMillis(), std.time.ms_per_s) + BACKPRESSURE_RETRY_AFTER_SECONDS);
+    const reset_epoch_s: u64 = @intCast(@divTrunc(clock.nowMillis(), std.time.ms_per_s) + common.RETRY_AFTER_BRIEF_SECONDS);
     headerUint(res, HEADER_RATELIMIT_RESET, reset_epoch_s);
-    common.errorResponse(res, error_codes.ERR_API_BACKPRESSURE, error_codes.MSG_API_BACKPRESSURE, common.UNKNOWN_REQUEST_ID);
+    // a real request id keeps the shed traceable; falls back to the sentinel
+    // only if the arena print itself fails
+    common.errorResponse(res, error_codes.ERR_API_BACKPRESSURE, error_codes.MSG_API_BACKPRESSURE, common.requestId(res.arena));
 }
 
 /// Best-effort numeric header on the request arena; a failed print drops the

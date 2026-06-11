@@ -49,6 +49,8 @@ pub fn ThreadPool(comptime F: anytype) type {
             // position in the queue to write to
             head: usize,
             stopped: bool,
+            // pool size — bounds the per-push wake count (see push)
+            worker_count: usize,
         };
 
         // we expect allocator to be an Arena
@@ -69,6 +71,7 @@ pub fn ThreadPool(comptime F: anytype) type {
                 .tail = 0,
                 .head = 0,
                 .stopped = false,
+                .worker_count = opts.count,
             };
 
             const threads = try aa.alloc(Thread, opts.count);
@@ -197,8 +200,12 @@ pub fn ThreadPool(comptime F: anytype) type {
                 }
                 shared.head = head;
                 shared.mutex.unlock(io);
-                // several idle threads may be needed for several jobs
-                if (ready.len == 1) shared.read_cond.signal(io) else shared.read_cond.broadcast(io);
+                // wake one waiter per queued job, bounded by the pool size — a
+                // broadcast would stampede every idle thread at the shared
+                // mutex on each multi-job batch (thundering herd); surplus
+                // signals against an empty waiter list are no-ops
+                var wakes = @min(ready.len, shared.worker_count);
+                while (wakes > 0) : (wakes -= 1) shared.read_cond.signal(io);
                 if (ready.len == pending_args.len) {
                     break;
                 }

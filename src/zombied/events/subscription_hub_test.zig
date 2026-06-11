@@ -21,6 +21,11 @@ const Subscription = subscription_hub.Subscription;
 const TEST_REDIS_URL_ENV = "TEST_REDIS_TLS_URL";
 const CHANNEL_A = "hubtest:alpha:activity";
 const CHANNEL_B = "hubtest:beta:activity";
+/// Owned exclusively by the stalled-viewer test: a channel no other test
+/// subscribes, so its NUMSUB settle can only be satisfied by THIS hub's wire
+/// SUBSCRIBE — a prior test's dying connection on a shared channel could
+/// otherwise hold the count at 1 while early publishes go to the dead socket.
+const CHANNEL_ISOLATION = "hubtest:gamma:activity";
 const PAYLOAD_ONE = "{\"kind\":\"chunk\",\"n\":1}";
 const SHORT_POP_MS: u64 = 50;
 const DELIVERY_WAIT_MS: u64 = 5_000;
@@ -438,31 +443,28 @@ test "integration: a stalled viewer drops oldest while its channel sibling recei
     defer hub.stop();
     try hub.start(cfg);
 
-    const active = try hub.subscribe(CHANNEL_A);
+    const active = try hub.subscribe(CHANNEL_ISOLATION);
     defer hub.unsubscribe(active);
-    const stalled = try hub.subscribe(CHANNEL_A);
+    const stalled = try hub.subscribe(CHANNEL_ISOLATION);
     defer hub.unsubscribe(stalled);
     // wait for the wire SUBSCRIBE to settle — frames published before the
     // server registers the subscription are lost, not queued
-    try expectNumsub(&pub_client, CHANNEL_A, 1);
+    try expectNumsub(&pub_client, CHANNEL_ISOLATION, 1);
 
+    // The active sibling drains in lockstep (a live consumer keeps up) while
+    // the stalled one never pops — its 64-slot ring must absorb all frames
+    // and shed exactly the oldest 3. Draining active AFTER all publishes
+    // would overflow ITS ring too; lockstep is the property's real shape.
     const total = Subscription.QUEUE_CAPACITY + 3;
     var frame_buf: [16]u8 = undefined;
     var i: usize = 0;
     while (i < total) : (i += 1) {
         const frame = try std.fmt.bufPrint(&frame_buf, "f{d}", .{i});
-        try pub_client.publish(CHANNEL_A, frame);
-    }
-
-    // the active sibling receives every frame, in order
-    var expect_buf: [16]u8 = undefined;
-    i = 0;
-    while (i < total) : (i += 1) {
+        try pub_client.publish(CHANNEL_ISOLATION, frame);
         const got = active.pop(DELIVERY_WAIT_MS);
         try testing.expect(got == .message);
         defer testing.allocator.free(got.message);
-        const expected = try std.fmt.bufPrint(&expect_buf, "f{d}", .{i});
-        try testing.expectEqualStrings(expected, got.message);
+        try testing.expectEqualStrings(frame, got.message);
     }
 
     // the stalled viewer dropped exactly the overflow, oldest-first
