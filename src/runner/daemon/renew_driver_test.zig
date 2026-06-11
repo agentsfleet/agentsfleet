@@ -11,6 +11,7 @@ const constants = @import("common");
 const client = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const renew_driver = @import("renew_driver.zig");
+const protocol = @import("contract").protocol;
 const ONE_MILLION = 1_000_000;
 const MS_PER_SECOND = 1_000;
 
@@ -20,14 +21,17 @@ const Driver = renew_driver.RenewDriver(*FakeClient);
 // A fixed epoch base so the window math is exact and reproducible.
 const NOW_MS: i64 = 1_900_000_000_000;
 
-// A scripted control-plane client: returns one queued renewal outcome and counts
-// calls, so a test can assert both the decision AND whether onTick attempted a
-// renewal at all (the window short-circuit must make zero calls).
+// A scripted control-plane client: returns one queued renewal outcome, counts
+// calls, and captures the last wire body, so a test can assert the decision,
+// whether onTick attempted a renewal at all (the window short-circuit must make
+// zero calls), AND what cumulative counts rode the request.
 const FakeClient = struct {
     outcome: client.ClientError!client.RenewResult,
     calls: usize = 0,
-    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: u31) client.ClientError!client.RenewResult {
+    last_req: protocol.RenewRequest = .{},
+    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, req: protocol.RenewRequest, _: u31) client.ClientError!client.RenewResult {
         self.calls += 1;
+        self.last_req = req;
         return self.outcome;
     }
 };
@@ -48,7 +52,7 @@ test "onTick outside the renewal window keeps without calling the control plane"
     // Deadline well beyond the window → no renewal attempt at all.
     var driver = driverWith(&fake, NOW_MS + constants.RENEWAL_WINDOW_MS + 60_000);
     const h = driver.hook();
-    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(@as(usize, 0), fake.calls);
     try testing.expectEqual(NOW_MS + constants.RENEWAL_WINDOW_MS + 60_000, driver.deadline_ms);
 }
@@ -57,7 +61,7 @@ test "onTick at exactly the window boundary renews (boundary is inclusive)" {
     var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + ONE_MILLION } };
     var driver = driverWith(&fake, NOW_MS + constants.RENEWAL_WINDOW_MS);
     const h = driver.hook();
-    _ = h.onTick(h.ctx, NOW_MS);
+    _ = h.onTick(h.ctx, NOW_MS, .{});
     try testing.expectEqual(@as(usize, 1), fake.calls); // exactly at the window edge → renews
 }
 
@@ -66,7 +70,7 @@ test "onTick inside the window renews and advances the kill deadline" {
     var fake = FakeClient{ .outcome = .{ .renewed = new_deadline } };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND); // 1s left → inside the window
     const h = driver.hook();
-    try testing.expectEqual(RenewDecision{ .extend = new_deadline }, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision{ .extend = new_deadline }, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(new_deadline, driver.deadline_ms); // advanced to the renewed value
     try testing.expectEqual(@as(usize, 1), fake.calls);
 }
@@ -75,7 +79,7 @@ test "onTick inside the window terminates on a terminal renewal and leaves the d
     var fake = FakeClient{ .outcome = .{ .terminal = 402 } };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
-    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged
 }
 
@@ -83,7 +87,28 @@ test "onTick keeps (and does not advance) when the renewal call fails transientl
     var fake = FakeClient{ .outcome = client.ClientError.RequestFailed };
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
-    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // unchanged → next tick retries
     try testing.expectEqual(@as(usize, 1), fake.calls); // it DID attempt
+}
+
+test "onTick inside the window posts the live cumulative snapshot as the renew body" {
+    var fake = FakeClient{ .outcome = .{ .renewed = NOW_MS + ONE_MILLION } };
+    var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
+    const h = driver.hook();
+    _ = h.onTick(h.ctx, NOW_MS, .{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 });
+    try testing.expectEqual(@as(u32, 100), fake.last_req.input_tokens);
+    try testing.expectEqual(@as(u32, 0), fake.last_req.cached_input_tokens);
+    try testing.expectEqual(@as(u32, 40), fake.last_req.output_tokens);
+}
+
+test "renewRequestFrom saturates the wire-frozen u32 fields instead of wrapping" {
+    const req = renew_driver.renewRequestFrom(.{
+        .input_tokens = std.math.maxInt(u64),
+        .cached_input_tokens = @as(u64, std.math.maxInt(u32)) + 1,
+        .output_tokens = 7,
+    });
+    try testing.expectEqual(@as(u32, std.math.maxInt(u32)), req.input_tokens);
+    try testing.expectEqual(@as(u32, std.math.maxInt(u32)), req.cached_input_tokens);
+    try testing.expectEqual(@as(u32, 7), req.output_tokens);
 }

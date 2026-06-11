@@ -122,16 +122,16 @@ The `usezombie/nullclaw` fork (branch `patch/split-token-accessors-v2026.5.29`, 
 
 The engine emits a `usage` pipe frame (fixed-size payload: three u64 cumulatives) after each agent-turn boundary and immediately before exit. The supervisor's read loop folds frames into per-lease cumulative counters (plain fields — the same thread drives `onTick`); `onTick` gains a usage-snapshot parameter so the renew hook prices from live state. A malformed or absent usage frame keeps the last-known cumulative (RULE ESO: never invent, never reset).
 
-- **Dimension 2.1** — usage frame round-trips child→parent (encode/decode + supervisor fold) → Test `test_usage_frame_round_trip`
-- **Dimension 2.2** — renewal tick observes the latest cumulative snapshot (frame then tick → snapshot visible; no frame → zeros) → Test `test_renew_tick_sees_live_usage`
-- **Dimension 2.3** — malformed usage frame is dropped with a debug log and the last-known counters survive → Test `test_malformed_usage_frame_keeps_counters`
+- **Dimension 2.1** — usage frame round-trips child→parent (encode/decode + supervisor fold) → Test `test_usage_frame_round_trip` — **DONE**
+- **Dimension 2.2** — renewal tick observes the latest cumulative snapshot (frame then tick → snapshot visible; no frame → zeros) → Test `test_renew_tick_sees_live_usage` — **DONE**
+- **Dimension 2.3** — malformed usage frame is dropped with a debug log and the last-known counters survive → Test `test_malformed_usage_frame_keeps_counters` — **DONE**
 
 ### §3 — Wire fill (renew body + report splits)
 
 `control_plane_client.renew` serializes a `RenewRequest` JSON body from the snapshot (replacing the empty-string body); `ExecutionResult` gains the three split fields; `daemon/loop.zig` fills `ReportRequest`'s splits from the final result (keeping the legacy `tokens` total for the unchanged consumers). Old-runner compatibility: the server already defaults absent fields to zero — no server edits.
 
-- **Dimension 3.1** — renew body serializes the snapshot; `classifyRenew` behavior unchanged → Test `test_renew_body_carries_cumulative_splits`
-- **Dimension 3.2** — report fills splits from `ExecutionResult`; legacy `tokens` total still equals the agent total → Test `test_report_carries_final_splits`
+- **Dimension 3.1** — renew body serializes the snapshot; `classifyRenew` behavior unchanged → Test `test_renew_body_carries_cumulative_splits` — **DONE**
+- **Dimension 3.2** — report fills splits from `ExecutionResult`; legacy `tokens` total still equals the agent total → Test `test_report_carries_final_splits` — **DONE**
 
 ### §4 — End-to-end wire proof
 

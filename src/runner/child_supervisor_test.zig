@@ -129,10 +129,14 @@ const ScriptedHook = struct {
     decisions: []const supervisor.RenewDecision,
     idx: usize = 0,
     ticks: usize = 0,
-    fn onTick(ctx: *anyopaque, now_ms: i64) supervisor.RenewDecision {
+    /// Cumulative snapshot the most recent tick observed — zeros until the
+    /// child's first usage frame, per the RenewHook doc.
+    last_usage: supervisor.UsageSnapshot = .{},
+    fn onTick(ctx: *anyopaque, now_ms: i64, usage: supervisor.UsageSnapshot) supervisor.RenewDecision {
         _ = now_ms;
         const self: *ScriptedHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
+        self.last_usage = usage;
         if (self.idx >= self.decisions.len) return .keep;
         const d = self.decisions[self.idx];
         self.idx += 1;
@@ -164,6 +168,77 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     try std.testing.expect(outcome.terminated);
     try std.testing.expect(!outcome.timed_out);
     try std.testing.expect(hook_state.ticks >= 1);
+    // No usage frame ever arrived → the tick observed all-zero counters.
+    try std.testing.expectEqual(supervisor.UsageSnapshot{}, hook_state.last_usage);
+}
+
+test "readResult round-trips one usage frame into the snapshot the tick observes" {
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    const snap = pipe_proto.UsageSnapshot{ .input_tokens = 7, .cached_input_tokens = 1, .output_tokens = 3 };
+    const payload = snap.encode();
+    try pipe_proto.writeFrame(fds[1], .usage, &payload);
+    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.osClose(fds[1]);
+
+    var hook_state = ScriptedHook{ .decisions = &.{} }; // every tick keeps
+    const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };
+    var dummy: u8 = 0;
+    const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    defer std.testing.allocator.free(outcome.bytes);
+
+    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
+    try std.testing.expect(hook_state.ticks >= 1); // the usage frame is a renewal point
+    try std.testing.expectEqual(snap, hook_state.last_usage);
+}
+
+test "readResult folds a regressed usage frame with max so the snapshot never walks backwards" {
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    const first = pipe_proto.UsageSnapshot{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 };
+    const first_payload = first.encode();
+    try pipe_proto.writeFrame(fds[1], .usage, &first_payload);
+    // A restarted child re-sends lower cumulatives — they must not regress the fold.
+    const regressed = pipe_proto.UsageSnapshot{ .input_tokens = 50, .cached_input_tokens = 0, .output_tokens = 20 };
+    const regressed_payload = regressed.encode();
+    try pipe_proto.writeFrame(fds[1], .usage, &regressed_payload);
+    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.osClose(fds[1]);
+
+    var hook_state = ScriptedHook{ .decisions = &.{} };
+    const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };
+    var dummy: u8 = 0;
+    const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    defer std.testing.allocator.free(outcome.bytes);
+
+    try std.testing.expect(hook_state.ticks >= 2); // one renewal point per usage frame
+    try std.testing.expectEqual(first, hook_state.last_usage); // max-fold won, not the regressed frame
+}
+
+test "a malformed usage frame is dropped and the last-known counters survive" {
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    const good = pipe_proto.UsageSnapshot{ .input_tokens = 100, .output_tokens = 40 };
+    const good_payload = good.encode();
+    try pipe_proto.writeFrame(fds[1], .usage, &good_payload);
+    try pipe_proto.writeFrame(fds[1], .usage, good_payload[0 .. pipe_proto.UsageSnapshot.WIRE_LEN - 1]); // truncated: one byte short
+    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
+    pipe_proto.osClose(fds[1]);
+
+    var hook_state = ScriptedHook{ .decisions = &.{} };
+    const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };
+    var dummy: u8 = 0;
+    const sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
+    const dl = clock.nowMillis() + 5_000;
+    const outcome = try supervisor.readResult(std.testing.allocator, fds[0], dl, sink, NoopMem.sink(), hook);
+    defer std.testing.allocator.free(outcome.bytes);
+
+    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes); // run unaffected
+    try std.testing.expectEqual(good, hook_state.last_usage); // kept, never zeroed or invented
 }
 
 test "readResult: a hook .extend past a near deadline keeps reading to the result" {
