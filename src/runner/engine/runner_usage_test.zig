@@ -11,6 +11,9 @@ const providers = nullclaw.providers;
 const Agent = nullclaw.agent.Agent;
 
 const runner = @import("runner.zig");
+const runner_progress = @import("runner_progress.zig");
+const pipe_proto = @import("../pipe_proto.zig");
+const clock = @import("common").clock;
 const contract = @import("contract");
 
 /// Field-literal Agent mirroring the upstream agent module's own tokens test:
@@ -68,4 +71,48 @@ test "ExecutionResult carries splits verbatim with cached pinned to zero" {
     try std.testing.expectEqual(@as(u64, 0), result.cached_input_tokens);
     try std.testing.expectEqual(@as(u64, 5), result.output_tokens);
     try std.testing.expectEqual(@as(u64, 15), result.token_count);
+}
+
+test "a tokens_used metric emits one usage frame carrying the agent's cumulative splits" {
+    var noop = observability.NoopObserver{};
+    var agent = try testAgent(std.testing.allocator, &noop);
+    defer agent.deinit();
+    agent.prompt_tokens_total = 10;
+    agent.completion_tokens_total = 5;
+
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = std.testing.allocator };
+    var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = std.testing.allocator, .secrets = &.{} };
+    adapter.agent = &agent;
+
+    // The agent fires this metric after each turn/summary fold — drive it the
+    // same way through the observer vtable.
+    const obs = adapter.observer();
+    const metric = observability.ObserverMetric{ .tokens_used = 15 };
+    obs.recordMetric(&metric);
+    pipe_proto.osClose(fds[1]);
+
+    const out = try pipe_proto.readFrame(std.testing.allocator, fds[0], clock.nowMillis() + 5_000, 1024);
+    defer std.testing.allocator.free(out.frame.payload);
+    try std.testing.expectEqual(pipe_proto.FrameType.usage, out.frame.ftype);
+    const snap = pipe_proto.UsageSnapshot.decode(out.frame.payload).?;
+    try std.testing.expectEqual(@as(u64, 10), snap.input_tokens);
+    try std.testing.expectEqual(@as(u64, 0), snap.cached_input_tokens); // pinned 0 until upstream surfaces it
+    try std.testing.expectEqual(@as(u64, 5), snap.output_tokens);
+}
+
+test "usage emit is a no-op without an agent pointer (tests and non-streaming paths)" {
+    const fds = try pipe_proto.osPipe();
+    defer pipe_proto.osClose(fds[0]);
+    var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = std.testing.allocator };
+    var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = std.testing.allocator, .secrets = &.{} };
+
+    const obs = adapter.observer();
+    const metric = observability.ObserverMetric{ .tokens_used = 15 };
+    obs.recordMetric(&metric); // agent == null → nothing written
+    pipe_proto.osClose(fds[1]);
+
+    const out = try pipe_proto.readFrame(std.testing.allocator, fds[0], clock.nowMillis() + 5_000, 1024);
+    try std.testing.expect(out == .eof); // clean EOF, no frame
 }

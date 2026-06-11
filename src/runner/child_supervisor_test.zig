@@ -309,3 +309,29 @@ test "classify: a policy terminate outranks a co-occurring deadline timeout" {
     const both = supervisor.classify(std.testing.allocator, .{ .terminated = true, .timed_out = true }, .{ .exited = 0 }, &scope);
     try std.testing.expectEqual(FailureClass.renewal_terminate, both.failure.?);
 }
+
+test "classify threads the child's split counts through the result fold" {
+    // Regression pin: parseResult must copy the splits off the child's result
+    // JSON — dropping them folds the report back to zero and under-bills.
+    var scope: ?cgroup.CgroupScope = null;
+    var body = "{\"exit_ok\":true,\"token_count\":17,\"input_tokens\":10,\"cached_input_tokens\":2,\"output_tokens\":5}".*;
+    const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
+    defer std.testing.allocator.free(r.content);
+    try std.testing.expect(r.exit_ok);
+    try std.testing.expectEqual(@as(u64, 17), r.token_count);
+    try std.testing.expectEqual(@as(u64, 10), r.input_tokens);
+    try std.testing.expectEqual(@as(u64, 2), r.cached_input_tokens);
+    try std.testing.expectEqual(@as(u64, 5), r.output_tokens);
+}
+
+test "classify parses an old-wire result without splits to zeros (run-fee-only, never an error)" {
+    var scope: ?cgroup.CgroupScope = null;
+    var body = "{\"exit_ok\":true,\"token_count\":17}".*;
+    const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
+    defer std.testing.allocator.free(r.content);
+    try std.testing.expect(r.exit_ok);
+    try std.testing.expectEqual(@as(u64, 17), r.token_count); // legacy total survives
+    try std.testing.expectEqual(@as(u64, 0), r.input_tokens);
+    try std.testing.expectEqual(@as(u64, 0), r.cached_input_tokens);
+    try std.testing.expectEqual(@as(u64, 0), r.output_tokens);
+}
