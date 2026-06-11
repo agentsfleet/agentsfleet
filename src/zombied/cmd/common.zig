@@ -19,7 +19,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [21]db.Migration {
+pub fn canonicalMigrations() [22]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -43,6 +43,7 @@ pub fn canonicalMigrations() [21]db.Migration {
         .{ .version = 23, .sql = schema.fleet_runner_affinity_sql },
         .{ .version = 24, .sql = schema.fleet_metering_periods_sql },
         .{ .version = 25, .sql = schema.fleet_runner_events_sql },
+        .{ .version = 26, .sql = schema.account_purge_gate_bypass_sql },
     };
 }
 

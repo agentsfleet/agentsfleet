@@ -19,6 +19,7 @@ const pg = @import("pg");
 const logging = @import("log");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const approval_gate_db = @import("../zombie/approval_gate_db.zig");
 
 const log = logging.scoped(.account_teardown);
 
@@ -38,7 +39,15 @@ const PURGE_STATEMENTS = [_][]const u8{
     "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id IN (SELECT workspace_id::text FROM core.workspaces WHERE tenant_id = $1::uuid)",
     // Keyed, no FK — memory zombie_id is the owning zombie UUID (schema/013).
     "DELETE FROM memory.memory_entries WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
-    "DELETE FROM core.zombie_approval_gates WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
+    // Fleet rows carry tenant/zombie ids but no FK into core (by design) —
+    // swept explicitly so an erased account leaves no identifying rows behind.
+    "DELETE FROM fleet.metering_periods WHERE event_id IN (SELECT event_id FROM fleet.runner_leases WHERE tenant_id = $1::uuid)",
+    "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid",
+    "DELETE FROM fleet.runner_affinity WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
+    // Gates are append-only by trigger; the purge transaction opts out via
+    // SET_GATE_PURGE_BYPASS_SQL below. Deleted by workspace OR zombie so a
+    // row referencing either parent cannot strand the erasure on its FK.
+    "DELETE FROM core.zombie_approval_gates WHERE workspace_id IN " ++ WS_OF_TENANT ++ " OR zombie_id IN " ++ ZOMBIES_OF_TENANT,
     "DELETE FROM core.zombie_sessions WHERE zombie_id IN " ++ ZOMBIES_OF_TENANT,
     "DELETE FROM core.zombies WHERE workspace_id IN " ++ WS_OF_TENANT,
     "DELETE FROM vault.secrets WHERE workspace_id IN " ++ WS_OF_TENANT,
@@ -57,6 +66,7 @@ pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject
     defer alloc.free(tenant_id);
 
     _ = try conn.exec(S_BEGIN, .{});
+    _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
     // Use conn.rollback() not conn.exec("ROLLBACK") — the driver's exec
     // short-circuits when the connection is in FAIL state after a statement
     // error, leaving the session stuck in an aborted tx. rollback() uses
