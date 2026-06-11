@@ -131,6 +131,16 @@ describe("test_memory_search_matches", () => {
     expect(rows[0]?.["key"]).toBe("acme_contact");
   });
 
+  test("padded query is trimmed at the boundary before hitting the wire", async () => {
+    const paths: string[] = [];
+    await runWith(
+      memorySearchEffectFromArgs("  acme  ", { zombieId: ZOMBIE_ID }),
+      { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap: newCapture() },
+    );
+    expect(paths[0]).toContain("?query=acme");
+    expect(paths[0]).not.toContain("%20");
+  });
+
   test("category and limit are forwarded for list; search carries no category", async () => {
     const cap = newCapture();
     const paths: string[] = [];

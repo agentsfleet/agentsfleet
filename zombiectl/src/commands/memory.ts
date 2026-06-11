@@ -272,18 +272,22 @@ export const memoryListEffectFromFlags = (
 export const memorySearchEffectFromArgs = (
   query: string | undefined,
   flags: MemoryReadFlags,
-): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
-  isString(query) && query.trim().length > 0
+): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> => {
+  // Trim at the boundary — shell quoting padding ("  acme  ") is operator
+  // noise, not search intent; the no-match message shows what was searched.
+  const trimmed = isString(query) ? query.trim() : "";
+  return trimmed.length > 0
     ? memoryReadEffect({
         zombieId: flags.zombieId,
         workspaceId: flags.workspaceId,
-        query,
+        query: trimmed,
         category: undefined,
         limit: flags.limit,
         stdoutIsTty: flags.stdoutIsTty,
         usage: USAGE_SEARCH,
-        emptyMessage: `No memories matched "${query}".`,
+        emptyMessage: `No memories matched "${trimmed}".`,
       })
     : Effect.fail(
         new ValidationError({ detail: "search query is required", suggestion: USAGE_SEARCH }),
       );
+};

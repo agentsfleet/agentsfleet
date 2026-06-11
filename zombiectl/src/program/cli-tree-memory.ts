@@ -18,6 +18,15 @@ import {
 } from "../constants/memory-limits.ts";
 import type { ActionDispatch, Handlers, ProgramState } from "./cli-tree-types.ts";
 
+// Declared before use (owner preference for this file; the sibling tree
+// files keep their bottom-declared blocks).
+const FLAG_LIMIT_N = "--limit <n>" as const;
+const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
+const FLAG_ZOMBIE_ID = "--zombie <id>" as const;
+const MAX_ENTRIES = "Max entries to return" as const;
+const WORKSPACE_ID = "Workspace ID" as const;
+const ZOMBIE_ID = "Zombie ID" as const;
+
 const MEMORY_LIMIT_BOUNDS = { min: 1, max: MAX_RECALL_LIMIT };
 
 export function buildMemoryTree(
@@ -47,9 +56,3 @@ export function buildMemoryTree(
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .action(actionFor("memory.search", (frame) => runHandler(state, frame, handlers.memory.search)));
 }
-const FLAG_LIMIT_N = "--limit <n>" as const;
-const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_ZOMBIE_ID = "--zombie <id>" as const;
-const MAX_ENTRIES = "Max entries to return" as const;
-const WORKSPACE_ID = "Workspace ID" as const;
-const ZOMBIE_ID = "Zombie ID" as const;
