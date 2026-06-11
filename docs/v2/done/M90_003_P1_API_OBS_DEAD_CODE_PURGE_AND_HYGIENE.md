@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 003
 **Date:** Jun 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — metering audit rows (the future invoice substrate) over-report under concurrency; ~1,170 lines of dead/test-only surface mislead readers and reviews; 24 src/lib tests never execute
 **Categories:** API, OBS
 **Batch:** B3 — after M90_001 + M90_002 merge (they consume symbols this purge would otherwise delete; every deletion re-greps against the merged tree)
@@ -329,7 +329,7 @@ for f in $(git diff --name-only origin/main -- '*.zig'); do awk '/\.(monotonic|a
 | Cross-compile | x86_64-linux + aarch64-linux prod; x86_64-linux test graphs (zombied + runner) | compile-clean ("unable to execute" = pass signal) | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found (also per-commit via pre-commit) | ✅ |
 | Dead code sweep | E8 greps | empty (one doc-comment mention fixed in wire.zig) | ✅ |
-| Test delta | `make _lint_zig_test_depth` | unit 1966 → 1891 (−75), integration 172 → 176 (+4). Negative unit delta is the point of a purge: the −75 are the deleted dead surface's own tests (external-metrics routing ×2, run-limit ×5, agent-histogram ×2, M10/M17-era external block ×4, verifySignature ×9, matchRotatedKey ×2, isTimestampFresh dup ×1, registry pin ×2, ErrorMapping ×4, zombie-metrics histogram family ×8, json-helper dead fns ×6, types.zig ×3, continuation ×3, + discovery-block consolidation), while every SURVIVING surface kept or gained coverage (+54-test lib lane now executing, +3 money-invariant tests, +1 rollback injection test, +1 builder boundary, +2 backpressure pins, +1 purged-series regression pin). Lacking-areas verdict: none on the changed surface — the §1 money path is the most-tested unit in the diff (8 concurrency/invariant tests) | ✅ |
+| Test delta | `make _lint_zig_test_depth` | unit 1966 → 1892 (−74), integration 172 → 177 (+5). Negative unit delta is the point of a purge: the −75 are the deleted dead surface's own tests (external-metrics routing ×2, run-limit ×5, agent-histogram ×2, M10/M17-era external block ×4, verifySignature ×9, matchRotatedKey ×2, isTimestampFresh dup ×1, registry pin ×2, ErrorMapping ×4, zombie-metrics histogram family ×8, json-helper dead fns ×6, types.zig ×3, continuation ×3, + discovery-block consolidation), while every SURVIVING surface kept or gained coverage (+54-test lib lane now executing, +3 money-invariant tests, +1 rollback injection test, +1 builder boundary, +2 backpressure pins, +1 purged-series regression pin). Lacking-areas verdict: none on the changed surface — the §1 money path is the most-tested unit in the diff (8 concurrency/invariant tests) | ✅ |
 
 ## Out of Scope
 
