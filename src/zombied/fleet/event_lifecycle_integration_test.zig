@@ -120,6 +120,7 @@ const Env = struct {
         deleteStream(self.h, ZOMBIE_GATED);
         deleteStream(self.h, ZOMBIE_IDLE);
         deleteStream(self.h, ZOMBIE_STRAND);
+        deleteStream(self.h, ZOMBIE_ROW);
         deleteStream(self.h, ZOMBIE_REACK);
         deleteStream(self.h, ZOMBIE_GATED_EXP);
         self.h.deinit();

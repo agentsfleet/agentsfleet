@@ -139,9 +139,15 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, zombie_id: []const u8, won: affinity.Won
     };
     var consumer_buf: [queue_redis.CONSUMER_ID_BUF_LEN]u8 = undefined;
     const consumer_id = queue_redis.stableConsumerId(&consumer_buf);
-    var maybe_event = redis_zombie.xreadgroupZombiePending(hx.ctx.queue, zombie_id, consumer_id) catch |err| blk: {
+    // A failed PEL read cannot prove the PEL is empty, so it must NOT fall
+    // through to the fresh read — promoting a new entry over a possibly-pending
+    // gate re-poll would break own-PEL-first ordering exactly when Redis is
+    // degraded. Release the claim and deliver nothing; the next poll retries
+    // (consistent with the fresh-read error path below).
+    var maybe_event = redis_zombie.xreadgroupZombiePending(hx.ctx.queue, zombie_id, consumer_id) catch |err| {
         log.warn("assign_pel_read_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
-        break :blk null;
+        try affinity.release(conn, zombie_id, won.token);
+        return null;
     };
     if (maybe_event) |ev| {
         log.debug("assign_pel_redelivered", .{ .zombie_id = zombie_id, .event_id = ev.event_id });
