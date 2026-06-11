@@ -1242,16 +1242,6 @@
               }
             }
           },
-          "409": {
-            "description": "Zombie exists but is paused or stopped (UZ-WH-003).",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -4046,6 +4036,11 @@
           "request_id": {
             "type": "string",
             "description": "Correlation ID for this request"
+          },
+          "current_state": {
+            "type": "string",
+            "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused zombie (UZ-ZMB-012).",
+            "example": "paused"
           }
         }
       },

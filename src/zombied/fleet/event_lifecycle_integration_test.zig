@@ -44,6 +44,8 @@ const ZOMBIE_GATED = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c03";
 const ZOMBIE_IDLE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c04";
 const ZOMBIE_STRAND = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c05";
 const ZOMBIE_ROW = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c06";
+const ZOMBIE_REACK = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c07";
+const ZOMBIE_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
 const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
 const RUNNER_TOKEN = "zrn_" ++ "e" ** 64;
@@ -59,6 +61,11 @@ const CONFIG_GHOST_CRED =
 ;
 const CONFIG_GATED_ALL =
     \\{"name":"lifecycle-gated","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0},"gates":{"rules":[{"tool":"*","action":"*","behavior":"approve"}],"timeout_ms":1800000}}}
+;
+// A 1ms approval deadline so the gate expires deterministically between two
+// polls (the second poll is a full HTTP round-trip past the deadline).
+const CONFIG_GATED_FAST =
+    \\{"name":"lifecycle-gatex","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0},"gates":{"rules":[{"tool":"*","action":"*","behavior":"approve"}],"timeout_ms":1}}}
 ;
 const SOURCE_MD =
     \\---
@@ -113,6 +120,8 @@ const Env = struct {
         deleteStream(self.h, ZOMBIE_GATED);
         deleteStream(self.h, ZOMBIE_IDLE);
         deleteStream(self.h, ZOMBIE_STRAND);
+        deleteStream(self.h, ZOMBIE_REACK);
+        deleteStream(self.h, ZOMBIE_GATED_EXP);
         self.h.deinit();
     }
 };
@@ -336,6 +345,34 @@ test "approval denial writes the terminal row: gate_blocked + approval_denied + 
     try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, ZOMBIE_GATED));
 }
 
+test "approval deadline expiry writes the terminal row: gate_blocked + approval_expired + XACK" {
+    var env = setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedZombieWithConfig(conn, ZOMBIE_GATED_EXP, "lifecycle-gatex", CONFIG_GATED_FAST, "8");
+
+    const event_id = try publishEvent(h, ZOMBIE_GATED_EXP);
+    defer h.queue.alloc.free(event_id);
+
+    // Poll 1: the gate parks the event pending and records the ref with a
+    // 1ms deadline — no decision is ever written.
+    try std.testing.expect(!try pollLease(h));
+    try expectRow(conn, ZOMBIE_GATED_EXP, event_id, event_rows.STATUS_RECEIVED, "");
+    try std.testing.expectEqual(@as(i64, 1), try pendingCount(h, ZOMBIE_GATED_EXP));
+
+    // Let the 1ms deadline lapse, then re-poll: the recorded ref resolves
+    // expired → terminal row + XACK (the async-gate timeout outcome).
+    @import("common").sleepNanos(5 * std.time.ns_per_ms);
+    try std.testing.expect(!try pollLease(h));
+    try expectRow(conn, ZOMBIE_GATED_EXP, event_id, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_APPROVAL_EXPIRED);
+    try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, ZOMBIE_GATED_EXP));
+}
+
 test "markBlocked is guarded: terminal rows never reopen, second transition affects zero rows" {
     var env = setup() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -365,6 +402,44 @@ test "markBlocked is guarded: terminal rows never reopen, second transition affe
     // Second transition attempt (any label): zero rows — terminal is final.
     try std.testing.expectEqual(@as(i64, 0), try event_rows.markBlocked(h.pool, ZOMBIE_ROW, EVENT_ID, event_rows.LABEL_APPROVAL_DENIED));
     try expectRow(conn, ZOMBIE_ROW, EVENT_ID, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_BALANCE_EXHAUSTED);
+}
+
+test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
+    var env = setup() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer env.deinit();
+    const h = env.h;
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedZombieWithConfig(conn, ZOMBIE_REACK, "lifecycle-reack", CONFIG_PLAIN, "7");
+
+    const event_id = try publishEvent(h, ZOMBIE_REACK);
+    defer h.queue.alloc.free(event_id);
+
+    // Poll 1 leases the event: the entry now sits in the stable consumer's
+    // PEL and the row is `received`.
+    try std.testing.expect(try pollLease(h));
+    try std.testing.expectEqual(@as(i64, 1), try pendingCount(h, ZOMBIE_REACK));
+
+    // Simulate a report whose terminal write committed but whose XACK was
+    // lost (Redis blip): the row goes terminal, the lease/claim settle out of
+    // active, and the entry is left pending (never acked).
+    _ = try conn.exec(
+        "UPDATE core.zombie_events SET status = $3 WHERE zombie_id = $1::uuid AND event_id = $2",
+        .{ ZOMBIE_REACK, event_id, event_rows.STATUS_PROCESSED },
+    );
+    _ = try conn.exec("DELETE FROM fleet.runner_leases WHERE workspace_id = $1::uuid", .{WORKSPACE_ID});
+    _ = try conn.exec("DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_REACK});
+
+    // Poll 2: the own-PEL read re-delivers the terminal entry. It must be
+    // re-acked (the owed XACK) and NOT re-leased — re-running a settled lease
+    // would double-fire side effects and re-meter tokens (spec Invariant 2).
+    try std.testing.expect(!try pollLease(h));
+    try std.testing.expectEqual(@as(i64, 0), try pendingCount(h, ZOMBIE_REACK));
+    // The settled result is untouched — the terminal row was never reopened.
+    try expectRow(conn, ZOMBIE_REACK, event_id, event_rows.STATUS_PROCESSED, "");
 }
 
 // ── §2 — stable identity + reclaim ──────────────────────────────────────────

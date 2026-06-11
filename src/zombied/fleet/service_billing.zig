@@ -95,6 +95,28 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         log.err("lease_received_insert_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         return null;
     };
+    if (!first_delivery) {
+        // PEL re-delivery. A row that is already terminal (a settled or
+        // gate_blocked entry whose report/block XACK was lost) must be
+        // re-acked, never re-leased — re-running a settled lease double-fires
+        // side effects and re-meters tokens (spec Invariant 2). A still
+        // `received` row is a legitimate re-poll (pending-gate, reclaimed
+        // strand): fall through to re-evaluate the gates.
+        const klass = rows.classifyStatus(pool, session.zombie_id, event.event_id) catch |err| {
+            // Uncertain: leave the entry pending (no XACK, no lease) so the
+            // next poll retries the classification rather than risking a
+            // double-execution on a guess.
+            log.warn("lease_status_classify_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+            return null;
+        };
+        if (klass == .terminal) {
+            redis_zombie.xackZombie(hx.ctx.queue, session.zombie_id, event.event_id) catch |err| {
+                log.warn("lease_terminal_reack_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+            };
+            log.info("lease_terminal_redelivery_acked", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            return null;
+        }
+    }
     if (first_delivery) {
         // Open the SSE activity bracket exactly once per event — a PEL
         // re-delivery (pending-gate re-poll, reclaimed strand) must not emit

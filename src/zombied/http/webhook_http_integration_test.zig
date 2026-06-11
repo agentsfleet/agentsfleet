@@ -18,6 +18,7 @@ const serve_webhook_lookup = @import("../cmd/serve_webhook_lookup.zig");
 const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
 const signers = @import("webhook_test_signers.zig");
+const ec = @import("../errors/error_registry.zig");
 
 const TestHarness = harness_mod.TestHarness;
 
@@ -553,7 +554,7 @@ const LINEAR_BODY =
     \\{"event_id":"lin_c1","type":"issue.updated","data":{"k":"v"}}
 ;
 
-fn linearSetup(alloc: std.mem.Allocator) !Setup {
+fn linearSetup(alloc: std.mem.Allocator, status: []const u8) !Setup {
     const h = try startHarness(alloc);
     errdefer h.deinit();
     const fx: fx_mod.Fixture = .{
@@ -564,9 +565,12 @@ fn linearSetup(alloc: std.mem.Allocator) !Setup {
     const trigger = try fx_mod.buildTriggerConfig(alloc, "linear", null);
     defer alloc.free(trigger);
     const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
     try fx_mod.insertZombie(conn, fx, trigger);
     try fx_mod.insertWebhookCredential(alloc, conn, fx.workspace_id, "linear", LINEAR_SECRET);
-    h.releaseConn(conn);
+    if (!std.mem.eql(u8, status, "active")) {
+        _ = try conn.exec("UPDATE core.zombies SET status = $1 WHERE id = $2::uuid", .{ status, fx.zombie_id });
+    }
     const url = try std.fmt.allocPrint(alloc, "/v1/webhooks/{s}", .{fx.zombie_id});
     return .{ .h = h, .fx = fx, .url = url };
 }
@@ -586,7 +590,7 @@ fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
     defer alloc.free(stream);
     var v = h.queue.commandAllowError(&.{ "DEL", stream }) catch return;
     v.deinit(h.queue.alloc);
-    const k = std.fmt.allocPrint(alloc, "webhook:dedup:{s}:{s}", .{ ZOMBIE_LINEAR, LINEAR_EVENT_ID }) catch return;
+    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, ZOMBIE_LINEAR, LINEAR_EVENT_ID }) catch return;
     defer alloc.free(k);
     var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;
     v2.deinit(h.queue.alloc);
@@ -594,7 +598,7 @@ fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
 
 test "C1: generic route — enqueue failure releases the dedup slot; retry delivers once; replay dedupes" {
     const alloc = std.testing.allocator;
-    var s = linearSetup(alloc) catch |err| return skipOrErr(err);
+    var s = linearSetup(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
     cleanupLinearRedis(s.h, alloc);
@@ -631,5 +635,36 @@ test "C1: generic route — enqueue failure releases the dedup slot; retry deliv
     defer r3.deinit();
     try r3.expectStatus(.ok);
     try std.testing.expect(r3.bodyContains("\"status\":\"duplicate\""));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+}
+
+test "C2: generic route — paused zombie → 200 ignored zombie_paused, dedup slot not consumed" {
+    const metrics_zombie = @import("../observability/metrics_zombie.zig");
+    const alloc = std.testing.allocator;
+    var s = linearSetup(alloc, "paused") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupLinearRedis(s.h, alloc);
+    defer cleanupLinearRedis(s.h, alloc);
+
+    const triggered_before = metrics_zombie.snapshotZombieFields().zombie_triggered_total;
+    const r1 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r1.deinit();
+    // 200-ignored (not 4xx): sender retry queues add no value for an
+    // intentionally paused zombie; nothing accepted → trigger metric unchanged.
+    try r1.expectStatus(.ok);
+    try std.testing.expect(r1.bodyContains("\"ignored\":\"zombie_paused\""));
+    try std.testing.expectEqual(triggered_before, metrics_zombie.snapshotZombieFields().zombie_triggered_total);
+
+    // The dedup slot was not consumed: after resume, the SAME event_id
+    // delivers exactly one event (an operator redelivery still works).
+    {
+        const conn = try s.h.acquireConn();
+        defer s.h.releaseConn(conn);
+        _ = try conn.exec("UPDATE core.zombies SET status = 'active' WHERE id = $1::uuid", .{ZOMBIE_LINEAR});
+    }
+    const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
+    defer r2.deinit();
+    try r2.expectStatus(.accepted);
     try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
 }
