@@ -36,6 +36,7 @@ test {
     _ = @import("fleet/event_lifecycle_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
+    _ = @import("fleet/service_token_splits_wire_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");
     _ = @import("http/fleet_operator_integration_test.zig");
     _ = @import("http/stream_registry.zig");

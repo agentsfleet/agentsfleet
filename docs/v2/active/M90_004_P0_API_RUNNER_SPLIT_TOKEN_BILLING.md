@@ -137,8 +137,8 @@ The engine emits a `usage` pipe frame (fixed-size payload: three u64 cumulatives
 
 One integration test drives the real wire: a runner-shaped client renews against the live server with a non-zero snapshot, then reports — and the server's `fleet.metering_periods` rows show non-zero `token_cost_nanos` priced off the wire values, with the affinity cursor advanced to the reported cumulatives. No test code constructs `MeterInputs`.
 
-- **Dimension 4.1** — wire-level renew bills tokens (metering row token_cost_nanos > 0; cursor == sent cumulatives) → Test `test_wire_renew_bills_tokens`
-- **Dimension 4.2** — wire-level report settles the final slice from body splits → Test `test_wire_report_bills_final_slice`
+- **Dimension 4.1** — wire-level renew bills tokens (metering row carries the wire deltas; token_cost_nanos equals the server's own rate resolution applied to them — zero while the global free trial zeroes all rates, registry-priced after; the strict >0 arm is trial-gated and arms itself post-trial; cursor == sent cumulatives; re-sent renew meters zero deltas) → Test `test_wire_renew_bills_tokens` — **DONE**
+- **Dimension 4.2** — wire-level report settles the final slice from body splits (settle deltas == body minus cursor; lease flips reported under the fence) → Test `test_wire_report_bills_final_slice` — **DONE**
 
 ---
 
@@ -204,7 +204,7 @@ Regression: full `make test` + `make test-integration`; the M90_003 exhaustion/c
 - [ ] `make memleak` clean
 - [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` + linux test graphs (zombied, runner, lib)
 - [ ] `gitleaks detect` clean · no production file over 350 lines
-- [ ] Wire proof: 4.1/4.2 paste non-zero `token_cost_nanos` from `fleet.metering_periods` — verify: Verification Evidence
+- [ ] Wire proof: 4.1/4.2 paste the `fleet.metering_periods` slice evidence — wire deltas + cursor + token-cost identity vs resolved rates (non-zero arm trial-gated until the free-trial window closes; see Discovery) — verify: Verification Evidence
 - [ ] Old-wire compatibility: server suites pass unchanged (no server file in the diff)
 
 ## Eval Commands (post-implementation)
@@ -246,6 +246,7 @@ grep -rn "cached_input_tokens" src/runner/ src/lib/contract/ | head
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 - **Known limitation carried at creation:** the cached-input split bills correctly only once the provider layer reports cache reads separately and upstream surfaces them; until then `cached_input_tokens` rides the wire as 0 and cache reads bill at whatever class the provider folds them into. Named here so it is a decision, not a surprise.
+- **Free-trial pricing window (discovered at §4, Jun 12, 2026):** `resolveRenewSliceRates` returns all-zero rates while the global free-trial window is open (`FREE_TRIAL_END_MS` ≈ Jul 31, 2026), so every wire-priced `token_cost_nanos` is 0 until then — by platform design, not a plumbing gap. The wire tests therefore assert the rate-independent proof unconditionally (slice deltas == wire values, cursor advance, cumulative-diff idempotency, fenced settle flip) plus a token-cost identity against the server's own rate resolution; the strict non-zero arm is trial-gated exactly like the credit-gate sibling and arms itself when the window closes. Non-zero pricing math itself is already pinned at the CTE layer by `renewal_metering_test.zig` with injected rates.
 
 ## Skill-Driven Review Chain (mandatory)
 
