@@ -135,9 +135,13 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         .failed_transient => return null,
     };
     // Own the resolved provider for the whole billing pass: on success it is
-    // carried into `Billed` so the lease delivers the SAME key it billed (no
-    // second resolve, no rotation TOCTOU); on any gate failure the defer zeroes
-    // + frees it (arena teardown does not zero, so the secureZero is load-bearing).
+    // carried into `Billed.provider` and consumed by `issueLease` (service.zig:93
+    // assigns `resolved = billed.provider`; the `if (resolved == null)` re-resolve
+    // there is reclaim-only — reused sessions never billed), so a FRESH lease
+    // delivers the SAME key it billed: no second resolve, no rotation TOCTOU.
+    // issueLease's own `defer r.deinit` secureZeros it. On any gate failure here
+    // the defer below zeroes + frees it instead (arena teardown does not zero, so
+    // the secureZero is load-bearing).
     var committed = false;
     defer if (!committed) tr.resolved.deinit(alloc);
     const ctx = metering.PreflightContext{
