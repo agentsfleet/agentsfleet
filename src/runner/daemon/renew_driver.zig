@@ -27,15 +27,26 @@ const pipe_proto = @import("../pipe_proto.zig");
 const LeasePayload = contract.protocol.LeasePayload;
 const log = logging.scoped(.zombie_runner);
 
-/// Map the supervisor's live cumulative snapshot onto the renew wire body.
-/// The wire carries u32 (server-frozen width); saturate rather than wrap so a
-/// pathological counter can never under-bill by overflow.
-pub fn renewRequestFrom(usage: pipe_proto.UsageSnapshot) contract.protocol.RenewRequest {
+/// Single source of the u64-cumulative → u32-wire mapping (the renew body and
+/// the report splits both flow through here). The wire width is server-frozen
+/// at u32, so we **saturate** rather than wrap: a wrap would drop the high bits
+/// and massively under-bill (cumulative counts only grow, so a wrap reads as a
+/// huge backward jump). Saturation instead clamps at u32 max — a *bounded*
+/// under-bill, reached only past ~4.29B cumulative tokens per field per lease,
+/// and never the catastrophic wrap. Beyond the clamp the server's cursor diff
+/// (`GREATEST(0, sent − cursor)`) bills the excess at zero; the legacy `tokens`
+/// total stays u64, so it can exceed the split sum once a field saturates.
+pub fn wireSplits(input: u64, cached: u64, output: u64) contract.protocol.RenewRequest {
     return .{
-        .input_tokens = std.math.lossyCast(u32, usage.input_tokens),
-        .cached_input_tokens = std.math.lossyCast(u32, usage.cached_input_tokens),
-        .output_tokens = std.math.lossyCast(u32, usage.output_tokens),
+        .input_tokens = std.math.lossyCast(u32, input),
+        .cached_input_tokens = std.math.lossyCast(u32, cached),
+        .output_tokens = std.math.lossyCast(u32, output),
     };
+}
+
+/// Map the supervisor's live cumulative snapshot onto the renew wire body.
+pub fn renewRequestFrom(usage: pipe_proto.UsageSnapshot) contract.protocol.RenewRequest {
+    return wireSplits(usage.input_tokens, usage.cached_input_tokens, usage.output_tokens);
 }
 
 /// Build the renewal-driver type bound to a control-plane client type `Client`.

@@ -17,7 +17,8 @@ const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const worker_pool = @import("worker_pool.zig");
 const forwarders = @import("forwarders.zig");
-const RenewDriver = @import("renew_driver.zig").RenewDriver(*client_mod);
+const renew_driver = @import("renew_driver.zig");
+const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
 const log = logging.scoped(.zombie_runner);
@@ -283,16 +284,12 @@ pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
 }
 
 /// Map the final ExecutionResult's u64 cumulative splits onto the report's
-/// wire-frozen u32 fields — saturating, never wrapping (an overflow must not
-/// under-bill). Returns the `RenewRequest` triple: the report carries the same
-/// three fields, per the protocol's own doc. The legacy `tokens` total rides
-/// unchanged beside them.
+/// wire-frozen u32 fields. Thin adapter over the single saturating mapper in
+/// `renew_driver` (RULE NDC: one wire-width policy, not a byte-identical twin);
+/// the report carries the same three fields the renew body does, beside the
+/// unchanged legacy `tokens` total.
 pub fn splitFields(result: contract.execution_result.ExecutionResult) protocol.RenewRequest {
-    return .{
-        .input_tokens = std.math.lossyCast(u32, result.input_tokens),
-        .cached_input_tokens = std.math.lossyCast(u32, result.cached_input_tokens),
-        .output_tokens = std.math.lossyCast(u32, result.output_tokens),
-    };
+    return renew_driver.wireSplits(result.input_tokens, result.cached_input_tokens, result.output_tokens);
 }
 
 /// Sleep for `ms` milliseconds.

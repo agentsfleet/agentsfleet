@@ -27,6 +27,7 @@ const TestHarness = harness_mod.TestHarness;
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -37,10 +38,19 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
+const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
 const RUNNER_TOKEN = "zrn_" ++ "d" ** 64;
-const PROVIDER = "test-provider";
-const MODEL = "test-model";
+// Suite-private (provider, model) pair with its own seeded core.model_caps
+// row, so post-trial the registry resolves REAL non-zero rates for this lease
+// (the global test-provider pair has no catalogue row — resolution would fall
+// back to run-fee-only and the armed >0 assertions could never pass).
+const PROVIDER = "wire-split-provider";
+const MODEL = "wire-split-model";
+const RATE_INPUT_NANOS_PER_MTOK: i64 = 3_000_000;
+const RATE_CACHED_NANOS_PER_MTOK: i64 = 300_000;
+const RATE_OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000;
+const MODEL_CONTEXT_CAP_TOKENS: i64 = 200_000;
 const BIG_BALANCE: i64 = 1_000_000_000;
 const CURSOR_AGE_MS: i64 = 20_000; // the spec's 20s-cursor lease
 
@@ -117,6 +127,26 @@ fn seedBalance(conn: *pg.Conn) !void {
     , .{ base.TEST_TENANT_ID, BIG_BALANCE });
 }
 
+// Catalogue row for this suite's private (provider, model) pair + cache reseat,
+// so the server's own rate resolution prices the wire deltas non-zero once the
+// free-trial window closes. The cache is process-global: page_allocator, per
+// the fixture convention (populate deinits any prior cache before reseating).
+fn seedModelRates(conn: *pg.Conn) !void {
+    const now_ms: i64 = clock.nowMillis();
+    _ = try conn.exec(
+        \\INSERT INTO core.model_caps
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $8)
+        \\ON CONFLICT (provider, model_id) DO UPDATE SET
+        \\   input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
+        \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
+        \\   updated_at_ms = EXCLUDED.updated_at_ms
+    , .{ MODEL_CAPS_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
+    try model_rate_cache.populate(std.heap.page_allocator, conn);
+}
+
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
@@ -127,6 +157,11 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
+    // Drop this suite's catalogue row and reseat the process-global cache so
+    // later suites in the same run never see the private pair.
+    execIgnore(conn, "DELETE FROM core.model_caps WHERE provider = $1 AND model_id = $2", .{ PROVIDER, MODEL });
+    model_rate_cache.populate(std.heap.page_allocator, conn) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -147,6 +182,7 @@ fn arrange(cursor_in: i64, cursor_cached: i64, cursor_out: i64) !Setup {
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     try seedBalance(conn);
+    try seedModelRates(conn);
     const last_metered = clock.nowMillis() - CURSOR_AGE_MS;
     try seedAffinity(conn, cursor_in, cursor_cached, cursor_out, last_metered);
     try seedActiveLease(conn, last_metered);
