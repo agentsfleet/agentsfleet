@@ -28,7 +28,7 @@ const protocol = @import("contract").protocol;
 const hx_mod = @import("../hx.zig");
 const h = @import("../memory/helpers.zig");
 const adapter = @import("../../../memory/zombie_memory.zig");
-const metrics_runner = @import("../../../observability/metrics_runner.zig");
+const metrics_memory = @import("../../../observability/metrics_memory.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_memory);
@@ -105,18 +105,20 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
             d.category.len == 0 or d.category.len > h.MAX_CATEGORY_LEN)
         {
             skipped += 1;
+            metrics_memory.incCaptureSkipped();
             continue;
         }
         bytes += d.key.len + d.content.len + d.category.len;
         if (bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
             // Truncate, don't drop the whole push (Failure Modes: oversized deltas).
+            metrics_memory.incCaptureTruncated();
             log.warn("memory_push_truncated", .{ .zombie_id = zombie_id, .stored = stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
             break;
         }
         const id = h.genId(hx.alloc);
         const ts = h.nowTs(hx.alloc);
         adapter.storeEntry(conn, id, zombie_id, d.key, d.content, d.category, ts) catch {
-            metrics_runner.incMemoryPushFailure();
+            metrics_memory.incMemoryPushFailure();
             log.warn("memory_store_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory store failed");
             return;
@@ -125,13 +127,16 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
     }
 
     // Backstop the durable set after the push: evict the coldest beyond the cap. A
-    // cap-eviction blip must not fail a capture that already persisted.
-    adapter.enforceCap(conn, zombie_id, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE) catch {
+    // cap-eviction blip must not fail a capture that already persisted (and counts
+    // nothing — the eviction counter moves only on a reported eviction).
+    const evicted = adapter.enforceCap(conn, zombie_id, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE) catch blk: {
         log.warn("memory_cap_evict_failed", .{ .zombie_id = zombie_id });
+        break :blk 0;
     };
+    metrics_memory.incCapEvictions(evicted);
 
-    metrics_runner.incMemoryCaptured(stored);
-    log.info("memory_captured", .{ .zombie_id = zombie_id, .stored = stored, .skipped = skipped });
+    metrics_memory.incMemoryCaptured(stored);
+    log.info("memory_captured", .{ .zombie_id = zombie_id, .stored = stored, .skipped = skipped, .evicted = evicted });
     hx.ok(.ok, .{ .stored = stored, .skipped = skipped, .request_id = hx.req_id });
 }
 
@@ -177,8 +182,13 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
     // Compact to a recency + byte-budget window; the cold tail stays in Postgres.
     const compactor: adapter.Compactor = .{ .recency_window = protocol.HYDRATE_WINDOW_BYTES };
     const entries = compactor.compact(rows);
-    metrics_runner.setMemoryHydrationEntries(entries.len);
-    log.info("memory_hydrated", .{ .zombie_id = zombie_id, .count = entries.len });
+    metrics_memory.setMemoryHydrationEntries(entries.len);
+    // The window's loss is the difference between the full set and the kept
+    // prefix — same key+content+category arithmetic the Compactor budgets on.
+    var dropped_bytes: usize = 0;
+    for (rows[entries.len..]) |d| dropped_bytes += d.key.len + d.content.len + d.category.len;
+    metrics_memory.incHydrationDropped(rows.len - entries.len, dropped_bytes);
+    log.info("memory_hydrated", .{ .zombie_id = zombie_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
     hx.ok(.ok, protocol.MemoryHydrateResponse{ .memory = entries });
 }
 

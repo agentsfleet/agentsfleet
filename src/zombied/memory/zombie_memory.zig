@@ -13,10 +13,13 @@
 //! per-request arena in production); `listAll` returns an arena-owned slice.
 
 const std = @import("std");
+const logging = @import("log");
 const pg = @import("pg");
 const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
+
+const log = logging.scoped(.zombie_memory);
 
 /// The wire shape of one memory item, reused verbatim for the hydrate read so the
 /// handler serializes it directly into `MemoryHydrateResponse` (RULE UFS).
@@ -85,8 +88,10 @@ pub fn storeEntry(
 /// cap), keeping the newest by `updated_at DESC`. Call once after a push loop, in the
 /// same `memory_runtime` transaction. A backstop against unbounded growth — the agent's
 /// own stable-key overwrite + `memory_forget` are the primary bound. No-op under the cap.
-pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !void {
-    _ = try conn.exec(
+/// Returns the evicted-row count (the driver's rows-affected); a driver result that
+/// carries no count reports 0 with a warn — eviction is never blocked on telemetry.
+pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !u64 {
+    const affected = try conn.exec(
         \\DELETE FROM memory.memory_entries
         \\WHERE zombie_id = $1::uuid
         \\  AND id IN (
@@ -96,6 +101,11 @@ pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !void {
         \\    OFFSET $2
         \\  )
     , .{ zombie_id, @as(i64, @intCast(max)) });
+    const n = affected orelse {
+        log.warn("memory_cap_evict_count_unavailable", .{ .zombie_id = zombie_id });
+        return 0;
+    };
+    return if (n < 0) 0 else @intCast(n);
 }
 
 /// Every memory entry for `zombie_id`, newest first — the hydration read the

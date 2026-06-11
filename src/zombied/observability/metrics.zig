@@ -120,4 +120,5 @@ test "T7: prometheus render includes all zombie counters and histogram after inc
 test {
     _ = @import("metrics_counters_test.zig");
     _ = @import("metrics_runner_test.zig");
+    _ = @import("metrics_memory_test.zig");
 }

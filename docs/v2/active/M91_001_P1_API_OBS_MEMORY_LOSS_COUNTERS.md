@@ -109,43 +109,43 @@
 
 ## Sections (implementation slices)
 
-### §1 — Hydration-window drop counters
+### §1 — Hydration-window drop counters — DONE
 
 The hydrate handler already holds both the full row set and the compacted slice; the difference is the loss. Two counters: dropped entries, dropped bytes (key+content+category, same arithmetic as `windowByBytes`).
 
-- **Dimension 1.1** — over-budget durable set increments both counters by the exact dropped entry/byte amounts → `test_hydrate_drop_counters_exact`
-- **Dimension 1.2** — set within budget increments neither → `test_hydrate_no_drop_when_fits`
-- **Dimension 1.3** — tenant list path (passthrough, no window) never touches hydration-drop counters → `test_tenant_list_never_counts_drops`
+- **Dimension 1.1** — DONE — over-budget durable set increments both counters by the exact dropped entry/byte amounts → `test_hydrate_drop_counters_exact`
+- **Dimension 1.2** — DONE — set within budget increments neither → `test_hydrate_no_drop_when_fits`
+- **Dimension 1.3** — DONE — tenant list path (passthrough, no window) never touches hydration-drop counters → `test_tenant_list_never_counts_drops`
 
-### §2 — Cap-eviction counter
+### §2 — Cap-eviction counter — DONE
 
 `enforceCap` returns how many rows its DELETE removed; the capture handler increments by that count. **Implementation default:** rows-affected from the driver's exec result, because a second counting query would double the write-path cost — verify the driver call shape at PLAN.
 
-- **Dimension 2.1** — push that lands N entries over the cap increments by exactly N → `test_cap_eviction_counter_exact`
-- **Dimension 2.2** — push under the cap increments zero → `test_under_cap_no_eviction_count`
-- **Dimension 2.3** — eviction failure keeps the existing warn-and-continue behaviour and increments nothing → `test_eviction_failure_counts_nothing`
+- **Dimension 2.1** — DONE — push that lands N entries over the cap increments by exactly N → `test_cap_eviction_counter_exact`
+- **Dimension 2.2** — DONE — push under the cap increments zero → `test_under_cap_no_eviction_count`
+- **Dimension 2.3** — DONE — eviction failure keeps the existing warn-and-continue behaviour and increments nothing → covered at the adapter tier (`enforceCap failure propagates as an error, deleting nothing`) + the unit no-op guard (`zero-count increments are no-ops`); see Discovery — HTTP-path fault injection is not reachable from the harness
 
-### §3 — Capture-loss counters
+### §3 — Capture-loss counters — DONE
 
 Two events in `innerRunnerMemoryCapture`: the byte-budget truncation branch (push stops early) and per-delta validation skips (oversized/empty key, content, category).
 
-- **Dimension 3.1** — push exceeding `MAX_MEMORY_PUSH_BYTES` increments the truncation counter once per truncated push → `test_capture_truncation_counter`
-- **Dimension 3.2** — each invalid delta increments the skip counter; valid deltas in the same push still persist → `test_capture_skip_counter_per_delta`
+- **Dimension 3.1** — DONE — push exceeding `MAX_MEMORY_PUSH_BYTES` increments the truncation counter once per truncated push → `test_capture_truncation_counter`
+- **Dimension 3.2** — DONE — each invalid delta increments the skip counter; valid deltas in the same push still persist → `test_capture_skip_counter_per_delta`
 
-### §4 — Zero-hit search counter
+### §4 — Zero-hit search counter — DONE
 
 Tenant `innerListMemories` with a `query` param returning zero rows is a recall miss signal (the model or operator searched for something the store couldn't substring-match).
 
-- **Dimension 4.1** — query with no match increments → `test_search_zero_hit_counts`
-- **Dimension 4.2** — query with ≥1 match increments nothing → `test_search_hit_no_count`
-- **Dimension 4.3** — list path without `query` never increments → `test_list_never_counts_zero_hit`
+- **Dimension 4.1** — DONE — query with no match increments → `test_search_zero_hit_counts`
+- **Dimension 4.2** — DONE — query with ≥1 match increments nothing → `test_search_hit_no_count`
+- **Dimension 4.3** — DONE — list path without `query` never increments → `test_list_never_counts_zero_hit`
 
-### §5 — Render and naming
+### §5 — Render and naming — DONE
 
 All six families on `/metrics` with `HELP` strings, names single-sourced as constants in the `zombie_memory_*` prefix family.
 
-- **Dimension 5.1** — a scrape renders all six families with `HELP` lines → `test_metrics_render_memory_loss_families`
-- **Dimension 5.2** — render reads atomics only; no allocator, no database touch → `test_render_no_db_no_alloc` (existing render-test pattern)
+- **Dimension 5.1** — DONE — a scrape renders all six families with `HELP` lines → `test_metrics_render_memory_loss_families` (unit) + `test_metrics_render_memory_loss_families_http` (live `/metrics` scrape)
+- **Dimension 5.2** — DONE — render reads atomics only; no allocator, no database touch → `test_render_no_db_no_alloc` (existing render-test pattern)
 
 ---
 
@@ -250,7 +250,12 @@ N/A — no files deleted; `enforceCap`'s old void return is replaced in the same
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append as work proceeds)
+- **Consults** —
+  - *Handshake resolved (PLAN):* rows-affected comes from the vendored `pg.zig` driver — `conn.exec()` returns `!?i64` parsed from the Postgres `CommandComplete` tag (`vendor/pg/src/conn.zig:362,401-416`); null only when the tag carries no count → `enforceCap` warns (`memory_cap_evict_count_unavailable`) and reports 0, per Failure Modes.
+  - *LENGTH split exercised:* `metrics_runner.zig` (319 lines pre-diff) would cross 350 with six families → split `metrics_memory.zig` per this spec's LENGTH gate row. All nine `zombie_memory_*` families (three existing + six new) moved there; `metrics_runner.renderPrometheus` delegates, so the `/metrics` composition and family names are byte-identical (pinned by `test_existing_memory_families_unchanged`). Exposition-format constants single-sourced in the new module (RULE UFS).
+  - *Dimension 2.3 decomposition:* an eviction DELETE failure cannot be injected through the in-process HTTP harness. Coverage split: adapter tier proves the error propagates and deletes nothing (driver rejects a malformed zombie_id with `error.InvalidUUID` before the bind — the handler catch treats every error identically); the handler's catch path breaks to 0 and `incCapEvictions(0)` is a proven no-op (unit). Warn-and-continue behaviour unchanged.
+  - *Test-fixture constraint:* `memory.memory_entries.uid` carries `ck_memory_entries_uid_uuidv7` (version nibble = 7), so the bulk seed composes deterministic v7-shaped uids in SQL — `gen_random_uuid()` (v4) is rejected.
+  - *Doc drift (not fixed here, out of scope):* `docs/VERIFY_TIERS.md` tier 1 says `make test`, but the Makefile's lanes are `test-unit-*` (`test-unit-zombied` used as tier 1 here); same for `make lint` → `lint-zig`/`lint-all` and `make check-pg-drain` → folded into `lint-zig`. Surfaced for Indy.
 - **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 
