@@ -38,7 +38,7 @@
 ## Product Clarity
 
 1. **Successful user moment** — an operator's dashboard answers "is my zombie losing memory?" the day it starts: the eviction counter moves when entry 1001 lands, instead of a support ticket three weeks later.
-2. **Preserved user behaviour** — zero behaviour change: counters only; the hydrate/capture loop, API shapes, and tools are byte-identical.
+2. **Preserved user behaviour** — zero behaviour change on the hydrate/capture loop, API shapes, and tools. One deliberate exposition change: any memory-loss counter movement now un-gates the `/metrics` runner+memory block (previously only captures/push-failures did) — loss is never invisible, even before the first runner is seen.
 3. **Optimal-way check** — counters at the four loss points is the minimal evidence engine; the unconstrained-optimal adds per-zombie attribution, rejected for metric cardinality (see Decomposition).
 4. **Rebuild-vs-iterate** — iterate: extends the existing `metrics_runner` seam; determinism untouched.
 5. **What we build** — six global counters + their increment call sites + render.
@@ -94,6 +94,7 @@
 | `src/zombied/memory/zombie_memory.zig` | EDIT | `enforceCap` returns the evicted-row count |
 | `src/zombied/http/handlers/runner/memory.zig` | EDIT | hydrate computes dropped entries/bytes and increments; capture increments truncation, skip, and eviction counters |
 | `src/zombied/http/handlers/memory/handler.zig` | EDIT | query path increments zero-hit counter |
+| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | `collectEntries` reports clean-drain so a truncated collect (database blip/OOM) never counts as a zero-hit — added at `/review` (adversarial finding F1) |
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | eviction-count assertions ride the existing cap test |
 | `make/`-driven integration test for handlers (existing memory integration suite) | EDIT | per-class counter assertions |
 
@@ -175,6 +176,9 @@ zombie_memory_search_zero_hits_total            counter
 | eviction DELETE fails | database blip | existing behaviour preserved: warn + continue; counter does not move (Dimension 2.3) |
 | concurrent scrapes during increments | parallel requests | atomics, monotonic loads — same guarantee as existing families |
 | counter overflow | very long uptime | u64 monotonic; Prometheus rate() handles wrap — accepted, matches existing families |
+| search collect truncated mid-stream | database blip / OOM during row collection | NOT counted as a zero hit — `collectEntries` reports clean-drain and the counter moves only on a clean empty result; failure noise must not fabricate recall-miss evidence |
+| retried failed push re-counts skips | store failure mid-push → runner retries whole push (upsert-idempotent) | `capture_skipped_total` over-counts by the skip count per retry and `entries_captured_total` under-counts the failed attempt's stored rows — accepted: counters are trend signals, not row accounting |
+| zero-hit counter is tenant-influenceable | any tenant scripting non-matching searches inflates the global counter | accepted by the label-free design; M91_002 / Bucket-B consumers must treat it as adversarially influenceable evidence, not ground truth |
 
 ---
 
@@ -182,7 +186,7 @@ zombie_memory_search_zero_hits_total            counter
 
 1. **No database call on the `/metrics` scrape path** — render reads atomics only; enforced by the render function taking no connection parameter (compile-level) + the existing render test.
 2. **No per-zombie labels** — enforced by the `inc*` API shape: the functions take counts only, no identifier parameter exists to leak.
-3. **Counters are monotonic** — only `fetchAdd` is exposed; no public reset/store; enforced by the module's pub surface.
+3. **Counters are monotonic** — production paths expose only `fetchAdd`; the lone reset is the test-only `resetForTest` (named, never called from production — same convention as every existing metrics module) and the declared gauge keeps its store.
 4. **No memory content in logs or metrics** — counts, byte totals, caps only; enforced by LOGGING gate review + existing log-discipline tests.
 
 ---
@@ -196,7 +200,7 @@ zombie_memory_search_zero_hits_total            counter
 | 1.3 | integration | `test_tenant_list_never_counts_drops` | tenant GET list → hydration-drop counters unchanged |
 | 2.1 | integration | `test_cap_eviction_counter_exact` | push cap+N entries → eviction counter +N; evicted rows are the coldest |
 | 2.2 | integration | `test_under_cap_no_eviction_count` | push under cap → counter unchanged |
-| 2.3 | integration | `test_eviction_failure_counts_nothing` | injected eviction failure → capture returns success, counter unchanged, warn logged |
+| 2.3 | integration + unit | `enforceCap failure propagates as an error, deleting nothing` + `zero-count increments are no-ops and never activate render` | injected eviction failure (adapter tier) → error propagates, nothing deleted; handler catch breaks to 0 → increment no-op; warn-and-continue unchanged (see Discovery — HTTP-path injection unreachable) |
 | 3.1 | integration | `test_capture_truncation_counter` | push exceeding `MAX_MEMORY_PUSH_BYTES` → truncation counter +1, stored count matches kept prefix |
 | 3.2 | integration | `test_capture_skip_counter_per_delta` | push with 2 invalid + 1 valid delta → skip counter +2, one row persisted |
 | 4.1 | integration | `test_search_zero_hit_counts` | tenant query with no match → zero-hit counter +1, HTTP 200 empty items |

@@ -69,7 +69,9 @@ pub fn setMemoryHydrationEntries(n: usize) void {
 }
 
 /// The hydration byte-budget window dropped `entries` cold-tail entries totalling
-/// `dropped_bytes` (key+content+category) from one hydrate reply.
+/// `dropped_bytes` (key+content+category) from one hydrate reply. The zero-entries
+/// no-op also discards `dropped_bytes` — anyActive() relies on the pair moving
+/// together, so never pass (0, nonzero).
 pub fn incHydrationDropped(entries: usize, dropped_bytes: usize) void {
     if (entries == 0) return;
     _ = g_hydration_dropped_entries_total.fetchAdd(@intCast(entries), .monotonic); // safe because: independent counter
@@ -117,17 +119,21 @@ comptime {
     std.debug.assert(@sizeOf(Snapshot) == 9 * @sizeOf(u64));
 }
 
+// safe because: every load below is .monotonic — these are independent
+// monotonic counters with no cross-variable ordering requirement; a snapshot
+// is a per-counter point-in-time read, not a consistent cut (same guarantee
+// as the existing zombie_runner_* families under concurrent scrapes).
 pub fn snapshot() Snapshot {
     return .{
-        .captured_total = g_captured_total.load(.acquire), // safe because: pairs with the fetchAdd in incMemoryCaptured
-        .push_failures_total = g_push_failures_total.load(.acquire), // safe because: pairs with the fetchAdd in incMemoryPushFailure
-        .hydration_entries = g_hydration_entries.load(.acquire), // safe because: pairs with the store in setMemoryHydrationEntries
-        .hydration_dropped_entries_total = g_hydration_dropped_entries_total.load(.acquire), // safe because: pairs with the fetchAdd in incHydrationDropped
-        .hydration_dropped_bytes_total = g_hydration_dropped_bytes_total.load(.acquire), // safe because: pairs with the fetchAdd in incHydrationDropped
-        .cap_evictions_total = g_cap_evictions_total.load(.acquire), // safe because: pairs with the fetchAdd in incCapEvictions
-        .capture_truncated_total = g_capture_truncated_total.load(.acquire), // safe because: pairs with the fetchAdd in incCaptureTruncated
-        .capture_skipped_total = g_capture_skipped_total.load(.acquire), // safe because: pairs with the fetchAdd in incCaptureSkipped
-        .search_zero_hits_total = g_search_zero_hits_total.load(.acquire), // safe because: pairs with the fetchAdd in incSearchZeroHit
+        .captured_total = g_captured_total.load(.monotonic),
+        .push_failures_total = g_push_failures_total.load(.monotonic),
+        .hydration_entries = g_hydration_entries.load(.monotonic),
+        .hydration_dropped_entries_total = g_hydration_dropped_entries_total.load(.monotonic),
+        .hydration_dropped_bytes_total = g_hydration_dropped_bytes_total.load(.monotonic),
+        .cap_evictions_total = g_cap_evictions_total.load(.monotonic),
+        .capture_truncated_total = g_capture_truncated_total.load(.monotonic),
+        .capture_skipped_total = g_capture_skipped_total.load(.monotonic),
+        .search_zero_hits_total = g_search_zero_hits_total.load(.monotonic),
     };
 }
 

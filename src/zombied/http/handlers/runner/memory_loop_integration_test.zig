@@ -164,13 +164,18 @@ fn seedRows(env: Env, zombie_id: []const u8, n: usize, content_len: usize) !void
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
     // uid must satisfy the UUIDv7 check (version nibble '7'); compose a
-    // deterministic v7-shaped uid unique per (zombie tail, n).
+    // deterministic v7-shaped uid from the zombie's distinguishing tail
+    // (dashless chars 25..32) + n, so uids never collide across the six
+    // fixture zombies. The id column is globally UNIQUE, so it carries the
+    // same tail; the key column stays per-zombie ('hk' || n) because the
+    // hydrate byte arithmetic depends on its exact length.
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
         \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
         \\SELECT (('0195e2aa-4c1b-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
-        \\         || substr(replace($1::uuid::text, '-', ''), 21, 8) || lpad(to_hex(n), 4, '0')))::uuid,
-        \\       'hk' || n, 'hk' || n, repeat('x', $2::int), 'c', $1::uuid, NULL,
+        \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
+        \\       'hk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
+        \\       'hk' || n, repeat('x', $2::int), 'c', $1::uuid, NULL,
         \\       '1700000000', '1700' || lpad(n::text, 6, '0')
         \\FROM generate_series(1, $3::int) n
         \\ON CONFLICT (key, zombie_id) DO NOTHING

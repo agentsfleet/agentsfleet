@@ -102,10 +102,12 @@ pub fn innerListMemories(
             return;
         });
         defer q.deinit();
-        h.collectEntries(hx.alloc, &q, &entries);
+        const clean = h.collectEntries(hx.alloc, &q, &entries);
         // A search that matched nothing is a recall-miss signal (substring
-        // search came up dry) — the list/category paths never count here.
-        if (entries.items.len == 0) metrics_memory.incSearchZeroHit();
+        // search came up dry) — the list/category paths never count here, and
+        // neither does a truncated collect: a database blip or OOM must not
+        // fabricate recall-miss evidence.
+        if (clean and entries.items.len == 0) metrics_memory.incSearchZeroHit();
     } else if (category_opt) |cat| {
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
@@ -117,7 +119,7 @@ pub fn innerListMemories(
             return;
         });
         defer q.deinit();
-        h.collectEntries(hx.alloc, &q, &entries);
+        _ = h.collectEntries(hx.alloc, &q, &entries);
     } else {
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
@@ -129,7 +131,7 @@ pub fn innerListMemories(
             return;
         });
         defer q.deinit();
-        h.collectEntries(hx.alloc, &q, &entries);
+        _ = h.collectEntries(hx.alloc, &q, &entries);
     }
 
     hx.ok(.ok, .{
