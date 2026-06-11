@@ -4,7 +4,7 @@
 **Milestone:** M91
 **Workstream:** 001
 **Date:** Jun 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the platform sells durable memory; today a zombie's learned fact can vanish (evicted, windowed out, truncated) with zero signal, and the vector-escape-hatch evidence `direction.md:20` demands is unmeasurable
 **Categories:** API, OBS
 **Batch:** B1 — first in M91; its counters are the evidence feed every later workstream (and the Bucket-B escalation ladder) reads. Runs **in parallel** with M91_004 (disjoint trees: `src/zombied/` here vs `zombiectl/` there)
@@ -215,13 +215,13 @@ Regression: existing three `zombie_memory_*` families keep their names, types, a
 
 ## Acceptance Criteria
 
-- [ ] All six families render on `/metrics` with `HELP` — verify: integration scrape test green in `make test-integration`
-- [ ] Each loss class moves only its own counter, by exact amounts — verify: `make test-integration` (Dimensions 1.1–4.3)
-- [ ] `enforceCap` returns evicted count; all callers updated — verify: `make test` + `grep -rn "enforceCap" src/`
-- [ ] `make lint` clean · `make test` passes · `make test-integration` passes
-- [ ] `make check-pg-drain` passes (touched query paths)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no file over 350 lines
+- [x] All six families render on `/metrics` with `HELP` — verified: `test_metrics_render_memory_loss_families` (unit) + `test_metrics_render_memory_loss_families_http` (live scrape) green in `make test-integration`
+- [x] Each loss class moves only its own counter, by exact amounts — verified: `make test-integration` exit 0 (Dimensions 1.1–4.3 + category-arm guard)
+- [x] `enforceCap` returns evicted count; all callers updated — verified: `make test-unit-zombied` + grep (callers: `runner/memory.zig`, `zombie_memory_integration_test.zig`)
+- [x] Lint clean (`make lint-zig`) · unit lane passes (`make test-unit-zombied`, 1291 pass/0 fail) · `make test-integration` passes (exit 0) — note: the repo's targets are `lint-zig`/`test-unit-*`; `make test`/`make lint` per VERIFY_TIERS.md are stale names (Discovery)
+- [x] pg-drain check passes (folded into `make lint-zig`, 460 files)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` → XC-PASS
+- [x] `gitleaks detect` clean · no source file over 350 lines (`metrics_runner` 282, `metrics_memory` ~180)
 
 ---
 
@@ -260,8 +260,13 @@ N/A — no files deleted; `enforceCap`'s old void return is replaced in the same
   - *Dimension 2.3 decomposition:* an eviction DELETE failure cannot be injected through the in-process HTTP harness. Coverage split: adapter tier proves the error propagates and deletes nothing (driver rejects a malformed zombie_id with `error.InvalidUUID` before the bind — the handler catch treats every error identically); the handler's catch path breaks to 0 and `incCapEvictions(0)` is a proven no-op (unit). Warn-and-continue behaviour unchanged.
   - *Test-fixture constraint:* `memory.memory_entries.uid` carries `ck_memory_entries_uid_uuidv7` (version nibble = 7), so the bulk seed composes deterministic v7-shaped uids in SQL — `gen_random_uuid()` (v4) is rejected.
   - *Doc drift (not fixed here, out of scope):* `docs/VERIFY_TIERS.md` tier 1 says `make test`, but the Makefile's lanes are `test-unit-*` (`test-unit-zombied` used as tier 1 here); same for `make lint` → `lint-zig`/`lint-all` and `make check-pg-drain` → folded into `lint-zig`. Surfaced for Indy.
-- **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
-- **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
+- **Skill chain outcomes** —
+  - `/write-unit-test` (Change-set mode): diff ledger 27/27 resolved — 24 tested, 3 `won't-test` with reasons (driver-unreachable `orelse`/`n<0` arms in `enforceCap`; log-field assertions per repo convention). One gap closed during the audit: `test_category_filter_never_counts_zero_hit`. Negative-path ratio ~53%; no structural perf/concurrency findings (lock-free fetchAdds, zero new DB round-trips).
+  - `/review` (adversarial, Claude subagent + Codex cross-model): 5 FIXABLE fixed in `23a6e87b` — F1 zero-hit integrity (`collectEntries` clean-drain), F2 fixture uid/id uniqueness, F3 spec test-name drift, F4 invariant wording, F5 atomic-ordering honesty; 4 INVESTIGATE dispositioned into Failure Modes / Product Clarity (F6 torn-pair scrape skew — same guarantee as existing families; F7 retried-push skip over-count; F8 tenant-influenceable zero-hit; F9 render-gating widening, owned). Codex verdict: "Ship as-is". The F1 no-count-on-truncated-collect branch is compile-enforced at the call site; runtime injection of a mid-collect failure is `needs-infra` (same class as the eviction HTTP injection).
+  - `/review-pr` + `kishore-babysit-prs` — pending PR creation (blocked on `main` push; see Deferrals/handoff).
+- **Deferrals** — no spec Section/Dimension deferred. Two rule-blocked CHORE(close) outputs await Indy (not scope cuts — both are Hard-Safety/handoff gates only Indy can release):
+  1. **Changelog `<Update>` in `~/Projects/docs/changelog.mdx`** — cross-repo writes to the docs repo need an explicit per-session ask (AGENTS.md Hard Safety); land on `chore/m91-001-counters-changelog` once authorized.
+  2. **PR creation** — local `main` is ahead of `origin/main` by the two M91 spec commits; the handoff requires Indy to push (or authorize pushing) `main` before any PR opens. `/review-pr` + `kishore-babysit-prs` fire immediately after.
 
 ---
 
@@ -280,11 +285,13 @@ N/A — no files deleted; `enforceCap`'s old void return is replaced in the same
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Lint + drain | `make lint && make check-pg-drain` | | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Gitleaks | `gitleaks detect` | | |
+| Unit tests | `make test-unit-zombied` | 1291 pass / 0 fail / 359 skipped (no-DB lane) | ✅ |
+| Integration tests | `make test-integration` | exit 0 — "All integration tests passed" (live DB + Redis) | ✅ |
+| Lint + drain | `make lint-zig` (fmt + ZLint + pg-drain + depth + line-limit + role/legacy) | all green; pg-drain 460 files | ✅ |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | XC-PASS | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| Test delta | `make _lint_zig_test_depth` vs CHORE(open) baseline | unit 1966→1986 (+20) · integration 172→173 (+1 suite file) | ✅ |
+| Coverage lanes | `make test-coverage-all` | app 883 + website 149 + zombiectl 403 pass (first run flaked on a cold-cache vitest timeout; clean on re-run) | ✅ |
 
 ---
 
