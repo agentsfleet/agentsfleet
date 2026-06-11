@@ -24,7 +24,6 @@ const log = logging.scoped(.account_teardown);
 
 const S_BEGIN = "BEGIN";
 const S_COMMIT = "COMMIT";
-const S_ROLLBACK = "ROLLBACK";
 
 /// Workspaces owned by the tenant. `$1` = tenant_id.
 const WS_OF_TENANT = "(SELECT workspace_id FROM core.workspaces WHERE tenant_id = $1::uuid)";
@@ -58,7 +57,12 @@ pub fn purgeByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject
     defer alloc.free(tenant_id);
 
     _ = try conn.exec(S_BEGIN, .{});
-    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+    // Use conn.rollback() not conn.exec("ROLLBACK") — the driver's exec
+    // short-circuits when the connection is in FAIL state after a statement
+    // error, leaving the session stuck in an aborted tx. rollback() uses
+    // execIgnoringState specifically for this case (signup_bootstrap.zig
+    // precedent).
+    errdefer conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     for (PURGE_STATEMENTS) |stmt| {
         _ = try conn.exec(stmt, .{tenant_id});
     }

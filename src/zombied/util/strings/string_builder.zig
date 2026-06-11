@@ -62,7 +62,7 @@ pub fn deinit(self: *StringBuilder, alloc: Allocator) void {
 /// the slice is valid until the builder's `deinit` is called. Asserts
 /// (debug-only) that capacity was correctly counted and `allocate` was called.
 pub fn append(self: *StringBuilder, slice: []const u8) []const u8 {
-    std.debug.assert(self.len <= self.cap);
+    std.debug.assert(self.len + slice.len <= self.cap);
     std.debug.assert(self.ptr != null);
 
     @memcpy(self.ptr.?[self.len .. self.len + slice.len], slice);
@@ -151,6 +151,22 @@ test "fmt + fmtCount work together" {
     try b.allocate(alloc);
     const out = b.fmt("user={s} id={d}", .{ "alice", 42 });
     try std.testing.expectEqualStrings("user=alice id=42", out);
+}
+
+test "append accepts an exact-capacity fit (precondition covers the copy bound)" {
+    // The precondition must include the incoming slice's length — the
+    // pre-copy assert is `len + slice.len <= cap` (parity with appendZ), so
+    // an exact fit passes and an over-append dies BEFORE the memcpy writes
+    // past the buffer. The over-append half is a Debug panic by design and
+    // cannot be expect-tested in-process.
+    const alloc = std.testing.allocator;
+    var b: StringBuilder = .{};
+    defer b.deinit(alloc);
+
+    b.count("12345");
+    try b.allocate(alloc);
+    _ = b.append("12345"); // len + slice.len == cap — boundary accepted
+    try std.testing.expectEqual(b.cap, b.len);
 }
 
 test "initCapacity skips the count phase" {

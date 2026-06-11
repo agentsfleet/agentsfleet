@@ -186,7 +186,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     });
     defer q.deinit();
 
-    var agents: std.ArrayListUnmanaged(AgentRow) = .empty;
+    var agents: std.ArrayList(AgentRow) = .empty;
     while (q.next() catch null) |row| {
         const agent_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const zombie_id = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;

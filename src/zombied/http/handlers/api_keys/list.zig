@@ -121,7 +121,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageRo
     });
     defer rows_q.deinit();
 
-    var items: std.ArrayListUnmanaged(ListRow) = .empty;
+    var items: std.ArrayList(ListRow) = .empty;
     var total: i64 = 0;
     while (rows_q.next() catch null) |row| {
         const row_total = row.get(i64, 6) catch total;

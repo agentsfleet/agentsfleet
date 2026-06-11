@@ -62,6 +62,76 @@ fn cleanup(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
+// Rollback-test fixture — its OWN id family (`c...003x`) so it never collides
+// with the happy-path victim above. The failure injection is the append-only
+// trigger on `core.zombie_approval_gates`: any gate row makes the purge's gate
+// DELETE raise mid-transaction. Because that trigger forbids DELETE outright,
+// these rows are deliberately PERSISTENT (every seed is ON CONFLICT DO NOTHING
+// and the test asserts state, not row creation); `_reset-test-db` is what
+// clears them between suite runs.
+const RB_OIDC: []const u8 = "oidc-account-teardown-rollback-01";
+const RB_TENANT_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000031";
+const RB_USER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000032";
+const RB_WORKSPACE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000033";
+const RB_ZOMBIE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000034";
+const RB_GATE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000035";
+const RB_MEMORY_UID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000036";
+
+test "integration: a mid-purge failure rolls back — no partial deletes, conn stays healthy" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const conn = db_ctx.conn;
+
+    // Idempotent seeds — reruns find the rows already present and assert the
+    // same post-rollback state.
+    _ = try conn.exec(
+        \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-rollback', 0, 0)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{RB_TENANT_ID});
+    _ = try conn.exec(
+        \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-rollback@test.zombie', 0, 0)
+        \\ON CONFLICT (user_id) DO NOTHING
+    , .{ RB_USER_ID, RB_TENANT_ID, RB_OIDC });
+    try base.seedWorkspaceWithTenant(conn, RB_WORKSPACE_ID, RB_TENANT_ID);
+    try base.seedZombie(conn, RB_ZOMBIE_ID, RB_WORKSPACE_ID, "teardown-rollback", "{}", "# z");
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_approval_gates
+        \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name, gate_kind,
+        \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
+        \\   detail, requested_at, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-rollback-test', 'bash', 'rm',
+        \\        'destructive_action', 'n/a', '{}'::jsonb, 'n/a', 9999999999999, '',
+        \\        'pending', '', 0, 0)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ RB_GATE_ID, RB_ZOMBIE_ID, RB_WORKSPACE_ID });
+    // A memory row the purge deletes BEFORE it reaches the failing gate
+    // statement — its survival after the error is the rollback proof.
+    _ = try conn.exec(
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, NULL, '1700000000', '1700000000')
+        \\ON CONFLICT (uid) DO NOTHING
+    , .{ RB_MEMORY_UID, RB_ZOMBIE_ID });
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_ZOMBIE_ID));
+
+    // The purge fails mid-transaction: its gate DELETE trips the append-only
+    // trigger AFTER the telemetry + memory deletes already ran in the same
+    // transaction. The errdefer must roll back on the FAIL-state-safe path.
+    try std.testing.expectError(error.PG, teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC));
+
+    // No partial deletes: the memory row deleted before the failure is back,
+    // and the user row was never reached.
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_ZOMBIE_ID));
+    try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, RB_OIDC));
+
+    // Conn healthy: not stuck in an aborted transaction — with the old
+    // exec("ROLLBACK") errdefer the driver short-circuits in FAIL state and
+    // every later statement on this conn errors out.
+    _ = try conn.exec("SELECT 1", .{});
+}
+
 test "integration: purgeByOidcSubject removes the account's memory entries" {
     const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
