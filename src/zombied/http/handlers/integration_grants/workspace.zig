@@ -68,7 +68,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
     });
     defer q.deinit();
 
-    var grants: std.ArrayListUnmanaged(GrantRow) = .empty;
+    var grants: std.ArrayList(GrantRow) = .empty;
     while (q.next() catch null) |row| {
         const grant_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
         const service = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
