@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Batch:** B4 — after M90_003 (its metering tests are the harness this work extends); independent of the M91 memory family
 **Branch:** feat/m90-004-token-splits
 **Test Baseline:** unit=1966 integration=172
-**Depends on:** an `oss/nullclaw` release exposing cumulative split-token accessors (see §1 — the agent already normalizes `prompt_tokens`/`completion_tokens` per response at `agent/root.zig:2425` but accumulates only the total at `:2437`; the upstream change is accumulate-splits + two accessors, then this repo bumps the pin in `build.zig.zon`)
+**Depends on:** the `usezombie/nullclaw` fork commit exposing cumulative split-token accessors (see §1 — the agent already normalizes `prompt_tokens`/`completion_tokens` per response but accumulates only the total; we hold no push or release rights on upstream `nullclaw/nullclaw`, so the accumulate-splits + two-accessor patch rides the fork branch `patch/split-token-accessors-v2026.5.29` at `127b5ac4`, pinned in `build.zig.zon`; drop the fork pin when upstream exposes split accessors)
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 12, 2026) — from the cross-model adversarial review of PR #395, which found the under-billing; fix directed by Indy
 
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` (slice pricing reads cumulative token counts off the renew/report wire; this workstream makes the runner actually send them). No new streams/queues/schemas.
@@ -105,7 +105,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** four slices — upstream dependency + pin (§1), child→parent live plumbing (§2), wire fill (§3), end-to-end proof (§4). The supervisor/renew single-thread property makes §2 plain-field state; no locking design needed.
-- **Alternatives considered:** (a) billing the existing single total as `input_tokens` — wrong rate class, mis-bills permanently, rejected; (b) estimating splits by content length — invented numbers in a money path, rejected; (c) patching the vendored `zig-pkg` copy of NullClaw in-tree — forbidden (vendored packages are pinned releases; the fix belongs upstream in `oss/nullclaw`, which Indy owns); (d) skipping renew-time counts and only fixing the report — leaves every mid-run slice billing zero tokens until the terminal report, rejected (the renew path is where long runs accrue spend).
+- **Alternatives considered:** (a) billing the existing single total as `input_tokens` — wrong rate class, mis-bills permanently, rejected; (b) estimating splits by content length — invented numbers in a money path, rejected; (c) patching the vendored `zig-pkg` copy of NullClaw in-tree — forbidden (vendored packages are pinned releases; the fix belongs on the nullclaw source tree — and since we hold no push or release rights on upstream `nullclaw/nullclaw`, it rides the `usezombie/nullclaw` fork as one clean rebasable commit, posthog-zig precedent; full-tree vendor copy rejected at ~204K lines — see Discovery); (d) skipping renew-time counts and only fixing the report — leaves every mid-run slice billing zero tokens until the terminal report, rejected (the renew path is where long runs accrue spend).
 - **Patch-vs-refactor verdict:** **patch** — every change extends an existing seam (frame enum, struct fields, JSON body); nothing re-architected.
 
 ---
@@ -114,7 +114,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Upstream split accessors + pin bump
 
-`oss/nullclaw` accumulates `prompt_tokens`/`completion_tokens` (and cache-read counts where the provider reports them) alongside the existing `total_tokens`, and exposes cumulative accessors on the Agent. This repo bumps the pin and reads them at the engine boundary. Until the release exists, every downstream Dimension is blocked — fail loud at CHORE(open) if the pin target is missing, listing exactly what upstream must export.
+The `usezombie/nullclaw` fork (branch `patch/split-token-accessors-v2026.5.29`, one commit atop upstream tag v2026.5.29) accumulates `prompt_tokens`/`completion_tokens` alongside the existing `total_tokens` and exposes `promptTokensUsed()`/`completionTokensUsed()` beside `tokensUsed()`. This repo pins the fork commit in `build.zig.zon` and reads the accessors at the engine boundary. Cache-read counts are not yet surfaced upstream — `cached_input_tokens` maps as 0 (the Known-limitation entry in Discovery). Drop the fork pin and return to the upstream tag when upstream exposes split accessors.
 
 - **Dimension 1.1** — upstream release pinned in `build.zig.zon`; engine reads cumulative input/cached/output accessors → Test: E2 (both graphs compile against the new pin) + a unit test pinning that the engine maps accessor values into `ExecutionResult` splits verbatim
 
@@ -184,7 +184,7 @@ Compatibility: every new field defaults to 0 on both sides; old runner ↔ new s
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | engine maps accessors → ExecutionResult | accessor (10,2,5) → result splits (10,2,5), total unchanged |
+| 1.1 | unit | engine maps accessors → ExecutionResult | accessors prompt=10/completion=5 → result splits (10,0,5) — cached pinned 0 until upstream surfaces it — total unchanged |
 | 2.1 | unit | `test_usage_frame_round_trip` | encode (7,1,3) → frame → decode (7,1,3); supervisor counters = (7,1,3) |
 | 2.2 | unit | `test_renew_tick_sees_live_usage` | frame (100,0,40) then tick → snapshot (100,0,40); regressed frame (50,0,20) → snapshot stays (100,0,40) |
 | 2.3 | unit | `test_malformed_usage_frame_keeps_counters` | 23-byte payload → dropped + counters unchanged |
@@ -241,7 +241,8 @@ grep -rn "cached_input_tokens" src/runner/ src/lib/contract/ | head
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append Architecture/Legacy-Design/gate-flag consults + Indy decisions here.)
+- **Consults** —
+  - **Fork-pin decision (Indy, Jun 12, 2026).** Premise correction at EXECUTE: `gh api repos/nullclaw/nullclaw` shows `push: false, admin: false` for this account — the planned upstream-release path is not ours to drive. > Indy (2026-06-12): "Go with usezombie org" — context: carry the split-accessor patch on a `usezombie/nullclaw` fork (branch `patch/split-token-accessors-v2026.5.29`, commit `127b5ac4`) pinned via `build.zig.zon`, matching the posthog-zig org-pin precedent; full-tree vendor copy rejected (~204K-line dependency). Parity proof: pristine v2026.5.29 and patched suites fail only the same 5 pre-existing redis-environment integration tests (7213 pass / 9 skip / 5 fail each side).
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 - **Known limitation carried at creation:** the cached-input split bills correctly only once the provider layer reports cache reads separately and upstream surfaces them; until then `cached_input_tokens` rides the wire as 0 and cache reads bill at whatever class the provider folds them into. Named here so it is a decision, not a surprise.
