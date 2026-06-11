@@ -106,10 +106,14 @@ pub const CallWatchdog = struct {
             }
             const now = clock.nowMillis();
             if (now >= self.deadline_at_ms) {
-                const h = self.handle;
+                // Fire UNDER the lock: a completed call's disarm + a successor
+                // call's arm (recycling the same fd number from the pool) can
+                // otherwise interleave between the check and the syscall and
+                // the shutdown would hit the next call's socket. shutdown(2)
+                // is non-blocking; the hold is microseconds.
+                _ = std.c.shutdown(self.handle, std.c.SHUT.RDWR);
                 self.armed = false;
                 self.mutex.unlock();
-                _ = std.c.shutdown(h, std.c.SHUT.RDWR);
                 log.warn("cp_call_deadline_fired", .{});
                 self.mutex.lock();
                 continue;

@@ -46,8 +46,14 @@ pub const ActivityForwarder = struct {
         const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return;
         defer self.alloc.free(json);
         if (self.count == 0) self.first_buffered_ms = clock.nowMillis();
+        const valid_len = self.buf.items.len;
         if (self.count > 0) self.buf.append(self.alloc, ',') catch return;
-        self.buf.appendSlice(self.alloc, json) catch return;
+        self.buf.appendSlice(self.alloc, json) catch {
+            // roll the orphan comma back — a half-appended frame would poison
+            // the whole batch into invalid JSON, not just drop this frame
+            self.buf.shrinkRetainingCapacity(valid_len);
+            return;
+        };
         self.count += 1;
         const stale = clock.nowMillis() - self.first_buffered_ms >= ACTIVITY_FLUSH_WINDOW_MS;
         if (self.count >= ACTIVITY_BATCH_MAX_FRAMES or self.buf.items.len >= ACTIVITY_BATCH_MAX_BYTES or stale) {

@@ -69,6 +69,9 @@ and idempotent `stop()`. The `backlog` knob now sizes the single shared queue
 rather than `count` private rings — total standing capacity is `backlog`, not
 `count × backlog`; the per-dispatch-point bound is what it always was. New
 `pending()` exposes the queued-job depth as a load signal for admission control.
+Multi-job pushes wake one waiter per queued job (bounded by the pool size)
+instead of broadcasting — a broadcast stampeded every idle thread at the shared
+mutex on each event-loop batch.
 
 **Tests:** existing pool tests (`batch add`, `small fuzz`, `large fuzz`) pass
 unmodified; new `parked thread cannot starve queued jobs` pins the fix (it hangs

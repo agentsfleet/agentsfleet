@@ -104,8 +104,10 @@ pub fn stop(self: *SubscriptionHub) void {
     }
 }
 
-/// Frees map storage. Call after `stop()`; subscriptions still held by
-/// draining stream threads are returned through `unsubscribe` as they exit.
+/// Frees map storage. Call after `stop()` AND after every stream thread has
+/// deregistered (registry `awaitEmpty`) — a late `unsubscribe` would touch
+/// freed map storage. serve.zig's defer chain and the harness encode this
+/// ordering.
 pub fn deinit(self: *SubscriptionHub) void {
     var it = self.channels.iterator();
     while (it.next()) |kv| {

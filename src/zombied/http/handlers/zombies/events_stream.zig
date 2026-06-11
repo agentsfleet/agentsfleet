@@ -8,10 +8,11 @@
 //!      the hub owns the ONE shared Redis pub/sub connection; opening a
 //!      stream costs a map entry, never a Redis dial or TLS handshake.
 //!   3. Hand the TCP stream to a DEDICATED detached thread via
-//!      `startEventStream` — never the pool-parking sync variant: httpz's
-//!      handler pool round-robins private per-thread queues with no
-//!      work-stealing, so one pool thread parked on a stream black-holes its
-//!      queue's share of every later request.
+//!      `startEventStream` — never the pool-parking sync variant: a parked
+//!      stream would pin a handler-pool thread for its whole lifetime (and
+//!      pre-Patch-2 httpz round-robined private per-thread queues with no
+//!      work-stealing, so a parked pool thread black-holed its queue's share
+//!      of every later request — see vendor/httpz/CHANGES.md).
 //!   4. Loop: timed-pop the subscription queue → write one SSE frame;
 //!      timeout → heartbeat comment (probes client liveness); hub closed →
 //!      exit (shutdown drain).
@@ -99,6 +100,7 @@ pub fn innerEventsStream(
             .live = hx.ctx.stream_registry.count(),
             .max = hx.ctx.sse_max_streams,
         });
+        hx.res.header(common.HEADER_RETRY_AFTER, common.RETRY_AFTER_BRIEF_VALUE);
         hx.fail(ec.ERR_SSE_STREAM_CAP, ec.MSG_SSE_STREAM_CAP);
         return;
     };

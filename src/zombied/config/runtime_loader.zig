@@ -28,13 +28,14 @@ const S_T_R_N = " \t\r\n";
 /// Default ceiling on concurrent Server-Sent-Events streams per instance,
 /// overridable via SSE_MAX_STREAMS (0 rejected). Each live stream costs one
 /// DEDICATED detached thread (16 MiB virtual stack, ~128 KiB committed), one
-/// dedicated Redis pub/sub connection (~100 KiB with TLS), and two fds —
-/// ~0.5 MiB per stream, so the default is ~32 MiB on the 4 GB prod box.
-/// Streams never occupy handler-pool threads (httpz `startEventStream`
-/// spawns the dedicated thread; the pool's round-robin private queues must
-/// never park — events_stream.zig module header has the full story). The
-/// empirical ceiling is Redis fan-out, not memory — the M88-gated load test
-/// refines it, fed by the zombie_sse_in_flight_streams gauge.
+/// client fd, and a 64-frame bounded queue (~64 KiB worst case) — Redis is
+/// the SubscriptionHub's ONE shared pub/sub connection process-wide, never
+/// per-stream — so ~0.25 MiB per stream, ~16 MiB at the default on the 4 GB
+/// prod box. Streams never occupy handler-pool threads (httpz
+/// `startEventStream` spawns the dedicated thread — events_stream.zig module
+/// header has the full story). The empirical ceiling is Redis fan-out CPU,
+/// not memory — the M88-gated load test refines it, fed by the
+/// zombie_sse_in_flight_streams gauge.
 pub const SSE_MAX_STREAMS_DEFAULT: u32 = 64;
 
 const SizesConfig = struct {

@@ -56,6 +56,59 @@ test "the frame-count cap auto-flushes and resets the batch" {
     try testing.expectEqual(@as(usize, 0), fwd.buf.items.len);
 }
 
+test "the byte cap auto-flushes before the frame cap" {
+    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    defer c.deinit();
+    var fwd = testForwarder(&c);
+    defer fwd.deinit();
+
+    // ~8 KiB per frame: the 64 KiB byte bound trips well before the 16-frame
+    // bound — this is the clause that caps retained memory for chatty frames.
+    const big_args = "x" ** (8 * 1024);
+    var sent: usize = 0;
+    while (sent < forwarders.ACTIVITY_BATCH_MAX_FRAMES) : (sent += 1) {
+        forwarders.ActivityForwarder.forward(@ptrCast(&fwd), .{
+            .tool_call_started = .{ .name = "probe", .args_redacted = big_args },
+        });
+        if (fwd.count == 0) break; // the byte cap flushed the batch
+    }
+    try testing.expect(sent + 1 < forwarders.ACTIVITY_BATCH_MAX_FRAMES);
+    try testing.expectEqual(@as(usize, 0), fwd.count);
+    try testing.expectEqual(@as(usize, 0), fwd.buf.items.len);
+}
+
+fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
+    return .{
+        .alloc = testing.allocator,
+        .cp = c,
+        .runner_token = "zrn_test",
+        .zombie_id = "z_test",
+        .lease_id = "lease_test",
+        .fencing_token = 7,
+        .deadline_ms = client_mod.ACTIVITY_DEADLINE_MS,
+    };
+}
+
+test "memory forwarder drops a malformed capture payload without posting" {
+    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    defer c.deinit();
+    var fwd = testMemoryForwarder(&c);
+
+    // parse fails → warn-and-drop; the leak detector asserts full cleanup
+    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "not-json");
+    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "{\"kind\":\"object-not-array\"}");
+}
+
+test "memory forwarder posts a valid delta set best-effort" {
+    var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
+    defer c.deinit();
+    var fwd = testMemoryForwarder(&c);
+
+    // valid empty delta array parses, the fenced POST fails fast against the
+    // dead port and is swallowed (best-effort contract) — no crash, no leak
+    forwarders.MemoryForwarder.forward(@ptrCast(&fwd), "[]");
+}
+
 test "flushIfStale ships a buffered frame once the window passes" {
     var c = client_mod.init(testing.allocator, common.globalIo(), DEAD_URL);
     defer c.deinit();

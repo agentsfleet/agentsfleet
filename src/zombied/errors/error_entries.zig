@@ -90,7 +90,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-API-001", .too_many_requests, "Too many in-flight requests", "This API instance is at its in-flight request ceiling and is shedding load. " ++
         "Honor the Retry-After header and retry with backoff. Operators: raise API_MAX_IN_FLIGHT_REQUESTS or add replicas."),
     e("UZ-API-002", .service_unavailable, "Event-stream capacity reached", "This instance is serving its maximum number of concurrent event streams. " ++
-        "Close unused dashboard tabs or retry shortly. Operators: raise API_HTTP_THREADS to lift the stream cap."),
+        "Close unused dashboard tabs or retry shortly. Operators: raise SSE_MAX_STREAMS or add replicas."),
     // ── WORKSPACE ────────────────────────────────────────────────────────────
     e("UZ-WORKSPACE-001", .not_found, "Workspace not found", "Workspace not found. Verify the workspace ID."),
     e("UZ-WORKSPACE-002", .payment_required, "Workspace paused", "Workspace is paused due to billing. Update payment method."),
