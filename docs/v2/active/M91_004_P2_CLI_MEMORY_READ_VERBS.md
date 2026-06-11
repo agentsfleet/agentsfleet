@@ -32,6 +32,7 @@
 - **PR title (eventual):** `feat(m91): zombiectl memory list/search read verbs`
 - **Intent (one sentence):** operators (and external agents piping JSON) can inspect any zombie's durable memory — list newest-first, filter by category, or substring-search — turning "my zombie forgot X" from a support ticket into a one-command diagnosis.
 - **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. Resolve before EXECUTE: (a) whether `memory` registers as a top-level noun (`zombiectl memory list --zombie <id>`, matching M14_001's CLI intent) or under the `zombie` noun — follow the tree convention the nearest multi-noun command uses; (b) how the mirrored commands resolve the workspace for a `--zombie` argument. A `[?]` blocks EXECUTE.
+- **Handshake resolutions (PLAN, Jun 12, 2026):** intent restated in the PLAN message. **(a) top-level `memory` noun** — `grant` and `agent` are the tree convention for top-level nouns acting on per-zombie/per-workspace resources via flags (`FLAG_ZOMBIE_ID` already exists in `cli-tree.ts`); registration in a new `cli-tree-memory.ts` per the `cli-tree-zombie.ts` length-headroom precedent. **(b) workspace = flag > config default** — `--workspace <id>` then `current_workspace_id`, mirroring `agent.ts`'s `resolveWorkspaceId`; `--zombie <id>` is a required flag validated as Universally Unique Identifier (UUID) v7 client-side via `parseIdOption` (the `grant` precedent). No `[?]` remains.
 
 ---
 
@@ -89,11 +90,23 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `zombiectl/src/commands/memory.ts` | CREATE | the two verbs: argument parsing, handler, endpoint call |
-| `zombiectl/src/program/` (tree registration file per Handshake a) | EDIT | register the `memory` noun + verbs |
-| `zombiectl/src/commands/types.ts` | EDIT | response/row types for the memory endpoint (if the convention keeps shared types here) |
-| zombiectl test tree (mirroring the nearest command's unit + subprocess e2e files) | CREATE | handler unit tests + built-binary e2e |
-| `zombiectl/README.md` (or the help surface the repo maintains) | EDIT | document the verbs |
+| `zombiectl/src/commands/memory.ts` | CREATE | the two verbs: Effect factories, endpoint call, render helpers (table, UTF-8-safe preview, isolated `updated_at` helper) |
+| `zombiectl/src/program/cli-tree-memory.ts` | CREATE | register the `memory` noun + verbs (Handshake a; mirrors `cli-tree-zombie.ts`) |
+| `zombiectl/src/program/cli-tree.ts` | EDIT | call `buildMemoryTree`; `helpTail` subcommand rows |
+| `zombiectl/src/program/cli-tree-types.ts` | EDIT | `MemoryHandlers` + `Handlers.memory` |
+| `zombiectl/src/program/handlers-bind.ts` | EDIT | wire the two handlers; bind-site `stdout.isTTY` read for auto-JSON-when-piped |
+| `zombiectl/src/lib/api-paths.ts` | EDIT | `wsZombieMemoriesPath` helper |
+| `zombiectl/src/commands/types.ts` | — (resolved at PLAN: no edit) | response/row types are module-local in every sibling command |
+| `zombiectl/src/program/handlers-bind-memory.ts` | CREATE | group-bind extraction (the workspace/zombie precedent) — `handlers-bind.ts` crossed 350 with the verbs inline; the LENGTH GATE's intended fix |
+| `zombiectl/test/memory.unit.test.ts` | CREATE | direct Effect-layer + pure-helper tests |
+| `zombiectl/test/memory.integration.test.ts` | CREATE | `runCli` + mock-API tests (render, errors, JSON, exit codes) |
+| `zombiectl/test/acceptance/memory-read.spec.ts` | CREATE | subprocess e2e against `dist/bin/zombiectl.js` — help grammar, auto-JSON-when-piped, error shapes, invalid-limit no-request |
+| `zombiectl/test/golden-output.unit.test.ts` | EDIT | `FIXTURE_VERSION` bump in lockstep with the regenerated fixtures (the recipe's required step) |
+| `zombiectl/test/json-contract.test.ts` + `zombiectl/test/helpers-cli-tree.ts` | EDIT | exhaustive `Handlers` stubs gain `memory` (type-forced by registration) |
+| `zombiectl/test/cli-alignment.unit.test.ts` | EDIT | `--help` surfaces the `memory` noun (additive assertions) |
+| `zombiectl/test/acceptance/fixtures/command-matrix.ts` | EDIT | `COMMAND_GROUPS` + `PER_ZOMBIE_READ_ONLY_COMMANDS` rows (the matrix header mandates this on any new surface) |
+| `zombiectl/test/golden/*` | EDIT | help-output fixtures regenerated via the documented recipe (registration changes the top-level help body) |
+| `zombiectl/README.md` | EDIT | document the verbs |
 
 ---
 
@@ -111,49 +124,50 @@
 
 Newest-first listing with optional `--category` and `--limit` (client validates positive integer; server clamps to its recall maximum — the client mirrors the published default/max as constants, it does not invent its own).
 
-- **Dimension 1.1** — list renders key/category/updated/preview newest-first → `test_memory_list_table_newest_first`
-- **Dimension 1.2** — `--category` filters; `--limit` caps; invalid limit fails client-side with usage text → `test_memory_list_flags_and_validation`
-- **Dimension 1.3** — empty store: friendly "no memories" line, exit 0 → `test_memory_list_empty_exit_zero`
+- **Dimension 1.1** — list renders key/category/updated/preview newest-first → `test_memory_list_table_newest_first` — **DONE**
+- **Dimension 1.2** — `--category` filters; `--limit` caps; invalid limit fails client-side with usage text → `test_memory_list_flags_and_validation` — **DONE**
+- **Dimension 1.3** — empty store: friendly "no memories" line, exit 0 → `test_memory_list_empty_exit_zero` — **DONE**
 
 ### §2 — `memory search`
 
 Positional query → endpoint `?query=`; matches across key and content (server semantics); newest-first; same render path as list.
 
-- **Dimension 2.1** — matching query prints only matching rows → `test_memory_search_matches`
-- **Dimension 2.2** — no-match: "no memories matched" + hygiene-docs pointer, exit 0 → `test_memory_search_empty_exit_zero`
+- **Dimension 2.1** — matching query prints only matching rows → `test_memory_search_matches` — **DONE**
+- **Dimension 2.2** — no-match: "no memories matched" + hygiene-docs pointer, exit 0 → `test_memory_search_empty_exit_zero` — **DONE**
 
 ### §3 — Output as a service
 
-Terminal → aligned table with content preview truncated at a named constant (full content never lost: JSON mode carries it verbatim); piped stdout → stable JSON array of full entries; `updated_at` rendered as local time in the table, raw value in JSON. **Implementation default:** isolate `updated_at` parsing in a single helper — M91_003 flips the wire type from string to number, and this PR rebases that one spot when it lands second (see Batch).
+Terminal → aligned table with content preview truncated at a named constant (full content never lost: JSON mode carries it verbatim); piped stdout → the stable JSON envelope of full entries; `updated_at` rendered as ISO 8601 UTC in the table *(amended at EXECUTE from "local time": `events` and `grant list` tables already render `toISOString()` — one timestamp convention per binary beats per-command localisation, and locale-dependent output is test flake bait)*, raw value in JSON. **Implementation default:** isolate `updated_at` parsing in a single helper — M91_003 flips the wire type from string to number, and this PR rebases that one spot when it lands second (see Batch).
 
-- **Dimension 3.1** — piped invocation emits parseable JSON with full untruncated content → `test_memory_output_json_when_piped`
-- **Dimension 3.2** — table preview truncates at the constant; multibyte content never splits a UTF-8 sequence → `test_memory_preview_truncation_utf8_safe`
+- **Dimension 3.1** — piped invocation emits parseable JSON with full untruncated content → `test_memory_output_json_when_piped` — **DONE**
+- **Dimension 3.2** — table preview truncates at the constant; multibyte content never splits a UTF-8 sequence → `test_memory_preview_truncation_utf8_safe` — **DONE**
 
 ### §4 — Errors with suggestions
 
-Endpoint error codes map to structured CLI errors: unknown zombie (`UZ-MEM-002`) suggests `zombiectl zombie list`; memory backend unavailable (`UZ-MEM-003`) suggests retry; auth failures follow the existing login-flow suggestions. Nonzero exit for errors only — never for empty results.
+Endpoint error codes map to structured CLI errors: unknown zombie (`UZ-MEM-002`) suggests `zombiectl list` *(amended at EXECUTE: the zombie-listing verb is top-level `list`; `zombiectl zombie list` does not exist — error text must name real syntax)*; memory backend unavailable (`UZ-MEM-003`) suggests retry; auth failures follow the existing login-flow suggestions. Nonzero exit for errors only — never for empty results.
 
-- **Dimension 4.1** — unknown zombie: structured error, named code, suggestion, nonzero exit → `test_memory_unknown_zombie_error_shape`
-- **Dimension 4.2** — network failure: structured error, retry suggestion, nonzero exit → `test_memory_network_error_shape`
+- **Dimension 4.1** — unknown zombie: structured error, named code, suggestion, nonzero exit → `test_memory_unknown_zombie_error_shape` — **DONE**
+- **Dimension 4.2** — network failure: structured error, retry suggestion, nonzero exit → `test_memory_network_error_shape` — **DONE**
 
 ### §5 — End-to-end against the built binary
 
 The repo's subprocess harness (`test-unit-zombiectl` spawns `dist/bin/zombiectl.js`) walks `--help`, flag validation, and render paths for both verbs — the user-centric e2e the template mandates for CLI categories.
 
-- **Dimension 5.1** — `zombiectl memory --help` and per-verb help render the documented grammar → `test_memory_help_e2e`
-- **Dimension 5.2** — list + search subprocess runs against a stubbed/sandboxed endpoint render table and JSON correctly → `test_memory_e2e_list_search`
+- **Dimension 5.1** — `zombiectl memory --help` and per-verb help render the documented grammar → `test_memory_help_e2e` — **DONE**
+- **Dimension 5.2** — list + search subprocess runs against a stubbed/sandboxed endpoint render table and JSON correctly → `test_memory_e2e_list_search` — **DONE**
 
 ---
 
 ## Interfaces
 
 ```
-zombiectl memory list   --zombie <id> [--category <name>] [--limit <n>] [--workspace <ws>]
-zombiectl memory search --zombie <id> <query> [--limit <n>] [--workspace <ws>]
+zombiectl memory list   --zombie <id> [--category <name>] [--limit <n>] [--workspace <id>]
+zombiectl memory search --zombie <id> <query> [--limit <n>] [--workspace <id>]
 ```
 
-- Wire: `GET /v1/workspaces/{ws}/zombies/{zid}/memories` with `query`/`category`/`limit` passthrough; no new server surface.
-- JSON output (piped): array of `{ key, content, category, updated_at }` — full content, raw numeric `updated_at`.
+- Wire: `GET /v1/workspaces/{ws}/zombies/{zid}/memories` with `query`/`category`/`limit` passthrough; no new server surface. `limit` is forwarded only when the operator passes it (server defaults apply otherwise); client bounds mirror the published OpenAPI (`minimum: 1`, `maximum: 100`).
+- JSON output (piped or `--json`): the published response envelope verbatim — `{ items: [{ key, content, category, updated_at }], total, request_id }` — full untruncated content, raw `updated_at` passthrough. *(Amended at PLAN from the original bare-array sketch: every sibling command prints the server envelope, the acceptance command-matrix asserts on `itemsKey` within an envelope, and `request_id` is the support-grep key. Verbatim passthrough also means JSON mode is untouched by the M91_003 wire-type flip.)*
+- `memory search` carries no `--category` flag — the server ignores `category` when `query` is present; offering it would ship a dead option (RULE NDC).
 - Exit codes: `0` success (including zero results); nonzero per the existing CLI error-mapping convention for auth/not-found/network failures.
 - Workspace resolution: identical to the mirrored commands (flag > config default), locked at Handshake (b).
 
@@ -163,7 +177,7 @@ zombiectl memory search --zombie <id> <query> [--limit <n>] [--workspace <ws>]
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| unknown zombie | bad id / wrong workspace | structured error with `UZ-MEM-002`, suggestion `zombiectl zombie list`, nonzero exit |
+| unknown zombie | bad id / wrong workspace | structured error with `UZ-MEM-002`, suggestion `zombiectl list`, nonzero exit |
 | memory backend unavailable | server-side `UZ-MEM-003` | structured error, retry suggestion, nonzero exit |
 | auth missing/expired | no login | existing auth-error path + login suggestion |
 | network failure / timeout | connectivity | structured error, retry suggestion, nonzero exit; no partial table |
@@ -199,6 +213,8 @@ zombiectl memory search --zombie <id> <query> [--limit <n>] [--workspace <ws>]
 | 5.2 | e2e | `test_memory_e2e_list_search` | subprocess against stub → table and JSON paths both correct |
 
 Regression: existing command help trees unchanged (`test_memory_help_e2e` asserts additive registration only). Negative paths: 1.2, 4.1, 4.2.
+
+**Tier placement as built (EXECUTE):** the named tests live across three files — `memory.unit.test.ts` (direct Effect + pure helpers: guards, render order, remap, 3.2), `memory.integration.test.ts` (`runCli` + loopback mock: the human-table rows run on an `isTTY`-marked test stream, plus 3.1, 4.1, 4.2), and `acceptance/memory-read.spec.ts` (built-binary subprocess: 5.1, 5.2, the JSON half of 1.3, the invalid-limit half of 1.2 with the zero-request proof). Two structural facts force the split: a subprocess pipe can never be a terminal, so the table renders are provable only in-process; and `runCli`'s `exitOverride` applies to the root command only, so an invalid option value on a subcommand `process.exit`s in-process — the invalid-limit dimension is therefore subprocess-tier (same root cause as `json-contract.test.ts`'s recursive `silenceTree()`).
 
 ---
 
@@ -240,7 +256,8 @@ N/A — no files deleted; additive command module (RULE NDC holds: no speculativ
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; Handshake (a)/(b) resolutions land here)
+- **Consults** — **(a)/(b) resolved at PLAN** (see Handshake resolutions). **JSON shape amended** to the published envelope passthrough (OpenAPI `list_zombie_memories` 200 schema is the binding truth; bare-array sketch dropped — sibling convention + command-matrix tooling + `request_id` support-grep). **Auto-JSON-when-piped** (7 Pillars #5) implemented for the memory verbs only — first command to carry it; mechanism is a bind-site `stdout.isTTY` read threaded as a flag so handler purity holds; `--json` still forces JSON, a true terminal gets the table. **`--limit` forwarded only when operator-passed** (server defaults 20 search / 100 list apply; client mirrors `MAX_RECALL_LIMIT = 100` for bounds + help text per RULE UFS cross-runtime naming).
+- **EXECUTE discoveries** — (1) **`runCli` exitOverride gap (pre-existing, platform-wide):** `cli.ts` calls `exitOverride()` on the root only and commander copies inherited settings at subcommand-creation time, so an invalid option value on any subcommand `process.exit`s an in-process `runCli` caller (kills `bun test` mid-run; the REPL would die the same way). Not patched here — outside Files-Changed and a behaviour change for every command; flagged for a follow-up decision. (2) **Golden fixtures regenerated** per the in-file recipe (`help-no-color.txt` +3 memory rows; `version-no-color.txt` + `FIXTURE_VERSION` 0.34.0 → 0.39.0 lockstep). (3) **UZ-MEM-003 integration mock returns 500, not 503** — 503 is in the transport's retryable set and would burn ~750 ms of backoff per run; the suggestion remap under test keys on the code. (4) **Table timestamps are ISO 8601 UTC** and **the not-found suggestion names `zombiectl list`** — both §-noted amendments above.
 - **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 

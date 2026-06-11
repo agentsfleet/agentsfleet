@@ -34,6 +34,7 @@ function makeStubHandlers(): Handlers {
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       credential: { add: noop, show: noop, list: noop, delete: noop },
     },
+    memory: { list: noop, search: noop },
   };
 }
 

@@ -92,6 +92,17 @@ zombiectl doctor
 | `events <zombie_id> [opts]` | Page through historical events |
 | `steer <zombie_id> "<msg>"` | Send a message; stream response |
 
+### Memory (read-only)
+
+Inspect a zombie's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
+
+| Command | Description |
+|---------|-------------|
+| `memory list --zombie <id> [--category <name>] [--limit <n>]` | List entries newest-first |
+| `memory search --zombie <id> <query> [--limit <n>]` | Substring-search keys and content |
+
+Both verbs accept `--workspace <id>` to override the active workspace. The server caps `--limit` at 100 (defaults: 100 for list, 20 for search). There are no write verbs — durable memory is written only by the runner plane.
+
 ### Workspace credentials
 
 Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash, etc.). Secret bytes are never echoed back.

@@ -17,6 +17,7 @@ export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "tenant",
   "billing",
   "zombie",
+  "memory",
 ];
 
 export interface ReadOnlyCommandRow {
@@ -61,6 +62,7 @@ export interface PerZombieReadOnlyCommandRow {
 // thread fixture state into a static argv.
 export const PER_ZOMBIE_READ_ONLY_COMMANDS: ReadonlyArray<PerZombieReadOnlyCommandRow> = [
   { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
+  { argsHead: ["memory", "list"], isList: true, itemsKey: "items", group: "memory" },
 ];
 
 export interface RequiresIdentifierRow {
@@ -129,6 +131,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["kill"], missingArgName: "zombie_id" },
   { args: ["stop"], missingArgName: "zombie_id" },
   { args: ["resume"], missingArgName: "zombie_id" },
+  { args: ["memory", "search"], missingArgName: "query" },
 ];
 
 export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [

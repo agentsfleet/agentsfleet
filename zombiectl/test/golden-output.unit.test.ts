@@ -20,7 +20,7 @@ const GOLDEN_DIR = join(TEST_DIR, "golden");
 // fixture itself is rewritten in lockstep with VERSION via the regenerate
 // recipe below; the substitution here lets `make sync-version` ship a
 // VERSION bump without immediately breaking this test on the same diff.
-const FIXTURE_VERSION = "0.34.0";
+const FIXTURE_VERSION = "0.39.0";
 
 function golden(name: string): string {
   const raw = readFileSync(join(GOLDEN_DIR, name), "utf8");

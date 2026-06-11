@@ -39,6 +39,10 @@ export const wsZombieEventsPath = (wsId: string, zombieId: string): string =>
 export const wsZombieEventsStreamPath = (wsId: string, zombieId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/events/stream`;
 
+// Workspace-scoped per-zombie durable-memory entries (read-only).
+export const wsZombieMemoriesPath = (wsId: string, zombieId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/memories`;
+
 // Workspace-aggregate event history.
 export const wsEventsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/events`;

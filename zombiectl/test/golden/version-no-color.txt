@@ -1,1 +1,1 @@
-zombiectl v0.34.0
+zombiectl v0.39.0
