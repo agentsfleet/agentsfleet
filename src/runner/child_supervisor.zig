@@ -61,14 +61,15 @@ pub const MemorySink = struct {
 pub const RenewDecision = union(enum) { keep, extend: i64, terminate };
 
 /// Hook the daemon installs so the supervisor can drive lease renewal during a
-/// long execution without the supervisor knowing any HTTP. `onTick` is called
-/// with the current epoch ms in the idle gap between frames (renewal-tick
-/// cadence) and again after each progress frame; the daemon renews if inside the
-/// window and returns a decision. A live child that emits no frames still ticks,
-/// so a legitimate long run renews and is never falsely reclaimed.
+/// long execution without the supervisor knowing any HTTP. `onTick` fires in
+/// the idle gap between frames (renewal-tick cadence) and after each progress
+/// frame, carrying the current epoch ms and the latest cumulative usage
+/// snapshot (zeros until the child's first usage frame); the daemon renews
+/// inside the window and returns a decision. A live child that emits no
+/// frames still ticks, so a long run renews and is never falsely reclaimed.
 pub const RenewHook = struct {
     ctx: *anyopaque,
-    onTick: *const fn (ctx: *anyopaque, now_ms: i64) RenewDecision,
+    onTick: *const fn (ctx: *anyopaque, now_ms: i64, usage: pipe_proto.UsageSnapshot) RenewDecision,
     /// How often (ms) the read loop wakes between frames to consider renewal.
     /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
     tick_ms: i64,
@@ -89,6 +90,7 @@ const SANDBOX_TIER_DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 // here so callers and tests keep using `child_supervisor.{ReadOutcome,classify}`.
 pub const ReadOutcome = result_mod.ReadOutcome;
 pub const classify = result_mod.classify;
+pub const UsageSnapshot = pipe_proto.UsageSnapshot;
 const failed = result_mod.failed;
 
 /// Run one leased event in a forked, sandboxed child and return its result.
@@ -268,6 +270,9 @@ pub fn readResult(
     renew_hook: ?RenewHook,
 ) !ReadOutcome {
     var deadline = deadline_ms;
+    // Frame parsing and renewal ticks share this one read-loop thread (every
+    // onTick runs between reads) — plain fields, no atomics; @max-fold = no regress.
+    var usage = pipe_proto.UsageSnapshot{};
     while (true) {
         const tick_deadline = if (renew_hook) |h|
             @min(deadline, clock.nowMillis() + h.tick_ms)
@@ -277,7 +282,7 @@ pub fn readResult(
             .timed_out => {
                 const now = clock.nowMillis();
                 if (now >= deadline) return .{ .timed_out = true };
-                if (applyTick(renew_hook, &deadline, now)) return .{ .terminated = true };
+                if (applyTick(renew_hook, &deadline, now, usage)) return .{ .terminated = true };
                 continue;
             },
             .readable => {},
@@ -292,14 +297,23 @@ pub fn readResult(
                     defer alloc.free(f.payload);
                     forwardActivity(alloc, sink, f.payload);
                     // A progress frame attests liveness and is a renewal point too.
-                    if (applyTick(renew_hook, &deadline, clock.nowMillis()))
+                    if (applyTick(renew_hook, &deadline, clock.nowMillis(), usage))
                         return .{ .terminated = true };
                 },
                 .memory => {
                     defer alloc.free(f.payload);
                     // Parent POSTs the capture bytes; the frame also attests liveness.
                     mem_sink.forward(mem_sink.ctx, f.payload);
-                    if (applyTick(renew_hook, &deadline, clock.nowMillis()))
+                    if (applyTick(renew_hook, &deadline, clock.nowMillis(), usage))
+                        return .{ .terminated = true };
+                },
+                .usage => {
+                    defer alloc.free(f.payload);
+                    if (pipe_proto.UsageSnapshot.decode(f.payload)) |snap|
+                        usage.fold(snap)
+                    else
+                        log.debug("usage_frame_dropped", .{ .len = f.payload.len });
+                    if (applyTick(renew_hook, &deadline, clock.nowMillis(), usage))
                         return .{ .terminated = true };
                 },
                 .result => return .{ .bytes = f.payload },
@@ -311,9 +325,9 @@ pub fn readResult(
 /// Ask the renewal hook for a decision and apply it to `deadline`. Returns true
 /// iff the child must be terminated (lease lost / capped / no credits). A null
 /// hook (no renewal configured) is a no-op.
-fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64) bool {
+fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64, usage: pipe_proto.UsageSnapshot) bool {
     const h = renew_hook orelse return false;
-    switch (h.onTick(h.ctx, now_ms)) {
+    switch (h.onTick(h.ctx, now_ms, usage)) {
         .keep => {},
         .extend => |new_deadline| deadline.* = new_deadline,
         .terminate => return true,

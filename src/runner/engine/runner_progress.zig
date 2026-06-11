@@ -69,6 +69,10 @@ pub const Adapter = struct {
     /// paths or when the in-run store could not be built — capture is then a
     /// no-op, never a hard error. Borrowed; the engine owns its lifetime.
     memory_capturer: ?*inrun_memory.MemoryCapturer = null,
+    /// Source of the cumulative split accessors for `usage` frames; set by
+    /// runner.zig after agent init (null in tests/non-streaming → emit no-ops).
+    /// Borrowed for the run; NullClaw fires the metric on the run thread.
+    agent: ?*const nullclaw.agent.Agent = null,
     /// L2 context-lifecycle: once the cumulative completed-tool count
     /// crosses this threshold, log a `tool_window_exceeded` line each
     /// subsequent call. SKILL.md prose tells the agent to compact
@@ -116,6 +120,21 @@ pub const Adapter = struct {
         ctx: *anyopaque,
     } {
         return .{ .cb = streamCallbackThunk, .ctx = self };
+    }
+
+    /// Write one cumulative `usage` frame from the agent's split accessors.
+    /// Fires on every tokens_used metric (each turn/summary fold — the agent
+    /// folds before it emits the metric) and once more at run end from
+    /// runner.zig; best-effort like every progress frame.
+    pub fn emitUsage(self: *Adapter) void {
+        const agent = self.agent orelse return;
+        const snap = pipe_proto.UsageSnapshot{
+            .input_tokens = agent.promptTokensUsed(),
+            .output_tokens = agent.completionTokensUsed(),
+        };
+        const payload = snap.encode();
+        pipe_proto.writeFrame(self.writer.fd, .usage, &payload) catch |err|
+            log.warn("usage_frame_write_failed", .{ .err = @errorName(err) });
     }
 
     fn fromPtr(ptr: *anyopaque) *Adapter {
@@ -228,7 +247,12 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
     }
 }
 
-fn observerRecordMetric(_: *anyopaque, _: *const observability.ObserverMetric) void {}
+fn observerRecordMetric(ptr: *anyopaque, metric: *const observability.ObserverMetric) void {
+    switch (metric.*) {
+        .tokens_used => Adapter.fromPtr(ptr).emitUsage(),
+        else => {},
+    }
+}
 fn observerFlush(_: *anyopaque) void {}
 fn observerName(_: *anyopaque) []const u8 {
     return "zombie-runner-progress";

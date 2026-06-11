@@ -216,6 +216,7 @@ fn executeInner(
         const sc = adapter.streamCallback();
         agent.stream_callback = sc.cb;
         agent.stream_ctx = sc.ctx;
+        adapter.agent = &agent; // usage frames read the cumulative split accessors
     }
 
     // 7. Compose message with context fields.
@@ -235,6 +236,8 @@ fn executeInner(
     // Run-end capture: flush the final memory state so a run that wrote memory
     // without crossing a mid-run checkpoint is still persisted by the parent.
     if (capturer) |*c| c.capture();
+    // Terminal usage frame — covers any token fold after the last metric emit.
+    if (progress_fd != null) adapter.emitUsage();
 
     const splits = usageSplits(&agent);
     return .{

@@ -154,10 +154,10 @@ const TickFanout = struct {
     forwarder: *forwarders.ActivityForwarder,
     driver: *RenewDriver,
 
-    fn onTick(ctx: *anyopaque, now_ms: i64) child_supervisor.RenewDecision {
+    fn onTick(ctx: *anyopaque, now_ms: i64, usage: child_supervisor.UsageSnapshot) child_supervisor.RenewDecision {
         const self: *TickFanout = @ptrCast(@alignCast(ctx));
         self.forwarder.flushIfStale(now_ms);
-        return self.driver.tick(now_ms);
+        return self.driver.tick(now_ms, usage);
     }
 
     fn hook(self: *TickFanout) child_supervisor.RenewHook {
@@ -229,6 +229,7 @@ fn executeAndReport(
     log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
 
     const outcome = outcomeFor(result.exit_ok);
+    const splits = splitFields(result);
     cp.report(alloc, runner_token, protocol.ReportRequest{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
@@ -237,6 +238,9 @@ fn executeAndReport(
         .failure_reason = result.failure,
         .response_text = result.content,
         .tokens = result.token_count,
+        .input_tokens = splits.input_tokens,
+        .cached_input_tokens = splits.cached_input_tokens,
+        .output_tokens = splits.output_tokens,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
     }, cfg.cp_deadlines.report_ms) catch |err| {
@@ -276,6 +280,19 @@ fn cleanupWorkspace(io: std.Io, path: []const u8) void {
 /// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
 pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
     return if (exit_ok) .processed else .agent_error;
+}
+
+/// Map the final ExecutionResult's u64 cumulative splits onto the report's
+/// wire-frozen u32 fields — saturating, never wrapping (an overflow must not
+/// under-bill). Returns the `RenewRequest` triple: the report carries the same
+/// three fields, per the protocol's own doc. The legacy `tokens` total rides
+/// unchanged beside them.
+pub fn splitFields(result: contract.execution_result.ExecutionResult) protocol.RenewRequest {
+    return .{
+        .input_tokens = std.math.lossyCast(u32, result.input_tokens),
+        .cached_input_tokens = std.math.lossyCast(u32, result.cached_input_tokens),
+        .output_tokens = std.math.lossyCast(u32, result.output_tokens),
+    };
 }
 
 /// Sleep for `ms` milliseconds.

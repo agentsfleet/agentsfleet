@@ -171,3 +171,29 @@ test "a failed execution reports agent_error; a clean one reports processed" {
     try testing.expectEqual(protocol.Outcome.agent_error, loop.outcomeFor(false)); // the startup_posture path
     try testing.expectEqual(protocol.Outcome.processed, loop.outcomeFor(true));
 }
+
+test "splitFields carries the final result's splits onto the report verbatim, beside the legacy total" {
+    const result = contract.execution_result.ExecutionResult{
+        .input_tokens = 10,
+        .cached_input_tokens = 2,
+        .output_tokens = 5,
+        .token_count = 17,
+    };
+    const splits = loop.splitFields(result);
+    try testing.expectEqual(@as(u32, 10), splits.input_tokens);
+    try testing.expectEqual(@as(u32, 2), splits.cached_input_tokens);
+    try testing.expectEqual(@as(u32, 5), splits.output_tokens);
+    // The legacy total is untouched by the mapping — both ride the report.
+    try testing.expectEqual(@as(u64, 17), result.token_count);
+}
+
+test "splitFields saturates the wire-frozen u32 fields instead of wrapping" {
+    const result = contract.execution_result.ExecutionResult{
+        .input_tokens = std.math.maxInt(u64),
+        .output_tokens = @as(u64, std.math.maxInt(u32)) + 1,
+    };
+    const splits = loop.splitFields(result);
+    try testing.expectEqual(@as(u32, std.math.maxInt(u32)), splits.input_tokens);
+    try testing.expectEqual(@as(u32, 0), splits.cached_input_tokens);
+    try testing.expectEqual(@as(u32, std.math.maxInt(u32)), splits.output_tokens);
+}
