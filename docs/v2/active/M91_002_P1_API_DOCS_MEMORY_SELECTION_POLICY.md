@@ -4,11 +4,12 @@
 **Milestone:** M91
 **Workstream:** 002
 **Date:** Jun 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — fixes the user-facing forgetting failure: identity facts written once (owner, deploy target, customer plan) are today the FIRST entries both the hydration window and cap eviction discard, because write-recency is the only selection currency
 **Categories:** API, DOCS
 **Batch:** B2 — after M91_001 (its counters provide the before/after evidence; its `enforceCap` count-return is built on)
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m91-002-memory-selection
+**Test Baseline:** unit=1912 integration=178
 **Depends on:** M91_001 (eviction-count return + loss baselines)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026) — grounded in `zombie_memory.zig` (the `Compactor` comment reserves "a future selective arm"), NullClaw's category set (`core`/`daily`/`conversation`/custom), and the supermemory comparison (their static/dynamic profile split solves this same failure); re-confirm at PLAN.
 
