@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 002
 **Date:** Jun 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — accepted deliveries can silently strand forever on the golden path (gate refusals, crashed runners, paused zombies, failed enqueues after dedup-claim); the architecture docs promise the missing half
 **Categories:** API
 **Batch:** B2 — after M90_001 (consumes its async-gate outcome variants in `fleet/service.zig`)
