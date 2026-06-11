@@ -265,12 +265,12 @@ test "readFrame rejects a frame larger than max_payload" {
 }
 
 test "UsageSnapshot encode/decode round-trips over a usage frame" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
     const snap = UsageSnapshot{ .input_tokens = 7, .cached_input_tokens = 1, .output_tokens = 3 };
     const payload = snap.encode();
     try writeFrame(fds[1], .usage, &payload);
-    osClose(fds[1]);
+    testOsClose(fds[1]);
 
     const dl = clock.nowMillis() + 5_000;
     const out = try readFrame(std.testing.allocator, fds[0], dl, 1024);
