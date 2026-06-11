@@ -11,7 +11,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const SLACK_WEBHOOK = "slack:webhook";
-pub const SLACK_INTERACTION = "slack:interaction";
 pub const SYSTEM_TIMEOUT = "system:timeout";
 
 const PREFIX_USER = "user:";

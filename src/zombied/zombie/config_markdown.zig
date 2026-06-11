@@ -3,7 +3,6 @@
 // TRIGGER.md carries YAML frontmatter between `---` delimiters. Two entry
 // points:
 //   - extractZombieInstructions: borrow the body below the frontmatter.
-//   - parseZombieFromTriggerMarkdown: parse the frontmatter into ZombieConfig.
 //
 // Both share the same delimiter scanner — a YAML value like `foo: ---bar`
 // must not be mistaken for the closing delimiter.
@@ -66,24 +65,6 @@ fn findClosingDelim(haystack: []const u8) ?usize {
 pub fn extractZombieInstructions(source_markdown: []const u8) []const u8 {
     const fm = scanFrontmatter(source_markdown) orelse return "";
     return fm.body;
-}
-
-/// Extract YAML frontmatter from TRIGGER.md, convert it to JSON, and parse
-/// into ZombieConfig. Caller owns the returned config and must call deinit.
-pub fn parseZombieFromTriggerMarkdown(
-    alloc: Allocator,
-    trigger_markdown: []const u8,
-) (Allocator.Error || ZombieConfigError)!ZombieConfig {
-    const fm = scanFrontmatter(trigger_markdown) orelse
-        return ZombieConfigError.MissingRequiredField;
-
-    const json = yaml_frontmatter.yamlFrontmatterToJson(alloc, fm.yaml) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.ParseFailure => return ZombieConfigError.MissingRequiredField,
-    };
-    defer alloc.free(json);
-
-    return config_parser.parseZombieConfig(alloc, json);
 }
 
 /// Aggregate returned by `parseTriggerMarkdownWithJson` — the parsed

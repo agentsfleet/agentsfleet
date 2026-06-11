@@ -65,7 +65,6 @@ pub const ResolveDbOutcome = union(enum) {
 // Re-exports from the reads sibling so callers get a single import surface.
 pub const PendingRow = reads.PendingRow;
 pub const ListFilter = reads.ListFilter;
-pub const ListResult = reads.ListResult;
 pub const listPending = reads.listPending;
 pub const getByGateId = reads.getByGateId;
 

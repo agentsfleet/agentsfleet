@@ -31,26 +31,11 @@ pub const Error = error{
 /// the API boundary so we never store ambiguous shapes.
 ///
 /// Pure shape gate — exposed so unit tests can exercise rejection branches
-/// without spinning up a DB. Mirrors the checks `storeJson` runs before
-/// touching the connection.
+/// without spinning up a DB, and so JSON writers validate before stringifying
+/// into `storeJsonPlaintext`.
 pub fn validateObject(value: std.json.Value) Error!void {
     if (value != .object) return Error.NotAnObject;
     if (value.object.count() == 0) return Error.EmptyObject;
-}
-
-pub fn storeJson(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    value: std.json.Value,
-) !void {
-    try validateObject(value);
-
-    const plaintext = try std.json.Stringify.valueAlloc(alloc, value, .{});
-    defer alloc.free(plaintext);
-
-    try storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 /// Lower-level form for callers that already hold the canonical-stringified
@@ -72,7 +57,7 @@ pub fn storeJsonPlaintext(
 ///
 /// Returns `std.json.Parsed(std.json.Value)`; the caller MUST call `.deinit()`
 /// on the returned handle to free the parser arena. The wrapped `value` is
-/// guaranteed to be `.object` — every writer routes through `storeJson` /
+/// guaranteed to be `.object` — every writer routes through
 /// `storeJsonPlaintext`, both of which run `validateObject` (directly or via
 /// the caller's pre-flight) before the AES-GCM envelope, and the AEAD tag
 /// rejects any tampered ciphertext at decrypt time.

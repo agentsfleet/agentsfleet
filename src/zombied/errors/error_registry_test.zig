@@ -88,13 +88,6 @@ test "UZ-ZMB-009 stays 404 (zombie not found, pinned)" {
     );
 }
 
-test "UZ-WORKSPACE-002 stays 402 (workspace paused = payment required)" {
-    try std.testing.expectEqual(
-        std.http.Status.payment_required,
-        reg.lookup(reg.ERR_WORKSPACE_PAUSED).http_status,
-    );
-}
-
 test "UNKNOWN and UZ-INTERNAL-001 are distinct (distinguish error classes)" {
     const internal_001 = reg.lookup(reg.ERR_INTERNAL_DB_UNAVAILABLE);
     try std.testing.expect(
@@ -239,19 +232,6 @@ test "startup hints reference 'zombied doctor' or env vars" {
     }
 }
 
-test "gate hints reference gate results or timeout" {
-    const gate_codes = [_][]const u8{
-        reg.ERR_GATE_COMMAND_FAILED,
-        reg.ERR_GATE_COMMAND_TIMEOUT,
-        reg.ERR_GATE_REPAIR_EXHAUSTED,
-    };
-    for (gate_codes) |code| {
-        const h = reg.hint(code);
-        const has_gate = std.mem.indexOf(u8, h, "gate") != null or
-            std.mem.indexOf(u8, h, "Gate") != null;
-        try std.testing.expect(has_gate);
-    }
-}
 
 // ── Entry struct has exactly 5 fields ─────────────────────────────────────
 
@@ -283,39 +263,7 @@ test "error_registry.zig exports REGISTRY (not TABLE)" {
     try std.testing.expect(e.code.len > 0);
 }
 
-// ── ErrorMapping + validateErrorTable ─────────────────────────────────────
-
-test "ErrorMapping struct has 3 fields (err, code, message)" {
-    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
-    try std.testing.expectEqual(@as(usize, 3), fields.len);
-}
-
-test "validateErrorTable accepts valid single-entry table" {
-    const table = [_]reg.ErrorMapping{
-        // audit-error-codes: intentional-fake
-        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "test message" },
-    };
-    // comptime validation — if it compiles, it passes
-    comptime {
-        reg.validateErrorTable(&table);
-    }
-}
-
-test "validateErrorTable accepts valid multi-entry table" {
-    const table = [_]reg.ErrorMapping{
-        // audit-error-codes: intentional-fake
-        .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "oom" },
-        // audit-error-codes: intentional-fake
-        .{ .err = error.Overflow, .code = "UZ-TEST-002", .message = "overflow" },
-        // audit-error-codes: intentional-fake
-        .{ .err = error.InvalidCharacter, .code = "UZ-TEST-003", .message = "bad char" },
-    };
-    comptime {
-        reg.validateErrorTable(&table);
-    }
-}
-
-test "tenant billing error table passes validateErrorTable at comptime" {
+test "tenant billing error table validates at comptime" {
     comptime {
         const billing = @import("../state/tenant_billing.zig");
         _ = billing; // comptime validation runs on import
@@ -330,13 +278,4 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
 test "ZombieSession size pinned at 320 bytes" {
     const ZombieSession = @import("../fleet/zombie_session.zig");
     try std.testing.expectEqual(@as(usize, 320), @sizeOf(ZombieSession));
-}
-
-// Regression — ErrorMapping field count and types
-test "ErrorMapping.err field is anyerror" {
-    const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
-    // First field is 'err' of type anyerror
-    try std.testing.expectEqualStrings("err", fields[0].name);
-    try std.testing.expectEqualStrings("code", fields[1].name);
-    try std.testing.expectEqualStrings("message", fields[2].name);
 }
