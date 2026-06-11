@@ -122,6 +122,28 @@ pub fn errorResponse(
     detail: []const u8,
     request_id: []const u8,
 ) void {
+    writeProblem(res, code, detail, request_id, null);
+}
+
+/// 409 variant: REST guide §4 mandates every conflict carry `current_state`
+/// naming the state that forbade the transition (e.g. "paused").
+pub fn errorResponseConflict(
+    res: *httpz.Response,
+    code: []const u8,
+    detail: []const u8,
+    request_id: []const u8,
+    current_state: []const u8,
+) void {
+    writeProblem(res, code, detail, request_id, current_state);
+}
+
+fn writeProblem(
+    res: *httpz.Response,
+    code: []const u8,
+    detail: []const u8,
+    request_id: []const u8,
+    current_state: ?[]const u8,
+) void {
     const entry = error_codes.lookup(code);
     res.status = @intFromEnum(entry.http_status);
     // Use res.header() for application/problem+json — not in httpz.ContentType enum.
@@ -132,8 +154,10 @@ pub fn errorResponse(
         .detail = detail,
         .error_code = code,
         .request_id = request_id,
+        .current_state = current_state,
     };
-    const json_formatter = std.json.fmt(body, .{});
+    // emit_null_optional_fields=false keeps the non-409 wire shape unchanged.
+    const json_formatter = std.json.fmt(body, .{ .emit_null_optional_fields = false });
     json_formatter.format(&res.buffer.writer) catch {
         res.status = 500;
         res.body = S_PUNCT_99914B;

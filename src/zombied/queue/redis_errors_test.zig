@@ -34,32 +34,32 @@ test "RedisError surface stays at 9 variants" {
 // ── Env-parser surface (#16) ────────────────────────────────────────────
 //
 // The boot-path knob `REDIS_REQUEST_TIMEOUT_MS` is parsed via the pure
-// helper `parseRequestTimeoutMs` in redis_client.zig. Serve's
+// helper `parseRequestTimeoutMs` in redis_config.zig. Serve's
 // `readRedisRequestTimeoutMs` wraps it with env-read + log-and-exit;
 // the test exercises the helper directly so we never depend on env
 // state or `std.process.exit`. The env-var-name pin test below ties
 // the typed error to the operator-facing identifier — renaming the
 // env knob requires a coordinated diff that flips both.
 
-const redis_client = @import("redis_client.zig");
+const redis_config = @import("redis_config.zig");
 
 test "parseRequestTimeoutMs: non-numeric raw input surfaces InvalidRequestTimeout" {
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs("abc"));
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs(""));
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs("-1"));
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs("3.14"));
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs("  5000  "));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs("abc"));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs(""));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs("-1"));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs("3.14"));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs("  5000  "));
 }
 
 test "parseRequestTimeoutMs: valid integer parses cleanly" {
-    try std.testing.expectEqual(@as(u32, 5000), try redis_client.parseRequestTimeoutMs("5000"));
-    try std.testing.expectEqual(@as(u32, 0), try redis_client.parseRequestTimeoutMs("0"));
-    try std.testing.expectEqual(@as(u32, std.math.maxInt(u32)), try redis_client.parseRequestTimeoutMs("4294967295"));
+    try std.testing.expectEqual(@as(u32, 5000), try redis_config.parseRequestTimeoutMs("5000"));
+    try std.testing.expectEqual(@as(u32, 0), try redis_config.parseRequestTimeoutMs("0"));
+    try std.testing.expectEqual(@as(u32, std.math.maxInt(u32)), try redis_config.parseRequestTimeoutMs("4294967295"));
 }
 
 test "parseRequestTimeoutMs: u32 overflow surfaces InvalidRequestTimeout" {
     // 2^32 = 4294967296 — one over the u32 ceiling.
-    try std.testing.expectError(error.InvalidRequestTimeout, redis_client.parseRequestTimeoutMs("4294967296"));
+    try std.testing.expectError(error.InvalidRequestTimeout, redis_config.parseRequestTimeoutMs("4294967296"));
 }
 
 test "REDIS_REQUEST_TIMEOUT_MS_ENV is the contract scrapers + ops runbooks depend on" {
@@ -68,6 +68,6 @@ test "REDIS_REQUEST_TIMEOUT_MS_ENV is the contract scrapers + ops runbooks depen
     // the surfaced message: a rename here must thread through ops docs
     // (docs.usezombie.com env reference) and any compose / k8s overlays
     // shipping the var to production.
-    try std.testing.expectEqualStrings("REDIS_REQUEST_TIMEOUT_MS", redis_client.REDIS_REQUEST_TIMEOUT_MS_ENV);
-    try std.testing.expectEqual(@as(u32, 5000), redis_client.REDIS_REQUEST_TIMEOUT_MS_DEFAULT);
+    try std.testing.expectEqualStrings("REDIS_REQUEST_TIMEOUT_MS", redis_config.REDIS_REQUEST_TIMEOUT_MS_ENV);
+    try std.testing.expectEqual(@as(u32, 5000), redis_config.REDIS_REQUEST_TIMEOUT_MS_DEFAULT);
 }

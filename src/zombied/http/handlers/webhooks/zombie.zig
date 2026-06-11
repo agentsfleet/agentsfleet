@@ -8,7 +8,11 @@
 //       lands in the install + list response slice; until then the URL
 //       carries `zombie_id` alone and the SQL pulls the first webhook
 //       trigger from the array.
-// Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
+// Idempotency: Redis key "webhook:dedup:{zombie_id}:{event_id}" — claimed
+//       atomically (SET NX EX, so concurrent duplicates still single-enqueue)
+//       and RELEASED (DEL) on every post-claim failure path, so a transient
+//       serialize/enqueue failure never burns the slot: the sender's retry
+//       stays deliverable (loss-proof dedup ordering).
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 
 const std = @import("std");
@@ -108,7 +112,7 @@ fn parseBody(hx: Hx, req: *httpz.Request, zombie_id: []const u8) ?WebhookPayload
 
 fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
-    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "webhook:dedup:{s}:{s}", .{ zombie_id, payload.event_id }) catch {
+    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, zombie_id, payload.event_id }) catch {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
         return false;
     };
@@ -128,6 +132,7 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         return false;
     }
     const data_json = std.fmt.allocPrint(hx.alloc, "{f}", .{std.json.fmt(payload.data, .{})}) catch {
+        releaseDedupSlot(hx, zombie_id, dedup_key);
         common.internalOperationError(hx.res, "Failed to serialize event data", hx.req_id);
         return false;
     };
@@ -145,6 +150,9 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         .created_at = clock.nowMillis(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
+        // Release the slot so the sender's retry of this delivery stays
+        // deliverable (loss-proof dedup ordering).
+        releaseDedupSlot(hx, zombie_id, dedup_key);
         log.err("enqueue_failed", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .zombie_id = zombie_id,
@@ -162,6 +170,15 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         .actor = actor,
     });
     return true;
+}
+
+/// Release a claimed idempotency slot after a post-claim failure so the
+/// sender's retry is not answered "duplicate" for an event that never landed.
+/// Best-effort: on a DEL failure the slot expires at its TTL (logged).
+fn releaseDedupSlot(hx: Hx, zombie_id: []const u8, dedup_key: []const u8) void {
+    hx.ctx.queue.del(dedup_key) catch |err| {
+        log.warn("dedup_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+    };
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
@@ -191,15 +208,19 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
 
     // Auth is handled by webhook_sig middleware before this handler runs.
 
+    // Paused zombie → 200-ignored, not 4xx: sender retry queues add no value
+    // for an intentionally paused zombie, and the dedup slot is NOT consumed
+    // so an operator redelivery after resume processes correctly.
+    // The triggered metric is not incremented — nothing was accepted.
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {
-        log.warn("zombie_not_active", .{
-            .error_code = ec.ERR_WEBHOOK_ZOMBIE_PAUSED,
+        log.info("zombie_not_active", .{
             .zombie_id = zombie_id,
             .status = zombie.status,
+            .event_id = payload.event_id,
             .req_id = hx.req_id,
         });
-        hx.fail(ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE);
+        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_ZOMBIE_PAUSED });
         return;
     }
 

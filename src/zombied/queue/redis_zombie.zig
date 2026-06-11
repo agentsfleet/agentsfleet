@@ -25,6 +25,9 @@ const log = logging.scoped(.redis_zombie);
 /// reads it from the stream entry header.
 const S_XACK_FAILED = "xack_failed";
 const S_COUNT = "COUNT";
+/// XREADGROUP id reading the consumer's own PEL from the start ("0") instead
+/// of new entries (">").
+const PEL_READ_ID = "0";
 /// Default for a stream entry that omits the optional workspace_id field.
 const EMPTY_WORKSPACE = "";
 /// Default request body for an entry that omits the optional request field.
@@ -75,8 +78,13 @@ pub fn ensureZombieConsumerGroup(client: *redis_client.Client, zombie_id: []cons
     }
 }
 
-/// XREADGROUP on zombie:{zombie_id}:events — blocks for 5s waiting for new events.
-pub fn xreadgroupZombie(
+/// XREADGROUP on zombie:{id}:events reading the consumer's OWN Pending
+/// Entries List (id "0") — re-delivers the oldest entry that was delivered
+/// but never XACKed (a pending-gate re-poll, a sweep-recovered strand) before
+/// any new event is read. Null when the PEL is empty. Safe against
+/// double-leasing: the caller holds the zombie's affinity claim, so no other
+/// holder can be mid-run on this entry.
+pub fn xreadgroupZombiePending(
     client: *redis_client.Client,
     zombie_id: []const u8,
     consumer_id: []const u8,
@@ -87,9 +95,8 @@ pub fn xreadgroupZombie(
         REDIS_XREADGROUP_COMMAND,           REDIS_GROUP_ARG,
         queue_consts.zombie_consumer_group, consumer_id,
         S_COUNT,                            queue_consts.zombie_xread_count,
-        "BLOCK",                            queue_consts.zombie_xread_block_ms,
         REDIS_STREAMS_ARG,                  stream_key,
-        ">",
+        PEL_READ_ID,
     });
     defer resp.deinit(client.alloc);
     return decodeSingleZombieEvent(client.alloc, resp);
@@ -117,7 +124,11 @@ pub fn xreadgroupZombieOnce(
     return decodeSingleZombieEvent(client.alloc, resp);
 }
 
-/// XAUTOCLAIM stale zombie events (idle > 5 min).
+/// XAUTOCLAIM one stale zombie event (idle past the comptime-bounded
+/// min-idle) into `consumer_id`'s PEL — the recovery half for entries
+/// orphaned under a dead consumer name (retired instance, legacy throwaway
+/// ids). The claimed entry is then re-delivered by `xreadgroupZombiePending`
+/// on the next lease poll.
 pub fn xautoclaimZombie(
     client: *redis_client.Client,
     zombie_id: []const u8,
