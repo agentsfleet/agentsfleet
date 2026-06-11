@@ -26,7 +26,8 @@ pub const ResolvedSecret = struct {
 /// preserved. Any missing name aborts with `error.CredentialNotFound`
 /// (the agent loop surfaces this as `secret_not_found`).
 ///
-/// On success the caller owns the slice and must call `freeResolved`
+/// On success the caller owns the slice — call `freeResolved`, or hand the
+/// allocation to a request arena (the fleet service path's choice)
 /// to release each entry's `name` dupe and `parsed.deinit()`. On error
 /// any entries already resolved are released before returning.
 pub fn resolveSecretsMap(

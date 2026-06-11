@@ -76,7 +76,7 @@ pub fn registerSink(sink: Sink) void {
     sinks_len += 1;
 }
 
-pub fn clearSinks() void {
+pub fn clearSinksForTest() void {
     sinks_mutex.lock();
     defer sinks_mutex.unlock();
     sinks_len = 0;
@@ -122,7 +122,7 @@ pub fn emitToSinks(
     // Early-return under lock — when no sinks are registered, the test
     // mode redirect (mod.zig) still calls into here on every emit, so
     // we short-circuit before allocating the snapshot array. Under
-    // lock is mandatory: a clearSinks racing with `n = sinks_len`
+    // lock is mandatory: a clearSinksForTest racing with `n = sinks_len`
     // would otherwise see a stale non-zero length.
     if (sinks_len == 0) {
         sinks_mutex.unlock();

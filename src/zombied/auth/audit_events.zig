@@ -35,7 +35,6 @@ pub const EV_SESSION_VERIFIED: []const u8 = "auth.session.verified";
 pub const EV_SESSION_CONSUMED: []const u8 = "auth.session.consumed";
 pub const EV_SESSION_CONSUMED_REPLAY: []const u8 = "auth.session.consumed_replay";
 pub const EV_SESSION_ABORTED: []const u8 = "auth.session.aborted";
-pub const EV_SESSION_EXPIRED: []const u8 = "auth.session.expired";
 
 // Reason enum string constants for aborted / verify_failed.
 // REASON_RATE_LIMIT_EXCEEDED stays — auth.session.aborted fires it when the
@@ -233,24 +232,6 @@ pub fn emitSessionAborted(
     });
 }
 
-pub fn emitSessionExpired(
-    ctx: AuditCtx,
-    session_id: []const u8,
-    expired_at_ms: i64,
-    created_at_ms: i64,
-) void {
-    var hash_buf: [audit.SESSION_ID_HASH_HEX_LEN]u8 = undefined;
-    const sid_hash = audit.sessionIdHashHex(&hash_buf, ctx.audit_log_pepper, session_id);
-    audit_log.info(AUDIT_RECORD_EVENT, .{
-        .event = EV_SESSION_EXPIRED,
-        .ts_ms = clock.nowMillis(),
-        .session_id_hash = sid_hash,
-        .session_id_prefix = audit.sessionIdPrefix(session_id),
-        .expired_at_ms = expired_at_ms,
-        .created_at_ms = created_at_ms,
-    });
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
@@ -263,7 +244,6 @@ test "event name constants are stable and namespaced" {
     try testing.expectEqualStrings("auth.session.consumed", EV_SESSION_CONSUMED);
     try testing.expectEqualStrings("auth.session.consumed_replay", EV_SESSION_CONSUMED_REPLAY);
     try testing.expectEqualStrings("auth.session.aborted", EV_SESSION_ABORTED);
-    try testing.expectEqualStrings("auth.session.expired", EV_SESSION_EXPIRED);
 }
 
 test "reason constants match the audit-event schema" {

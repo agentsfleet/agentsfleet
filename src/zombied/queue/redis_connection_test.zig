@@ -421,8 +421,8 @@ test "command on resumable .err reply emits redis_command_err_reply warn carryin
     // on the way out so downstream tests don't observe stale captures.
     var bs = log_sinks.BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
-    log_sinks.clearSinks();
-    defer log_sinks.clearSinks();
+    log_sinks.clearSinksForTest();
+    defer log_sinks.clearSinksForTest();
     log_sinks.registerSink(bs.sink());
 
     var conn = try Connection.init(srv.io, std.testing.allocator, &cfg, .pooled);
@@ -525,8 +525,8 @@ test "Connection.init: TLS handshake against garbage server errors cleanly with 
 
     var bs = log_sinks.BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
-    log_sinks.clearSinks();
-    defer log_sinks.clearSinks();
+    log_sinks.clearSinksForTest();
+    defer log_sinks.clearSinksForTest();
     log_sinks.registerSink(bs.sink());
 
     // `std.testing.allocator` is leak-detecting — if `init`'s errdefer

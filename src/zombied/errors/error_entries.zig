@@ -68,8 +68,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-004", .service_unavailable, "Authentication service unavailable", "Authentication service is temporarily unavailable. Retry shortly."),
     e("UZ-AUTH-005", .not_found, "Session not found", "Session was not found. It may have expired or been invalidated."),
     e("UZ-AUTH-006", .unauthorized, "Session expired", "Your session has expired. Please sign in again."),
-    e("UZ-AUTH-007", .conflict, "Session already complete", "This session has already been completed and cannot be reused."),
-    e("UZ-AUTH-008", .service_unavailable, "Session limit reached", "Maximum concurrent sessions reached. Close an existing session first."),
     e("UZ-AUTH-009", .forbidden, "Insufficient role", "Your role does not have sufficient permissions for this action."),
     e("UZ-AUTH-010", .forbidden, "Unsupported role", "The specified role is not supported."),
     e("UZ-AUTH-011", .bad_request, "Verification code did not match", "The 6-digit verification code did not match what the dashboard issued. " ++
@@ -92,15 +90,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-API-002", .service_unavailable, "Event-stream capacity reached", "This instance is serving its maximum number of concurrent event streams. " ++
         "Close unused dashboard tabs or retry shortly. Operators: raise SSE_MAX_STREAMS or add replicas."),
     // ── WORKSPACE ────────────────────────────────────────────────────────────
-    e("UZ-WORKSPACE-001", .not_found, "Workspace not found", "Workspace not found. Verify the workspace ID."),
-    e("UZ-WORKSPACE-002", .payment_required, "Workspace paused", "Workspace is paused due to billing. Update payment method."),
-    e("UZ-WORKSPACE-003", .payment_required, "Free tier limit reached", "Workspace has reached its free-tier limit. Add a payment method to continue."),
     // ── BILLING ──────────────────────────────────────────────────────────────
-    e("UZ-BILLING-001", .service_unavailable, "Billing unavailable", "Billing service is temporarily unavailable. Retry shortly."),
-    e("UZ-BILLING-002", .conflict, "Billing state missing", "No billing state recorded for this workspace. Contact support."),
-    e("UZ-BILLING-003", .unprocessable_entity, "Billing state invalid", "Billing state is in an invalid shape. Contact support."),
-    e("UZ-BILLING-004", .bad_request, "Invalid billing event", "Billing event payload could not be processed."),
-    e("UZ-BILLING-005", .payment_required, "Credit exhausted", "Workspace credits are exhausted. Add credits or upgrade plan."),
     // ── AGENT ────────────────────────────────────────────────────────────────
     e("UZ-AGENT-001", .not_found, "Agent not found", "Agent not found. Verify the agent_id."),
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
@@ -122,11 +112,8 @@ pub const ENTRIES = [_]Entry{
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── ZOMBIE ───────────────────────────────────────────────────────────────
-    e("UZ-ZMB-001", .payment_required, "Zombie budget exceeded", "Zombie hit its daily budget. Increase with: zombiectl config set budget.daily_dollars <amount>"),
-    e("UZ-ZMB-002", .internal_server_error, "Zombie agent timeout", "Agent timed out processing an event. Check activity stream for details: zombiectl logs"),
     e("UZ-ZMB-003", .failed_dependency, "Zombie credential missing", "A required credential is not in the vault. Add it with: zombiectl credential add <name>"),
     e("UZ-ZMB-004", .internal_server_error, "Zombie claim failed", "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'."),
-    e("UZ-ZMB-005", .internal_server_error, "Zombie checkpoint failed", "Session checkpoint write to Postgres failed. Check database connectivity."),
     e("UZ-ZMB-006", .conflict, "Zombie name already exists", "A Zombie with this name already exists. Use 'zombiectl kill <name>' first, then deploy again."),
     // UZ-ZMB-007 retired (single-string credential body) → see UZ-VAULT-002.
     e("UZ-ZMB-008", .bad_request, "Invalid zombie config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
@@ -148,10 +135,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended."),
     // ── GATE ─────────────────────────────────────────────────────────────────
-    e("UZ-GATE-001", .internal_server_error, "Gate command failed", "A gate command (make lint/test/build) failed. Check the gate results for stdout/stderr output."),
-    e("UZ-GATE-002", .gateway_timeout, "Gate command timed out", "A gate command exceeded its timeout. Increase GATE_TOOL_TIMEOUT_MS or optimize the command."),
-    e("UZ-GATE-003", .internal_server_error, "Gate repair attempts exhausted", "Agent exhausted all repair attempts without passing gates. " ++
-        "Review gate results for the repeated failure pattern."),
     // ── STARTUP ──────────────────────────────────────────────────────────────
     e("UZ-STARTUP-001", .internal_server_error, "Environment check failed", "Required environment variables are missing. Run 'zombied doctor' to see which ones."),
     e("UZ-STARTUP-002", .internal_server_error, "Config load failed", "Configuration failed to load. Check that all required env vars are set. " ++
@@ -162,11 +145,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-STARTUP-005", .internal_server_error, "Migration check failed", "Database migration state could not be verified. Check DB connectivity."),
     e("UZ-STARTUP-006", .internal_server_error, "Startup env allocation failed", "An environment variable could not be allocated at startup (out of memory). " ++
         "A required secret fails the boot closed; optional config falls back to its default — check host memory pressure."),
-    e("UZ-STARTUP-007", .internal_server_error, "Redis group creation failed", "Redis connected but consumer group creation failed. " ++
-        "Check Redis ACL permissions allow XGROUP CREATE."),
     // ── RUNNER (zombie-runner /v1/runners control contract) ───────────────────
     e("UZ-RUN-001", .unauthorized, "Invalid runner token", "The Bearer runner_token is missing, malformed, or not recognized. Re-register the runner."),
-    e("UZ-RUN-003", .bad_request, "Unsupported secret delivery mode", "The requested secret delivery mode is not supported. This deployment delivers secrets inline only."),
     e("UZ-RUN-005", .conflict, "Stale fencing token", "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins."),
     e("UZ-RUN-006", .not_found, "Lease not found", "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed."),
     e("UZ-RUN-007", .internal_server_error, "Sandbox establishment failed", "The runner could not establish the required sandbox (Landlock/cgroup/netns) for execution; the lease was refused fail-closed rather than run unconfined."),

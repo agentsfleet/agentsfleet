@@ -169,10 +169,13 @@ pub fn build(b: *std.Build) void {
     // (pg/httpz/redis). It shares only the frozen wire protocol by source.
 
     // ── Shared src/lib test step ─────────────────────────────────────────────
-    // One pass over every shared module under src/lib (each is a named module
-    // reused across build graphs); their own tests run here, in each module's
-    // own instance, so they reach internals consumers never see. The aggregator
-    // (src/lib/tests.zig) grows by one line per new src/lib module.
+    // One step, two compilations. zombie-lib-tests file-imports contract +
+    // common so their tests collect into its root module (the test runner only
+    // collects root-module tests). Logging cannot join that root: its files
+    // resolve `@import("common")` as a named module, and one file cannot
+    // belong to two modules — file-importing common/*.zig beside the named
+    // instance is a compile error — so the logging barrel roots its own
+    // compilation in the exact module shape the production graphs use.
     const lib_tests = b.addTest(.{
         .name = "zombie-lib-tests",
         .root_module = b.createModule(.{
@@ -182,7 +185,21 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
-    b.step("test-lib", "Run shared src/lib module unit tests").dependOn(&b.addRunArtifact(lib_tests).step);
+    const logging_tests = b.addTest(.{
+        .name = "zombie-logging-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lib/logging/mod.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = S_COMMON, .module = common_mod },
+            },
+        }),
+        .filters = test_filters,
+    });
+    const lib_test_step = b.step("test-lib", "Run shared src/lib module unit tests");
+    lib_test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+    lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
 
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);

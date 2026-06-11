@@ -90,7 +90,7 @@ test "storeJson + loadJson round-trip preserves nested object" {
     var stored = try buildFlyCredential(alloc);
     defer stored.object.deinit(alloc);
 
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", stored);
+    try base.storeVaultJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", stored);
 
     var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly");
     defer loaded.deinit();
@@ -142,7 +142,7 @@ test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bool
     try top.put(alloc, "nested", .{ .object = nested });
     try top.put(alloc, "arr", .{ .array = arr });
 
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top });
+    try base.storeVaultJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top });
 
     var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed");
     defer loaded.deinit();
@@ -180,7 +180,7 @@ test "deleteCredential reports true on existing row, false on missing" {
 
     var v = try buildFlyCredential(alloc);
     defer v.object.deinit(alloc);
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", v);
+    try base.storeVaultJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", v);
 
     try std.testing.expect(try vault.deleteCredential(handle.conn, TEST_WS_ID, "zombie:fly"));
     try std.testing.expect(!(try vault.deleteCredential(handle.conn, TEST_WS_ID, "zombie:fly")));

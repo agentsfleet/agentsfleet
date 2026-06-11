@@ -14,8 +14,9 @@
 //! deadline so a stuck child cannot block the parent past `lease_expires_at`.
 
 const std = @import("std");
-const clock = @import("common").clock;
-const globalIo = @import("common").globalIo;
+const common = @import("common");
+const clock = common.clock;
+const globalIo = common.globalIo;
 
 /// Header byte selecting the message class. Values are ASCII so a stray frame is
 /// legible in a hexdump; the enum is the single source (RULE UFS).
@@ -29,7 +30,7 @@ const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
 
 /// Create an anonymous pipe via libc (`std.posix.pipe` was removed in Zig 0.16;
 /// the runner links -lc). Returns `[read_fd, write_fd]`.
-pub fn osPipe() error{PipeFailed}![2]std.posix.fd_t {
+pub fn testOsPipe() error{PipeFailed}![2]std.posix.fd_t {
     var fds: [2]std.posix.fd_t = undefined;
     if (std.c.pipe(&fds) != 0) return error.PipeFailed;
     return fds;
@@ -130,9 +131,9 @@ fn readExact(fd: std.posix.fd_t, buf: []u8, deadline_ms: i64) !FillState {
     return .full;
 }
 
-pub fn osClose(fd: std.posix.fd_t) void {
+pub fn testOsClose(fd: std.posix.fd_t) void {
     // Zig 0.16 removed std.posix.close; raw-fd close routes through Io.File on
-    // the process-global blocking io (paired with `osPipe`).
+    // the process-global blocking io (paired with `testOsPipe`).
     var file: std.Io.File = .{ .handle = fd, .flags = .{ .nonblocking = false } };
     file.close(globalIo());
 }
@@ -149,11 +150,11 @@ fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 test "writeFrame/readFrame round-trip an activity frame then EOF" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
 
     try writeFrame(fds[1], .activity, "{\"hello\":1}");
-    osClose(fds[1]); // EOF after one frame
+    testOsClose(fds[1]); // EOF after one frame
 
     const far_deadline = clock.nowMillis() + 5_000;
     const out = try readFrame(std.testing.allocator, fds[0], far_deadline, 1024);
@@ -167,11 +168,11 @@ test "writeFrame/readFrame round-trip an activity frame then EOF" {
 }
 
 test "readFrame distinguishes activity from result frames in order" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
     try writeFrame(fds[1], .activity, "a");
     try writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    osClose(fds[1]);
+    testOsClose(fds[1]);
 
     const dl = clock.nowMillis() + 5_000;
     const f1 = try readFrame(std.testing.allocator, fds[0], dl, 1024);
@@ -184,10 +185,10 @@ test "readFrame distinguishes activity from result frames in order" {
 }
 
 test "writeFrame/readFrame round-trip a memory frame" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
     try writeFrame(fds[1], .memory, "[{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}]");
-    osClose(fds[1]);
+    testOsClose(fds[1]);
 
     const dl = clock.nowMillis() + 5_000;
     const out = try readFrame(std.testing.allocator, fds[0], dl, 1024);
@@ -197,18 +198,18 @@ test "writeFrame/readFrame round-trip a memory frame" {
 }
 
 test "readFrame returns timed_out when the deadline is already past" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
-    defer osClose(fds[1]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
+    defer testOsClose(fds[1]);
     // No bytes written; a past deadline must not block.
     const out = try readFrame(std.testing.allocator, fds[0], clock.nowMillis() - 1, 1024);
     try std.testing.expect(out == .timed_out);
 }
 
 test "readFrame rejects a frame larger than max_payload" {
-    const fds = try osPipe();
-    defer osClose(fds[0]);
-    defer osClose(fds[1]);
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
+    defer testOsClose(fds[1]);
     try writeFrame(fds[1], .activity, "0123456789");
     const dl = clock.nowMillis() + 5_000;
     try std.testing.expectError(error.FrameTooLarge, readFrame(std.testing.allocator, fds[0], dl, 4));

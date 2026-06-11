@@ -3,7 +3,8 @@
 //! writable-CTE statement.
 //!
 //! The claim and the settle share one snapshot and one row lock. The probe reads
-//! lease+slot+balance under `FOR UPDATE OF l, a`, the `guard` arm requires the
+//! lease+slot under `FOR UPDATE OF l, a` (the `bal` arm locks the balance row),
+//! the `guard` arm requires the
 //! presenter still hold the live fence (`fencing_token >= fencing_seq`), the
 //! `claim` arm flips the lease to `reported` (only from `active`), and the same
 //! three guard-gated money writes the renewal does charge the final slice. Fusing
@@ -41,15 +42,21 @@ pub const SettleOutcome = struct {
 };
 
 // One writable-CTE statement that claims AND settles. `probe` reads the lease
-// (only while `status = active`), the affinity cursor, and the balance under
-// `FOR UPDATE OF l, a` — the affinity lock is what serialises a racing reclaim
-// behind this statement. `calc`/`guard` price the slice and compute `charged =
-// LEAST(slice, balance)` exactly as the renew CTE does; `guard` survives only if
-// the fence holds. `claim` flips active→reported AND advances the lease cursor;
-// `ext_aff` advances the slot cursor; `wallet`/`ledger`/`breakdown` are the
-// guard-gated money writes (drain `GREATEST(0, balance - slice)` = charged,
-// record `charged`). The trailing SELECT returns the charged nanos + whether the
-// claim flipped a row (the report-won signal).
+// (only while `status = active`) and the affinity cursor under
+// `FOR UPDATE OF l, a` — the affinity lock serialises a racing reclaim behind
+// this statement. `bal` locks the tenant's billing row in its own CTE (the
+// renew statement's shape: Postgres refuses `FOR UPDATE` on the nullable side
+// of an outer join, and the row must stay optional), serialising same-tenant
+// money ops so `bal0` is the LIVE balance after any lock wait. `calc`/`guard`
+// price the slice and compute `charged = LEAST(slice, bal0)` — equal to the
+// wallet's actual delta in every interleaving, so an exhaustion overlap
+// records audit rows summing to the real drain, never more (exactly as the
+// renew CTE does); `guard` survives only if the fence holds. `claim` flips
+// active→reported AND advances the lease cursor (clamped `GREATEST(old, $n)`
+// so a regressed report never rewinds it); `ext_aff` advances the slot cursor
+// the same way; `wallet`/`ledger`/`breakdown` are the guard-gated money
+// writes. The trailing SELECT returns the charged nanos + whether the claim
+// flipped a row (the report-won signal).
 const CLAIM_SETTLE_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.zombie_id, l.workspace_id, l.tenant_id, l.event_id,
@@ -57,20 +64,24 @@ const CLAIM_SETTLE_SQL =
     \\           GREATEST(0, $3::bigint - a.last_metered_at_ms)      AS d_ms,
     \\           GREATEST(0, $4::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $5::bigint - a.metered_cached_tokens)   AS d_cached,
-    \\           GREATEST(0, $6::bigint - a.metered_output_tokens)   AS d_out,
-    \\           tb.balance_nanos AS bal0
+    \\           GREATEST(0, $6::bigint - a.metered_output_tokens)   AS d_out
     \\    FROM fleet.runner_leases l
     \\    JOIN fleet.runner_affinity a ON a.zombie_id = l.zombie_id
-    \\    LEFT JOIN billing.tenant_billing tb ON tb.tenant_id = l.tenant_id
     \\    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $12
     \\    FOR UPDATE OF l, a
+    \\), bal AS (
+    \\    SELECT tb.tenant_id, tb.balance_nanos AS bal0
+    \\    FROM billing.tenant_billing tb
+    \\    JOIN probe p ON p.tenant_id = tb.tenant_id
+    \\    FOR UPDATE OF tb
     \\), calc AS (
-    \\    SELECT *,
+    \\    SELECT p.*, b.bal0,
     \\           (d_ms * $7::bigint) / $14::bigint    AS run_fee,
     \\           (d_in * $8::bigint) / $15::bigint
     \\             + (d_cached * $9::bigint) / $15::bigint
     \\             + (d_out * $10::bigint) / $15::bigint AS token_cost
-    \\    FROM probe
+    \\    FROM probe p
+    \\    LEFT JOIN bal b ON b.tenant_id = p.tenant_id
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
     \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
@@ -79,14 +90,19 @@ const CLAIM_SETTLE_SQL =
     \\    WHERE fencing_token >= fencing_seq
     \\), claim AS (
     \\    UPDATE fleet.runner_leases l
-    \\    SET status = $13, metered_input_tokens = $4, metered_cached_tokens = $5,
-    \\        metered_output_tokens = $6, last_metered_at_ms = $3, updated_at = $3
+    \\    SET status = $13,
+    \\        metered_input_tokens = GREATEST(l.metered_input_tokens, $4),
+    \\        metered_cached_tokens = GREATEST(l.metered_cached_tokens, $5),
+    \\        metered_output_tokens = GREATEST(l.metered_output_tokens, $6),
+    \\        last_metered_at_ms = $3, updated_at = $3
     \\    FROM guard g WHERE l.id = g.id
     \\    RETURNING g.id
     \\), ext_aff AS (
     \\    UPDATE fleet.runner_affinity a
-    \\    SET metered_input_tokens = $4, metered_cached_tokens = $5,
-    \\        metered_output_tokens = $6, last_metered_at_ms = $3, updated_at = $3,
+    \\    SET metered_input_tokens = GREATEST(a.metered_input_tokens, $4),
+    \\        metered_cached_tokens = GREATEST(a.metered_cached_tokens, $5),
+    \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $6),
+    \\        last_metered_at_ms = $3, updated_at = $3,
     \\        meter_slice_seq = g.next_seq
     \\    FROM guard g WHERE a.zombie_id = g.zombie_id
     \\    RETURNING a.zombie_id
