@@ -227,6 +227,25 @@ test "test_list_never_counts_zero_hit" {
     try std.testing.expectEqual(before.search_zero_hits_total, after.search_zero_hits_total);
 }
 
+test "test_category_filter_never_counts_zero_hit" {
+    const f = try fixture();
+    defer f.deinit();
+    // The ?category= arm is a filtered list, not a search — an empty result
+    // there must never read as a recall miss.
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const cat_url = try std.fmt.allocPrint(ALLOC, "{s}?category=no-such-category", .{url});
+    defer ALLOC.free(cat_url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(cat_url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"total\":0"));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.search_zero_hits_total, after.search_zero_hits_total);
+}
+
 test "test_tenant_list_never_counts_drops" {
     const f = try fixture();
     defer f.deinit();
