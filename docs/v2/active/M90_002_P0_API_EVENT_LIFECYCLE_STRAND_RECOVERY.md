@@ -103,6 +103,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/zombied/http/handlers/webhooks/github.zig` | EDIT | same ordering fix incl. normalize-failure path; paused → 200-ignored |
 | `src/zombied/http/handlers/zombies/messages.zig` | EDIT | paused zombie → 409 with registry code |
 | `src/zombied/errors/error_registry.zig` + `error_entries.zig` | EDIT | paused-zombie code + hint |
+| `public/openapi/paths/zombies.yaml` | EDIT | messages endpoint documents 409 (UZ-ZMB-012); generic-webhook 200 documents the `ignored` shape |
+| `public/openapi/paths/webhooks.yaml` | EDIT | github 200 gains `zombie_paused` ignore reason; svix path documents its 200 duplicate/ignored shape |
+| `public/openapi.json` | REGEN | bundle-in-sync artifact (`make check-openapi`) |
 | sibling `*_test.zig` / integration tests per touched module | CREATE/EDIT | per Test Specification |
 
 ---
@@ -213,12 +216,12 @@ Regression: existing webhook dedup, lease/report parity, and events-API suites s
 
 ## Acceptance Criteria
 
-- [ ] `make lint` clean · `make test` passes
+- [x] `make lint` clean · `make test` passes (`make lint-all` + `make test-unit-all`, Jun 11, 2026)
 - [ ] `make test-integration` and `make test-integration-redis` pass (DB + Redis surfaces)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no production file over 350 lines
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [x] `gitleaks detect` clean · no production file over 350 lines (over-350 files in diff are `*_test.zig`, exempt from the production cap)
 - [ ] Stranded-event scenario from scenario 03 reproduces the documented sequence — verify: integration tests 1.1/2.2 paste-outs in Verification Evidence
-- [ ] Dead blocking-read symbols gone — verify: Eval E8
+- [x] Dead blocking-read symbols gone — verify: Eval E8 (0 matches)
 
 ## Eval Commands (post-implementation)
 
@@ -263,13 +266,14 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | — | |
-| Integration tests | `make test-integration` | — | |
-| Redis integration | `make test-integration-redis` | — | |
-| Lint | `make lint` | — | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | — | |
-| Gitleaks | `gitleaks detect` | — | |
-| Dead code sweep | `grep -rnE "xreadgroupZombie\b" src/` | — | |
+| Unit tests | `make test-unit-all` | all lanes passed (zombied + zigrunner + ziglib + coverage + bundle); test depth unit=1911 integration=169 vs baseline 1901/168 (+10/+1) | ✅ Jun 11, 2026 |
+| Integration tests | `make test-integration` | pending — serialized window on shared docker Postgres/Redis (M90_001 agent shares the instance) | ⏳ |
+| Redis integration | `make test-integration-redis` | pending — same serialized window | ⏳ |
+| Lint | `make lint-all` | all linters + quality gates green (incl. `check-openapi` after the OpenAPI edits: 42 paths, error-schema + URL-shape OK) | ✅ Jun 11, 2026 |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both targets build clean | ✅ Jun 11, 2026 |
+| Memleak | `make memleak` | allocator leak-guard tests + macOS `leaks` gate passed | ✅ Jun 11, 2026 |
+| Gitleaks | `gitleaks detect` | 2596 commits scanned, no leaks found | ✅ Jun 11, 2026 |
+| Dead code sweep | `grep -rnE "xreadgroupZombie\b\|zombie_xread_block_ms" src/` | 0 matches | ✅ Jun 11, 2026 |
 
 ## Out of Scope
 

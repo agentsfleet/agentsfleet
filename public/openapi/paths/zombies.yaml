@@ -8,7 +8,9 @@
       provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is
       verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no
       Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200
-      `{status: "duplicate"}`. A new event is enqueued to the Zombie''s Redis stream and returns 202.'
+      `{status: "duplicate"}`. A webhook for a paused zombie returns 200 `{ignored: "zombie_paused"}` without consuming
+      the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the Zombie''s Redis stream
+      and returns 202.'
     tags:
     - Zombies
     parameters:
@@ -57,17 +59,20 @@
                 event_id:
                   type: string
       '200':
-        description: Duplicate event — already processed within the 24-hour dedup window.
+        description: 'Not enqueued, intentionally. Two shapes: duplicate event (`{"status": "duplicate"}` — already processed
+          within the 24-hour dedup window) or event ignored (`{"ignored": "zombie_paused"}` — zombie is paused; the dedup
+          slot is not consumed, so redelivery after resume processes normally).'
         content:
           application/json:
             schema:
               type: object
-              required:
-              - status
               properties:
                 status:
                   type: string
                   const: duplicate
+                ignored:
+                  type: string
+                  description: Reason the event was ignored (e.g. `zombie_paused`).
       '400':
         description: Malformed payload — missing `event_id` or `type`.
         content:
@@ -474,6 +479,10 @@
       '403':
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Zombie is paused or otherwise not active (`UZ-ZMB-012`). Steering refuses loudly instead of enqueuing
+          work that would strand. Resume with `zombiectl resume <zombie>`, then retry.
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
   get:
