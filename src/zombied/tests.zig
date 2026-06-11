@@ -34,6 +34,7 @@ test {
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
+    _ = @import("fleet/event_lifecycle_integration_test.zig");
     _ = @import("fleet/renewal_integration_test.zig");
     _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("fleet/liveness_sweeper_integration_test.zig");

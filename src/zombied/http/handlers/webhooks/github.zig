@@ -11,10 +11,12 @@
 //         CDN / HTTP/2 proxy paths (RFC 9110 §6.4.5 forbids 204+body).
 // Idempotency: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` (72 h TTL,
 //         covers GitHub's max retry window for the same delivery UUID).
-//         Dedupe is claimed AFTER zombie validation + action filter pass,
-//         so 4xx-rejected deliveries and intentionally ignored events do
-//         NOT consume a slot — operator-triggered redelivery of a
-//         once-paused zombie processes correctly when unpaused.
+//         The slot is claimed atomically (SET NX EX — concurrent duplicate
+//         deliveries still single-enqueue) AFTER zombie validation + action
+//         filter pass, so 4xx-rejected and intentionally ignored deliveries
+//         never consume it, and RELEASED (DEL) on every post-claim failure
+//         path — normalize failure included — so a transient fault leaves
+//         GitHub's redelivery deliverable (loss-proof dedup ordering).
 // On accept: normalized envelope is XADDed to zombie:{id}:events with
 //         `actor=webhook:github`, `event_type=webhook`. Returns 202.
 
@@ -109,9 +111,18 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     };
     defer deinitZombieRow(&zombie, hx.alloc);
 
+    // Paused zombie → 200-ignored, not 4xx: GitHub retry queues add no value
+    // for an intentionally paused zombie, and the dedup slot is NOT consumed
+    // so an operator redelivery after resume processes correctly.
+    // The triggered metric is not incremented — nothing was accepted.
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {
-        hx.fail(ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE);
+        log.info("zombie_not_active", .{
+            .zombie_id = zombie_id,
+            .status = zombie.status,
+            .delivery = delivery,
+        });
+        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_ZOMBIE_PAUSED });
         return;
     }
 
@@ -151,10 +162,19 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     }
 
-    // Dedupe AFTER validation+filter — see file header for why.
-    if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
+    // Atomic claim after validation+filter; released on every post-claim
+    // failure below — see file header for why.
+    var dedup_key_buf: [256]u8 = undefined;
+    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, zombie_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
+        common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
+        return;
+    };
+    if (!claimDedupSlot(hx, zombie_id, delivery, dedup_key)) return;
 
     const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, clock.nowSeconds()) catch |err| {
+        // Normalize failure must not burn the slot: GitHub's redelivery of a
+        // (possibly fixed) payload for this delivery UUID stays deliverable.
+        releaseDedupSlot(hx, zombie_id, dedup_key);
         log.err("normalize_failed", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
             .zombie_id = zombie_id,
@@ -176,6 +196,9 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         .created_at = clock.nowMillis(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
+        // Release the slot — GitHub's redelivery of this UUID stays
+        // deliverable (loss-proof dedup ordering).
+        releaseDedupSlot(hx, zombie_id, dedup_key);
         log.err("enqueue_failed", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .zombie_id = zombie_id,
@@ -196,13 +219,11 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = new_event_id });
 }
 
-fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
-    var key_buf: [256]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "webhook:dedup:{s}:{s}:{s}", .{ zombie_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
-        common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
-        return false;
-    };
-    const is_new = hx.ctx.queue.setNx(key, "1", GITHUB_DEDUP_TTL_SECONDS) catch |err| {
+/// Atomically claim the delivery's idempotency slot (SET NX — exactly one of
+/// N concurrent identical deliveries wins). The caller releases it on every
+/// post-claim failure path.
+fn claimDedupSlot(hx: Hx, zombie_id: []const u8, delivery: []const u8, dedup_key: []const u8) bool {
+    const is_new = hx.ctx.queue.setNx(dedup_key, "1", GITHUB_DEDUP_TTL_SECONDS) catch |err| {
         log.err("dedup_error", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .zombie_id = zombie_id,
@@ -218,6 +239,15 @@ fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
         return false;
     }
     return true;
+}
+
+/// Release a claimed idempotency slot after a post-claim failure so GitHub's
+/// redelivery is not answered "duplicate" for an event that never landed.
+/// Best-effort: on a DEL failure the slot expires at its TTL (logged).
+fn releaseDedupSlot(hx: Hx, zombie_id: []const u8, dedup_key: []const u8) void {
+    hx.ctx.queue.del(dedup_key) catch |err| {
+        log.warn("dedup_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+    };
 }
 
 const ZombieRow = struct {
@@ -275,11 +305,13 @@ test "handler constants pin" {
     try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);
     try testing.expectEqualStrings("x-github-event", HEADER_EVENT);
     try testing.expectEqualStrings("x-github-delivery", HEADER_DELIVERY);
-    // Worst-case dedupe key: "webhook:dedup:" (14) + UUIDv7 (36) + ":gh:" (4)
-    // + delivery UUID (36) = 90 bytes. The 256-byte buffer is comfortable.
+    // Worst-case dedupe key: WEBHOOK_DEDUP_KEY_PREFIX (14) + UUIDv7 (36) +
+    // ":gh:" (4) + delivery UUID (36) = 90 bytes. 256-byte buffer is comfortable.
     var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "webhook:dedup:{s}:gh:{s}", .{
+    const key = try std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
+        ec.WEBHOOK_DEDUP_KEY_PREFIX,
         "01999999-9999-7999-9999-999999999999",
+        PROVIDER_DEDUP_NAMESPACE,
         "abcdef01-2345-6789-abcd-ef0123456789",
     });
     try testing.expect(key.len < 256);
