@@ -109,11 +109,12 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     }
 
     _ = try conn.exec("BEGIN", .{});
-    _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
+    // Registered BEFORE the bypass SET LOCAL so its failure also rolls back.
     // conn.rollback(), not exec("ROLLBACK") — exec short-circuits on a
     // FAIL-state connection after a statement error, leaving the session
     // stuck in the aborted transaction (signup_bootstrap.zig precedent).
     errdefer conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+    _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
 
     _ = try conn.exec(
         "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",

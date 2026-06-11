@@ -411,6 +411,30 @@ fn auditSum(conn: *pg.Conn) !i64 {
     return row.get(i64, 0);
 }
 
+
+/// Wait (bounded) until `min_waiters` backends are blocked on a row lock
+/// inside the renew/settle CTE (`WITH probe ...`). Replaces a fixed sleep:
+/// on a loaded machine a sleep can elapse before the workers even acquire
+/// their pool connections, silently degrading the forced interleaving the
+/// exhaustion tests exist to pin.
+fn waitForRenewLockWaiters(conn: *pg.Conn, min_waiters: i64) !void {
+    var attempts: usize = 0;
+    while (attempts < 250) : (attempts += 1) { // 250 × 20 ms = 5 s cap
+        const waiting = blk: {
+            var q = PgQuery.from(try conn.query(
+                "SELECT count(*)::bigint FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE 'WITH probe%'",
+                .{},
+            ));
+            defer q.deinit();
+            const row = (try q.next()) orelse break :blk @as(i64, 0);
+            break :blk try row.get(i64, 0);
+        };
+        if (waiting >= min_waiters) return;
+        constants.sleepNanos(20 * std.time.ns_per_ms);
+    }
+    return error.RenewWorkersNeverBlocked;
+}
+
 const LeaseRenewer = struct {
     fn run(h: *TestHarness, lease_id: []const u8, slot: *RenewSlot) void {
         const conn = acquireRetry(h) orelse return;
@@ -479,7 +503,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     var threads: [2]std.Thread = undefined;
     threads[0] = try std.Thread.spawn(.{}, LeaseRenewer.run, .{ h, @as([]const u8, LEASE_ID), &slots[0] });
     threads[1] = try std.Thread.spawn(.{}, LeaseRenewer.run, .{ h, @as([]const u8, LEASE_ID_2), &slots[1] });
-    constants.sleepNanos(200 * std.time.ns_per_ms); // both renewals reach the balance wait
+    try waitForRenewLockWaiters(c, 2); // both renewals provably blocked on the balance row
     _ = try blocker.exec("COMMIT", .{});
     h.releaseConn(blocker);
     for (threads) |t| t.join();
@@ -527,7 +551,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     var threads: [2]std.Thread = undefined;
     threads[0] = try std.Thread.spawn(.{}, SettleWorker.run, .{ h, @as([]const u8, LEASE_ID), &slots[0] });
     threads[1] = try std.Thread.spawn(.{}, SettleWorker.run, .{ h, @as([]const u8, LEASE_ID_2), &slots[1] });
-    constants.sleepNanos(200 * std.time.ns_per_ms); // both settles reach the balance wait
+    try waitForRenewLockWaiters(c, 2); // both settles provably blocked on the balance row
     _ = try blocker.exec("COMMIT", .{});
     h.releaseConn(blocker);
     for (threads) |t| t.join();
