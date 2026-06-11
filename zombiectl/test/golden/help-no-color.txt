@@ -33,6 +33,7 @@ Commands:
   events [options] <zombie_id>  Page through historical events
   steer <zombie_id> [message]   Send a message; stream the response
   credential                    Workspace credential vault
+  memory                        Inspect a zombie's durable memory (read-only)
   help [command]                display help for command
 
 Subcommands:
@@ -57,6 +58,8 @@ Subcommands:
   credential list
   credential delete
   zombie update
+  memory list
+  memory search
 
 Environment variables:
   ZOMBIE_API_URL                  API base URL (overridden by --api)

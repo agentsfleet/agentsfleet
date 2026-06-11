@@ -30,6 +30,7 @@ import {
 import { billingShowEffectFromArgs } from "../commands/billing.ts";
 import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
+import { buildMemoryHandlers } from "./handlers-bind-memory.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
@@ -79,6 +80,15 @@ function streamsFromCtx(
   if (!ctx.stdout || !ctx.stderr) return undefined;
   if (ctx.stdout === process.stdout && ctx.stderr === process.stderr) return undefined;
   return { stdout: ctx.stdout, stderr: ctx.stderr };
+}
+
+// 7 Pillars auto-JSON-when-piped: the bind site owns the environment read
+// so the memory handlers stay pure. ctx.stdout is the injected test stream
+// when present, the process stream otherwise; a missing/false isTTY means
+// piped or redirected.
+function stdoutIsTtyFromCtx(ctx: LifecycleCtx): boolean {
+  const stream = ctx.stdout ?? process.stdout;
+  return Boolean((stream as { isTTY?: boolean }).isTTY);
 }
 
 // Only thread a non-default stdin stream (a string/null ctx.stdin is a test
@@ -157,6 +167,10 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     name: string,
     effect: Effect.Effect<A, E, R>,
   ): CommandHandlerFn => wrapEffect(name, effect, lifecycle);
+  const wrapEFn = <E extends CliError, R extends MainLayerServices>(
+    name: string,
+    factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+  ): CommandHandlerFn => wrapEffectFn(name, factory, lifecycle);
   return {
     login: wrapEffectFn(
       "login",
@@ -190,13 +204,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       status: wrapE("auth.status", authStatusEffect),
     },
     doctor: wrapE("doctor", doctorEffect),
-    workspace: buildWorkspaceHandlers(
-      wrapE,
-      <E extends CliError, R extends MainLayerServices>(
-        name: string,
-        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
-      ) => wrapEffectFn(name, factory, lifecycle),
-    ),
+    workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
     agent: {
       add: wrapEffectFn(
         "agent.add",
@@ -291,12 +299,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
     },
-    zombie: buildZombieHandlers(
-      wrapE,
-      <E extends CliError, R extends MainLayerServices>(
-        name: string,
-        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
-      ) => wrapEffectFn(name, factory, lifecycle),
-    ),
+    zombie: buildZombieHandlers(wrapE, wrapEFn),
+    memory: buildMemoryHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
   };
 }
