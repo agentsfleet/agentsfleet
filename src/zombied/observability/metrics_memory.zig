@@ -138,7 +138,9 @@ pub fn snapshot() Snapshot {
 }
 
 /// True once any memory counter has moved — gates rendering so a scrape before
-/// any activity stays empty (the gauge alone never forces a render).
+/// any activity stays empty (the gauge and dropped_bytes alone never force a
+/// render: dropped_bytes only moves when dropped_entries also moves, so the
+/// entries check below subsumes it).
 pub fn anyActive() bool {
     const s = snapshot();
     return s.captured_total != 0 or s.push_failures_total != 0 or
