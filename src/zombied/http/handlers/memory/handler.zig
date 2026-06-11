@@ -20,6 +20,7 @@ const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
+const metrics_memory = @import("../../../observability/metrics_memory.zig");
 
 const h = @import("helpers.zig");
 const Hx = h.Hx;
@@ -102,6 +103,9 @@ pub fn innerListMemories(
         });
         defer q.deinit();
         h.collectEntries(hx.alloc, &q, &entries);
+        // A search that matched nothing is a recall-miss signal (substring
+        // search came up dry) — the list/category paths never count here.
+        if (entries.items.len == 0) metrics_memory.incSearchZeroHit();
     } else if (category_opt) |cat| {
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at

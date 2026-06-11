@@ -125,6 +125,7 @@ test {
     _ = @import("http/handlers/zombies/messages_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
+    _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
