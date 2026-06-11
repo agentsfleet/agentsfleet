@@ -44,6 +44,13 @@ pub const ExecutionResult = struct {
     failure: ?FailureClass = null,
     memory_peak_bytes: u64 = 0,
     cpu_throttled_ms: u64 = 0,
+    /// Cumulative token splits for the whole run (defaults 0: an older child
+    /// omits them and the report settles run-fee-only — wire-compatible both
+    /// directions). `cached_input_tokens` stays 0 until the agent layer
+    /// surfaces cache reads separately from prompt tokens.
+    input_tokens: u64 = 0,
+    cached_input_tokens: u64 = 0,
+    output_tokens: u64 = 0,
 };
 
 test "FailureClass.label returns the tag name for every variant" {
@@ -62,4 +69,8 @@ test "ExecutionResult defaults describe an unrun stage" {
     try std.testing.expect(!r.exit_ok);
     try std.testing.expectEqual(@as(u64, 0), r.token_count);
     try std.testing.expect(r.failure == null);
+    // Split fields default 0 — an old-wire result parses to run-fee-only.
+    try std.testing.expectEqual(@as(u64, 0), r.input_tokens);
+    try std.testing.expectEqual(@as(u64, 0), r.cached_input_tokens);
+    try std.testing.expectEqual(@as(u64, 0), r.output_tokens);
 }

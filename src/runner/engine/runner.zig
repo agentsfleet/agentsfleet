@@ -104,6 +104,8 @@ pub fn execute(
     return .{
         .content = result.content,
         .token_count = result.token_count,
+        .input_tokens = result.input_tokens,
+        .output_tokens = result.output_tokens,
         .wall_seconds = elapsed,
         .exit_ok = true,
         .failure = null,
@@ -113,7 +115,16 @@ pub fn execute(
 const InnerResult = struct {
     content: []const u8,
     token_count: u64,
+    input_tokens: u64,
+    output_tokens: u64,
 };
+
+/// Cumulative split mapping at the engine boundary: prompt-side → input,
+/// completion-side → output. Cached-input stays 0 downstream until the agent
+/// layer surfaces cache reads separately from prompt tokens.
+pub fn usageSplits(agent: *const Agent) struct { input: u64, output: u64 } {
+    return .{ .input = agent.promptTokensUsed(), .output = agent.completionTokensUsed() };
+}
 
 fn executeInner(
     env_map: *const std.process.Environ.Map,
@@ -225,9 +236,12 @@ fn executeInner(
     // without crossing a mid-run checkpoint is still persisted by the parent.
     if (capturer) |*c| c.capture();
 
+    const splits = usageSplits(&agent);
     return .{
         .content = owned,
         .token_count = agent.tokensUsed(),
+        .input_tokens = splits.input,
+        .output_tokens = splits.output,
     };
 }
 
@@ -322,6 +336,7 @@ fn elapsedSeconds(start_ms: i64) u64 {
 test {
     _ = @import("runner_security_test.zig");
     _ = @import("runner_progress_redact_test.zig");
-    _ = @import("inrun_memory.zig");
+    _ = inrun_memory; // discovery via the existing import binding (RULE UFS: no re-spelled path)
     _ = @import("runner_progress_memory_test.zig");
+    _ = @import("runner_usage_test.zig");
 }

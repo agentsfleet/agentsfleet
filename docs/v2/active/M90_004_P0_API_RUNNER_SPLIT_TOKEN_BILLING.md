@@ -116,7 +116,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 The `usezombie/nullclaw` fork (branch `patch/split-token-accessors-v2026.5.29`, one commit atop upstream tag v2026.5.29) accumulates `prompt_tokens`/`completion_tokens` alongside the existing `total_tokens` and exposes `promptTokensUsed()`/`completionTokensUsed()` beside `tokensUsed()`. This repo pins the fork commit in `build.zig.zon` and reads the accessors at the engine boundary. Cache-read counts are not yet surfaced upstream — `cached_input_tokens` maps as 0 (the Known-limitation entry in Discovery). Drop the fork pin and return to the upstream tag when upstream exposes split accessors.
 
-- **Dimension 1.1** — upstream release pinned in `build.zig.zon`; engine reads cumulative input/cached/output accessors → Test: E2 (both graphs compile against the new pin) + a unit test pinning that the engine maps accessor values into `ExecutionResult` splits verbatim
+- **Dimension 1.1** — fork commit pinned in `build.zig.zon`; engine reads cumulative input/output accessors (cached pinned 0) → Test: E2 (both graphs compile against the new pin) + a unit test pinning that the engine maps accessor values into `ExecutionResult` splits verbatim — **DONE**
 
 ### §2 — Child→parent live usage plumbing
 
