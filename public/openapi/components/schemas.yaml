@@ -41,6 +41,11 @@ components:
         request_id:
           type: string
           description: Correlation ID for this request
+        current_state:
+          type: string
+          description: Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that
+            forbade the requested transition, e.g. `paused` when steering a paused zombie (UZ-ZMB-012).
+          example: paused
     TenantApiKey:
       type: object
       description: Metadata for a tenant API key. `key_hash` and the raw key are never returned.

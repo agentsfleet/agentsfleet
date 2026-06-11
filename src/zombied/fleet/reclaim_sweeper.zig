@@ -103,7 +103,10 @@ fn fetchActiveZombies(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]const u8 {
     , .{ zombie_config.ZombieStatus.active.toSlice(), SWEEP_BATCH_LIMIT }));
     defer q.deinit();
     var ids: std.ArrayList([]const u8) = .empty;
-    errdefer freeIdItems(alloc, ids.items);
+    errdefer {
+        freeIdItems(alloc, ids.items);
+        ids.deinit(alloc);
+    }
     while (try q.next()) |row| {
         try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
     }

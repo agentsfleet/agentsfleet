@@ -309,7 +309,14 @@ pub const CONSUMER_ID_BUF_LEN: usize = queue_consts.consumer_prefix.len + 1 + st
 pub fn stableConsumerId(buf: *[CONSUMER_ID_BUF_LEN]u8) []const u8 {
     const prefix = queue_consts.consumer_prefix ++ "-";
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
-    const host = std.posix.gethostname(&host_buf) catch "localhost";
+    // gethostname failure collapses this instance onto the shared `localhost`
+    // consumer (one PEL for any such instance). Correctness is unaffected — the
+    // per-zombie Postgres affinity claim is the only lease serializer — but
+    // recovery attribution blurs, so the fallback is loud.
+    const host = std.posix.gethostname(&host_buf) catch |err| blk: {
+        log.warn("consumer_id_hostname_fallback", .{ .err = @errorName(err) });
+        break :blk "localhost";
+    };
     @memcpy(buf[0..prefix.len], prefix);
     @memcpy(buf[prefix.len..][0..host.len], host);
     return buf[0 .. prefix.len + host.len];

@@ -215,7 +215,7 @@ test "integration: steer paused zombie — 409 UZ-ZMB-012; resumed zombie steers
         const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"wake up\"}")).send();
         defer r.deinit();
         try r.expectStatus(.accepted);
-        var del = h.queue.command(&.{ "DEL", "zombie:" ++ "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa04" ++ ":events" }) catch null;
+        var del = h.queue.command(&.{ "DEL", "zombie:" ++ ZOMBIE_PAUSED ++ ":events" }) catch null;
         if (del) |*d| d.deinit(h.queue.alloc);
     }
 

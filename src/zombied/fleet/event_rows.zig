@@ -18,6 +18,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const id_format = @import("../types/id_format.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 const logging = @import("log");
 const redis_zombie = @import("../queue/redis_zombie.zig");
@@ -129,6 +130,26 @@ pub fn markBlocked(
     return affected orelse 0;
 }
 
+/// Status class of an existing event row, for the lease path's PEL re-delivery
+/// branch. A re-delivery is a genuine re-poll only while the row is still
+/// `received` (a pending-gate re-poll or a reclaimed strand); a `terminal` row
+/// means a settled or `gate_blocked` entry whose XACK was lost — it must be
+/// re-acked, never re-executed (spec Invariant 2). `absent` cannot follow a
+/// conflicting insert but is treated as a proceed.
+pub const RowClass = enum { absent, received, terminal };
+
+pub fn classifyStatus(pool: *pg.Pool, zombie_id: []const u8, event_id: []const u8) !RowClass {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT status FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2
+    , .{ zombie_id, event_id }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return .absent;
+    const status = try row.get([]const u8, 0);
+    return if (std.mem.eql(u8, status, STATUS_RECEIVED)) .received else .terminal;
+}
+
 /// UPDATE the event row to its terminal status + response + telemetry + the
 /// granular failure label. Reads `exit_ok`/`content`/`token_count`/`failure`
 /// off the result; status is derived from `exit_ok`, and `failure_label` carries
@@ -149,10 +170,15 @@ pub fn markTerminal(
     const now_ms = clock.nowMillis();
     const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
     const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
-    _ = conn.exec(
+    // Guarded on `status = 'received'`: a terminal row is never reopened
+    // (spec Invariant 2 — same one-way-door discipline as markBlocked). The
+    // happy path always transitions a single received→terminal; a 0-row write
+    // means the row was already terminal (a re-delivery whose XACK was lost)
+    // and is logged rather than silently overwriting the settled result.
+    const affected = conn.exec(
         \\UPDATE core.zombie_events
         \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
-        \\WHERE zombie_id = $1::uuid AND event_id = $2
+        \\WHERE zombie_id = $1::uuid AND event_id = $2 AND status = $9
     , .{
         zombie_id,
         event_id,
@@ -162,9 +188,14 @@ pub fn markTerminal(
         @as(i64, @intCast(wall_ms)),
         now_ms,
         failure_label,
+        STATUS_RECEIVED,
     }) catch |err| {
         log.warn("terminal_update_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+        return;
     };
+    if ((affected orelse 0) == 0) {
+        log.warn("terminal_write_skipped_nonreceived", .{ .zombie_id = zombie_id, .event_id = event_id });
+    }
 }
 
 /// UPSERT the session resume cursor. Reads only `zombie_id` + the pre-built
