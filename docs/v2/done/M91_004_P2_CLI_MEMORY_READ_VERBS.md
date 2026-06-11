@@ -221,12 +221,12 @@ Regression: existing command help trees unchanged (`test_memory_help_e2e` assert
 
 ## Acceptance Criteria
 
-- [ ] Both verbs work end-to-end against the built binary — verify: `make test-unit-zombiectl`
-- [ ] Piped output is strict JSON with full content — verify: `make test-unit-zombiectl` (3.1)
-- [ ] Empty results exit 0; errors exit nonzero with suggestions — verify: `make test-unit-zombiectl` (1.3, 2.2, 4.1)
-- [ ] No server-side diff — verify: `git diff --name-only origin/main | grep -v zombiectl | grep -v '\.md$'` → empty
-- [ ] `make lint-zombiectl` clean · zombiectl build green (`cd zombiectl && bun install && bun run build`)
-- [ ] `gitleaks detect` clean · no file over 350 lines
+- [x] Both verbs work end-to-end against the built binary — verify: `make test-unit-zombiectl` (1151 pass / 0 fail)
+- [x] Piped output is strict JSON with full content — verify: `make test-unit-zombiectl` (3.1)
+- [x] Empty results exit 0; errors exit nonzero with suggestions — verify: `make test-unit-zombiectl` (1.3, 2.2, 4.1)
+- [x] No server-side diff — verify: `git diff --name-only origin/main | grep -E '^(src|schema|ui)/'` → empty *(command amended at close: the original `grep -v zombiectl` form also surfaced `VERSION`/`build.zig.zon`, which the version-sync close-out rule mandates touching — the criterion is about the server tree)*
+- [x] `make lint-zombiectl` clean · zombiectl build green (`cd zombiectl && bun install && bun run build`)
+- [x] `gitleaks detect` clean · no file over 350 lines
 
 ---
 
@@ -239,10 +239,11 @@ cd zombiectl && bun install && bun run build && cd ..
 make test-unit-zombiectl 2>&1 | tail -5
 # E3: Lint (CLI tier)
 make lint-zombiectl 2>&1 | tail -3
-# E4: Server untouched (expect empty)
-git diff --name-only origin/main | grep -v zombiectl | grep -v '\.md$'
-# E5: Help surface registered
-./zombiectl/dist/bin/zombiectl.js memory --help | head -10
+# E4: Server untouched (expect empty; VERSION/build.zig.zon churn is the
+#     mandated version sync, not server diff)
+git diff --name-only origin/main | grep -E '^(src|schema|ui)/'
+# E5: Help surface registered (dist entry has no exec bit — spawn via node)
+node zombiectl/dist/bin/zombiectl.js memory --help | head -10
 # E6: Gitleaks + 350-line gate
 gitleaks detect 2>&1 | tail -2; git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
 ```

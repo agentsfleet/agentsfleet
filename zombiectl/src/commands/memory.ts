@@ -118,12 +118,15 @@ export const renderUpdatedAt = (value: number | string | null | undefined): stri
   return LITERAL_DASH;
 };
 
-// Strip control bytes, collapse whitespace, then cut at PREVIEW_MAX code
-// points. Slicing by code point (Array.from) can never split a surrogate
-// pair, so the preview always re-encodes as valid UTF-8 even mid-emoji.
+// Collapse whitespace FIRST (newlines/tabs become spaces), then strip the
+// remaining control bytes, then cut at PREVIEW_MAX code points. Order
+// matters: cleanCell deletes \n/\t outright, so running it first would
+// concatenate words across line breaks. Slicing by code point (Array.from)
+// can never split a surrogate pair, so the preview always re-encodes as
+// valid UTF-8 even mid-emoji.
 export const previewText = (text: string | null | undefined): string => {
   if (!isString(text) || text.length === 0) return "";
-  const oneline = cleanCell(text).replace(/\s+/g, " ").trim();
+  const oneline = cleanCell(text.replace(/\s+/g, " ")).trim();
   const points = Array.from(oneline);
   if (points.length <= PREVIEW_MAX) return oneline;
   return `${points.slice(0, PREVIEW_MAX - 1).join("")}…`;

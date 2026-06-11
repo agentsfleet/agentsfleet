@@ -80,6 +80,10 @@ describe("test_memory_preview_truncation_utf8_safe", () => {
 
   test("whitespace collapses to single spaces before measuring", () => {
     expect(previewText("a\n\n  b\t c")).toBe("a b c");
+    // no adjacent literal spaces — proves the newline itself becomes a
+    // space (cleanCell after collapse, not before)
+    expect(previewText("line1\nline2")).toBe("line1 line2");
+    expect(previewText("col1\tcol2")).toBe("col1 col2");
   });
 
   test("null, undefined, and empty content render as empty previews", () => {
