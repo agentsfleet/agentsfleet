@@ -14,6 +14,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const id_format = @import("../../../types/id_format.zig");
+const metrics_memory = @import("../../../observability/metrics_memory.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -165,6 +166,103 @@ test "integration: memories GET ?query= finds an entry by content match" {
     defer search_r.deinit();
     try search_r.expectStatus(.ok);
     try std.testing.expect(search_r.bodyContains("\"key\":\"note:deploy\""));
+}
+
+// ── Memory-loss counters: the zero-hit search signal ──
+// The harness server runs in-process, so the metrics globals asserted here are
+// the same atomics the handler increments (backpressure-test precedent).
+
+test "test_search_zero_hit_counts" {
+    const f = try fixture();
+    defer f.deinit();
+    try seedEntry(f, ZOMBIE_LOCAL, "note:topic", "the stored fact mentions kumquats", "core");
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=nothing-matches-this", .{url});
+    defer ALLOC.free(search_url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(search_url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"total\":0"));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.search_zero_hits_total + 1, after.search_zero_hits_total);
+}
+
+test "test_search_hit_no_count" {
+    const f = try fixture();
+    defer f.deinit();
+    try seedEntry(f, ZOMBIE_LOCAL, "note:fruit", "the stored fact mentions kumquats", "core");
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=kumquats", .{url});
+    defer ALLOC.free(search_url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(search_url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"key\":\"note:fruit\""));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.search_zero_hits_total, after.search_zero_hits_total);
+}
+
+test "test_list_never_counts_zero_hit" {
+    const f = try fixture();
+    defer f.deinit();
+    // No seeded entries: the list path returns an empty set — still no count,
+    // because only the ?query= search path is a recall-miss signal.
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"total\":0"));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.search_zero_hits_total, after.search_zero_hits_total);
+}
+
+test "test_category_filter_never_counts_zero_hit" {
+    const f = try fixture();
+    defer f.deinit();
+    // The ?category= arm is a filtered list, not a search — an empty result
+    // there must never read as a recall miss.
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const cat_url = try std.fmt.allocPrint(ALLOC, "{s}?category=no-such-category", .{url});
+    defer ALLOC.free(cat_url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(cat_url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"total\":0"));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.search_zero_hits_total, after.search_zero_hits_total);
+}
+
+test "test_tenant_list_never_counts_drops" {
+    const f = try fixture();
+    defer f.deinit();
+    // The tenant read is the passthrough Compactor arm — no window applies, so
+    // the hydration-drop counters must never move on this surface.
+    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "tenant reads are passthrough", "core");
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.hydration_dropped_entries_total, after.hydration_dropped_entries_total);
+    try std.testing.expectEqual(before.hydration_dropped_bytes_total, after.hydration_dropped_bytes_total);
 }
 
 test "integration: memories GET without bearer returns 401" {

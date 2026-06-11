@@ -149,14 +149,17 @@ pub fn genId(alloc: std.mem.Allocator) []const u8 {
 /// Drain a PgQuery result into an ArrayList(MemoryEntry), arena-allocated.
 /// Stops on the first OOM error — partial results returned with a warn log so
 /// operators can detect silent truncation (HTTP 200 with fewer entries than available).
+/// Returns true iff the row stream drained cleanly to its end — callers that
+/// treat "zero rows" as a signal (the zero-hit search counter) must not count
+/// a truncated collect as an empty result.
 pub fn collectEntries(
     alloc: std.mem.Allocator,
     q: *PgQuery,
     entries: *std.ArrayList(MemoryEntry),
-) void {
+) bool {
     collect: while (true) {
         const row = q.next() catch break :collect;
-        const r = row orelse break :collect;
+        const r = row orelse return true;
         const key = alloc.dupe(u8, r.get([]const u8, 0) catch continue) catch {
             log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_key", .collected = entries.items.len });
             break :collect;
@@ -183,4 +186,5 @@ pub fn collectEntries(
             break :collect;
         };
     }
+    return false;
 }
