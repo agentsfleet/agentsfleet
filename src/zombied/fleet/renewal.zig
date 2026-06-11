@@ -101,19 +101,24 @@ pub const RenewOutcome = union(enum) {
     lost,
 };
 
-// One writable-CTE statement. `probe` reads lease+slot+balance and the cursor
-// deltas (clamped ≥0) under `FOR UPDATE OF l, a` — that lock SERIALISES renewals
-// of the same lease, so a retry that races its own in-flight original blocks,
-// re-reads the advanced cursor, and charges ≈0 (no double-charge; without the
-// lock the second renewal would price the slice off the stale pre-advance
-// cursor). `calc` prices the slice; `guard` survives only if the fence holds and
-// the cap is not yet reached, and computes `charged = LEAST(slice, balance)` —
-// the actual debit. `ext_*` advance both rows' deadline AND cursor;
-// `wallet`/`ledger`/`breakdown` are the three guard-gated money writes: the
-// wallet drains `GREATEST(0, balance − slice)` (= charged) and the ledger +
-// breakdown record `charged`, so the audit rows equal the real drain even when a
-// slice exhausts the balance. The trailing SELECT disambiguates renewed /
-// max_runtime / lost in one round-trip.
+// One writable-CTE statement. `probe` reads lease+slot and the cursor deltas
+// (clamped ≥0) under `FOR UPDATE OF l, a` — that lock SERIALISES renewals of
+// the same lease (re-read advanced cursor → ≈0 charge, no double-charge).
+// `bal` locks the tenant's billing row in its own CTE: Postgres refuses
+// `FOR UPDATE` on the nullable side of an outer join, and the row must stay
+// optional (a tenant without a billing row still renews), so the lock cannot
+// ride probe's LEFT JOIN. The lock serialises same-tenant money ops and makes
+// `bal0` the LIVE balance after any lock wait, not a stale pre-lock read.
+// `calc` prices the slice; `guard` survives only if the fence holds and the
+// cap is not yet reached, and computes `charged = LEAST(slice, bal0)` — equal
+// to the wallet's actual delta (`bal0 − GREATEST(0, bal0 − slice)`) in every
+// interleaving, so two concurrent same-tenant renewals at exhaustion record
+// audit rows summing to the real drain, never more. `ext_*` advance both
+// rows' deadline AND cursor, clamping the token cursors with
+// `GREATEST(old, $n)` so a regressed cumulative report never rewinds them.
+// `wallet`/`ledger`/`breakdown` are the three guard-gated money writes. The
+// trailing SELECT disambiguates renewed / max_runtime / lost in one
+// round-trip.
 const RENEW_METER_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.zombie_id, l.workspace_id, l.tenant_id, l.event_id,
@@ -123,20 +128,24 @@ const RENEW_METER_SQL =
     \\           GREATEST(0, $6::bigint - a.last_metered_at_ms)      AS d_ms,
     \\           GREATEST(0, $7::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $8::bigint - a.metered_cached_tokens)   AS d_cached,
-    \\           GREATEST(0, $9::bigint - a.metered_output_tokens)   AS d_out,
-    \\           tb.balance_nanos AS bal0
+    \\           GREATEST(0, $9::bigint - a.metered_output_tokens)   AS d_out
     \\    FROM fleet.runner_leases l
     \\    JOIN fleet.runner_affinity a ON a.zombie_id = l.zombie_id
-    \\    LEFT JOIN billing.tenant_billing tb ON tb.tenant_id = l.tenant_id
     \\    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $5
     \\    FOR UPDATE OF l, a
+    \\), bal AS (
+    \\    SELECT tb.tenant_id, tb.balance_nanos AS bal0
+    \\    FROM billing.tenant_billing tb
+    \\    JOIN probe p ON p.tenant_id = tb.tenant_id
+    \\    FOR UPDATE OF tb
     \\), calc AS (
-    \\    SELECT *,
+    \\    SELECT p.*, b.bal0,
     \\           (d_ms * $10::bigint) / $15::bigint    AS run_fee,
     \\           (d_in * $11::bigint) / $16::bigint
     \\             + (d_cached * $12::bigint) / $16::bigint
     \\             + (d_out * $13::bigint) / $16::bigint  AS token_cost
-    \\    FROM probe
+    \\    FROM probe p
+    \\    LEFT JOIN bal b ON b.tenant_id = p.tenant_id
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
     \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
@@ -146,15 +155,19 @@ const RENEW_METER_SQL =
     \\), ext_lease AS (
     \\    UPDATE fleet.runner_leases l
     \\    SET lease_expires_at = g.capped, updated_at = $6,
-    \\        metered_input_tokens = $7, metered_cached_tokens = $8,
-    \\        metered_output_tokens = $9, last_metered_at_ms = $6
+    \\        metered_input_tokens = GREATEST(l.metered_input_tokens, $7),
+    \\        metered_cached_tokens = GREATEST(l.metered_cached_tokens, $8),
+    \\        metered_output_tokens = GREATEST(l.metered_output_tokens, $9),
+    \\        last_metered_at_ms = $6
     \\    FROM guard g WHERE l.id = g.id
     \\    RETURNING g.capped
     \\), ext_aff AS (
     \\    UPDATE fleet.runner_affinity a
     \\    SET leased_until = g.capped, updated_at = $6,
-    \\        metered_input_tokens = $7, metered_cached_tokens = $8,
-    \\        metered_output_tokens = $9, last_metered_at_ms = $6,
+    \\        metered_input_tokens = GREATEST(a.metered_input_tokens, $7),
+    \\        metered_cached_tokens = GREATEST(a.metered_cached_tokens, $8),
+    \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $9),
+    \\        last_metered_at_ms = $6,
     \\        meter_slice_seq = g.next_seq
     \\    FROM guard g WHERE a.zombie_id = g.zombie_id
     \\    RETURNING a.zombie_id

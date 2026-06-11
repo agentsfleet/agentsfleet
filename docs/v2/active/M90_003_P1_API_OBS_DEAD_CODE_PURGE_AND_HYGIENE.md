@@ -132,9 +132,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 `charged` derives from the wallet CTE's actual applied delta (returned old−new balance), not the pre-lock probe value; ledger/breakdown rows persist that. Metered-token cursors clamp monotonic (never move backwards on a regressed cumulative report). Extends the concurrency suite with same-tenant exhaustion overlap.
 
-- **Dimension 1.1** — two concurrent renewals at exhaustion: audit rows sum == wallet drain → Test `test_renewal_audit_equals_drain_at_exhaustion`
-- **Dimension 1.2** — settle path same property → Test `test_settle_audit_equals_drain_at_exhaustion`
-- **Dimension 1.3** — regressed cumulative token report charges zero and cursor holds → Test `test_metered_cursor_monotonic`
+- **Dimension 1.1** — two concurrent renewals at exhaustion: audit rows sum == wallet drain → Test `test_renewal_audit_equals_drain_at_exhaustion` — **DONE**
+- **Dimension 1.2** — settle path same property → Test `test_settle_audit_equals_drain_at_exhaustion` — **DONE**
+- **Dimension 1.3** — regressed cumulative token report charges zero and cursor holds → Test `test_metered_cursor_monotonic` — **DONE**
 
 ### §2 — Dead & test-only surface purge (inventory)
 
@@ -283,7 +283,8 @@ for f in $(git diff --name-only origin/main -- '*.zig'); do awk '/\.(monotonic|a
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; append Architecture/Legacy-Design/gate-flag consults + Indy decisions here. Kept-with-consumer inventory rows land here.)
+- **Consults** — (append Architecture/Legacy-Design/gate-flag consults + Indy decisions here. Kept-with-consumer inventory rows land here.)
+  - **§1 mechanism deviation (non-blocking, Indy informed Jun 10):** the spec's literal "charged derives from the wallet CTE's returned old−new delta" is implemented as *lock-then-probe* instead: a dedicated `bal` CTE takes `FOR UPDATE` on the `tenant_billing` row before pricing, so `charged = LEAST(slice, bal0)` provably equals the wallet delta in every interleaving. Two reasons the lock cannot ride the probe: (1) Postgres rejects `FOR UPDATE` on the nullable side of an outer join — the first-cut `FOR UPDATE OF l, a, tb` errored on EVERY metered renew/settle (`error.PG` at `conn.query`; the Jun 10 handoff misread this as a fixture issue); (2) the billing row must stay optional (LEFT JOIN semantics — a tenant without a billing row still renews, charged = slice, wallet write no-ops). Lock order is unchanged from the pre-fix code (l, a → tb; the tb lock just moves earlier, from wallet-write time to pricing time), so no new deadlock ordering. Red-green pinned: without the fix, 1.1/1.2 record 4,030,300 nanos of audit vs a 3,022,725 drain and 1.3 rewinds the cursor 1000→500; with it, 38/38 pass.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
