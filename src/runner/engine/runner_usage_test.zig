@@ -80,8 +80,8 @@ test "a tokens_used metric emits one usage frame carrying the agent's cumulative
     agent.prompt_tokens_total = 10;
     agent.completion_tokens_total = 5;
 
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = std.testing.allocator };
     var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = std.testing.allocator, .secrets = &.{} };
     adapter.agent = &agent;
@@ -91,7 +91,7 @@ test "a tokens_used metric emits one usage frame carrying the agent's cumulative
     const obs = adapter.observer();
     const metric = observability.ObserverMetric{ .tokens_used = 15 };
     obs.recordMetric(&metric);
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     const out = try pipe_proto.readFrame(std.testing.allocator, fds[0], clock.nowMillis() + 5_000, 1024);
     defer std.testing.allocator.free(out.frame.payload);
@@ -103,15 +103,15 @@ test "a tokens_used metric emits one usage frame carrying the agent's cumulative
 }
 
 test "usage emit is a no-op without an agent pointer (tests and non-streaming paths)" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     var writer = runner_progress.ProgressWriter{ .fd = fds[1], .alloc = std.testing.allocator };
     var adapter = runner_progress.Adapter{ .writer = &writer, .alloc = std.testing.allocator, .secrets = &.{} };
 
     const obs = adapter.observer();
     const metric = observability.ObserverMetric{ .tokens_used = 15 };
     obs.recordMetric(&metric); // agent == null → nothing written
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     const out = try pipe_proto.readFrame(std.testing.allocator, fds[0], clock.nowMillis() + 5_000, 1024);
     try std.testing.expect(out == .eof); // clean EOF, no frame

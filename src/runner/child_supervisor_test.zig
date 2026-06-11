@@ -173,13 +173,13 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
 }
 
 test "readResult round-trips one usage frame into the snapshot the tick observes" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     const snap = pipe_proto.UsageSnapshot{ .input_tokens = 7, .cached_input_tokens = 1, .output_tokens = 3 };
     const payload = snap.encode();
     try pipe_proto.writeFrame(fds[1], .usage, &payload);
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var hook_state = ScriptedHook{ .decisions = &.{} }; // every tick keeps
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };
@@ -195,8 +195,8 @@ test "readResult round-trips one usage frame into the snapshot the tick observes
 }
 
 test "readResult folds a regressed usage frame with max so the snapshot never walks backwards" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     const first = pipe_proto.UsageSnapshot{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 };
     const first_payload = first.encode();
     try pipe_proto.writeFrame(fds[1], .usage, &first_payload);
@@ -205,7 +205,7 @@ test "readResult folds a regressed usage frame with max so the snapshot never wa
     const regressed_payload = regressed.encode();
     try pipe_proto.writeFrame(fds[1], .usage, &regressed_payload);
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var hook_state = ScriptedHook{ .decisions = &.{} };
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };
@@ -220,14 +220,14 @@ test "readResult folds a regressed usage frame with max so the snapshot never wa
 }
 
 test "a malformed usage frame is dropped and the last-known counters survive" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     const good = pipe_proto.UsageSnapshot{ .input_tokens = 100, .output_tokens = 40 };
     const good_payload = good.encode();
     try pipe_proto.writeFrame(fds[1], .usage, &good_payload);
     try pipe_proto.writeFrame(fds[1], .usage, good_payload[0 .. pipe_proto.UsageSnapshot.WIRE_LEN - 1]); // truncated: one byte short
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var hook_state = ScriptedHook{ .decisions = &.{} };
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10_000 };

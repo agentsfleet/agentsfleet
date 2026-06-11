@@ -14,12 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 004
 **Date:** Jun 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — platform token spend bills run-fee-only in production: the renew call posts an empty body and the report sends a single total, while the server prices tokens from split fields that default to zero
 **Categories:** API
 **Batch:** B4 — after M90_003 (its metering tests are the harness this work extends); independent of the M91 memory family
 **Branch:** feat/m90-004-token-splits
-**Test Baseline:** unit=1966 integration=172
+**Test Baseline:** unit=1966 integration=172 (recorded at CHORE-open on the M90_002 base; rebased onto the M91 base at VERIFY — absolute depth shifted to unit=1931 integration=180 from M91's own refactors, so the meaningful figure is this diff's delta: **+19 `test` blocks, 0 removed**, plus 2 new test files)
 **Depends on:** the `usezombie/nullclaw` fork commit exposing cumulative split-token accessors (see §1 — the agent already normalizes `prompt_tokens`/`completion_tokens` per response but accumulates only the total; we hold no push or release rights on upstream `nullclaw/nullclaw`, so the accumulate-splits + two-accessor patch rides the fork branch `patch/split-token-accessors-v2026.5.29` at `127b5ac4`, pinned in `build.zig.zon`; drop the fork pin when upstream exposes split accessors)
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 12, 2026) — from the cross-model adversarial review of PR #395, which found the under-billing; fix directed by Indy
 
@@ -269,15 +269,18 @@ grep -rn "cached_input_tokens" src/runner/ src/lib/contract/ | head
 
 ## Verification Evidence
 
+All run post-rebase onto the M91 base (Jun 12, 2026):
+
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | — | |
-| Integration tests | `make test-integration` | — | |
-| Wire metering proof | 4.1/4.2 paste | — | |
-| Memleak | `make memleak` | — | |
-| Lint | `make lint-zig` | — | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | — | |
-| Gitleaks | `gitleaks detect` | — | |
+| Unit lanes | `make test-unit-all` | all lanes green; runner 289 pass / 7 skip, zombied 1284 pass / 348 skip | ✅ |
+| Integration tests | `make test-integration` | full suite green (reset + migrate + live Postgres/TLS-Redis) | ✅ |
+| Wire metering proof | 4.1 `test_wire_renew_bills_tokens` + 4.2 `test_wire_report_bills_final_slice` | slice deltas == wire values; affinity cursor advances to sent cumulatives; re-sent renewal meters zero deltas; report settles body-minus-cursor and flips lease `reported`; `token_cost_nanos` == server's own rate resolution (registry-priced post-trial, zero in-trial) | ✅ |
+| Memleak | `make memleak` | 0 leaks (`std.testing.allocator`-wrapped) | ✅ |
+| Lint | `make lint-zig` (pre-commit) | ZLint + pg-drain + FLL + role + ORP all pass | ✅ |
+| Cross-compile | `zig build [-Dtarget=…]` ×4 | x86_64-linux + aarch64-linux, both prod graphs (zombied + runner) | ✅ |
+| Gitleaks | `gitleaks protect --staged` (pre-commit) | no leaks across every commit | ✅ |
+| Version | `make check-version` | all versions match 0.41.0 (second lander after M91) | ✅ |
 
 ## Out of Scope
 
