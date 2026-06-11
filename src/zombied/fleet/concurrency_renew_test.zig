@@ -353,3 +353,232 @@ test "claim+settle racing a reclaim never reports without charging the final sli
         try std.testing.expectEqual(@as(i64, 0), slices);
     }
 }
+
+// ── audit rows == wallet drain under same-tenant exhaustion ──
+//
+// Two concurrent money ops for the SAME tenant on DIFFERENT leases do not
+// contend on l/a (distinct rows), so before the balance-row lock (the `bal`
+// CTE) both priced `charged` off the same stale pre-lock balance read and the
+// audit rows (fleet.metering_periods + the telemetry breakdown — the invoice
+// substrate) summed to MORE than the wallet actually drained. The balance-row
+// lock serialises them, so the loser charges only the remaining balance.
+
+const ZOMBIE_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc02";
+const AFFINITY_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbe02";
+const LEASE_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbf02";
+const EVENT_ID_2 = "evt-conc-renew-2";
+
+// A second active lease for the SAME tenant on its own zombie, with the same
+// 20s cursor baseline so its slice price equals the first lease's.
+fn seedSecondLease(conn: *pg.Conn) !void {
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_affinity
+        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 5, $4, 0, 0, 0, $5, 0, 0)
+        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\  SET fencing_seq = 5, leased_until = EXCLUDED.leased_until, last_metered_at_ms = EXCLUDED.last_metered_at_ms,
+        \\      metered_input_tokens = 0, metered_cached_tokens = 0, metered_output_tokens = 0
+    , .{ AFFINITY_ID_2, ZOMBIE_ID_2, RUNNER_ID, NOW_MS - MS_PER_SECOND, CURSOR_BASE_MS });
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_leases
+        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   fencing_token, lease_expires_at, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
+        \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
+        \\        'test-provider', 'test-model', 0, 0, 0, 0, 5, $7, 'active', $8, $8)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ LEASE_ID_2, RUNNER_ID, ZOMBIE_ID_2, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID_2, NOW_MS - MS_PER_SECOND, NOW_MS - 2_000 });
+}
+
+fn teardownSecond(conn: *pg.Conn) void {
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID_2});
+    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID_2});
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID_2});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID_2});
+}
+
+fn auditSum(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT COALESCE(SUM(charged_nanos),0)::bigint FROM fleet.metering_periods WHERE event_id IN ($1, $2)",
+        .{ EVENT_ID, EVENT_ID_2 },
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowMissing;
+    return row.get(i64, 0);
+}
+
+const LeaseRenewer = struct {
+    fn run(h: *TestHarness, lease_id: []const u8, slot: *RenewSlot) void {
+        const conn = acquireRetry(h) orelse return;
+        defer h.releaseConn(conn);
+        const outcome = renewal.renew(conn, lease_id, RUNNER_ID, NOW_MS, METER) catch return;
+        switch (outcome) {
+            .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
+            .lost => slot.* = .{ .code = 2 },
+            .max_runtime => slot.* = .{ .code = 3 },
+        }
+    }
+};
+
+const SettleSlot = struct { charged: i64 = 0, claimed: bool = false, ran: bool = false };
+
+const SettleWorker = struct {
+    fn run(h: *TestHarness, lease_id: []const u8, slot: *SettleSlot) void {
+        const conn = acquireRetry(h) orelse return;
+        defer h.releaseConn(conn);
+        const out = renewal_settle.claimAndSettle(conn, lease_id, RUNNER_ID, NOW_MS, METER) catch return;
+        slot.* = .{ .ran = true, .claimed = out.claimed, .charged = out.charged_nanos };
+    }
+};
+
+test "integration: two same-tenant renews at exhaustion record audit rows summing to the wallet drain" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const c = try h.acquireConn();
+    defer h.releaseConn(c);
+
+    teardown(c);
+    teardownSecond(c);
+    try base.seedTenant(c);
+    try base.seedWorkspace(c, WORKSPACE_ID);
+    try seedRunner(c);
+    try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    try seedSecondLease(c);
+    defer teardown(c);
+    defer teardownSecond(c);
+
+    // Each lease prices the same slice off the 20s cursor. Fund only 1.5 slices,
+    // so the two concurrent renews exhaust the balance: the loser must charge
+    // the remaining half, not a second full slice.
+    const slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const balance: i64 = slice + @divTrunc(slice, 2);
+    try seedBalance(c, balance);
+
+    // Force the interleaving deterministically: a blocker transaction holds the
+    // balance row lock so BOTH renewals reach their balance read/update before
+    // either commits. Without the `tb` lock both price `charged` off the full
+    // balance (the over-report this test pins); with it they serialise on the
+    // probe and the loser charges only the remainder.
+    const blocker = try h.acquireConn();
+    _ = try blocker.exec("BEGIN", .{});
+    {
+        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
+        defer bq.deinit();
+        _ = try bq.next();
+    }
+    var slots: [2]RenewSlot = @splat(RenewSlot{});
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, LeaseRenewer.run, .{ h, @as([]const u8, LEASE_ID), &slots[0] });
+    threads[1] = try std.Thread.spawn(.{}, LeaseRenewer.run, .{ h, @as([]const u8, LEASE_ID_2), &slots[1] });
+    constants.sleepNanos(200 * std.time.ns_per_ms); // both renewals reach the balance wait
+    _ = try blocker.exec("COMMIT", .{});
+    h.releaseConn(blocker);
+    for (threads) |t| t.join();
+
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    try std.testing.expectEqual(@as(i64, 0), remaining); // 1.5 slices funded, ≥1.5 wanted → drained to zero
+    // The audit rows (one breakdown per event) sum to the real drain — never
+    // 2×slice, which the un-locked-balance probe used to record.
+    try std.testing.expectEqual(balance - remaining, try auditSum(c));
+}
+
+test "integration: two same-tenant settles at exhaustion record audit rows summing to the wallet drain" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const c = try h.acquireConn();
+    defer h.releaseConn(c);
+
+    teardown(c);
+    teardownSecond(c);
+    try base.seedTenant(c);
+    try base.seedWorkspace(c, WORKSPACE_ID);
+    try seedRunner(c);
+    try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    try seedSecondLease(c);
+    defer teardown(c);
+    defer teardownSecond(c);
+
+    const slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const balance: i64 = slice + @divTrunc(slice, 2);
+    try seedBalance(c, balance);
+
+    const blocker = try h.acquireConn();
+    _ = try blocker.exec("BEGIN", .{});
+    {
+        var bq = PgQuery.from(try blocker.query("SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid FOR UPDATE", .{base.TEST_TENANT_ID}));
+        defer bq.deinit();
+        _ = try bq.next();
+    }
+    var slots: [2]SettleSlot = @splat(SettleSlot{});
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, SettleWorker.run, .{ h, @as([]const u8, LEASE_ID), &slots[0] });
+    threads[1] = try std.Thread.spawn(.{}, SettleWorker.run, .{ h, @as([]const u8, LEASE_ID_2), &slots[1] });
+    constants.sleepNanos(200 * std.time.ns_per_ms); // both settles reach the balance wait
+    _ = try blocker.exec("COMMIT", .{});
+    h.releaseConn(blocker);
+    for (threads) |t| t.join();
+
+    try std.testing.expect(slots[0].claimed and slots[1].claimed); // both settled their lease
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    try std.testing.expectEqual(@as(i64, 0), remaining);
+    // Returned charges AND the persisted audit rows both equal the real drain.
+    try std.testing.expectEqual(balance - remaining, slots[0].charged + slots[1].charged);
+    try std.testing.expectEqual(balance - remaining, try auditSum(c));
+}
+
+test "integration: a regressed cumulative token report charges zero tokens and never rewinds the cursor" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const c = try h.acquireConn();
+    defer h.releaseConn(c);
+
+    teardown(c);
+    try base.seedTenant(c);
+    try base.seedWorkspace(c, WORKSPACE_ID);
+    try seedRunner(c);
+    try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
+    // Stored cursor sits ABOVE the report we are about to send, and 20s of
+    // runtime already elapsed.
+    const seeded_cursor: i64 = 1000;
+    const balance: i64 = 1_000_000_000_000;
+    _ = try c.exec("UPDATE fleet.runner_affinity SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2, last_metered_at_ms = $3 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, seeded_cursor, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_leases SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2 WHERE id = $1::uuid", .{ LEASE_ID, seeded_cursor });
+    try seedBalance(c, balance);
+    defer teardown(c);
+
+    // Report LOWER cumulative tokens than the stored cursor — a regression.
+    const regressed = renewal.MeterInputs{
+        .cumulative_input = 500,
+        .cumulative_cached = 500,
+        .cumulative_output = 500,
+        .run_nanos_per_sec = RATES.run_nanos_per_sec,
+        .input_nanos_per_mtok = RATES.input_nanos_per_mtok,
+        .cached_input_nanos_per_mtok = RATES.cached_input_nanos_per_mtok,
+        .output_nanos_per_mtok = RATES.output_nanos_per_mtok,
+    };
+    const out = try renewal.renew(c, LEASE_ID, RUNNER_ID, NOW_MS, regressed);
+    try std.testing.expect(out == .renewed);
+
+    // The cursor held (GREATEST clamp), never rewound to the regressed 500.
+    try std.testing.expectEqual(seeded_cursor, try readBigint(c, "SELECT metered_input_tokens FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID));
+    // Zero token delta charged for this slice (run_fee may be > 0; token cost is 0).
+    try std.testing.expectEqual(@as(i64, 0), try readBigint(c, "SELECT COALESCE(token_cost_nanos,0)::bigint FROM fleet.metering_periods WHERE event_id = $1 ORDER BY slice_seq DESC LIMIT 1", EVENT_ID));
+}
