@@ -14,12 +14,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M90
 **Workstream:** 004
 **Date:** Jun 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — platform token spend bills run-fee-only in production: the renew call posts an empty body and the report sends a single total, while the server prices tokens from split fields that default to zero
 **Categories:** API
 **Batch:** B4 — after M90_003 (its metering tests are the harness this work extends); independent of the M91 memory family
 **Branch:** feat/m90-004-token-splits
-**Test Baseline:** unit=<fill at CHORE(open)> integration=<fill at CHORE(open)>
+**Test Baseline:** unit=1966 integration=172
 **Depends on:** an `oss/nullclaw` release exposing cumulative split-token accessors (see §1 — the agent already normalizes `prompt_tokens`/`completion_tokens` per response at `agent/root.zig:2425` but accumulates only the total at `:2437`; the upstream change is accumulate-splits + two accessors, then this repo bumps the pin in `build.zig.zon`)
 **Provenance:** LLM-drafted (Claude Fable 5, Jun 12, 2026) — from the cross-model adversarial review of PR #395, which found the under-billing; fix directed by Indy
 
