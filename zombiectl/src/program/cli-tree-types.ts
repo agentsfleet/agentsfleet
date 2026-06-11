@@ -76,6 +76,11 @@ export interface ZombieHandlers {
   credential: ZombieCredentialHandlers;
 }
 
+export interface MemoryHandlers {
+  list: CommandHandlerFn;
+  search: CommandHandlerFn;
+}
+
 export interface Handlers {
   login: CommandHandlerFn;
   logout: CommandHandlerFn;
@@ -87,6 +92,7 @@ export interface Handlers {
   tenant: TenantHandlers;
   billing: BillingHandlers;
   zombie: ZombieHandlers;
+  memory: MemoryHandlers;
 }
 
 export interface ProgramState {

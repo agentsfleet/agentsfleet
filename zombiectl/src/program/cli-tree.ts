@@ -16,6 +16,7 @@ import { ZombieHelp, styleTagline } from "./help.ts";
 import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
 import { buildZombieTree } from "./cli-tree-zombie.ts";
+import { buildMemoryTree } from "./cli-tree-memory.ts";
 import type {
   ActionFrame,
   BuildProgramOptions,
@@ -43,6 +44,7 @@ function helpTail(): string {
     "billing show",
     "credential add", "credential show", "credential list", "credential delete",
     "zombie update",
+    "memory list", "memory search",
   ];
   return [
     "",
@@ -176,6 +178,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
   buildZombieTree(program, handlers, state, { actionFor, runHandler });
+  buildMemoryTree(program, handlers, state, { actionFor, runHandler });
 
   return program;
 }

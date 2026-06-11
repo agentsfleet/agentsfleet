@@ -71,6 +71,14 @@ test("--help surfaces workspace use/show/credentials", async () => {
   assert.ok(text.includes("workspace credentials"));
 });
 
+test("--help surfaces the memory read verbs", async () => {
+  const out = bufferStream();
+  const code = await runCli(["--help"], { stdout: out.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
+  assert.equal(code, 0);
+  assert.ok(out.read().includes("memory list"), "memory list subcommand row missing");
+  assert.ok(out.read().includes("memory search"), "memory search subcommand row missing");
+});
+
 // ── workspace use <id> persists active workspace ─────────────────────────
 
 test("workspace use <id> writes current_workspace_id to state", async () => {

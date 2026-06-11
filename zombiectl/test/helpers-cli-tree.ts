@@ -85,6 +85,10 @@ export function makeSpyTree(): SpyTree {
         delete: spy("zombie.credential.delete"),
       },
     },
+    memory: {
+      list: spy("memory.list"),
+      search: spy("memory.search"),
+    },
   };
   return { handlers, calls };
 }
