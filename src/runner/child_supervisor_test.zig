@@ -43,14 +43,14 @@ test "readResult forwards activity frames in order and returns the result frame"
         }
     };
 
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     const af = ActivityFrame{ .tool_call_started = .{ .name = "fly_deploy", .args_redacted = "{}" } };
     const af_json = try std.json.Stringify.valueAlloc(std.testing.allocator, af, .{});
     defer std.testing.allocator.free(af_json);
     try pipe_proto.writeFrame(fds[1], .activity, af_json);
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var cap: Cap = .{};
     const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
@@ -80,12 +80,12 @@ test "readResult forwards a memory frame's raw bytes to the memory sink, then th
             self.len = payload.len;
         }
     };
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     const mem_json = "[{\"key\":\"a\",\"content\":\"1\",\"category\":\"core\"},{\"key\":\"b\",\"content\":\"2\",\"category\":\"core\"}]";
     try pipe_proto.writeFrame(fds[1], .memory, mem_json);
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var dummy: u8 = 0;
     const act_sink = ActivitySink{ .ctx = &dummy, .forward = NoopSink.forward };
@@ -109,11 +109,11 @@ test "readResult tolerates a malformed activity frame and still returns the resu
     const Noop = struct {
         fn forward(_: *anyopaque, _: ActivityFrame) void {}
     };
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     try pipe_proto.writeFrame(fds[1], .activity, "{not valid json"); // dropped
     try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":false}");
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     var dummy: u8 = 0;
     const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
@@ -148,9 +148,9 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
     // A pipe with no data and an open write end: the read blocks, so the tick
     // fires. The scripted hook terminates on the first tick. A far deadline
     // proves termination came from the hook, not a timeout.
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
-    defer pipe_proto.osClose(fds[1]); // keep write end open → no EOF, forces a tick
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    defer pipe_proto.testOsClose(fds[1]); // keep write end open → no EOF, forces a tick
 
     var hook_state = ScriptedHook{ .decisions = &.{.terminate} };
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10 };
@@ -172,8 +172,8 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
     // early 10ms tick, so the result is still read cleanly. Margins are sized
     // at 50× the tick so scheduling jitter on a loaded CI box can't fire the
     // deadline before the extend lands.
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
 
     var hook_state = ScriptedHook{ .decisions = &.{.{ .extend = clock.nowMillis() + 60_000 }} };
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = ScriptedHook.onTick, .tick_ms = 10 };
@@ -184,7 +184,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
         fn run(write_fd: std.posix.fd_t) void {
             common.sleepNanos(std.time.ns_per_s);
             pipe_proto.writeFrame(write_fd, .result, "{\"exit_ok\":true}") catch {};
-            pipe_proto.osClose(write_fd);
+            pipe_proto.testOsClose(write_fd);
         }
     };
     var wt = try std.Thread.spawn(.{}, Writer.run, .{fds[1]});

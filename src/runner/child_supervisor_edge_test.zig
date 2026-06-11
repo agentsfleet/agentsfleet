@@ -44,9 +44,9 @@ test "readResult should exit cleanly when the hook extends to an already-past de
     // fires, the hook "extends" to a past instant. The next wait sees the elapsed
     // deadline → timed_out, loop exits. A far initial deadline proves the timeout
     // came from the past-extend, not the original lease window.
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
-    defer pipe_proto.osClose(fds[1]); // open write end → no EOF, forces ticks
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    defer pipe_proto.testOsClose(fds[1]); // open write end → no EOF, forces ticks
 
     var hook_state = PastExtendHook{};
     const hook = supervisor.RenewHook{ .ctx = &hook_state, .onTick = PastExtendHook.onTick, .tick_ms = 10 };

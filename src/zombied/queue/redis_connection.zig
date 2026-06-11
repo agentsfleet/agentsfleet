@@ -67,17 +67,9 @@ alloc: std.mem.Allocator,
 /// Io that backs this connection's socket (Zig 0.16 Stream close/read/write
 /// all take Io). Borrowed from the owning Pool / spawning thread.
 io: std.Io,
-/// Borrowed from the owning Pool (pooled role) or the spawning thread
-/// (dedicated / subscriber roles). Caller guarantees lifetime ≥ Connection's.
-cfg: *const redis_config.Config,
 /// Embedded link node — only attached when `role == .pooled` and the
 /// connection sits on Pool.idle. Inert for other roles.
 node: std.SinglyLinkedList.Node = .{},
-/// Per-read timeout (ms) installed via `applyReadTimeout`. When armed, a read
-/// that hits the deadline surfaces as a distinct `RedisRequestTimeout` — the
-/// transport's `TimeoutReader` poll-gates each read and records the hit.
-/// Non-resumable; the Pool / Client retry layer dials fresh (spec §6).
-read_timeout_ms: ?u32 = null,
 
 // === Constructor ===
 
@@ -95,7 +87,6 @@ pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Confi
         .transport = transport,
         .alloc = alloc,
         .io = io,
-        .cfg = cfg,
     };
 }
 
@@ -107,7 +98,6 @@ pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Confi
 /// clears the deadline so reads block until data or peer close.
 pub fn applyReadTimeout(self: *Connection, ms: ?u32) void {
     self.transport.setReadTimeout(ms);
-    self.read_timeout_ms = ms;
 }
 
 pub fn deinit(self: *Connection) void {

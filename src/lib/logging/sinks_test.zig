@@ -8,7 +8,7 @@ const sinks = @import("sinks.zig");
 
 const BufferedSink = sinks.BufferedSink;
 const registerSink = sinks.registerSink;
-const clearSinks = sinks.clearSinks;
+const clearSinksForTest = sinks.clearSinksForTest;
 const sinksRegistered = sinks.sinksRegistered;
 const emitToSinks = sinks.emitToSinks;
 const emitTicketsForTest = sinks.emitTicketsForTest;
@@ -22,8 +22,8 @@ test "registerSink + emitToSinks fans out to every registered sink" {
     var bs = BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
 
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
     registerSink(bs.sink());
 
     emitToSinks(.warn, "test_scope", 1234, "event=hello x=1");
@@ -35,14 +35,14 @@ test "registerSink + emitToSinks fans out to every registered sink" {
     try std.testing.expect(std.mem.indexOf(u8, captured, "event=goodbye") != null);
 }
 
-test "clearSinks: subsequent emit fans out to nobody" {
+test "clearSinksForTest: subsequent emit fans out to nobody" {
     var bs = BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
 
-    clearSinks();
+    clearSinksForTest();
     registerSink(bs.sink());
     emitToSinks(.info, "s", 0, "event=first");
-    clearSinks();
+    clearSinksForTest();
     emitToSinks(.info, "s", 0, "event=dropped");
 
     const captured = try bs.snapshot();
@@ -52,8 +52,8 @@ test "clearSinks: subsequent emit fans out to nobody" {
 }
 
 test "registerSink: capacity capped at MAX_SINKS, extra registrations drop" {
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
 
     var bs = BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
@@ -82,11 +82,11 @@ test "registerSink: capacity capped at MAX_SINKS, extra registrations drop" {
 test "BufferedSink.deinit unregisters itself from the global registry" {
     // Safety invariant: bs.deinit() must remove its own entries from
     // the registry before freeing self.buf. Without that, defer
-    // ordering (deinit declared after clearSinks → deinit runs first
+    // ordering (deinit declared after clearSinksForTest → deinit runs first
     // per LIFO) leaves a stack-pointer ctx in sinks_buf that the next
     // emit dereferences. This test pins the property explicitly.
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
 
     var bs = BufferedSink.init(std.testing.allocator);
     registerSink(bs.sink());
@@ -99,8 +99,8 @@ test "BufferedSink.deinit unregisters itself from the global registry" {
 test "unregisterByCtx leaves unrelated sinks intact" {
     // Two BufferedSinks registered side by side; deinit-ing one must
     // not pull the other out of the registry.
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
 
     var bs_a = BufferedSink.init(std.testing.allocator);
     var bs_b = BufferedSink.init(std.testing.allocator);
@@ -127,8 +127,8 @@ test "snapshot returns owned copy — later emits do not mutate prior snapshot" 
     // turning a caller's `indexOf` into a use-after-free. The owned
     // dupe pattern means snap1 captures bytes at the point of call;
     // subsequent emits grow self.buf without touching snap1's memory.
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
 
     var bs = BufferedSink.init(std.testing.allocator);
     defer bs.deinit();
@@ -154,13 +154,13 @@ test "snapshot returns owned copy — later emits do not mutate prior snapshot" 
 }
 
 test "emit after BufferedSink.deinit does not crash — sink is unregistered" {
-    // Safety pin: even if callers forget `defer clearSinks()`, the
+    // Safety pin: even if callers forget `defer clearSinksForTest()`, the
     // self-unregister in BufferedSink.deinit guarantees subsequent
     // emits don't reach the freed sink. Without unregisterByCtx in
     // deinit, this emit would dereference a stack-freed ctx and
     // either crash, corrupt nearby memory, or — worst case — appear
     // to "work" in debug mode while breaking under ReleaseSafe.
-    clearSinks();
+    clearSinksForTest();
 
     {
         var bs = BufferedSink.init(std.testing.allocator);
@@ -194,8 +194,8 @@ test "unregisterByCtx drain is bounded — no-sink emits don't grow drain_target
     //      deinit.
     //   2. After a deinit returns, started == completed (the
     //      pre-removal in-flight set has fully drained).
-    clearSinks();
-    defer clearSinks();
+    clearSinksForTest();
+    defer clearSinksForTest();
 
     const baseline = emitTicketsForTest();
     var i: usize = 0;

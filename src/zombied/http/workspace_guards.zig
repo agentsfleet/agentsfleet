@@ -4,7 +4,6 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const common = @import("handlers/common.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const http_auth = @import("../db/test_fixtures_http_auth.zig");
 
 pub const Requirement = struct {
     minimum_role: common.AuthRole = .user,
@@ -104,6 +103,7 @@ test "Access.deinit is a no-op" {
 }
 
 test "integration: isWorkspaceCreator returns true for creator" {
+    const http_auth = @import("../db/test_fixtures_http_auth.zig");
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -121,6 +121,7 @@ test "integration: isWorkspaceCreator returns true for creator" {
 }
 
 test "integration: isWorkspaceCreator returns false when created_by is null" {
+    const http_auth = @import("../db/test_fixtures_http_auth.zig");
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -135,6 +136,7 @@ test "integration: isWorkspaceCreator returns false when created_by is null" {
 }
 
 test "integration: isWorkspaceCreator returns false for non-existent workspace" {
+    const http_auth = @import("../db/test_fixtures_http_auth.zig");
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -143,6 +145,7 @@ test "integration: isWorkspaceCreator returns false for non-existent workspace" 
 }
 
 test "integration: isWorkspaceCreator is scoped to exact workspace" {
+    const http_auth = @import("../db/test_fixtures_http_auth.zig");
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);

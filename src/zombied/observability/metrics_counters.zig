@@ -1,63 +1,18 @@
 //! In-process metrics registry exposed in Prometheus text format.
 
 const std = @import("std");
-const me = @import("metrics_external.zig");
-
-pub const DurationBuckets = [_]u64{ 1, 3, 5, 10, 30, 60, 120, 300 };
-pub const HistogramSnapshot = struct {
-    buckets: [DurationBuckets.len]u64 = [_]u64{0} ** DurationBuckets.len,
-    count: u64 = 0,
-    sum: u64 = 0,
-};
 
 const zombie_metrics = @import("metrics_zombie.zig");
-pub const ZombieDurationBucketsMs = zombie_metrics.ZombieDurationBucketsMs;
-pub const ZombieHistogramSnapshot = zombie_metrics.ZombieHistogramSnapshot;
 pub const incZombiesTriggered = zombie_metrics.incZombiesTriggered;
-pub const incZombiesCompleted = zombie_metrics.incZombiesCompleted;
-pub const incZombiesFailed = zombie_metrics.incZombiesFailed;
-pub const addZombieTokens = zombie_metrics.addZombieTokens;
-pub const observeZombieExecutionSeconds = zombie_metrics.observeZombieExecutionSeconds;
 
 pub const Snapshot = struct {
-    // External retry/failure fields — defaults to 0, filled by me.snapshotExternalFields().
-    external_retries_total: u64 = 0,
-    external_retries_rate_limited_total: u64 = 0,
-    external_retries_timeout_total: u64 = 0,
-    external_retries_context_exhausted_total: u64 = 0,
-    external_retries_auth_total: u64 = 0,
-    external_retries_invalid_request_total: u64 = 0,
-    external_retries_server_error_total: u64 = 0,
-    external_retries_unknown_total: u64 = 0,
-    external_failures_total: u64 = 0,
-    external_failures_rate_limited_total: u64 = 0,
-    external_failures_timeout_total: u64 = 0,
-    external_failures_context_exhausted_total: u64 = 0,
-    external_failures_auth_total: u64 = 0,
-    external_failures_invalid_request_total: u64 = 0,
-    external_failures_server_error_total: u64 = 0,
-    external_failures_unknown_total: u64 = 0,
-    retry_after_hints_total: u64 = 0,
-    agent_tokens_total: u64,
-    backoff_wait_ms_total: u64,
     api_backpressure_rejections_total: u64,
     api_in_flight_requests: u64,
     sse_backpressure_rejections_total: u64,
     sse_in_flight_streams: u64,
     sse_dropped_frames_total: u64,
     sse_hub_reconnects_total: u64,
-    gate_repair_exhausted_total: u64,
-    // M17_001 §1.3: per-limit-type termination counters
-    run_limit_token_budget_exceeded_total: u64,
-    run_limit_wall_time_exceeded_total: u64,
-    run_limit_repair_loops_exhausted_total: u64,
-    agent_duration_seconds: HistogramSnapshot,
-    // M15_002 §1.0 — zombie counters + wall-time histogram
     zombie_triggered_total: u64 = 0,
-    zombie_completed_total: u64 = 0,
-    zombie_failed_total: u64 = 0,
-    zombie_tokens_total: u64 = 0,
-    zombie_execution_seconds: ZombieHistogramSnapshot = .{},
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
@@ -69,18 +24,12 @@ pub const Snapshot = struct {
     signup_failed_metadata_writeback_total: u64 = 0,
 };
 
-var g_agent_tokens_total = std.atomic.Value(u64).init(0);
-var g_backoff_wait_ms_total = std.atomic.Value(u64).init(0);
 var g_api_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_api_in_flight_requests = std.atomic.Value(u64).init(0);
 var g_sse_backpressure_rejections_total = std.atomic.Value(u64).init(0);
 var g_sse_in_flight_streams = std.atomic.Value(u64).init(0);
 var g_sse_dropped_frames_total = std.atomic.Value(u64).init(0);
 var g_sse_hub_reconnects_total = std.atomic.Value(u64).init(0);
-var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
-var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
-var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
-var g_run_limit_repair_loops_exhausted_total = std.atomic.Value(u64).init(0);
 var g_signup_bootstrapped_total = std.atomic.Value(u64).init(0);
 var g_signup_replayed_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_bad_sig_total = std.atomic.Value(u64).init(0);
@@ -89,56 +38,33 @@ var g_signup_failed_missing_email_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_db_error_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_pool_unavailable_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_metadata_writeback_total = std.atomic.Value(u64).init(0);
-const mh = @import("metrics_histograms.zig");
-pub const incExternalRetry = me.incExternalRetry;
-pub const incExternalFailure = me.incExternalFailure;
-pub const incRetryAfterHintsApplied = me.incRetryAfterHintsApplied;
 
-pub fn addAgentTokens(tokens: u64) void {
-    _ = g_agent_tokens_total.fetchAdd(tokens, .monotonic);
-}
-
-pub fn addBackoffWaitMs(ms: u64) void {
-    _ = g_backoff_wait_ms_total.fetchAdd(ms, .monotonic);
-}
+// safe because: every store/load below is an independent stat counter or
+// gauge — readers (the /metrics scrape) tolerate staleness, and no other
+// memory is published through these atomics.
 
 pub fn incApiBackpressureRejections() void {
-    _ = g_api_backpressure_rejections_total.fetchAdd(1, .monotonic);
+    _ = g_api_backpressure_rejections_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
 pub fn setApiInFlightRequests(v: u32) void {
-    g_api_in_flight_requests.store(@as(u64, @intCast(v)), .release);
+    g_api_in_flight_requests.store(@as(u64, @intCast(v)), .release); // safe because: see module note above
 }
 
-// safe because: independent stat counter/gauge — readers (the /metrics scrape)
-// tolerate staleness; no memory is published through these stores.
 pub fn incSseBackpressureRejections() void {
-    _ = g_sse_backpressure_rejections_total.fetchAdd(1, .monotonic);
+    _ = g_sse_backpressure_rejections_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
 pub fn setSseInFlightStreams(v: u32) void {
-    g_sse_in_flight_streams.store(@as(u64, @intCast(v)), .release);
+    g_sse_in_flight_streams.store(@as(u64, @intCast(v)), .release); // safe because: see module note above
 }
 
 pub fn incSseDroppedFrames() void {
-    _ = g_sse_dropped_frames_total.fetchAdd(1, .monotonic);
+    _ = g_sse_dropped_frames_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
 pub fn incSseHubReconnects() void {
-    _ = g_sse_hub_reconnects_total.fetchAdd(1, .monotonic);
-}
-
-pub fn incGateRepairExhausted() void {
-    _ = g_gate_repair_exhausted_total.fetchAdd(1, .monotonic);
-}
-pub fn incRunLimitTokenBudgetExceeded() void {
-    _ = g_run_limit_token_budget_exceeded_total.fetchAdd(1, .monotonic);
-}
-pub fn incRunLimitWallTimeExceeded() void {
-    _ = g_run_limit_wall_time_exceeded_total.fetchAdd(1, .monotonic);
-}
-pub fn incRunLimitRepairLoopsExhausted() void {
-    _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
+    _ = g_sse_hub_reconnects_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
 // Signup funnel counters. Failure reasons enumerated so a single Prometheus
@@ -146,10 +72,10 @@ pub fn incRunLimitRepairLoopsExhausted() void {
 const SignupFailReason = enum { bad_sig, stale_ts, missing_email, db_error, pool_unavailable, metadata_writeback };
 
 pub fn incSignupBootstrapped() void {
-    _ = g_signup_bootstrapped_total.fetchAdd(1, .monotonic);
+    _ = g_signup_bootstrapped_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 pub fn incSignupReplayed() void {
-    _ = g_signup_replayed_total.fetchAdd(1, .monotonic);
+    _ = g_signup_replayed_total.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 pub fn incSignupFailed(reason: SignupFailReason) void {
     const slot = switch (reason) {
@@ -160,59 +86,30 @@ pub fn incSignupFailed(reason: SignupFailReason) void {
         .pool_unavailable => &g_signup_failed_pool_unavailable_total,
         .metadata_writeback => &g_signup_failed_metadata_writeback_total,
     };
-    _ = slot.fetchAdd(1, .monotonic);
+    _ = slot.fetchAdd(1, .monotonic); // safe because: see module note above
 }
 
-pub const observeAgentDurationSeconds = mh.observeAgentDurationSeconds;
+fn loadStat(counter: *std.atomic.Value(u64)) u64 {
+    return counter.load(.acquire); // safe because: scrape-time read of an independent stat counter; see module note
+}
 
 pub fn snapshot() Snapshot {
     var s = Snapshot{
-        .agent_tokens_total = g_agent_tokens_total.load(.acquire),
-        .backoff_wait_ms_total = g_backoff_wait_ms_total.load(.acquire),
-        .api_backpressure_rejections_total = g_api_backpressure_rejections_total.load(.acquire),
-        .api_in_flight_requests = g_api_in_flight_requests.load(.acquire),
-        .sse_backpressure_rejections_total = g_sse_backpressure_rejections_total.load(.acquire),
-        .sse_in_flight_streams = g_sse_in_flight_streams.load(.acquire),
-        .sse_dropped_frames_total = g_sse_dropped_frames_total.load(.acquire),
-        .sse_hub_reconnects_total = g_sse_hub_reconnects_total.load(.acquire),
-        .gate_repair_exhausted_total = g_gate_repair_exhausted_total.load(.acquire),
-        .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
-        .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),
-        .run_limit_repair_loops_exhausted_total = g_run_limit_repair_loops_exhausted_total.load(.acquire),
-        .agent_duration_seconds = .{},
+        .api_backpressure_rejections_total = loadStat(&g_api_backpressure_rejections_total),
+        .api_in_flight_requests = loadStat(&g_api_in_flight_requests),
+        .sse_backpressure_rejections_total = loadStat(&g_sse_backpressure_rejections_total),
+        .sse_in_flight_streams = loadStat(&g_sse_in_flight_streams),
+        .sse_dropped_frames_total = loadStat(&g_sse_dropped_frames_total),
+        .sse_hub_reconnects_total = loadStat(&g_sse_hub_reconnects_total),
     };
-    const ext = me.snapshotExternalFields();
-    s.external_retries_total = ext.external_retries_total;
-    s.external_retries_rate_limited_total = ext.external_retries_rate_limited_total;
-    s.external_retries_timeout_total = ext.external_retries_timeout_total;
-    s.external_retries_context_exhausted_total = ext.external_retries_context_exhausted_total;
-    s.external_retries_auth_total = ext.external_retries_auth_total;
-    s.external_retries_invalid_request_total = ext.external_retries_invalid_request_total;
-    s.external_retries_server_error_total = ext.external_retries_server_error_total;
-    s.external_retries_unknown_total = ext.external_retries_unknown_total;
-    s.external_failures_total = ext.external_failures_total;
-    s.external_failures_rate_limited_total = ext.external_failures_rate_limited_total;
-    s.external_failures_timeout_total = ext.external_failures_timeout_total;
-    s.external_failures_context_exhausted_total = ext.external_failures_context_exhausted_total;
-    s.external_failures_auth_total = ext.external_failures_auth_total;
-    s.external_failures_invalid_request_total = ext.external_failures_invalid_request_total;
-    s.external_failures_server_error_total = ext.external_failures_server_error_total;
-    s.external_failures_unknown_total = ext.external_failures_unknown_total;
-    s.retry_after_hints_total = ext.retry_after_hints_total;
-    mh.snapshotHistograms(&s);
-    const zf = zombie_metrics.snapshotZombieFields();
-    s.zombie_triggered_total = zf.zombie_triggered_total;
-    s.zombie_completed_total = zf.zombie_completed_total;
-    s.zombie_failed_total = zf.zombie_failed_total;
-    s.zombie_tokens_total = zf.zombie_tokens_total;
-    s.zombie_execution_seconds = zf.zombie_execution_seconds;
-    s.signup_bootstrapped_total = g_signup_bootstrapped_total.load(.acquire);
-    s.signup_replayed_total = g_signup_replayed_total.load(.acquire);
-    s.signup_failed_bad_sig_total = g_signup_failed_bad_sig_total.load(.acquire);
-    s.signup_failed_stale_ts_total = g_signup_failed_stale_ts_total.load(.acquire);
-    s.signup_failed_missing_email_total = g_signup_failed_missing_email_total.load(.acquire);
-    s.signup_failed_db_error_total = g_signup_failed_db_error_total.load(.acquire);
-    s.signup_failed_pool_unavailable_total = g_signup_failed_pool_unavailable_total.load(.acquire);
-    s.signup_failed_metadata_writeback_total = g_signup_failed_metadata_writeback_total.load(.acquire);
+    s.zombie_triggered_total = zombie_metrics.snapshotZombieFields().zombie_triggered_total;
+    s.signup_bootstrapped_total = loadStat(&g_signup_bootstrapped_total);
+    s.signup_replayed_total = loadStat(&g_signup_replayed_total);
+    s.signup_failed_bad_sig_total = loadStat(&g_signup_failed_bad_sig_total);
+    s.signup_failed_stale_ts_total = loadStat(&g_signup_failed_stale_ts_total);
+    s.signup_failed_missing_email_total = loadStat(&g_signup_failed_missing_email_total);
+    s.signup_failed_db_error_total = loadStat(&g_signup_failed_db_error_total);
+    s.signup_failed_pool_unavailable_total = loadStat(&g_signup_failed_pool_unavailable_total);
+    s.signup_failed_metadata_writeback_total = loadStat(&g_signup_failed_metadata_writeback_total);
     return s;
 }

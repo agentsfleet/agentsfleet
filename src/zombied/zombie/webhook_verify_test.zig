@@ -3,38 +3,20 @@
 // Extracted from webhook_verify.zig to keep the production file under the
 // 350-line RULE FLL gate (test files are exempt). Do not add non-test code
 // here — keep it next to the verify logic.
+//
+// Signature verification itself lives in the auth middleware
+// (auth/middleware/webhook_sig.zig) and is tested there; this file covers the
+// provider-metadata surface (detectProvider) plus the shared timestamp
+// freshness helpers the registry consumers rely on.
 
 const std = @import("std");
 const clock = @import("common").clock;
-const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
+const hs = @import("hmac_sig");
 const wv = @import("webhook_verify.zig");
-const verifySignature = wv.verifySignature;
-const isTimestampFresh = wv.isTimestampFresh;
-const isTimestampFreshAt = wv.isTimestampFreshAt;
+const isTimestampFresh = hs.isTimestampFresh;
+const isTimestampFreshAt = hs.isTimestampFreshAt;
 const detectProvider = wv.detectProvider;
 const NoHeaders = wv.NoHeaders;
-const SLACK = wv.SLACK;
-const GITHUB = wv.GITHUB;
-const LINEAR = wv.LINEAR;
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-/// Compute HMAC and format as "prefix<hex>". Test helper only.
-fn testSig(
-    buf: []u8,
-    secret: []const u8,
-    parts: []const []const u8,
-    prefix: []const u8,
-) []const u8 {
-    var mac: [HmacSha256.mac_length]u8 = undefined;
-    var hmac = HmacSha256.init(secret);
-    for (parts) |p| hmac.update(p);
-    hmac.final(&mac);
-    const hex = std.fmt.bytesToHex(mac, .lower);
-    @memcpy(buf[0..prefix.len], prefix);
-    @memcpy(buf[prefix.len .. prefix.len + 64], &hex);
-    return buf[0 .. prefix.len + 64];
-}
 
 /// Minimal header bag for detectProvider tests. Mirrors the `.header(name)`
 /// shape of the HTTP request type without depending on `src/http/`.
@@ -47,62 +29,6 @@ const FakeHeaders = struct {
         return null;
     }
 };
-
-// ── verifySignature ──────────────────────────────────────────────────────
-
-test "Slack: valid signature accepted" {
-    const secret = "test_signing_secret_not_real_00";
-    const ts = "1531420618";
-    const body = "payload=test_webhook_body_data";
-    var buf: [67]u8 = undefined;
-    const sig = testSig(&buf, secret, &.{ "v0:", ts, ":", body }, "v0=");
-    try std.testing.expect(verifySignature(SLACK, secret, ts, body, sig));
-}
-
-test "Slack: tampered body rejected" {
-    const secret = "test_signing_secret_not_real_00";
-    const ts = "1531420618";
-    const body = "payload=test_webhook_body_data";
-    var buf: [67]u8 = undefined;
-    const sig = testSig(&buf, secret, &.{ "v0:", ts, ":", body }, "v0=");
-    try std.testing.expect(!verifySignature(SLACK, secret, ts, "tampered", sig));
-}
-
-test "Slack: missing timestamp rejected" {
-    try std.testing.expect(!verifySignature(SLACK, "s", null, "b", "v0=abcd"));
-}
-
-test "GitHub: valid signature accepted" {
-    const secret = "mysecret";
-    const body = "{\"action\":\"opened\"}";
-    var buf: [71]u8 = undefined;
-    const sig = testSig(&buf, secret, &.{body}, "sha256=");
-    try std.testing.expect(verifySignature(GITHUB, secret, null, body, sig));
-}
-
-test "GitHub: wrong body rejected" {
-    const secret = "mysecret";
-    const body = "{\"action\":\"opened\"}";
-    var buf: [71]u8 = undefined;
-    const sig = testSig(&buf, secret, &.{body}, "sha256=");
-    try std.testing.expect(!verifySignature(GITHUB, secret, null, "wrong", sig));
-}
-
-test "Linear: valid signature accepted" {
-    const secret = "linearsecret";
-    const body = "{\"type\":\"Issue\"}";
-    var buf: [64]u8 = undefined;
-    const sig = testSig(&buf, secret, &.{body}, "");
-    try std.testing.expect(verifySignature(LINEAR, secret, null, body, sig));
-}
-
-test "wrong prefix rejected" {
-    try std.testing.expect(!verifySignature(GITHUB, "s", null, "b", "v0=abcd"));
-}
-
-test "short hex rejected" {
-    try std.testing.expect(!verifySignature(GITHUB, "s", null, "b", "sha256=abcd"));
-}
 
 // ── isTimestampFresh ─────────────────────────────────────────────────────
 
@@ -167,21 +93,21 @@ test "isTimestampFresh: at max_drift + 1 seconds ahead is rejected (pre-sign att
 
 // constantTimeEql tests live in src/crypto/hmac_sig_test.zig (canonical source).
 
-// ── detectProvider (§2) ──────────────────────────────────────────────────
+// ── detectProvider ───────────────────────────────────────────────────────
 
-test "detectProvider: github by source (dim 2.1)" {
+test "detectProvider: github by source" {
     const got = detectProvider("github", NoHeaders{}) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings("github", got.name);
     try std.testing.expectEqualStrings("x-hub-signature-256", got.sig_header);
 }
 
-test "detectProvider: linear by source (dim 2.2, Q1 first-class)" {
+test "detectProvider: linear by source" {
     const got = detectProvider("linear", NoHeaders{}) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings("linear", got.name);
     try std.testing.expectEqualStrings("linear-signature", got.sig_header);
 }
 
-test "detectProvider: unknown source falls back to header (dim 2.3)" {
+test "detectProvider: unknown source falls back to header" {
     const headers = FakeHeaders{ .entries = &.{
         .{ .name = "x-hub-signature-256", .value = "sha256=abc" },
     } };
@@ -189,7 +115,7 @@ test "detectProvider: unknown source falls back to header (dim 2.3)" {
     try std.testing.expectEqualStrings("github", got.name);
 }
 
-test "detectProvider: no match returns null (dim 2.4)" {
+test "detectProvider: no match returns null" {
     const headers = FakeHeaders{ .entries = &.{
         .{ .name = "x-random-signature", .value = "whatever" },
     } };

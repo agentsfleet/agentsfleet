@@ -138,15 +138,6 @@ pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
     }
 }
 
-pub fn exists(self: *Client, key: []const u8) !bool {
-    var resp = try self.command(&.{ "EXISTS", key });
-    defer resp.deinit(self.alloc);
-    return switch (resp) {
-        .integer => |n| n > 0,
-        else => error.RedisExistsFailed,
-    };
-}
-
 pub fn ping(self: *Client) !void {
     var resp = try self.command(&.{S_PING});
     defer resp.deinit(self.alloc);

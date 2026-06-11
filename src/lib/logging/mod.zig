@@ -115,7 +115,7 @@ fn emit(
     // In test builds, ALWAYS route through the sink registry — never
     // fall through to std.log.scoped. The previous `is_test and
     // sinksRegistered()` guard was racy: between one test's
-    // `defer clearSinks()` and the next test's `registerSink()`, any
+    // `defer clearSinksForTest()` and the next test's `registerSink()`, any
     // background-thread emit (still-joining workers, otel flush
     // threads) would hit `sinksRegistered() == false` and land on
     // std.log's default test logFn, which prints err/warn to stderr

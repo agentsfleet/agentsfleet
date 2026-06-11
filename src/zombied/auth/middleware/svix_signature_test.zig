@@ -269,14 +269,3 @@ test "Svix empty decoded secret rejects with UZ-WH-010" {
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
-
-// ── Regression: freshness boundary ───────────────────────────────────
-
-test "Svix isTimestampFresh boundary inclusive at ±max_drift" {
-    try testing.expect(svix.isTimestampFresh("1699999700", 1700000000, 300));
-    try testing.expect(!svix.isTimestampFresh("1699999699", 1700000000, 300));
-    try testing.expect(svix.isTimestampFresh("1700000300", 1700000000, 300));
-    try testing.expect(!svix.isTimestampFresh("1700000301", 1700000000, 300));
-    try testing.expect(!svix.isTimestampFresh("not-a-number", 1700000000, 300));
-    try testing.expect(!svix.isTimestampFresh("0", 1700000000, 300));
-}

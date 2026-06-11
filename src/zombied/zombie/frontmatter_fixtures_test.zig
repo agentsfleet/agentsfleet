@@ -58,8 +58,9 @@ test "fixture trigger/minimal.md parses" {
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "trigger/minimal.md");
     defer alloc.free(md);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     try std.testing.expectEqualStrings("minimal-skill", cfg.name);
     try std.testing.expectEqual(@as(usize, 1), cfg.tools.len);
 }
@@ -68,8 +69,9 @@ test "fixture trigger/full.md parses with full webhook signature" {
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "trigger/full.md");
     defer alloc.free(md);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     try std.testing.expectEqualStrings("full-skill", cfg.name);
     try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
     try std.testing.expectEqualStrings("github", cfg.triggers[0].webhook.source);
@@ -83,8 +85,9 @@ test "fixture trigger/with_model_and_context.md parses model + every context kno
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "trigger/with_model_and_context.md");
     defer alloc.free(md);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
     const ctx = cfg.context.?;
     try std.testing.expectEqual(@as(u32, 256000), ctx.context_cap_tokens);
@@ -99,7 +102,7 @@ test "fixture trigger/runtime_at_top_level.md → RuntimeKeysOutsideBlock" {
     defer alloc.free(md);
     try std.testing.expectError(
         config.ZombieConfigError.RuntimeKeysOutsideBlock,
-        config.parseZombieFromTriggerMarkdown(alloc, md),
+        config.parseTriggerMarkdownWithJson(alloc, md),
     );
 }
 
@@ -109,7 +112,7 @@ test "fixture trigger/unknown_runtime_key.md → UnknownRuntimeKey" {
     defer alloc.free(md);
     try std.testing.expectError(
         config.ZombieConfigError.UnknownRuntimeKey,
-        config.parseZombieFromTriggerMarkdown(alloc, md),
+        config.parseTriggerMarkdownWithJson(alloc, md),
     );
 }
 
@@ -122,8 +125,9 @@ test "fixture bundles/name_mismatch — both files parse but identities disagree
 
     var meta = try config.parseSkillMetadata(alloc, skill_md);
     defer meta.deinit(alloc);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, trigger_md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
 
     // Both parse cleanly — the cross-file invariant is enforced by the
     // install handler, not the per-file parsers.
@@ -134,8 +138,9 @@ test "fixture bundles/platform_ops_installed_default — post-substitution TRIGG
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "bundles/platform_ops_installed_default/TRIGGER.md");
     defer alloc.free(md);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     try std.testing.expectEqualStrings("platform-ops-zombie", cfg.name);
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
     try std.testing.expectEqual(@as(u32, 256000), cfg.context.?.context_cap_tokens);
@@ -147,8 +152,9 @@ test "fixture bundles/platform_ops_installed_self_managed — sentinel model/cap
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "bundles/platform_ops_installed_self_managed/TRIGGER.md");
     defer alloc.free(md);
-    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
-    defer cfg.deinit(alloc);
+    var parsed = try config.parseTriggerMarkdownWithJson(alloc, md);
+    defer parsed.deinit(alloc);
+    const cfg = &parsed.config;
     // Empty-string model becomes null (self-managed overlay sentinel); cap stays 0.
     try std.testing.expect(cfg.model == null);
     try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);

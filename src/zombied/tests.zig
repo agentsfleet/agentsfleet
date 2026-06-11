@@ -9,7 +9,6 @@ const logging = @import("log");
 
 test {
     _ = @import("main.zig");
-    _ = @import("types.zig");
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");

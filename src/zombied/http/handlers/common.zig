@@ -34,7 +34,6 @@ pub const HEADER_RETRY_AFTER = "Retry-After";
 pub const RETRY_AFTER_BRIEF_SECONDS: u32 = 1;
 pub const RETRY_AFTER_BRIEF_VALUE = std.fmt.comptimePrint("{d}", .{RETRY_AFTER_BRIEF_SECONDS});
 
-const S_AUTHORIZATION = "authorization";
 const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
 
 const S_PUNCT_99914B = "{}";
@@ -92,18 +91,10 @@ pub fn resolveTraceContext(req: *httpz.Request) TraceContext {
     return TraceContext.generate();
 }
 
-// AuthPrincipal + AuthMode live in src/zombied/auth/principal.zig; the handler
-// layer reaches them through these re-exports.
-pub const AuthMode = principal_mod.AuthMode;
+// AuthPrincipal + AuthRole live in src/zombied/auth/; the handler layer
+// reaches them through these re-exports.
 pub const AuthRole = rbac.AuthRole;
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
-
-const AuthError = error{
-    Unauthorized,
-    UnsupportedRole,
-    TokenExpired,
-    AuthServiceUnavailable,
-};
 
 pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) void {
     res.status = @intFromEnum(status);
@@ -202,50 +193,6 @@ pub fn requestId(alloc: std.mem.Allocator) []const u8 {
     constants.secureRandomBytes(&id) catch return UNKNOWN_REQUEST_ID;
     const hex = std.fmt.bytesToHex(id, .lower);
     return std.fmt.allocPrint(alloc, "req_{s}", .{hex[0..12]}) catch UNKNOWN_REQUEST_ID;
-}
-
-fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
-    const auth = req.header(S_AUTHORIZATION) orelse return null;
-    const prefix = "Bearer ";
-    if (!std.mem.startsWith(u8, auth, prefix)) return null;
-    const provided = auth[prefix.len..];
-    if (std.mem.trim(u8, provided, " \t\r\n").len == 0) return null;
-    return provided;
-}
-
-pub fn authenticate(alloc: std.mem.Allocator, req: *httpz.Request, ctx: *Context) AuthError!AuthPrincipal {
-    _ = parseBearerToken(req) orelse return AuthError.Unauthorized;
-
-    if (ctx.oidc) |verifier| {
-        const auth = req.header(S_AUTHORIZATION) orelse return AuthError.Unauthorized;
-        const principal = verifier.verifyAuthorization(alloc, auth) catch |err| switch (err) {
-            error.TokenExpired => return AuthError.TokenExpired,
-            error.JwksFetchFailed, error.JwksParseFailed => return AuthError.AuthServiceUnavailable,
-            else => return AuthError.Unauthorized,
-        };
-        if (principal.tenant_id) |tenant_id| {
-            if (!id_format.isSupportedTenantId(tenant_id)) return AuthError.Unauthorized;
-        }
-        if (principal.workspace_id) |workspace_id| {
-            if (!id_format.isSupportedWorkspaceId(workspace_id)) return AuthError.Unauthorized;
-        }
-        // SAFETY: claims.zig normalizes all role strings through rbac.parseAuthRole
-        // before storing them in IdentityClaims.role, so raw is always a valid role
-        // label or null. The UnsupportedRole branch guards against future claim
-        // extraction paths that might skip normalization.
-        const role = if (principal.role) |raw| rbac.parseAuthRole(raw) orelse {
-            return AuthError.UnsupportedRole;
-        } else AuthRole.user;
-        return .{
-            .mode = .jwt_oidc,
-            .role = role,
-            .user_id = principal.subject,
-            .tenant_id = principal.tenant_id,
-            .workspace_scope_id = principal.workspace_id,
-        };
-    }
-
-    return AuthError.Unauthorized;
 }
 
 pub fn requireUuidV7Id(

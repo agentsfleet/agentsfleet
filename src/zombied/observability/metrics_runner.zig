@@ -10,8 +10,8 @@
 //! No allocator at runtime — compile-time capacity. Counter overflow past the
 //! table routes to runner_id="_other" (reason/outcome preserved); the per-runner
 //! gauges (last-seen, active-leases) are simply not tracked for overflow runners.
-//! Thread-safe: CAS slot claim, lock-free atomic counters. Mirrors
-//! metrics_workspace.zig. Tests live in metrics_runner_test.zig.
+//! Thread-safe: CAS slot claim, lock-free atomic counters. Tests live in
+//! metrics_runner_test.zig.
 //!
 //! active_leases is best-effort: it is decremented on a runner's report, but a
 //! lease abandoned by a dead runner expires by the clock with no report, so that

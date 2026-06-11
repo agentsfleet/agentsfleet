@@ -163,11 +163,11 @@ test "initRuntime builds a usable file-less store; seed + capture round-trip" {
     });
     rt.memory.store("__bootstrap.prompt.AGENTS.md", "noise", .core, null) catch {};
 
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
     var cap = MemoryCapturer{ .mem = rt.memory, .fd = fds[1], .alloc = alloc };
     cap.capture();
-    pipe_proto.osClose(fds[1]);
+    pipe_proto.testOsClose(fds[1]);
 
     const dl = clock.nowMillis() + 5_000;
     const out = try pipe_proto.readFrame(alloc, fds[0], dl, 1 << 20);

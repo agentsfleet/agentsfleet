@@ -15,30 +15,3 @@ pub fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
     return provided;
 }
 
-/// Linear scan of a comma-separated rotation list. Trims whitespace around
-/// each candidate so operators can format the env var for readability.
-fn matchRotatedKey(provided: []const u8, configured: []const u8) bool {
-    var it = std.mem.tokenizeScalar(u8, configured, ',');
-    while (it.next()) |candidate_raw| {
-        const candidate = std.mem.trim(u8, candidate_raw, " \t");
-        if (candidate.len == 0) continue;
-        if (std.mem.eql(u8, provided, candidate)) return true;
-    }
-    return false;
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────
-
-const testing = std.testing;
-
-test "matchRotatedKey accepts configured key anywhere in rotation" {
-    try testing.expect(matchRotatedKey("key-b", "key-a, key-b, key-c"));
-    try testing.expect(matchRotatedKey("key-a", "key-a,key-b"));
-    try testing.expect(matchRotatedKey("key-c", "key-a, key-b, key-c"));
-}
-
-test "matchRotatedKey rejects non-matches and empty rotation" {
-    try testing.expect(!matchRotatedKey("key-z", "key-a, , key-b"));
-    try testing.expect(!matchRotatedKey("key-a", ""));
-    try testing.expect(!matchRotatedKey("", "key-a"));
-}

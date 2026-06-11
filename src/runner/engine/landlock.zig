@@ -11,7 +11,6 @@
 const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
-const common = @import("common");
 
 const log = logging.scoped(.runner_landlock);
 
@@ -186,29 +185,6 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
     if (result != 0) return LandlockError.RuleAddFailed;
 }
 
-/// Check if Landlock is available on the current kernel.
-pub fn isAvailable() bool {
-    if (builtin.os.tag != .linux) return false;
-
-    var attr = LandlockRulesetAttr{ .handled_access_fs = ALL_FS_ACCESS };
-    const result = raw.syscall3(
-        SYS_landlock_create_ruleset,
-        @intFromPtr(&attr),
-        @sizeOf(LandlockRulesetAttr),
-        0,
-    );
-    if (result > std.math.maxInt(i32)) return false;
-    const fd = @as(i32, @intCast(@as(i64, @bitCast(result))));
-    if (fd < 0) return false;
-    var ruleset_file: std.Io.File = .{ .handle = @intCast(fd), .flags = .{ .nonblocking = false } };
-    ruleset_file.close(common.globalIo());
-    return true;
-}
-
-test "isAvailable returns false on non-linux" {
-    if (builtin.os.tag == .linux) return error.SkipZigTest;
-    try std.testing.expect(!isAvailable());
-}
 
 test "applyPolicy returns UnsupportedPlatform on non-linux" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;

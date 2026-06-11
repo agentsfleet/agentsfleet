@@ -98,9 +98,9 @@ test "readResult should time out when renewal fails transiently on every tick" {
     var hook = driver.hook();
     hook.tick_ms = 100; // 4–5 ticks before the deadline
 
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
-    defer pipe_proto.osClose(fds[1]); // write end open → no EOF; the read blocks to the deadline
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+    defer pipe_proto.testOsClose(fds[1]); // write end open → no EOF; the read blocks to the deadline
 
     const Noop = struct {
         fn forward(_: *anyopaque, _: ActivityFrame) void {}

@@ -14,11 +14,11 @@ const BYTES_PER_KIB = 1024;
 const FrameType = pipe_proto.FrameType;
 
 test "readFrame should round-trip and frame an empty-payload activity message" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
 
     try pipe_proto.writeFrame(fds[1], .activity, ""); // header only, zero-length body
-    pipe_proto.osClose(fds[1]); // EOF after the one frame
+    pipe_proto.testOsClose(fds[1]); // EOF after the one frame
 
     const dl = clock.nowMillis() + 5_000;
     const out = try pipe_proto.readFrame(std.testing.allocator, fds[0], dl, 1024);
@@ -33,8 +33,8 @@ test "readFrame should round-trip and frame an empty-payload activity message" {
 }
 
 test "readFrame should return TruncatedFrame when EOF arrives mid-payload" {
-    const fds = try pipe_proto.osPipe();
-    defer pipe_proto.osClose(fds[0]);
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
 
     // Hand-write a header claiming 100 bytes, then only 50 bytes of body, then
     // close: the reader fills the header, then hits EOF partway through the body.
@@ -43,7 +43,7 @@ test "readFrame should return TruncatedFrame when EOF arrives mid-payload" {
     std.mem.writeInt(u32, header[1..5], 100, .big);
     try writeAll(fds[1], &header);
     try writeAll(fds[1], &([_]u8{'x'} ** 50));
-    pipe_proto.osClose(fds[1]); // EOF mid-payload (50 of 100)
+    pipe_proto.testOsClose(fds[1]); // EOF mid-payload (50 of 100)
 
     const dl = clock.nowMillis() + 5_000;
     try std.testing.expectError(

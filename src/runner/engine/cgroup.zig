@@ -11,7 +11,6 @@
 
 const std = @import("std");
 const logging = @import("log");
-const common = @import("common");
 const builtin = @import("builtin");
 const types = @import("types.zig");
 const BYTES_PER_KIB = 1024;
@@ -247,14 +246,3 @@ pub const CgroupScope = struct {
     }
 };
 
-/// Check if cgroups v2 is available on the current system.
-pub fn isAvailable() bool {
-    if (builtin.os.tag != .linux) return false;
-    std.Io.Dir.accessAbsolute(common.globalIo(), "/sys/fs/cgroup/cgroup.controllers", .{}) catch return false;
-    return true;
-}
-
-test "isAvailable returns false on non-linux" {
-    if (builtin.os.tag == .linux) return error.SkipZigTest;
-    try std.testing.expect(!isAvailable());
-}

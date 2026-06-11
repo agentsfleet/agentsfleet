@@ -3,10 +3,9 @@
 //! Single source of truth for the JSON keys the engine reads out of the lease
 //! payload by hand — the `ExecutionPolicy` / CreateExecution params and the
 //! `agent_config` child fields — dereferenced as `wire.X` in
-//! `context_budget.zig` (fromJson), `runner_helpers.zig` (applyAgentConfig),
-//! `runner.zig`, and `child_exec.zig`. The result frame and correlation
+//! `runner_helpers.zig` (applyAgentConfig), `runner.zig`, and `child_exec.zig`. The result frame and correlation
 //! identity fields are (de)serialized by std.json struct reflection over
-//! `ExecutionResult` / `CorrelationContext`, so their JSON keys come from the
+//! `ExecutionResult`, so their JSON keys come from the
 //! Zig field identifiers — not from this file.
 //!
 //! The pipe framing itself (`[type][len][payload]`) lives in

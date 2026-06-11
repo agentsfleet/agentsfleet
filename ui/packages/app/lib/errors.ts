@@ -75,10 +75,6 @@ const CODE_MAP = {
     title: "That credential already exists",
     body: "Pick a different name, or delete the existing one first.",
   },
-  "UZ-ZMB-001": {
-    title: "We couldn't find that zombie",
-    body: "It may have already been deleted — refresh the list.",
-  },
   "UZ-ZMB-009": {
     title: "That zombie is in a state that blocks this action",
     body: "Check the current status on the detail page and try the right transition.",

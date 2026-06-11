@@ -25,7 +25,6 @@ const config_gates = @import("config_gates.zig");
 // Value types.
 pub const ZombieConfigError = config_types.ZombieConfigError;
 pub const ZombieStatus = config_types.ZombieStatus;
-pub const ZombieTriggerType = config_types.ZombieTriggerType;
 pub const ZombieTrigger = config_types.ZombieTrigger;
 pub const WebhookSignatureConfig = config_types.WebhookSignatureConfig;
 pub const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
@@ -36,15 +35,10 @@ pub const SkillMetadata = config_types.SkillMetadata;
 pub const validRequiredTags = config_types.validRequiredTags;
 
 // Gate/anomaly policy types (owned by config_gates, surfaced here for callers).
-pub const GateBehavior = config_gates.GateBehavior;
-pub const GateRule = config_gates.GateRule;
-pub const AnomalyPattern = config_gates.AnomalyPattern;
-pub const AnomalyRule = config_gates.AnomalyRule;
 pub const GatePolicy = config_gates.GatePolicy;
 
 // Entry points.
 pub const parseZombieConfig = config_parser.parseZombieConfig;
-pub const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
 pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
 pub const parseSkillMetadata = config_markdown.parseSkillMetadata;
 pub const ParsedTrigger = config_markdown.ParsedTrigger;

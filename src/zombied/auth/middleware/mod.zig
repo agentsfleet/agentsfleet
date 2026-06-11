@@ -13,36 +13,29 @@
 //! split; the registry therefore lives here and the dispatcher receives it
 //! via App, not via Context.
 
-pub const chain = @import("chain.zig");
-pub const auth_ctx = @import("auth_ctx.zig");
-pub const errors = @import("errors.zig");
+const chain = @import("chain.zig");
+const auth_ctx = @import("auth_ctx.zig");
 
 pub const Middleware = chain.Middleware;
-pub const Outcome = chain.Outcome;
 pub const run = chain.run;
 
 pub const AuthCtx = auth_ctx.AuthCtx;
-pub const WriteErrorFn = auth_ctx.WriteErrorFn;
 
-pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
+const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const runner_bearer = @import("runner_bearer.zig");
-pub const require_role = @import("require_role.zig");
-pub const platform_admin = @import("platform_admin.zig");
-pub const webhook_hmac = @import("webhook_hmac.zig");
+const require_role = @import("require_role.zig");
+const platform_admin = @import("platform_admin.zig");
+const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
-pub const trusted_client_ip = @import("trusted_client_ip.zig");
 
-pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
-pub const TenantApiKey = tenant_api_key.TenantApiKey;
-pub const RunnerBearer = runner_bearer.RunnerBearer;
-pub const RequireRole = require_role.RequireRole;
-pub const PlatformAdmin = platform_admin.PlatformAdmin;
-pub const WebhookHmac = webhook_hmac.WebhookHmac;
-pub const SvixSignature = svix_signature_mod.SvixSignature;
-
-pub const AuthPrincipal = auth_ctx.AuthPrincipal;
+const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
+const TenantApiKey = tenant_api_key.TenantApiKey;
+const RunnerBearer = runner_bearer.RunnerBearer;
+const RequireRole = require_role.RequireRole;
+const PlatformAdmin = platform_admin.PlatformAdmin;
+const WebhookHmac = webhook_hmac.WebhookHmac;
 
 /// Boot-time registry of pre-instantiated middleware structs and pre-built
 /// policy chains.

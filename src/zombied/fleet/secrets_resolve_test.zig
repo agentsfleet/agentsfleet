@@ -3,7 +3,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const secrets = @import("secrets_resolve.zig");
-const vault = @import("../state/vault.zig");
 const base = @import("../db/test_fixtures.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
@@ -26,7 +25,7 @@ fn putCredential(
     for (fields) |f| try obj.put(alloc, f.k, .{ .string = f.v });
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
     defer alloc.free(key_name);
-    try vault.storeJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj });
+    try base.storeVaultJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj });
 }
 
 // resolveSecretsMap acquires its own connection from the pool. Tests must
