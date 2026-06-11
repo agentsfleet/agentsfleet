@@ -23,6 +23,9 @@ pub const execution_result = @import("execution_result.zig");
 test {
     _ = @import("protocol_test.zig");
     _ = @import("event_envelope_test.zig");
-    _ = @import("activity.zig");
-    _ = @import("execution_result.zig");
+    // Module-backed members reference their pub const (no re-spelled @import
+    // path — RULE UFS); test-only files keep their direct import.
+    _ = activity;
+    _ = execution_result;
+    _ = execution_policy;
 }

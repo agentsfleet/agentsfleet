@@ -30,7 +30,7 @@ workspace_base: []const u8,
 /// at load. sandbox_args owns the `--share-net` decision and reads it per-lease
 /// off `cfg`; Zig 0.16 routes the env read through `Environ.Map` at startup,
 /// so the daemon hot path never touches the environment.
-network_policy: network.PolicyMode,
+network_policy: network.Mode,
 /// Number of concurrent worker threads the daemon runs (env
 /// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
 /// the per-zombie `affinity.claim` keeps two off the same zombie. Default 1 is
@@ -43,6 +43,11 @@ worker_count: u32,
 /// the renewal tick at load so a hung control plane can never starve the
 /// child's deadline kill.
 cp_deadlines: client_mod.Deadlines,
+/// Operator-fed registry baseline (env `RUNNER_REGISTRY_ALLOWLIST`,
+/// comma-separated), merged into each lease's egress allowlist. Empty when unset
+/// — the caller substitutes the named default (`network/AllowList.DEFAULT_REGISTRY`).
+/// Fed from outside, never a compile-time list.
+registry_allowlist: []const []const u8,
 
 alloc: Allocator,
 
@@ -83,15 +88,20 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         },
     };
 
+    const registry_raw = getOwned(env_map, alloc, ENV_RUNNER_REGISTRY_ALLOWLIST) catch null;
+    defer if (registry_raw) |raw| alloc.free(raw);
+    const registry_allowlist = parseRegistryAllowlist(alloc, registry_raw) catch return ConfigError.OutOfMemory;
+
     return Config{
         .control_plane_url = url,
         .runner_token = token,
         .host_id = host_id,
         .sandbox_tier = tier,
         .workspace_base = workspace_base,
-        .network_policy = network.policyFromMap(env_map),
+        .network_policy = network.fromMap(env_map),
         .worker_count = worker_count,
         .cp_deadlines = loadDeadlines(env_map),
+        .registry_allowlist = registry_allowlist,
         .alloc = alloc,
     };
 }
@@ -151,12 +161,41 @@ fn parseWorkerCount(raw: ?[]const u8) WorkerCountParse {
     return .{ .value = std.math.clamp(n, MIN_WORKER_COUNT, MAX_WORKER_COUNT) };
 }
 
+/// Parse `RUNNER_REGISTRY_ALLOWLIST` (comma-separated) into owned hostnames:
+/// whitespace-trimmed, empty tokens skipped. Null/unset → empty slice (the
+/// caller substitutes the named default). The operator feeds this from outside;
+/// it is never a compile-time list. Caller owns the result (`freeStrList`).
+fn parseRegistryAllowlist(alloc: Allocator, raw: ?[]const u8) Allocator.Error![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (list.items) |x| alloc.free(x);
+        list.deinit(alloc);
+    }
+    if (raw) |s| {
+        var it = std.mem.splitScalar(u8, s, ',');
+        while (it.next()) |tok| {
+            const trimmed = std.mem.trim(u8, tok, &std.ascii.whitespace);
+            if (trimmed.len == 0) continue;
+            const owned = try alloc.dupe(u8, trimmed);
+            errdefer alloc.free(owned);
+            try list.append(alloc, owned);
+        }
+    }
+    return list.toOwnedSlice(alloc);
+}
+
+fn freeStrList(alloc: Allocator, list: []const []const u8) void {
+    for (list) |x| alloc.free(x);
+    alloc.free(list);
+}
+
 pub fn deinit(self: Config) void {
     self.alloc.free(self.control_plane_url);
     self.alloc.free(self.runner_token);
     self.alloc.free(self.host_id);
     self.alloc.free(self.sandbox_tier);
     self.alloc.free(self.workspace_base);
+    freeStrList(self.alloc, self.registry_allowlist);
 }
 
 /// Fail loud when `ZOMBIE_RUNNER_TOKEN` is not a `zrn_` runner token — a stale
@@ -185,7 +224,7 @@ const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 const common_constants = @import("common");
 const client_mod = @import("control_plane_client.zig");
-const network = @import("../engine/network.zig");
+const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.zombie_runner);
@@ -201,6 +240,7 @@ pub const ENV_RUNNER_CP_DEADLINE_MS = "RUNNER_CP_DEADLINE_MS";
 pub const ENV_RUNNER_CP_REPORT_DEADLINE_MS = "RUNNER_CP_REPORT_DEADLINE_MS";
 pub const ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS = "RUNNER_CP_ACTIVITY_DEADLINE_MS";
 pub const ENV_RUNNER_CP_RENEW_DEADLINE_MS = "RUNNER_CP_RENEW_DEADLINE_MS";
+pub const ENV_RUNNER_REGISTRY_ALLOWLIST = "RUNNER_REGISTRY_ALLOWLIST";
 
 /// Deadline override bounds (RULE UFS: the clamp is single-sourced). The floor
 /// keeps a typo'd tiny value from failing every call; the ceiling keeps a huge
@@ -259,4 +299,24 @@ test "renew deadline override above the tick clamps back to the default" {
     defer env_map.deinit();
     const d = loadDeadlines(&env_map);
     try std.testing.expectEqual(client_mod.RENEW_DEADLINE_MS, d.renew_ms);
+}
+
+test "parseRegistryAllowlist splits, trims, and skips empty tokens" {
+    const a = std.testing.allocator;
+    const r = try parseRegistryAllowlist(a, "registry.npmjs.org, pypi.org ,, crates.io");
+    defer freeStrList(a, r);
+    try std.testing.expectEqual(@as(usize, 3), r.len);
+    try std.testing.expectEqualStrings("registry.npmjs.org", r[0]);
+    try std.testing.expectEqualStrings("pypi.org", r[1]);
+    try std.testing.expectEqualStrings("crates.io", r[2]);
+}
+
+test "parseRegistryAllowlist on null or whitespace-only yields an empty slice" {
+    const a = std.testing.allocator;
+    const r1 = try parseRegistryAllowlist(a, null); // unset → caller substitutes the default
+    defer freeStrList(a, r1);
+    try std.testing.expectEqual(@as(usize, 0), r1.len);
+    const r2 = try parseRegistryAllowlist(a, "  ,  ");
+    defer freeStrList(a, r2);
+    try std.testing.expectEqual(@as(usize, 0), r2.len);
 }

@@ -32,6 +32,7 @@ const WAIT_BUDGET_MS = 5_000;
 // children; the pool forks the executor_provider_stub runner per lease).
 test {
     _ = @import("worker_pool_integration_test.zig");
+    _ = @import("network/egress_integration_test.zig");
 }
 
 /// Read up to `cap` bytes from `fd` until EOF (the child's output is small).

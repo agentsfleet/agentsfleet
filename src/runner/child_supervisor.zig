@@ -149,7 +149,23 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path);
+    // Egress strategy (network/Policy.Mode):
+    //   deny_all_egress     → unshared netns, no veth (handled in sandbox_args).
+    //   allow_all (default) → interim allow-all (`--share-net` in sandbox_args).
+    //   allow_list_egress   → kernel-enforced EgressScope boundary (option D).
+    // The strict posture's per-lease establishment (resolve allowlist → named
+    // netns + veth + nft + rendered resolver files) is unbuilt (2.0.1). Fail
+    // CLOSED when it is selected — refuse the lease rather than run as if the
+    // boundary were enforced. The other postures pass egress=null (no
+    // EgressScope; --share-net or nothing per mode).
+    if (cfg.network_policy.enforcesEgress()) {
+        log.err("egress_strict_unimplemented_fail_closed", .{
+            .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
+            .lease_id = payload.lease_id,
+        });
+        return failed(.startup_posture);
+    }
+    var child = try child_process.forkExec(io, alloc, cfg, env_map, workspace_path, null);
     var reaped = false;
     // Zig 0.16 removed raw posix.waitpid/close; the process.Child wrapper is the
     // only portable reap/close path — `wait` blocks, reaps, and closes any still-
