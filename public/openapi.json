@@ -3412,7 +3412,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "Zombie is paused or otherwise not active (`UZ-ZMB-012`). Steering refuses loudly instead of enqueuing work that would strand. Resume with `zombiectl resume <zombie>`, then retry.",
+            "description": "Zombie is paused or otherwise not active (`UZ-ZMB-012`). Steering refuses loudly instead of enqueuing work that would strand. The problem-details body carries `current_state` naming the actual zombie status (e.g. `paused`). Resume with `zombiectl resume <zombie>`, then retry.",
             "$ref": "#/components/responses/Error"
           }
         }
