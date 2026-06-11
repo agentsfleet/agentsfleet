@@ -267,8 +267,10 @@ pub fn writeStderrLine(line: []const u8) void {
 
 test {
     // Ensure tests in sibling files are reachable through the test runner.
+    // `sinks` chains on to sinks_test.zig via its own discovery block.
     _ = envelope;
     _ = pretty;
+    _ = sinks;
 }
 
 test "fatalStderr is callable (compile check)" {
