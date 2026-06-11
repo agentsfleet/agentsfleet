@@ -204,6 +204,8 @@ test "integration: steer paused zombie — 409 UZ-ZMB-012; resumed zombie steers
         defer r.deinit();
         try r.expectStatus(.conflict);
         try std.testing.expect(r.bodyContains("UZ-ZMB-012"));
+        // REST §4: every 409 names the state that forbade the transition.
+        try std.testing.expect(r.bodyContains("\"current_state\":\"paused\""));
     }
 
     if (h.has_redis) { // resume → the same steer 202s (terminal refusals never block re-request)

@@ -163,7 +163,9 @@ fn verifyZombieInWorkspace(
             .status = raw_status,
             .req_id = hx.req_id,
         });
-        hx.fail(ec.ERR_ZOMBIE_PAUSED_INGRESS, ec.MSG_ZOMBIE_NOT_ACTIVE);
+        // 409s carry current_state (REST §4) — the caller branches on
+        // paused vs stopped without re-fetching the zombie.
+        common.errorResponseConflict(hx.res, ec.ERR_ZOMBIE_PAUSED_INGRESS, ec.MSG_ZOMBIE_NOT_ACTIVE, hx.req_id, raw_status);
         return false;
     }
     return true;

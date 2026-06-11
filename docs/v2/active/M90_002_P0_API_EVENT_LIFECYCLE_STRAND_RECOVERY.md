@@ -157,7 +157,8 @@ Steer on a paused zombie returns 409 with a registered error code + hint (resume
 
 ```
 POST /v1/workspaces/{ws}/zombies/{id}/messages  (paused zombie)
-  → 409 {"error":{"code":"UZ-…","message":…,"hint":…}}        (code registered this workstream)
+  → 409 problem-details {error_code:"UZ-ZMB-012", detail, current_state:"<actual status>"}
+    (code registered this workstream; current_state per REST guide §4 conflict extension)
 Webhook ingress (paused zombie)
   → 200 {"ignored": <named reason const>}                      (existing ignored shape)
 core.zombie_events terminal rows (visible via existing events API/CLI):
@@ -251,6 +252,7 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 ## Discovery (consult log)
 
 - **Consults** — Architecture consult at PLAN (Jun 11, 2026, agent): §2's literal "background sweep re-enters events into the lease flow" is unimplementable — Redis streams have no requeue; XAUTOCLAIM moves an entry into the claiming consumer's PEL, invisible to `XREADGROUP ">"`. Reconciled against `data_flow.md` ("`zombied` is the consumer"; dead-RUNNER reclaim stays lease-layer via `reclaim.zig`, untouched): stable per-instance consumer id + own-PEL-first read + sweep consolidating dead-consumer strays. "Per runner identity" wording dropped — runners are not Redis consumers, and per-runner ids would orphan entries on runner retirement. ECL split: transient failures (pool acquire, Redis blip, gate `.unavailable`) and `.auto_killed` (zombie paused, event retained for resume) stay no-work, never terminal. §3 ordering: atomic `SET NX` claim + `DEL` release on every post-claim failure path (normalize + enqueue) — NOT check-then-claim-late: the existing B3 concurrency pin (5 concurrent identical deliveries → exactly one 202) and double-billing rule out a non-atomic window; the spec's §3 parenthetical blesses the release form. Surfaced to Indy in the PLAN message; auto-mode proceed.
+- **REST §4 conflict-extension consult** (Jun 11, 2026, VERIFY): the new paused-409 omitted the guide-mandated `current_state` extension (envelope had no extension support; detail string is static). Surfaced as a gate flag; Indy: "Fix now in this branch". Implemented as a private `writeProblem` core (+`emit_null_optional_fields=false`, non-409 wire shape byte-identical) with `errorResponseConflict` carrying the row's actual status; test 4.1 asserts `"current_state":"paused"`. Pre-existing 409s → Out of Scope follow-up sweep.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs` results.
 - **Deferrals** — Indy-acked verbatim quotes only.
 
@@ -282,3 +284,4 @@ grep -rnE "xreadgroupZombie\b|zombie_xread_block_ms" src/ | head
 - Grant-approval nonce ordering + rows-affected handling (`webhooks/grant_approval.zig`) — audit P2, own follow-up (security-boundary review profile).
 - Webhook provider registry routing beyond github/generic/Svix — `user_flow.md` §8.3 drift, product decision first.
 - Fencing predicate on runner memory writes (`handlers/runner/memory.zig`) — audit P2 follow-up.
+- Pre-existing 409s (`UZ-ZMB-010` stop-conflict, api-keys, approvals) predate the REST §4 `current_state` mandate and omit it — follow-up sweep workstream; this spec brings only its own new 409 into compliance (Indy-directed, Jun 11, 2026).
