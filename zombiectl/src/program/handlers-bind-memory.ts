@@ -4,7 +4,7 @@
 // a thunk the caller binds to the lifecycle ctx — the bind site owns the
 // environment read (7 Pillars auto-JSON-when-piped); handlers stay pure.
 
-import type { ActionFrame, Handlers } from "./cli-tree-types.ts";
+import type { ActionFrame, MemoryHandlers } from "./cli-tree-types.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
 import {
   memoryListEffectFromFlags,
@@ -13,25 +13,20 @@ import {
 } from "../commands/memory.ts";
 import type { WrapEFn } from "./handlers-bind-zombie.ts";
 
-const MEMORY = "memory" as const;
-
+// Single-word flags (`--zombie <id>`, `--workspace <id>`) have no camelCase
+// or dashed spelling for normalizeOptions to mirror — one key each is the
+// complete read (unlike the agent/grant `--workspace-id`-era fallbacks).
 const sharedFlags = (frame: ActionFrame, stdoutIsTty: boolean): MemoryReadFlags => ({
-  zombieId:
-    optString(frame.parsed.options, "zombie") ??
-    optString(frame.parsed.options, "zombieId") ??
-    optString(frame.parsed.options, "zombie-id"),
+  zombieId: optString(frame.parsed.options, "zombie"),
   limit: optString(frame.parsed.options, "limit"),
-  workspaceId:
-    optString(frame.parsed.options, "workspace") ??
-    optString(frame.parsed.options, "workspaceId") ??
-    optString(frame.parsed.options, "workspace-id"),
+  workspaceId: optString(frame.parsed.options, "workspace"),
   stdoutIsTty,
 });
 
 export const buildMemoryHandlers = (
   wrapEFn: WrapEFn,
   stdoutIsTty: () => boolean,
-): Handlers[typeof MEMORY] => ({
+): MemoryHandlers => ({
   list: wrapEFn("memory.list", (frame) =>
     memoryListEffectFromFlags({
       ...sharedFlags(frame, stdoutIsTty()),

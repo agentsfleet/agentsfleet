@@ -167,6 +167,10 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     name: string,
     effect: Effect.Effect<A, E, R>,
   ): CommandHandlerFn => wrapEffect(name, effect, lifecycle);
+  const wrapEFn = <E extends CliError, R extends MainLayerServices>(
+    name: string,
+    factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+  ): CommandHandlerFn => wrapEffectFn(name, factory, lifecycle);
   return {
     login: wrapEffectFn(
       "login",
@@ -200,13 +204,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       status: wrapE("auth.status", authStatusEffect),
     },
     doctor: wrapE("doctor", doctorEffect),
-    workspace: buildWorkspaceHandlers(
-      wrapE,
-      <E extends CliError, R extends MainLayerServices>(
-        name: string,
-        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
-      ) => wrapEffectFn(name, factory, lifecycle),
-    ),
+    workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
     agent: {
       add: wrapEffectFn(
         "agent.add",
@@ -301,19 +299,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
     },
-    zombie: buildZombieHandlers(
-      wrapE,
-      <E extends CliError, R extends MainLayerServices>(
-        name: string,
-        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
-      ) => wrapEffectFn(name, factory, lifecycle),
-    ),
-    memory: buildMemoryHandlers(
-      <E extends CliError, R extends MainLayerServices>(
-        name: string,
-        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
-      ) => wrapEffectFn(name, factory, lifecycle),
-      () => stdoutIsTtyFromCtx(lifecycle.ctx),
-    ),
+    zombie: buildZombieHandlers(wrapE, wrapEFn),
+    memory: buildMemoryHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
   };
 }

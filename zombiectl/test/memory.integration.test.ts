@@ -264,7 +264,11 @@ describe("memory — error shapes", () => {
         { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: "http://127.0.0.1:9" } },
       );
       expect(code).not.toBe(0);
-      expect(err.read()).toContain("Suggestion:");
+      const stderrText = err.read();
+      expect(stderrText).toContain("Suggestion:");
+      // a NetworkError, not a server-code failure misclassified as one
+      expect(stderrText).toMatch(/reach|connect|network/i);
+      expect(stderrText).not.toMatch(/UZ-MEM-/);
       expect(out.read()).not.toContain("KEY");
     });
   });

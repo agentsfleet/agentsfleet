@@ -175,6 +175,17 @@ describe("memory — JSON mode passthrough", () => {
     expect(cap.tables).toHaveLength(0);
   });
 
+  test("a malformed envelope (items not an array) renders as empty instead of crashing", async () => {
+    const cap = newCapture();
+    const exit = await runWith(
+      memoryListEffectFromFlags({ zombieId: ZOMBIE_ID, stdoutIsTty: true }),
+      { http: httpLayerReturning({ items: 5, total: 5, request_id: "req_mem_bad" }, []), cap },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(cap.tables).toHaveLength(0);
+    expect(cap.infos[0]).toMatch(/no memories stored/i);
+  });
+
   test("empty result on a terminal prints the friendly line + docs pointer and succeeds", async () => {
     const cap = newCapture();
     const exit = await runWith(

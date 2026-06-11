@@ -28,18 +28,9 @@ import {
   type UnexpectedError,
 } from "../errors/index.ts";
 
-// Mirrors of the server's published limit constants — same identifiers as
-// src/zombied/http/handlers/memory/helpers.zig and the OpenAPI bounds on
-// list_zombie_memories (RULE UFS: cross-runtime constants share a name).
-// The client validates against the cap and documents the defaults in help
-// text; it never invents its own caps, and it only forwards `limit` when
-// the operator passed one (the server applies its defaults otherwise).
-export const MAX_RECALL_LIMIT = 100;
-export const DEFAULT_RECALL_LIMIT = 20;
-export const DEFAULT_LIST_LIMIT = 100;
-
 // Table preview cap in Unicode code points. Full content is never lost —
-// JSON mode carries it verbatim.
+// JSON mode carries it verbatim. The server limit mirrors live in
+// src/constants/memory-limits.ts (consumed by the command tree).
 const PREVIEW_MAX = 80;
 
 const MS_PER_SECOND = 1000;
@@ -98,28 +89,41 @@ export interface MemoryReadFlags {
   readonly stdoutIsTty?: boolean | undefined;
 }
 
+// Server content is untrusted input to the operator's terminal: strip C0 and
+// C1 control bytes (ESC, BEL, CSI, …) so stored memory can't smuggle ANSI/OSC
+// sequences (clipboard hijack, screen rewriting, forged rows) into the table.
+// JSON mode stays verbatim — machine consumers get the raw bytes.
+const CONTROL_BYTES_RE = /[\u0000-\u001F\u007F-\u009F]/g;
+export const cleanCell = (value: unknown): string =>
+  String(value ?? "").replace(CONTROL_BYTES_RE, "");
+
 // The only spot that interprets the wire timestamp. Today the wire carries
 // epoch seconds as a decimal string (schema/013 TEXT, NullClaw format); the
 // retention-schema work flips it to numeric epoch milliseconds. Both render
 // here; JSON mode passes the raw value through untouched. When the numeric
 // wire lands, delete the string branch and flip the fixtures — nothing
-// else moves.
+// else moves. The try/catch keeps an out-of-range wire value (Date throws
+// RangeError past ±8.64e15 ms) from killing the whole table render.
 export const renderUpdatedAt = (value: number | string | null | undefined): string => {
-  if (isNumber(value) && Number.isFinite(value)) {
-    return new Date(value).toISOString();
-  }
-  if (isString(value) && /^\d+$/.test(value)) {
-    return new Date(Number.parseInt(value, 10) * MS_PER_SECOND).toISOString();
+  try {
+    if (isNumber(value) && Number.isFinite(value)) {
+      return new Date(value).toISOString();
+    }
+    if (isString(value) && /^\d+$/.test(value)) {
+      return new Date(Number.parseInt(value, 10) * MS_PER_SECOND).toISOString();
+    }
+  } catch {
+    return LITERAL_DASH;
   }
   return LITERAL_DASH;
 };
 
-// Collapse whitespace, then cut at PREVIEW_MAX code points. Slicing by code
-// point (Array.from) can never split a surrogate pair, so the preview always
-// re-encodes as valid UTF-8 even mid-emoji at the boundary.
+// Strip control bytes, collapse whitespace, then cut at PREVIEW_MAX code
+// points. Slicing by code point (Array.from) can never split a surrogate
+// pair, so the preview always re-encodes as valid UTF-8 even mid-emoji.
 export const previewText = (text: string | null | undefined): string => {
   if (!isString(text) || text.length === 0) return "";
-  const oneline = text.replace(/\s+/g, " ").trim();
+  const oneline = cleanCell(text).replace(/\s+/g, " ").trim();
   const points = Array.from(oneline);
   if (points.length <= PREVIEW_MAX) return oneline;
   return `${points.slice(0, PREVIEW_MAX - 1).join("")}…`;
@@ -171,30 +175,25 @@ const buildPath = (wsId: string, zombieId: string, params: MemoryQueryParams): s
 };
 
 // The transport's generic 4xx suggestion ("verify the request payload") is
-// useless for the two memory-specific failures — remap to the next action
-// the operator can actually take. Detail, code, status, request_id pass
-// through so support workflows keep their grep keys.
+// useless for the memory-specific failures — remap to the next action the
+// operator can actually take. Detail, code, status, request_id pass through
+// so support workflows keep their grep keys.
+const MEMORY_SUGGESTIONS: Record<string, string> = {
+  [ERR_MEM_ZOMBIE_NOT_FOUND]: SUGGEST_ZOMBIE_NOT_FOUND,
+  [ERR_MEM_UNAVAILABLE]: SUGGEST_MEM_UNAVAILABLE,
+};
+
 const withMemorySuggestions = (err: NetworkError | ServerError): NetworkError | ServerError => {
   if (err._tag !== SERVER_ERROR_TAG) return err;
-  if (err.code === ERR_MEM_ZOMBIE_NOT_FOUND) {
-    return new ServerError({
-      detail: err.detail,
-      suggestion: SUGGEST_ZOMBIE_NOT_FOUND,
-      code: err.code,
-      status: err.status,
-      requestId: err.requestId,
-    });
-  }
-  if (err.code === ERR_MEM_UNAVAILABLE) {
-    return new ServerError({
-      detail: err.detail,
-      suggestion: SUGGEST_MEM_UNAVAILABLE,
-      code: err.code,
-      status: err.status,
-      requestId: err.requestId,
-    });
-  }
-  return err;
+  const suggestion = MEMORY_SUGGESTIONS[err.code];
+  if (suggestion === undefined) return err;
+  return new ServerError({
+    detail: err.detail,
+    suggestion,
+    code: err.code,
+    status: err.status,
+    requestId: err.requestId,
+  });
 };
 
 interface MemoryRequestSpec extends MemoryQueryParams {
@@ -228,7 +227,9 @@ const memoryReadEffect = (
       return;
     }
 
-    const items = res.items ?? [];
+    // Runtime shape guard — the compile-time type can't vouch for server
+    // bytes; a malformed envelope renders as empty rather than crashing.
+    const items = Array.isArray(res.items) ? res.items : [];
     if (items.length === 0) {
       yield* output.info(req.emptyMessage);
       yield* output.info(ui.dim(`Memory hygiene guide: ${MEMORY_HYGIENE_DOCS_URL}`));
@@ -243,8 +244,8 @@ const memoryReadEffect = (
         { key: FIELD_PREVIEW, label: "PREVIEW" },
       ],
       items.map((m) => ({
-        [FIELD_KEY]: String(m.key ?? ""),
-        [FIELD_CATEGORY]: String(m.category ?? ""),
+        [FIELD_KEY]: cleanCell(m.key),
+        [FIELD_CATEGORY]: cleanCell(m.category),
         [FIELD_UPDATED]: renderUpdatedAt(m.updated_at),
         [FIELD_PREVIEW]: previewText(m.content),
       })),

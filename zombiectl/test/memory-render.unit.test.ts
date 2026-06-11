@@ -5,7 +5,21 @@
 
 import { describe, test, expect } from "bun:test";
 
-import { previewText, renderUpdatedAt } from "../src/commands/memory.ts";
+import { cleanCell, previewText, renderUpdatedAt } from "../src/commands/memory.ts";
+
+describe("cleanCell — server content can't drive the operator's terminal", () => {
+  test("strips ESC/BEL/CSI control bytes that carry ANSI and OSC sequences", () => {
+    expect(cleanCell("\u001b]52;c;payload\u0007safe")).toBe("]52;c;payloadsafe");
+    expect(cleanCell("\u001b[2Jcleared")).toBe("[2Jcleared");
+    expect(cleanCell("\u009b31mred")).toBe("31mred"); // C1 CSI introducer
+  });
+
+  test("null and undefined render as empty cells; plain text passes through", () => {
+    expect(cleanCell(null)).toBe("");
+    expect(cleanCell(undefined)).toBe("");
+    expect(cleanCell("na\u00efve caf\u00e9 \u{1f989}")).toBe("na\u00efve caf\u00e9 \u{1f989}");
+  });
+});
 
 describe("renderUpdatedAt — the isolated wire-timestamp helper", () => {
   // pin test: literal is the contract — both wire shapes name the same
@@ -22,6 +36,12 @@ describe("renderUpdatedAt — the isolated wire-timestamp helper", () => {
     expect(renderUpdatedAt(null)).toBe("—");
     expect(renderUpdatedAt(undefined)).toBe("—");
     expect(renderUpdatedAt("not-a-timestamp")).toBe("—");
+  });
+
+  test("out-of-range wire values render the dash instead of throwing", () => {
+    // past Date's ±8.64e15 ms ceiling — a RangeError here would kill the table
+    expect(renderUpdatedAt(9.7e15)).toBe("—");
+    expect(renderUpdatedAt("99999999999999999999")).toBe("—");
   });
 });
 
@@ -45,6 +65,17 @@ describe("test_memory_preview_truncation_utf8_safe", () => {
 
   test("short multibyte content passes through untouched", () => {
     expect(previewText("naïve café 🦉")).toBe("naïve café 🦉");
+  });
+
+  test("exactly-80 code points pass through; 81 truncates to 80 with ellipsis", () => {
+    expect(previewText("A".repeat(80))).toBe("A".repeat(80));
+    const out = previewText("A".repeat(81));
+    expect(Array.from(out)).toHaveLength(80);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  test("embedded ESC sequences are stripped before measuring", () => {
+    expect(previewText("safe\u001b[31mred")).toBe("safe[31mred");
   });
 
   test("whitespace collapses to single spaces before measuring", () => {

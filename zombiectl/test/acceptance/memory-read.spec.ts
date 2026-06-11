@@ -155,4 +155,31 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
       assert.equal(calls.length, 0, "over-cap limit must not reach the API");
     });
   });
+
+  it("a malformed --zombie id is rejected client-side as uuidv7 before any request", async () => {
+    await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
+      const result = await run(["memory", "list", "--zombie", "not-a-uuid"]);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, /expected uuidv7 format/);
+      assert.equal(calls.length, 0, "malformed id must not reach the API");
+    });
+  });
+
+  it("`memory search` without a query is rejected by commander before any request", async () => {
+    await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
+      const result = await run(["memory", "search", "--zombie", ZOMBIE_ID]);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, /missing|required/i);
+      assert.equal(calls.length, 0);
+    });
+  });
+
+  it("bare `memory list` fails with the --zombie usage suggestion through the real pipeline", async () => {
+    await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
+      const result = await run(["memory", "list"]);
+      assert.notEqual(result.code, 0);
+      assert.match(result.stderr, /--zombie <id> is required/);
+      assert.equal(calls.length, 0);
+    });
+  });
 });

@@ -15,7 +15,7 @@ import {
   DEFAULT_LIST_LIMIT,
   DEFAULT_RECALL_LIMIT,
   MAX_RECALL_LIMIT,
-} from "../commands/memory.ts";
+} from "../constants/memory-limits.ts";
 import type { ActionDispatch, Handlers, ProgramState } from "./cli-tree-types.ts";
 
 const MEMORY_LIMIT_BOUNDS = { min: 1, max: MAX_RECALL_LIMIT };
