@@ -65,6 +65,9 @@ fn parseResult(alloc: std.mem.Allocator, bytes: []const u8) ExecutionResult {
     return .{
         .content = content,
         .token_count = v.token_count,
+        .input_tokens = v.input_tokens,
+        .cached_input_tokens = v.cached_input_tokens,
+        .output_tokens = v.output_tokens,
         .wall_seconds = v.wall_seconds,
         .exit_ok = v.exit_ok,
         .failure = v.failure,
