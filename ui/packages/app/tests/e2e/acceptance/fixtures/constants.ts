@@ -2,12 +2,12 @@
  * Shared protocol constants for the auth e2e harness.
  *
  * Inline string literals like "active" / "paused" / "killed" / "regular" /
- * "admin" / "api" sit on cross-module wire boundaries (zombied state machine,
+ * "admin" / "api" sit on cross-module wire boundaries (agentsfleetd state machine,
  * Clerk JWT template, fixture-pool keying). Centralising them surfaces a
  * rename as a type error rather than silent drift between seed/teardown/spec
  * code paths (RULE UFS).
  *
- * Canonical zombied state values live at
+ * Canonical agentsfleetd state values live at
  * `ui/packages/app/lib/api/zombies.ts:ZOMBIE_STATUS`. The harness mirrors
  * them (lowercased keys so teardown / specs read naturally; values match
  * exactly).

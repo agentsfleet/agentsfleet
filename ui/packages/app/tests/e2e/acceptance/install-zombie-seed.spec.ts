@@ -36,7 +36,7 @@ test.describe("install-zombie-seed", () => {
     // The row is an anchor `<Link href="/zombies/{id}" data-state="live">`
     // wrapping a `<div class="font-medium truncate">{name}</div>`. Match by
     // visible name (accessible to a Playwright user) and assert data-state
-    // is "live" (the dashboard's translation of zombied's "active" status —
+    // is "live" (the dashboard's translation of agentsfleetd's "active" status —
     // canonical mapping at app/(dashboard)/zombies/components/ZombiesList.tsx).
     const row = page.locator(`a[href="/zombies/${seeded.id}"]`);
     await expect(row).toBeVisible();
