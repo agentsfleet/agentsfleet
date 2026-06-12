@@ -165,6 +165,13 @@ drain_runner() {
 restart_services() {
   drain_runner
   log "Restarting runner ..."
+  # One-time transition off the pre-rename unit: a host still
+  # running zombie-runner.service gets it stopped and disabled before the
+  # renamed unit takes over; harmless no-op everywhere else.
+  if systemctl cat zombie-runner.service >/dev/null 2>&1; then
+    systemctl stop zombie-runner.service 2>/dev/null || true
+    systemctl disable zombie-runner.service 2>/dev/null || true
+  fi
   systemctl restart "$SERVICE_NAME"
 }
 

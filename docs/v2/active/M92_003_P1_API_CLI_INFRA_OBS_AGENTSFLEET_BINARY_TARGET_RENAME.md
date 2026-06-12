@@ -86,7 +86,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Overview
 
-**Goal (testable):** after merge and the verified image push, `zig build` emits `agentsfleetd` (and the runner graph `agentsfleet-runner`) with no zombie-named binary in any build output, the npm package installs an `agentsfleet` bin, every renamed make target resolves and the full suite is green in CI, `docker manifest inspect ghcr.io/usezombie/agentsfleetd:dev-latest` succeeds, and a repo-wide word-boundary grep for `agentsfleet|zombied|zombie-runner` matches only the eval-pinned keep ledger.
+**Goal (testable):** after merge and the verified image push, `zig build` emits `agentsfleetd` (and the runner graph `agentsfleet-runner`) with no zombie-named binary in any build output, the npm package installs an `agentsfleet` bin, every renamed make target resolves and the full suite is green in CI, `docker manifest inspect ghcr.io/usezombie/agentsfleetd:dev-latest` succeeds, and a repo-wide word-boundary grep for `zombiectl|zombied|zombie-runner` matches only the eval-pinned keep ledger.
 
 **Problem:** M92_002 rebranded what users read; every name operators *type and run* — the install target, the daemon process, the runner unit, the image pulls, the make targets — still says zombie.
 
@@ -275,7 +275,7 @@ Locked surface — changes here require amending this spec: fly `app` values; AP
 
 ```bash
 # E1: Flip completeness — word-boundary grep matches ONLY the keep ledger (expect empty)
-git grep -rnwE "agentsfleet|zombied|zombie-runner" -- ':!docs/v1' ':!docs/v2/done' ':!docs/greptile-learnings' \
+git grep -rnwE "zombiectl|zombied|zombie-runner" -- ':!docs/v1' ':!docs/v2/done' ':!docs/greptile-learnings' \
   | grep -vE "agentsfleet/|src/agentsfleetd|app = \"zombied-(dev|prod)\"|cloudflared|core\.zombie|usezombie-admin|x-usezombie" | head
 # E2: Build artifacts — new daemon name present, old absent
 zig build && ls zig-out/bin | grep -q agentsfleetd && ! ls zig-out/bin | grep -qx zombied && echo PASS
@@ -286,9 +286,9 @@ npm view @agentsfleet/cli dist-tags --json && echo PASS
 # E10: Installer domain serves (gates the INSTALL_COMMAND flip; until PASS that surface parks)
 curl -fsSI https://agentsfleet.dev | grep -i "text/x-shellscript" && echo PASS
 # E4: Make targets — no token-bearing target remains (expect empty)
-make -qp 2>/dev/null | awk -F: '/^[A-Za-z0-9][^=\t]*:([^=]|$)/{print $1}' | grep -E "agentsfleet|zombied|zombie-runner" | head
+make -qp 2>/dev/null | awk -F: '/^[A-Za-z0-9][^=\t]*:([^=]|$)/{print $1}' | grep -E "zombiectl|zombied|zombie-runner" | head
 # E5: Workflow diffs strings-only (expect empty)
-git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|agentsfleet|zombied|zombie-runner|agentsfleet" | head
+git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|zombiectl|zombied|zombie-runner|agentsfleet" | head
 # E6: Images pushed (Indy step; run after push)
 for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/usezombie/$i:dev-latest" >/dev/null && echo "$i OK"; done
 # E7: Installer — lands the new binary name
@@ -306,7 +306,7 @@ for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/us
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| emitted `dist/bin/agentsfleet.js` | build output listing post-`bun run build` | absent |
+| emitted `dist/bin/zombiectl.js` | build output listing post-`bun run build` | absent |
 | `zombie-runner.service` refs | Eval `E1` | 0 matches outside keep ledger |
 | old make target names | Eval `E4` | 0 matches |
 
@@ -317,7 +317,7 @@ for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/us
 - **Authoring-time decisions (Indy, Jun 12, 2026 evening session):** name map decided — CLI bare `agentsfleet`; daemon `agentsfleetd` (> Indy: "i think zombied is agentsfleetd"); runner `agentsfleet-runner`; compose locals `agentsfleet-postgres`/`agentsfleet-redis`. Hard cutover, no alias binaries (pre-2.0.0, RULE NLG). Directories stay. `.github/workflows` edits granted, strings-only scope. Container sequencing: Indy builds from this branch and pushes the new-name images manually ("I will build and push new containers now?" → sequenced post-branch, pre-merge, manifest-verified). Operating-model target-name prose in dotfiles rides a companion dotfiles commit at cutover.
 - **Scope amendment (Indy, Jun 12, 2026 evening, mid-session):** packages + installer domain fold in — "> Indy: \"@agentsfleet/design-system is @agentsfleet/design-system\"", "> Indy: \"@usezombie/zombiectl is @agentsfleet/cli\"", "> Indy: \"usezombie.sh is agentsfleet.dev\"". Verified at amendment: design-system/app/website are `private: true` (repo-local flips); `@usezombie/zombiectl` is public (`release.yml` `npm publish` + installer `PKG=`) → Indy rows: create the `@agentsfleet` npm org, publish token coverage, first publish — `PKG` flip gated on Eval `E9`; `agentsfleet.dev` publishes no DNS records while `usezombie.sh` serves the installer (200, `text/x-shellscript`) → Indy rows: registrar/DNS/hosting attach + old-domain alias — command/pin/README flips gated on Eval `E10`. Dotfiles governance refs (`dispatch/write_ts_adhere_bun.md` scope examples, `AGENTS.md` worktree command, `api-dev.usezombie.com` in verify docs, docs-URL examples) ride the companion dotfiles commit at merge + their own host cutovers.
 - **Mid-EXECUTE decisions (Indy, Jun 13, 2026):** UFS string-dup on `service_report.zig` → single-binding fix (Indy-approved). `audits/error-codes.sh` found pre-pointed at `src/agentsfleetd/errors/` (Indy forward-edit) → directory rename `src/zombied/` → `src/agentsfleetd/` pulled into this branch; zon fingerprint refreshed per the compiler for the renamed package. CLI naming settled: folder `agentsfleet/` (matches the pre-staged dotfiles audits; Indy final), package `@agentsfleet/cli`, bin `agentsfleet`. Entity noun zombie → agent approved — rides the follow-up mega-spec (M92_004: platform cutovers + wire/data/domain, expand-contract design doc in `docs/architecture/`); punch-list routing per Indy: one mega-spec, not three.
-- **§1 ledger (Jun 12, 2026):** FLIP classes — CLI self-name strings (180 lines in `agentsfleet/{src,test}`; 24 path-like refs keep), daemon argv/usage fixtures + `logging.scoped(.zombied)` log scopes (grafana queries follow in §8), contract-lib + architecture-doc prose, website rendered copy naming the binary/package (vocab-guard/marketing-spec pins updated as conscious edits; the GitHub org slug and `/usezombie-install-platform-ops` keep), `public/llms.txt` + `public/skill.md` prose, telemetry service tags (internal dependency-injection ids, safe). KEEP classes — `docs/v1` + `docs/v2/done` history (append-only), directory-path refs, frozen `schema/*.sql` migration comments (editing frozen migrations breaks parity for zero operator gain — rides the schema cutover), fly/cloudflared/org/mail/header/user-db identifiers per the rename principle. UX note for Indy: the CLI config dir `~/.config/agentsfleet` flips clean to `~/.config/agentsfleet` — telemetry consent re-asked once; no fallback shim (RULE NLG). E3 keep baseline (pre-flip counts): `app = "zombied-`=4 · `core.zombie_`=305 · `usezombie-admin`=28 · `x-usezombie`=216 · `github.com/usezombie`=44.
+- **§1 ledger (Jun 12, 2026):** FLIP classes — CLI self-name strings (180 lines in `agentsfleet/{src,test}`; 24 path-like refs keep), daemon argv/usage fixtures + `logging.scoped(.zombied)` log scopes (grafana queries follow in §8), contract-lib + architecture-doc prose, website rendered copy naming the binary/package (vocab-guard/marketing-spec pins updated as conscious edits; the GitHub org slug and `/usezombie-install-platform-ops` keep), `public/llms.txt` + `public/skill.md` prose, telemetry service tags (internal dependency-injection ids, safe). KEEP classes — `docs/v1` + `docs/v2/done` history (append-only), directory-path refs, frozen `schema/*.sql` migration comments (editing frozen migrations breaks parity for zero operator gain — rides the schema cutover), fly/cloudflared/org/mail/header/user-db identifiers per the rename principle. UX note for Indy: the CLI config dir `~/.config/zombiectl` flips clean to `~/.config/agentsfleet` — telemetry consent re-asked once; no fallback shim (RULE NLG). E3 keep baseline (pre-flip counts): `app = "zombied-`=4 · `core.zombie_`=305 · `usezombie-admin`=28 · `x-usezombie`=216 · `github.com/usezombie`=44.
 
 ---
 

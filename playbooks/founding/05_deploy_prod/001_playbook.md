@@ -92,7 +92,7 @@ The release pipeline deploys in three stages:
 4. Ensure `cloudflared-prod` tunnel is running (restart or deploy from scratch)
 5. Verify `/healthz` + `/readyz`
 
-> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-prod/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
 > `[env]`, not in vault — they are tuning, not secrets. The handler pool is
 > **per worker**, so total concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`.
 > Prod runs `2 × 32 = 64` handler threads per machine (~192 across 3 machines)

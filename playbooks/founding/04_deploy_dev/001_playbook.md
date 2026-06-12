@@ -62,7 +62,7 @@ Expected DEV pipeline order:
 5. `qa-dev` — Playwright smoke suite against `https://agentsfleet-app.vercel.app`
 6. `notify` — Discord
 
-> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-dev/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
 > `[env]` (`API_HTTP_THREADS = "32"` — matched to prod so dev surfaces pool
 > saturation first — and `API_HTTP_WORKERS = "1"` on this 512mb box).
 > `API_HTTP_THREADS` is the per-worker handler-pool size; the one long-lived

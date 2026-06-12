@@ -70,7 +70,7 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
     const out = bufferStream();
     const err = bufferStream();
     const fetchImpl = asFetchOverride(async (url) => {
-      if (url.endsWith("/healthz")) return jsonResponse({ status: "ok", service: "zombied" });
+      if (url.endsWith("/healthz")) return jsonResponse({ status: "ok", service: "agentsfleetd" });
       if (url.includes("/v1/workspaces/ws_test/zombies")) return jsonResponse({ items: [] });
       return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
     });

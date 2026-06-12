@@ -33,13 +33,13 @@ jobs:
           echo "deployment_environment=$DEPLOY_ENV"
           echo "target_url=$URL"
 
-          if echo "$DEPLOY_ENV" | grep -qi "agentsfleet-app"; then
+          if echo "$DEPLOY_ENV" | grep -qi "usezombie-app"; then
             { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
           elif echo "$DEPLOY_ENV" | grep -qi "usezombie-agents"; then
             { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
-          elif echo "$DEPLOY_ENV" | grep -qi "agentsfleet-website"; then
+          elif echo "$DEPLOY_ENV" | grep -qi "usezombie-website"; then
             { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
-          elif echo "$URL" | grep -qi "agentsfleet-app\|app\.usezombie"; then
+          elif echo "$URL" | grep -qi "usezombie-app\|app\.usezombie"; then
             { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "usezombie-agents"; then
             { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
@@ -86,7 +86,7 @@ jobs:
     if: >-
       github.event.deployment_status.state == 'success' &&
       startsWith(github.event.deployment.environment, 'Production') &&
-      contains(github.event.deployment.environment, 'agentsfleet-app')
+      contains(github.event.deployment.environment, 'usezombie-app')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

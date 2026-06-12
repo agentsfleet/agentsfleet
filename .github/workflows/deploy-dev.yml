@@ -154,9 +154,9 @@ jobs:
 
       - name: Deploy agentsfleetd-dev
         run: |
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120 || STATUS=$?
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120 || STATUS=$?
           STATUS=${STATUS:-0}
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
           STATUS=$?
           if [ "$STATUS" -ne 0 ]; then
             APP="${{ vars.FLY_APP_DEV }}"

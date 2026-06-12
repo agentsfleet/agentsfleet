@@ -426,7 +426,7 @@ jobs:
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
             --image ghcr.io/usezombie/agentsfleetd:latest \
-            --config deploy/fly/agentsfleetd-prod/fly.toml \
+            --config deploy/fly/zombied-prod/fly.toml \
             --wait-timeout 120
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
