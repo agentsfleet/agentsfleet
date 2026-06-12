@@ -12,11 +12,11 @@ test.describe("Smoke", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
-  test("brand favicon is wired and resolves", async ({ page, request }) => {
+  test("brand favicon is wired and resolves", async ({ page }) => {
     await page.goto("/");
     const href = await page.locator('link[rel="icon"]').getAttribute("href");
     expect(href).toBe("/favicon.svg");
-    const res = await request.get(href!);
+    const res = await page.request.get(href!);
     expect(res.status()).toBe(200);
   });
 
