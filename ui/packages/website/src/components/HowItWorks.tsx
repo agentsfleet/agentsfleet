@@ -1,11 +1,11 @@
-import { Card, DisplayLG, SectionLabel } from "@usezombie/design-system";
+import { Card, DisplayLG, SectionLabel } from "@agentsfleet/design-system";
 
 const steps = [
   {
     n: "01",
     title: "A trigger arrives",
     description:
-      "A GitHub Actions deploy fails, a cron fires, or you run zombiectl steer. Each lands on the event stream with actor provenance: webhook:github, cron:<schedule>, steer:<user>.",
+      "A GitHub Actions deploy fails, a cron fires, or you run agentsfleet steer. Each lands on the event stream with actor provenance: webhook:github, cron:<schedule>, steer:<user>.",
   },
   {
     n: "02",
@@ -17,7 +17,7 @@ const steps = [
     n: "03",
     title: "Diagnosis posts; the run is auditable",
     description:
-      "Slack receives the evidenced diagnosis. Every event is on core.zombie_events with actor and timestamp. zombiectl steer {id} picks the conversation up later.",
+      "Slack receives the evidenced diagnosis. Every event is on core.zombie_events with actor and timestamp. agentsfleet steer {id} picks the conversation up later.",
   },
 ];
 

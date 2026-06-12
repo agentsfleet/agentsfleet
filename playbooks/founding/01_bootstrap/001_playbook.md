@@ -33,9 +33,9 @@ One key per service:
 |---|---|---|
 | 1Password | Service account token for `usezombie-ci` | 1Password → Service Accounts |
 | Vercel | Account API token (Full Account scope) | Vercel → Account Settings → Tokens |
-| Vercel (`usezombie-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`agentsfleet-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`usezombie-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (`usezombie-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`agentsfleet-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
 | Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o <org>` → copy output |
 | Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
@@ -61,7 +61,7 @@ Store each output as `credential` in its respective vault item (`encryption-mast
 
 ### 1.3b Generate Auth Pepper Keys
 
-Two independent 32-byte (64 hex char) CSPRNG values per environment. One is the keyed-HMAC pepper used to defeat offline brute-force of the CLI-login verification code; the other is the keyed-HMAC pepper used to pseudonymize `session_id` in the auth-audit log sink. Both are loaded by `zombied` at boot via `src/state/vault.zig` and held in process memory only — never written to disk, never logged. Boot fails fast if either is missing.
+Two independent 32-byte (64 hex char) CSPRNG values per environment. One is the keyed-HMAC pepper used to defeat offline brute-force of the CLI-login verification code; the other is the keyed-HMAC pepper used to pseudonymize `session_id` in the auth-audit log sink. Both are loaded by `agentsfleetd` at boot via `src/state/vault.zig` and held in process memory only — never written to disk, never logged. Boot fails fast if either is missing.
 
 ```bash
 # DEV — session-code HMAC pepper
@@ -79,11 +79,11 @@ openssl rand -hex 32   # → store in op://$VAULT_PROD/audit-log-pepper/credenti
 
 **Rotation:** rotating `auth-session-code-pepper` invalidates every in-flight CLI login session (their HMACs no longer match). Cheap because sessions are 5-minute-TTL — drain old sessions by waiting 5+ minutes between provisioning the new pepper and cutting the API process over. Rotating `audit-log-pepper` breaks cross-event correlation for past sessions but does not affect security (a different pepper protects the code itself).
 
-**Provisioning is manual:** run the four `openssl rand` commands above and store each value with `op item create` (or `op item edit` to update). There is no helper script — `zombied` boot fails fast if either pepper is missing, so verify both items exist in both vaults before handoff.
+**Provisioning is manual:** run the four `openssl rand` commands above and store each value with `op item create` (or `op item edit` to update). There is no helper script — `agentsfleetd` boot fails fast if either pepper is missing, so verify both items exist in both vaults before handoff.
 
 ### 1.3c Provision E2E Fixture Email Identities
 
-The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `zombiectl/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
+The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `agentsfleet/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
 
 ```bash
 # 1. In the Clerk DEV dashboard, create two test users:
@@ -133,7 +133,7 @@ Create each item listed there. Value sources for items that require human provis
 | `audit-log-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
 | `e2e-fixture-email/regular` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
 | `e2e-fixture-email/admin` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
-| `zombied-prod-server-*` | Created on server provision |
+| `agentsfleetd-prod-server-*` | Created on server provision |
 
 ### 2.2 Set GitHub Secrets and Variables
 
@@ -180,11 +180,11 @@ Cloudflare Edge (api-dev.usezombie.com)
 cloudflared-dev (Fly app, 2 machines for HA)
     │ Fly private network / 6PN (internal only, no public port)
     ▼
-zombied-dev.internal:3000  ← Fly anycast LB (automatic)
+agentsfleetd-dev.internal:3000  ← Fly anycast LB (automatic)
     ├── Machine 1 (iad, shared-cpu-1x 512MB)
     └── Machine 2 (iad, shared-cpu-1x 512MB)  ← auto-scaled up to N
 
-zombie-runner (host-resident daemon on a bare-metal node — NOT a Fly app)
+agentsfleet-runner (host-resident daemon on a bare-metal node — NOT a Fly app)
     └── leases work over HTTPS, sandboxes in bubblewrap, control plane over Tailscale
         (bootstrapped via 06_/07_runner_bootstrap_*; CI-deployed via deploy-dev.yml)
 ```
@@ -203,8 +203,8 @@ Agent executes via Fly CLI (see M2_002 §2.0 for full steps):
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
 # Create apps (API + tunnel connector — execution runs on the bare-metal
-# zombie-runner, not a Fly app; see 06_/07_runner_bootstrap_*)
-fly apps create zombied-dev       --org <org>
+# agentsfleet-runner, not a Fly app; see 06_/07_runner_bootstrap_*)
+fly apps create agentsfleetd-dev       --org <org>
 fly apps create cloudflared-dev   --org <org>
 
 # Set secrets from vault
@@ -217,13 +217,13 @@ fly secrets set \
   GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
   OIDC_JWKS_URL="https://winning-wombat-65.clerk.accounts.dev/.well-known/jwks.json" \
   OIDC_ISSUER="https://winning-wombat-65.clerk.accounts.dev" \
-  --app zombied-dev
+  --app agentsfleetd-dev
 
 # Deploy from GHCR
-fly deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest
+fly deploy --app agentsfleetd-dev --image ghcr.io/usezombie/agentsfleetd:dev-latest
 
 # Scale to 2 machines for HA
-fly scale count 2 --app zombied-dev
+fly scale count 2 --app agentsfleetd-dev
 ```
 
 CI triggers redeployments via `fly deploy --image` using the deploy token. Store in vault and set GitHub Actions vars:
@@ -236,7 +236,7 @@ Cloudflare Tunnel routes all traffic from `api-dev.usezombie.com` → Fly privat
 
 ```bash
 # Create tunnel (stores credentials locally; agent saves to vault)
-cloudflared tunnel create zombied-dev
+cloudflared tunnel create agentsfleetd-dev
 # Output: tunnel ID e.g. abc123...
 
 # Store tunnel credentials in vault
@@ -245,10 +245,10 @@ op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
 
 # Create DNS CNAME → tunnel (origin-shielded, no public Fly endpoint)
-cloudflared tunnel route dns zombied-dev api-dev.usezombie.com
+cloudflared tunnel route dns agentsfleetd-dev api-dev.usezombie.com
 ```
 
-`cloudflared` config deployed as a Fly app connects to `zombied-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.
+`cloudflared` config deployed as a Fly app connects to `agentsfleetd-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.
 
 Cloudflare SSL/TLS mode: **Full (Strict)**. No Transform Rules needed — the tunnel handles routing.
 
@@ -288,7 +288,7 @@ Agent reads project IDs and API token from 1Password, then upserts via the Verce
 
 After applying, **trigger a fresh redeploy per project without build cache** — `VITE_*` and `NEXT_PUBLIC_*` are inlined at build time, so existing deployments keep stale (or empty) values until they rebuild.
 
-**`usezombie-app`:**
+**`agentsfleet-app`:**
 
 | Variable | Preview | Production |
 |---|---|---|
@@ -298,7 +298,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 | `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `NEXT_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
-**`usezombie-agents-sh`** and **`usezombie-website`:**
+**`usezombie-agents-sh`** and **`agentsfleet-website`:**
 
 | Variable | Preview | Production |
 |---|---|---|
@@ -306,7 +306,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 | `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
-**`zombied` + `zombiectl`:**
+**`agentsfleetd` + `agentsfleet`:**
 
 | Variable | Preview | Production |
 |---|---|---|

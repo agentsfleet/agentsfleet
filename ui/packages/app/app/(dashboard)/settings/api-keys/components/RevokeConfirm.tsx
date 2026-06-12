@@ -1,6 +1,6 @@
 "use client";
 
-import { ConfirmDialog } from "@usezombie/design-system";
+import { ConfirmDialog } from "@agentsfleet/design-system";
 import type { ApiKeyRow } from "@/lib/api/api_keys";
 
 /** The key + which destructive action is being confirmed. */

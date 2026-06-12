@@ -28,7 +28,7 @@ const BootProbe = struct {
 
 // Read the kernel-assigned local port off a bound listener handle. Zig 0.16's
 // std.Io.net.Server exposes no getsockname; go through libc on the raw fd. (The
-// runner can't share zombied's test_port helper — separate module/binary.)
+// runner can't share agentsfleetd's test_port helper — separate module/binary.)
 fn boundPort(handle: std.Io.net.Socket.Handle) !u16 {
     // SAFETY: getsockname fills sa before sa.port is read on success; the !=0
     // branch returns an error without reading sa.
@@ -130,7 +130,7 @@ test "runner boots from a zrn_ token straight into the lease loop with no regist
         .runner_token = try alloc.dupe(u8, "zrn_" ++ "a" ** 64),
         .host_id = try alloc.dupe(u8, "boot-test-host"),
         .sandbox_tier = try alloc.dupe(u8, "dev_none"),
-        .workspace_base = try alloc.dupe(u8, "/tmp/zombie-runner-boot-test"),
+        .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-boot-test"),
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},

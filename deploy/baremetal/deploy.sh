@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — install the zombie-runner binary and restart its systemd service.
+# deploy.sh — install the agentsfleet-runner binary and restart its systemd service.
 #
 # Two modes:
 #   Local:    deploy.sh runner <version> <binary-path>
@@ -14,7 +14,7 @@
 #   DRAIN_TIMEOUT       — seconds to wait for a graceful stop (default: 120)
 #
 # Examples:
-#   deploy.sh runner v0.1.0 /opt/zombie/bin/zombie-runner
+#   deploy.sh runner v0.1.0 /opt/zombie/bin/agentsfleet-runner
 #   deploy.sh runner v0.2.0                              # downloads from GH release
 #
 # The runner holds zero datastore credentials: if it stops abruptly the control
@@ -43,15 +43,15 @@ readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/zombie/deploy"
 readonly ENV_FILE="/opt/zombie/.env"
-readonly ENV_DEST="/etc/default/zombie-runner"
+readonly ENV_DEST="/etc/default/agentsfleet-runner"
 readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
 # The single deployable component. Kept as an explicit argument so the call site
 # names what it deploys; the resolver rejects any other value (catches stale
 # callers still passing a retired component name).
 readonly COMPONENT_RUNNER="runner"
-readonly BINARY_NAME="zombie-runner"
-readonly SERVICE_NAME="zombie-runner.service"
+readonly BINARY_NAME="agentsfleet-runner"
+readonly SERVICE_NAME="agentsfleet-runner.service"
 # Release-download artifact is arch-specific. CI's local-binary mode skips this —
 # it scp's the right-arch binary and passes its path.
 case "$(uname -m)" in

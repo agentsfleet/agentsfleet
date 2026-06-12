@@ -1,6 +1,6 @@
 -- Model → context-window + per-token-rate catalogue. Public, unauthenticated
 -- read served via the cryptic-prefix endpoint (handlers/model_caps.zig). Both
--- the install-skill (platform-managed posture) and `zombiectl tenant provider
+-- the install-skill (platform-managed posture) and `agentsfleet tenant provider
 -- set` (self-managed posture) call the endpoint exactly once at provisioning time and
 -- pin the cap into the right place. The agent runtime never reads this table
 -- directly.

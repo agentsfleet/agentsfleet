@@ -48,7 +48,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key agentsfleet pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's self-managed uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../../playbooks/operations/admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the path from `zombied`'s resolver to the runner's inference call; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key agentsfleet pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's self-managed uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../../playbooks/operations/admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the path from `agentsfleetd`'s resolver to the runner's inference call; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
@@ -113,8 +113,8 @@ He runs through Scenario 02's setup:
 ```bash
 op read 'op://<vault>/fireworks/api_key' |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  zombiectl credential set account-fireworks-key --data @-
-zombiectl tenant provider set --credential account-fireworks-key
+  agentsfleet credential set account-fireworks-key --data @-
+agentsfleet tenant provider set --credential account-fireworks-key
 ```
 
 `core.tenant_providers` now has a row: `mode=self_managed`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-key`. John's agentsfleet balance is unchanged at ~150¢.
@@ -183,7 +183,7 @@ The next event (and every event after) gate-blocks identically. None of them rea
 John's experience:
 
 - His Slack stops getting diagnoses around the burst's end.
-- He runs `zombiectl billing show` and `zombiectl events <id>` (transcripts in §6).
+- He runs `agentsfleet billing show` and `agentsfleet events <id>` (transcripts in §6).
 - He opens `https://app.usezombie.com/settings/billing`, sees the empty-balance state, and emails support for a top-up. Stripe Purchase Credits ships in v2.1.
 - After support tops him up to $10 again, he can re-trigger the missed events manually if any are worth running. There is no auto-replay of gate-blocked events.
 
@@ -222,7 +222,7 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 ### 6.1 At the gate trip
 
 ```text
-$ zombiectl events zmb_01HX9N3K… --since 24h | head -3
+$ agentsfleet events zmb_01HX9N3K… --since 24h | head -3
 EVENT_ID                 ACTOR             STATUS         FAILURE_LABEL
 evt_01HXG2K4…           webhook:github    gate_blocked   balance_exhausted
 evt_01HXG2K3…           webhook:github    gate_blocked   balance_exhausted
@@ -232,7 +232,7 @@ evt_01HXG2K2…           webhook:github    gate_blocked   balance_exhausted
 ```
 
 ```text
-$ zombiectl billing show
+$ agentsfleet billing show
 Tenant balance:    $0.00 (0¢)
 
 Last 10 events drained credits:
@@ -281,14 +281,14 @@ John can flip postures at any time during his journey. The mechanics:
   ```
   op read 'op://<vault>/<item>/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-    zombiectl credential set <name> --data @-
-  zombiectl tenant provider set --credential <name>
+    agentsfleet credential set <name> --data @-
+  agentsfleet tenant provider set --credential <name>
   ```
   Next event resolves `mode=self_managed`. Drain drops from ~3¢ to 1¢ per event. The api_key is in vault; he never sees it again from any agentsfleet surface.
 
 - **self-managed → platform** (e.g. if Fireworks has a billing issue):
   ```
-  zombiectl tenant provider reset
+  agentsfleet tenant provider reset
   ```
   Next event resolves `mode=platform`. Drain jumps from 1¢ to ~3¢. If his balance is now too low for the platform-rate worst-case estimate, the gate trips on the next event — he'd see the credit-exhausted UX and need to top up.
 
@@ -321,7 +321,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 - **Same code path serves both postures.** The gate, the receive deduct, the run deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the self-managed signal.** John's agentsfleet credits last ~3× longer under self-managed than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside the lease path or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
-- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, `zombied` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
+- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, `agentsfleetd` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
 
 ---

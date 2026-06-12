@@ -7,12 +7,12 @@
 #   2. parallel matching test-unit-* lanes
 #
 # Surfaces:
-#   - test-unit-zombied        (*.zig, schema/*.sql)
-#   - test-unit-zombiectl      (zombiectl/*)
+#   - test-unit-agentsfleetd        (*.zig, schema/*.sql)
+#   - test-unit-agentsfleet      (agentsfleet/*)
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
-#   - test-unit-bundle         (tests/template-substitution/*, tests/zombiectl-postinstall/*, samples/platform-ops/*, zombiectl/scripts/postinstall.mjs)
+#   - test-unit-bundle         (tests/template-substitution/*, tests/agentsfleet-postinstall/*, samples/platform-ops/*, agentsfleet/scripts/postinstall.mjs)
 #
 # Moved to CI (.github/workflows/{test-integration,memleak}.yml):
 #   - test-integration         — worker integration vs real Postgres + Redis
@@ -47,7 +47,7 @@ while IFS= read -r f; do
   case "$f" in
     *.zig|schema/*.sql)
       needs_test_zig=1 ;;
-    zombiectl/*)
+    agentsfleet/*)
       needs_test_zombiectl=1 ;;
     ui/packages/website/*)
       needs_test_website=1 ;;
@@ -57,7 +57,7 @@ while IFS= read -r f; do
       # DS is consumed by app — test both when DS changes.
       needs_test_design_system=1
       needs_test_app=1 ;;
-    tests/template-substitution/*|tests/zombiectl-postinstall/*|samples/platform-ops/*|zombiectl/scripts/postinstall.mjs)
+    tests/template-substitution/*|tests/agentsfleet-postinstall/*|samples/platform-ops/*|agentsfleet/scripts/postinstall.mjs)
       needs_test_bundle=1 ;;
   esac
 done <<< "$pushed_files"
@@ -71,7 +71,7 @@ fi
 
 # --- Parallel test lanes -----------------------------------------------------
 # Output may interleave across lanes; each target prefixes its lines
-# ([zombied]/[app]/[website]/etc.) so the source is identifiable.
+# ([agentsfleetd]/[app]/[website]/etc.) so the source is identifiable.
 pids=()
 names=()
 
@@ -83,8 +83,8 @@ launch() {
   names+=("$name")
 }
 
-[ "$needs_test_zig"           = 1 ] && launch test-unit-zombied        make test-unit-zombied
-[ "$needs_test_zombiectl"     = 1 ] && launch test-unit-zombiectl      make test-unit-zombiectl
+[ "$needs_test_zig"           = 1 ] && launch test-unit-agentsfleetd        make test-unit-agentsfleetd
+[ "$needs_test_zombiectl"     = 1 ] && launch test-unit-agentsfleet      make test-unit-agentsfleet
 [ "$needs_test_website"       = 1 ] && launch test-unit-website        make test-unit-website
 [ "$needs_test_app"           = 1 ] && launch test-unit-app            make test-unit-app
 [ "$needs_test_design_system" = 1 ] && launch test-unit-design-system  make test-unit-design-system

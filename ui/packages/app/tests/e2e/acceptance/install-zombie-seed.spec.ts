@@ -2,7 +2,7 @@
  * install-zombie-seed.spec.ts — sanity check for the API seed helper.
  *
  * Sister to install-zombie-cli.spec.ts (canonical install path drives
- * `zombiectl install`); this spec exercises the API-seed shortcut every
+ * `agentsfleet install`); this spec exercises the API-seed shortcut every
  * later spec (lifecycle, kill, multi-zombie, multi-workspace, events,
  * logs-detail) relies on as setup. If the seed helper drifts, every
  * downstream spec fails the same way — keeping a dedicated sanity test
@@ -10,7 +10,7 @@
  *
  * Wire: fixture-user Bearer → POST /v1/workspaces/{ws}/zombies → dashboard
  * /zombies reload → assert the row renders with `data-state="live"`.
- * No `zombiectl` here.
+ * No `agentsfleet` here.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";

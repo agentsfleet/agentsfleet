@@ -57,18 +57,18 @@ Expected DEV pipeline order:
 
 1. `check-credentials`
 2. `build-dev` — cross-compiles and pushes `dev-latest` to GHCR
-3. `deploy-fly-dev` — `flyctl deploy --app zombied-dev --image ghcr.io/usezombie/zombied:dev-latest`
+3. `deploy-fly-dev` — `flyctl deploy --app agentsfleetd-dev --image ghcr.io/usezombie/agentsfleetd:dev-latest`
 4. `verify-dev` — polls `https://api-dev.usezombie.com/healthz` until 200
-5. `qa-dev` — Playwright smoke suite against `https://usezombie-app.vercel.app`
+5. `qa-dev` — Playwright smoke suite against `https://agentsfleet-app.vercel.app`
 6. `notify` — Discord
 
-> **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-dev/fly.toml` under
 > `[env]` (`API_HTTP_THREADS = "32"` — matched to prod so dev surfaces pool
 > saturation first — and `API_HTTP_WORKERS = "1"` on this 512mb box).
 > `API_HTTP_THREADS` is the per-worker handler-pool size; the one long-lived
 > handler that holds a thread for the connection's life is the SSE stream (the
 > runner lease is a non-blocking single poll). The default of `1` lets a single
-> SSE stream saturate the pool. See `deploy/fly/zombied-prod/fly.toml` for the
+> SSE stream saturate the pool. See `deploy/fly/agentsfleetd-prod/fly.toml` for the
 > full rationale. To change: edit the `[env]` block, redeploy, watch
 > handler-pool saturation on `/metrics`.
 
@@ -85,11 +85,11 @@ curl -sf https://api-dev.usezombie.com/healthz
 curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
 ```
 
-Optional operator checks (requires `zombiectl` CLI — not yet available):
+Optional operator checks (requires `agentsfleet` CLI — not yet available):
 
 ```bash
-npx zombiectl doctor
-zombied doctor --format=json
+npx agentsfleet doctor
+agentsfleetd doctor --format=json
 ```
 
 ---
@@ -112,7 +112,7 @@ No release tagging until DEV is green.
 
 ## 5.0 Evidence Capture
 
-**Status:** ✅ DONE (CI evidence; CLI evidence blocked on `zombiectl`)
+**Status:** ✅ DONE (CI evidence; CLI evidence blocked on `agentsfleet`)
 
 Captured:
 
@@ -129,18 +129,18 @@ Evidence location:
 
 ## 6.0 CLI Acceptance Gate
 
-**Status:** PENDING — blocked: `zombiectl` CLI not yet built/published
+**Status:** PENDING — blocked: `agentsfleet` CLI not yet built/published
 
 Run the full CLI acceptance flow against DEV after the pipeline is green:
 
 ```bash
 export ZOMBIE_API_URL=https://api-dev.usezombie.com
 
-npx zombiectl login
-npx zombiectl workspace add <ACCEPTANCE_REPO_URL>
-npx zombiectl specs sync docs/spec/
-npx zombiectl run
-npx zombiectl runs list
+npx agentsfleet login
+npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>
+npx agentsfleet specs sync docs/spec/
+npx agentsfleet run
+npx agentsfleet runs list
 ```
 
 Expected outcomes:
@@ -157,7 +157,7 @@ Expected outcomes:
 - ✅ DEV pipeline fully green
 - ✅ `/healthz` and `/readyz` return success
 - ✅ smoke tests pass
-- ⏳ CLI acceptance run complete (§6.0) — **blocked on `zombiectl`**
+- ⏳ CLI acceptance run complete (§6.0) — **blocked on `agentsfleet`**
 - ✅ evidence recorded (see M7_001_DEV_ACCEPTANCE.md §7.0)
 
 When all pass, continue to `playbooks/founding/05_deploy_prod/001_playbook.md`.

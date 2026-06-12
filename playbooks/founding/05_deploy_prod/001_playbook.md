@@ -92,7 +92,7 @@ The release pipeline deploys in three stages:
 4. Ensure `cloudflared-prod` tunnel is running (restart or deploy from scratch)
 5. Verify `/healthz` + `/readyz`
 
-> **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-prod/fly.toml` under
 > `[env]`, not in vault — they are tuning, not secrets. The handler pool is
 > **per worker**, so total concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`.
 > Prod runs `2 × 32 = 64` handler threads per machine (~192 across 3 machines)
@@ -147,8 +147,8 @@ Run operator checks:
 ```bash
 curl -sS https://api.usezombie.com/healthz
 curl -sS https://api.usezombie.com/readyz | jq '.queue,.ready'
-npx zombiectl login && npx zombiectl doctor
-zombied doctor --format=json
+npx agentsfleet login && npx agentsfleet doctor
+agentsfleetd doctor --format=json
 ```
 
 ---
@@ -176,11 +176,11 @@ Run the CLI smoke against PROD after `/healthz` and `/readyz` are green:
 ```bash
 export ZOMBIE_API_URL=https://api.<domain>
 
-npx zombiectl login
-npx zombiectl workspace add <ACCEPTANCE_REPO_URL>
-npx zombiectl specs sync docs/spec/
-npx zombiectl run
-npx zombiectl runs list
+npx agentsfleet login
+npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>
+npx agentsfleet specs sync docs/spec/
+npx agentsfleet run
+npx agentsfleet runs list
 ```
 
 Confirm:
@@ -193,7 +193,7 @@ Confirm:
 
 - `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod-api, deploy-prod-canary, deploy-prod-fleet all pass
 - PROD `/healthz` and `/readyz` green
-- runner hosts drained gracefully then redeployed over Tailscale SSH; `zombie-runner` systemd service active; lease queue consumed
+- runner hosts drained gracefully then redeployed over Tailscale SSH; `agentsfleet-runner` systemd service active; lease queue consumed
 - canary host verified healthy before fleet approval gate
 - CLI PROD smoke complete (§6.0)
 - evidence recorded (see M7_003_PROD_ACCEPTANCE.md §9.0)

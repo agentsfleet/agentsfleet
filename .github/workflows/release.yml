@@ -60,7 +60,7 @@ jobs:
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
-          for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
+          for bin in zig-out/bin/agentsfleetd zig-out/bin/agentsfleet-runner; do
             test -f "$bin"
             if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
               echo "FAIL: $bin has dynamic NEEDED entries"
@@ -77,27 +77,27 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied       dist/zombied-linux-amd64
-          cp zig-out/bin/zombie-runner dist/zombie-runner-linux-amd64
-          chmod +x dist/zombied-linux-amd64 dist/zombie-runner-linux-amd64
-          tar czf dist/zombied-linux-amd64.tar.gz -C dist zombied-linux-amd64
-          tar czf dist/zombie-runner-linux-amd64.tar.gz -C dist zombie-runner-linux-amd64
+          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-amd64
+          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
+          chmod +x dist/agentsfleetd-linux-amd64 dist/agentsfleet-runner-linux-amd64
+          tar czf dist/agentsfleetd-linux-amd64.tar.gz -C dist agentsfleetd-linux-amd64
+          tar czf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist agentsfleet-runner-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-linux-amd64
-          path: dist/zombied-linux-amd64.tar.gz
+          name: agentsfleetd-linux-amd64
+          path: dist/agentsfleetd-linux-amd64.tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombie-runner-linux-amd64
-          path: dist/zombie-runner-linux-amd64.tar.gz
+          name: agentsfleet-runner-linux-amd64
+          path: dist/agentsfleet-runner-linux-amd64.tar.gz
 
       # Upload unpackaged binary for runtime compat verification job below.
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-linux-amd64-ci
-          path: dist/zombied-linux-amd64
+          name: agentsfleetd-linux-amd64-ci
+          path: dist/agentsfleetd-linux-amd64
           retention-days: 1
 
   # ── 1b. Runtime compat: verify release x86_64 binary runs on all target envs ──
@@ -109,32 +109,32 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: zombied-linux-amd64-ci
+          name: agentsfleetd-linux-amd64-ci
           path: dist
 
       - name: Make binary executable
-        run: chmod +x dist/zombied-linux-amd64
+        run: chmod +x dist/agentsfleetd-linux-amd64
 
       - name: Verify in debian:bookworm-slim (Fly.io target)
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/dist:/test:ro" \
             debian:bookworm-slim \
-            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ bookworm-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in bookworm-slim"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ bookworm-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in bookworm-slim"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
 
       - name: Verify in alpine:3.21 (musl-native)
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/dist:/test:ro" \
             mirror.gcr.io/library/alpine:3.21 \
-            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -qiE "not a dynamic|Not a valid dynamic" && echo "✓ alpine: static binary confirmed" || (echo "FAIL: dynamic deps found in alpine"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -qiE "not a dynamic|Not a valid dynamic" && echo "✓ alpine: static binary confirmed" || (echo "FAIL: dynamic deps found in alpine"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
 
       - name: Verify in debian:trixie-slim (bare-metal worker target)
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/dist:/test:ro" \
             debian:trixie-slim \
-            sh -c 'ldd /test/zombied-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ trixie-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in trixie-slim"; ldd /test/zombied-linux-amd64 2>&1; exit 1)'
+            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ trixie-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in trixie-slim"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
 
   # ── 1c. aarch64 binary: bare runner + docker run alpine ───────────────
   # JS actions cannot run inside Alpine containers on ARM64 runners.
@@ -162,10 +162,10 @@ jobs:
               set -e
               cp -a /src/. /build
               cd /build
-              echo "  compiling zombied + zombie-runner (aarch64-linux)..."
+              echo "  compiling agentsfleetd + agentsfleet-runner (aarch64-linux)..."
               zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
               zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
-              for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
+              for bin in zig-out/bin/agentsfleetd zig-out/bin/agentsfleet-runner; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
                   echo "FAIL: $bin has dynamic NEEDED entries"
@@ -178,28 +178,28 @@ jobs:
                 fi
                 echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
               done
-              cp zig-out/bin/zombied       /zig-out/bin/zombied
-              cp zig-out/bin/zombie-runner /zig-out/bin/zombie-runner
+              cp zig-out/bin/agentsfleetd       /zig-out/bin/agentsfleetd
+              cp zig-out/bin/agentsfleet-runner /zig-out/bin/agentsfleet-runner
             '
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied       dist/zombied-linux-arm64
-          cp zig-out/bin/zombie-runner dist/zombie-runner-linux-arm64
-          chmod +x dist/zombied-linux-arm64 dist/zombie-runner-linux-arm64
-          tar czf dist/zombied-linux-arm64.tar.gz -C dist zombied-linux-arm64
-          tar czf dist/zombie-runner-linux-arm64.tar.gz -C dist zombie-runner-linux-arm64
+          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-arm64
+          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-arm64
+          chmod +x dist/agentsfleetd-linux-arm64 dist/agentsfleet-runner-linux-arm64
+          tar czf dist/agentsfleetd-linux-arm64.tar.gz -C dist agentsfleetd-linux-arm64
+          tar czf dist/agentsfleet-runner-linux-arm64.tar.gz -C dist agentsfleet-runner-linux-arm64
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-linux-arm64
-          path: dist/zombied-linux-arm64.tar.gz
+          name: agentsfleetd-linux-arm64
+          path: dist/agentsfleetd-linux-arm64.tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombie-runner-linux-arm64
-          path: dist/zombie-runner-linux-arm64.tar.gz
+          name: agentsfleet-runner-linux-arm64
+          path: dist/agentsfleet-runner-linux-arm64.tar.gz
 
   binaries-macos:
     needs: verify-tag
@@ -221,14 +221,14 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied dist/zombied-darwin-arm64
-          chmod +x dist/zombied-darwin-arm64
-          tar czf dist/zombied-darwin-arm64.tar.gz -C dist zombied-darwin-arm64
+          cp zig-out/bin/agentsfleetd dist/agentsfleetd-darwin-arm64
+          chmod +x dist/agentsfleetd-darwin-arm64
+          tar czf dist/agentsfleetd-darwin-arm64.tar.gz -C dist agentsfleetd-darwin-arm64
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-darwin-arm64
-          path: dist/zombied-darwin-arm64.tar.gz
+          name: agentsfleetd-darwin-arm64
+          path: dist/agentsfleetd-darwin-arm64.tar.gz
 
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   push-prod:
@@ -242,20 +242,20 @@ jobs:
       - name: Download linux/amd64 binary
         uses: actions/download-artifact@v8
         with:
-          name: zombied-linux-amd64
+          name: agentsfleetd-linux-amd64
           path: dist
 
       - name: Download linux/arm64 binary
         uses: actions/download-artifact@v8
         with:
-          name: zombied-linux-arm64
+          name: agentsfleetd-linux-arm64
           path: dist
 
       - name: Extract binaries
         run: |
           cd dist
-          tar xzf zombied-linux-amd64.tar.gz
-          tar xzf zombied-linux-arm64.tar.gz
+          tar xzf agentsfleetd-linux-amd64.tar.gz
+          tar xzf agentsfleetd-linux-arm64.tar.gz
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -281,7 +281,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        working-directory: zombiectl
+        working-directory: agentsfleet
     steps:
       - uses: actions/checkout@v6
 
@@ -425,8 +425,8 @@ jobs:
         run: |
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
-            --image ghcr.io/usezombie/zombied:latest \
-            --config deploy/fly/zombied-prod/fly.toml \
+            --image ghcr.io/usezombie/agentsfleetd:latest \
+            --config deploy/fly/agentsfleetd-prod/fly.toml \
             --wait-timeout 120
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
@@ -442,7 +442,7 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
       - name: Ensure cloudflared-prod tunnel is running
-        # cloudflared-prod bridges Cloudflare Edge to zombied-prod.internal:3000 over 6PN.
+        # cloudflared-prod bridges Cloudflare Edge to agentsfleetd-prod.internal:3000 over 6PN.
         # If its machines are stopped/crashed, every /healthz poll returns status=000.
         # Restart stopped machines or deploy from scratch if no machines exist.
         # Sync TUNNEL_TOKEN from vault on every deploy so a rotated secret is always

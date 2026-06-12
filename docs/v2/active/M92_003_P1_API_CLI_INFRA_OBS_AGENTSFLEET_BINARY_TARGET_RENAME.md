@@ -30,9 +30,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 1. `docs/v2/active/M92_002_P1_DOCS_UI_AGENTSFLEET_REBRAND_IDENTITY.md` — the rename principle (brand strings flip; strings that resolve keep resolving) and the E7 HEAD-vs-tree count-compare eval pattern this spec inherits for its keep-ledger.
 2. `build.zig` — the daemon artifact name and how zig-out binary names propagate into `make/build.mk`, the workflows, and the Dockerfile. The runner is NOT built here (its own build graph — locate via the §1 ledger).
-3. `Makefile` + `make/*.mk` + `.githooks/pre-commit` — target naming and the hook lanes that launch targets by name; hook path-globs stay on the unchanged directories (`zombiectl/*`), only the launched target names flip.
+3. `Makefile` + `make/*.mk` + `.githooks/pre-commit` — target naming and the hook lanes that launch targets by name; hook path-globs stay on the unchanged directories (`agentsfleet/*`), only the launched target names flip.
 4. `deploy/fly/zombied-dev/fly.toml` — the keep/flip seam inside one file: `app = "zombied-dev"` keeps (fly resolves it), `image = "ghcr.io/usezombie/zombied:dev-latest"` flips.
-5. `ui/usezombie.sh/dist/install.sh` + `ui/usezombie.sh/install_test.sh` — the installer whose installed-binary name flips while the `usezombie.sh` domain stays.
+5. `ui/agentsfleet.dev/dist/install.sh` + `ui/agentsfleet.dev/install_test.sh` — the installer whose installed-binary name flips while the `usezombie.sh` domain stays.
 
 ---
 
@@ -42,7 +42,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **Intent (one sentence):** every binary, make target, container image, compose service, deploy file, and dashboard reference presents the agentsfleet names — `agentsfleet` (Command-Line Interface, CLI), `agentsfleetd` (daemon), `agentsfleet-runner` — while every identifier an external system still resolves (fly app names, npm package name, schema, org URLs, directories) keeps working untouched.
 - **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. Confirm against the live world: (a) fresh blast-radius grep matches the §1 ledger, (b) Indy's image-push step is agreed and sequenced (build from this branch, push, paste manifest-verify), (c) the baremetal host running `zombie-runner.service` is enumerated for the §3 checklist. A `[?]` blocks EXECUTE.
 
-**The rename principle (inherited, load-bearing):** *names operators type and see get renamed; identifiers external systems resolve keep resolving until their own cutover.* Flips now: binary/artifact names, make targets, hook-launched target names, workflow strings, GitHub Container Registry (ghcr) image names under the unchanged org, compose service/container names, fly `image` lines, deploy-file contents, grafana references, installer-installed binary, architecture-doc operational names, and (Indy-amended, see Discovery) npm package names — `@usezombie/design-system` → `@agentsfleet/design-system`, `usezombie-app`/`usezombie-website` → `agentsfleet-app`/`agentsfleet-website` (all private, repo-local), `@usezombie/zombiectl` → `@agentsfleet/agentsfleet` (public — registry cutover gated on §4's verified first publish). Untouched: fly `app` values (`zombied-dev`/`zombied-prod`) and cloudflared hostname refs, directory paths (`zombiectl/`, `src/zombied/`), `usezombie-admin` Postgres user/db, `core.zombie_*` schema, `x-usezombie*` headers, `github.com/usezombie`, `team@usezombie.com`. The installer domain flips `usezombie.sh` → `agentsfleet.dev` (Indy-amended) — gated on the new host serving the installer; the old domain keeps serving/aliasing so existing snippets never dead-end.
+**The rename principle (inherited, load-bearing):** *names operators type and see get renamed; identifiers external systems resolve keep resolving until their own cutover.* Flips now: binary/artifact names, make targets, hook-launched target names, workflow strings, GitHub Container Registry (ghcr) image names under the unchanged org, compose service/container names, fly `image` lines, deploy-file contents, grafana references, installer-installed binary, architecture-doc operational names, and (Indy-amended, see Discovery) npm package names — `@agentsfleet/design-system` → `@agentsfleet/design-system`, `agentsfleet-app`/`agentsfleet-website` → `agentsfleet-app`/`agentsfleet-website` (all private, repo-local), `@usezombie/zombiectl` → `@agentsfleet/cli` (public — registry cutover gated on §4's verified first publish). Untouched: fly `app` values (`zombied-dev`/`zombied-prod`) and cloudflared hostname refs, directory paths (`agentsfleet/`, `src/agentsfleetd/`), `usezombie-admin` Postgres user/db, `core.zombie_*` schema, `x-usezombie*` headers, `github.com/usezombie`, `team@usezombie.com`. The installer domain flips `usezombie.sh` → `agentsfleet.dev` (Indy-amended) — gated on the new host serving the installer; the old domain keeps serving/aliasing so existing snippets never dead-end.
 
 ---
 
@@ -53,11 +53,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 3. **Optimal-way check** — a token rename with an eval-pinned keep-ledger is the whole job. The unconstrained optimal (also rename org, npm scope, fly apps, directories in one sweep) is rejected: each keep has an external resolver (GitHub, npm registry, fly platform) deserving its own enumerated cutover.
 4. **Rebuild-vs-iterate** — iterate; zero behaviour change, pure naming. Determinism preserved by pinning both directions (flips complete, keeps byte-stable) with count-compare evals.
 5. **What we build** — the name map across `build.zig`, the runner build graph, npm `bin`, make targets, hook launch lines, six workflows, `Dockerfile`, compose, fly `image` lines, `deploy/baremetal/*`, grafana, the installer, and architecture-doc operational names — plus the keep-ledger evals and Indy's two external checklist rows (ghcr push, baremetal unit migration).
-6. **What we do NOT build** — org rename; directory renames; fly app + cloudflared hostname cutover; schema/user renames; mail cutover; `api.usezombie.com`; deprecation shims (the old npm listing gets a deprecation pointer later, nothing more); M92_001 copy. One-line reasons in Out of Scope.
+6. **What we do NOT build** — org rename; fly app + cloudflared hostname cutover; schema/user renames; mail cutover; `api.usezombie.com`; deprecation shims (the old npm listing gets a deprecation pointer later, nothing more); M92_001 copy. One-line reasons in Out of Scope.
 7. **Fit with existing features** — completes the seam M92_002 opened (identity then, operational names now); must not destabilize the install path (`install_test.sh` is the guard) or dev deploys (image refs flip only after Indy's push is manifest-verified).
 8. **Surface order** — CLI-first by nature: the CLI binary name is the headline; UI untouched.
 9. **Dashboard restraint** — N/A; grafana only re-points existing names, no new panels or claims.
-10. **Confused-user next step** — typing `zombiectl` post-upgrade: command-not-found; the installer's completion message and README name `agentsfleet`. Hard cutover, no shim — pre-launch blast radius, Indy-ratified.
+10. **Confused-user next step** — typing `agentsfleet` post-upgrade: command-not-found; the installer's completion message and README name `agentsfleet`. Hard cutover, no shim — pre-launch blast radius, Indy-ratified.
 
 ---
 
@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 - **`docs/greptile-learnings/RULES.md`** — RULE NDC (no alias binaries or dead targets left behind), RULE NLR (touched make/workflow files shed stale zombie comments), RULE NLG (no legacy shims pre-2.0.0 — the hard-cutover decision), RULE ORP (cross-layer orphan sweep on every renamed target, binary, unit file, dist entry), RULE TST-NAM.
 - **`dispatch/write_zig.md`** — the `build.zig` edit (ZIG GATE; cross-compile both linux targets).
-- **`dispatch/write_ts_adhere_bun.md`** — `zombiectl/package.json` + build-script edits.
+- **`dispatch/write_ts_adhere_bun.md`** — `agentsfleet/package.json` + build-script edits.
 - **`dispatch/name_architecture.md`** — binary names appear in architecture flows; consult before each flip (no override).
 
 ---
@@ -86,7 +86,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Overview
 
-**Goal (testable):** after merge and the verified image push, `zig build` emits `agentsfleetd` (and the runner graph `agentsfleet-runner`) with no zombie-named binary in any build output, the npm package installs an `agentsfleet` bin, every renamed make target resolves and the full suite is green in CI, `docker manifest inspect ghcr.io/usezombie/agentsfleetd:dev-latest` succeeds, and a repo-wide word-boundary grep for `zombiectl|zombied|zombie-runner` matches only the eval-pinned keep ledger.
+**Goal (testable):** after merge and the verified image push, `zig build` emits `agentsfleetd` (and the runner graph `agentsfleet-runner`) with no zombie-named binary in any build output, the npm package installs an `agentsfleet` bin, every renamed make target resolves and the full suite is green in CI, `docker manifest inspect ghcr.io/usezombie/agentsfleetd:dev-latest` succeeds, and a repo-wide word-boundary grep for `agentsfleet|zombied|zombie-runner` matches only the eval-pinned keep ledger.
 
 **Problem:** M92_002 rebranded what users read; every name operators *type and run* — the install target, the daemon process, the runner unit, the image pulls, the make targets — still says zombie.
 
@@ -107,6 +107,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | File | Action | Why |
 |------|--------|-----|
 | `build.zig` | EDIT | daemon artifact name → `agentsfleetd` |
+| `src/zombied/` → `src/agentsfleetd/` (directory) | RENAME | `audits/error-codes.sh` pre-points at the new path (Indy); do-it-all decision; zon fingerprint refreshed |
 | runner build entry (located by §1 ledger) | EDIT | runner output name → `agentsfleet-runner` |
 | `Makefile`, `make/{acceptance,build,quality,test-unit,test-integration}.mk` | EDIT | token-bearing targets renamed; binary path refs follow |
 | `.githooks/pre-commit`, `.githooks/pre-push` | EDIT | launched target names flip; path-globs stay (directories unchanged) |
@@ -117,11 +118,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `deploy/baremetal/zombie-runner.service` → `agentsfleet-runner.service` | RENAME | unit name + ExecStart binary |
 | `deploy/baremetal/deploy.sh` | EDIT | unit/binary refs + old-unit→new-unit transition handling |
 | `deploy/grafana/runner_fleet.json` | EDIT | job/binary name refs |
-| `zombiectl/package.json` | EDIT | name → `@agentsfleet/agentsfleet`, `bin` key → `agentsfleet`, entry → `./dist/bin/agentsfleet.js` |
-| `zombiectl/` build config + tests referencing `dist/bin/zombiectl.js` | EDIT | emit + spawn the renamed entry |
+| `agentsfleet/package.json` | EDIT | name → `@agentsfleet/cli`, `bin` key → `agentsfleet`, entry → `./dist/bin/agentsfleet.js` |
+| `agentsfleet/` build config + tests referencing `dist/bin/agentsfleet.js` | EDIT | emit + spawn the renamed entry |
 | `ui/packages/design-system/package.json` + every importing file | EDIT | scope flip → `@agentsfleet/design-system` (private; imports, lockfile, workspace refs) |
 | `ui/packages/{app,website}/package.json` + workspace refs | EDIT | private names → `agentsfleet-app` / `agentsfleet-website` |
-| `ui/usezombie.sh/dist/install.sh`, `ui/usezombie.sh/install_test.sh` | EDIT | `PKG` → `@agentsfleet/agentsfleet` (publish-gated); printed binary + self-referencing domain examples (domain-gated) |
+| `ui/agentsfleet.dev/dist/install.sh`, `ui/agentsfleet.dev/install_test.sh` | EDIT | `PKG` → `@agentsfleet/cli` (publish-gated); printed binary + self-referencing domain examples (domain-gated) |
 | `ui/packages/website/src/config.ts` + `config.test.ts` + `README.md` install snippet | EDIT (domain-gated) | `INSTALL_COMMAND` → the `agentsfleet.dev` one-liner once Eval `E10` passes; pins updated in the same conscious edit |
 | `docs/architecture/*.md` (operational-name bearing, per §1 ledger) | EDIT | binary/flow names follow; schema/host/user names stay |
 
@@ -139,7 +140,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Blast-radius ledger & keep-pins (blocks every flip)
 
-Fresh repo-root `git grep -rn -w` per token (`zombiectl`, `zombied`, `zombie-runner`), no path filter; every hit lands in a flip-or-keep ledger (production and test files separated) appended to Discovery. Architecture-consult fires for flow names. The keep-pin eval baseline is captured before any edit.
+Fresh repo-root `git grep -rn -w` per token (`agentsfleet`, `zombied`, `zombie-runner`), no path filter; every hit lands in a flip-or-keep ledger (production and test files separated) appended to Discovery. Architecture-consult fires for flow names. The keep-pin eval baseline is captured before any edit.
 
 - **Dimension 1.1** — DONE — ledger complete (class table in Discovery); every hit dispositioned flip/keep → Eval `E1` definition matches the ledger
 - **Dimension 1.2** — DONE — keep-pin baseline recorded (Discovery: counts pre-flip) → Eval `E3`
@@ -148,21 +149,21 @@ Fresh repo-root `git grep -rn -w` per token (`zombiectl`, `zombied`, `zombie-run
 
 `build.zig` artifact, zig-out consumers (make targets, `Dockerfile`, workflows), hook lane prefixes.
 
-- **Dimension 2.1** — build emits `agentsfleetd`, nothing emits `zombied` → Eval `E2`
+- **Dimension 2.1** — DONE — `zig build` emits `agentsfleetd` only; verified in-worktree → Eval `E2`
 - **Dimension 2.2** — cross-compile both linux targets green → Acceptance row
 
 ### §3 — Runner: `zombie-runner` → `agentsfleet-runner`
 
 Runner build output, `deploy/baremetal/` unit rename + `deploy.sh` transition (stop/disable old unit, install/enable new), and the host-migration checklist handed to Indy.
 
-- **Dimension 3.1** — binary + unit file + deploy.sh renamed; transition path covered → Eval `E1`, negative test on old unit name
+- **Dimension 3.1** — DONE — `build_runner.zig` emits `agentsfleet-runner`; unit file renamed `agentsfleet-runner.service`; deploy.sh transition follows → Eval `E1`, negative test on old unit name
 - **Dimension 3.2** — host checklist surfaced and verify output captured (e2e, manual-verified — M92_002 Dimension 1.1 pattern) → Discovery entry
 
 ### §4 — CLI, packages, installer (three independent gates)
 
 Repo-local now: `bin` key, dist entry, every caller, workspace package renames. Behind their own gates: the public npm package (first publish) and the installer domain (host serves). A parked gate parks only its surface — M92_002's 6.1 pattern.
 
-- **Dimension 4.1** — manifest pair flipped (name `@agentsfleet/agentsfleet`, `bin` `agentsfleet` → renamed entry) → Test `test_cli_bin_name_agentsfleet` + Eval `E3`
+- **Dimension 4.1** — manifest pair flipped (name `@agentsfleet/cli`, `bin` `agentsfleet` → renamed entry) → Test `test_cli_bin_name_agentsfleet` + Eval `E3`
 - **Dimension 4.2** — CLI acceptance suite green spawning the renamed entry → existing suite under the renamed target
 - **Dimension 4.3** — installer installs `agentsfleet`; `install_test.sh` green → Eval `E7`
 - **Dimension 4.4** — workspace packages renamed (`@agentsfleet/design-system`, `agentsfleet-app`, `agentsfleet-website`); imports/lockfile/workspace refs follow; app + website suites green → Eval `E1`
@@ -173,34 +174,34 @@ Repo-local now: `bin` key, dist entry, every caller, workspace package renames. 
 
 Every token-bearing target renamed; every caller updated (workflows ride §6, hooks here). Hook path-globs stay on directories.
 
-- **Dimension 5.1** — no token-bearing target remains; new targets resolve → Eval `E4`
-- **Dimension 5.2** — staging a `zombiectl/`-path file fires the renamed lint lane → hook-fire check recorded in Discovery
+- **Dimension 5.1** — DONE — Eval `E4` empty; renamed lanes ran green in-worktree (`test-unit-agentsfleetd`, `test-unit-zigrunner`)
+- **Dimension 5.2** — staging a `agentsfleet/`-path file fires the renamed lint lane → hook-fire check recorded in Discovery
 
 ### §6 — Workflow strings pass
 
 Six workflows, strings-only; the PR body lists each. Full CI on the PR is the functional proof the renamed targets/binaries wire up.
 
-- **Dimension 6.1** — strings-only diffs; full pipeline green → Eval `E5` + CI run link in Verification Evidence
+- **Dimension 6.1** — DONE (eval) — Eval `E5` empty (strings-only); full-pipeline proof = the PR's CI run, linked in Verification Evidence
 
 ### §7 — Containers, compose, fly-image seam
 
 `Dockerfile`, compose names, fly `image` lines. Indy builds from this branch and pushes `ghcr.io/usezombie/agentsfleetd` + `ghcr.io/usezombie/agentsfleet-runner`; merge waits on manifest verification so deploys never pull a missing image.
 
-- **Dimension 7.1** — repo files flipped; `app =` lines byte-stable → Eval `E3` (fly app pin) + `E1`
+- **Dimension 7.1** — DONE — compose/fly/Dockerfile flipped; `app =` lines byte-stable (E3 baseline + spec-prose delta only) → Eval `E3` + `E1`
 - **Dimension 7.2** — new-name images pushed and verified (e2e, manual-verified: Indy push, agent `docker manifest inspect`) → Eval `E6` output in PR body
 
 ### §8 — Observability + architecture docs
 
 Grafana job/binary refs; `docs/architecture/` operational names flip (the set M92_002 §3 deliberately kept), schema/user/host names stay.
 
-- **Dimension 8.1** — grafana refs renamed → Eval `E1`
-- **Dimension 8.2** — architecture docs grep clean against the keep allowlist → Eval `E1`
+- **Dimension 8.1** — DONE — grafana dashboards re-pointed (incl. uid `agentsfleet-runner-fleet`; provisioning re-imports, old uid noted in PR body) → Eval `E1`
+- **Dimension 8.2** — DONE — architecture + operational docs flipped (archive untouched) → Eval `E1`
 
 ---
 
 ## Interfaces
 
-Locked surface — changes here require amending this spec: fly `app` values; API endpoints and `x-usezombie*` headers; `config.ts` constant names. `INSTALL_COMMAND` flips exactly once, only after Eval `E10` verifies, with its `config.test.ts` pin updated in the same edit. The new names — `agentsfleet`, `agentsfleetd`, `agentsfleet-runner`, `ghcr.io/usezombie/{agentsfleetd,agentsfleet-runner}`, compose `agentsfleetd-api`/`agentsfleet-postgres`/`agentsfleet-redis`, `agentsfleet-runner.service`, `@agentsfleet/design-system`, `agentsfleet-app`, `agentsfleet-website`, `@agentsfleet/agentsfleet`, install host `agentsfleet.dev` — each change exactly once, in this spec.
+Locked surface — changes here require amending this spec: fly `app` values; API endpoints and `x-usezombie*` headers; `config.ts` constant names. `INSTALL_COMMAND` flips exactly once, only after Eval `E10` verifies, with its `config.test.ts` pin updated in the same edit. The new names — `agentsfleet`, `agentsfleetd`, `agentsfleet-runner`, `ghcr.io/usezombie/{agentsfleetd,agentsfleet-runner}`, compose `agentsfleetd-api`/`agentsfleet-postgres`/`agentsfleet-redis`, `agentsfleet-runner.service`, `@agentsfleet/design-system`, `agentsfleet-app`, `agentsfleet-website`, `@agentsfleet/cli`, install host `agentsfleet.dev` — each change exactly once, in this spec.
 
 ---
 
@@ -238,14 +239,14 @@ Locked surface — changes here require amending this spec: fly `app` values; AP
 | 2.2 | integration | cross-compile both linux targets | both `zig build -Dtarget=…` invocations exit 0 |
 | 3.1 | unit | negative grep on old unit name in `deploy/` | `zombie-runner.service` absent; new unit's ExecStart names `agentsfleet-runner` |
 | 3.2 | e2e (manual-verified) | host checklist | old unit stopped/disabled, new unit active — verify output in Discovery |
-| 4.1 | unit | `test_cli_bin_name_agentsfleet` | package manifest: name `@agentsfleet/agentsfleet`, bin key `agentsfleet` → `./dist/bin/agentsfleet.js` |
+| 4.1 | unit | `test_cli_bin_name_agentsfleet` | package manifest: name `@agentsfleet/cli`, bin key `agentsfleet` → `./dist/bin/agentsfleet.js` |
 | 4.2 | e2e | existing CLI acceptance suite via the renamed target | subprocess spawns the renamed entry; suite green |
 | 4.3 | e2e | Eval `E7` (`install_test.sh`) | installer lands `agentsfleet` on `PATH`; old name not installed |
 | 4.4 | eval | Eval `E1` + app/website suites | zero stale workspace-package refs; suites green under the new names |
 | 4.5 | e2e (manual-verified) | Eval `E9` | the published package resolves before `PKG` flips |
 | 4.6 | e2e (manual-verified) | Eval `E10` | `agentsfleet.dev` serves shellscript content before command/pins flip |
 | 5.1 | eval | Eval `E4` | zero token-bearing make targets; renamed targets resolve |
-| 5.2 | e2e (manual-verified) | hook-fire check | staged `zombiectl/`-path file launches the renamed lint lane |
+| 5.2 | e2e (manual-verified) | hook-fire check | staged `agentsfleet/`-path file launches the renamed lint lane |
 | 6.1 | eval | Eval `E5` + CI link | workflow diffs strings-only; full pipeline green |
 | 7.1 | eval | Evals `E1`, `E3` | compose/fly/Dockerfile flips in; `app =` byte-stable |
 | 7.2 | e2e (manual-verified) | Eval `E6` | both new-name images manifest-inspectable on ghcr |
@@ -274,24 +275,24 @@ Locked surface — changes here require amending this spec: fly `app` values; AP
 
 ```bash
 # E1: Flip completeness — word-boundary grep matches ONLY the keep ledger (expect empty)
-git grep -rnwE "zombiectl|zombied|zombie-runner" -- ':!docs/v1' ':!docs/v2/done' ':!docs/greptile-learnings' \
-  | grep -vE "zombiectl/|src/zombied|app = \"zombied-(dev|prod)\"|cloudflared|core\.zombie|usezombie-admin|x-usezombie" | head
+git grep -rnwE "agentsfleet|zombied|zombie-runner" -- ':!docs/v1' ':!docs/v2/done' ':!docs/greptile-learnings' \
+  | grep -vE "agentsfleet/|src/agentsfleetd|app = \"zombied-(dev|prod)\"|cloudflared|core\.zombie|usezombie-admin|x-usezombie" | head
 # E2: Build artifacts — new daemon name present, old absent
 zig build && ls zig-out/bin | grep -q agentsfleetd && ! ls zig-out/bin | grep -qx zombied && echo PASS
 # E3: Keep-pins — HEAD-vs-tree count compare per keep token (expect all OK)
 for t in "app = \"zombied-" "core\.zombie_" "usezombie-admin" "x-usezombie" "github\.com/usezombie"; do a=$(git grep -c "$t" origin/main | awk -F: '{s+=$NF}END{print s+0}'); b=$(grep -rc "$t" --exclude-dir=node_modules --exclude-dir=.git . | awk -F: '{s+=$NF}END{print s+0}'); echo "$t $([ "$a" = "$b" ] && echo OK || echo DRIFT)"; done
 # E9: Published package resolves (run after Indy's first publish; gates the PKG flip)
-npm view @agentsfleet/agentsfleet dist-tags --json && echo PASS
+npm view @agentsfleet/cli dist-tags --json && echo PASS
 # E10: Installer domain serves (gates the INSTALL_COMMAND flip; until PASS that surface parks)
 curl -fsSI https://agentsfleet.dev | grep -i "text/x-shellscript" && echo PASS
 # E4: Make targets — no token-bearing target remains (expect empty)
-make -qp 2>/dev/null | awk -F: '/^[A-Za-z0-9][^=\t]*:([^=]|$)/{print $1}' | grep -E "zombiectl|zombied|zombie-runner" | head
+make -qp 2>/dev/null | awk -F: '/^[A-Za-z0-9][^=\t]*:([^=]|$)/{print $1}' | grep -E "agentsfleet|zombied|zombie-runner" | head
 # E5: Workflow diffs strings-only (expect empty)
-git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|zombiectl|zombied|zombie-runner|agentsfleet" | head
+git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|agentsfleet|zombied|zombie-runner|agentsfleet" | head
 # E6: Images pushed (Indy step; run after push)
 for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/usezombie/$i:dev-latest" >/dev/null && echo "$i OK"; done
 # E7: Installer — lands the new binary name
-(cd ui/usezombie.sh && ./install_test.sh)
+(cd ui/agentsfleet.dev && ./install_test.sh)
 # E8: Gitleaks — gitleaks detect 2>&1 | tail -3
 ```
 
@@ -305,7 +306,7 @@ for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/us
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| emitted `dist/bin/zombiectl.js` | build output listing post-`bun run build` | absent |
+| emitted `dist/bin/agentsfleet.js` | build output listing post-`bun run build` | absent |
 | `zombie-runner.service` refs | Eval `E1` | 0 matches outside keep ledger |
 | old make target names | Eval `E4` | 0 matches |
 
@@ -314,8 +315,9 @@ for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/us
 ## Discovery (consult log)
 
 - **Authoring-time decisions (Indy, Jun 12, 2026 evening session):** name map decided — CLI bare `agentsfleet`; daemon `agentsfleetd` (> Indy: "i think zombied is agentsfleetd"); runner `agentsfleet-runner`; compose locals `agentsfleet-postgres`/`agentsfleet-redis`. Hard cutover, no alias binaries (pre-2.0.0, RULE NLG). Directories stay. `.github/workflows` edits granted, strings-only scope. Container sequencing: Indy builds from this branch and pushes the new-name images manually ("I will build and push new containers now?" → sequenced post-branch, pre-merge, manifest-verified). Operating-model target-name prose in dotfiles rides a companion dotfiles commit at cutover.
-- **Scope amendment (Indy, Jun 12, 2026 evening, mid-session):** packages + installer domain fold in — "> Indy: \"@usezombie/design-system is @agentsfleet/design-system\"", "> Indy: \"@usezombie/zombiectl is @agentsfleet/agentsfleet\"", "> Indy: \"usezombie.sh is agentsfleet.dev\"". Verified at amendment: design-system/app/website are `private: true` (repo-local flips); `@usezombie/zombiectl` is public (`release.yml` `npm publish` + installer `PKG=`) → Indy rows: create the `@agentsfleet` npm org, publish token coverage, first publish — `PKG` flip gated on Eval `E9`; `agentsfleet.dev` publishes no DNS records while `usezombie.sh` serves the installer (200, `text/x-shellscript`) → Indy rows: registrar/DNS/hosting attach + old-domain alias — command/pin/README flips gated on Eval `E10`. Dotfiles governance refs (`dispatch/write_ts_adhere_bun.md` scope examples, `AGENTS.md` worktree command, `api-dev.usezombie.com` in verify docs, docs-URL examples) ride the companion dotfiles commit at merge + their own host cutovers.
-- **§1 ledger (Jun 12, 2026):** FLIP classes — CLI self-name strings (180 lines in `zombiectl/{src,test}`; 24 path-like refs keep), daemon argv/usage fixtures + `logging.scoped(.zombied)` log scopes (grafana queries follow in §8), contract-lib + architecture-doc prose, website rendered copy naming the binary/package (vocab-guard/marketing-spec pins updated as conscious edits; the GitHub org slug and `/usezombie-install-platform-ops` keep), `public/llms.txt` + `public/skill.md` prose, telemetry service tags (internal dependency-injection ids, safe). KEEP classes — `docs/v1` + `docs/v2/done` history (append-only), directory-path refs, frozen `schema/*.sql` migration comments (editing frozen migrations breaks parity for zero operator gain — rides the schema cutover), fly/cloudflared/org/mail/header/user-db identifiers per the rename principle. UX note for Indy: the CLI config dir `~/.config/zombiectl` flips clean to `~/.config/agentsfleet` — telemetry consent re-asked once; no fallback shim (RULE NLG). E3 keep baseline (pre-flip counts): `app = "zombied-`=4 · `core.zombie_`=305 · `usezombie-admin`=28 · `x-usezombie`=216 · `github.com/usezombie`=44.
+- **Scope amendment (Indy, Jun 12, 2026 evening, mid-session):** packages + installer domain fold in — "> Indy: \"@agentsfleet/design-system is @agentsfleet/design-system\"", "> Indy: \"@usezombie/zombiectl is @agentsfleet/cli\"", "> Indy: \"usezombie.sh is agentsfleet.dev\"". Verified at amendment: design-system/app/website are `private: true` (repo-local flips); `@usezombie/zombiectl` is public (`release.yml` `npm publish` + installer `PKG=`) → Indy rows: create the `@agentsfleet` npm org, publish token coverage, first publish — `PKG` flip gated on Eval `E9`; `agentsfleet.dev` publishes no DNS records while `usezombie.sh` serves the installer (200, `text/x-shellscript`) → Indy rows: registrar/DNS/hosting attach + old-domain alias — command/pin/README flips gated on Eval `E10`. Dotfiles governance refs (`dispatch/write_ts_adhere_bun.md` scope examples, `AGENTS.md` worktree command, `api-dev.usezombie.com` in verify docs, docs-URL examples) ride the companion dotfiles commit at merge + their own host cutovers.
+- **Mid-EXECUTE decisions (Indy, Jun 13, 2026):** UFS string-dup on `service_report.zig` → single-binding fix (Indy-approved). `audits/error-codes.sh` found pre-pointed at `src/agentsfleetd/errors/` (Indy forward-edit) → directory rename `src/zombied/` → `src/agentsfleetd/` pulled into this branch; zon fingerprint refreshed per the compiler for the renamed package. CLI naming settled: folder `agentsfleet/` (matches the pre-staged dotfiles audits; Indy final), package `@agentsfleet/cli`, bin `agentsfleet`. Entity noun zombie → agent approved — rides the follow-up mega-spec (M92_004: platform cutovers + wire/data/domain, expand-contract design doc in `docs/architecture/`); punch-list routing per Indy: one mega-spec, not three.
+- **§1 ledger (Jun 12, 2026):** FLIP classes — CLI self-name strings (180 lines in `agentsfleet/{src,test}`; 24 path-like refs keep), daemon argv/usage fixtures + `logging.scoped(.zombied)` log scopes (grafana queries follow in §8), contract-lib + architecture-doc prose, website rendered copy naming the binary/package (vocab-guard/marketing-spec pins updated as conscious edits; the GitHub org slug and `/usezombie-install-platform-ops` keep), `public/llms.txt` + `public/skill.md` prose, telemetry service tags (internal dependency-injection ids, safe). KEEP classes — `docs/v1` + `docs/v2/done` history (append-only), directory-path refs, frozen `schema/*.sql` migration comments (editing frozen migrations breaks parity for zero operator gain — rides the schema cutover), fly/cloudflared/org/mail/header/user-db identifiers per the rename principle. UX note for Indy: the CLI config dir `~/.config/agentsfleet` flips clean to `~/.config/agentsfleet` — telemetry consent re-asked once; no fallback shim (RULE NLG). E3 keep baseline (pre-flip counts): `app = "zombied-`=4 · `core.zombie_`=305 · `usezombie-admin`=28 · `x-usezombie`=216 · `github.com/usezombie`=44.
 
 ---
 
@@ -349,9 +351,9 @@ for i in agentsfleetd agentsfleet-runner; do docker manifest inspect "ghcr.io/us
 ## Out of Scope
 
 - GitHub org rename (`github.com/usezombie`) and repo URLs — external resolver, own cutover spec.
-- npm deprecation pass on the old `@usezombie/zombiectl` listing (deprecate-with-pointer once `@agentsfleet/agentsfleet` is stable) — registry janitorial, Indy-timed.
+- npm deprecation pass on the old `@usezombie/zombiectl` listing (deprecate-with-pointer once `@agentsfleet/cli` is stable) — registry janitorial, Indy-timed.
 - fly app names (`zombied-dev`/`zombied-prod`), cloudflared hostname refs, live health URLs — platform identities traffic resolves against; own cutover.
-- Directory paths (`zombiectl/`, `src/zombied/`, `ui/usezombie.sh/`) — path churn with zero operator-visible gain this round.
+- Directory paths (`agentsfleet/`, `src/agentsfleetd/`, `ui/agentsfleet.dev/`) — path churn with zero operator-visible gain this round.
 - Postgres user/db (`usezombie-admin`), `core.zombie_*` schema, `x-usezombie*` headers — data-layer/API cutovers.
 - `team@usezombie.com`, `api.usezombie.com` — mail/API cutovers, each its own spec.
 - Dotfiles operating-model prose naming the old targets — companion dotfiles commit at cutover, not this repo's diff.

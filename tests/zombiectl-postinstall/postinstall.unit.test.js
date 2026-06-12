@@ -1,4 +1,4 @@
-// Codified version of the manual smoke test for zombiectl/scripts/postinstall.mjs.
+// Codified version of the manual smoke test for agentsfleet/scripts/postinstall.mjs.
 // Every defensive path the script carries gets exercised against a temp HOME so
 // regressions can't slip through silently. The script's contract is "never crash
 // `npm install`" — these tests assert that and the idempotency invariant.
@@ -13,9 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..", "..");
-const postinstall = resolve(repoRoot, "zombiectl", "scripts", "postinstall.mjs");
-const prepublish = resolve(repoRoot, "zombiectl", "scripts", "prepublish.mjs");
-const zombiectlDir = resolve(repoRoot, "zombiectl");
+const postinstall = resolve(repoRoot, "agentsfleet", "scripts", "postinstall.mjs");
+const prepublish = resolve(repoRoot, "agentsfleet", "scripts", "prepublish.mjs");
+const zombiectlDir = resolve(repoRoot, "agentsfleet");
 
 function runNode(script, env = {}) {
   return spawnSync("node", [script], {
@@ -34,7 +34,7 @@ function withTempHome(fn) {
 }
 
 function withBundledSamples(fn) {
-  // Mirror repo-root samples/ into zombiectl/samples/ via prepublish, run fn,
+  // Mirror repo-root samples/ into agentsfleet/samples/ via prepublish, run fn,
   // then clean up. Tests that need the bundled tree wrap with this helper.
   // Skills no longer bundle through prepublish — they live in
   // github.com/usezombie/skills and install via `npx skills add usezombie/skills`.
@@ -116,7 +116,7 @@ test("prepublish bundles repo-root samples/ into the package dir", () => {
 });
 
 test("prepublish scrubs a stray local skills/ from the package dir", () => {
-  // A stale shell session could leave zombiectl/skills/ behind from before
+  // A stale shell session could leave agentsfleet/skills/ behind from before
   // the skill bodies moved to their own repo. prepublish must actively remove
   // it so it can never sneak into the published tarball. Seed it, assert gone.
   const stray = resolve(zombiectlDir, "skills");

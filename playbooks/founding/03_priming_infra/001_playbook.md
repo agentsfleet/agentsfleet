@@ -30,7 +30,7 @@ Bootstrap (`playbooks/founding/01_bootstrap/001_playbook.md`) — human + agent 
     └── Milestone 2 (this doc) — agent infra priming
         ├── 1.0 Container pipeline (GHCR)
         ├── 2.0 Fly.io — API service (recommended)
-        │     ├── 2.1 Fly apps: zombied-dev, cloudflared-dev
+        │     ├── 2.1 Fly apps: agentsfleetd-dev, cloudflared-dev
         │     ├── 2.2 Cloudflare Tunnel (origin shield — no public Fly port)
         │     └── 2.3 Auto-scaling configuration
         ├── 3.0 Data-plane bootstrap (PlanetScale + Upstash)
@@ -66,14 +66,14 @@ Already wired in `release.yml` — agent verifies, does not re-create.
 **Verify:**
 ```bash
 # Confirm Dockerfile uses binary-copy model (no zig build inside Docker)
-grep "COPY dist/zombied" Dockerfile
+grep "COPY dist/agentsfleetd" Dockerfile
 
 # Confirm docker job depends on binaries job
 grep "needs:.*binaries" .github/workflows/release.yml
 ```
 
-**Production image:** `ghcr.io/usezombie/zombied:{version}` and `ghcr.io/usezombie/zombied:latest`
-**Dev image:** `ghcr.io/usezombie/zombied:dev-latest` (built on every main push via `deploy-dev.yml`)
+**Production image:** `ghcr.io/usezombie/agentsfleetd:{version}` and `ghcr.io/usezombie/agentsfleetd:latest`
+**Dev image:** `ghcr.io/usezombie/agentsfleetd:dev-latest` (built on every main push via `deploy-dev.yml`)
 
 ---
 
@@ -87,21 +87,21 @@ grep "needs:.*binaries" .github/workflows/release.yml
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
 # Create the two DEV apps (API + tunnel connector)
-fly apps create zombied-dev      --org <org>
+fly apps create agentsfleetd-dev      --org <org>
 fly apps create cloudflared-dev  --org <org>
 
 # Repeat for PROD
-fly apps create zombied-prod      --org <org>
+fly apps create agentsfleetd-prod      --org <org>
 fly apps create cloudflared-prod  --org <org>
 ```
 
 ### 2.2 Set Secrets from 1Password (Agent)
 
-> **Important:** `DATABASE_URL` and `REDIS_URL` are not valid for `zombied serve`. Use role-separated vars. See `docs/CONFIGURATION.md`.
+> **Important:** `DATABASE_URL` and `REDIS_URL` are not valid for `agentsfleetd serve`. Use role-separated vars. See `docs/CONFIGURATION.md`.
 
 ```bash
 # DEV API
-for APP in zombied-dev; do
+for APP in agentsfleetd-dev; do
   fly secrets set \
     DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
     DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
@@ -129,13 +129,13 @@ done
 
 ```bash
 # Deploy API
-fly deploy --app zombied-dev \
-  --image ghcr.io/usezombie/zombied:dev-latest \
+fly deploy --app agentsfleetd-dev \
+  --image ghcr.io/usezombie/agentsfleetd:dev-latest \
   --regions iad \
   --ha=false   # start with 1 machine, scale after verify
 
 # Verify
-fly status --app zombied-dev
+fly status --app agentsfleetd-dev
 ```
 
 `fly.toml` for the API app (no public port — tunnel is the only ingress):
@@ -145,7 +145,7 @@ app = "zombied-dev"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/usezombie/zombied:dev-latest"
+  image = "ghcr.io/usezombie/agentsfleetd:dev-latest"
 
 [[vm]]
   size = "shared-cpu-1x"
@@ -153,14 +153,14 @@ primary_region = "iad"
 
 # NO [http_service] block — suppresses *.fly.dev public domain entirely.
 # All traffic enters via Cloudflare Tunnel (§2.4).
-# Internal-only: accessible at zombied-dev.internal:3000 within Fly 6PN.
+# Internal-only: accessible at agentsfleetd-dev.internal:3000 within Fly 6PN.
 
 [metrics]
   port = 9091
   path = "/metrics"
 ```
 
-There is no Fly "worker" app. Execution runs on the host-resident `zombie-runner` daemon on a bare-metal node — it leases work over HTTPS, runs the agent in a bubblewrap-sandboxed forked child, and reports back over a Tailscale control plane. The runner host is bootstrapped separately (§4.0 of this doc; canonical playbooks `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` for DEV and `07_runner_bootstrap_prod/001_playbook.md` for PROD) and CI-deployed via `deploy-dev.yml`. Only the API (`zombied serve`) deploys to Fly. The single-process `zombied worker` subcommand and the standalone sandbox sidecar were folded into `zombie-runner` by the M80_002 cutover — see `docs/architecture/runner_fleet.md`.
+There is no Fly "worker" app. Execution runs on the host-resident `agentsfleet-runner` daemon on a bare-metal node — it leases work over HTTPS, runs the agent in a bubblewrap-sandboxed forked child, and reports back over a Tailscale control plane. The runner host is bootstrapped separately (§4.0 of this doc; canonical playbooks `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` for DEV and `07_runner_bootstrap_prod/001_playbook.md` for PROD) and CI-deployed via `deploy-dev.yml`. Only the API (`agentsfleetd serve`) deploys to Fly. The single-process `agentsfleetd worker` subcommand and the standalone sandbox sidecar were folded into `agentsfleet-runner` by the M80_002 cutover — see `docs/architecture/runner_fleet.md`.
 
 ### 2.4 Cloudflare Tunnel — Origin Shield (Agent)
 
@@ -168,8 +168,8 @@ Tunnel replaces CNAME. All traffic: Cloudflare edge → encrypted tunnel → Fly
 
 ```bash
 # Create tunnel (run locally, credentials stored in ~/.cloudflared/)
-cloudflared tunnel create zombied-dev
-# Output: Created tunnel zombied-dev with id <TUNNEL_ID>
+cloudflared tunnel create agentsfleetd-dev
+# Output: Created tunnel agentsfleetd-dev with id <TUNNEL_ID>
 
 # Store credentials in vault
 TUNNEL_CREDS=$(cat ~/.cloudflared/<TUNNEL_ID>.json | base64)
@@ -179,11 +179,11 @@ op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   "credentials-json-b64=$TUNNEL_CREDS"
 
 # Route tunnel to domain (creates CNAME <TUNNEL_ID>.cfargotunnel.com automatically)
-cloudflared tunnel route dns zombied-dev api-dev.usezombie.com
+cloudflared tunnel route dns agentsfleetd-dev api-dev.usezombie.com
 
 # Repeat for PROD
-cloudflared tunnel create zombied-prod
-cloudflared tunnel route dns zombied-prod api.usezombie.com
+cloudflared tunnel create agentsfleetd-prod
+cloudflared tunnel route dns agentsfleetd-prod api.usezombie.com
 ```
 
 `cloudflared` config deployed as a Fly app (`cloudflared-dev`):
@@ -195,7 +195,7 @@ credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
   - hostname: api-dev.usezombie.com
-    service: http://zombied-dev.internal:3000  # Fly 6PN private DNS
+    service: http://agentsfleetd-dev.internal:3000  # Fly 6PN private DNS
   - service: http_status:404
 ```
 
@@ -229,20 +229,20 @@ This is infrastructure, not application code. Do not add to CI. Only redeploy if
 
 ```bash
 # Scale API to 2 machines for HA (both in iad)
-fly scale count 2 --app zombied-dev
+fly scale count 2 --app agentsfleetd-dev
 
 # Auto-scaling: scale up to 5 on load, never scale below 1
-fly autoscale set min=1 max=5 --app zombied-dev
+fly autoscale set min=1 max=5 --app agentsfleetd-dev
 
-# Execution capacity is the host-resident zombie-runner (bare-metal), not a
+# Execution capacity is the host-resident agentsfleet-runner (bare-metal), not a
 # Fly app — provision/scale it via the runner bootstrap playbooks (06_/07_).
 ```
 
 For PROD multi-region (future):
 ```bash
 # Add a second region for global HA
-fly regions add lhr --app zombied-prod     # London for EU users
-fly scale count 2 --app zombied-prod       # 1 machine per region
+fly regions add lhr --app agentsfleetd-prod     # London for EU users
+fly scale count 2 --app agentsfleetd-prod       # 1 machine per region
 ```
 
 ### 2.6 CI Wiring (Agent)
@@ -254,14 +254,14 @@ op item create --vault "$VAULT_DEV" --title fly-api-token \
   --category "API Credential" "credential=<token>"
 
 # Set GitHub Actions vars
-gh variable set FLY_APP_DEV --body "zombied-dev" --repo usezombie/usezombie
-gh variable set FLY_APP_PROD --body "zombied-prod" --repo usezombie/usezombie
+gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo usezombie/usezombie
+gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo usezombie/usezombie
 ```
 
 CI deploy step in `deploy-dev.yml`:
 ```yaml
 - name: Deploy to Fly.io DEV
-  run: fly deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/zombied:dev-latest --wait-timeout 120
+  run: fly deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/agentsfleetd:dev-latest --wait-timeout 120
   env:
     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 ```
@@ -270,18 +270,18 @@ CI deploy step in `deploy-dev.yml`:
 
 ```bash
 # Tunnel health
-cloudflared tunnel info zombied-dev
+cloudflared tunnel info agentsfleetd-dev
 
 # API reachable via Cloudflare (not direct Fly)
 curl -sf https://api-dev.usezombie.com/healthz
 curl -sf https://api-dev.usezombie.com/readyz | jq '.ready'
 
 # Confirm no direct Fly access (should time out or refuse)
-curl -sf https://zombied-dev.fly.dev/healthz  # expected: connection refused / 404
+curl -sf https://agentsfleetd-dev.fly.dev/healthz  # expected: connection refused / 404
 
 # Fly machine status
-fly status --app zombied-dev
-fly logs   --app zombied-dev
+fly status --app agentsfleetd-dev
+fly logs   --app agentsfleetd-dev
 ```
 
 ---
@@ -310,7 +310,7 @@ Role contract (`schema/002_vault_schema.sql`):
 
 Redis is hosted on Upstash (DEV and PROD). ACL is managed via the Upstash dashboard — no custom ACL commands needed.
 
-No manual stream bootstrap is required. zombied creates each zombie's event stream (`zombie:{zombie_id}:events`) and its `zombie_lease` consumer group on demand, synchronously, when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream` in `src/zombied/http/handlers/zombies/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first zombie created after deploy.
+No manual stream bootstrap is required. agentsfleetd creates each zombie's event stream (`zombie:{zombie_id}:events`) and its `zombie_lease` consumer group on demand, synchronously, when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream` in `src/agentsfleetd/http/handlers/zombies/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first zombie created after deploy.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
@@ -320,9 +320,9 @@ Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/
 
 **`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.usezombie.com`, `release.yml` sets `https://api.usezombie.com`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
 
-**Per-env audience — three surfaces must agree.** zombied checks `aud` on every bearer it receives, no matter which Clerk mechanism minted it. Three places carry the per-env audience and MUST hold the same value for that env:
+**Per-env audience — three surfaces must agree.** agentsfleetd checks `aud` on every bearer it receives, no matter which Clerk mechanism minted it. Three places carry the per-env audience and MUST hold the same value for that env:
 
-1. **`OIDC_AUDIENCE`** — the CI literal in `deploy-dev.yml` / `release.yml` (what zombied compares against).
+1. **`OIDC_AUDIENCE`** — the CI literal in `deploy-dev.yml` / `release.yml` (what agentsfleetd compares against).
 2. **Clerk → Sessions → Customize session token** — the `aud` claim on the *default* session token (feeds the new dashboard, D45 `auth().getToken()`).
 3. **Clerk → JWT Templates → `api`** — the `aud` claim on the api-template token (feeds the CLI carve-out D47 + the currently-deployed pre-§9 dashboard).
 
@@ -359,7 +359,7 @@ Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIEN
 
 **Rollback procedure (I9.5):**
 
-Clerk dashboard → **Sessions → Customize session token** → **Reset to default**. The next minted token will lack `aud`, every dashboard fetch will fail with `AudienceMismatch` on the next refresh, and operators will notice within ~60s. Re-apply the JSON above to restore. Rollback is reversible end-to-end; no zombied or schema state needs touching.
+Clerk dashboard → **Sessions → Customize session token** → **Reset to default**. The next minted token will lack `aud`, every dashboard fetch will fail with `AudienceMismatch` on the next refresh, and operators will notice within ~60s. Re-apply the JSON above to restore. Rollback is reversible end-to-end; no agentsfleetd or schema state needs touching.
 
 **Verification artifacts (V9.1–V9.5):**
 

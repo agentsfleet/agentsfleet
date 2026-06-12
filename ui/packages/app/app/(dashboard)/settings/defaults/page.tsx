@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { EmptyState } from "@usezombie/design-system";
+import { EmptyState } from "@agentsfleet/design-system";
 import { SlidersHorizontalIcon } from "lucide-react";
 import SettingsTabs from "@/components/layout/SettingsTabs";
 

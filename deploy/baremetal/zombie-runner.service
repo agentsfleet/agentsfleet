@@ -1,11 +1,11 @@
 # usezombie Runner — host-resident execution-plane daemon.
-# Leases work from the zombied control plane over HTTPS, runs each event in a
+# Leases work from the agentsfleetd control plane over HTTPS, runs each event in a
 # forked sandboxed child, and reports back. Holds zero datastore credentials.
 #
 # Install:
-#   sudo cp zombie-runner.service /etc/systemd/system/
+#   sudo cp agentsfleet-runner.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now zombie-runner
+#   sudo systemctl enable --now agentsfleet-runner
 
 [Unit]
 Description=usezombie Runner
@@ -14,7 +14,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/zombie-runner
+ExecStart=/usr/local/bin/agentsfleet-runner
 Restart=always
 RestartSec=5
 # A stopped runner's in-flight lease is reclaimed by the control plane
@@ -25,7 +25,7 @@ KillMode=mixed
 
 # Required runner config — provisioned per host into the env file below by the
 # runner bootstrap playbook (never committed; the runner-token is a secret):
-#   ZOMBIE_API_URL       — zombied HTTPS API base, e.g. https://api.usezombie.com
+#   ZOMBIE_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.usezombie.com
 #   ZOMBIE_RUNNER_TOKEN  — pre-minted `zrn_…` token (Option B): the platform
 #                          admin mints it via `POST /v1/runners` on the live
 #                          control plane and stores it in 1Password under
@@ -45,10 +45,10 @@ KillMode=mixed
 #                                    the failure domain — one host loss drops N
 #                                    in-flight runs, not 1, all re-leased to
 #                                    healthy hosts)
-# Bootstrap order (chicken-and-egg): the updated zombied (with the platform-
+# Bootstrap order (chicken-and-egg): the updated agentsfleetd (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `zrn_` for this host. Until that's done, DEV_WORKER_READY stays `false`.
-EnvironmentFile=-/etc/default/zombie-runner
+EnvironmentFile=-/etc/default/agentsfleet-runner
 
 # Ensure the sandbox runtime directory exists.
 RuntimeDirectory=zombie

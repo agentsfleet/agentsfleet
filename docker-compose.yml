@@ -1,9 +1,9 @@
-# usezombie local dev — Postgres + Redis + zombied API
+# usezombie local dev — Postgres + Redis + agentsfleetd API
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
 services:
   postgres:
-    container_name: zombie-postgres
+    container_name: agentsfleet-postgres
     image: mirror.gcr.io/library/postgres:18-alpine
     command:
       - sh
@@ -29,7 +29,7 @@ services:
       retries: 20
 
   redis:
-    container_name: zombie-redis
+    container_name: agentsfleet-redis
     image: mirror.gcr.io/library/redis:7-alpine
     command:
       - sh
@@ -52,8 +52,8 @@ services:
       timeout: 5s
       retries: 20
 
-  zombied:
-    container_name: zombied-api
+  agentsfleetd:
+    container_name: agentsfleetd-api
     build:
       context: .
       dockerfile: Dockerfile
@@ -62,10 +62,10 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      # zombied's local override file (disambiguated from the app's .env.local and
+      # agentsfleetd's local override file (disambiguated from the app's .env.local and
       # the runner's .env.runner.local). Optional — the inline `environment:` block
       # below already satisfies a from-scratch `make up`.
-      - path: .env.zombied.local
+      - path: .env.agentsfleetd.local
         required: false
     environment:
       # Local dev defaults: satisfy role-separated startup checks without

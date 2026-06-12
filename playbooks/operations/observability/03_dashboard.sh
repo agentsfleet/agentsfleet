@@ -13,10 +13,10 @@ DASHBOARD_DIR="$REPO_ROOT/deploy/grafana"
 echo "=== Step 1: Ensure PostgreSQL datasource ==="
 
 PG_EXISTS=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/datasources/name/zombie-postgres" 2>/dev/null | jq -r '.id // empty' || echo "")
+  "$GRAFANA_URL/api/datasources/name/agentsfleet-postgres" 2>/dev/null | jq -r '.id // empty' || echo "")
 
 if [ -z "$PG_EXISTS" ]; then
-  echo "  Creating zombie-postgres datasource..."
+  echo "  Creating agentsfleet-postgres datasource..."
   # Parse connection parts from DATABASE_URL
   DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^@]+@([^/]+)/.*|\1|')
   DB_NAME=$(echo "$DB_URL" | sed -E 's|postgresql://[^@]+@[^/]+/([^?]+).*|\1|')
@@ -27,7 +27,7 @@ if [ -z "$PG_EXISTS" ]; then
     -H "Content-Type: application/json" \
     "$GRAFANA_URL/api/datasources" \
     -d "{
-      \"name\": \"zombie-postgres\",
+      \"name\": \"agentsfleet-postgres\",
       \"type\": \"postgres\",
       \"url\": \"$DB_HOST\",
       \"database\": \"$DB_NAME\",
@@ -38,7 +38,7 @@ if [ -z "$PG_EXISTS" ]; then
     }" >/dev/null
   echo "  Created."
 else
-  echo "  zombie-postgres datasource exists (ID: $PG_EXISTS)"
+  echo "  agentsfleet-postgres datasource exists (ID: $PG_EXISTS)"
 fi
 
 echo "=== Step 2: Import + verify every dashboard in deploy/grafana ==="
@@ -47,10 +47,10 @@ echo "=== Step 2: Import + verify every dashboard in deploy/grafana ==="
 PROM_UID=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
   "$GRAFANA_URL/api/datasources" | jq -r '[.[] | select(.type == "prometheus")][0].uid // "prometheus"')
 PG_UID=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/datasources/name/zombie-postgres" | jq -r '.uid // empty')
+  "$GRAFANA_URL/api/datasources/name/agentsfleet-postgres" | jq -r '.uid // empty')
 
 if [ -z "$PG_UID" ]; then
-  echo "FAIL: zombie-postgres datasource UID not found"
+  echo "FAIL: agentsfleet-postgres datasource UID not found"
   exit 1
 fi
 

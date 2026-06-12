@@ -4,9 +4,9 @@
 # Reads PostHog Project API keys from 1Password (vaults $VAULT_DEV /
 # $VAULT_PROD) and upserts the website/agents/app project envs for both
 # `preview` and `production` targets via the v10 env API. Specifically:
-#   - usezombie-website   : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
+#   - agentsfleet-website   : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
 #   - usezombie-agents-sh : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
-#   - usezombie-app       : NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
+#   - agentsfleet-app       : NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
 #
 # Out of scope (live in the §2.7 table but require per-project values
 # this script doesn't model — left to the prose path until/unless they
@@ -56,19 +56,19 @@ resolve_project() {
     "$api_base/v10/projects/$name")" || return 1
   PROJECT_ID["$name"]="$(echo "$resp" | jq -r '.id')"
 }
-for p in usezombie-website usezombie-agents-sh usezombie-app; do
+for p in agentsfleet-website usezombie-agents-sh agentsfleet-app; do
   resolve_project "$p" || { echo "could not resolve project: $p" >&2; exit 2; }
 done
 
 # (project, key, prod-source, preview-source). Sources prefixed `op:` are
 # 1Password refs resolved on apply; `lit:` is a literal value.
 ROWS=(
-  "usezombie-website|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
-  "usezombie-website|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
+  "agentsfleet-website|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
+  "agentsfleet-website|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
   "usezombie-agents-sh|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
   "usezombie-agents-sh|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
-  "usezombie-app|NEXT_PUBLIC_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
-  "usezombie-app|NEXT_PUBLIC_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
+  "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
+  "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
 )
 
 resolve_source() {

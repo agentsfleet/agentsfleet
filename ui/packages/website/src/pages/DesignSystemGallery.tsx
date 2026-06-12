@@ -35,7 +35,7 @@ import {
   EmptyState,
   StatusCard,
   Pagination,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 
 /*
  * DesignSystemGallery — hidden smoke route at /_design-system.
@@ -137,7 +137,7 @@ export default function DesignSystemGallery() {
       <Section>
         <h2>InstallBlock</h2>
         <InstallBlock
-          title="Install zombiectl"
+          title="Install agentsfleet"
           command="npm install -g @usezombie/zombiectl"
           actions={[
             { label: "Docs", to: "https://docs.usezombie.com", external: true },

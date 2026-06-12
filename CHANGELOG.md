@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Per-runner Prometheus metrics on `zombied` `/metrics`: `zombie_runner_failures_total{runner_id,reason}`, `zombie_runner_executions_total{runner_id,outcome}`, `zombie_runner_last_seen_seconds{runner_id}`, `zombie_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity
+- Per-runner Prometheus metrics on `agentsfleetd` `/metrics`: `zombie_runner_failures_total{runner_id,reason}`, `zombie_runner_executions_total{runner_id,outcome}`, `zombie_runner_last_seen_seconds{runner_id}`, `zombie_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity
 - Grafana dashboard JSON (`deploy/grafana/runner_fleet.json`) — runner-fleet observability; 6 panels with multi-replica-correct PromQL aggregation (`sum` counters, `min` liveness, best-effort `sum` active-leases), auto-imported by the 009 playbook alongside `agent_run_breakdown.json`
 
 ### Removed
@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Per-workspace Prometheus metrics: `zombie_agent_tokens_by_workspace_total`, `zombie_runs_completed_by_workspace_total`, `zombie_runs_blocked_by_workspace_total`, `zombie_gate_repair_loops_by_workspace_total`
 - Gate repair loop distribution histogram: `zombie_gate_repair_loops_per_run` (buckets: 0,1,2,3,5,10)
 - `GET /v1/workspaces/{id}/billing/summary` endpoint — billing breakdown by lifecycle event with period filter
-- `zombiectl workspace billing` CLI command with `--period` and `--json` flags
+- `agentsfleet workspace billing` CLI command with `--period` and `--json` flags
 - Grafana dashboard JSON (`docs/grafana/agent_run_breakdown.json`) — 7 panels, importable with template variables
 - Grafana observability playbook (`playbooks/009_grafana_observability/001_playbook.md`) with gate scripts
 - `zombie_workspace_metrics_overflow_total` counter for cardinality overflow alerting
@@ -36,18 +36,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `@usezombie/zombiectl` scoped npm package — published to npm registry with public access
 - Complete OpenAPI 3.1 spec covering all 43 endpoints
 - Post-release npm verification CI job: confirms published package installs and runs correctly
-- Install-check PR gate: verifies npm install on every PR touching `zombiectl`
+- Install-check PR gate: verifies npm install on every PR touching `agentsfleet`
 - OIDC secrets wired into CI deploy pipelines
 
 ### Changed
 
 - Playbooks `M2_001` and `M4_002` marked done — credential gate and prod worker bootstrap verified
-- `zombiectl` README rewritten with install instructions and pre-release caveat
+- `agentsfleet` README rewritten with install instructions and pre-release caveat
 
 ### Fixed
 
 - `smoke-post-deploy` workflow trigger restored with correct Production environment condition
-- `zombiectl` glob `**` pattern now matches root-level files (replaced `bun Glob` with node-compatible implementation)
+- `agentsfleet` glob `**` pattern now matches root-level files (replaced `bun Glob` with node-compatible implementation)
 - npm publish job switched to bun runtime — resolves install failures in CI
 - Website prebuild path corrected from `../../` to `../../../` for monorepo root layout
 
@@ -55,7 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `zombiectl` CLI — warning banner + April 5 launch date display
+- `agentsfleet` CLI — warning banner + April 5 launch date display
 - Release credential gate: all vault items verified before any deploy step runs
 - `verify-runtime-compat` CI job: static binary validated against bookworm, trixie, and alpine before publish
 - `PROD_WORKER_READY` guard on `deploy-prod-canary` — bare-metal worker fleet deploy gated until bootstrapped
@@ -76,7 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Initial release
-- `zombied serve` — HTTP API + worker pipeline
+- `agentsfleetd serve` — HTTP API + worker pipeline
 - Agent pipeline: Echo → Scout → Warden
 - Spec-to-PR delivery with retry loops
 - GitHub App OAuth workspace integration

@@ -9,7 +9,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import type {
   RunnerAdminAction,
   RunnerListItem,

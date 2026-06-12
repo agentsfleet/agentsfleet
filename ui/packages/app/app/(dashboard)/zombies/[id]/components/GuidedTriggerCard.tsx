@@ -12,7 +12,7 @@ import {
   Label,
   Time,
   useResettableTimeout,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import type { ZombieTrigger } from "@/lib/types";
 import type { GuidanceCard } from "./provider-guidance";
 
