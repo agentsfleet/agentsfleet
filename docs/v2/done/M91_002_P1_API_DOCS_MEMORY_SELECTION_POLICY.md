@@ -4,7 +4,7 @@
 **Milestone:** M91
 **Workstream:** 002
 **Date:** Jun 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — fixes the user-facing forgetting failure: identity facts written once (owner, deploy target, customer plan) are today the FIRST entries both the hydration window and cap eviction discard, because write-recency is the only selection currency
 **Categories:** API, DOCS
 **Batch:** B2 — after M91_001 (its counters provide the before/after evidence; its `enforceCap` count-return is built on)
@@ -289,7 +289,7 @@ No file deletions otherwise.
 | Inline category literals | Eval E6 | empty | ✅ |
 | Orphan sweep (RULE ORP) | `grep -rn "recency_window\|windowByBytes" src/ zombiectl/ ui/ schema/ docs/` (non-spec) | empty | ✅ |
 | Gitleaks | `gitleaks detect` | `no leaks found` (2642 commits) | ✅ |
-| Test delta | `make _lint_zig_test_depth` | unit 1912→1927 (+15) · integration 178→180 (+2) vs CHORE(open) baseline (post-`/review` round; the endpoint-tier hydrate test lands in the counter's unit bucket by its name-prefix convention) | ✅ |
+| Test delta | `make _lint_zig_test_depth` | unit 1912→1947 · integration 178→182 vs CHORE(open) baseline; this branch's own additions are +15 unit / +2 integration (post-`/review` round; the endpoint-tier hydrate test lands in the counter's unit bucket by its name-prefix convention) — the remainder arrived with the rebase onto `main` @ `5cb1aa1f` (#398 version-reconcile → 0.41.0, #399 token-splits) | ✅ |
 | Memleak | `make memleak` | `✓ [zombied] memleak gate passed` (1244 passed; 366 skipped; 0 failed; macOS SIP "not debuggable" line expected) | ✅ |
 | Bench | `make bench` | SKIPPED per environment constraint: `bench-micro` does not compile on `origin/main` (`tests/bench/micro.zig:64` calls missing `webhook_verify.verifySignature` — pre-existing drift, unrelated to this diff) | ⚪ |
 
