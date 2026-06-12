@@ -68,7 +68,7 @@ pub fn setMemoryHydrationEntries(n: usize) void {
     g_hydration_entries.store(@intCast(n), .monotonic); // safe because: lone gauge, last-writer-wins
 }
 
-/// The hydration byte-budget window dropped `entries` cold-tail entries totalling
+/// The category-pinned hydration window dropped `entries` entries totalling
 /// `dropped_bytes` (key+content+category) from one hydrate reply. The zero-entries
 /// no-op also discards `dropped_bytes` — anyActive() relies on the pair moving
 /// together, so never pass (0, nonzero).

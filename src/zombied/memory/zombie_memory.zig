@@ -25,22 +25,62 @@ const log = logging.scoped(.zombie_memory);
 /// handler serializes it directly into `MemoryHydrateResponse` (RULE UFS).
 pub const MemoryDelta = protocol.MemoryDelta;
 
-/// Strategy for bounding a zombie's hydration payload. `recency_window` returns the
-/// newest entries (rows arrive `updated_at DESC` from `listAll`) whose cumulative
-/// bytes fit a budget, dropping the cold tail from the payload — the tail stays
-/// durable in Postgres, so nothing is lost. `passthrough` returns everything (the
-/// tenant read). Deterministic, no allocation, no LLM: summarisation belongs on the
-/// executor plane, not the control plane. The seam holds for a future selective arm.
-pub const Compactor = union(enum) {
-    /// Hand the rows over unchanged (the tenant GET path).
-    passthrough,
-    /// Keep the newest entries within this many bytes; evict the cold tail.
-    recency_window: usize,
+/// Stored category strings — NullClaw's `MemoryCategory.toString` vocabulary;
+/// anything else on a row is a custom category. Single-sourced here for the
+/// tier map, the eviction ordering, and every test fixture (RULE UFS/TFX).
+pub const CATEGORY_CORE: []const u8 = "core";
+pub const CATEGORY_DAILY: []const u8 = "daily";
+pub const CATEGORY_CONVERSATION: []const u8 = "conversation";
 
-    pub fn compact(self: Compactor, rows: []const MemoryDelta) []const MemoryDelta {
+/// Selection tier: `pinned` entries hydrate before any recency windowing and
+/// are evicted only when no `windowed` row remains; `windowed` entries live
+/// under the classic newest-first byte budget.
+pub const Tier = enum { pinned, windowed };
+
+// LOCKSTEP INVARIANT: the pinned set here must equal the set enforceCap's
+// eviction ordering protects (its `category = CATEGORY_CORE` bind). The
+// comptime assertion pins the pinned-entry count to exactly one, so adding a
+// second pinned category fails compilation until that SQL widens in the same
+// diff — hydration can never pin what eviction still deletes first.
+const TIER_ENTRIES = .{
+    .{ CATEGORY_CORE, Tier.pinned },
+    .{ CATEGORY_DAILY, Tier.windowed },
+    .{ CATEGORY_CONVERSATION, Tier.windowed },
+};
+
+const TIER_MAP = std.StaticStringMap(Tier).initComptime(TIER_ENTRIES);
+
+comptime {
+    var pinned_count: usize = 0;
+    for (TIER_ENTRIES) |entry| {
+        if (entry[1] == .pinned) pinned_count += 1;
+    }
+    std.debug.assert(pinned_count == 1);
+}
+
+/// Category → tier. Unknown and custom categories default to `windowed` —
+/// an unrecognised string must never be accidentally pinned.
+pub fn tierOf(category: []const u8) Tier {
+    return TIER_MAP.get(category) orelse .windowed;
+}
+
+/// Strategy for bounding a zombie's hydration payload. `selective` pins the
+/// `core` tier — every `core` entry that fits the byte budget hydrates before
+/// any non-core entry is considered; the remaining budget fills with the
+/// newest non-core entries, and the cold tail stays durable in Postgres.
+/// `passthrough` returns everything (the tenant read). Deterministic, no
+/// allocation, no LLM: summarisation belongs on the executor plane.
+pub const Compactor = union(enum) {
+    /// Hand the rows over unchanged — the seam's identity arm (no production
+    /// caller today; retained per spec as the no-compaction option).
+    passthrough,
+    /// Category-pinned byte window: `core` first, then newest non-core.
+    selective: usize,
+
+    pub fn compact(self: Compactor, rows: []MemoryDelta) []const MemoryDelta {
         return switch (self) {
             .passthrough => rows,
-            .recency_window => |budget| windowByBytes(rows, budget),
+            .selective => |budget| selectByTier(rows, budget),
         };
     }
 };
@@ -52,17 +92,75 @@ pub fn entryBytes(d: MemoryDelta) usize {
     return d.key.len + d.content.len + d.category.len;
 }
 
-/// Newest-first prefix of `rows` whose cumulative entryBytes stay within
-/// `budget`. Always includes at least the newest entry (so an oversized head
-/// still hydrates something); the remainder is the cold tail, left in the database.
-fn windowByBytes(rows: []const MemoryDelta, budget: usize) []const MemoryDelta {
-    var used: usize = 0;
-    for (rows, 0..) |d, i| {
-        const sz = entryBytes(d);
-        if (i > 0 and used + sz > budget) return rows[0..i];
-        used += sz;
+/// Cumulative entryBytes over a slice — the loss-accounting helper the
+/// hydrate handler diffs before/after compaction.
+pub fn sumBytes(rows: []const MemoryDelta) usize {
+    var total: usize = 0;
+    for (rows) |d| total += entryBytes(d);
+    return total;
+}
+
+/// One tier's running byte-budget admission, shared by the sizing pass and
+/// the selection pass so the two can never diverge. Newest-first PREFIX
+/// semantics: the first entry that overflows the budget closes the tier — an
+/// older, smaller entry is never admitted past a rejected newer one (matching
+/// the pre-tier window's cut). The tier's head bypasses the budget once when
+/// `head_taken` starts false (the never-empty rule).
+const TierRun = struct {
+    used: usize = 0,
+    head_taken: bool = false,
+    closed: bool = false,
+
+    fn admit(self: *TierRun, sz: usize, budget: usize) bool {
+        if (!self.head_taken) {
+            self.head_taken = true;
+            self.used = sz;
+            return true;
+        }
+        if (self.closed) return false;
+        if (self.used + sz <= budget) {
+            self.used += sz;
+            return true;
+        }
+        self.closed = true;
+        return false;
     }
-    return rows;
+};
+
+/// Stable in-place tier selection over rows arriving `updated_at DESC`: pass
+/// one sizes what the pinned tier consumes; pass two replays those admissions
+/// (same `TierRun` rule, so the passes are in lockstep by construction) plus
+/// the windowed tier against the remaining budget, swapping survivors left.
+/// The kept prefix preserves the original recency order, the tail holds the
+/// dropped entries (permuted) — the slice stays a permutation of the input,
+/// so per-entry ownership survives compaction for callers that free
+/// individual entries. A non-empty input always hydrates at least one entry:
+/// the pinned head when any `core` exists, the overall head otherwise.
+fn selectByTier(rows: []MemoryDelta, budget: usize) []const MemoryDelta {
+    var sizing: TierRun = .{};
+    var pinned_any = false;
+    for (rows) |d| {
+        if (tierOf(d.category) != .pinned) continue;
+        pinned_any = true;
+        _ = sizing.admit(entryBytes(d), budget);
+    }
+    const windowed_budget = budget -| sizing.used;
+    var pinned: TierRun = .{};
+    // Any pinned entry satisfies the never-empty rule via the pinned head, so
+    // the windowed tier gets head privilege only when no pinned entry exists.
+    var windowed: TierRun = .{ .head_taken = pinned_any };
+    var kept: usize = 0;
+    for (rows, 0..) |d, i| {
+        const admitted = switch (tierOf(d.category)) {
+            .pinned => pinned.admit(entryBytes(d), budget),
+            .windowed => windowed.admit(entryBytes(d), windowed_budget),
+        };
+        if (admitted) {
+            std.mem.swap(MemoryDelta, &rows[kept], &rows[i]);
+            kept += 1;
+        }
+    }
+    return rows[0..kept];
 }
 
 /// Upsert one memory entry under `zombie_id` — the ONLY `INSERT` into
@@ -91,12 +189,17 @@ pub fn storeEntry(
     , .{ uid, id, key, content, category, zombie_id, ts });
 }
 
-/// Evict the coldest entries beyond `max` for `zombie_id` (the per-zombie durable-set
-/// cap), keeping the newest by `updated_at DESC`. Call once after a push loop, in the
-/// same `memory_runtime` transaction. A backstop against unbounded growth — the agent's
-/// own stable-key overwrite + `memory_forget` are the primary bound. No-op under the cap.
-/// Returns the evicted-row count (the driver's rows-affected); a driver result that
-/// carries no count reports 0 with a warn — eviction is never blocked on telemetry.
+/// Evict the entries beyond `max` for `zombie_id` (the per-zombie durable-set cap),
+/// tier-ordered: the kept set prefers every `core` row (newest-first within the
+/// tier), then the newest non-core rows — so victims are the coldest non-core rows
+/// first, and a `core` row is evicted only when no non-core row remains. The
+/// protected set is the `CATEGORY_CORE` bind below — in lockstep with TIER_MAP's
+/// pinned set (see the invariant comment there). Call once
+/// after a push loop, in the same `memory_runtime` transaction. A backstop against
+/// unbounded growth — the agent's own stable-key overwrite + `memory_forget` are the
+/// primary bound. No-op under the cap. Returns the evicted-row count (the driver's
+/// rows-affected); a result carrying no count reports 0 with a warn — eviction is
+/// never blocked on telemetry.
 pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !u64 {
     const affected = try conn.exec(
         \\DELETE FROM memory.memory_entries
@@ -104,10 +207,10 @@ pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !u64 {
         \\  AND id IN (
         \\    SELECT id FROM memory.memory_entries
         \\    WHERE zombie_id = $1::uuid
-        \\    ORDER BY updated_at DESC, id DESC
+        \\    ORDER BY (category = $3) DESC, updated_at DESC, id DESC
         \\    OFFSET $2
         \\  )
-    , .{ zombie_id, @as(i64, @intCast(max)) });
+    , .{ zombie_id, @as(i64, @intCast(max)), CATEGORY_CORE });
     const n = affected orelse {
         log.warn("memory_cap_evict_count_unavailable", .{ .zombie_id = zombie_id });
         return 0;
@@ -146,42 +249,6 @@ pub fn listAll(
     return out.toOwnedSlice(alloc);
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-// Compactor windowing is pure (no DB). storeEntry/enforceCap/listAll need a live
-// Postgres and are exercised by the integration tier.
-
-test "recency_window keeps every entry when the set fits the budget" {
-    const rows = [_]MemoryDelta{
-        .{ .key = "a", .content = "11", .category = "c" },
-        .{ .key = "b", .content = "22", .category = "c" },
-    };
-    const c: Compactor = .{ .recency_window = 1024 };
-    try std.testing.expectEqual(@as(usize, 2), c.compact(&rows).len);
-}
-
-test "recency_window drops the cold tail past the byte budget, newest kept" {
-    const rows = [_]MemoryDelta{
-        .{ .key = "k0", .content = "aaaa", .category = "x" }, // 2+4+1 = 7
-        .{ .key = "k1", .content = "bbbb", .category = "x" }, // cumulative 14
-        .{ .key = "k2", .content = "cccc", .category = "x" }, // would be 21
-    };
-    const c: Compactor = .{ .recency_window = 14 };
-    const out = c.compact(&rows);
-    try std.testing.expectEqual(@as(usize, 2), out.len);
-    try std.testing.expectEqualStrings("k0", out[0].key);
-    try std.testing.expectEqualStrings("k1", out[1].key);
-}
-
-test "recency_window always hydrates at least the newest entry" {
-    const rows = [_]MemoryDelta{
-        .{ .key = "big", .content = "xxxxxxxxxx", .category = "c" }, // 14 bytes > budget
-    };
-    const c: Compactor = .{ .recency_window = 4 };
-    try std.testing.expectEqual(@as(usize, 1), c.compact(&rows).len);
-}
-
-test "passthrough returns the rows unchanged" {
-    const rows = [_]MemoryDelta{.{ .key = "a", .content = "b", .category = "c" }};
-    const c: Compactor = .passthrough;
-    try std.testing.expectEqual(@as(usize, 1), c.compact(&rows).len);
-}
+// Pure selection-policy tests live in the sibling `zombie_memory_test.zig`
+// (registered in `tests.zig`); storeEntry/enforceCap/listAll need a live
+// Postgres and are exercised by `zombie_memory_integration_test.zig`.

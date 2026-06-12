@@ -274,15 +274,15 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches **that lease's zombie's full** prior memory and seeds the child's `:memory:` store at run start. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
-| `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+| `GET`  | `/v1/runners/me/memory/{zombie_id}` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's zombie's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
+| `POST` | `/v1/runners/me/memory/{zombie_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
         ┌──────────────── CONTROL PLANE (zombied) ─────────────────┐
         │  Postgres · memory.memory_entries  ← ONLY durable store    │
         │  written under SET ROLE memory_runtime (datastore role)    │
         └──────────▲───────────────────────────────▲────────────────┘
-          GET /v1/runners/me/memory      POST /v1/runners/me/memory
+          GET /v1/runners/me/memory/{id}   POST /v1/runners/me/memory/{id}
           (hydrate prior memory)         (capture run memory)
           [zrn_ + fencing]               [zrn_ + fencing]
                    │                             │
@@ -327,7 +327,7 @@ RUN 2  (next run, same zombie A)                          ◄── THE CARRY-OV
 
 **Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
 
-**v1 scope.** Hydration seeds the **full** prior memory set each run — the simplest correct model, where the agent always has everything. A dedicated, scalable memory store with selective hydration is the post-launch direction once this loop is proven; the `GET` endpoint is the seam it swaps in behind, with no change to the agent.
+**Selection policy.** Hydration is a deterministic, category-pinned byte window — a pure function of (rows, budget): the `core` tier is pinned (every `core` entry, newest-first, within the byte budget), then the newest non-core entries fill the remainder; unknown and custom categories are windowed, never silently pinned. Cap eviction orders the same way — the coldest non-core rows are evicted first, and a `core` row is evicted only when no non-core row remains — so a fact stored once as `core` survives both the window and the cap. No search infrastructure, no scoring: the agent's own discipline (stable keys, `core` for load-bearing facts, `memory_forget` for stale entries — see [*capabilities.md*](./capabilities.md) §4 memory hygiene) is the primary bound. A dedicated, scalable memory store remains the post-launch direction; the `GET` endpoint is the seam it swaps in behind, with no change to the agent.
 
 ## Live activity (the SSE tail)
 
