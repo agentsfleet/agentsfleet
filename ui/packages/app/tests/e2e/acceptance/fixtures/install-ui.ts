@@ -5,7 +5,7 @@
  * signup → install → observe → halt walk is browser-driven end-to-end.
  *
  * Same wire as `agentsfleet install --from`: the form takes TRIGGER.md and
- * SKILL.md bodies; zombied parses the YAML frontmatter server-side and
+ * SKILL.md bodies; agentsfleetd parses the YAML frontmatter server-side and
  * derives `name` plus the compiled trigger config from it. The helper just
  * pastes valid markdown and clicks.
  *

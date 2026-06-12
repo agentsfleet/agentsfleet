@@ -14,7 +14,7 @@
  * The FAPI calls still go through the testing-token interceptor, which
  * keeps the captcha bypass in place, and Clerk development test-mode OTP
  * shortcut (`424242` for `+clerk_test@…` aliases) still works on
- * `attemptEmailAddressVerification`. After zombied bootstraps the tenant
+ * `attemptEmailAddressVerification`. After agentsfleetd bootstraps the tenant
  * and Clerk metadata catches up, the helper activates the signup-created
  * session so clerk-js owns the browser session cookies.
  */

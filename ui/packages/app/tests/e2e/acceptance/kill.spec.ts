@@ -3,7 +3,7 @@
  *
  * Wire: API-seed → /zombies/[id] → KillSwitch "Kill" → ConfirmDialog
  * confirm → return to /zombies and assert the row's `data-state` is
- * `failed` (the dashboard's translation of zombied's `killed` status,
+ * `failed` (the dashboard's translation of agentsfleetd's `killed` status,
  * per `liveStateOf` in
  * `app/(dashboard)/zombies/components/ZombiesList.tsx:19`).
  *

@@ -1,7 +1,7 @@
 /**
  * install-zombie-cli.spec.ts — canonical install path.
  *
- * Spawns `agentsfleet install --from <bundle>` against the local zombied with
+ * Spawns `agentsfleet install --from <bundle>` against the local agentsfleetd with
  * the fixture user's session JWT, then asserts the dashboard renders the
  * row with `data-state="live"`. This is the real user install flow — the
  * dashboard's <FirstInstallCard> hands users a CLI command, not a button.
@@ -15,7 +15,7 @@
  *     (The env var name is `ZOMBIE_TOKEN`, not `ZOMBIECTL_TOKEN` — see
  *      `agentsfleet/src/cli.js:65`.)
  *   - `ZOMBIE_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
- *     workspace-id fetch hit the same zombied (mismatched URLs land at 404).
+ *     workspace-id fetch hit the same agentsfleetd (mismatched URLs land at 404).
  *
  * No `signInAs` cookie-mount, no per-page DOM auth — just agentsfleet + a
  * post-install dashboard reload to confirm the row landed.
@@ -106,7 +106,7 @@ async function spawnZombiectl(args: string[], env: Record<string, string>): Prom
 
 test.describe("install-zombie-cli", () => {
   test("agentsfleet install lands a row on /zombies with live state", async ({ page }) => {
-    // Drive the CLI and the workspace-id fetch against the SAME zombied —
+    // Drive the CLI and the workspace-id fetch against the SAME agentsfleetd —
     // splitting them lands the install at a 404 (workspace from server A,
     // install to server B) with no clear hint about the URL mismatch.
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
