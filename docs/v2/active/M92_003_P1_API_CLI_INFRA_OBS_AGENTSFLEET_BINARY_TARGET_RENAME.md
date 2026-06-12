@@ -150,7 +150,7 @@ Fresh repo-root `git grep -rn -w` per token (`agentsfleet`, `zombied`, `zombie-r
 `build.zig` artifact, zig-out consumers (make targets, `Dockerfile`, workflows), hook lane prefixes.
 
 - **Dimension 2.1** — DONE — `zig build` emits `agentsfleetd` only; verified in-worktree → Eval `E2`
-- **Dimension 2.2** — cross-compile both linux targets green → Acceptance row
+- **Dimension 2.2** — DONE — cross-target check ran green inside `lint-zig` at the mega-commit; explicit matrix re-proof rides the PR's CI → Acceptance row
 
 ### §3 — Runner: `zombie-runner` → `agentsfleet-runner`
 
@@ -163,10 +163,10 @@ Runner build output, `deploy/baremetal/` unit rename + `deploy.sh` transition (s
 
 Repo-local now: `bin` key, dist entry, every caller, workspace package renames. Behind their own gates: the public npm package (first publish) and the installer domain (host serves). A parked gate parks only its surface — M92_002's 6.1 pattern.
 
-- **Dimension 4.1** — manifest pair flipped (name `@agentsfleet/cli`, `bin` `agentsfleet` → renamed entry) → Test `test_cli_bin_name_agentsfleet` + Eval `E3`
-- **Dimension 4.2** — CLI acceptance suite green spawning the renamed entry → existing suite under the renamed target
-- **Dimension 4.3** — installer installs `agentsfleet`; `install_test.sh` green → Eval `E7`
-- **Dimension 4.4** — workspace packages renamed (`@agentsfleet/design-system`, `agentsfleet-app`, `agentsfleet-website`); imports/lockfile/workspace refs follow; app + website suites green → Eval `E1`
+- **Dimension 4.1** — DONE (bin half) — `bin` key `agentsfleet` → `dist/bin/agentsfleet.js` emitted from `src/bin/agentsfleet.ts`; the manifest NAME flip to `@agentsfleet/cli` lands with 4.5's gated edit so the published listing never half-exists → Test `test_cli_bin_name_agentsfleet` + Eval `E3`
+- **Dimension 4.2** — DONE — `test-unit-agentsfleet` + `lint-agentsfleet` green spawning `dist/bin/agentsfleet.js`
+- **Dimension 4.3** — PARKED (IN_PROGRESS) — installer + its mocked test deliberately assert the gated old package today (`install_test.sh` green as-is); script, test, and `PKG` flip together when 4.5/4.6 verify → Eval `E7`
+- **Dimension 4.4** — DONE — `@agentsfleet/design-system` + `agentsfleet-app`/`-website` across manifests, imports, lockfile; app + website suites green → Eval `E1`
 - **Dimension 4.5** — registry cutover: `@agentsfleet` npm org exists (Indy), publish token covers it, `release.yml` publishes the new name, first publish verified; installer `PKG` flips only after Eval `E9` passes (e2e, manual-verified)
 - **Dimension 4.6** — installer-domain cutover: `agentsfleet.dev` serves the installer (Indy: registrar + DNS + hosting attach + `usezombie.sh` alias); `INSTALL_COMMAND`, its pins, and README snippet flip in the same gated edit; unverified → parks → Eval `E10`
 
