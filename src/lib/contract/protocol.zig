@@ -290,15 +290,17 @@ pub const MAX_MEMORY_PUSH_BYTES: usize = 256 * 1024; // 256 KiB
 
 /// Hard ceiling on the durable memory entries one zombie may accumulate across all
 /// its runs. The per-push cap bounds a single push; this bounds the unbounded
-/// growth a long-lived (or adversarial) zombie would otherwise build up — `storeEntry`
-/// evicts the coldest (`updated_at ASC`) beyond it, server-side. A backstop, not the
-/// primary bound (stable-key overwrite + `memory_forget` are the agent's own).
+/// growth a long-lived (or adversarial) zombie would otherwise build up — `enforceCap`
+/// evicts beyond it server-side, tier-ordered: coldest non-core rows first, `core`
+/// rows only when no non-core row remains. A backstop, not the primary bound
+/// (stable-key overwrite + `memory_forget` are the agent's own).
 pub const MAX_MEMORY_ENTRIES_PER_ZOMBIE: usize = 1000;
 
-/// Byte budget for one hydration window. The `GET` Compactor returns the newest
-/// entries (`updated_at DESC`) whose cumulative key+content+category bytes fit under
-/// this; the cold tail stays durable in Postgres, unhydrated. Bounds the payload a
-/// run seeds into the child regardless of how large the durable set has grown.
+/// Byte budget for one hydration window. The `GET` Compactor is category-pinned:
+/// every `core` entry that fits hydrates first (newest-first), then the newest
+/// non-core entries fill the remainder of this budget; the dropped entries stay
+/// durable in Postgres, unhydrated. Bounds the payload a run seeds into the child
+/// regardless of how large the durable set has grown.
 pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
 
 /// One durable agent-memory item on the wire — the unit of both capture (POST
@@ -325,11 +327,11 @@ pub const MemoryPushRequest = struct {
 };
 
 /// GET /v1/runners/me/memory/{zombie_id} reply — a compacted hydration window of
-/// the path zombie's durable memory (newest entries under `HYDRATE_WINDOW_BYTES`;
-/// the cold tail stays in Postgres), which the runner parent seeds into the child's
-/// in-run store at run start. The runner names the zombie it holds in its
-/// `LeasePayload`; the server returns memory only for a zombie the runner holds a
-/// live lease for.
+/// the path zombie's durable memory (category-pinned under `HYDRATE_WINDOW_BYTES`:
+/// `core` entries first, then newest non-core; the dropped entries stay in
+/// Postgres), which the runner parent seeds into the child's in-run store at run
+/// start. The runner names the zombie it holds in its `LeasePayload`; the server
+/// returns memory only for a zombie the runner holds a live lease for.
 pub const MemoryHydrateResponse = struct {
     memory: []const MemoryDelta,
 };

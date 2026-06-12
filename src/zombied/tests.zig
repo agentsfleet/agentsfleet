@@ -84,8 +84,9 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
-    // Persistent Zombie Memory — role isolation + adapter write-path tests.
+    // Persistent Zombie Memory — role isolation + selection policy + adapter write-path tests.
     _ = @import("memory/zombie_memory_role_test.zig");
+    _ = @import("memory/zombie_memory_test.zig");
     _ = @import("memory/zombie_memory_integration_test.zig");
     // Zombie CRUD, activity, router
     _ = @import("http/handlers/zombies/api.zig");

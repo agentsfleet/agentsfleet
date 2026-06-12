@@ -21,6 +21,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const api_key = @import("../../../auth/api_key.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
+const memory_adapter = @import("../../../memory/zombie_memory.zig");
 const protocol = @import("contract").protocol;
 
 const ALLOC = std.testing.allocator;
@@ -34,12 +35,14 @@ const ZID_CAP_OVER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c03";
 const ZID_CAP_UNDER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c04";
 const ZID_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c05";
 const ZID_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c06";
+const ZID_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c07";
 const LEASE_HYD_DROP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f01";
 const LEASE_HYD_FIT = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f02";
 const LEASE_CAP_OVER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f03";
 const LEASE_CAP_UNDER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f04";
 const LEASE_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f05";
 const LEASE_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f06";
+const LEASE_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f07";
 const EVENT_ID = "evt-mem-loop-1";
 const NOW_MS: i64 = 1_900_000_000_000;
 /// Seeded lease fencing token; every push fences at exactly this value.
@@ -109,7 +112,7 @@ fn wipeMemory(conn: *pg.Conn, zombie_id: []const u8) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP }) |zid| {
+    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP, ZID_HYD_CORE }) |zid| {
         wipeMemory(conn, zid);
     }
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
@@ -148,6 +151,7 @@ fn setup() !?Env {
     try seedLease(conn, LEASE_CAP_UNDER, ZID_CAP_UNDER);
     try seedLease(conn, LEASE_TRUNC, ZID_TRUNC);
     try seedLease(conn, LEASE_SKIP, ZID_SKIP);
+    try seedLease(conn, LEASE_HYD_CORE, ZID_HYD_CORE);
     return .{ .h = h };
 }
 
@@ -180,6 +184,23 @@ fn seedRows(env: Env, zombie_id: []const u8, n: usize, content_len: usize) !void
         \\FROM generate_series(1, $3::int) n
         \\ON CONFLICT (key, zombie_id) DO NOTHING
     , .{ zombie_id, @as(i64, @intCast(content_len)), @as(i64, @intCast(n)) });
+}
+
+/// Seed one cold core fact directly (memory_runtime INSERT) — updated_at far
+/// below seedRows' epoch so every windowed row is strictly newer than it.
+fn seedCoreRow(env: Env, zombie_id: []const u8, key: []const u8) !void {
+    const conn = try env.h.acquireConn();
+    defer env.h.releaseConn(conn);
+    _ = try conn.exec("SET ROLE memory_runtime", .{});
+    defer execIgnore(conn, "RESET ROLE", .{});
+    _ = try conn.exec(
+        \\INSERT INTO memory.memory_entries
+        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\VALUES (('0195e2aa-4c1b-7fff-8abc-' || substr(replace($1::uuid::text, '-', ''), 25, 8) || 'ffff')::uuid,
+        \\        'ck-' || substr(replace($1::uuid::text, '-', ''), 29, 4),
+        \\        $2, 'indy', $3, $1::uuid, NULL, '1600000000', '1600000000')
+        \\ON CONFLICT (key, zombie_id) DO NOTHING
+    , .{ zombie_id, key, memory_adapter.CATEGORY_CORE });
 }
 
 fn rowCount(env: Env, zombie_id: []const u8) !i64 {
@@ -245,6 +266,31 @@ test "test_hydrate_no_drop_when_fits" {
     const after = metrics_memory.snapshot();
     try std.testing.expectEqual(before.hydration_dropped_entries_total, after.hydration_dropped_entries_total);
     try std.testing.expectEqual(before.hydration_dropped_bytes_total, after.hydration_dropped_bytes_total);
+}
+
+test "test_hydrate_pins_core_through_the_endpoint" {
+    var env = (try setup()) orelse return error.SkipZigTest;
+    defer env.deinit();
+    // One cold core fact plus five 60_004-byte windowed rows: the 256 KiB
+    // window admits the core fact and the four newest windowed rows; the
+    // coldest windowed row is the only drop. Pure recency would have dropped
+    // the core fact (the oldest row of all) — this pins the tier policy at
+    // the real GET endpoint, response body and counters both.
+    try seedCoreRow(env, ZID_HYD_CORE, "owner");
+    try seedRows(env, ZID_HYD_CORE, HYD_ROWS, HYD_CONTENT_LEN);
+
+    const url = try memoryUrl(ZID_HYD_CORE);
+    defer ALLOC.free(url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try env.h.get(url).bearer(RUNNER_TOKEN)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"key\":\"owner\""));
+    const after = metrics_memory.snapshot();
+    try std.testing.expectEqual(before.hydration_dropped_entries_total + 1, after.hydration_dropped_entries_total);
+    try std.testing.expectEqual(before.hydration_dropped_bytes_total + HYD_ROW_BYTES, after.hydration_dropped_bytes_total);
+    try std.testing.expectEqual(@as(i64, HYD_ROWS), after.hydration_entries);
 }
 
 // ── §capture: cap-eviction counter ──────────────────────────────────────────
