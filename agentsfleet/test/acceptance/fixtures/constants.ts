@@ -72,7 +72,7 @@ export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 export const API_URL_PROD = "https://api.usezombie.com";
 export const API_URL_DEV = "https://api-dev.usezombie.com";
 export const DASHBOARD_URL_PROD = "https://app.usezombie.com";
-export const DASHBOARD_URL_DEV = "https://agentsfleet-app.vercel.app";
+export const DASHBOARD_URL_DEV = "https://usezombie-app.vercel.app";
 
 // Per-process acceptance run identifier — every zombie created by this
 // run is named `${ACCEPTANCE_RUN_PREFIX}-…`; every list/teardown

@@ -11,7 +11,7 @@ import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.usezombie.com";
 // PROD dashboard is `app.usezombie.com` (DEV is the Vercel preview at
-// `agentsfleet-app.vercel.app`; see `runtime_loader.zig:121 APP_URL`,
+// `usezombie-app.vercel.app`; see `runtime_loader.zig:121 APP_URL`,
 // `BILLING_DASHBOARD_URL` in `commands/billing.ts`, and acceptance's
 // `DASHBOARD_URL_PROD`). The earlier `dashboard.usezombie.com` value
 // was a typo that pointed at a nonexistent domain.

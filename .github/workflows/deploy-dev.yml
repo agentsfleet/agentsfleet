@@ -427,7 +427,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet-app.vercel.app
+          BASE_URL: https://usezombie-app.vercel.app
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
@@ -443,8 +443,8 @@ jobs:
   # the acceptance suite (tests/e2e/acceptance/**). Failures gate the notify
   # step.
   #
-  # `https://agentsfleet-app.vercel.app` is the dev-facing dashboard — the
-  # `agentsfleet-app` Vercel project's Production env has
+  # `https://usezombie-app.vercel.app` is the dev-facing dashboard — the
+  # `usezombie-app` Vercel project's Production env has
   # `NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com` baked in (the
   # production-customer dashboard lives behind the `app.usezombie.com`
   # custom domain via a separate project). Same URL that `qa-dev` above
@@ -501,7 +501,7 @@ jobs:
         run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet-app.vercel.app
+          BASE_URL: https://usezombie-app.vercel.app
           NEXT_PUBLIC_API_URL: https://api-dev.usezombie.com
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
@@ -573,7 +573,7 @@ jobs:
         env:
           ZOMBIE_ACCEPTANCE_TARGET: https://api-dev.usezombie.com
           ZOMBIE_ACCEPTANCE_BINARY: worktree
-          ZOMBIE_ACCEPTANCE_DASHBOARD_URL: https://agentsfleet-app.vercel.app
+          ZOMBIE_ACCEPTANCE_DASHBOARD_URL: https://usezombie-app.vercel.app
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
           AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}

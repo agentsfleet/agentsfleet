@@ -195,12 +195,12 @@ check_vercel_envs() {
   echo "-- checking Vercel project envs"
   local api="${VERCEL_API:-https://api.vercel.com}"
   local -a expectations=(
-    "agentsfleet-website|VITE_POSTHOG_KEY"
-    "agentsfleet-website|VITE_POSTHOG_HOST"
+    "usezombie-website|VITE_POSTHOG_KEY"
+    "usezombie-website|VITE_POSTHOG_HOST"
     "usezombie-agents-sh|VITE_POSTHOG_KEY"
     "usezombie-agents-sh|VITE_POSTHOG_HOST"
-    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY"
-    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST"
+    "usezombie-app|NEXT_PUBLIC_POSTHOG_KEY"
+    "usezombie-app|NEXT_PUBLIC_POSTHOG_HOST"
   )
   declare -A ENV_CACHE
   local entry project key envs targets
