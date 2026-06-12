@@ -38,14 +38,25 @@ pub const CATEGORY_CONVERSATION: []const u8 = "conversation";
 pub const Tier = enum { pinned, windowed };
 
 // LOCKSTEP INVARIANT: the pinned set here must equal the set enforceCap's
-// eviction ordering protects (its `category = CATEGORY_CORE` bind). Adding a
-// second pinned category requires widening that SQL in the same diff, or
-// hydration pins what eviction still deletes first.
-const TIER_MAP = std.StaticStringMap(Tier).initComptime(.{
-    .{ CATEGORY_CORE, .pinned },
-    .{ CATEGORY_DAILY, .windowed },
-    .{ CATEGORY_CONVERSATION, .windowed },
-});
+// eviction ordering protects (its `category = CATEGORY_CORE` bind). The
+// comptime assertion pins the pinned-entry count to exactly one, so adding a
+// second pinned category fails compilation until that SQL widens in the same
+// diff — hydration can never pin what eviction still deletes first.
+const TIER_ENTRIES = .{
+    .{ CATEGORY_CORE, Tier.pinned },
+    .{ CATEGORY_DAILY, Tier.windowed },
+    .{ CATEGORY_CONVERSATION, Tier.windowed },
+};
+
+const TIER_MAP = std.StaticStringMap(Tier).initComptime(TIER_ENTRIES);
+
+comptime {
+    var pinned_count: usize = 0;
+    for (TIER_ENTRIES) |entry| {
+        if (entry[1] == .pinned) pinned_count += 1;
+    }
+    std.debug.assert(pinned_count == 1);
+}
 
 /// Category → tier. Unknown and custom categories default to `windowed` —
 /// an unrecognised string must never be accidentally pinned.
