@@ -59,7 +59,7 @@ Expected DEV pipeline order:
 2. `build-dev` — cross-compiles and pushes `dev-latest` to GHCR
 3. `deploy-fly-dev` — `flyctl deploy --app agentsfleetd-dev --image ghcr.io/usezombie/agentsfleetd:dev-latest`
 4. `verify-dev` — polls `https://api-dev.usezombie.com/healthz` until 200
-5. `qa-dev` — Playwright smoke suite against `https://agentsfleet-app.vercel.app`
+5. `qa-dev` — Playwright smoke suite against `https://usezombie-app.vercel.app`
 6. `notify` — Discord
 
 > **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
