@@ -180,7 +180,7 @@ Deploy/smoke workflows referencing flipped hostnames follow §1; brand strings i
 
 In `~/Projects/docs` on a fresh branch off `main` (`chore/m92-002-agentsfleet-brand-assets`): `favicon.svg`, `favicon.ico`, `logo/dark.svg`, `logo/light.svg`, `logo/mark-glow.svg` replaced with the agentsfleet equivalents from `branding/`. Asset swap only — `docs.json` textual rebrand rides the follow-up spec. Separate PR on that repo; linked from this spec's PR body.
 
-- **Dimension 8.1** — DONE — usezombie/docs#91, checksums matched → Eval `E6`
+- **Dimension 8.1** — DONE — usezombie/docs#91, checksums matched; the wordmark refresh re-propagates `logo/{dark,light}.svg` on the companion branch `chore/m92-002-wordmark-refresh` (E6 re-run, both lockups) → Eval `E6`
 
 ---
 
@@ -253,8 +253,9 @@ grep -rnE "usezombie" docs/architecture --include='*.md' --exclude-dir=archive |
 grep -rn "usezombie-mark\|usezombie-wordmark\|^assets/\|(assets/\|\"assets/" --include='*.{md,ts,tsx,html,json,yml,svg}' . | grep -v node_modules | head
 # E5: Workflow diffs are strings-only (manual review of git diff .github/)
 git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|usezombie|agentsfleet" | head
-# E6: Docs-repo assets match branding/ (run in ~/Projects/docs)
-shasum ~/Projects/usezombie/branding/agentsfleet-dark.svg logo/dark.svg
+# E6: Docs-repo assets match branding/ — BOTH lockups (run in ~/Projects/docs;
+# source path is canonical post-merge — pre-merge, point it at the feature worktree)
+for v in dark light; do shasum ~/Projects/usezombie/branding/agentsfleet-$v.svg logo/$v.svg; done
 # E7: Operational identifiers byte-stable — count compare HEAD vs working tree (expect all OK)
 for t in "usezombie-admin" "zombied" "core\.zombie_" "@usezombie/" "x-usezombie" "usezombie\.sh"; do a=$(git grep -c "$t" origin/main -- docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); b=$(grep -rc "$t" docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); echo "$t $([ "$a" = "$b" ] && echo OK || echo DRIFT)"; done
 ```
