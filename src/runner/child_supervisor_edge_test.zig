@@ -28,7 +28,7 @@ const NoopMem = struct {
 // the elapsed deadline next iteration and exit, not loop.
 const PastExtendHook = struct {
     ticks: usize = 0,
-    fn onTick(ctx: *anyopaque, now_ms: i64) supervisor.RenewDecision {
+    fn onTick(ctx: *anyopaque, now_ms: i64, _: supervisor.UsageSnapshot) supervisor.RenewDecision {
         const self: *PastExtendHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
         return .{ .extend = now_ms - std.time.ms_per_s }; // already past (1s ago)

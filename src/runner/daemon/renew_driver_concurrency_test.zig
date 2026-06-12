@@ -10,6 +10,7 @@ const constants = @import("common");
 const client = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const renew_driver = @import("renew_driver.zig");
+const contract = @import("contract");
 const MS_PER_SECOND = 1_000;
 
 const RenewDecision = child_supervisor.RenewDecision;
@@ -24,7 +25,7 @@ const FakeClient = struct {
     outcomes: []const (client.ClientError!client.RenewResult),
     idx: usize = 0,
     calls: usize = 0,
-    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: u31) client.ClientError!client.RenewResult {
+    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: contract.protocol.RenewRequest, _: u31) client.ClientError!client.RenewResult {
         self.calls += 1;
         if (self.idx >= self.outcomes.len) return self.outcomes[self.outcomes.len - 1];
         const o = self.outcomes[self.idx];
@@ -59,11 +60,11 @@ test "onTick should accumulate deadline extensions across multiple consecutive r
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND); // 1s left → inside the window
     const h = driver.hook();
 
-    try testing.expectEqual(RenewDecision{ .extend = d1 }, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision{ .extend = d1 }, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(d1, driver.deadline_ms);
-    try testing.expectEqual(RenewDecision{ .extend = d2 }, h.onTick(h.ctx, d1 - MS_PER_SECOND));
+    try testing.expectEqual(RenewDecision{ .extend = d2 }, h.onTick(h.ctx, d1 - MS_PER_SECOND, .{}));
     try testing.expectEqual(d2, driver.deadline_ms);
-    try testing.expectEqual(RenewDecision{ .extend = d3 }, h.onTick(h.ctx, d2 - MS_PER_SECOND));
+    try testing.expectEqual(RenewDecision{ .extend = d3 }, h.onTick(h.ctx, d2 - MS_PER_SECOND, .{}));
 
     try testing.expectEqual(d3, driver.deadline_ms); // final deadline is the last renewal
     try testing.expectEqual(@as(usize, 3), fake.calls);
@@ -79,12 +80,12 @@ test "onTick should remain safe after a terminal renewal even when called again"
     var driver = driverWith(&fake, NOW_MS + MS_PER_SECOND);
     const h = driver.hook();
 
-    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS));
+    try testing.expectEqual(RenewDecision.terminate, h.onTick(h.ctx, NOW_MS, .{}));
     try testing.expectEqual(@as(usize, 1), fake.calls);
     try testing.expectEqual(NOW_MS + MS_PER_SECOND, driver.deadline_ms); // terminal left it unchanged
 
     // A late tick well outside the renewal window: short-circuits, no second call.
     const far_now = NOW_MS + 1_000 - constants.RENEWAL_WINDOW_MS - 60_000;
-    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, far_now));
+    try testing.expectEqual(RenewDecision.keep, h.onTick(h.ctx, far_now, .{}));
     try testing.expectEqual(@as(usize, 1), fake.calls); // no double-call to fake.renew
 }
