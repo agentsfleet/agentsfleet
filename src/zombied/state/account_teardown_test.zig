@@ -109,8 +109,8 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
     // A memory row the purge deletes BEFORE it reaches the injected failure —
     // its survival after the error is the rollback proof.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, NULL, '1700000000', '1700000000')
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
         \\ON CONFLICT (uid) DO NOTHING
     , .{ RB_MEMORY_UID, RB_ZOMBIE_ID });
     // Fleet rows: no FK into core, swept only by the purge's explicit fleet
@@ -264,8 +264,8 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     // Seed one memory row for the zombie. No FK to core.zombies, so only the
     // teardown's explicit DELETE removes it.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, NULL, '1700000000', '1700000000')
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, 1700000000000, 1700000000000)
     , .{ "account-teardown-canary", ZOMBIE_ID });
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, ZOMBIE_ID));
 

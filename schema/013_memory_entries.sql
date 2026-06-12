@@ -33,7 +33,9 @@ ALTER ROLE memory_runtime SET search_path = memory, public;
 
 -- memory_entries: primary store for zombie persistent memory.
 -- id: "{nanoseconds}-{hex64}-{hex64}" (NullClaw generateId format, retained).
--- created_at / updated_at: decimal Unix epoch as TEXT (NullClaw format, retained).
+-- created_at / updated_at: BIGINT Unix epoch milliseconds (project clock),
+-- per the platform timestamp convention — set at INSERT, updated_at refreshed
+-- on every upsert. Age arithmetic (the daily retention sweep) rides updated_at.
 -- zombie_id: the owning zombie (UUID) — our identifier end to end, no "zmb:" form.
 CREATE TABLE IF NOT EXISTS memory.memory_entries (
     uid         UUID PRIMARY KEY,
@@ -42,10 +44,9 @@ CREATE TABLE IF NOT EXISTS memory.memory_entries (
     key         TEXT NOT NULL,
     content     TEXT NOT NULL,
     category    TEXT NOT NULL,
-    session_id  TEXT,
     zombie_id   UUID NOT NULL,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    created_at  BIGINT NOT NULL,
+    updated_at  BIGINT NOT NULL
 );
 
 -- Required for ON CONFLICT (key, zombie_id) upserts in the runner-memory adapter.

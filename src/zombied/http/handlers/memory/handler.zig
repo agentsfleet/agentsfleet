@@ -95,7 +95,7 @@ pub fn innerListMemories(
             \\FROM memory.memory_entries
             \\WHERE zombie_id = $1::uuid
             \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
-            \\ORDER BY updated_at DESC
+            \\ORDER BY updated_at DESC, id DESC
             \\LIMIT $3
         , .{ zombie_scope, like_pat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
@@ -113,7 +113,7 @@ pub fn innerListMemories(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
             \\WHERE zombie_id = $1::uuid AND category = $2
-            \\ORDER BY updated_at DESC LIMIT $3
+            \\ORDER BY updated_at DESC, id DESC LIMIT $3
         , .{ zombie_scope, cat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
@@ -125,7 +125,7 @@ pub fn innerListMemories(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
             \\WHERE zombie_id = $1::uuid
-            \\ORDER BY updated_at DESC LIMIT $2
+            \\ORDER BY updated_at DESC, id DESC LIMIT $2
         , .{ zombie_scope, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;

@@ -21,9 +21,9 @@ const S_COLLECT_TRUNCATED = "collect_truncated";
 
 pub const MAX_KEY_LEN: usize = 255;
 pub const MAX_CONTENT_LEN: usize = 16 * 1024; // 16KB
-// Category is a short label (NullClaw's MemoryCategory.toString()); cap it so an
-// empty or oversized value can't bypass the schema DEFAULT 'core' and land a
-// junk category that fromString() later has to interpret.
+// Category is a short label; the schema deliberately carries no DEFAULT or
+// CHECK (value constraints live in app constants), so this app-side cap is
+// the only bound keeping an oversized label from landing a junk category.
 pub const MAX_CATEGORY_LEN: usize = 64;
 pub const MAX_RECALL_LIMIT: i64 = 100;
 pub const DEFAULT_RECALL_LIMIT: i64 = 20;
@@ -33,7 +33,8 @@ pub const MemoryEntry = struct {
     key: []const u8,
     content: []const u8,
     category: []const u8,
-    updated_at: []const u8,
+    /// Epoch milliseconds — serialized as a JSON number on the tenant wire.
+    updated_at: i64,
 };
 
 /// Verify the principal can access the path workspace and the zombie
@@ -127,11 +128,6 @@ pub fn escapeLikePattern(alloc: std.mem.Allocator, input: []const u8) error{OutO
     return out;
 }
 
-/// Current Unix timestamp as a decimal string, arena-allocated.
-pub fn nowTs(alloc: std.mem.Allocator) []const u8 {
-    return std.fmt.allocPrint(alloc, "{d}", .{clock.nowSeconds()}) catch "0";
-}
-
 /// Sentinel ID returned when the CSPRNG or the format alloc fails — genId never
 /// returns an error, so callers always get a usable (if non-unique) id.
 const S_FALLBACK_ID = "fallback-id";
@@ -172,10 +168,7 @@ pub fn collectEntries(
             log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_category", .collected = entries.items.len });
             break :collect;
         };
-        const updated_at = alloc.dupe(u8, r.get([]const u8, 3) catch continue) catch {
-            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_updated_at", .collected = entries.items.len });
-            break :collect;
-        };
+        const updated_at = r.get(i64, 3) catch continue;
         entries.append(alloc, .{
             .key = key,
             .content = content,

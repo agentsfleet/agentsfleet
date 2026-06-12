@@ -20,6 +20,17 @@ const ZID_ISO_A = "0195b4ba-8d3a-7f13-8abc-00000000a003";
 const ZID_ISO_B = "0195b4ba-8d3a-7f13-8abc-00000000a004";
 const ZID_TIER = "0195b4ba-8d3a-7f13-8abc-00000000a005";
 const ZID_HEADLINE = "0195b4ba-8d3a-7f13-8abc-00000000a006";
+const ZID_SWEEP_A = "0195b4ba-8d3a-7f13-8abc-00000000a007";
+const ZID_SWEEP_B = "0195b4ba-8d3a-7f13-8abc-00000000a008";
+const ZID_TS = "0195b4ba-8d3a-7f13-8abc-00000000a009";
+
+// Sweep-age fixture instants (epoch ms): rows at T_AGED are older than the
+// CUTOFF; rows at T_YOUNG are newer. CUTOFF_ALL is far future — at that cutoff
+// every seeded row counts as aged, which isolates the category guard.
+const T_AGED: i64 = 1_700_000_001_000;
+const T_YOUNG: i64 = 1_700_000_005_000;
+const CUTOFF: i64 = 1_700_000_003_000;
+const CUTOFF_ALL: i64 = 2_000_000_000_000;
 
 const TestDb = struct {
     pool: *pg.Pool,
@@ -67,12 +78,12 @@ const TestDb = struct {
 fn seedDailies(db: TestDb, zombie_id: []const u8, n: usize) !void {
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
         \\SELECT (('0195b4ba-8d3a-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
         \\       'dk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
-        \\       'dk' || n, 'noise', $2, $1::uuid, NULL,
-        \\       '1700000000', '1700' || lpad(n::text, 6, '0')
+        \\       'dk' || n, 'noise', $2, $1::uuid,
+        \\       1700000000000, 1700000000000 + n
         \\FROM generate_series(1, $3::int) n
         \\ON CONFLICT (key, zombie_id) DO NOTHING
     , .{ zombie_id, adapter.CATEGORY_DAILY, @as(i64, @intCast(n)) });
@@ -94,8 +105,8 @@ test "integration: storeEntry persists, listAll reads it back, upsert is idempot
     db.wipe(ZID_PERSIST);
     defer db.wipe(ZID_PERSIST);
 
-    try adapter.storeEntry(db.conn, "id-p1", ZID_PERSIST, "deploy_target", "fly", adapter.CATEGORY_CORE, "1700000001");
-    try adapter.storeEntry(db.conn, "id-p2", ZID_PERSIST, "owner", "indy", adapter.CATEGORY_CORE, "1700000002");
+    try adapter.storeEntry(db.conn, "id-p1", ZID_PERSIST, "deploy_target", "fly", adapter.CATEGORY_CORE, 1_700_000_001_000);
+    try adapter.storeEntry(db.conn, "id-p2", ZID_PERSIST, "owner", "indy", adapter.CATEGORY_CORE, 1_700_000_002_000);
 
     const rows = try adapter.listAll(alloc, db.conn, ZID_PERSIST);
     defer freeDeltas(alloc, rows);
@@ -104,7 +115,7 @@ test "integration: storeEntry persists, listAll reads it back, upsert is idempot
     try std.testing.expectEqualStrings("owner", rows[0].key);
 
     // Idempotent upsert: same key, new id/content → one row, content updated.
-    try adapter.storeEntry(db.conn, "id-p1b", ZID_PERSIST, "deploy_target", "render", adapter.CATEGORY_CORE, "1700000003");
+    try adapter.storeEntry(db.conn, "id-p1b", ZID_PERSIST, "deploy_target", "render", adapter.CATEGORY_CORE, 1_700_000_003_000);
     try std.testing.expectEqual(@as(usize, 2), try db.count(ZID_PERSIST));
 }
 
@@ -116,8 +127,8 @@ test "integration: enforceCap over an all-core set evicts the coldest core as la
     defer db.wipe(ZID_CAP);
 
     // Five entries, ascending updated_at → k1 is coldest, k5 newest.
-    inline for (.{ "1", "2", "3", "4", "5" }) |n| {
-        try adapter.storeEntry(db.conn, "id-c" ++ n, ZID_CAP, "k" ++ n, "v" ++ n, adapter.CATEGORY_CORE, "170000000" ++ n);
+    inline for (.{ "1", "2", "3", "4", "5" }, 1..) |n, ts_step| {
+        try adapter.storeEntry(db.conn, "id-c" ++ n, ZID_CAP, "k" ++ n, "v" ++ n, adapter.CATEGORY_CORE, 1_700_000_000_000 + @as(i64, ts_step));
     }
     try std.testing.expectEqual(@as(usize, 5), try db.count(ZID_CAP));
 
@@ -135,7 +146,7 @@ test "integration: enforceCap over an all-core set evicts the coldest core as la
     try std.testing.expectEqual(@as(u64, 0), try adapter.enforceCap(db.conn, ZID_CAP, 3));
 
     // An upsert to an existing key is overwrite, not insert — count holds.
-    try adapter.storeEntry(db.conn, "id-c5b", ZID_CAP, "k5", "v5b", adapter.CATEGORY_CORE, "1700000006");
+    try adapter.storeEntry(db.conn, "id-c5b", ZID_CAP, "k5", "v5b", adapter.CATEGORY_CORE, 1_700_000_000_006);
     try std.testing.expectEqual(@as(usize, 3), try db.count(ZID_CAP));
 }
 
@@ -146,7 +157,7 @@ test "integration: enforceCap failure propagates as an error, deleting nothing" 
     db.wipe(ZID_CAP);
     defer db.wipe(ZID_CAP);
 
-    try adapter.storeEntry(db.conn, "id-f1", ZID_CAP, "kf1", "vf1", adapter.CATEGORY_CORE, "1700000001");
+    try adapter.storeEntry(db.conn, "id-f1", ZID_CAP, "kf1", "vf1", adapter.CATEGORY_CORE, 1_700_000_001_000);
     try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_CAP));
 
     // Inject a deterministic failure: the driver rejects a malformed zombie_id
@@ -165,11 +176,11 @@ test "integration: cap eviction takes the coldest non-core rows before any core 
     defer db.wipe(ZID_TIER);
 
     // Three core facts are the COLDEST rows of all; four daily entries land newer.
-    inline for (.{ "1", "2", "3" }) |n| {
-        try adapter.storeEntry(db.conn, "id-tc" ++ n, ZID_TIER, "kc" ++ n, "v" ++ n, adapter.CATEGORY_CORE, "170000000" ++ n);
+    inline for (.{ "1", "2", "3" }, 1..) |n, ts_step| {
+        try adapter.storeEntry(db.conn, "id-tc" ++ n, ZID_TIER, "kc" ++ n, "v" ++ n, adapter.CATEGORY_CORE, 1_700_000_000_000 + @as(i64, ts_step));
     }
-    inline for (.{ "4", "5", "6", "7" }) |n| {
-        try adapter.storeEntry(db.conn, "id-td" ++ n, ZID_TIER, "kd" ++ n, "v" ++ n, adapter.CATEGORY_DAILY, "170000000" ++ n);
+    inline for (.{ "4", "5", "6", "7" }, 4..) |n, ts_step| {
+        try adapter.storeEntry(db.conn, "id-td" ++ n, ZID_TIER, "kd" ++ n, "v" ++ n, adapter.CATEGORY_DAILY, 1_700_000_000_000 + @as(i64, ts_step));
     }
 
     // Cap 5 over 7 rows: the victims are the two coldest DAILY rows (kd4, kd5),
@@ -195,7 +206,7 @@ test "integration: one core fact survives a thousand daily pushes — durable an
     // The core fact is the single OLDEST row the zombie owns — under the old
     // recency-only currency it would be the first casualty of both mechanisms.
     const cap = protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE;
-    try adapter.storeEntry(db.conn, "id-h1", ZID_HEADLINE, "owner", "indy", adapter.CATEGORY_CORE, "1600000000");
+    try adapter.storeEntry(db.conn, "id-h1", ZID_HEADLINE, "owner", "indy", adapter.CATEGORY_CORE, 1_600_000_000_000);
     try seedDailies(db, ZID_HEADLINE, cap);
     try std.testing.expectEqual(cap + 1, try db.count(ZID_HEADLINE));
 
@@ -220,6 +231,109 @@ test "integration: one core fact survives a thousand daily pushes — durable an
     try std.testing.expect(core_hydrated);
 }
 
+test "integration: numeric millis round-trip — updated_at reads back exactly; listAll newest-first" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_TS);
+    defer db.wipe(ZID_TS);
+
+    try adapter.storeEntry(db.conn, "id-ts1", ZID_TS, "older", "v1", adapter.CATEGORY_CORE, T_AGED);
+    try adapter.storeEntry(db.conn, "id-ts2", ZID_TS, "newer", "v2", adapter.CATEGORY_CORE, T_YOUNG);
+
+    // The stored value survives as the exact epoch-millis integer (BIGINT
+    // round-trip, no string shape anywhere). Block-scoped so the read result
+    // is drained before the next query on the same connection.
+    {
+        var q = PgQuery.from(try db.conn.query(
+            "SELECT updated_at FROM memory.memory_entries WHERE zombie_id = $1::uuid AND key = $2",
+            .{ ZID_TS, "newer" },
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqual(T_YOUNG, try row.get(i64, 0));
+    }
+
+    // Ordering is numeric now — newest-first with no digit-count caveat.
+    const rows = try adapter.listAll(alloc, db.conn, ZID_TS);
+    defer freeDeltas(alloc, rows);
+    try std.testing.expectEqual(@as(usize, 2), rows.len);
+    try std.testing.expectEqualStrings("newer", rows[0].key);
+}
+
+test "integration: daily sweep deletes only aged daily rows — young daily and other zombies untouched" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_SWEEP_A);
+    db.wipe(ZID_SWEEP_B);
+    defer db.wipe(ZID_SWEEP_A);
+    defer db.wipe(ZID_SWEEP_B);
+
+    try adapter.storeEntry(db.conn, "id-sa1", ZID_SWEEP_A, "aged", "v", adapter.CATEGORY_DAILY, T_AGED);
+    try adapter.storeEntry(db.conn, "id-sa2", ZID_SWEEP_A, "young", "v", adapter.CATEGORY_DAILY, T_YOUNG);
+    try adapter.storeEntry(db.conn, "id-sb1", ZID_SWEEP_B, "aged", "v", adapter.CATEGORY_DAILY, T_AGED);
+
+    // Sweeping A at the cutoff removes exactly A's aged row — the young row
+    // and B's rows (a different zombie, same age) are out of scope.
+    try std.testing.expectEqual(@as(u64, 1), try adapter.sweepExpiredDaily(db.conn, ZID_SWEEP_A, CUTOFF));
+    try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_SWEEP_A));
+    try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_SWEEP_B));
+
+    const rows = try adapter.listAll(alloc, db.conn, ZID_SWEEP_A);
+    defer freeDeltas(alloc, rows);
+    try std.testing.expectEqualStrings("young", rows[0].key);
+}
+
+test "integration: sweep never touches other categories — aged core/conversation/custom survive" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_SWEEP_A);
+    defer db.wipe(ZID_SWEEP_A);
+
+    try adapter.storeEntry(db.conn, "id-oc1", ZID_SWEEP_A, "kc", "v", adapter.CATEGORY_CORE, T_AGED);
+    try adapter.storeEntry(db.conn, "id-oc2", ZID_SWEEP_A, "kv", "v", adapter.CATEGORY_CONVERSATION, T_AGED);
+    try adapter.storeEntry(db.conn, "id-oc3", ZID_SWEEP_A, "kx", "v", "incident-notes", T_AGED);
+
+    // At a far-future cutoff EVERY row counts as aged — only the bound `daily`
+    // category may expire, so the sweep deletes nothing here.
+    try std.testing.expectEqual(@as(u64, 0), try adapter.sweepExpiredDaily(db.conn, ZID_SWEEP_A, CUTOFF_ALL));
+    try std.testing.expectEqual(@as(usize, 3), try db.count(ZID_SWEEP_A));
+}
+
+test "integration: daily sweep is idempotent — the second sweep deletes nothing" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_SWEEP_A);
+    defer db.wipe(ZID_SWEEP_A);
+
+    try adapter.storeEntry(db.conn, "id-ip1", ZID_SWEEP_A, "aged-1", "v", adapter.CATEGORY_DAILY, T_AGED);
+    try adapter.storeEntry(db.conn, "id-ip2", ZID_SWEEP_A, "aged-2", "v", adapter.CATEGORY_DAILY, T_AGED);
+
+    try std.testing.expectEqual(@as(u64, 2), try adapter.sweepExpiredDaily(db.conn, ZID_SWEEP_A, CUTOFF));
+    try std.testing.expectEqual(@as(u64, 0), try adapter.sweepExpiredDaily(db.conn, ZID_SWEEP_A, CUTOFF));
+    try std.testing.expectEqual(@as(usize, 0), try db.count(ZID_SWEEP_A));
+}
+
+test "integration: sweep failure propagates as an error, deleting nothing" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_SWEEP_A);
+    defer db.wipe(ZID_SWEEP_A);
+
+    try adapter.storeEntry(db.conn, "id-fp1", ZID_SWEEP_A, "aged", "v", adapter.CATEGORY_DAILY, T_AGED);
+
+    // Deterministic failure injection, mirroring the enforceCap failure test:
+    // a malformed zombie_id errors before any bind. The capture handler's
+    // catch (warn + continue, HTTP success preserved) consumes any such error
+    // identically in production — same construction as the cap-eviction path.
+    try std.testing.expectError(error.InvalidUUID, adapter.sweepExpiredDaily(db.conn, "not-a-uuid", CUTOFF));
+    try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_SWEEP_A));
+}
+
 test "integration: listAll is scoped per zombie — no cross-zombie bleed" {
     const alloc = std.testing.allocator;
     const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
@@ -229,8 +343,8 @@ test "integration: listAll is scoped per zombie — no cross-zombie bleed" {
     defer db.wipe(ZID_ISO_A);
     defer db.wipe(ZID_ISO_B);
 
-    try adapter.storeEntry(db.conn, "id-a1", ZID_ISO_A, "secret", "alpha", adapter.CATEGORY_CORE, "1700000001");
-    try adapter.storeEntry(db.conn, "id-b1", ZID_ISO_B, "secret", "beta", adapter.CATEGORY_CORE, "1700000001");
+    try adapter.storeEntry(db.conn, "id-a1", ZID_ISO_A, "secret", "alpha", adapter.CATEGORY_CORE, 1_700_000_001_000);
+    try adapter.storeEntry(db.conn, "id-b1", ZID_ISO_B, "secret", "beta", adapter.CATEGORY_CORE, 1_700_000_001_000);
 
     const rows_a = try adapter.listAll(alloc, db.conn, ZID_ISO_A);
     defer freeDeltas(alloc, rows_a);
