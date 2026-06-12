@@ -50,7 +50,7 @@ test "integration: oidc workspace scoping blocks cross-workspace access" {
     try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
-test "integration: clerk workspace claim scoping blocks cross-workspace access" {
+test "integration: tenant-wide principal without a workspace claim authorizes any workspace in its tenant" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -62,13 +62,40 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
     try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
     try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
+    // A principal whose token carries tenant_id but NO workspace claim is
+    // tenant-scoped, not workspace-scoped: it authorizes every workspace under
+    // its tenant (the workspace_scope_id == null branch — distinct from the
+    // scoped oidc case above, which this used to duplicate). Cross-tenant denial
+    // is covered by the null-tenant and tenant-mismatch tests.
     const principal = common.AuthPrincipal{
         .mode = .jwt_oidc,
         .tenant_id = http_auth.TENANT_ID,
-        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
     try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
-    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
+}
+
+test "integration: null-tenant principal is denied workspace authorization (IDOR fail-closed)" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+
+    // A principal with no tenant (unprovisioned Clerk session window) must be
+    // denied even against a workspace that exists. Pre-fix, the null-tenant
+    // branch ran an unscoped existence check and returned true — cross-tenant IDOR.
+    const null_tenant = common.AuthPrincipal{ .mode = .jwt_oidc, .role = .user, .tenant_id = null };
+    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, null_tenant, http_auth.WS_PRIMARY));
+
+    // Positive control: the same workspace with the correct tenant still authorizes,
+    // proving the guard rejects only the missing-tenant case, not legitimate access.
+    const ok = common.AuthPrincipal{ .mode = .jwt_oidc, .tenant_id = http_auth.TENANT_ID };
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, ok, http_auth.WS_PRIMARY));
 }
 
 test "integration: tenant context helper writes app.current_tenant_id" {

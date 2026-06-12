@@ -22,26 +22,28 @@ describe("cleanCell — server content can't drive the operator's terminal", () 
 });
 
 describe("renderUpdatedAt — the isolated wire-timestamp helper", () => {
-  // pin test: literal is the contract — both wire shapes name the same
-  // instant, so both pin to the same ISO string (no re-derived conversion).
-  test("epoch-seconds string (today's wire) renders ISO 8601", () => {
-    expect(renderUpdatedAt("1765500300")).toBe("2025-12-12T00:45:00.000Z");
-  });
-
-  test("numeric epoch millis (the incoming wire shape) renders ISO 8601", () => {
+  // pin test: literal is the contract — the wire instant pins to its ISO form.
+  test("numeric epoch millis (the wire shape) renders ISO 8601", () => {
     expect(renderUpdatedAt(1765500300000)).toBe("2025-12-12T00:45:00.000Z");
   });
 
-  test("null, undefined, and non-numeric strings render the dash", () => {
+  test("digit strings no longer render — the seconds-string wire is gone", () => {
+    // The pre-numeric wire sent epoch seconds as a decimal string; that
+    // branch is deleted, so a string-shaped value (server rot) degrades to
+    // the dash instead of being silently re-interpreted as seconds.
+    expect(renderUpdatedAt("1765500300" as unknown as number)).toBe("—");
+  });
+
+  test("null, undefined, and non-numeric values render the dash", () => {
     expect(renderUpdatedAt(null)).toBe("—");
     expect(renderUpdatedAt(undefined)).toBe("—");
-    expect(renderUpdatedAt("not-a-timestamp")).toBe("—");
+    expect(renderUpdatedAt("not-a-timestamp" as unknown as number)).toBe("—");
   });
 
   test("out-of-range wire values render the dash instead of throwing", () => {
     // past Date's ±8.64e15 ms ceiling — a RangeError here would kill the table
     expect(renderUpdatedAt(9.7e15)).toBe("—");
-    expect(renderUpdatedAt("99999999999999999999")).toBe("—");
+    expect(renderUpdatedAt(Number.NaN)).toBe("—");
   });
 });
 
