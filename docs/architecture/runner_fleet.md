@@ -140,7 +140,7 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 | `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | `runner/report.zig` | terminal result for a lease; `zombied` persists + `XACK`s after a fencing check |
 | `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer zrn_` | `runner/activity.zig` | write-only progress stream for the live tail; best-effort, no ack |
 
-`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only usezombie's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `zmb_t_` api_key is rejected `403`.
+`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only agentsfleet's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `zmb_t_` api_key is rejected `403`.
 
 ## Registering a runner
 

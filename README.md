@@ -1,4 +1,4 @@
-<div align="center"><img src="branding/usezombie-mark-glow.png" width="180" alt="usezombie" />
+<div align="center"><img src="branding/agentsfleet-mark-glow.png" width="180" alt="agentsfleet" />
 
 # Your deploy failed. The agent already knows why.
 
@@ -8,7 +8,7 @@
 
 </div>
 
-**[usezombie](https://usezombie.com)** automates incident investigation. When a deploy fails, an agent wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
+**[agentsfleet](https://agentsfleet.net)** automates incident investigation. When a deploy fails, an agent wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
 
 - **Replayable event logs** — audit every action and decision
 - **Bring your own provider keys** — no vendor lock-in on inference
@@ -35,7 +35,7 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 |---|---|
 | `src/` | Zig backend — `zombied` control plane (HTTP, leases) + `zombie-runner` execution daemon |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
-| `ui/packages/website/` | Marketing site — [usezombie.com](https://usezombie.com) |
+| `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
 | `zombiectl/` | CLI — install, manage agents, tail runs |
 | `public/openapi/` | OpenAPI spec |
@@ -82,4 +82,4 @@ Bootstrap steps and coding conventions live in [`playbooks/`](playbooks/) and [`
 | [usezombie/skills](https://github.com/usezombie/skills) | Agent skill libraries |
 | [usezombie/posthog-zig](https://github.com/usezombie/posthog-zig) | PostHog SDK for Zig |
 
-MIT — Copyright (c) 2026 usezombie.
+MIT — Copyright (c) 2026 agentsfleet.

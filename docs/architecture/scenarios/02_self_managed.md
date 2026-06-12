@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** Small-team user with his own Fireworks AI account already provisioned. Wants the orchestration substrate (durable runtime, webhook ingest, audit trail, sandbox, approval gating) but pays Fireworks directly for inference. Common reasons: cost control, model choice (Kimi K2 / 2.6 isn't in the platform-managed pool), data-locality preference, existing enterprise procurement with a specific provider. Tenant carries an explicit `core.tenant_providers` row with `mode=self_managed` after he runs `tenant provider set`.
 
-**Outcome under test:** John flips his tenant to self-managed with a Fireworks key + Kimi 2.6 model. All agent runs across every workspace under that tenant route inference through John's Fireworks account. usezombie still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
+**Outcome under test:** John flips his tenant to self-managed with a Fireworks key + Kimi 2.6 model. All agent runs across every workspace under that tenant route inference through John's Fireworks account. agentsfleet still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
 
 ---
 
@@ -160,7 +160,7 @@ Properties:
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (1 RPS sustained, burst 10) at the edge — well above any legitimate client and well below any scraping budget.
 - **Backed by a static table (v2.0) → admin-agent (later).** Initial implementation is a JSON file checked into the API repo and served by a route handler. Later, an admin-only agent owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a PR with deltas. Humans review/merge. Same endpoint, fresher data — the admin-agent is a dogfood instance of the platform-ops pattern.
 - **Resolved at provider-set / install time, never at trigger time.** Triggers must not depend on a network call to a sibling endpoint — the cap is pinned into either `tenant_providers` (self-managed) or frontmatter (platform).
-- **Adding a new model is a table edit, not a usezombie release.** Users can request additions through a public form; the admin-agent auto-merges low-risk deltas (a model with a published cap from the provider's own docs).
+- **Adding a new model is a table edit, not an agentsfleet release.** Users can request additions through a public form; the admin-agent auto-merges low-risk deltas (a model with a published cap from the provider's own docs).
 
 ---
 
@@ -212,7 +212,7 @@ Model:               accounts/fireworks/models/kimi-k2.6
 Context cap tokens:  256000
 Credential ref:      account-fireworks-key
 
-ⓘ LLM tokens billed to John's fireworks account. usezombie charges the
+ⓘ LLM tokens billed to John's fireworks account. agentsfleet charges the
   flat 1¢ per event regardless of model or token count.
 ```
 

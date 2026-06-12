@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  agentsfleet horizontal wordmark — light-surface variant.
+
+  The pulse disc steps from teal-300 (#5EEAD4) to teal-600 (#0D9488)
+  so it holds contrast on white; ink is the brand dark surface colour
+  (#0A0D0E). Same geometry and type spec as the dark wordmark.
+
+  Width: 720, Height: 160.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" width="720" height="160" role="img" aria-label="agentsfleet">
+  <title>agentsfleet</title>
+  <rect width="720" height="160" fill="#FFFFFF" />
+  <circle cx="80" cy="80" r="22" fill="#0D9488" />
+  <text x="130" y="100"
+    font-family="Commit Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    font-size="64"
+    font-weight="500"
+    fill="#0A0D0E"
+    letter-spacing="-1">agentsfleet</text>
+</svg>
