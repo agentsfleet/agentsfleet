@@ -200,24 +200,31 @@ pub const RenewResult = union(enum) {
 };
 
 /// POST /v1/runners/me/leases/{lease_id}/renew → extend the lease's kill
-/// deadline while the child is actively executing. `lease_id` is a path param.
+/// deadline while the child is actively executing. `lease_id` is a path param;
+/// the body carries the run's cumulative token splits so the control plane
+/// charges the diff since its last-metered cursor on every renewal.
 ///
 /// Fail-safe by design: a 2xx yields `renewed`; a definitive 4xx yields
-/// `terminal` (the caller kills its child); a transport failure or 5xx returns
-/// an error so the caller simply retries on the next tick — if renewal keeps
-/// failing the lease just expires naturally and is reclaimed (never double-run).
+/// `terminal` (the caller kills its child); a transport failure, 5xx, or body
+/// serialization failure returns an error so the caller simply retries on the
+/// next tick — if renewal keeps failing the lease just expires naturally and
+/// is reclaimed (never double-run), and a charge is never invented from a
+/// half-built body.
 pub fn renew(
     self: *LoopbackClient,
     alloc: Allocator,
     runner_token: []const u8,
     lease_id: []const u8,
+    req: protocol.RenewRequest,
     deadline_ms: u31,
 ) !RenewResult {
     const path = try std.fmt.allocPrint(alloc, "{s}/{s}/{s}", .{
         protocol.PATH_RUNNER_LEASES, lease_id, protocol.RUNNER_LEASE_RENEW_SUFFIX,
     });
     defer alloc.free(path);
-    const res = try self.post(alloc, path, runner_token, "", deadline_ms);
+    const body = try std.json.Stringify.valueAlloc(alloc, req, .{});
+    defer alloc.free(body);
+    const res = try self.post(alloc, path, runner_token, body, deadline_ms);
     defer alloc.free(res.body);
     return classifyRenew(alloc, res.status, res.body);
 }

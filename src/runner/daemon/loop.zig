@@ -17,7 +17,8 @@ const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
 const worker_pool = @import("worker_pool.zig");
 const forwarders = @import("forwarders.zig");
-const RenewDriver = @import("renew_driver.zig").RenewDriver(*client_mod);
+const renew_driver = @import("renew_driver.zig");
+const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
 const log = logging.scoped(.zombie_runner);
@@ -154,10 +155,10 @@ const TickFanout = struct {
     forwarder: *forwarders.ActivityForwarder,
     driver: *RenewDriver,
 
-    fn onTick(ctx: *anyopaque, now_ms: i64) child_supervisor.RenewDecision {
+    fn onTick(ctx: *anyopaque, now_ms: i64, usage: child_supervisor.UsageSnapshot) child_supervisor.RenewDecision {
         const self: *TickFanout = @ptrCast(@alignCast(ctx));
         self.forwarder.flushIfStale(now_ms);
-        return self.driver.tick(now_ms);
+        return self.driver.tick(now_ms, usage);
     }
 
     fn hook(self: *TickFanout) child_supervisor.RenewHook {
@@ -229,6 +230,7 @@ fn executeAndReport(
     log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
 
     const outcome = outcomeFor(result.exit_ok);
+    const splits = splitFields(result);
     cp.report(alloc, runner_token, protocol.ReportRequest{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
@@ -237,6 +239,9 @@ fn executeAndReport(
         .failure_reason = result.failure,
         .response_text = result.content,
         .tokens = result.token_count,
+        .input_tokens = splits.input_tokens,
+        .cached_input_tokens = splits.cached_input_tokens,
+        .output_tokens = splits.output_tokens,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
     }, cfg.cp_deadlines.report_ms) catch |err| {
@@ -276,6 +281,16 @@ fn cleanupWorkspace(io: std.Io, path: []const u8) void {
 /// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
 pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
     return if (exit_ok) .processed else .agent_error;
+}
+
+/// Saturate the final ExecutionResult's u64 cumulative splits onto the report's
+/// wire-frozen u32 fields. Returns the explicit `TokenSplits` carrier (not the
+/// renew HTTP-body type) so the report path never borrows the renew contract as
+/// a value bag; one wire-width policy lives in `renew_driver.wireSplits` (RULE
+/// NDC). The report fills its three fields from this beside the unchanged legacy
+/// `tokens` total.
+pub fn splitFields(result: contract.execution_result.ExecutionResult) renew_driver.TokenSplits {
+    return renew_driver.wireSplits(result.input_tokens, result.cached_input_tokens, result.output_tokens);
 }
 
 /// Sleep for `ms` milliseconds.
