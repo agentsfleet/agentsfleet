@@ -42,3 +42,37 @@ describe("APP_BASE_URL resolution", () => {
     expect(await loadAppBaseUrl()).toBe(DEV_HOST);
   });
 });
+
+/*
+ * agentsfleet rebrand pins. Two directions, both deliberate:
+ *  - operational strings that must NOT change until their own cutover
+ *    spec lands (installer domain, GitHub org URL, team mailbox);
+ *  - parked flips (docs host) that must not drift to agentsfleet.net
+ *    before the host answers. Unpinning is the conscious act of the
+ *    cutover edit, never a side effect.
+ */
+describe("rebrand pins — operational strings stay until their cutover", () => {
+  it("install command stays on the usezombie.sh installer verbatim", async () => {
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.INSTALL_COMMAND).toBe("curl -fsSL https://usezombie.sh | bash");
+  });
+
+  it("GitHub URL stays on the unchanged org", async () => {
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.GITHUB_URL).toBe("https://github.com/usezombie/usezombie");
+  });
+
+  it("team email stays on the routed mailbox", async () => {
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.TEAM_EMAIL).toBe("team@usezombie.com");
+  });
+
+  it("docs URL is parked on the serving host until docs.agentsfleet.net answers", async () => {
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.DOCS_URL).toBe("https://docs.usezombie.com");
+  });
+});

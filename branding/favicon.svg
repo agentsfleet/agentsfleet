@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  agentsfleet brand-mark — the wake-pulse circle.
+
+  Identical geometry to the usezombie mark (the mark carries no text,
+  so the rename does not alter it). Pure cyan-mint disc on the dark
+  brand surface. Use as: favicon, GitHub avatar, docs site icon.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="agentsfleet">
+  <title>agentsfleet</title>
+  <rect width="512" height="512" rx="96" fill="#0A0D0E" />
+  <circle cx="256" cy="256" r="120" fill="#5EEAD4" />
+</svg>

@@ -16,9 +16,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Status:** PENDING
 **Priority:** P1 — customer-facing: usezombie.com still sells the deploy-failure wake-on-event story while the product positioning (TechStars onepager, Jun 11, 2026) moved to the resident engineer for support escalations; every visitor from the application reads the wrong product
 **Categories:** UI
-**Batch:** B1 — no overlapping in-flight workstream touches `ui/packages/website`
+**Batch:** B2 — after M92_002 (the agentsfleet rebrand lands first; every copy string here is authored under the new brand)
 **Branch:** — added at CHORE(open)
-**Depends on:** —
+**Depends on:** M92_002 (brand noun + identity surfaces; this workstream's copy and guard tokens say `agentsfleet`)
 **Provenance:** agent-generated (website repositioning session, Jun 12, 2026) — grounded in `~/Downloads/usezombie-techstars-onepager.md` (the submitted positioning), `docs/architecture/archive/office_hours_support_wedge_jun2026.md` (competitive grid + Ideal Customer Profile), and a read of every `ui/packages/website/src` component; re-confirm at PLAN.
 
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` (visual source of truth — mono typography, the pulse, dark-primary, anti-vibes list bans chat bubbles/gradient meshes/mascots) + `docs/architecture/direction.md` §UI surfaces. The support-escalation loop itself lives only in `docs/architecture/archive/` (non-canon): this spec changes *marketing positioning*, approved via the TechStars submission; reconciling `high_level.md`/`user_flow.md` to the wedge is a named follow-up, not this diff.
@@ -47,8 +47,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 1. **Successful user moment** — a head of support or engineering lead scrolls the hero once and says the sentence back: "it reads the ticket, investigates with our logs and code, a human approves, then it ships the fix or replies to the customer." The diagram did it, not the prose.
 2. **Preserved user behaviour** — the curl install row, the animated terminal, the per-second pricing section, the FAQ rate answers, `/pricing` and `/agents` routes, and the promo pill all keep working unchanged. Developers who came to install still install in one copy-paste.
-3. **Optimal-way check** — copy + one new diagram component inside the existing design system is the most direct path. The unconstrained-optimal (full visual redesign in the polsia direction) is deliberately out of scope: positioning is wrong *today*; the visual language is already strong and `/design-shotgun` variants slot in later without rework.
-4. **Rebuild-vs-iterate** — iterate. The site repositioned once before (PR-validator → wake-on-event) by copy amendment with guard tests pinning each era; this diff is the third era using the same proven mechanism.
+3. **Optimal-way check** — copy + one new diagram component inside the existing design system is the most direct path; the full visual redesign waits for `/design-shotgun` (which MUST include a pricing-section structural variant in the zombieos.polsia.app direction — Indy's named preference).
+4. **Rebuild-vs-iterate** — iterate. The site repositioned twice before by copy amendment with guard tests pinning each era; this is era three on the same mechanism.
 5. **What we build** — repositioned hero copy + dual call to action, a pipeline diagram component with an approval gate and a categorized logo strip, a problem section, the eight-step loop in How-it-works, reframed trust capabilities, a competition table, aligned CTA/FAQ copy, and amended marketing guard tests.
 6. **What we do NOT build** — pricing/rate changes (credit plans are an open product decision; rates stay cross-tier-pinned per-second), architecture-doc reconciliation, docs.usezombie.com updates, a Viktor-style chat-bubble treatment (anti-vibes), connector integrations the diagram alludes to.
 7. **Fit with existing features** — compounds with the design system (every new section composes existing primitives) and the guard-test pattern; must not destabilize the rates display (`RATES_DISPLAY` is the only pricing source and this diff never touches it).
@@ -120,7 +120,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/website/src/marketing-copy.ts` | CREATE | named constants: pillar tokens, step titles, source categories (RULE UFS home) |
 | `ui/packages/website/src/marketing-spec.test.ts` | EDIT | pillar tokens for the new era; forbidden unvalidated-claim strings |
 | `ui/packages/website/public/logos/*.svg` | CREATE | vendored monochrome source-logo assets |
-| `ui/packages/website/tests/e2e/smoke.spec.ts` | EDIT | new sections render in the dry lane |
+| `ui/packages/website/scripts/prebuild.mjs` | EDIT | emit `llms.txt` from `marketing-copy.ts` constants |
+| `ui/packages/website/tests/e2e/smoke.spec.ts` | EDIT | new sections render in the dry lane; `/llms.txt` reachable |
 
 ---
 
@@ -182,6 +183,13 @@ The four capability blocks reframe from solo-developer features to the trust lay
 
 - **Dimension 7.1** — guard test asserts era pillar tokens via `marketing-copy.ts` imports → Test `test_marketing_spec_pins_new_era`
 - **Dimension 7.2** — guard test rejects the unvalidated-claim strings across rendered copy → Test `test_no_unvalidated_quantitative_claims`
+- **Dimension 7.3** — rendered copy uses the `agentsfleet` product noun; `usezombie` survives only in operational strings (install command, resolving URLs, package/binary names) → Test `test_brand_noun_guard`
+
+### §8 — LLM-readable surface
+
+The site ships `public/llms.txt` (llms.txt convention: markdown index at the site root) carrying the positioning, the eight-step loop, install command, pricing pointer, and docs links — sourced from `marketing-copy.ts` constants at build time so site copy and the LLM surface cannot drift. **Implementation default:** a prebuild script emits it (the package already has `scripts/prebuild.mjs`); a static hand-edited file is the fallback if build-time generation fights the bundler.
+
+- **Dimension 8.1** — `/llms.txt` is served and carries the era pillar tokens + loop steps → Test `test_llms_txt_present_and_current`
 
 ---
 
@@ -198,8 +206,7 @@ No HTTP/CLI surface. The locked contract is the exported constant module and the
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Clipboard blocked | browser denies `navigator.clipboard` | existing manual-copy toast path preserved unchanged; regression-covered by existing Hero tests |
-| Reduced motion | `prefers-reduced-motion: reduce` | diagram renders final state, no animation classes applied |
+| Reduced motion | `prefers-reduced-motion: reduce` | diagram renders final state, no animation classes applied; clipboard-blocked toast path regression-covered by existing Hero tests |
 | Narrow viewport | < tablet breakpoint | diagram columns stack vertically; logo strip wraps; no horizontal scroll |
 | Missing logo asset | bad path / asset not vendored | static imports fail the build (not a runtime 404); e2e dry lane catches a broken render |
 | Accessibility violation | diagram is image-shaped to a screen reader | diagram carries a text alternative describing the full loop; axe assertions in the dry lane stay green |
@@ -235,7 +242,9 @@ No HTTP/CLI surface. The locked contract is the exported constant module and the
 | 6.2 | unit | `test_faq_wedge_entry_and_rates_regression` | new entry renders; rate answer strings byte-equal to `RATES_DISPLAY`-derived values |
 | 7.1 | unit | `test_marketing_spec_pins_new_era` | guard test sources tokens from `marketing-copy.ts`, fails when a token is removed from the hero |
 | 7.2 | unit | `test_no_unvalidated_quantitative_claims` | seeded forbidden string in a fixture component is detected; live tree has zero hits |
-| all | e2e | website dry-lane smoke | homepage renders every section; axe assertions green; no console errors |
+| 7.3 | unit | `test_brand_noun_guard` | rendered copy says `agentsfleet`; `usezombie` only in allowlisted operational strings |
+| 8.1 | unit | `test_llms_txt_present_and_current` | emitted `public/llms.txt` contains every pillar token and all eight loop steps in order |
+| all | e2e | website dry-lane smoke | homepage renders every section; `/llms.txt` returns 200; axe assertions green; no console errors |
 
 **Regression:** existing Hero clipboard/toast tests, vocab-guard, no-pr-validator-framing, rates pin tests, `/pricing` + `/agents` route renders — all must pass unmodified except where assertions track intentionally changed copy. **Idempotency/replay:** N/A — static site.
 
@@ -243,11 +252,9 @@ No HTTP/CLI surface. The locked contract is the exported constant module and the
 
 ## Acceptance Criteria
 
-- [ ] Era pillar tokens render in the hero — verify: `make test-unit-website`
-- [ ] All three marketing guard tests green — verify: `make test-unit-website`
+- [ ] Era pillar tokens, guard suite (incl. brand noun + unvalidated-claims), and `llms.txt` test green — verify: `make test-unit-website`
 - [ ] Lint clean — verify: `make lint-website`
-- [ ] Homepage dry lane renders all sections with axe green — verify: `make dry-smoke`
-- [ ] No unvalidated quantitative claims — verify: `make test-unit-website` (Dimension 7.2)
+- [ ] Homepage dry lane renders all sections, `/llms.txt` 200, axe green — verify: `make dry-smoke`
 - [ ] `gitleaks detect` clean · no non-md file over 350 lines added
 
 ---
@@ -255,10 +262,8 @@ No HTTP/CLI surface. The locked contract is the exported constant module and the
 ## Eval Commands (post-implementation)
 
 ```bash
-# E1: Website unit tests
-make test-unit-website && echo "PASS" || echo "FAIL"
-# E2: Lint
-make lint-website && echo "PASS" || echo "FAIL"
+# E1+E2: Website unit tests + lint
+make test-unit-website && make lint-website && echo "PASS" || echo "FAIL"
 # E3: Dry-lane smoke (website renders, axe)
 make dry-smoke
 # E4: Gitleaks
@@ -279,13 +284,10 @@ No files deleted. Removed-copy sweep:
 | deploy-era headline strings in touched components | E6 above | 0 matches outside tests |
 | any capability-block constant orphaned by the §5 reframe | `grep -rn "<old constant name>" ui/packages/website/src` | 0 matches |
 
----
-
 ## Discovery (consult log)
 
-> Empty at creation. Consults, skill-chain outcomes, and Indy-acked deferral quotes land here as work proceeds.
-
 - **Authoring-time decisions (Indy, Jun 12, 2026 session):** pricing copy stays per-second (credit-plan migration is a separate product decision, not deferred scope of this spec); the curl install motion stays alongside the new design-partner call to action; Cleric = structure reference, polsia = cleanliness bar, Fin = logo treatment, Viktor = tone only (chat bubbles are anti-vibes); the `≥40%` figure stays off the site until ticket bucket-labeling validates it.
+- **Amendment (Indy, Jun 12, 2026):** copy authored under the `agentsfleet` brand (M92_002 dependency); `/llms.txt` added (§8); the `/design-shotgun` follow-up MUST include a pricing-section structural variant in the zombieos.polsia.app direction; install command stays on `usezombie.sh` verbatim.
 
 ---
 
@@ -296,8 +298,6 @@ No files deleted. Removed-copy sweep:
 | After implementation, before CHORE(close) | `/write-unit-test` | Audits diff coverage vs the Test Specification above | Clean; iteration count in Discovery |
 | After tests pass, before CHORE(close) | `/review` | Adversarial diff review vs this spec, `docs/DESIGN_SYSTEM.md`, `dispatch/write_ts_adhere_bun.md` | Clean or every finding dispositioned |
 | After `gh pr create` | `/review-pr` | Review-comments the open PR | Comments addressed before human review |
-
----
 
 ## Verification Evidence
 
@@ -315,6 +315,6 @@ No files deleted. Removed-copy sweep:
 
 - Pricing-model change (credit plans from the onepager) — open product decision; rates remain cross-tier-pinned per-second across `tenant_billing.zig` / `rates.ts` / `rates.mdx`.
 - Architecture-doc reconciliation (`high_level.md`, `user_flow.md` still describe the wake-on-event framing) — follow-up spec when the wedge graduates from positioning to canon.
-- Full visual redesign / `/design-shotgun` variant selection — follow-up after this positioning diff lands; the diagram's structural tests survive a re-skin.
+- Full visual redesign / `/design-shotgun` variant selection — follow-up after this positioning diff lands; the diagram's structural tests survive a re-skin. The shotgun run carries a standing requirement: a pricing-section structural variant in the zombieos.polsia.app direction.
 - docs.usezombie.com content updates — separate repo, separate spec.
 - Any connector implementation (Zoho Desk, Jira, Datadog ingestion) — the logo strip names source categories, not shipped integrations.

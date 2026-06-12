@@ -1,5 +1,10 @@
 const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 
+// agentsfleet rebrand: flips to app.agentsfleet.net / docs.agentsfleet.net
+// are PARKED until those hosts answer (DNS + hosting + Clerk origin are
+// operator console steps; see the active rebrand spec). Flipping early
+// would dead-end every link; config.test.ts pins the parked values so the
+// flip is a conscious test edit, not a drive-by.
 export const APP_BASE_URL = fromEnv || (
   import.meta.env.PROD
     ? "https://app.usezombie.com"
