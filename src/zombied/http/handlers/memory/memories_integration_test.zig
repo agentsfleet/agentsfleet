@@ -110,6 +110,10 @@ fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
+/// Every seeded row's updated_at (epoch ms) — pinned so the tenant-wire test
+/// can assert the exact unquoted JSON number.
+const SEED_TS_MS: i64 = 1_700_000_000_000;
+
 /// Seed one memory entry directly (the tenant write verbs are retired —
 /// the runner push is the only writer; here we INSERT under the memory_runtime
 /// role so the surviving GET surface has data to read).
@@ -123,10 +127,10 @@ fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []cons
     var id_buf: [128]u8 = undefined;
     const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ zombie_id, key });
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, NULL, '1700000000', '1700000000')
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
         \\ON CONFLICT (key, zombie_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, zombie_id });
+    , .{ uid, id, key, content, category, zombie_id, SEED_TS_MS });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
@@ -151,6 +155,22 @@ test "integration: memories GET list returns a seeded entry" {
     try list_r.expectStatus(.ok);
     try std.testing.expect(list_r.bodyContains("\"key\":\"goal:current\""));
     try std.testing.expect(list_r.bodyContains("ship the runner memory loop"));
+}
+
+test "integration: tenant memory updated_at is a JSON number (epoch millis)" {
+    const f = try fixture();
+    defer f.deinit();
+    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "numeric wire shape", "core");
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    // Unquoted digits after the field name = a JSON number on the wire — the
+    // exact seeded epoch-millis value, never a decimal-string shape.
+    try std.testing.expect(r.bodyContains("\"updated_at\":1700000000000"));
+    try std.testing.expect(!r.bodyContains("\"updated_at\":\""));
 }
 
 test "integration: memories GET ?query= finds an entry by content match" {

@@ -33,7 +33,6 @@ import {
 // src/constants/memory-limits.ts (consumed by the command tree).
 const PREVIEW_MAX = 80;
 
-const MS_PER_SECOND = 1000;
 const TYPE_NUMBER = "number" as const;
 const TYPE_STRING = "string" as const;
 const LITERAL_DASH = "—" as const;
@@ -69,7 +68,7 @@ interface MemoryRow {
   readonly key?: string | null;
   readonly content?: string | null;
   readonly category?: string | null;
-  readonly updated_at?: number | string | null;
+  readonly updated_at?: number | null;
 }
 
 interface MemoryListResponse {
@@ -97,20 +96,15 @@ const CONTROL_BYTES_RE = /[\u0000-\u001F\u007F-\u009F]/g;
 export const cleanCell = (value: unknown): string =>
   String(value ?? "").replace(CONTROL_BYTES_RE, "");
 
-// The only spot that interprets the wire timestamp. Today the wire carries
-// epoch seconds as a decimal string (schema/013 TEXT, NullClaw format); the
-// retention-schema work flips it to numeric epoch milliseconds. Both render
-// here; JSON mode passes the raw value through untouched. When the numeric
-// wire lands, delete the string branch and flip the fixtures — nothing
-// else moves. The try/catch keeps an out-of-range wire value (Date throws
-// RangeError past ±8.64e15 ms) from killing the whole table render.
-export const renderUpdatedAt = (value: number | string | null | undefined): string => {
+// The only spot that interprets the wire timestamp: numeric epoch
+// milliseconds (schema/013 BIGINT; OpenAPI integer/int64). JSON mode passes
+// the raw value through untouched. The runtime guard keeps a malformed
+// envelope rendering as the dash, and the try/catch keeps an out-of-range
+// value (Date throws RangeError past ±8.64e15 ms) from killing the table.
+export const renderUpdatedAt = (value: number | null | undefined): string => {
   try {
     if (isNumber(value) && Number.isFinite(value)) {
       return new Date(value).toISOString();
-    }
-    if (isString(value) && /^\d+$/.test(value)) {
-      return new Date(Number.parseInt(value, 10) * MS_PER_SECOND).toISOString();
     }
   } catch {
     return LITERAL_DASH;

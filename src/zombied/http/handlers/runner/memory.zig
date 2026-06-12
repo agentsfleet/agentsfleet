@@ -78,7 +78,10 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
     // Authorize like /reports: load the body's lease_id, require the runner owns it
     // AND it is for this path zombie (IDOR cross-check), active + unexpired. The
     // zombie's live fencing seq fences the write — a reclaimed holder is below it.
-    const live_seq = (pushLeaseSeq(conn, runner_id, body.lease_id, zombie_id, clock.nowMillis()) catch {
+    // One clock read per push: the lease check, every entry timestamp, and the
+    // sweep cutoff all derive from it (worst-case skew: a row lives one push longer).
+    const now_ms = clock.nowMillis();
+    const live_seq = (pushLeaseSeq(conn, runner_id, body.lease_id, zombie_id, now_ms) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     }) orelse {
@@ -97,15 +100,44 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
     }
     defer h.resetRole(conn);
 
-    var stored: usize = 0;
-    var skipped: usize = 0;
+    const counts = storeDeltas(hx, conn, zombie_id, body.memory, now_ms) orelse return;
+
+    // Backstop the durable set after the push: evict the coldest beyond the cap. A
+    // cap-eviction blip must not fail a capture that already persisted (and counts
+    // nothing — the eviction counter moves only on a reported eviction).
+    const evicted = adapter.enforceCap(conn, zombie_id, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE) catch blk: {
+        log.warn("memory_cap_evict_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
+        break :blk 0;
+    };
+    metrics_memory.incCapEvictions(evicted);
+
+    // Expire aged scratch after cap enforcement, same role window: `daily` rows
+    // older than the retention window go; a sweep blip must not fail a capture
+    // that already persisted.
+    const swept = adapter.sweepExpiredDaily(conn, zombie_id, now_ms - adapter.DAILY_RETENTION_MS) catch blk: {
+        log.warn("memory_daily_sweep_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
+        break :blk 0;
+    };
+
+    metrics_memory.incMemoryCaptured(counts.stored);
+    log.info("memory_captured", .{ .zombie_id = zombie_id, .stored = counts.stored, .skipped = counts.skipped, .evicted = evicted, .swept = swept });
+    hx.ok(.ok, .{ .stored = counts.stored, .skipped = counts.skipped, .request_id = hx.req_id });
+}
+
+const StoreCounts = struct { stored: usize, skipped: usize };
+
+/// Validate and upsert the push's deltas at `ts_ms`, byte-capped. Returns the
+/// stored/skipped tallies, or null after `hx.fail` when a store error already
+/// answered the request (the caller just returns).
+fn storeDeltas(hx: Hx, conn: *pg.Conn, zombie_id: []const u8, deltas: []const protocol.MemoryDelta, ts_ms: i64) ?StoreCounts {
+    var counts: StoreCounts = .{ .stored = 0, .skipped = 0 };
     var bytes: usize = 0;
-    for (body.memory) |d| {
+    for (deltas) |d| {
         if (d.key.len == 0 or d.key.len > h.MAX_KEY_LEN or
             d.content.len == 0 or d.content.len > h.MAX_CONTENT_LEN or
             d.category.len == 0 or d.category.len > h.MAX_CATEGORY_LEN)
         {
-            skipped += 1;
+            counts.skipped += 1;
             metrics_memory.incCaptureSkipped();
             continue;
         }
@@ -113,32 +145,19 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
         if (bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
             // Truncate, don't drop the whole push (Failure Modes: oversized deltas).
             metrics_memory.incCaptureTruncated();
-            log.warn("memory_push_truncated", .{ .zombie_id = zombie_id, .stored = stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
+            log.warn("memory_push_truncated", .{ .zombie_id = zombie_id, .stored = counts.stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
             break;
         }
         const id = h.genId(hx.alloc);
-        const ts = h.nowTs(hx.alloc);
-        adapter.storeEntry(conn, id, zombie_id, d.key, d.content, d.category, ts) catch {
+        adapter.storeEntry(conn, id, zombie_id, d.key, d.content, d.category, ts_ms) catch {
             metrics_memory.incMemoryPushFailure();
             log.warn("memory_store_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory store failed");
-            return;
+            return null;
         };
-        stored += 1;
+        counts.stored += 1;
     }
-
-    // Backstop the durable set after the push: evict the coldest beyond the cap. A
-    // cap-eviction blip must not fail a capture that already persisted (and counts
-    // nothing — the eviction counter moves only on a reported eviction).
-    const evicted = adapter.enforceCap(conn, zombie_id, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE) catch blk: {
-        log.warn("memory_cap_evict_failed", .{ .zombie_id = zombie_id });
-        break :blk 0;
-    };
-    metrics_memory.incCapEvictions(evicted);
-
-    metrics_memory.incMemoryCaptured(stored);
-    log.info("memory_captured", .{ .zombie_id = zombie_id, .stored = stored, .skipped = skipped, .evicted = evicted });
-    hx.ok(.ok, .{ .stored = stored, .skipped = skipped, .request_id = hx.req_id });
+    return counts;
 }
 
 // ── GET /v1/runners/me/memory/{zombie_id} — hydrate ────────────────────────

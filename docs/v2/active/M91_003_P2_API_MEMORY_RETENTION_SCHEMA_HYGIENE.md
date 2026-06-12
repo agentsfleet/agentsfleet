@@ -93,12 +93,14 @@
 | File | Action | Why |
 |------|--------|-----|
 | `schema/013_memory_entries.sql` | EDIT | timestamps → `BIGINT` millis; `session_id` removed; header comment updated |
-| `src/zombied/memory/zombie_memory.zig` | EDIT | `storeEntry` numeric ts + shrunk column list; new `daily`-sweep fn + retention/category constants |
-| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | millis timestamp helper; `MemoryEntry.updated_at` numeric; stale comment fixed |
-| `src/zombied/http/handlers/memory/handler.zig` | EDIT | row reads follow the numeric type |
-| `src/zombied/http/handlers/runner/memory.zig` | EDIT | sweep call after `enforceCap` |
+| `src/zombied/memory/zombie_memory.zig` | EDIT | `storeEntry` numeric ts + shrunk column list; new `daily`-sweep fn + retention constant |
+| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | `MemoryEntry.updated_at` numeric; `nowTs` deleted (single caller now reuses the push's one clock read); stale comment fixed |
+| `src/zombied/http/handlers/runner/memory.zig` | EDIT | one clock read per push; sweep call after `enforceCap`; delta loop extracted to `storeDeltas` (method-length gate) |
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | sweep + type-change coverage |
-| `public/openapi.json` | EDIT | `updated_at` field type corrected to number |
+| `src/zombied/http/handlers/memory/memories_integration_test.zig` | EDIT | *(added at PLAN)* seed INSERT numeric, no `session_id`; tenant JSON-number test |
+| `src/zombied/http/handlers/runner/memory_loop_integration_test.zig` | EDIT | *(added at PLAN)* seed INSERTs numeric, no `session_id`; HTTP capture-sweep test |
+| `src/zombied/http/handlers/memory/shapes_test.zig` | EDIT | *(added at PLAN)* `nowTs` tests deleted with the helper; retired-verb/string-shape pins replaced with live numeric envelope pins; milestone tokens stripped on touch |
+| `src/zombied/state/account_teardown_test.zig` | EDIT | *(added at VERIFY)* two missed raw memory INSERTs flipped — caught by `make test-integration`, the handshake grep had scoped out `state/` |
 | `docs/architecture/capabilities.md` | EDIT | one line: `daily` expires after the retention window |
 | `zombiectl/src/commands/memory.ts` | EDIT | inherited from B1 order: `renderUpdatedAt` drops the string-seconds branch (comment marks the spot; M91_004 merged before this workstream) |
 | `zombiectl/test/memory-render.unit.test.ts` + memory fixtures (`memory.unit.test.ts`, `memory.integration.test.ts`, `acceptance/memory-read.spec.ts`) | EDIT | `updated_at` fixtures flip to numeric epoch millis |
@@ -119,29 +121,29 @@
 
 `BIGINT` epoch milliseconds for `created_at`/`updated_at`, written from the project clock; ordering clauses keep their semantics (numeric now, no digit-count caveat); tenant JSON emits the number; OpenAPI corrected. **Implementation default:** milliseconds, because the fleet plane already compares `clock.nowMillis()` i64 — one time unit platform-wide.
 
-- **Dimension 1.1** — store→hydrate→list round-trip carries numeric millis; ordering newest-first holds → `test_numeric_ts_roundtrip_ordering`
-- **Dimension 1.2** — tenant JSON `updated_at` is a number; OpenAPI agrees → `test_tenant_memory_updated_at_numeric` + `make check-openapi-errors`
+- **Dimension 1.1** — store→hydrate→list round-trip carries numeric millis; ordering newest-first holds → `test_numeric_ts_roundtrip_ordering` — **DONE**
+- **Dimension 1.2** — tenant JSON `updated_at` is a number; OpenAPI agrees → `test_tenant_memory_updated_at_numeric` + `make check-openapi-errors` — **DONE**
 
 ### §2 — `session_id` removed
 
 Dead since the runner push became the only writer (always inserted NULL). Column gone from schema and `storeEntry`; zero readers proven by grep.
 
-- **Dimension 2.1** — schema and insert carry no `session_id`; repo grep finds zero references in `src/` → `test` build green + Dead Code Sweep grep
+- **Dimension 2.1** — schema and insert carry no `session_id`; repo grep finds zero references in `src/` → `test` build green + Dead Code Sweep grep — **DONE**
 
 ### §3 — Stale comment corrected
 
 `helpers.zig` claims the category length cap protects a schema `DEFAULT 'core'`; no DEFAULT exists (correctly — schema defaults are rule-banned). Comment rewritten to state the real constraint (bounded label, app-enforced).
 
-- **Dimension 3.1** — comment describes the actual mechanism; no DEFAULT reference remains → review assertion at `/review` + Eval grep
+- **Dimension 3.1** — comment describes the actual mechanism; no DEFAULT reference remains → review assertion at `/review` + Eval grep — **DONE**
 
 ### §4 — `daily` retention sweep
 
 Adapter fn deletes rows for the pushing zombie where category equals the `daily` constant and `updated_at` is older than now minus the retention constant (named constant, 72h per M14_001 §4 intent). Called once per capture push, after `enforceCap`, same role window; failure warns and never fails the capture. Only `daily` — every other category is expiry-exempt by construction (parameter bound from the constant; no pattern match).
 
-- **Dimension 4.1** — aged `daily` rows deleted on next capture; young `daily` rows kept → `test_daily_sweep_deletes_only_aged`
-- **Dimension 4.2** — aged `core`/`conversation`/custom rows survive the sweep → `test_sweep_never_touches_other_categories`
-- **Dimension 4.3** — sweep is idempotent; second capture deletes nothing further → `test_daily_sweep_idempotent`
-- **Dimension 4.4** — injected sweep failure: capture still returns success; warn logged → `test_sweep_failure_never_fails_capture`
+- **Dimension 4.1** — aged `daily` rows deleted on next capture; young `daily` rows kept → `test_daily_sweep_deletes_only_aged` — **DONE**
+- **Dimension 4.2** — aged `core`/`conversation`/custom rows survive the sweep → `test_sweep_never_touches_other_categories` — **DONE**
+- **Dimension 4.3** — sweep is idempotent; second capture deletes nothing further → `test_daily_sweep_idempotent` — **DONE**
+- **Dimension 4.4** — injected sweep failure: capture still returns success; warn logged → `test_sweep_failure_never_fails_capture` — **DONE**
 
 ---
 
@@ -194,7 +196,7 @@ Regression: M91_002's tier tests (`test_evict_windowed_before_core`, `test_core_
 
 - [ ] Aged `daily` rows expire on capture; all other categories never — verify: `make test-integration` (4.1, 4.2)
 - [ ] Timestamps numeric end to end; tenant JSON + OpenAPI agree — verify: `make test-integration` (1.2) + `make check-openapi-errors`
-- [ ] `session_id` fully gone — verify: `grep -rn "session_id" src/ schema/013_memory_entries.sql | wc -l` → 0
+- [ ] `session_id` fully gone from the memory surface — verify: `grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ schema/ | wc -l` → 0 *(amended at PLAN: the auth plane legitimately uses auth-session `session_id` — a different domain; the original repo-wide grep could never reach 0)*
 - [ ] Sweep failure never fails capture — verify: `make test-integration` (4.4)
 - [ ] M91_002 tier tests still green — verify: `make test-integration`
 - [ ] `make lint` · `make test` · `make check-pg-drain` pass · migrations apply: `make run-migrations`
@@ -211,8 +213,8 @@ zig build && make test 2>&1 | tail -3 && make test-integration 2>&1 | tail -5
 make run-migrations 2>&1 | tail -3
 # E3: OpenAPI consistency
 make check-openapi-errors 2>&1 | tail -3
-# E4: Dead column (expect 0)
-grep -rn "session_id" src/ schema/013_memory_entries.sql | wc -l
+# E4: Dead column (expect 0; scoped to the memory surface + every raw INSERT site — auth-plane session_id is a different domain)
+grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ src/zombied/state/ schema/ | wc -l
 # E5: Stale comment gone (expect empty)
 grep -n "DEFAULT 'core'" src/zombied/http/handlers/memory/helpers.zig
 # E6: Sweep has exactly one caller (the capture handler)
@@ -227,14 +229,23 @@ make lint 2>&1 | grep -E "✓|FAIL"; make check-pg-drain 2>&1 | tail -2; zig bui
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `session_id` (column + insert binding) | `grep -rn "session_id" src/ schema/ \| grep -v done/` | 0 matches |
-| `nowTs` (if renamed to the millis helper) | `grep -rn "nowTs" src/ \| head` | 0 matches |
+| `session_id` (column + insert binding) | `grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ schema/` | 0 matches |
+| `nowTs` (deleted outright — the capture push's single clock read replaced it) | `grep -rn "\bnowTs\b" src/ \| head` | 0 matches |
+| `MS_PER_SECOND` in `zombiectl/src/commands/memory.ts` (orphan after the string branch went) | `grep -n "MS_PER_SECOND" zombiectl/src/commands/memory.ts` | 0 matches |
 
 ---
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; SCHEMA GUARD declaration outcome lands here)
+- **Consults** —
+  - **SCHEMA GUARD (Jun 12, 2026):** VERSION=0.41.0 < 2.0.0 → teardown path; `schema/013` edited in place (`session_id` column removed, timestamps → `BIGINT` millis); `schema/embed.zig` and the `canonicalMigrations()` version-13 slot unchanged (same file, same registration). No `ALTER`/`DROP` introduced; `check-schema-gate` green.
+  - **OpenAPI row satisfied by prior merge:** `MemoryEntry.updated_at` was already `integer/int64` on `main` — M91_004 (PR #396) flipped the published shape ahead of the server, which is why the CLI carried the tolerance branch. Zero diff here; `make check-openapi-errors` run as the consistency gate.
+  - **E4 grep scoped at PLAN:** repo-wide `session_id` grep can never reach 0 (auth-plane sessions are a different domain); amended to the memory surface. Spec-vs-reality fix, not a scope change.
+  - **`nowTs` deleted, not renamed:** its only production caller (the capture handler) now derives entry timestamps from the push's single `clock.nowMillis()` read — also serving the lease check and sweep cutoff (Failure Modes "one clock read per push" realized literally).
+  - **Dimension 4.4 tier:** implemented at the adapter tier mirroring the pre-existing `enforceCap` failure test (deterministic `error.InvalidUUID`, count-unchanged proof); the handler's catch-warn-continue is construction-identical to the cap path. An HTTP-level fault-injection seam would be test-only machinery (rejected per "What we do NOT build").
+  - **`storeDeltas` extraction:** `innerRunnerMemoryCapture` pre-existed at ~94 lines (over the fn cap); the sweep call would deepen it, so the per-delta store loop moved to a private helper in the same file — gate-compliant minimum, no behavior change.
+  - **`shapes_test.zig` cleanup on touch (RULE NLR + MILESTONE-ID):** deleting `nowTs` forced touching the file; milestone tokens stripped from every test name (gate-mandated on save), retired-verb shape pins (store 201 / forget — verbs that answer 404/405 today) deleted, recall/list pins rewritten against the live `{items,total}` envelope with numeric `updated_at`. Net unit-test count drops; replacement coverage is integration-tier.
+  - **Doc drift noted (not fixed — out of scope):** `docs/VERIFY_TIERS.md` tier-1 says `make test`, but the target is `test-unit-all` (lanes split). Flagged for a docs follow-up.
 - **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 

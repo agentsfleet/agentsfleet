@@ -23,6 +23,7 @@ const api_key = @import("../../../auth/api_key.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
 const memory_adapter = @import("../../../memory/zombie_memory.zig");
 const protocol = @import("contract").protocol;
+const clock = @import("common").clock;
 
 const ALLOC = std.testing.allocator;
 
@@ -36,6 +37,7 @@ const ZID_CAP_UNDER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c04";
 const ZID_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c05";
 const ZID_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c06";
 const ZID_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c07";
+const ZID_SWEEP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c08";
 const LEASE_HYD_DROP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f01";
 const LEASE_HYD_FIT = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f02";
 const LEASE_CAP_OVER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f03";
@@ -43,6 +45,7 @@ const LEASE_CAP_UNDER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f04";
 const LEASE_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f05";
 const LEASE_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f06";
 const LEASE_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f07";
+const LEASE_SWEEP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f08";
 const EVENT_ID = "evt-mem-loop-1";
 const NOW_MS: i64 = 1_900_000_000_000;
 /// Seeded lease fencing token; every push fences at exactly this value.
@@ -112,7 +115,7 @@ fn wipeMemory(conn: *pg.Conn, zombie_id: []const u8) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP, ZID_HYD_CORE }) |zid| {
+    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP, ZID_HYD_CORE, ZID_SWEEP }) |zid| {
         wipeMemory(conn, zid);
     }
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
@@ -152,6 +155,7 @@ fn setup() !?Env {
     try seedLease(conn, LEASE_TRUNC, ZID_TRUNC);
     try seedLease(conn, LEASE_SKIP, ZID_SKIP);
     try seedLease(conn, LEASE_HYD_CORE, ZID_HYD_CORE);
+    try seedLease(conn, LEASE_SWEEP, ZID_SWEEP);
     return .{ .h = h };
 }
 
@@ -175,12 +179,12 @@ fn seedRows(env: Env, zombie_id: []const u8, n: usize, content_len: usize) !void
     // hydrate byte arithmetic depends on its exact length.
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
         \\SELECT (('0195e2aa-4c1b-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
         \\       'hk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
-        \\       'hk' || n, repeat('x', $2::int), 'c', $1::uuid, NULL,
-        \\       '1700000000', '1700' || lpad(n::text, 6, '0')
+        \\       'hk' || n, repeat('x', $2::int), 'c', $1::uuid,
+        \\       1700000000000, 1700000000000 + n
         \\FROM generate_series(1, $3::int) n
         \\ON CONFLICT (key, zombie_id) DO NOTHING
     , .{ zombie_id, @as(i64, @intCast(content_len)), @as(i64, @intCast(n)) });
@@ -195,12 +199,31 @@ fn seedCoreRow(env: Env, zombie_id: []const u8, key: []const u8) !void {
     defer execIgnore(conn, "RESET ROLE", .{});
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
         \\VALUES (('0195e2aa-4c1b-7fff-8abc-' || substr(replace($1::uuid::text, '-', ''), 25, 8) || 'ffff')::uuid,
         \\        'ck-' || substr(replace($1::uuid::text, '-', ''), 29, 4),
-        \\        $2, 'indy', $3, $1::uuid, NULL, '1600000000', '1600000000')
+        \\        $2, 'indy', $3, $1::uuid, 1600000000000, 1600000000000)
         \\ON CONFLICT (key, zombie_id) DO NOTHING
     , .{ zombie_id, key, memory_adapter.CATEGORY_CORE });
+}
+
+/// Seed one `daily` row at an explicit `updated_at` (epoch ms) — the retention
+/// sweep's age fixture. `n` (1..15) keys the uid lane ('7dd' + hex nibble), so
+/// rows never collide with seedRows ('7' + 3-hex) or seedCoreRow ('7fff').
+fn seedDailyAt(env: Env, zombie_id: []const u8, key: []const u8, n: u8, updated_at_ms: i64) !void {
+    const conn = try env.h.acquireConn();
+    defer env.h.releaseConn(conn);
+    _ = try conn.exec("SET ROLE memory_runtime", .{});
+    defer execIgnore(conn, "RESET ROLE", .{});
+    _ = try conn.exec(
+        \\INSERT INTO memory.memory_entries
+        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\VALUES (('0195e2aa-4c1b-7dd' || to_hex($5::int) || '-8abc-'
+        \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || '0' || to_hex($5::int) || '00')::uuid,
+        \\        'sk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || $5::int,
+        \\        $2, 'scratch', $3, $1::uuid, $4, $4)
+        \\ON CONFLICT (key, zombie_id) DO NOTHING
+    , .{ zombie_id, key, memory_adapter.CATEGORY_DAILY, updated_at_ms, @as(i32, n) });
 }
 
 fn rowCount(env: Env, zombie_id: []const u8) !i64 {
@@ -398,6 +421,37 @@ test "test_capture_skip_counter_per_delta" {
     try std.testing.expectEqual(before.capture_skipped_total + 2, after.capture_skipped_total);
     try std.testing.expectEqual(before.captured_total + 1, after.captured_total);
     try std.testing.expectEqual(@as(i64, 1), try rowCount(env, ZID_SKIP));
+}
+
+// ── §capture: aged-daily retention sweep ────────────────────────────────────
+
+test "test_capture_sweeps_aged_daily" {
+    var env = (try setup()) orelse return error.SkipZigTest;
+    defer env.deinit();
+    // One daily aged past the retention window, one young daily; the push
+    // itself stores a fresh entry. The capture's post-push sweep removes only
+    // the aged row — the young daily and the pushed entry survive.
+    const now = clock.nowMillis();
+    try seedDailyAt(env, ZID_SWEEP, "aged-note", 1, now - memory_adapter.DAILY_RETENTION_MS - 60_000);
+    try seedDailyAt(env, ZID_SWEEP, "young-note", 2, now - 60_000);
+
+    const body = try buildPush(LEASE_SWEEP, "wk", 1, "fresh");
+    defer ALLOC.free(body);
+    const url = try memoryUrl(ZID_SWEEP);
+    defer ALLOC.free(url);
+    const r = try (try (try env.h.post(url).bearer(RUNNER_TOKEN)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"stored\":1"));
+    try std.testing.expectEqual(@as(i64, 2), try rowCount(env, ZID_SWEEP));
+
+    // The survivor set is exactly {young-note, wk01} — visible on hydrate.
+    const hr = try (try env.h.get(url).bearer(RUNNER_TOKEN)).send();
+    defer hr.deinit();
+    try hr.expectStatus(.ok);
+    try std.testing.expect(hr.bodyContains("\"key\":\"young-note\""));
+    try std.testing.expect(hr.bodyContains("\"key\":\"wk01\""));
+    try std.testing.expect(!hr.bodyContains("\"key\":\"aged-note\""));
 }
 
 // ── §render: the families are live on the real /metrics scrape ──────────────
