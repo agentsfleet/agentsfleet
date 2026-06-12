@@ -55,7 +55,7 @@ const FIRST_RUN_NOTICE = [
   "",
   "  usezombie collects anonymous usage data to improve the CLI.",
   "  Opt out by setting ZOMBIE_TELEMETRY_DISABLED=1 (or DO_NOT_TRACK=1).",
-  "  Learn more: https://docs.usezombie.com/cli/telemetry",
+  "  Learn more: https://docs.agentsfleet.net/cli/telemetry",
   "",
   "",
 ].join("\n");

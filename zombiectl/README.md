@@ -3,7 +3,7 @@
 The official Command Line Interface (CLI) for [usezombie](https://usezombie.com).
 
 [![Get early access](https://img.shields.io/badge/usezombie-Get_early_access-5EEAD4?style=for-the-badge)](https://usezombie.com)
-[![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
+[![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.agentsfleet.net)
 [![npm](https://img.shields.io/npm/v/@usezombie/zombiectl?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
@@ -148,9 +148,9 @@ Precedence for API base URL: `--api` flag → `ZOMBIE_API_URL` → saved credent
 
 ## Links
 
-- [Documentation](https://docs.usezombie.com)
+- [Documentation](https://docs.agentsfleet.net)
 - [Website](https://usezombie.com)
-- [GitHub](https://github.com/usezombie/usezombie)
+- [GitHub](https://github.com/agentsfleet/usezombie)
 - [Discord](https://discord.gg/H9hH2nqQjh)
 
 ## License

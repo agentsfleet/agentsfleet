@@ -1,19 +1,20 @@
 const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 
-// agentsfleet rebrand: flips to app.agentsfleet.net / docs.agentsfleet.net
-// are PARKED until those hosts answer (DNS + hosting + Clerk origin are
-// operator console steps; see the active rebrand spec). Flipping early
-// would dead-end every link; config.test.ts pins the parked values so the
-// flip is a conscious test edit, not a drive-by.
+// agentsfleet rebrand: the app.agentsfleet.net flip is PARKED until the
+// host answers (DNS + hosting + Clerk origin are operator console steps;
+// see the active rebrand spec). Flipping early would dead-end every link;
+// config.test.ts pins the parked value so the flip is a conscious test
+// edit, not a drive-by. DOCS_URL is flipped on a branch whose merge is
+// gated on docs.agentsfleet.net answering.
 export const APP_BASE_URL = fromEnv || (
   import.meta.env.PROD
     ? "https://app.usezombie.com"
     : "https://app.dev.usezombie.com"
 );
 
-export const DOCS_URL = "https://docs.usezombie.com";
+export const DOCS_URL = "https://docs.agentsfleet.net";
 export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
-export const GITHUB_URL = "https://github.com/usezombie/usezombie";
+export const GITHUB_URL = "https://github.com/agentsfleet/usezombie";
 export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const TEAM_EMAIL = "team@usezombie.com";
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";

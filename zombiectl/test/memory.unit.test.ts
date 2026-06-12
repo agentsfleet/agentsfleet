@@ -203,7 +203,7 @@ describe("memory — JSON mode passthrough", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(cap.infos[0]).toMatch(/no memories stored/i);
-    expect(cap.infos[1]).toContain("docs.usezombie.com/memory");
+    expect(cap.infos[1]).toContain("docs.agentsfleet.net/memory");
     expect(cap.tables).toHaveLength(0);
   });
 });

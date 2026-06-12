@@ -36,7 +36,7 @@ describe("Agents", () => {
     renderAgents();
     expect(screen.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
     expect(screen.getByRole("link", { name: /open dashboard/i })).toBeInTheDocument();
   });

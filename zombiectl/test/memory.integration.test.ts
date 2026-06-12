@@ -96,7 +96,7 @@ describe("memory list — human table on a terminal", () => {
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories stored/i);
-        expect(out.read()).toContain("docs.usezombie.com/memory");
+        expect(out.read()).toContain("docs.agentsfleet.net/memory");
       });
     });
   });
@@ -136,7 +136,7 @@ describe("memory search", () => {
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories matched "ghost"/i);
-        expect(out.read()).toContain("docs.usezombie.com/memory");
+        expect(out.read()).toContain("docs.agentsfleet.net/memory");
       });
     });
   });

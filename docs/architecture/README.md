@@ -1,6 +1,6 @@
 # Architecture — v2 Operational Outcome Runner
 
-> **Trying to USE agentsfleet?** This directory is the contributor-facing architecture set. If you want to install an agent on your own infra, go to **[docs.usezombie.com](https://docs.usezombie.com)** instead — that surface walks you through `zombiectl install` end-to-end and never asks you to read a system-topology file. Stay here only if you are contributing to the runtime, the CLI, the dashboard, or the SDK packages.
+> **Trying to USE agentsfleet?** This directory is the contributor-facing architecture set. If you want to install an agent on your own infra, go to **[docs.agentsfleet.net](https://docs.agentsfleet.net)** instead — that surface walks you through `zombiectl install` end-to-end and never asks you to read a system-topology file. Stay here only if you are contributing to the runtime, the CLI, the dashboard, or the SDK packages.
 
 Date: Apr 30, 2026
 Status: Canonical reference for the v2 problem, thesis, runtime model, agent / agent interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
@@ -17,7 +17,7 @@ Read in this order if you've never seen the project:
 2. [`user_flow.md`](./user_flow.md) — how a user gets from "I want an agent" to "the agent is running on my repo."
 3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs following one persona (John Doe) across his journey: default cold install, switching to self-managed with Fireworks + Kimi 2.6, and the credit pool draining and tripping the gate.
 
-> `user_flow.md` and `scenarios/` are **contributor-canonical** — cited by `§`-anchor in active and shipped spec acceptance criteria and in sibling arch docs. They are *not* user-facing docs to relocate to docs.usezombie.com (which carries its own independent user coverage). Before "moving user-facing docs," `git grep` the spec corpus for the file/anchor references first.
+> `user_flow.md` and `scenarios/` are **contributor-canonical** — cited by `§`-anchor in active and shipped spec acceptance criteria and in sibling arch docs. They are *not* user-facing docs to relocate to docs.agentsfleet.net (which carries its own independent user coverage). Before "moving user-facing docs," `git grep` the spec corpus for the file/anchor references first.
 
 After that, dip into whichever of these matches the change you're making:
 
