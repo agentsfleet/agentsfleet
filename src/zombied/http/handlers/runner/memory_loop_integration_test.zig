@@ -38,6 +38,7 @@ const ZID_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c05";
 const ZID_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c06";
 const ZID_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c07";
 const ZID_SWEEP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c08";
+const ZID_SWEEP_CAP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1c09";
 const LEASE_HYD_DROP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f01";
 const LEASE_HYD_FIT = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f02";
 const LEASE_CAP_OVER = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f03";
@@ -46,6 +47,7 @@ const LEASE_TRUNC = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f05";
 const LEASE_SKIP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f06";
 const LEASE_HYD_CORE = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f07";
 const LEASE_SWEEP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f08";
+const LEASE_SWEEP_CAP = "0195e2aa-4c1b-7f13-8abc-2b3e1e0f1f09";
 const EVENT_ID = "evt-mem-loop-1";
 const NOW_MS: i64 = 1_900_000_000_000;
 /// Seeded lease fencing token; every push fences at exactly this value.
@@ -115,7 +117,7 @@ fn wipeMemory(conn: *pg.Conn, zombie_id: []const u8) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP, ZID_HYD_CORE, ZID_SWEEP }) |zid| {
+    inline for (.{ ZID_HYD_DROP, ZID_HYD_FIT, ZID_CAP_OVER, ZID_CAP_UNDER, ZID_TRUNC, ZID_SKIP, ZID_HYD_CORE, ZID_SWEEP, ZID_SWEEP_CAP }) |zid| {
         wipeMemory(conn, zid);
     }
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id = $1::uuid", .{RUNNER_ID});
@@ -156,6 +158,7 @@ fn setup() !?Env {
     try seedLease(conn, LEASE_SKIP, ZID_SKIP);
     try seedLease(conn, LEASE_HYD_CORE, ZID_HYD_CORE);
     try seedLease(conn, LEASE_SWEEP, ZID_SWEEP);
+    try seedLease(conn, LEASE_SWEEP_CAP, ZID_SWEEP_CAP);
     return .{ .h = h };
 }
 
@@ -451,6 +454,41 @@ test "test_capture_sweeps_aged_daily" {
     try hr.expectStatus(.ok);
     try std.testing.expect(hr.bodyContains("\"key\":\"young-note\""));
     try std.testing.expect(hr.bodyContains("\"key\":\"wk01\""));
+    try std.testing.expect(!hr.bodyContains("\"key\":\"aged-note\""));
+}
+
+test "test_sweep_frees_cap_slots_before_eviction" {
+    var env = (try setup()) orelse return error.SkipZigTest;
+    defer env.deinit();
+    // At the cap: 999 durable custom rows + 1 aged daily (the NEWEST row of
+    // the set). The push puts the zombie one over; the sweep must clear the
+    // aged daily BEFORE cap eviction runs, or eviction selects the coldest
+    // durable row as victim in the doomed row's place — silent durable loss
+    // breaching "only daily expires" via the cap side door.
+    try seedRows(env, ZID_SWEEP_CAP, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE - 1, 8);
+    const now = clock.nowMillis();
+    try seedDailyAt(env, ZID_SWEEP_CAP, "aged-note", 1, now - memory_adapter.DAILY_RETENTION_MS - 60_000);
+
+    const body = try buildPush(LEASE_SWEEP_CAP, "fk", 1, "fresh");
+    defer ALLOC.free(body);
+    const url = try memoryUrl(ZID_SWEEP_CAP);
+    defer ALLOC.free(url);
+
+    const before = metrics_memory.snapshot();
+    const r = try (try (try env.h.post(url).bearer(RUNNER_TOKEN)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"stored\":1"));
+    const after = metrics_memory.snapshot();
+
+    // The sweep freed the slot first: zero cap evictions, the set sits at the
+    // cap, the coldest durable row (hk1) survives, the aged daily is gone.
+    try std.testing.expectEqual(before.cap_evictions_total, after.cap_evictions_total);
+    try std.testing.expectEqual(@as(i64, @intCast(protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE)), try rowCount(env, ZID_SWEEP_CAP));
+    const hr = try (try env.h.get(url).bearer(RUNNER_TOKEN)).send();
+    defer hr.deinit();
+    try hr.expectStatus(.ok);
+    try std.testing.expect(hr.bodyContains("\"key\":\"hk1\""));
     try std.testing.expect(!hr.bodyContains("\"key\":\"aged-note\""));
 }
 

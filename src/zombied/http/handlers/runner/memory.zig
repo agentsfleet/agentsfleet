@@ -102,6 +102,15 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
 
     const counts = storeDeltas(hx, conn, zombie_id, body.memory, now_ms) orelse return;
 
+    // Expire aged scratch BEFORE cap enforcement, same role window: an
+    // already-expired `daily` row must not occupy a cap slot during victim
+    // selection, or eviction deletes a durable row in the doomed row's place.
+    // A sweep blip must not fail a capture that already persisted.
+    const swept = adapter.sweepExpiredDaily(conn, zombie_id, now_ms - adapter.DAILY_RETENTION_MS) catch blk: {
+        log.warn("memory_daily_sweep_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
+        break :blk 0;
+    };
+
     // Backstop the durable set after the push: evict the coldest beyond the cap. A
     // cap-eviction blip must not fail a capture that already persisted (and counts
     // nothing — the eviction counter moves only on a reported eviction).
@@ -110,14 +119,6 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
         break :blk 0;
     };
     metrics_memory.incCapEvictions(evicted);
-
-    // Expire aged scratch after cap enforcement, same role window: `daily` rows
-    // older than the retention window go; a sweep blip must not fail a capture
-    // that already persisted.
-    const swept = adapter.sweepExpiredDaily(conn, zombie_id, now_ms - adapter.DAILY_RETENTION_MS) catch blk: {
-        log.warn("memory_daily_sweep_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id });
-        break :blk 0;
-    };
 
     metrics_memory.incMemoryCaptured(counts.stored);
     log.info("memory_captured", .{ .zombie_id = zombie_id, .stored = counts.stored, .skipped = counts.skipped, .evicted = evicted, .swept = swept });

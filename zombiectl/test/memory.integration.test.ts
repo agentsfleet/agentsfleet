@@ -15,8 +15,7 @@ const ZOMBIE_ID = "01900000-0000-7000-8000-0000005e4e72";
 const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
 const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
 
-// Today's wire shape: epoch seconds as decimal strings (schema/013 TEXT).
-// The numeric-millis wire flips these fixtures in one spot when it lands.
+// The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ITEMS = [
   { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: 1765500300000 },
   { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: 1765500200000 },

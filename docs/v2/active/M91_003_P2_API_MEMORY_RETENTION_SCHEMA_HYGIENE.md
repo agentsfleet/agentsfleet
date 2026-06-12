@@ -22,7 +22,7 @@
 1. `schema/013_memory_entries.sql` — the table being edited in place (pre-v2.0 teardown convention is stated in its header: migrations edit in place, dev/test databases rebuild from scratch; no ALTER chain).
 2. `src/zombied/memory/zombie_memory.zig` — `storeEntry` (timestamp + `session_id` write), `enforceCap` (the sweep mirrors its warn-and-continue posture and sits beside it), `listAll` ordering.
 3. `src/zombied/http/handlers/memory/helpers.zig` — `nowTs` (becomes a millis helper), `MemoryEntry.updated_at` (type change flows to the tenant JSON), the stale category comment.
-4. `src/zombied/http/handlers/runner/memory.zig` — the capture handler: the sweep's single call site, after `enforceCap`, same `memory_runtime` role window.
+4. `src/zombied/http/handlers/runner/memory.zig` — the capture handler: the sweep's single call site, **before** `enforceCap` (amended at `/review` — see Discovery), same `memory_runtime` role window.
 5. `dispatch/write_sql.md` — Schema Removal Guard + STS/NSQ/SGR/ITF rules; read before touching `schema/`.
 
 ---
@@ -138,12 +138,13 @@ Dead since the runner push became the only writer (always inserted NULL). Column
 
 ### §4 — `daily` retention sweep
 
-Adapter fn deletes rows for the pushing zombie where category equals the `daily` constant and `updated_at` is older than now minus the retention constant (named constant, 72h per M14_001 §4 intent). Called once per capture push, after `enforceCap`, same role window; failure warns and never fails the capture. Only `daily` — every other category is expiry-exempt by construction (parameter bound from the constant; no pattern match).
+Adapter fn deletes rows for the pushing zombie where category equals the `daily` constant and `updated_at` is older than now minus the retention constant (named constant, 72h per M14_001 §4 intent). Called once per capture push, **before `enforceCap`** *(amended at `/review`, cross-model confirmed: an already-expired `daily` row must not occupy a cap slot during victim selection — sweep-after-cap let eviction delete a durable row in the doomed row's place, breaching Invariant 1 via the cap side door)*, same role window; failure warns and never fails the capture. Only `daily` — every other category is expiry-exempt by construction (parameter bound from the constant; no pattern match).
 
 - **Dimension 4.1** — aged `daily` rows deleted on next capture; young `daily` rows kept → `test_daily_sweep_deletes_only_aged` — **DONE**
 - **Dimension 4.2** — aged `core`/`conversation`/custom rows survive the sweep → `test_sweep_never_touches_other_categories` — **DONE**
 - **Dimension 4.3** — sweep is idempotent; second capture deletes nothing further → `test_daily_sweep_idempotent` — **DONE**
 - **Dimension 4.4** — injected sweep failure: capture still returns success; warn logged → `test_sweep_failure_never_fails_capture` — **DONE**
+- **Dimension 4.5** *(added at `/review`)* — sweep precedes cap eviction: at the cap with an aged `daily` present, a push evicts zero durable rows → `test_sweep_frees_cap_slots_before_eviction` — **DONE**
 
 ---
 
@@ -187,6 +188,7 @@ Adapter fn deletes rows for the pushing zombie where category equals the `daily`
 | 4.2 | integration | `test_sweep_never_touches_other_categories` | aged `core`/`conversation`/custom seeded → capture → all present |
 | 4.3 | integration | `test_daily_sweep_idempotent` | immediate second capture → zero additional deletions |
 | 4.4 | integration | `test_sweep_failure_never_fails_capture` | injected sweep error → HTTP success, stored count correct, warn logged |
+| 4.5 | integration | `test_sweep_frees_cap_slots_before_eviction` | at-cap zombie, aged `daily` newest + push → zero cap evictions, coldest durable row survives, aged row gone (red-green proven: fails on sweep-after-cap order) |
 
 Regression: M91_002's tier tests (`test_evict_windowed_before_core`, `test_core_survives_thousand_dailies`) rerun green on numeric timestamps. Negative paths: 4.2 and 4.4 are the mandatory negatives for the new behaviour.
 
@@ -246,6 +248,7 @@ make lint 2>&1 | grep -E "✓|FAIL"; make check-pg-drain 2>&1 | tail -2; zig bui
   - **`storeDeltas` extraction:** `innerRunnerMemoryCapture` pre-existed at ~94 lines (over the fn cap); the sweep call would deepen it, so the per-delta store loop moved to a private helper in the same file — gate-compliant minimum, no behavior change.
   - **`shapes_test.zig` cleanup on touch (RULE NLR + MILESTONE-ID):** deleting `nowTs` forced touching the file; milestone tokens stripped from every test name (gate-mandated on save), retired-verb shape pins (store 201 / forget — verbs that answer 404/405 today) deleted, recall/list pins rewritten against the live `{items,total}` envelope with numeric `updated_at`. Net unit-test count drops; replacement coverage is integration-tier.
   - **Doc drift noted (not fixed — out of scope):** `docs/VERIFY_TIERS.md` tier-1 says `make test`, but the target is `test-unit-all` (lanes split). Flagged for a docs follow-up.
+  - **`/review` adversarial outcome (Jun 12, 2026) — spec §4 ordering amended.** Both independent passes (fresh-context Claude subagent + Codex high-reasoning) converged, confidence 8-10: sweep-after-`enforceCap` let already-expired `daily` rows occupy cap slots during victim selection, so a capture at the cap evicted a **durable** row in the doomed row's place — Invariant 1 breached via the cap side door. Fixed by swapping the order (sweep first); spec §4 amended to match its own Invariant 1; regression `test_sweep_frees_cap_slots_before_eviction` red-green proven (fails on the old order: eviction counter moved; passes on the new). Secondary fixes from the same review: stale "TEXT seconds wire" comments in three zombiectl test fixtures corrected; tenant list/search `ORDER BY` gains the `, id DESC` tie-break (one-clock-read-per-push makes same-push `updated_at` ties universal; mirrors the adapter). **Dispositions:** sweep Prometheus counter (finding F4) deferred — spec scopes observability to the existing log flow; surfaced to Indy as a follow-up option. HTTP-tier sweep-failure injection (F3) remains adapter-tier by the documented Dimension 4.4 decision (the cap arm shares the posture). `created_at` write-only (F6) is the schema standard. Codex's "in-place migration edit" and "one-clock-read lease staleness" flags are convention false-positives (pre-v2 teardown is the documented mechanism enforced by `check-schema-gate`; clock staleness is bounded by request duration, semantics documented in Failure Modes).
 - **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 
