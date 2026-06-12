@@ -27,6 +27,28 @@ const pipe_proto = @import("../pipe_proto.zig");
 const LeasePayload = contract.protocol.LeasePayload;
 const log = logging.scoped(.zombie_runner);
 
+/// A u32 token-split triple ready for the wire — the explicit carrier the renew
+/// body AND the report splits both map from, so neither path borrows the other's
+/// HTTP-body type as a value bag. `renewRequest()` projects it onto the renew
+/// body; the report path reads the fields directly. A field that later belongs
+/// in `RenewRequest` but not the report (a fencing token, a posture hint) lands
+/// on `RenewRequest`, never here, so it can never be silently zeroed into a report.
+pub const TokenSplits = struct {
+    input_tokens: u32 = 0,
+    cached_input_tokens: u32 = 0,
+    output_tokens: u32 = 0,
+
+    /// Project onto the renew HTTP body. The report path reads the three fields
+    /// directly rather than through this projection.
+    pub fn renewRequest(self: TokenSplits) contract.protocol.RenewRequest {
+        return .{
+            .input_tokens = self.input_tokens,
+            .cached_input_tokens = self.cached_input_tokens,
+            .output_tokens = self.output_tokens,
+        };
+    }
+};
+
 /// Single source of the u64-cumulative → u32-wire mapping (the renew body and
 /// the report splits both flow through here). The wire width is server-frozen
 /// at u32, so we **saturate** rather than wrap: a wrap would drop the high bits
@@ -36,7 +58,7 @@ const log = logging.scoped(.zombie_runner);
 /// and never the catastrophic wrap. Beyond the clamp the server's cursor diff
 /// (`GREATEST(0, sent − cursor)`) bills the excess at zero; the legacy `tokens`
 /// total stays u64, so it can exceed the split sum once a field saturates.
-pub fn wireSplits(input: u64, cached: u64, output: u64) contract.protocol.RenewRequest {
+pub fn wireSplits(input: u64, cached: u64, output: u64) TokenSplits {
     return .{
         .input_tokens = std.math.lossyCast(u32, input),
         .cached_input_tokens = std.math.lossyCast(u32, cached),
@@ -46,7 +68,7 @@ pub fn wireSplits(input: u64, cached: u64, output: u64) contract.protocol.RenewR
 
 /// Map the supervisor's live cumulative snapshot onto the renew wire body.
 pub fn renewRequestFrom(usage: pipe_proto.UsageSnapshot) contract.protocol.RenewRequest {
-    return wireSplits(usage.input_tokens, usage.cached_input_tokens, usage.output_tokens);
+    return wireSplits(usage.input_tokens, usage.cached_input_tokens, usage.output_tokens).renewRequest();
 }
 
 /// Build the renewal-driver type bound to a control-plane client type `Client`.

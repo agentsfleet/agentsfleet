@@ -112,3 +112,16 @@ test "renewRequestFrom saturates the wire-frozen u32 fields instead of wrapping"
     try testing.expectEqual(@as(u32, std.math.maxInt(u32)), req.cached_input_tokens);
     try testing.expectEqual(@as(u32, 7), req.output_tokens);
 }
+
+test "TokenSplits.renewRequest projects the carrier onto the renew body verbatim" {
+    // The renew path goes through the projection; the report path reads the
+    // carrier's fields directly. Pins that the projection is a faithful 1:1 copy
+    // so the two consumers can never drift through this seam.
+    const splits = renew_driver.wireSplits(100, 0, 40);
+    try testing.expectEqual(@as(u32, 100), splits.input_tokens);
+    try testing.expectEqual(@as(u32, 40), splits.output_tokens);
+    const body = splits.renewRequest();
+    try testing.expectEqual(@as(u32, 100), body.input_tokens);
+    try testing.expectEqual(@as(u32, 0), body.cached_input_tokens);
+    try testing.expectEqual(@as(u32, 40), body.output_tokens);
+}

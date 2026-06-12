@@ -283,12 +283,13 @@ pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
     return if (exit_ok) .processed else .agent_error;
 }
 
-/// Map the final ExecutionResult's u64 cumulative splits onto the report's
-/// wire-frozen u32 fields. Thin adapter over the single saturating mapper in
-/// `renew_driver` (RULE NDC: one wire-width policy, not a byte-identical twin);
-/// the report carries the same three fields the renew body does, beside the
-/// unchanged legacy `tokens` total.
-pub fn splitFields(result: contract.execution_result.ExecutionResult) protocol.RenewRequest {
+/// Saturate the final ExecutionResult's u64 cumulative splits onto the report's
+/// wire-frozen u32 fields. Returns the explicit `TokenSplits` carrier (not the
+/// renew HTTP-body type) so the report path never borrows the renew contract as
+/// a value bag; one wire-width policy lives in `renew_driver.wireSplits` (RULE
+/// NDC). The report fills its three fields from this beside the unchanged legacy
+/// `tokens` total.
+pub fn splitFields(result: contract.execution_result.ExecutionResult) renew_driver.TokenSplits {
     return renew_driver.wireSplits(result.input_tokens, result.cached_input_tokens, result.output_tokens);
 }
 
