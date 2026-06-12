@@ -258,7 +258,12 @@ No file deletions otherwise.
     - **FIXED — loss accounting simplification (performance specialist):** dropped bytes now sum the permuted tail (`rows[entries.len..]`) — one O(dropped) pass instead of two full passes; same value by the permutation invariant.
     - **DISPOSITIONED — core-saturated capture blackhole (security + adversarial + Codex "block"):** recorded as a Failure Modes row with candidate hardenings for Indy (response `evicted` field = wire change this spec forbids; pinned-tier quota). Bounded to the attacker's own zombie; operator-visible via logs/counters.
     - **NO ACTION:** Codex's unbounded-victim-subquery note (self-healing by design; set is practically bounded by the capture caps; eviction-failure warn path is the deliberate M91_001 capture-durability-first call). `helpers.zig:24` pre-existing stale schema claim (file untouched by this diff). `seedDailies` uid-prefix duplication (matches the sibling loop-test fixture convention; consistency-only).
-  - (`/review-pr`, `kishore-babysit-prs` pending below)
+  - **`/review-pr` (Jun 12, 2026):** structured self-review posted on PR #400 — zero blocking findings on the immutable 12-file diff; verdict APPROVE-shaped (posted as comment; author cannot approve own PR). Observations recorded: `passthrough`'s deliberate retention, and the then-comment-only lockstep invariant — which greptile independently escalated (below).
+  - **`kishore-babysit-prs` final report (Jun 12, 2026):**
+    - Polls run: 6 (cadence 180→300→600s across two pushes) · Reviews seen: 1 greptile review on PR #400 · docs#90: zero (its earlier finding was handled directly by Indy in docs-repo `06b620a`).
+    - Findings actioned: 1 (P2 — "LOCKSTEP INVARIANT is comment-enforced, not compiler-enforced", `zombie_memory.zig`, comment 3400502502). Indy-approved fix `af6f6a2b`: the tier entries moved into one named comptime tuple feeding both the StaticStringMap and a comptime pinned-count assertion (`== 1`), so a second pinned category cannot compile until `enforceCap`'s protected bind widens in the same diff. Tier-1 Fixed reply posted (3400563147); history lines written (project + global, `fix | correctness`). Zig 0.16 note banked: `inline for` inside a `comptime` block is rejected as redundant — plain `for` is the form.
+    - Findings deferred: 0 · Rules added: none (single-incident; the history line is the durable record).
+    - Stopped: two consecutive empty polls after the fix push; CI green/in-flight, nothing red. PR #400 handed to Indy for merge (docs#90 merges after it).
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 
 ---
