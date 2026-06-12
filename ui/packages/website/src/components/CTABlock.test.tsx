@@ -30,7 +30,7 @@ describe("CTABlock", () => {
   it("renders quickstart CTA with correct href", () => {
     renderCtaBlock();
     const cta = screen.getByRole("link", { name: /read quickstart/i });
-    expect(cta).toHaveAttribute("href", "https://docs.usezombie.com/quickstart");
+    expect(cta).toHaveAttribute("href", "https://docs.agentsfleet.net/quickstart");
   });
 
   it("renders pricing CTA as anchor to home #pricing section", () => {

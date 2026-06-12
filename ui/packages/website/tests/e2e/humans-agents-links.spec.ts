@@ -22,8 +22,8 @@ async function assertFooterLinks(page: Page) {
     await expect(footer.getByRole("link", { name: link.label })).toHaveAttribute("href", link.href);
   }
 
-  await expect(footer.locator('a[href^="https://docs.usezombie.com"]')).toHaveCount(1);
-  await expect(footer.locator('a[href="https://github.com/usezombie/usezombie"]')).toHaveCount(1);
+  await expect(footer.locator('a[href^="https://docs.agentsfleet.net"]')).toHaveCount(1);
+  await expect(footer.locator('a[href="https://github.com/agentsfleet/usezombie"]')).toHaveCount(1);
   await expect(footer.locator('a[href="https://discord.gg/H9hH2nqQjh"]')).toHaveCount(1);
 }
 
@@ -45,7 +45,7 @@ test.describe("Cross-page link coverage", () => {
 
     await expect(nav.getByRole("link", { name: /^docs$/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
 
     // The Hero primary CTA is a clipboard-copy button, not a docs anchor.
@@ -84,14 +84,14 @@ test.describe("Cross-page link coverage", () => {
 
     await expect(nav.getByRole("link", { name: /^docs$/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
 
     await expect(
-      page.locator('a[href="https://docs.usezombie.com/quickstart"]').filter({ hasText: /start an agent/i }),
+      page.locator('a[href="https://docs.agentsfleet.net/quickstart"]').filter({ hasText: /start an agent/i }),
     ).toHaveCount(1);
     await expect(
-      page.locator('a[href="https://docs.usezombie.com"]').filter({ hasText: /read the docs/i }),
+      page.locator('a[href="https://docs.agentsfleet.net"]').filter({ hasText: /read the docs/i }),
     ).toHaveCount(1);
     await expect(
       page.locator("a").filter({ hasText: /open dashboard/i }),

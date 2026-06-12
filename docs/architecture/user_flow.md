@@ -40,7 +40,7 @@ This is a deliberate scope cut, not a gap in the architecture. The runtime is al
 Practically, this means:
 
 - v2 launch claim is **OSS + self-managed + markdown-defined**. Not "self-hostable."
-- The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
+- The `/self-host` runbook page does not exist on `docs.agentsfleet.net` for v2.
 - Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours.md`](./office_hours.md) P1 are v3 customers, not v2.
 - self-managed still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md).
 
@@ -69,14 +69,14 @@ Once the files are ready, the user installs the agent into the workspace.
 The canonical entry is the one-liner served from `https://usezombie.sh` — it wraps the first two steps below (install `zombiectl`, add the skill):
 
 ```bash
-curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills add usezombie/skills
+curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills add agentsfleet/skills
 ```
 
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
 npm install -g @usezombie/zombiectl     # CLI binary + bundled samples (postinstall copies to ~/.config/usezombie/samples/)
-npx skills add usezombie/skills         # symlinks /usezombie-* into host skill paths (skills now ship from github.com/usezombie/skills)
+npx skills add agentsfleet/skills         # symlinks /usezombie-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
 zombiectl auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```

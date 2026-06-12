@@ -61,6 +61,6 @@ describe("OnboardingFlow", () => {
   it("renders a tertiary link to the docs quickstart", () => {
     render(<OnboardingFlow />);
     const link = screen.getByTestId("onboarding-flow-quickstart");
-    expect(link.getAttribute("href")).toBe("https://docs.usezombie.com/quickstart");
+    expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/quickstart");
   });
 });

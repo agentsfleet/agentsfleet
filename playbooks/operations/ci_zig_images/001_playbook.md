@@ -166,7 +166,7 @@ GHCR packages default to private, even when the repo is public. After the
 first push, visit each package on GitHub:
 
 ```
-https://github.com/usezombie?tab=packages
+https://github.com/agentsfleet?tab=packages
 ```
 
 Click each `ci-zig-*` package → **Package settings** → **Change visibility** → **Public**.

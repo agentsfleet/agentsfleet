@@ -120,7 +120,7 @@ test.describe("Agents page — install block", () => {
     await page.goto("/agents");
     await expect(page.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
   });
 

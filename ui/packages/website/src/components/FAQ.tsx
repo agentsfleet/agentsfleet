@@ -7,6 +7,7 @@ import {
   DisplayLG,
   SectionLabel,
 } from "@usezombie/design-system";
+import { DOCS_URL } from "../config";
 import { AGENT_DEFINITION } from "../lib/copy";
 
 const items: { q: string; a: ReactNode }[] = [
@@ -48,7 +49,7 @@ const items: { q: string; a: ReactNode }[] = [
         built-in threshold. Net: a 40-tool-call deploy investigation stays reasoned through to a
         Slack diagnosis, not a context-overflow loop.{" "}
         <a
-          href="https://docs.usezombie.com/concepts/context-lifecycle"
+          href={`${DOCS_URL}/concepts/context-lifecycle`}
           target="_blank"
           rel="noreferrer"
           className="text-pulse hover:border-b hover:border-pulse"
