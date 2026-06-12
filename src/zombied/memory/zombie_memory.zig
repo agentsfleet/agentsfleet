@@ -165,6 +165,7 @@ fn selectByTier(rows: []MemoryDelta, budget: usize) []const MemoryDelta {
 
 /// Upsert one memory entry under `zombie_id` — the ONLY `INSERT` into
 /// `memory.memory_entries`. Caller has already `SET ROLE memory_runtime`.
+/// `ts_ms` is epoch milliseconds from the project clock (one read per push).
 /// Idempotent via `ON CONFLICT (key, zombie_id) DO UPDATE`, so a retried or
 /// duplicate push never creates a second row for the same key.
 pub fn storeEntry(
@@ -174,19 +175,19 @@ pub fn storeEntry(
     key: []const u8,
     content: []const u8,
     category: []const u8,
-    ts: []const u8,
+    ts_ms: i64,
 ) !void {
     var uid_buf: [36]u8 = undefined;
     const uid = try id_format.formatUuidV7(&uid_buf);
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, session_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, NULL, $7, $7)
+        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
         \\ON CONFLICT (key, zombie_id) DO UPDATE
         \\  SET content = EXCLUDED.content,
         \\      category = EXCLUDED.category,
         \\      updated_at = EXCLUDED.updated_at
-    , .{ uid, id, key, content, category, zombie_id, ts });
+    , .{ uid, id, key, content, category, zombie_id, ts_ms });
 }
 
 /// Evict the entries beyond `max` for `zombie_id` (the per-zombie durable-set cap),
@@ -213,6 +214,32 @@ pub fn enforceCap(conn: *pg.Conn, zombie_id: []const u8, max: usize) !u64 {
     , .{ zombie_id, @as(i64, @intCast(max)), CATEGORY_CORE });
     const n = affected orelse {
         log.warn("memory_cap_evict_count_unavailable", .{ .zombie_id = zombie_id });
+        return 0;
+    };
+    return if (n < 0) 0 else @intCast(n);
+}
+
+/// Retention window for `daily` entries: scratch notes older than this many
+/// milliseconds (by `updated_at`) expire on the next capture push. Every other
+/// category is expiry-exempt by construction — the sweep binds CATEGORY_DAILY
+/// as a parameter, never a pattern.
+pub const DAILY_RETENTION_MS: i64 = 72 * std.time.ms_per_hour;
+
+/// Delete the zombie's `daily` rows with `updated_at` older than `cutoff_ms` —
+/// `enforceCap`'s sibling in shape, call site, and posture: per-zombie scoped
+/// DELETE, called once after a capture push in the same `memory_runtime` role
+/// window, and a failure warns at the call site without failing the capture.
+/// Returns the deleted-row count; a result carrying no count reports 0 with a
+/// warn — expiry is never blocked on telemetry.
+pub fn sweepExpiredDaily(conn: *pg.Conn, zombie_id: []const u8, cutoff_ms: i64) !u64 {
+    const affected = try conn.exec(
+        \\DELETE FROM memory.memory_entries
+        \\WHERE zombie_id = $1::uuid
+        \\  AND category = $2
+        \\  AND updated_at < $3
+    , .{ zombie_id, CATEGORY_DAILY, cutoff_ms });
+    const n = affected orelse {
+        log.warn("memory_daily_sweep_count_unavailable", .{ .zombie_id = zombie_id });
         return 0;
     };
     return if (n < 0) 0 else @intCast(n);

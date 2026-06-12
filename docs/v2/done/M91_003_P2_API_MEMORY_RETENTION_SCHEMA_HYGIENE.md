@@ -4,11 +4,12 @@
 **Milestone:** M91
 **Workstream:** 003
 **Date:** Jun 11, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — hygiene + cap-pressure relief: `daily` entries were specced to expire (M14_001 §4) but the sweep never shipped, so ephemera live until they crowd out durable memories at the cap; the schema still carries NullClaw-era `TEXT` timestamps and a never-written `session_id` whose retention rationale died when zombied took table ownership
 **Categories:** API
 **Batch:** B3 — after M91_002 (shared `zombie_memory.zig` surface; tier-eviction tests must hold on numeric timestamps). **Inherited from the B1 merge order:** M91_004 landed first (PR #396, hold waived), so the CLI side of the wire flip moves INTO this workstream — delete the string-seconds branch in `zombiectl`'s `renderUpdatedAt` (the helper comment marks the exact spot) and flip the memory test fixtures to numeric millis, same diff as the server change.
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m91-003-memory-retention
+**Test Baseline:** unit=1947 integration=182
 **Depends on:** M91_002 (file overlap + tier ordering rides `updated_at`)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026) — grounded in `schema/013_memory_entries.sql` (header states zombied owns the layout; the NullClaw-mirroring reason is gone), `storeEntry` (inserts `session_id` as NULL always), `helpers.zig` (comment cites a schema DEFAULT that does not exist), M14_001 §4 (the unshipped retention intent); re-confirm at PLAN.
 
@@ -21,7 +22,7 @@
 1. `schema/013_memory_entries.sql` — the table being edited in place (pre-v2.0 teardown convention is stated in its header: migrations edit in place, dev/test databases rebuild from scratch; no ALTER chain).
 2. `src/zombied/memory/zombie_memory.zig` — `storeEntry` (timestamp + `session_id` write), `enforceCap` (the sweep mirrors its warn-and-continue posture and sits beside it), `listAll` ordering.
 3. `src/zombied/http/handlers/memory/helpers.zig` — `nowTs` (becomes a millis helper), `MemoryEntry.updated_at` (type change flows to the tenant JSON), the stale category comment.
-4. `src/zombied/http/handlers/runner/memory.zig` — the capture handler: the sweep's single call site, after `enforceCap`, same `memory_runtime` role window.
+4. `src/zombied/http/handlers/runner/memory.zig` — the capture handler: the sweep's single call site, **before** `enforceCap` (amended at `/review` — see Discovery), same `memory_runtime` role window.
 5. `dispatch/write_sql.md` — Schema Removal Guard + STS/NSQ/SGR/ITF rules; read before touching `schema/`.
 
 ---
@@ -92,12 +93,14 @@
 | File | Action | Why |
 |------|--------|-----|
 | `schema/013_memory_entries.sql` | EDIT | timestamps → `BIGINT` millis; `session_id` removed; header comment updated |
-| `src/zombied/memory/zombie_memory.zig` | EDIT | `storeEntry` numeric ts + shrunk column list; new `daily`-sweep fn + retention/category constants |
-| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | millis timestamp helper; `MemoryEntry.updated_at` numeric; stale comment fixed |
-| `src/zombied/http/handlers/memory/handler.zig` | EDIT | row reads follow the numeric type |
-| `src/zombied/http/handlers/runner/memory.zig` | EDIT | sweep call after `enforceCap` |
+| `src/zombied/memory/zombie_memory.zig` | EDIT | `storeEntry` numeric ts + shrunk column list; new `daily`-sweep fn + retention constant |
+| `src/zombied/http/handlers/memory/helpers.zig` | EDIT | `MemoryEntry.updated_at` numeric; `nowTs` deleted (single caller now reuses the push's one clock read); stale comment fixed |
+| `src/zombied/http/handlers/runner/memory.zig` | EDIT | one clock read per push; sweep call after `enforceCap`; delta loop extracted to `storeDeltas` (method-length gate) |
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | sweep + type-change coverage |
-| `public/openapi.json` | EDIT | `updated_at` field type corrected to number |
+| `src/zombied/http/handlers/memory/memories_integration_test.zig` | EDIT | *(added at PLAN)* seed INSERT numeric, no `session_id`; tenant JSON-number test |
+| `src/zombied/http/handlers/runner/memory_loop_integration_test.zig` | EDIT | *(added at PLAN)* seed INSERTs numeric, no `session_id`; HTTP capture-sweep test |
+| `src/zombied/http/handlers/memory/shapes_test.zig` | EDIT | *(added at PLAN)* `nowTs` tests deleted with the helper; retired-verb/string-shape pins replaced with live numeric envelope pins; milestone tokens stripped on touch |
+| `src/zombied/state/account_teardown_test.zig` | EDIT | *(added at VERIFY)* two missed raw memory INSERTs flipped — caught by `make test-integration`, the handshake grep had scoped out `state/` |
 | `docs/architecture/capabilities.md` | EDIT | one line: `daily` expires after the retention window |
 | `zombiectl/src/commands/memory.ts` | EDIT | inherited from B1 order: `renderUpdatedAt` drops the string-seconds branch (comment marks the spot; M91_004 merged before this workstream) |
 | `zombiectl/test/memory-render.unit.test.ts` + memory fixtures (`memory.unit.test.ts`, `memory.integration.test.ts`, `acceptance/memory-read.spec.ts`) | EDIT | `updated_at` fixtures flip to numeric epoch millis |
@@ -118,29 +121,30 @@
 
 `BIGINT` epoch milliseconds for `created_at`/`updated_at`, written from the project clock; ordering clauses keep their semantics (numeric now, no digit-count caveat); tenant JSON emits the number; OpenAPI corrected. **Implementation default:** milliseconds, because the fleet plane already compares `clock.nowMillis()` i64 — one time unit platform-wide.
 
-- **Dimension 1.1** — store→hydrate→list round-trip carries numeric millis; ordering newest-first holds → `test_numeric_ts_roundtrip_ordering`
-- **Dimension 1.2** — tenant JSON `updated_at` is a number; OpenAPI agrees → `test_tenant_memory_updated_at_numeric` + `make check-openapi-errors`
+- **Dimension 1.1** — store→hydrate→list round-trip carries numeric millis; ordering newest-first holds → `test_numeric_ts_roundtrip_ordering` — **DONE**
+- **Dimension 1.2** — tenant JSON `updated_at` is a number; OpenAPI agrees → `test_tenant_memory_updated_at_numeric` + `make check-openapi-errors` — **DONE**
 
 ### §2 — `session_id` removed
 
 Dead since the runner push became the only writer (always inserted NULL). Column gone from schema and `storeEntry`; zero readers proven by grep.
 
-- **Dimension 2.1** — schema and insert carry no `session_id`; repo grep finds zero references in `src/` → `test` build green + Dead Code Sweep grep
+- **Dimension 2.1** — schema and insert carry no `session_id`; repo grep finds zero references in `src/` → `test` build green + Dead Code Sweep grep — **DONE**
 
 ### §3 — Stale comment corrected
 
 `helpers.zig` claims the category length cap protects a schema `DEFAULT 'core'`; no DEFAULT exists (correctly — schema defaults are rule-banned). Comment rewritten to state the real constraint (bounded label, app-enforced).
 
-- **Dimension 3.1** — comment describes the actual mechanism; no DEFAULT reference remains → review assertion at `/review` + Eval grep
+- **Dimension 3.1** — comment describes the actual mechanism; no DEFAULT reference remains → review assertion at `/review` + Eval grep — **DONE**
 
 ### §4 — `daily` retention sweep
 
-Adapter fn deletes rows for the pushing zombie where category equals the `daily` constant and `updated_at` is older than now minus the retention constant (named constant, 72h per M14_001 §4 intent). Called once per capture push, after `enforceCap`, same role window; failure warns and never fails the capture. Only `daily` — every other category is expiry-exempt by construction (parameter bound from the constant; no pattern match).
+Adapter fn deletes rows for the pushing zombie where category equals the `daily` constant and `updated_at` is older than now minus the retention constant (named constant, 72h per M14_001 §4 intent). Called once per capture push, **before `enforceCap`** *(amended at `/review`, cross-model confirmed: an already-expired `daily` row must not occupy a cap slot during victim selection — sweep-after-cap let eviction delete a durable row in the doomed row's place, breaching Invariant 1 via the cap side door)*, same role window; failure warns and never fails the capture. Only `daily` — every other category is expiry-exempt by construction (parameter bound from the constant; no pattern match).
 
-- **Dimension 4.1** — aged `daily` rows deleted on next capture; young `daily` rows kept → `test_daily_sweep_deletes_only_aged`
-- **Dimension 4.2** — aged `core`/`conversation`/custom rows survive the sweep → `test_sweep_never_touches_other_categories`
-- **Dimension 4.3** — sweep is idempotent; second capture deletes nothing further → `test_daily_sweep_idempotent`
-- **Dimension 4.4** — injected sweep failure: capture still returns success; warn logged → `test_sweep_failure_never_fails_capture`
+- **Dimension 4.1** — aged `daily` rows deleted on next capture; young `daily` rows kept → `test_daily_sweep_deletes_only_aged` — **DONE**
+- **Dimension 4.2** — aged `core`/`conversation`/custom rows survive the sweep → `test_sweep_never_touches_other_categories` — **DONE**
+- **Dimension 4.3** — sweep is idempotent; second capture deletes nothing further → `test_daily_sweep_idempotent` — **DONE**
+- **Dimension 4.4** — injected sweep failure: capture still returns success; warn logged → `test_sweep_failure_never_fails_capture` — **DONE**
+- **Dimension 4.5** *(added at `/review`)* — sweep precedes cap eviction: at the cap with an aged `daily` present, a push evicts zero durable rows → `test_sweep_frees_cap_slots_before_eviction` — **DONE**
 
 ---
 
@@ -184,6 +188,7 @@ Adapter fn deletes rows for the pushing zombie where category equals the `daily`
 | 4.2 | integration | `test_sweep_never_touches_other_categories` | aged `core`/`conversation`/custom seeded → capture → all present |
 | 4.3 | integration | `test_daily_sweep_idempotent` | immediate second capture → zero additional deletions |
 | 4.4 | integration | `test_sweep_failure_never_fails_capture` | injected sweep error → HTTP success, stored count correct, warn logged |
+| 4.5 | integration | `test_sweep_frees_cap_slots_before_eviction` | at-cap zombie, aged `daily` newest + push → zero cap evictions, coldest durable row survives, aged row gone (red-green proven: fails on sweep-after-cap order) |
 
 Regression: M91_002's tier tests (`test_evict_windowed_before_core`, `test_core_survives_thousand_dailies`) rerun green on numeric timestamps. Negative paths: 4.2 and 4.4 are the mandatory negatives for the new behaviour.
 
@@ -193,7 +198,7 @@ Regression: M91_002's tier tests (`test_evict_windowed_before_core`, `test_core_
 
 - [ ] Aged `daily` rows expire on capture; all other categories never — verify: `make test-integration` (4.1, 4.2)
 - [ ] Timestamps numeric end to end; tenant JSON + OpenAPI agree — verify: `make test-integration` (1.2) + `make check-openapi-errors`
-- [ ] `session_id` fully gone — verify: `grep -rn "session_id" src/ schema/013_memory_entries.sql | wc -l` → 0
+- [ ] `session_id` fully gone from the memory surface — verify: `grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ schema/ | wc -l` → 0 *(amended at PLAN: the auth plane legitimately uses auth-session `session_id` — a different domain; the original repo-wide grep could never reach 0)*
 - [ ] Sweep failure never fails capture — verify: `make test-integration` (4.4)
 - [ ] M91_002 tier tests still green — verify: `make test-integration`
 - [ ] `make lint` · `make test` · `make check-pg-drain` pass · migrations apply: `make run-migrations`
@@ -210,8 +215,8 @@ zig build && make test 2>&1 | tail -3 && make test-integration 2>&1 | tail -5
 make run-migrations 2>&1 | tail -3
 # E3: OpenAPI consistency
 make check-openapi-errors 2>&1 | tail -3
-# E4: Dead column (expect 0)
-grep -rn "session_id" src/ schema/013_memory_entries.sql | wc -l
+# E4: Dead column (expect 0; scoped to the memory surface + every raw INSERT site — auth-plane session_id is a different domain)
+grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ src/zombied/state/ schema/ | wc -l
 # E5: Stale comment gone (expect empty)
 grep -n "DEFAULT 'core'" src/zombied/http/handlers/memory/helpers.zig
 # E6: Sweep has exactly one caller (the capture handler)
@@ -226,15 +231,25 @@ make lint 2>&1 | grep -E "✓|FAIL"; make check-pg-drain 2>&1 | tail -2; zig bui
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `session_id` (column + insert binding) | `grep -rn "session_id" src/ schema/ \| grep -v done/` | 0 matches |
-| `nowTs` (if renamed to the millis helper) | `grep -rn "nowTs" src/ \| head` | 0 matches |
+| `session_id` (column + insert binding) | `grep -rn "session_id" src/zombied/memory/ src/zombied/http/handlers/memory/ src/zombied/http/handlers/runner/ schema/` | 0 matches |
+| `nowTs` (deleted outright — the capture push's single clock read replaced it) | `grep -rn "\bnowTs\b" src/ \| head` | 0 matches |
+| `MS_PER_SECOND` in `zombiectl/src/commands/memory.ts` (orphan after the string branch went) | `grep -n "MS_PER_SECOND" zombiectl/src/commands/memory.ts` | 0 matches |
 
 ---
 
 ## Discovery (consult log)
 
-- **Consults** — (empty at creation; SCHEMA GUARD declaration outcome lands here)
-- **Skill chain outcomes** — (`/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`)
+- **Consults** —
+  - **SCHEMA GUARD (Jun 12, 2026):** VERSION=0.41.0 < 2.0.0 → teardown path; `schema/013` edited in place (`session_id` column removed, timestamps → `BIGINT` millis); `schema/embed.zig` and the `canonicalMigrations()` version-13 slot unchanged (same file, same registration). No `ALTER`/`DROP` introduced; `check-schema-gate` green.
+  - **OpenAPI row satisfied by prior merge:** `MemoryEntry.updated_at` was already `integer/int64` on `main` — M91_004 (PR #396) flipped the published shape ahead of the server, which is why the CLI carried the tolerance branch. Zero diff here; `make check-openapi-errors` run as the consistency gate.
+  - **E4 grep scoped at PLAN:** repo-wide `session_id` grep can never reach 0 (auth-plane sessions are a different domain); amended to the memory surface. Spec-vs-reality fix, not a scope change.
+  - **`nowTs` deleted, not renamed:** its only production caller (the capture handler) now derives entry timestamps from the push's single `clock.nowMillis()` read — also serving the lease check and sweep cutoff (Failure Modes "one clock read per push" realized literally).
+  - **Dimension 4.4 tier:** implemented at the adapter tier mirroring the pre-existing `enforceCap` failure test (deterministic `error.InvalidUUID`, count-unchanged proof); the handler's catch-warn-continue is construction-identical to the cap path. An HTTP-level fault-injection seam would be test-only machinery (rejected per "What we do NOT build").
+  - **`storeDeltas` extraction:** `innerRunnerMemoryCapture` pre-existed at ~94 lines (over the fn cap); the sweep call would deepen it, so the per-delta store loop moved to a private helper in the same file — gate-compliant minimum, no behavior change.
+  - **`shapes_test.zig` cleanup on touch (RULE NLR + MILESTONE-ID):** deleting `nowTs` forced touching the file; milestone tokens stripped from every test name (gate-mandated on save), retired-verb shape pins (store 201 / forget — verbs that answer 404/405 today) deleted, recall/list pins rewritten against the live `{items,total}` envelope with numeric `updated_at`. Net unit-test count drops; replacement coverage is integration-tier.
+  - **Doc drift noted (not fixed — out of scope):** `docs/VERIFY_TIERS.md` tier-1 says `make test`, but the target is `test-unit-all` (lanes split). Flagged for a docs follow-up.
+  - **`/review` adversarial outcome (Jun 12, 2026) — spec §4 ordering amended.** Both independent passes (fresh-context Claude subagent + Codex high-reasoning) converged, confidence 8-10: sweep-after-`enforceCap` let already-expired `daily` rows occupy cap slots during victim selection, so a capture at the cap evicted a **durable** row in the doomed row's place — Invariant 1 breached via the cap side door. Fixed by swapping the order (sweep first); spec §4 amended to match its own Invariant 1; regression `test_sweep_frees_cap_slots_before_eviction` red-green proven (fails on the old order: eviction counter moved; passes on the new). Secondary fixes from the same review: stale "TEXT seconds wire" comments in three zombiectl test fixtures corrected; tenant list/search `ORDER BY` gains the `, id DESC` tie-break (one-clock-read-per-push makes same-push `updated_at` ties universal; mirrors the adapter). **Dispositions:** sweep Prometheus counter (finding F4) deferred — spec scopes observability to the existing log flow; surfaced to Indy as a follow-up option. HTTP-tier sweep-failure injection (F3) remains adapter-tier by the documented Dimension 4.4 decision (the cap arm shares the posture). `created_at` write-only (F6) is the schema standard. Codex's "in-place migration edit" and "one-clock-read lease staleness" flags are convention false-positives (pre-v2 teardown is the documented mechanism enforced by `check-schema-gate`; clock staleness is bounded by request duration, semantics documented in Failure Modes).
+- **Skill chain outcomes** — `/write-unit-test`: ledger 100% resolved (every changed unit tested or explicit won't-test with reason; report in PR Session Notes); iteration loop caught the over-broad json-leniency pin + the missed `state/` INSERTs during EXECUTE. `/review`: 1 critical found-and-fixed (sweep/cap order, red-green proven), 2 mechanical fixes applied, 3 findings dispositioned-deferred (see the `/review` Discovery entry). `/review-pr` + `kishore-babysit-prs`: pending after PR creation.
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 
 ---

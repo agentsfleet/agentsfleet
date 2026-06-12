@@ -15,11 +15,10 @@ const ZOMBIE_ID = "01900000-0000-7000-8000-0000005e4e72";
 const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
 const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
 
-// Today's wire shape: epoch seconds as decimal strings (schema/013 TEXT).
-// The numeric-millis wire flips these fixtures in one spot when it lands.
+// The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ITEMS = [
-  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: "1765500300" },
-  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: "1765500200" },
+  { key: "acme_contact", content: "ops@acme.test is the escalation contact", category: "core", updated_at: 1765500300000 },
+  { key: "deploy_window", content: "deploys freeze on fridays", category: "daily", updated_at: 1765500200000 },
 ];
 
 const ENVELOPE = { items: ITEMS, total: ITEMS.length, request_id: "req_mem_int" };
@@ -148,7 +147,7 @@ describe("memory — machine-stable JSON", () => {
     // 16 KiB-class multibyte content — the preview cap must not touch JSON.
     const bigContent = `naïve café 🦉 ${"統合テスト".repeat(800)}`;
     const envelope = {
-      items: [{ key: "big_note", content: bigContent, category: "core", updated_at: "1765500300" }],
+      items: [{ key: "big_note", content: bigContent, category: "core", updated_at: 1765500300000 }],
       total: 1,
       request_id: "req_mem_json",
     };
@@ -164,7 +163,7 @@ describe("memory — machine-stable JSON", () => {
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof envelope;
         expect(parsed.items[0]?.content).toBe(bigContent);
-        expect(parsed.items[0]?.updated_at).toBe("1765500300"); // raw passthrough
+        expect(parsed.items[0]?.updated_at).toBe(1765500300000); // raw passthrough
         expect(parsed.request_id).toBe("req_mem_json");
         expect(parsed.total).toBe(1);
       });

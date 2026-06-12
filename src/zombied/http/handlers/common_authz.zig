@@ -17,21 +17,20 @@ pub fn getZombieWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id:
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    var q = PgQuery.from(blk: {
-        if (principal.tenant_id) |tenant_id| {
-            break :blk conn.query(
-                "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND tenant_id = $2",
-                .{ workspace_id, tenant_id },
-            ) catch return false;
-        }
-        break :blk conn.query(
-            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1",
-            .{workspace_id},
-        ) catch return false;
-    });
+    // Fail closed without a tenant. A null tenant_id must NEVER degrade to an
+    // unscoped existence check — that authorizes the caller against any tenant's
+    // workspace (cross-tenant IDOR). The only null-tenant principals are an
+    // unprovisioned Clerk session (before the user.created metadata writeback
+    // lands) and runner tokens; the former is exactly the attacker, and runners
+    // authorize via runnerBearer against fleet.runners, never through here.
+    const tenant_id = principal.tenant_id orelse return false;
+
+    var q = PgQuery.from(conn.query(
+        "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+        .{ workspace_id, tenant_id },
+    ) catch return false);
     defer q.deinit();
-    const row = (q.next() catch return false) orelse return false;
-    _ = row;
+    _ = (q.next() catch return false) orelse return false;
 
     if (principal.workspace_scope_id) |scoped_workspace_id| {
         if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return false;
@@ -44,21 +43,19 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
     return true;
 }
 
-const UUID_TEXT_LEN: usize = 36;
-
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    var tenant_buf: [UUID_TEXT_LEN]u8 = undefined;
-    const tenant_id = principal.tenant_id orelse blk: {
-        var lookup = PgQuery.from(conn.query("SELECT tenant_id::text FROM core.workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
-        defer lookup.deinit();
-        const row = (lookup.next() catch return false) orelse return false;
-        const looked_up = row.get([]u8, 0) catch return false;
-        if (looked_up.len != UUID_TEXT_LEN) return false;
-        @memcpy(tenant_buf[0..], looked_up);
-        break :blk tenant_buf[0..];
-    };
-    if (!setTenantSessionContext(conn, tenant_id)) return false;
-    return authorizeWorkspace(conn, principal, workspace_id);
+    // Fail closed without a tenant — never resolve the tenant from the *target*
+    // workspace for a null-tenant principal. That fallback set the RLS session
+    // context to the workspace owner's (victim's) tenant and then authorized,
+    // which was the cross-tenant IDOR.
+    const tenant_id = principal.tenant_id orelse return false;
+    // Authorize BEFORE writing the RLS context, so a denied request never mutates
+    // app.current_tenant_id. set_config here is session-level (not transaction-
+    // scoped), so writing on the failure path would leak the caller's tenant onto
+    // the pooled connection for the next request that reuses it — and there is no
+    // Postgres RLS backstop today. Context is written only on success.
+    if (!authorizeWorkspace(conn, principal, workspace_id)) return false;
+    return setTenantSessionContext(conn, tenant_id);
 }
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {
