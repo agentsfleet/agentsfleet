@@ -12,8 +12,8 @@ once per asset, never decorated.
 |---|---|
 | `agentsfleet-mark.svg` | GitHub avatar, app icon. 512×512, rounded square `--bg` background, single `--pulse` disc. |
 | `agentsfleet-mark-glow.svg` / `.png` | Hero contexts where the pulse needs to read as "live" (repo README hero, docs site hero, social cards). Same disc + a static wake-pulse halo. 512×512. |
-| `agentsfleet-dark.svg` | Horizontal lockup, Commit Mono "agentsfleet" wordmark on the dark brand surface. Docs nav (dark mode), press kits. 720×160. |
-| `agentsfleet-light.svg` | Light-surface variant of the lockup. Docs nav (light mode). 720×160. |
+| `agentsfleet-dark.svg` | Horizontal lockup, Commit Mono "agentsfleet" wordmark for dark surfaces — transparent background, `--pulse` disc, `--text` ink. Docs nav (dark mode), press kits. 600×160. |
+| `agentsfleet-light.svg` | Light-surface variant — transparent background, `--pulse-dim` disc + `--bg` ink for contrast on white. Docs nav (light mode). 600×160. |
 | `favicon.svg` / `favicon.ico` | The mark cropped for favicon use. Website `public/`, `~/Projects/docs/` root. |
 
 ## Where to use each
@@ -30,13 +30,22 @@ until the org-rename cutover spec lands.
 
 ### `~/Projects/.github/profile/README.md` (org profile)
 
-Embed the dark lockup at the top:
+The lockups are transparent, so a single `<img>` is unreadable on
+one of GitHub's two themes — always embed the theme-paired form:
 
 ```markdown
 <p align="center">
-  <img src="https://raw.githubusercontent.com/usezombie/usezombie/main/branding/agentsfleet-dark.svg" alt="agentsfleet" width="360">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"
+      srcset="https://raw.githubusercontent.com/usezombie/usezombie/main/branding/agentsfleet-dark.svg">
+    <img src="https://raw.githubusercontent.com/usezombie/usezombie/main/branding/agentsfleet-light.svg" alt="agentsfleet" width="360">
+  </picture>
 </p>
 ```
+
+(The live org profile currently sources the docs-repo mirrors —
+`usezombie/docs` `logo/{dark,light}.svg`; same bytes once the
+propagation PR lands, so either source renders identically.)
 
 ### `~/Projects/docs/` (Mintlify docs site)
 
@@ -50,16 +59,23 @@ rasterisation needed.
 ### Repo `README.md`
 
 Embed `agentsfleet-mark-glow.png` at the top (current shape) or
-the dark lockup, same shape as the org profile.
+the lockup pair via the same `<picture>` pattern as the org
+profile.
 
 ## Source colours
 
-The two hex values used in every asset trace back to
+Every hex in these assets traces back to
 `ui/packages/design-system/src/tokens.css`:
 
-- `#0A0D0E` — `--bg` (dark mode brand surface). Theme-fixed in the
-  branding context — the mark stays dark even in light surroundings.
+- `#0A0D0E` — `--bg` (dark mode brand surface; also the light
+  lockup's ink). Theme-fixed in the square marks (avatar, favicon,
+  glow) — those stay dark even in light surroundings; the lockups
+  are theme-paired instead (pick dark or light per surface).
 - `#5EEAD4` — `--pulse` (the wake-pulse, currency).
+- `#0D9488` — the light-theme `--pulse-dim` (the light lockup's
+  disc, holds contrast on white; the root `--pulse-dim` is
+  `#2DD4BF` per `docs/DESIGN_SYSTEM.md`).
+- `#E6EAEC` — `--text` (dark-theme value; the dark lockup's ink).
 
 If the design system ever shifts those hexes, the branding assets
 ship a new release at the same time. The lockup never drifts.
