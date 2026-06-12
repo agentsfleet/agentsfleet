@@ -47,11 +47,15 @@ pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrin
     // Fail closed without a tenant — never resolve the tenant from the *target*
     // workspace for a null-tenant principal. That fallback set the RLS session
     // context to the workspace owner's (victim's) tenant and then authorized,
-    // which was the cross-tenant IDOR. The inner authorizeWorkspace enforces the
-    // same invariant; guarding here also skips the pointless lookup + context write.
+    // which was the cross-tenant IDOR.
     const tenant_id = principal.tenant_id orelse return false;
-    if (!setTenantSessionContext(conn, tenant_id)) return false;
-    return authorizeWorkspace(conn, principal, workspace_id);
+    // Authorize BEFORE writing the RLS context, so a denied request never mutates
+    // app.current_tenant_id. set_config here is session-level (not transaction-
+    // scoped), so writing on the failure path would leak the caller's tenant onto
+    // the pooled connection for the next request that reuses it — and there is no
+    // Postgres RLS backstop today. Context is written only on success.
+    if (!authorizeWorkspace(conn, principal, workspace_id)) return false;
+    return setTenantSessionContext(conn, tenant_id);
 }
 
 pub fn openHandlerTestConn(alloc: std.mem.Allocator) !?struct { pool: *db.Pool, conn: *pg.Conn } {

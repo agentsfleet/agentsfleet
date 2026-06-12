@@ -50,7 +50,7 @@ test "integration: oidc workspace scoping blocks cross-workspace access" {
     try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
-test "integration: clerk workspace claim scoping blocks cross-workspace access" {
+test "integration: tenant-wide principal without a workspace claim authorizes any workspace in its tenant" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -62,13 +62,17 @@ test "integration: clerk workspace claim scoping blocks cross-workspace access" 
     try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
     try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_SECONDARY);
 
+    // A principal whose token carries tenant_id but NO workspace claim is
+    // tenant-scoped, not workspace-scoped: it authorizes every workspace under
+    // its tenant (the workspace_scope_id == null branch — distinct from the
+    // scoped oidc case above, which this used to duplicate). Cross-tenant denial
+    // is covered by the null-tenant and tenant-mismatch tests.
     const principal = common.AuthPrincipal{
         .mode = .jwt_oidc,
         .tenant_id = http_auth.TENANT_ID,
-        .workspace_scope_id = http_auth.WS_PRIMARY,
     };
     try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_PRIMARY));
-    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, principal, http_auth.WS_SECONDARY));
 }
 
 test "integration: null-tenant principal is denied workspace authorization (IDOR fail-closed)" {
