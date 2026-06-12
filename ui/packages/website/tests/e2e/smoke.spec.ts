@@ -8,8 +8,24 @@ import { test, expect } from "@playwright/test";
 test.describe("Smoke", () => {
   test("home page loads", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/usezombie/i);
+    await expect(page).toHaveTitle(/agentsfleet/i);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  });
+
+  test("brand favicon is wired and resolves", async ({ page, request }) => {
+    await page.goto("/");
+    const href = await page.locator('link[rel="icon"]').getAttribute("href");
+    expect(href).toBe("/favicon.svg");
+    const res = await request.get(href!);
+    expect(res.status()).toBe(200);
+  });
+
+  test("brand meta description names agentsfleet", async ({ page }) => {
+    await page.goto("/");
+    const description = await page
+      .locator('meta[name="description"]')
+      .getAttribute("content");
+    expect(description).toContain("agentsfleet");
   });
 
   test("pricing section renders inline on home", async ({ page }) => {

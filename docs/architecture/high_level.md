@@ -10,7 +10,7 @@ The product, the problem, the wedge, the differentiation, and why the obvious al
 
 ### What we are
 
-usezombie v2 is a durable runtime for one operational outcome.
+agentsfleet v2 is a durable runtime for one operational outcome.
 
 It is meant for work that:
 
@@ -22,7 +22,7 @@ It is meant for work that:
 
 ### What we are not
 
-usezombie v2 is not:
+agentsfleet v2 is not:
 
 - a general-purpose personal assistant in the cloud
 - a generic coding-agent orchestration product
@@ -130,7 +130,7 @@ That is why the MVP bar is strict: the agent must make a real operational outcom
 
 ## 4. MVP Thesis
 
-usezombie v2 should be judged on one promise:
+agentsfleet v2 should be judged on one promise:
 
 > Operational outcomes do not fall into limbo.
 

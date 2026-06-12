@@ -135,52 +135,52 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 Agent-first sequencing: enumerate every host this rename points traffic at, hand Indy the console checklist, verify before flipping. Human steps (Indy): agentsfleet.net registrar + DNS (`@`, `app`, `app.dev`, `docs`), hosting domain attach (website + app projects), Mintlify custom domain, Clerk allowed-origin for `app.agentsfleet.net`, and old-domain aliasing/redirects so existing `usezombie.com` links keep landing. Fail loud listing every unverified host before any link flip; unverified host → that surface's flip parks, the rest proceed.
 
-- **Dimension 1.1** — cutover checklist surfaced to Indy and each host verified reachable (HTTP 200/30x) before its dependent edits → Eval `E1`
+- **Dimension 1.1** — DONE — checklist surfaced (Jun 12); apex `agentsfleet.net` answers 301→usezombie.com (display flips proceed); `app.`/`docs.`/`www.` unanswered → their flips parked per this section's rule → Eval `E1`
 
 ### §2 — Repo identity: README + LICENSE
 
 README presents agentsfleet: wordmark/hero image, product noun, display links, copyright footer; the lede sentence updates to brand-neutral phrasing that survives M92_001's positioning rewrite (no deploy-era headline rework here — M92_001 owns the message). LICENSE copyright holder flips.
 
-- **Dimension 2.1** — README carries agentsfleet noun, renamed hero asset, flipped display links; GitHub-org URLs unchanged → Eval `E2`
-- **Dimension 2.2** — LICENSE says agentsfleet → Eval `E2`
+- **Dimension 2.1** — DONE → Eval `E2` (clean; `cd usezombie` clone-dir is operational)
+- **Dimension 2.2** — DONE → Eval `E2`
 
 ### §3 — Architecture docs brand pass
 
 The nine brand-bearing `docs/architecture/*.md` files swap the product noun and display domains in prose. Operational identifiers (schema names, binary names, API hostnames inside payload examples that must match the running system) stay byte-identical — RULE NLR applies to brand prose only.
 
-- **Dimension 3.1** — zero non-allowlisted `usezombie` tokens remain in `docs/architecture/*.md` (archive excluded — history is append-only) → Eval `E3`
+- **Dimension 3.1** — DONE → Eval `E3` (clean; 36 brand tokens flipped across 9 files)
 
 ### §4 — branding/ consolidation
 
 Marks rename to agentsfleet-*, the superseded text-bearing wordmark deletes, `branding/README.md` rewrites its usage map under the new names, and every reference (README hero, docs pointers) follows — RULE ORP sweep across both repos.
 
-- **Dimension 4.1** — renamed assets resolve everywhere they're referenced; deleted wordmark has zero remaining references → Eval `E4`
+- **Dimension 4.1** — DONE → Eval `E4` (clean)
 
 ### §5 — assets/ removal
 
 `assets/` duplicates `branding/` and has zero references. Re-verify, then delete the directory.
 
-- **Dimension 5.1** — `assets/` gone; repo-wide grep for `assets/` paths returns zero hits outside `node_modules`/history → Eval `E4`
+- **Dimension 5.1** — DONE → Eval `E4` (directory removed, zero refs)
 
 ### §6 — Website identity surfaces
 
 `config.ts` flips the display/app/docs domains (post-§1); `index.html` gets the agentsfleet title/meta/favicon; the favicon ships in `public/`. `config.test.ts` pins both directions: flipped constants AND the four deliberately-unflipped ones (install command, GitHub URL, team email, dev API fallbacks as applicable) so the follow-up spec must consciously unpin them.
 
-- **Dimension 6.1** — flipped constants pinned → Test `test_config_agentsfleet_domains`
-- **Dimension 6.2** — unflipped operational constants pinned byte-identical → Test `test_config_operational_strings_unchanged`
+- **Dimension 6.1** — PARKED (IN_PROGRESS) — `app.`/`docs.agentsfleet.net` unanswered at EXECUTE; parked values pinned instead (see 6.2); flips + `test_config_agentsfleet_domains` land when §1 verifies, on this branch or the cutover follow-up
+- **Dimension 6.2** — DONE — rebrand-pin suite added to `config.test.ts` (install command, GitHub URL, team email, parked docs host)
 - **Dimension 6.3** — browser tab shows agentsfleet title + favicon in the dry lane → Test `test_site_identity_meta` (e2e)
 
 ### §7 — Workflow hostname pass
 
 Deploy/smoke workflows referencing flipped hostnames follow §1; brand strings in workflow names/comments update. Zero changes to triggers, jobs, steps, or permissions — the diff for each workflow must read as string-substitution only.
 
-- **Dimension 7.1** — hostname/brand strings updated; `git diff` per workflow shows no structural YAML changes → Eval `E5`
+- **Dimension 7.1** — DONE — audit found every workflow `usezombie` string operational (Postgres user/db, Redis password, ghcr images, Vercel hostname, live health URLs): zero edits → Eval `E5` (empty diff)
 
 ### §8 — Docs-repo brand assets (cross-repo)
 
 In `~/Projects/docs` on a fresh branch off `main` (`chore/m92-002-agentsfleet-brand-assets`): `favicon.svg`, `favicon.ico`, `logo/dark.svg`, `logo/light.svg`, `logo/mark-glow.svg` replaced with the agentsfleet equivalents from `branding/`. Asset swap only — `docs.json` textual rebrand rides the follow-up spec. Separate PR on that repo; linked from this spec's PR body.
 
-- **Dimension 8.1** — docs repo serves agentsfleet favicon + logos from the paths `docs.json` already names → Eval `E6`
+- **Dimension 8.1** — DONE — usezombie/docs#91, checksums matched → Eval `E6`
 
 ---
 
@@ -250,13 +250,13 @@ grep -nE "usezombie" README.md LICENSE | grep -vE "usezombie\.sh|github\.com/use
 # E3: Architecture docs (archive excluded)
 grep -rnE "usezombie" docs/architecture --include='*.md' --exclude-dir=archive | grep -vE "usezombie\.sh|github\.com/usezombie|@usezombie/|zombiectl|core\.zombie"
 # E4: Orphan sweep for renamed/deleted assets (expect empty)
-grep -rn "usezombie-mark\|usezombie-wordmark\|^assets/\|(assets/\|\"assets/" --include='*.{md,ts,tsx,html,json,yml}' . | grep -v node_modules | head
+grep -rn "usezombie-mark\|usezombie-wordmark\|^assets/\|(assets/\|\"assets/" --include='*.{md,ts,tsx,html,json,yml,svg}' . | grep -v node_modules | head
 # E5: Workflow diffs are strings-only (manual review of git diff .github/)
 git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|usezombie|agentsfleet" | head
 # E6: Docs-repo assets match branding/ (run in ~/Projects/docs)
 shasum ~/Projects/usezombie/branding/agentsfleet-dark.svg logo/dark.svg
-# E7: Diff never touches schema/binary/package identifiers (expect empty)
-git diff origin/main | grep -E "^[-+]" | grep -E "core\.zombie_|zombiectl|zombied|@usezombie/" | grep -vE "^[-+]{3}" | head
+# E7: Operational identifiers byte-stable — count compare HEAD vs working tree (expect all OK)
+for t in "usezombie-admin" "zombied" "core\.zombie_" "@usezombie/" "x-usezombie" "usezombie\.sh"; do a=$(git grep -c "$t" origin/main -- docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); b=$(grep -rc "$t" docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); echo "$t $([ "$a" = "$b" ] && echo OK || echo DRIFT)"; done
 ```
 
 ---
@@ -277,6 +277,8 @@ git diff origin/main | grep -E "^[-+]" | grep -E "core\.zombie_|zombiectl|zombie
 
 ## Discovery (consult log)
 
+- **Skill chain (Jun 12, 2026):** `/write-unit-test` clean, iteration 1 — diff ledger 7/7 resolved (5 tested, 2 won't-test with reason); one gap (meta-description assertion) found and closed in-run. `/review` (adversarial subagent, fresh context) — 4 FIXABLE findings, all fixed: untracked `public/favicon.svg` (would have shipped a 404 + red smoke), 2× "a agentsfleet" grammar casualties, stale `usezombie-mark.svg` reference in the kept glow-SVG comment (E4 include-set extended to `*.svg`). 2 INVESTIGATE dispositioned: M92_001 spec lines in the branch diff = lifecycle artifact, not implementation scope (rejected); Footer `BRAND_NAME = "usezombie"` vs agentsfleet tab title = deliberate B1/B2 gap, surfaced to Indy (rendered copy is M92_001's surface). Also reverted tooling drift in `ui/packages/app/next-env.d.ts` (dry-smoke dev server regenerated it; restored via edit, not destructive git).
+- **EXECUTE findings (Jun 12, 2026):** §1 probe — apex 301→usezombie.com (registered, redirect currently points backwards), subdomains dead → 6.1 parked, checklist surfaced to Indy mid-turn. §7 — zero brand-display strings in workflows; all hits operational; no `.github/` edits shipped. The agentsfleet brand assets were untracked on disk (never committed) — tracked into this branch; `branding/github-avatar.png` + `github-social.png` remain untracked in the main checkout for the org-rename spec. E7 eval refined from a diff-line grep (false-positives on unchanged identifiers inside brand-edited lines) to a HEAD-vs-tree count compare — all six identifier families byte-stable.
 - **Authoring-time decisions (Indy, Jun 12, 2026 session):** `usezombie.sh` stays verbatim ("usezombie.sh to usezombie.sh"); `app.usezombie.com` → `app.agentsfleet.net` and `docs.usezombie.com` → `docs.agentsfleet.net` (Indy, mid-session); GitHub org, npm scope, binaries, schema names, team email → follow-up spec; `.github/` edits granted, strings-only scope; `assets/` removal requested if unused (zero references confirmed at authoring).
 
 ---
