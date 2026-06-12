@@ -50,7 +50,7 @@ const OrderedCap = struct {
 const TerminateAfterHook = struct {
     keep_ticks: usize,
     ticks: usize = 0,
-    fn onTick(ctx: *anyopaque, now_ms: i64) supervisor.RenewDecision {
+    fn onTick(ctx: *anyopaque, now_ms: i64, _: supervisor.UsageSnapshot) supervisor.RenewDecision {
         _ = now_ms;
         const self: *TerminateAfterHook = @ptrCast(@alignCast(ctx));
         self.ticks += 1;
