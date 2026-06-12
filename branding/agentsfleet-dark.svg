@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  agentsfleet horizontal wordmark — pulse circle + Commit Mono wordmark.
+
+  Direct rename of the usezombie wordmark; mark geometry, palette and
+  type spec unchanged per docs/DESIGN_SYSTEM.md ("Operational
+  Restraint"). Consumers without Commit Mono fall back to the generic
+  monospace stack.
+
+  Width: 720, Height: 160.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" width="720" height="160" role="img" aria-label="agentsfleet">
+  <title>agentsfleet</title>
+  <rect width="720" height="160" fill="#0A0D0E" />
+  <circle cx="80" cy="80" r="22" fill="#5EEAD4" />
+  <text x="130" y="100"
+    font-family="Commit Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    font-size="64"
+    font-weight="500"
+    fill="#E6EAEC"
+    letter-spacing="-1">agentsfleet</text>
+</svg>
