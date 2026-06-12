@@ -7,7 +7,7 @@
 **Status:** PENDING
 **Priority:** P2 — hygiene + cap-pressure relief: `daily` entries were specced to expire (M14_001 §4) but the sweep never shipped, so ephemera live until they crowd out durable memories at the cap; the schema still carries NullClaw-era `TEXT` timestamps and a never-written `session_id` whose retention rationale died when zombied took table ownership
 **Categories:** API
-**Batch:** B3 — after M91_002 (shared `zombie_memory.zig` surface; tier-eviction tests must hold on numeric timestamps)
+**Batch:** B3 — after M91_002 (shared `zombie_memory.zig` surface; tier-eviction tests must hold on numeric timestamps). **Inherited from the B1 merge order:** M91_004 landed first (PR #396, hold waived), so the CLI side of the wire flip moves INTO this workstream — delete the string-seconds branch in `zombiectl`'s `renderUpdatedAt` (the helper comment marks the exact spot) and flip the memory test fixtures to numeric millis, same diff as the server change.
 **Branch:** — added at CHORE(open)
 **Depends on:** M91_002 (file overlap + tier ordering rides `updated_at`)
 **Provenance:** agent-generated (memory-architecture analysis session, Jun 11, 2026) — grounded in `schema/013_memory_entries.sql` (header states zombied owns the layout; the NullClaw-mirroring reason is gone), `storeEntry` (inserts `session_id` as NULL always), `helpers.zig` (comment cites a schema DEFAULT that does not exist), M14_001 §4 (the unshipped retention intent); re-confirm at PLAN.
@@ -99,6 +99,8 @@
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | sweep + type-change coverage |
 | `public/openapi.json` | EDIT | `updated_at` field type corrected to number |
 | `docs/architecture/capabilities.md` | EDIT | one line: `daily` expires after the retention window |
+| `zombiectl/src/commands/memory.ts` | EDIT | inherited from B1 order: `renderUpdatedAt` drops the string-seconds branch (comment marks the spot; M91_004 merged before this workstream) |
+| `zombiectl/test/memory-render.unit.test.ts` + memory fixtures (`memory.unit.test.ts`, `memory.integration.test.ts`, `acceptance/memory-read.spec.ts`) | EDIT | `updated_at` fixtures flip to numeric epoch millis |
 
 ---
 
