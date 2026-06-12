@@ -125,7 +125,7 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that zombie's prior memory into the run over the `zrn_` plane (see [*Memory continuity*](./runner_fleet.md) — the agent itself holds no datastore credential), and the agent recalls the snapshot from its in-run store — possibly on a different runner.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that zombie's prior memory into the run over the `zrn_` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
@@ -149,13 +149,24 @@ The model's context cap is **not** baked into the runtime. It's resolved at inst
 | Goal | What to change | How to think about it |
 |---|---|---|
 | "My agent loses important findings mid-incident" | `memory_checkpoint_every: 3` | Checkpoint more often. Cheap. Always safe. |
-| "My agent hits context limits and chunks too aggressively" | `tool_window: 10` | Drop old results sooner so newer stuff fits. May lose context recency. |
+| "My agent hits context limits and chunks too aggressively" | `tool_window: 10` | Drop old results sooner so newer stuff fits. Loses older tool results earlier. |
 | "My agent chunks too late and produces partial diagnoses" | `stage_chunk_threshold: 0.6` | Chunk earlier. More handoffs but less risk of being cut off mid-thought. |
 | "I'm on Kimi 2.6 (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
 
 ### The 80/20 rule
 
 Eighty percent of users use the defaults forever and never see context errors. Twenty percent who run very deep incidents tweak `tool_window` once and forget. Almost nobody touches `stage_chunk_threshold`.
+
+### Memory hygiene — what to store so it survives
+
+Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [*Memory continuity*](./runner_fleet.md) §Selection policy). Four habits make that selection work for the agent instead of against it:
+
+- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the agent must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration.
+- **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
+- **Forget what's stale.** `memory_forget` is cheaper than letting cap eviction pick the victim. An agent that hoards everything as `core` defeats the pinning: an all-`core` set over the entry cap evicts the coldest `core` as last resort.
+- **Keep entries small.** The hydration budget is bytes, not entries — one bloated entry crowds out many small ones. Snapshot conclusions, not transcripts.
+
+The selection is deterministic and documented so a confused "why does my zombie remember X but not Y?" has a checkable answer: Y was windowed (or oversized), X was `core`.
 
 ---
 
