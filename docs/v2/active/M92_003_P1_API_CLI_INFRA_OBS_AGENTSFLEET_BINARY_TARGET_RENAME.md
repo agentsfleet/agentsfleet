@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 003
 **Date:** Jun 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the operator-facing brand seam: every install, `make` invocation, container pull, and systemd unit still says zombie after M92_002 flipped the identity surfaces
 **Categories:** API, CLI, INFRA, OBS
 **Batch:** B3 — independent of M92_001 (B2); follows M92_002 (B1, merged #405; wordmark continuation #406 in flight, non-blocking)
 **Branch:** feat/m92-003-agentsfleet-binaries
+**Test Baseline:** unit=1946 integration=189
 **Depends on:** M92_002 (the rename principle, eval patterns, and brand assets this spec extends)
 **Provenance:** agent-generated (rename session with Indy, Jun 12, 2026 — name mapping Indy-decided in-session: "i think zombied is agentsfleetd"); blast radius measured on main b0e843ff; re-confirm at PLAN.
 
