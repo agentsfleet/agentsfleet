@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 002
 **Date:** Jun 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing identity: the product is now `agentsfleet` on `agentsfleet.net`; every README visitor, docs reader, and website tab still sees the retired brand
 **Categories:** DOCS, UI
 **Batch:** B1 — lands before M92_001 (the positioning copy is authored under the new brand)
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m92-002-agentsfleet-rebrand
+**Test Baseline:** unit=1947 integration=182
 **Depends on:** —
 **Provenance:** agent-generated (rebranding session with Indy, Jun 12, 2026) — grounded in `branding/` (agentsfleet wordmarks + favicon already authored Jun 12), a zero-reference scan of `assets/`, and reads of README/LICENSE/website config; re-confirm at PLAN.
 
