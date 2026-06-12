@@ -37,6 +37,10 @@ pub const CATEGORY_CONVERSATION: []const u8 = "conversation";
 /// under the classic newest-first byte budget.
 pub const Tier = enum { pinned, windowed };
 
+// LOCKSTEP INVARIANT: the pinned set here must equal the set enforceCap's
+// eviction ordering protects (its `category = CATEGORY_CORE` bind). Adding a
+// second pinned category requires widening that SQL in the same diff, or
+// hydration pins what eviction still deletes first.
 const TIER_MAP = std.StaticStringMap(Tier).initComptime(.{
     .{ CATEGORY_CORE, .pinned },
     .{ CATEGORY_DAILY, .windowed },
@@ -56,7 +60,8 @@ pub fn tierOf(category: []const u8) Tier {
 /// `passthrough` returns everything (the tenant read). Deterministic, no
 /// allocation, no LLM: summarisation belongs on the executor plane.
 pub const Compactor = union(enum) {
-    /// Hand the rows over unchanged (the tenant GET path).
+    /// Hand the rows over unchanged — the seam's identity arm (no production
+    /// caller today; retained per spec as the no-compaction option).
     passthrough,
     /// Category-pinned byte window: `core` first, then newest non-core.
     selective: usize,
@@ -84,62 +89,62 @@ pub fn sumBytes(rows: []const MemoryDelta) usize {
     return total;
 }
 
-/// Stable in-place tier selection over rows arriving `updated_at DESC`:
-/// pass one sizes what the pinned tier consumes (newest-first, its head
-/// admitted even when oversized — mirroring the old window's head rule);
-/// pass two replays those admissions plus the windowed tier against the
-/// remaining budget, swapping survivors left. The kept prefix preserves the
-/// original recency order, the tail holds the dropped entries (permuted) —
-/// the slice stays a permutation of the input, so per-entry ownership
-/// survives compaction for callers that free individual entries. A non-empty
-/// input always hydrates at least one entry: the pinned head when any `core`
-/// exists, the overall head otherwise.
+/// One tier's running byte-budget admission, shared by the sizing pass and
+/// the selection pass so the two can never diverge. Newest-first PREFIX
+/// semantics: the first entry that overflows the budget closes the tier — an
+/// older, smaller entry is never admitted past a rejected newer one (matching
+/// the pre-tier window's cut). The tier's head bypasses the budget once when
+/// `head_taken` starts false (the never-empty rule).
+const TierRun = struct {
+    used: usize = 0,
+    head_taken: bool = false,
+    closed: bool = false,
+
+    fn admit(self: *TierRun, sz: usize, budget: usize) bool {
+        if (!self.head_taken) {
+            self.head_taken = true;
+            self.used = sz;
+            return true;
+        }
+        if (self.closed) return false;
+        if (self.used + sz <= budget) {
+            self.used += sz;
+            return true;
+        }
+        self.closed = true;
+        return false;
+    }
+};
+
+/// Stable in-place tier selection over rows arriving `updated_at DESC`: pass
+/// one sizes what the pinned tier consumes; pass two replays those admissions
+/// (same `TierRun` rule, so the passes are in lockstep by construction) plus
+/// the windowed tier against the remaining budget, swapping survivors left.
+/// The kept prefix preserves the original recency order, the tail holds the
+/// dropped entries (permuted) — the slice stays a permutation of the input,
+/// so per-entry ownership survives compaction for callers that free
+/// individual entries. A non-empty input always hydrates at least one entry:
+/// the pinned head when any `core` exists, the overall head otherwise.
 fn selectByTier(rows: []MemoryDelta, budget: usize) []const MemoryDelta {
-    var pinned_used: usize = 0;
+    var sizing: TierRun = .{};
     var pinned_any = false;
     for (rows) |d| {
         if (tierOf(d.category) != .pinned) continue;
-        const sz = entryBytes(d);
-        if (!pinned_any) {
-            pinned_used = sz;
-            pinned_any = true;
-        } else if (pinned_used + sz <= budget) {
-            pinned_used += sz;
-        }
+        pinned_any = true;
+        _ = sizing.admit(entryBytes(d), budget);
     }
-    const windowed_budget = budget -| pinned_used;
-    var pinned_run: usize = 0;
-    var pinned_head = true;
-    var windowed_run: usize = 0;
+    const windowed_budget = budget -| sizing.used;
+    var pinned: TierRun = .{};
+    // Any pinned entry satisfies the never-empty rule via the pinned head, so
+    // the windowed tier gets head privilege only when no pinned entry exists.
+    var windowed: TierRun = .{ .head_taken = pinned_any };
     var kept: usize = 0;
     for (rows, 0..) |d, i| {
-        const sz = entryBytes(d);
-        const admit = switch (tierOf(d.category)) {
-            .pinned => admit: {
-                if (pinned_head) {
-                    pinned_run = sz;
-                    pinned_head = false;
-                    break :admit true;
-                }
-                if (pinned_run + sz <= budget) {
-                    pinned_run += sz;
-                    break :admit true;
-                }
-                break :admit false;
-            },
-            .windowed => admit: {
-                if (!pinned_any and kept == 0) {
-                    windowed_run = sz;
-                    break :admit true;
-                }
-                if (windowed_run + sz <= windowed_budget) {
-                    windowed_run += sz;
-                    break :admit true;
-                }
-                break :admit false;
-            },
+        const admitted = switch (tierOf(d.category)) {
+            .pinned => pinned.admit(entryBytes(d), budget),
+            .windowed => windowed.admit(entryBytes(d), windowed_budget),
         };
-        if (admit) {
+        if (admitted) {
             std.mem.swap(MemoryDelta, &rows[kept], &rows[i]);
             kept += 1;
         }
@@ -176,7 +181,9 @@ pub fn storeEntry(
 /// Evict the entries beyond `max` for `zombie_id` (the per-zombie durable-set cap),
 /// tier-ordered: the kept set prefers every `core` row (newest-first within the
 /// tier), then the newest non-core rows — so victims are the coldest non-core rows
-/// first, and a `core` row is evicted only when no non-core row remains. Call once
+/// first, and a `core` row is evicted only when no non-core row remains. The
+/// protected set is the `CATEGORY_CORE` bind below — in lockstep with TIER_MAP's
+/// pinned set (see the invariant comment there). Call once
 /// after a push loop, in the same `memory_runtime` transaction. A backstop against
 /// unbounded growth — the agent's own stable-key overwrite + `memory_forget` are the
 /// primary bound. No-op under the cap. Returns the evicted-row count (the driver's

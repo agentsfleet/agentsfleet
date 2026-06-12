@@ -182,15 +182,14 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
         return;
     };
     // Compact to a category-pinned byte window (`core` first, then the newest
-    // non-core entries); the cold tail stays in Postgres.
-    const total_bytes = adapter.sumBytes(rows);
+    // non-core entries); the dropped entries stay in Postgres.
     const compactor: adapter.Compactor = .{ .selective = protocol.HYDRATE_WINDOW_BYTES };
     const entries = compactor.compact(rows);
     metrics_memory.setMemoryHydrationEntries(entries.len);
-    // The window's loss is the full set minus the kept set — summed before and
-    // after because the kept entries are an in-place-compacted subsequence, not
-    // a prefix of the original rows. entryBytes is the budget formula.
-    const dropped_bytes = total_bytes - adapter.sumBytes(entries);
+    // compact() leaves the slice a permutation of its input — the kept entries
+    // occupy the head, so the tail is exactly the dropped set. entryBytes is
+    // the same formula the Compactor budgets on.
+    const dropped_bytes = adapter.sumBytes(rows[entries.len..]);
     metrics_memory.incHydrationDropped(rows.len - entries.len, dropped_bytes);
     log.info("memory_hydrated", .{ .zombie_id = zombie_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
     hx.ok(.ok, protocol.MemoryHydrateResponse{ .memory = entries });

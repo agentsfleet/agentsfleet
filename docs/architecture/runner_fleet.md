@@ -274,15 +274,15 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's zombie's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
-| `POST` | `/v1/runners/me/memory` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+| `GET`  | `/v1/runners/me/memory/{zombie_id}` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's zombie's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
+| `POST` | `/v1/runners/me/memory/{zombie_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `zombied` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
         ┌──────────────── CONTROL PLANE (zombied) ─────────────────┐
         │  Postgres · memory.memory_entries  ← ONLY durable store    │
         │  written under SET ROLE memory_runtime (datastore role)    │
         └──────────▲───────────────────────────────▲────────────────┘
-          GET /v1/runners/me/memory      POST /v1/runners/me/memory
+          GET /v1/runners/me/memory/{id}   POST /v1/runners/me/memory/{id}
           (hydrate prior memory)         (capture run memory)
           [zrn_ + fencing]               [zrn_ + fencing]
                    │                             │

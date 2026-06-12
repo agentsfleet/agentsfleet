@@ -95,7 +95,10 @@
 | `src/zombied/http/handlers/runner/memory.zig` | EDIT | hydrate constructs the selective arm instead of plain `recency_window` |
 | `src/zombied/memory/zombie_memory_integration_test.zig` | EDIT | survival + eviction-order integration tests |
 | `docs/architecture/capabilities.md` | EDIT | §4: hydration described as category-pinned; memory-hygiene guidance added |
-| `docs/architecture/runner_fleet.md` | EDIT | §Memory continuity: window description updated |
+| `docs/architecture/runner_fleet.md` | EDIT | §Memory continuity: window description updated (+ stale segment-less route cells corrected at `/review`) |
+| `src/lib/contract/protocol.zig` | EDIT (comments) | added at `/review`: cap/window/response doc comments described the removed recency-only policy |
+| `src/zombied/observability/metrics_memory.zig` | EDIT (comment) | added at `/review`: drop-counter doc said "cold-tail" — the dropped set is no longer a tail |
+| `src/zombied/http/handlers/runner/memory_loop_integration_test.zig` | EDIT | added at `/review`: endpoint-tier proof that the core fact rides the real GET response + exact drop counters |
 | `~/Projects/docs` (user docs) — memory-hygiene page | CREATE | operator/agent-facing guidance; cross-repo, own-branch flow per `AGENTS.md` Operational defaults |
 
 ---
@@ -134,12 +137,12 @@ New compactor arm: pinned tier first (newest-first, cumulative bytes within the 
 - **Dimension 3.2** — over cap with `core`-only set: coldest `core` evicted (last resort), eviction counter ticks → `test_evict_core_last_resort` — **DONE** (the pre-existing all-`core` enforceCap integration test IS this dimension post tier-ordering; reframed in place)
 - **Dimension 3.3** — headline: one `core` fact + 1000 `daily` pushes → `core` fact hydrated AND present in Postgres → `test_core_survives_thousand_dailies` — **DONE**
 
-### §4 — Architecture-doc reconcile + hygiene guidance
+### §4 — Architecture-doc reconcile + hygiene guidance — DONE
 
 `capabilities.md` §4 and `runner_fleet.md` §Memory continuity currently describe pure recency windowing; both are amended to the category-pinned behaviour in this diff. §4 additionally gains the memory-hygiene pattern (store load-bearing facts as `core`; stable keys so upserts refresh instead of duplicate; `memory_forget` stale entries; keep entries small — the agent's own discipline is the documented primary bound). A user-docs page mirrors the guidance for operators writing SKILL.md files.
 
 - **Dimension 4.1** — both architecture docs describe category-pinned selection; no recency-only claim remains → verified by grep in Eval E5 — **DONE** (note: `runner_fleet.md` §Memory continuity actually still claimed *full-set* hydration — pre-window prose, staler than this spec assumed; reconciled to category-pinned all the same. `capabilities.md`'s one unrelated "context recency" cell — the `tool_window` row — reworded so E5 lands empty)
-- **Dimension 4.2** — hygiene guidance present in `capabilities.md` §4 and the user-docs page → content review at `/review` — **IN_PROGRESS** (capabilities.md §4 hygiene section landed; cross-repo user-docs page lands at DOCUMENT)
+- **Dimension 4.2** — hygiene guidance present in `capabilities.md` §4 and the user-docs page → content review at `/review` — **DONE** (capabilities.md §4 hygiene section + `~/Projects/docs` `memory.mdx` "What survives — selection and eviction" section; the spec's CREATE row became an EDIT — the user-docs Memory page already existed, so the guidance extends it; cross-repo PR usezombie/docs#90 on `chore/m91-002-memory-selection-changelog`, merge after the product PR)
 
 ---
 
@@ -159,6 +162,7 @@ New compactor arm: pinned tier first (newest-first, cumulative bytes within the 
 | `core` tier alone exceeds budget | agent hoards `core` | newest `core` kept within budget; oldest `core` dropped from hydration (still durable); M91_001 drop counters tick; never an empty hydration |
 | unknown category string | future NullClaw category / custom | windowed tier by default — never silently pinned; unit-tested |
 | all-`core` set over the entry cap | agent stores everything as `core` | coldest `core` evicted (last resort) + eviction counter; the hygiene docs name this as the anti-pattern it is |
+| **core-saturated capture blackhole** (surfaced at `/review`, Jun 12, 2026 — Claude adversarial + Codex + security specialist) | a zombie holds ≥cap `core` rows (prompt-injected flood or hoarding); every subsequent **non-core** push is stored then immediately evicted as the only non-core victim, while the capture response reports `stored` | **documented disposition, no code this diff**: blast radius is strictly the agent's own zombie (all queries `WHERE zombie_id`); recovery = stable-key overwrite / `memory_forget` / tenant wipe; the eviction IS visible — `evicted` rides the capture log line + `zombie_memory_cap_evictions_total` — just not the agent-facing response (a wire-shape change this spec forbids). Candidate hardenings for Indy: surface `evicted` in the capture response, or a pinned-tier quota (core ≤ N% of cap/window). Pre-change recency eviction was equally agent-controlled (flooding evicted everything regardless); new here is only the stored-then-evicted shape |
 | eviction DELETE fails | database blip | existing warn-and-continue; capture unaffected |
 | docs and code disagree post-merge | partial diff | prevented: doc edits are Dimensions in this spec; CHORE(close) blocks until DONE |
 
@@ -247,7 +251,14 @@ No file deletions otherwise.
   - **Test-name mapping (RULE TST-NAM):** the spec's logical `test_*` handles map 1:1 to descriptive milestone-free Zig test strings (e.g. `test_core_survives_thousand_dailies` → "integration: one core fact survives a thousand daily pushes — durable and hydrated").
 - **Skill chain outcomes** —
   - **`/write-unit-test` (Jun 12, 2026): clean, 1 iteration.** Mode Change-set + Invariant rows. Diff ledger 20/20 resolved: 17 tested · 3 dispositioned (`enforceCap` rows-affected-null warn path — driver-dependent, unreachable on DELETE, unchanged M91_001 surface; ≥100-connection concurrency — the per-zombie single-live-holder affinity invariant + fencing make concurrent `enforceCap` on one zombie architecturally impossible and cross-zombie rows disjoint, writer race pinned by `memory_fencing_test.zig`; fuzz over `tierOf` — total function by construction, `orelse .windowed` cannot panic, representative classes tested). Branch coverage on `selectByTier`: every admission branch enumerated and hit (pinned head/fit/drop, windowed overall-head/fit/drop, saturated remainder). Negative-path ratio ≈58%. Manual mutant audit: boundary `<=`→`<` killed by exact-sum budgets; tier-flip killed by 1.1/2.1; eviction `DESC`→`ASC` killed by 3.1/3.3; swap→overwrite killed live by the per-entry-free segfault (Discovery above). Perf: two-pass allocation-free O(n), n ≤ `MAX_MEMORY_ENTRIES_PER_ZOMBIE`; the headline test exercises max-n. Full ledger reproduced in PR Session Notes.
-  - (`/review`, `/review-pr`, `kishore-babysit-prs` pending below)
+  - **`/review` (Jun 12, 2026): 4 specialists + Claude adversarial + Codex adversarial (cross-model); one real policy bug found and fixed, all other findings dispositioned.**
+    - **FIXED — greedy-vs-prefix (cross-model, high confidence):** the first selective arm was greedy first-fit per tier (after rejecting an oversized entry it kept admitting older smaller ones), while the spec/docs/old `windowByBytes` all say newest-**prefix**. Uniform-size fixtures couldn't tell. Fixed with a `TierRun` admission state machine (first overflow closes the tier) shared by the sizing and selection passes — which also dissolves the pass-lockstep duplication the maintainability specialist flagged and brings `selectByTier` under the 50-line cap. Two mixed-size prefix tests now kill the greedy mutant; zero-core sets are again byte-identical to pre-change behaviour.
+    - **FIXED — stale doc comments:** `protocol.zig` (cap/window/response trio described recency-only selection — the shared wire-contract module, worst place to lie), `metrics_memory.zig` ("cold-tail"), `Compactor.passthrough`'s rationale (claimed a tenant-GET caller that doesn't exist — retained per spec as the seam's identity arm, comment now honest), `runner_fleet.md` route cells (segment-less `/v1/runners/me/memory` → `/{zombie_id}` form, matching the registered routes).
+    - **FIXED — test gaps (testing specialist + adversarial):** unit-tier permutation/ownership multiset test (the swap→overwrite double-free regression is now caught without a live database), empty-set test, two mixed-size prefix tests, oversized-core-head-with-windowed-present starvation test, and an endpoint-tier test proving the core fact rides the real GET response with exact drop-counter arithmetic.
+    - **FIXED — loss accounting simplification (performance specialist):** dropped bytes now sum the permuted tail (`rows[entries.len..]`) — one O(dropped) pass instead of two full passes; same value by the permutation invariant.
+    - **DISPOSITIONED — core-saturated capture blackhole (security + adversarial + Codex "block"):** recorded as a Failure Modes row with candidate hardenings for Indy (response `evicted` field = wire change this spec forbids; pinned-tier quota). Bounded to the attacker's own zombie; operator-visible via logs/counters.
+    - **NO ACTION:** Codex's unbounded-victim-subquery note (self-healing by design; set is practically bounded by the capture caps; eviction-failure warn path is the deliberate M91_001 capture-durability-first call). `helpers.zig:24` pre-existing stale schema claim (file untouched by this diff). `seedDailies` uid-prefix duplication (matches the sibling loop-test fixture convention; consistency-only).
+  - (`/review-pr`, `kishore-babysit-prs` pending below)
 - **Deferrals** — none; any deferral needs an Indy-acked verbatim quote here.
 
 ---
@@ -278,11 +289,11 @@ No file deletions otherwise.
 | Inline category literals | Eval E6 | empty | ✅ |
 | Orphan sweep (RULE ORP) | `grep -rn "recency_window\|windowByBytes" src/ zombiectl/ ui/ schema/ docs/` (non-spec) | empty | ✅ |
 | Gitleaks | `gitleaks detect` | `no leaks found` (2642 commits) | ✅ |
-| Test delta | `make _lint_zig_test_depth` | unit 1912→1921 (+9) · integration 178→180 (+2) vs CHORE(open) baseline | ✅ |
+| Test delta | `make _lint_zig_test_depth` | unit 1912→1927 (+15) · integration 178→180 (+2) vs CHORE(open) baseline (post-`/review` round; the endpoint-tier hydrate test lands in the counter's unit bucket by its name-prefix convention) | ✅ |
 | Memleak | `make memleak` | `✓ [zombied] memleak gate passed` (1244 passed; 366 skipped; 0 failed; macOS SIP "not debuggable" line expected) | ✅ |
 | Bench | `make bench` | SKIPPED per environment constraint: `bench-micro` does not compile on `origin/main` (`tests/bench/micro.zig:64` calls missing `webhook_verify.verifySignature` — pre-existing drift, unrelated to this diff) | ⚪ |
 
-**Test Delta row:** unit 1912→1921 (+9) · integration 178→180 (+2) vs CHORE(open) baseline. Lacking: `runner/memory.zig` hydrate loss arithmetic carries no NEW tests — the changed observable (exact drop counters/bytes) is pinned by the pre-existing `test_hydrate_drop_counters_exact` / `test_hydrate_no_drop_when_fits` loop tests, which pass unchanged; `tests.zig` is registration-only.
+**Test Delta row:** unit 1912→1927 (+15) · integration 178→180 (+2) vs CHORE(open) baseline. Lacking: none — the `/review` round closed the prior gap (the hydrate handler's tier behaviour + loss accounting now carry their own endpoint-tier test, `test_hydrate_pins_core_through_the_endpoint`, alongside the pre-existing exact-counter loop tests); `tests.zig` is registration-only.
 
 ---
 
