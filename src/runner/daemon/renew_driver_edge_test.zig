@@ -32,7 +32,7 @@ const NOW_MS: i64 = 1_900_000_000_000;
 const FakeClient = struct {
     outcome: client.ClientError!client.RenewResult,
     calls: usize = 0,
-    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: u31) client.ClientError!client.RenewResult {
+    pub fn renew(self: *FakeClient, _: std.mem.Allocator, _: []const u8, _: []const u8, _: contract.protocol.RenewRequest, _: u31) client.ClientError!client.RenewResult {
         self.calls += 1;
         return self.outcome;
     }
@@ -61,7 +61,7 @@ test "onTick should treat a server deadline at or before now_ms as fail-safe at 
     var driver = driverWith(&fake, NOW_MS + std.time.ms_per_s); // inside the window (1s ahead)
     const h = driver.hook();
 
-    const decision = h.onTick(h.ctx, NOW_MS);
+    const decision = h.onTick(h.ctx, NOW_MS, .{});
     try testing.expectEqual(RenewDecision{ .extend = NOW_MS }, decision);
     try testing.expectEqual(NOW_MS, driver.deadline_ms); // never advanced past the server value
     // The applied deadline is not in the future → next supervisor tick times out.
@@ -78,7 +78,7 @@ test "onTick should handle a near-minimum deadline_ms without arithmetic panic" 
     var driver = driverWith(&fake, std.math.minInt(i64) + 1);
     const h = driver.hook();
 
-    const decision = h.onTick(h.ctx, NOW_MS);
+    const decision = h.onTick(h.ctx, NOW_MS, .{});
     try testing.expectEqual(RenewDecision{ .extend = fresh }, decision);
     try testing.expectEqual(fresh, driver.deadline_ms);
     try testing.expectEqual(@as(usize, 1), fake.calls);

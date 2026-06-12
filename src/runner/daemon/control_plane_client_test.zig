@@ -190,3 +190,93 @@ test "the control-plane client's field surface is reviewed" {
             @compileError("control-plane client gained field '" ++ f.name ++ "' — review for fd/credential ownership before it lands");
     }
 }
+
+const RENEW_OK_BODY = "{\"lease_expires_at\":1900000000123}";
+
+/// One-shot renew responder: accepts ONE connection, reads ONE request
+/// (headers + Content-Length body), captures the body bytes, replies 200 with
+/// a RenewResponse — so the test below asserts the PRODUCTION client put the
+/// cumulative splits on the wire (an empty-body regression fails here).
+const RenewBodyStub = struct {
+    io: std.Io,
+    listener: *std.Io.net.Server,
+    body_buf: [512]u8 = [_]u8{0} ** 512,
+    body_len: usize = 0,
+
+    fn run(self: *RenewBodyStub) void {
+        const conn = self.listener.accept(self.io) catch return;
+        defer conn.close(self.io);
+        var rbuf: [4096]u8 = undefined;
+        var total: usize = 0;
+        var header_end: usize = 0;
+        while (true) {
+            if (std.mem.indexOf(u8, rbuf[0..total], "\r\n\r\n")) |idx| {
+                header_end = idx + 4;
+                break;
+            }
+            const n = std.posix.read(conn.socket.handle, rbuf[total..]) catch return;
+            if (n == 0) return;
+            total += n;
+            if (total == rbuf.len) return;
+        }
+        const content_len = parseContentLength(rbuf[0..header_end]) orelse 0;
+        while (total < header_end + content_len) {
+            const n = std.posix.read(conn.socket.handle, rbuf[total..]) catch return;
+            if (n == 0) break;
+            total += n;
+        }
+        const body = rbuf[header_end..@min(total, header_end + content_len)];
+        @memcpy(self.body_buf[0..body.len], body);
+        self.body_len = body.len;
+        var wbuf: [256]u8 = undefined;
+        var w = conn.writer(self.io, &wbuf);
+        w.interface.print(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}",
+            .{ RENEW_OK_BODY.len, RENEW_OK_BODY },
+        ) catch return;
+        w.interface.flush() catch return;
+    }
+};
+
+fn parseContentLength(headers: []const u8) ?usize {
+    var it = std.mem.splitSequence(u8, headers, "\r\n");
+    while (it.next()) |line| {
+        const prefix = "content-length:";
+        if (line.len > prefix.len and std.ascii.startsWithIgnoreCase(line, prefix)) {
+            const v = std.mem.trim(u8, line[prefix.len..], " ");
+            return std.fmt.parseInt(usize, v, 10) catch null;
+        }
+    }
+    return null;
+}
+
+test "renew puts the cumulative splits on the wire as the POST body (production client)" {
+    const alloc = testing.allocator;
+    const io = common.globalIo();
+
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = boundPort(listener.socket.handle) catch return error.SkipZigTest;
+
+    var stub = RenewBodyStub{ .io = io, .listener = &listener };
+    const responder = std.Thread.spawn(.{}, RenewBodyStub.run, .{&stub}) catch return error.SkipZigTest;
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
+    var c = client.init(alloc, io, url);
+    defer c.deinit();
+
+    const out = try c.renew(alloc, "zrn_test", "lease-1", .{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 }, DEADLINE_PROBE_MS);
+    responder.join();
+
+    try testing.expectEqual(client.RenewResult{ .renewed = 1_900_000_000_123 }, out);
+    // The captured wire bytes parse back to exactly the request struct — the
+    // empty-body under-billing regression this milestone fixes dies here.
+    try testing.expect(stub.body_len > 0);
+    const parsed = try std.json.parseFromSlice(@import("contract").protocol.RenewRequest, alloc, stub.body_buf[0..stub.body_len], .{});
+    defer parsed.deinit();
+    try testing.expectEqual(@as(u32, 100), parsed.value.input_tokens);
+    try testing.expectEqual(@as(u32, 0), parsed.value.cached_input_tokens);
+    try testing.expectEqual(@as(u32, 40), parsed.value.output_tokens);
+}
