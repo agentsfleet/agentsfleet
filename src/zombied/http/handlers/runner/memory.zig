@@ -2,7 +2,8 @@
 //!
 //!   GET  /v1/runners/me/memory/{zombie_id}   → innerRunnerMemoryHydrate
 //!        the runner parent seeds the child's in-run store from this at run start;
-//!        the reply is a recency+byte-budget window (cold tail stays in Postgres).
+//!        the reply is a category-pinned byte-budget window — `core` entries
+//!        first, then newest non-core (cold tail stays in Postgres).
 //!   POST /v1/runners/me/memory/{zombie_id}   → innerRunnerMemoryCapture
 //!        MemoryPushRequest { lease_id, fencing_token, memory: []MemoryDelta }.
 //!
@@ -142,8 +143,9 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
 
 // ── GET /v1/runners/me/memory/{zombie_id} — hydrate ────────────────────────
 
-/// Return a recency + byte-budget window of the path zombie's memory, scoped
-/// `WHERE zombie_id = $1` at the database and passed through the `.recency_window`
+/// Return a category-pinned byte-budget window of the path zombie's memory —
+/// every fitting `core` entry, then the newest non-core entries — scoped
+/// `WHERE zombie_id = $1` at the database and passed through the `.selective`
 /// `Compactor` (the cold tail stays in Postgres). The runner must hold a live lease.
 pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
     const runner_id = hx.principal.runner_id orelse {
@@ -179,14 +181,16 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory hydrate failed");
         return;
     };
-    // Compact to a recency + byte-budget window; the cold tail stays in Postgres.
-    const compactor: adapter.Compactor = .{ .recency_window = protocol.HYDRATE_WINDOW_BYTES };
+    // Compact to a category-pinned byte window (`core` first, then the newest
+    // non-core entries); the cold tail stays in Postgres.
+    const total_bytes = adapter.sumBytes(rows);
+    const compactor: adapter.Compactor = .{ .selective = protocol.HYDRATE_WINDOW_BYTES };
     const entries = compactor.compact(rows);
     metrics_memory.setMemoryHydrationEntries(entries.len);
-    // The window's loss is the difference between the full set and the kept
-    // prefix — entryBytes is the same formula the Compactor budgets on.
-    var dropped_bytes: usize = 0;
-    for (rows[entries.len..]) |d| dropped_bytes += adapter.entryBytes(d);
+    // The window's loss is the full set minus the kept set — summed before and
+    // after because the kept entries are an in-place-compacted subsequence, not
+    // a prefix of the original rows. entryBytes is the budget formula.
+    const dropped_bytes = total_bytes - adapter.sumBytes(entries);
     metrics_memory.incHydrationDropped(rows.len - entries.len, dropped_bytes);
     log.info("memory_hydrated", .{ .zombie_id = zombie_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
     hx.ok(.ok, protocol.MemoryHydrateResponse{ .memory = entries });
