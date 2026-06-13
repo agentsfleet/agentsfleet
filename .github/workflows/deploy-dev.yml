@@ -46,7 +46,7 @@ jobs:
     container:
       # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/usezombie/ci-zig-alpine:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
     steps:
       - uses: actions/checkout@v6
 
@@ -154,9 +154,9 @@ jobs:
 
       - name: Deploy agentsfleetd-dev
         run: |
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120 || STATUS=$?
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120 || STATUS=$?
           STATUS=${STATUS:-0}
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/usezombie/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
           STATUS=$?
           if [ "$STATUS" -ne 0 ]; then
             APP="${{ vars.FLY_APP_DEV }}"

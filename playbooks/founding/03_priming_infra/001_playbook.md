@@ -72,8 +72,8 @@ grep "COPY dist/agentsfleetd" Dockerfile
 grep "needs:.*binaries" .github/workflows/release.yml
 ```
 
-**Production image:** `ghcr.io/usezombie/agentsfleetd:{version}` and `ghcr.io/usezombie/agentsfleetd:latest`
-**Dev image:** `ghcr.io/usezombie/agentsfleetd:dev-latest` (built on every main push via `deploy-dev.yml`)
+**Production image:** `ghcr.io/agentsfleet/agentsfleetd:{version}` and `ghcr.io/agentsfleet/agentsfleetd:latest`
+**Dev image:** `ghcr.io/agentsfleet/agentsfleetd:dev-latest` (built on every main push via `deploy-dev.yml`)
 
 ---
 
@@ -130,7 +130,7 @@ done
 ```bash
 # Deploy API
 fly deploy --app agentsfleetd-dev \
-  --image ghcr.io/usezombie/agentsfleetd:dev-latest \
+  --image ghcr.io/agentsfleet/agentsfleetd:dev-latest \
   --regions iad \
   --ha=false   # start with 1 machine, scale after verify
 
@@ -145,7 +145,7 @@ app = "zombied-dev"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/usezombie/agentsfleetd:dev-latest"
+  image = "ghcr.io/agentsfleet/agentsfleetd:dev-latest"
 
 [[vm]]
   size = "shared-cpu-1x"
@@ -261,7 +261,7 @@ gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo usezombie/usezomb
 CI deploy step in `deploy-dev.yml`:
 ```yaml
 - name: Deploy to Fly.io DEV
-  run: fly deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/usezombie/agentsfleetd:dev-latest --wait-timeout 120
+  run: fly deploy --app ${{ vars.FLY_APP_DEV }} --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --wait-timeout 120
   env:
     FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 ```
