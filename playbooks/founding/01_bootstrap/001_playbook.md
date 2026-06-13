@@ -220,7 +220,7 @@ fly secrets set \
   --app agentsfleetd-dev
 
 # Deploy from GHCR
-fly deploy --app agentsfleetd-dev --image ghcr.io/usezombie/agentsfleetd:dev-latest
+fly deploy --app agentsfleetd-dev --image ghcr.io/agentsfleet/agentsfleetd:dev-latest
 
 # Scale to 2 machines for HA
 fly scale count 2 --app agentsfleetd-dev

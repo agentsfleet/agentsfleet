@@ -15,7 +15,7 @@ jobs:
   lint-zig:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     env:
       ZLINT_VERSION: v0.8.1
     steps:

@@ -49,7 +49,7 @@ jobs:
     container:
       # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/usezombie/ci-zig-alpine:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
     steps:
       - uses: actions/checkout@v6
 
@@ -157,7 +157,7 @@ jobs:
             --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
-            ghcr.io/usezombie/ci-zig-alpine:0.16.0 \
+            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0 \
             sh -c '
               set -e
               cp -a /src/. /build
@@ -425,7 +425,7 @@ jobs:
         run: |
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
-            --image ghcr.io/usezombie/agentsfleetd:latest \
+            --image ghcr.io/agentsfleet/agentsfleetd:latest \
             --config deploy/fly/zombied-prod/fly.toml \
             --wait-timeout 120
         env:

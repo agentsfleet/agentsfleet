@@ -2,7 +2,7 @@ app = "zombied-prod"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/usezombie/agentsfleetd:latest"
+  image = "ghcr.io/agentsfleet/agentsfleetd:latest"
 
 [processes]
   app = "/usr/local/bin/agentsfleetd serve"
