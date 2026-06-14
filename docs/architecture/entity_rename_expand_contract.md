@@ -84,3 +84,8 @@ migrations are NEW files appended to the migration array.
   ghcr serves no redirects.
 - Binary/target/package renames (`agentsfleet`, `agentsfleetd`, `agentsfleet-runner`,
   `@agentsfleet/design-system`) — M92_003.
+- Agent skills extracted to the `agentsfleet/skills` repo (`~/Projects/skills`,
+  `agentsfleet-install-platform-ops`). The in-repo `samples/platform-ops/` is now a stale
+  duplicate; M92_004 §7.3 decommissions it (delete + repoint the postinstall copier, the
+  `error_entries.zig` example pointer, and the `test-unit-bundle` lane). `samples/fixtures/`
+  is parser test data — it stays (relocated into the test dirs), it was never a skill.

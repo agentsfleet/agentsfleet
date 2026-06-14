@@ -95,8 +95,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 ## Prior-Art / Reference Implementations
 
 - **Rename pattern** → M92_003: ledger → flip → eval-pin both directions; keep-pin count compares reused verbatim.
-- **Schema** → nearest existing migration + `docs/SCHEMA_CONVENTIONS.md`; views-over-new-tables is greenfield here — shape defined in the canonical architecture doc.
-- **API** → existing `/zombies` handlers; aliases re-register the same handlers under `/agents` per the REST guide's route-registration section.
+- **Schema / API** → nearest migration + `docs/SCHEMA_CONVENTIONS.md` (views-over-new-tables is greenfield — shape in the architecture doc); existing `/zombies` handlers re-register under `/agents` per the REST guide.
 - **CLI** → 7 Pillars unchanged; the verb rename keeps command → handler → errors structure. **Gated-surface pattern** → M92_002 Dimension 6.1 / M92_003 §4: a parked external gate parks only its surface.
 
 ---
@@ -115,6 +114,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `deploy/fly/**`, cloudflared config, `.github/workflows/**` (hosts/env strings) | EDIT | fly app cutover refs + API host split (gated) |
 | `ui/packages/website/src/config.ts` + pins | EDIT (gated) | `INSTALL_SKILL_SLASH` flips with the skills-repo cadence |
 | docs (`docs/architecture/*.md`, `docs/development.md`, playbooks prose) | EDIT | entity prose + residue sweep (archive untouched) |
+| `samples/platform-ops/` (delete), `samples/fixtures/`→test dirs, `zombiectl/scripts/postinstall.mjs`, `error_entries.zig` pointer | DELETE/EDIT | decommission in-repo samples — skill migrated to `agentsfleet/skills`; repoint the 5 consumers |
 
 ---
 
@@ -178,12 +178,13 @@ Contract migration drops views; `/zombies` aliases removed; `zombie_id`/`zombie_
 - **Dimension 6.1** — criteria evidence captured (log queries pasted) → Discovery entry
 - **Dimension 6.2** — contract migration + alias removal; negative tests: `/zombies` 404s with registry code, `zombie_id` absent from responses → Test `test_contract_old_names_gone`
 
-### §7 — Residue sweep + hygiene
+### §7 — Residue sweep, hygiene + `samples/` decommission
 
-Brand residue: Dockerfile labels, systemd `Description=`, compose headers, `github.com/usezombie` URL refs (redirects serve them — flip is janitorial), `docs.usezombie.com` doc URLs, playbook prose flagged in M92_003's PR (reconcile with Indy's one-place naming system — get the pointer). UFS rows for surviving literals. Orphan sweep per RULE ORP.
+Brand residue: Dockerfile labels, systemd `Description=`, compose headers, `github.com/usezombie` URL refs (redirects serve them — flip is janitorial), `docs.usezombie.com` doc URLs, playbook prose flagged in M92_003's PR (reconcile with Indy's one-place naming system — get the pointer). UFS rows for surviving literals. Orphan sweep per RULE ORP. **`samples/` decommission:** the agent skill `samples/platform-ops/` moved to `agentsfleet/skills` (`agentsfleet-install-platform-ops`) — delete it here and repoint its 5 consumers (the `postinstall.mjs` copier, the `error_entries.zig` example pointer, the `test-unit-bundle` lane, and the frontmatter/substitution/seed fixture readers). `samples/fixtures/` is parser **test data**, not a skill — relocate it into the test dirs, never delete. Gated after skills#4 is the live distribution channel.
 
 - **Dimension 7.1** — residue grep matches only frozen-history keeps → Eval `E1` final
 - **Dimension 7.2** — orphan sweep + dead-code table complete → Eval `E5`
+- **Dimension 7.3** — `samples/platform-ops/` removed + consumers repointed; `samples/fixtures/` relocated test-local; `test-unit-bundle` + frontmatter suites green → Test `test_samples_decommissioned`
 
 ---
 
@@ -202,7 +203,6 @@ Locked surface — changes require amending this spec: `agent_id`/`agent_slug` f
 | Synchronized-deploy trap | a §4 flip bundled with a code flip | each resolver flip is its own gated Dimension; parked gate parks only its surface |
 | JWT rejections post host flip | `aud` claim mismatch | 4.2 gated edit changes Clerk + backend validation together; e2e login test on new host before DNS cutover completes |
 | Old env var silently ignored | hard cutover surprise | 3.3 negative grep + CLI errors loudly on legacy `ZOMBIE_*` presence (one-release diagnostic, removed at contract) |
-| Migration breaks fresh bootstrap | expand assumes existing data | 2.1 applies on both fresh and seeded databases in integration tests |
 
 ---
 
@@ -235,6 +235,7 @@ Locked surface — changes require amending this spec: `agent_id`/`agent_slug` f
 | 5.3 | unit | `test_install_skill_slash_pin` | constant + pin flip together; gated until skills#4 |
 | 6.2 | integration | `test_contract_old_names_gone` | `/zombies` → 404 registry code; responses carry no `zombie_id` |
 | 7.1–7.2 | eval | `E1` final + `E5` | residue and orphans zero outside frozen keeps |
+| 7.3 | integration | `test_samples_decommissioned` | postinstall + frontmatter/substitution suites green with `samples/platform-ops/` gone, fixtures test-local; no `samples/platform-ops` ref remains |
 
 **Regression:** `make test`, `make test-integration`, app/website suites, installer `install_test.sh` — green at every stage boundary. **Idempotency/replay:** expand migration re-runnable check per migration-array conventions.
 
@@ -246,8 +247,7 @@ Locked surface — changes require amending this spec: `agent_id`/`agent_slug` f
 - [ ] Consumer flips complete — verify: Evals `E2`, `E4`; CLI e2e suite green
 - [ ] Each §4 gate either verified (evidence in PR body) or parked-with-surface — verify: Evals `E6`–`E9`
 - [ ] Contract executed only with criteria evidence in Discovery — verify: `test_contract_old_names_gone`
-- [ ] Entity grep matches only frozen keeps — verify: Eval `E1` empty
-- [ ] `make lint && make test && make test-integration` green; cross-compile both linux targets; `gitleaks detect` clean; no non-md file over 350 lines
+- [ ] Entity grep matches only frozen keeps (Eval `E1` empty); `make lint && make test && make test-integration` green; cross-compile both linux targets; `gitleaks detect` clean; no non-md file over 350 lines
 
 ---
 
@@ -260,9 +260,8 @@ git grep -rnwE "zombie_id|zombie_slug|core\.zombie|ZOMBIE_[A-Z_]+|x-usezombie" -
 # E3: Keep-pins — HEAD-vs-tree count compare per keep token (ZMB_, frozen paths) — M92_003 E3 loop shape
 # E4: Env prefix — git grep -rn "ZOMBIE_" -- src/ agentsfleet/src ui/packages/*/src | head  (expect empty)
 # E5: Orphan sweep — grep -rn "core\.zombies\|/zombies" src/ | head  (expect empty post-contract)
-# E6: fly — flyctl status --app <new-app> (Indy row; paste output)
+# E6/E8: fly + Vercel — flyctl status --app <new-app> ; curl -fsSI https://<renamed-project>.vercel.app (Indy rows; paste)
 # E7: hosts — curl -fsSI https://api.agentsfleet.net/healthz && curl -fsSI https://api-dev.agentsfleet.dev/healthz
-# E8: Vercel — curl -fsSI https://<renamed-project>.vercel.app (post-rename)
 # E9: creds — make test-integration against rotated creds (paste tail)
 # E10: npm — npm view @usezombie/zombiectl deprecated
 ```
@@ -275,6 +274,7 @@ git grep -rnwE "zombie_id|zombie_slug|core\.zombie|ZOMBIE_[A-Z_]+|x-usezombie" -
 |----------------|--------|
 | compat views (contract migration) | `psql: \dv core.*` shows none |
 | `/zombies` aliases + `ui/.../zombies/` route dirs | Eval `E5`; `test ! -d ui/packages/app/app/(dashboard)/zombies` |
+| `samples/platform-ops/` (migrated to `agentsfleet/skills`) | `test ! -d samples/platform-ops` + `test-unit-bundle` green |
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
