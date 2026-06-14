@@ -21,7 +21,7 @@ describe("TriggerPanel", () => {
     expect(screen.getByText(/No triggers declared/i)).toBeTruthy();
     // The legacy bare webhook URL is still surfaced as a fallback ingress.
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zmb_x",
+      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x",
     );
   });
 
@@ -49,7 +49,7 @@ describe("TriggerPanel", () => {
       /Unknown provider — paste this URL into any webhook-capable service\./,
     );
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zmb_x/weirdco",
+      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x/weirdco",
     );
   });
 
@@ -139,7 +139,7 @@ describe("TriggerPanel", () => {
     fireEvent.click(screen.getByLabelText("Copy webhook URL"));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const arg = writeText.mock.calls[0]?.[0] ?? "";
-    expect(arg).toBe("https://api-dev.usezombie.com/v1/webhooks/zmb_x");
+    expect(arg).toBe("https://api-dev.agentsfleet.net/v1/webhooks/zmb_x");
   });
 
   it("reverts the fallback copy button from Copied back to Copy after the reset delay", async () => {
@@ -232,7 +232,7 @@ describe("TriggerPanel", () => {
     );
     await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zmb_x",
+      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x",
     );
   });
 });

@@ -29,7 +29,7 @@ describe("credential show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "show", "github"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -54,7 +54,7 @@ describe("credential show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "show", "slack", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as {
@@ -80,7 +80,7 @@ describe("credential show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "show", "missing-key"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(out.read() + err.read()).toMatch(/not found/i);
@@ -99,7 +99,7 @@ describe("credential show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "show", "missing-key", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         const parsed = JSON.parse(out.read()) as { name?: string; exists?: boolean };
@@ -120,7 +120,7 @@ describe("credential show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "show", "bare"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -147,7 +147,7 @@ describe("credential delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "delete", "github"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -171,7 +171,7 @@ describe("credential delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "delete", "slack", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as { status?: string; name?: string };
@@ -188,7 +188,7 @@ describe("credential delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "delete", "no-such"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
       });
@@ -216,7 +216,7 @@ describe("credential list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["credential", "list", "--json"],
-            { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           const parsed = JSON.parse(out.read()) as typeof payload;
@@ -236,7 +236,7 @@ describe("credential list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["credential", "list"],
-            { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           expect(out.read()).toMatch(/no credentials/i);
@@ -262,7 +262,7 @@ describe("credential list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["credential", "list"],
-            { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           const text = out.read();
@@ -291,7 +291,7 @@ describe("credential add already-exists human mode", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "add", "existing", `--data={"token":"x"}`],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();

@@ -94,7 +94,7 @@ describe("dashboard page inner async components", () => {
       listZombies: overrides.listZombies ?? vi.fn().mockResolvedValue({ items: [], cursor: null }),
       getZombie: vi.fn(),
       stopZombie: vi.fn(),
-      ZOMBIE_STATUS: {
+      AGENTSFLEET_STATUS: {
         ACTIVE: "active",
         PAUSED: "paused",
         STOPPED: "stopped",

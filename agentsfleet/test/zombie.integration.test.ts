@@ -9,7 +9,7 @@ import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
-const ZOMBIE_ID = "01900000-0000-7000-8000-000000c0ffee";
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-000000c0ffee";
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_zombie_test" }, fn);
@@ -38,7 +38,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -60,7 +60,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("No zombies running");
@@ -77,7 +77,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("No zombies running");
@@ -95,7 +95,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status", "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof payload;
@@ -114,7 +114,7 @@ describe("status", () => {
         const err = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: bufferStream().stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-INTERNAL-001");
@@ -133,16 +133,16 @@ describe("stop", () => {
     await authedScope(async () => {
       let patchBody: string | null = null;
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: async (_req, _url, body) => {
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: async (_req, _url, body) => {
           patchBody = body;
-          return jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "stopped" });
+          return jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "stopped" });
         },
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["stop", ZOMBIE_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["stop", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("stopped");
@@ -154,14 +154,14 @@ describe("stop", () => {
   test("--json emits the PATCH response as JSON", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () =>
-          jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "stopped" }),
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () =>
+          jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "stopped" }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["stop", ZOMBIE_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["stop", AGENTSFLEET_ID, "--json"],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("stopped");
@@ -172,14 +172,14 @@ describe("stop", () => {
   test("API 4xx exits non-zero and surfaces the error code", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () =>
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () =>
           jsonResponse(404, errorEnvelope("UZ-ZMB-001", "Zombie not found")),
       };
       await withMockApi(routes, async (apiUrl) => {
         const err = bufferStream();
         const code = await runCli(
-          ["stop", ZOMBIE_ID],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["stop", AGENTSFLEET_ID],
+          { stdout: bufferStream().stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-ZMB-001");
@@ -197,16 +197,16 @@ describe("resume", () => {
     await authedScope(async () => {
       let patchBody: string | null = null;
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: async (_req, _url, body) => {
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: async (_req, _url, body) => {
           patchBody = body;
-          return jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "active" });
+          return jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "active" });
         },
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["resume", ZOMBIE_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["resume", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("resumed");
@@ -218,14 +218,14 @@ describe("resume", () => {
   test("--json emits the PATCH response as JSON", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () =>
-          jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "active" }),
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () =>
+          jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "active" }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["resume", ZOMBIE_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["resume", AGENTSFLEET_ID, "--json"],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("active");
@@ -243,16 +243,16 @@ describe("kill", () => {
     await authedScope(async () => {
       let patchBody: string | null = null;
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: async (_req, _url, body) => {
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: async (_req, _url, body) => {
           patchBody = body;
-          return jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "killed" });
+          return jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "killed" });
         },
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["kill", ZOMBIE_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["kill", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("killed");
@@ -264,14 +264,14 @@ describe("kill", () => {
   test("--json emits the PATCH response as JSON", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`PATCH /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () =>
-          jsonResponse(200, { zombie_id: ZOMBIE_ID, status: "killed" }),
+        [`PATCH /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () =>
+          jsonResponse(200, { zombie_id: AGENTSFLEET_ID, status: "killed" }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["kill", ZOMBIE_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["kill", AGENTSFLEET_ID, "--json"],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("killed");
@@ -288,18 +288,18 @@ describe("delete", () => {
   test("DELETEs the zombie and prints confirmation", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () => jsonResponse(204, {}),
+        [`DELETE /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () => jsonResponse(204, {}),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const code = await runCli(
-          ["delete", ZOMBIE_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["delete", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("deleted");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
-          `DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`,
+          `DELETE /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`,
         ]);
       });
     });
@@ -308,17 +308,17 @@ describe("delete", () => {
   test("--json prints JSON with zombie_id and deleted:true", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () => jsonResponse(204, {}),
+        [`DELETE /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () => jsonResponse(204, {}),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["delete", ZOMBIE_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["delete", AGENTSFLEET_ID, "--json"],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as { zombie_id?: string; deleted?: boolean };
-        expect(parsed.zombie_id).toBe(ZOMBIE_ID);
+        expect(parsed.zombie_id).toBe(AGENTSFLEET_ID);
         expect(parsed.deleted).toBe(true);
       });
     });
@@ -327,14 +327,14 @@ describe("delete", () => {
   test("API 4xx exits non-zero and surfaces the error code", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}`]: () =>
+        [`DELETE /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}`]: () =>
           jsonResponse(404, errorEnvelope("UZ-ZMB-001", "Zombie not found")),
       };
       await withMockApi(routes, async (apiUrl) => {
         const err = bufferStream();
         const code = await runCli(
-          ["delete", ZOMBIE_ID],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["delete", AGENTSFLEET_ID],
+          { stdout: bufferStream().stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-ZMB-001");

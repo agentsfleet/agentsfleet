@@ -1,6 +1,6 @@
 // TTY-priority resolver. Pure function: tests pass the env + TTY flag in
 // as a snapshot and assert on the resolved token + source. The two sources
-// are the on-disk file token and the ZOMBIE_TOKEN env var.
+// are the on-disk file token and the AGENTSFLEET_TOKEN env var.
 
 import { describe, expect, test } from "bun:test";
 import { resolveAuthTokenForCli } from "../src/program/auth-token.ts";
@@ -15,67 +15,67 @@ describe("resolveAuthTokenForCli", () => {
     });
   });
 
-  test("TTY: ZOMBIE_TOKEN env beats a stale file token", () => {
+  test("TTY: AGENTSFLEET_TOKEN env beats a stale file token", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "file-tok",
-        env: env({ ZOMBIE_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
         isTty: true,
       }),
     ).toEqual({ token: "zombie-tok", source: "zombie_env" });
   });
 
-  test("TTY: file token used when ZOMBIE_TOKEN unset", () => {
+  test("TTY: file token used when AGENTSFLEET_TOKEN unset", () => {
     expect(
       resolveAuthTokenForCli({ fileToken: "file-tok", env: env({}), isTty: true }),
     ).toEqual({ token: "file-tok", source: "file" });
   });
 
-  test("non-TTY: file token beats ZOMBIE_TOKEN env", () => {
+  test("non-TTY: file token beats AGENTSFLEET_TOKEN env", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "file-tok",
-        env: env({ ZOMBIE_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
         isTty: false,
       }),
     ).toEqual({ token: "file-tok", source: "file" });
   });
 
-  test("non-TTY: ZOMBIE_TOKEN used when no file", () => {
+  test("non-TTY: AGENTSFLEET_TOKEN used when no file", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: null,
-        env: env({ ZOMBIE_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
         isTty: false,
       }),
     ).toEqual({ token: "zombie-tok", source: "zombie_env" });
   });
 
-  test("whitespace-only ZOMBIE_TOKEN is treated as unset (falls to file)", () => {
+  test("whitespace-only AGENTSFLEET_TOKEN is treated as unset (falls to file)", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "file-tok",
-        env: env({ ZOMBIE_TOKEN: "   " }),
+        env: env({ AGENTSFLEET_TOKEN: "   " }),
         isTty: true,
       }),
     ).toEqual({ token: "file-tok", source: "file" });
   });
 
-  test("ZOMBIE_TOKEN env value is trimmed before being returned", () => {
+  test("AGENTSFLEET_TOKEN env value is trimmed before being returned", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: null,
-        env: env({ ZOMBIE_TOKEN: "  padded  " }),
+        env: env({ AGENTSFLEET_TOKEN: "  padded  " }),
         isTty: true,
       }),
     ).toEqual({ token: "padded", source: "zombie_env" });
   });
 
-  test("empty-string file token equivalent to unset (falls to ZOMBIE_TOKEN)", () => {
+  test("empty-string file token equivalent to unset (falls to AGENTSFLEET_TOKEN)", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "",
-        env: env({ ZOMBIE_TOKEN: "fallback" }),
+        env: env({ AGENTSFLEET_TOKEN: "fallback" }),
         isTty: false,
       }),
     ).toEqual({ token: "fallback", source: "zombie_env" });

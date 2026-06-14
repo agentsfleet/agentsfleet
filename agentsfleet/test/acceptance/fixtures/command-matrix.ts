@@ -1,6 +1,6 @@
 /**
  * Single source of truth for the command-group enumeration the unauth +
- * ZOMBIE_TOKEN acceptance suites iterate over.
+ * AGENTSFLEET_TOKEN acceptance suites iterate over.
  *
  * RULE UFS: every "list of commands" literal lives here once. Specs read
  * from these exports; nothing inlines a command-string list.
@@ -60,7 +60,7 @@ export interface PerZombieReadOnlyCommandRow {
 // separate from READ_ONLY_COMMANDS (which is workspace-scoped) because
 // `grant list` requires `--zombie <id>`; the §4b read-only sweep cannot
 // thread fixture state into a static argv.
-export const PER_ZOMBIE_READ_ONLY_COMMANDS: ReadonlyArray<PerZombieReadOnlyCommandRow> = [
+export const PER_AGENTSFLEET_READ_ONLY_COMMANDS: ReadonlyArray<PerZombieReadOnlyCommandRow> = [
   { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
   { argsHead: ["memory", "list"], isList: true, itemsKey: "items", group: "memory" },
 ];

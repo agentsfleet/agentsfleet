@@ -1,5 +1,5 @@
 /**
- * ZOMBIE_TOKEN-injection acceptance scenario.
+ * AGENTSFLEET_TOKEN-injection acceptance scenario.
  *
  * Mints a Clerk session JWT via the admin path (mirrors the dashboard
  * suite's identity), hydrates workspaces.json directly from the API
@@ -16,7 +16,7 @@
  * JWT must not appear in stdout/stderr.
  *
  * Live-only: the entire suite registers only when
- * `ZOMBIE_ACCEPTANCE_TARGET` is an https URL. Without that gate, all
+ * `AGENTSFLEET_ACCEPTANCE_TARGET` is an https URL. Without that gate, all
  * tests are skipped — matches the unit-test runner's local invariant.
  */
 
@@ -31,7 +31,7 @@ import url from "node:url";
 import {
   COMMAND_GROUPS,
   INVALID_ID_SAMPLES,
-  PER_ZOMBIE_READ_ONLY_COMMANDS,
+  PER_AGENTSFLEET_READ_ONLY_COMMANDS,
   READ_ONLY_COMMANDS,
   REQUIRES_IDENTIFIER,
   REQUIRES_POSITIONAL_ARG,
@@ -64,7 +64,7 @@ import {
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 
-const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
+const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 interface ValidateResult {
@@ -99,10 +99,10 @@ let validateModule: ValidateModule;
 
 if (!isLive) {
   describe("lifecycle-with-token.spec.ts", () => {
-    it.skip("requires ZOMBIE_ACCEPTANCE_TARGET to be an https URL", () => {});
+    it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("lifecycle-with-token — ZOMBIE_TOKEN injection", () => {
+  describe("lifecycle-with-token — AGENTSFLEET_TOKEN injection", () => {
     let apiUrl: string = "";
     let sessionJwt: string = "";
     let stateDir: string = "";
@@ -128,9 +128,9 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-token-"));
       env = composeEnv({
-        ZOMBIE_TOKEN: sessionJwt,
-        ZOMBIE_API_URL: apiUrl,
-        ZOMBIE_STATE_DIR: stateDir,
+        AGENTSFLEET_TOKEN: sessionJwt,
+        AGENTSFLEET_API_URL: apiUrl,
+        AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
       });
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
@@ -162,7 +162,7 @@ if (!isLive) {
       // commands like `grant list` (which require `--zombie <id>`) get
       // exercised inside the lifecycle suite instead of forcing
       // fixture state into the workspace-wide READ_ONLY_COMMANDS table.
-      for (const row of PER_ZOMBIE_READ_ONLY_COMMANDS) {
+      for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
         const label = `${row.argsHead.join(" ")} --zombie <id>`;
         it(`${label} exits 0 with parseable JSON`, async () => {
           const args = [...row.argsHead, "--zombie", zombieId, "--json"];
@@ -295,9 +295,9 @@ if (!isLive) {
         for (const sample of rejectingSamples) {
           it(`${row.args.join(" ")} "${sample}" rejected without ECONNREFUSED`, async () => {
             const unroutable = composeEnv({
-              ZOMBIE_TOKEN: sessionJwt,
-              ZOMBIE_API_URL: UNROUTABLE_API_URL,
-              ZOMBIE_STATE_DIR: stateDir,
+              AGENTSFLEET_TOKEN: sessionJwt,
+              AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+              AGENTSFLEET_STATE_DIR: stateDir,
               NO_COLOR: "1",
             });
             const result = await runZombiectl([...row.args, sample, "--json"], { env: unroutable });
@@ -335,7 +335,7 @@ if (!isLive) {
         if (head === "list" || head === "doctor") exercised.add("zombie");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
-      for (const row of PER_ZOMBIE_READ_ONLY_COMMANDS) {
+      for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
         if (row.group) exercised.add(row.group);
       }
       const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "zombie");

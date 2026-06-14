@@ -113,7 +113,7 @@ async function resolveAction(
   const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}:${decision}`;
   // Bypass `request()` so a 409 returns a body instead of throwing.
   const base = typeof window === "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.usezombie.com")
+    ? (process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net")
     : "/backend";
   const res = await fetch(`${base}${url}`, {
     method: "POST",

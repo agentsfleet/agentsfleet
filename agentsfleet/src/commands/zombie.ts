@@ -18,7 +18,7 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
 import {
-  ZOMBIE_STATUS,
+  AGENTSFLEET_STATUS,
   type ZombieMutationStatus,
 } from "../constants/zombie-status.ts";
 import {
@@ -27,15 +27,15 @@ import {
 } from "../errors/index.ts";
 
 const STATUS_PAST_TENSE: Record<ZombieMutationStatus, string> = {
-  [ZOMBIE_STATUS.STOPPED]: "stopped",
-  [ZOMBIE_STATUS.ACTIVE]: "resumed",
-  [ZOMBIE_STATUS.KILLED]: "killed",
+  [AGENTSFLEET_STATUS.STOPPED]: "stopped",
+  [AGENTSFLEET_STATUS.ACTIVE]: "resumed",
+  [AGENTSFLEET_STATUS.KILLED]: "killed",
 };
 
 const STATUS_VERB: Record<ZombieMutationStatus, string> = {
-  [ZOMBIE_STATUS.STOPPED]: "stop",
-  [ZOMBIE_STATUS.ACTIVE]: "resume",
-  [ZOMBIE_STATUS.KILLED]: "kill",
+  [AGENTSFLEET_STATUS.STOPPED]: "stop",
+  [AGENTSFLEET_STATUS.ACTIVE]: "resume",
+  [AGENTSFLEET_STATUS.KILLED]: "kill",
 };
 
 interface ZombieListItem {
@@ -152,7 +152,7 @@ export const stopEffectFromId = (
   void,
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(zombieId, ZOMBIE_STATUS.STOPPED);
+> => setStatusEffect(zombieId, AGENTSFLEET_STATUS.STOPPED);
 
 export const resumeEffectFromId = (
   zombieId: string | undefined,
@@ -160,7 +160,7 @@ export const resumeEffectFromId = (
   void,
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(zombieId, ZOMBIE_STATUS.ACTIVE);
+> => setStatusEffect(zombieId, AGENTSFLEET_STATUS.ACTIVE);
 
 export const killEffectFromId = (
   zombieId: string | undefined,
@@ -168,7 +168,7 @@ export const killEffectFromId = (
   void,
   CliError,
   CliConfig | Credentials | HttpClient | Output | Workspaces
-> => setStatusEffect(zombieId, ZOMBIE_STATUS.KILLED);
+> => setStatusEffect(zombieId, AGENTSFLEET_STATUS.KILLED);
 
 export const deleteEffectFromId = (
   zombieId: string | undefined,

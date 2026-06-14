@@ -21,7 +21,7 @@ export type ZombieTrigger =
 
 // `status` is typed as the loose `string` because the wire format may carry
 // values the front-end doesn't recognise (forward-compat). Consumers should
-// narrow with `ZOMBIE_STATUS` from `lib/api/zombies` before branching.
+// narrow with `AGENTSFLEET_STATUS` from `lib/api/zombies` before branching.
 export type Zombie = {
   id: string;
   name: string;
@@ -71,7 +71,7 @@ export const RUN_NANOS_PER_SEC = 100_000;
 // server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless
 // of posture / model / tokens. The dashboard billing panel surfaces the
 // active state from `GET /v1/tenants/me/billing.free_trial`. Customer-
-// facing live state lives on usezombie.com/#pricing.
+// facing live state lives on agentsfleet.net/#pricing.
 export const FREE_TRIAL_END_MS = 1_785_542_400_000; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0;
 

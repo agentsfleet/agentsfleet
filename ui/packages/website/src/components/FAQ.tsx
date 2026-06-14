@@ -29,7 +29,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Can I self-host?",
-    a: "Not in v2. v2 ships hosted-only on api.usezombie.com via Clerk OAuth. Self-host arrives in v3 — the runtime is open source today, and the auth substrate plus KMS adapter are the only deployment-specific layers.",
+    a: "Not in v2. v2 ships hosted-only on api.agentsfleet.net via Clerk OAuth. Self-host arrives in v3 — the runtime is open source today, and the auth substrate plus KMS adapter are the only deployment-specific layers.",
   },
   {
     q: "Which coding agents work for the install skill?",

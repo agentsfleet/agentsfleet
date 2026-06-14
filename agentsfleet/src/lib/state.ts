@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-// On-disk state shapes. All files live under `$ZOMBIE_STATE_DIR` (or
+// On-disk state shapes. All files live under `$AGENTSFLEET_STATE_DIR` (or
 // `~/.config/agentsfleet`) at mode 0o600. JSON is parsed permissively —
 // missing files return the fallback, corrupt files raise.
 //
@@ -43,7 +43,7 @@ export interface Workspaces {
 }
 
 function resolveStatePaths(): StatePaths {
-  const baseDir = process.env.ZOMBIE_STATE_DIR || path.join(os.homedir(), ".config", "agentsfleet");
+  const baseDir = process.env.AGENTSFLEET_STATE_DIR || path.join(os.homedir(), ".config", "agentsfleet");
   return {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),

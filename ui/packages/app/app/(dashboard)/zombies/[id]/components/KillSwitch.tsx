@@ -3,7 +3,7 @@
 import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ConfirmDialog } from "@agentsfleet/design-system";
-import { ZOMBIE_STATUS } from "@/lib/api/zombies";
+import { AGENTSFLEET_STATUS } from "@/lib/api/zombies";
 import type { Zombie, ZombieStatusSettable } from "@/lib/api/zombies";
 import { setZombieStatusAction } from "../../actions";
 import { presentErrorString } from "@/lib/errors";
@@ -73,7 +73,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
   }
 
   const stopAction: ActionConfig = {
-    target: ZOMBIE_STATUS.STOPPED,
+    target: AGENTSFLEET_STATUS.STOPPED,
     buttonLabel: "Stop",
     variant: "destructive",
     dialogTitle: "Stop this agent?",
@@ -83,12 +83,12 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
     errorVerb: "stop this agent",
   };
   const resumeAction: ActionConfig = {
-    target: ZOMBIE_STATUS.ACTIVE,
+    target: AGENTSFLEET_STATUS.ACTIVE,
     buttonLabel: "Resume",
     variant: "outline",
     dialogTitle: "Resume this agent?",
     dialogDescription:
-      optimisticStatus === ZOMBIE_STATUS.PAUSED
+      optimisticStatus === AGENTSFLEET_STATUS.PAUSED
         ? "This agent was auto-paused by the platform. Resuming returns it to active execution — investigate the trigger first."
         : "Return this agent to active execution.",
     confirmLabel: "Resume",
@@ -96,7 +96,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
     errorVerb: "resume this agent",
   };
   const killAction: ActionConfig = {
-    target: ZOMBIE_STATUS.KILLED,
+    target: AGENTSFLEET_STATUS.KILLED,
     buttonLabel: "Kill",
     variant: "destructive",
     dialogTitle: "Kill this agent permanently?",
@@ -109,12 +109,12 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
 
   const actions: ActionConfig[] = (() => {
     switch (optimisticStatus) {
-      case ZOMBIE_STATUS.ACTIVE:
+      case AGENTSFLEET_STATUS.ACTIVE:
         return [stopAction, killAction];
-      case ZOMBIE_STATUS.PAUSED:
-      case ZOMBIE_STATUS.STOPPED:
+      case AGENTSFLEET_STATUS.PAUSED:
+      case AGENTSFLEET_STATUS.STOPPED:
         return [resumeAction, killAction];
-      case ZOMBIE_STATUS.KILLED:
+      case AGENTSFLEET_STATUS.KILLED:
       default:
         return [];
     }

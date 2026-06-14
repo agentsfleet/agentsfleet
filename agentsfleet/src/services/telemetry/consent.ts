@@ -3,7 +3,7 @@
 //
 // Order of precedence (first match wins), mirrors supabase
 // getEffectiveConsent in apps/cli/src/shared/telemetry/consent.ts:
-//   1. ZOMBIE_TELEMETRY_DISABLED=1 env (opt-out kill switch)
+//   1. AGENTSFLEET_TELEMETRY_DISABLED=1 env (opt-out kill switch)
 //   2. DO_NOT_TRACK=1 env (industry-standard signal)
 //   3. Persisted telemetry.json consent field
 //   4. Default "granted"
@@ -20,7 +20,7 @@ import type { ConsentState, TelemetryConfig } from "./types.ts";
 
 function getConfigDirSync(): string {
   return (
-    process.env.ZOMBIE_STATE_DIR ||
+    process.env.AGENTSFLEET_STATE_DIR ||
     path.join(os.homedir(), ".config", "agentsfleet")
   );
 }
@@ -28,7 +28,7 @@ function getConfigDirSync(): string {
 export const getConfigDir = Effect.sync(getConfigDirSync);
 
 function telemetryDisabledFromEnv(env: NodeJS.ProcessEnv): boolean {
-  const raw = env.ZOMBIE_TELEMETRY_DISABLED;
+  const raw = env.AGENTSFLEET_TELEMETRY_DISABLED;
   return raw != null && String(raw).trim() === "1";
 }
 

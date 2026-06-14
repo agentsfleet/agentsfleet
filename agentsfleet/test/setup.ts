@@ -17,10 +17,10 @@ setDefaultTimeout(SPAWN_TEST_TIMEOUT_MS);
 // runner. Tests that exercise telemetry consent manage this env var
 // themselves (save + delete in beforeEach, restore in afterEach), so the
 // default is invisible to them. A developer may still opt in by exporting
-// ZOMBIE_TELEMETRY_DISABLED=0 before invoking the suite.
+// AGENTSFLEET_TELEMETRY_DISABLED=0 before invoking the suite.
 //
 // The spawned-CLI acceptance specs do NOT inherit this — they compose a
 // clean child env via `composeEnv`, which injects the same knob directly.
-if (process.env.ZOMBIE_TELEMETRY_DISABLED === undefined) {
-  process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
+  process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
 }

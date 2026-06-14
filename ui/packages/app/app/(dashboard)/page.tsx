@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@agentsfleet/design-system";
-import { listZombies, ZOMBIE_STATUS } from "@/lib/api/zombies";
+import { listZombies, AGENTSFLEET_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
@@ -30,9 +30,9 @@ export async function StatusTiles() {
     getTenantBilling(token).catch(() => null),
   ]);
 
-  const active = zombies.filter((z) => z.status === ZOMBIE_STATUS.ACTIVE).length;
-  const paused = zombies.filter((z) => z.status === ZOMBIE_STATUS.PAUSED).length;
-  const stopped = zombies.filter((z) => z.status === ZOMBIE_STATUS.STOPPED).length;
+  const active = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
+  const paused = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
+  const stopped = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (zombies.length === 0) {
     return (

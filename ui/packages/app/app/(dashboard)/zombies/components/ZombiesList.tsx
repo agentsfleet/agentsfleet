@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@agentsfleet/design-system";
-import { ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
+import { AGENTSFLEET_STATUS, type Zombie } from "@/lib/api/zombies";
 import { listZombiesAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 
@@ -18,8 +18,8 @@ const PULSE_CAP = 5;
 type LiveState = "live" | "parked" | "failed";
 
 function liveStateOf(status: string): LiveState {
-  if (status === ZOMBIE_STATUS.ACTIVE) return "live";
-  if (status === ZOMBIE_STATUS.KILLED) return "failed";
+  if (status === AGENTSFLEET_STATUS.ACTIVE) return "live";
+  if (status === AGENTSFLEET_STATUS.KILLED) return "failed";
   return "parked";
 }
 

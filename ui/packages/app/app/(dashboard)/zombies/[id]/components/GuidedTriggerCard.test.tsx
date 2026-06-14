@@ -11,7 +11,7 @@ const trigger = {
   events: ["workflow_run", "push"],
 };
 
-const WEBHOOK = "https://api-dev.usezombie.com/v1/webhooks/zmb_test/github";
+const WEBHOOK = "https://api-dev.agentsfleet.net/v1/webhooks/zmb_test/github";
 
 function renderCard(overrides?: { lastDeliveryAt?: number | null }) {
   return render(

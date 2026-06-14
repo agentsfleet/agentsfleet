@@ -4,7 +4,7 @@
 //
 // `requireWorkspaceId` fails with ConfigError (EXIT_CODE.ConfigError = 5)
 // when no workspace is selected. `resolveAuthToken` fails the same way
-// when neither stored credentials nor ZOMBIE_TOKEN env yield a token.
+// when neither stored credentials nor AGENTSFLEET_TOKEN env yield a token.
 // Both can also fail with UnexpectedError from the underlying state
 // store (disk read failure); commands widen their error channel to
 // `ConfigError | UnexpectedError` or just `CliError`.

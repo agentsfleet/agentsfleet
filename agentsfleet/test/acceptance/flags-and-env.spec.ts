@@ -7,8 +7,8 @@
  *   - a spawned (non-TTY) `agentsfleet login` with no token fast-fails:
  *     no browser, no partial credentials.json (token-only contract)
  *
- * Live-API precedence tests (--api / ZOMBIE_API_URL, env-var auth
- * permutations) only register when `ZOMBIE_ACCEPTANCE_TARGET` is an
+ * Live-API precedence tests (--api / AGENTSFLEET_API_URL, env-var auth
+ * permutations) only register when `AGENTSFLEET_ACCEPTANCE_TARGET` is an
  * https:// URL — they run against real api-dev / api in CI, not local.
  */
 
@@ -46,7 +46,7 @@ beforeAll(async () => {
 });
 
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({ ZOMBIE_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
+  return composeEnv({ AGENTSFLEET_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
 }
 
 function waitForExit(child: ChildProcessWithoutNullStreams): Promise<ExitResult> {
@@ -101,17 +101,17 @@ describe("telemetry env-var advertisement (--help)", () => {
   // opt-out path without reading source. Golden snapshot covers the
   // exact bytes; this acceptance assertion confirms the built binary
   // (npm install / dist) renders the same names end-to-end.
-  it("advertises ZOMBIE_TELEMETRY_DISABLED, DO_NOT_TRACK and POSTHOG knobs", async () => {
+  it("advertises AGENTSFLEET_TELEMETRY_DISABLED, DO_NOT_TRACK and POSTHOG knobs", async () => {
     const result = await runZombiectl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
     });
     assert.equal(result.code, 0);
     for (const key of [
-      "ZOMBIE_TELEMETRY_DISABLED",
+      "AGENTSFLEET_TELEMETRY_DISABLED",
       "DO_NOT_TRACK",
-      "ZOMBIE_TELEMETRY_POSTHOG_KEY",
-      "ZOMBIE_TELEMETRY_POSTHOG_HOST",
-      "ZOMBIE_TELEMETRY_DEBUG",
+      "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
+      "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
+      "AGENTSFLEET_TELEMETRY_DEBUG",
     ]) {
       assert.ok(
         result.stdout.includes(key),
@@ -120,7 +120,7 @@ describe("telemetry env-var advertisement (--help)", () => {
     }
     // Negative assertion: the pre-supabase-alignment names must not
     // resurface (catches a future bad merge that brings them back).
-    for (const stale of ["DISABLE_TELEMETRY ", "ZOMBIE_POSTHOG_KEY", "ZOMBIE_POSTHOG_HOST"]) {
+    for (const stale of ["DISABLE_TELEMETRY ", "AGENTSFLEET_POSTHOG_KEY", "AGENTSFLEET_POSTHOG_HOST"]) {
       assert.ok(
         !result.stdout.includes(stale),
         `--help still references legacy env name ${stale}`,
@@ -153,8 +153,8 @@ describe("non-TTY login fast-fails", () => {
   function spawnNonTtyLogin(): ChildProcessWithoutNullStreams {
     if (!stateDir) throw new Error("fixtures not initialised");
     const env = composeEnv({
-      ZOMBIE_API_URL: UNROUTABLE_API_URL,
-      ZOMBIE_STATE_DIR: stateDir.dir,
+      AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+      AGENTSFLEET_STATE_DIR: stateDir.dir,
       NO_COLOR: "1",
     });
     const child = spawnZombiectl(["login", "--no-open", "--force"], { env });
@@ -165,7 +165,7 @@ describe("non-TTY login fast-fails", () => {
   it("exits non-zero with token guidance and never opens a browser", async () => {
     const result = await waitForExit(spawnNonTtyLogin());
     assert.notEqual(result.code, 0, `expected fast-fail, got ${result.code}; stderr=${result.stderr}`);
-    assert.match(result.stderr, /--token|ZOMBIE_TOKEN/, `expected token guidance: ${result.stderr}`);
+    assert.match(result.stderr, /--token|AGENTSFLEET_TOKEN/, `expected token guidance: ${result.stderr}`);
     assert.ok(
       !/login_url|127\.0\.0\.1/i.test(result.stdout),
       `device flow must not start: ${result.stdout}`,
@@ -185,16 +185,16 @@ describe("non-TTY login fast-fails", () => {
   });
 });
 
-// --api / ZOMBIE_API_URL precedence (live api only). Registered only
-// when `ZOMBIE_ACCEPTANCE_TARGET` is an https:// URL; conditional registration
+// --api / AGENTSFLEET_API_URL precedence (live api only). Registered only
+// when `AGENTSFLEET_ACCEPTANCE_TARGET` is an https:// URL; conditional registration
 // keeps both `node --test` and `bun test` honest about the skip.
 {
-  const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
+  const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
   const isLive = target.startsWith("https://");
 
   if (isLive) {
-    describe("--api / ZOMBIE_API_URL precedence", () => {
-      // process.env.ZOMBIE_TOKEN is NOT injected by the CI workflow step
+    describe("--api / AGENTSFLEET_API_URL precedence", () => {
+      // process.env.AGENTSFLEET_TOKEN is NOT injected by the CI workflow step
       // (only CLERK_SECRET_KEY + fixture emails land). Mint a real
       // session JWT once per describe so the auth-guard passes and the
       // tests actually exercise URL precedence instead of exiting on
@@ -207,10 +207,10 @@ describe("non-TTY login fast-fails", () => {
         sessionJwt = minted.sessionJwt;
       });
 
-      it("--api overrides ZOMBIE_API_URL", async () => {
+      it("--api overrides AGENTSFLEET_API_URL", async () => {
         const env = composeEnv({
-          ZOMBIE_API_URL: UNROUTABLE_API_URL,
-          ZOMBIE_TOKEN: sessionJwt,
+          AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+          AGENTSFLEET_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
         const result: RunResult = await runZombiectl(
@@ -221,10 +221,10 @@ describe("non-TTY login fast-fails", () => {
         assert.doesNotThrow(() => JSON.parse(result.stdout.trim()));
       });
 
-      it("ZOMBIE_API_URL honored when --api absent", async () => {
+      it("AGENTSFLEET_API_URL honored when --api absent", async () => {
         const env = composeEnv({
-          ZOMBIE_API_URL: target,
-          ZOMBIE_TOKEN: sessionJwt,
+          AGENTSFLEET_API_URL: target,
+          AGENTSFLEET_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
         const result: RunResult = await runZombiectl(["workspace", "list", "--json"], { env });

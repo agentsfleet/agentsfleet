@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 const WORKSPACE_ID = "ws_panel_001";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_panel";
 
 const { listApprovalsMock, listApprovalsActionMock } = vi.hoisted(() => ({
@@ -49,7 +49,7 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
       items: [
         {
           gate_id: "01999999-1111-7000-8000-000000000001",
-          zombie_id: ZOMBIE_ID,
+          zombie_id: AGENTSFLEET_ID,
           zombie_name: "approvals-a",
           workspace_id: WORKSPACE_ID,
           action_id: "act_001",
@@ -72,7 +72,7 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
 
     const element = await ZombieApprovalsPanel({
       workspaceId: WORKSPACE_ID,
-      zombieId: ZOMBIE_ID,
+      zombieId: AGENTSFLEET_ID,
       token: TOKEN,
     });
     render(element);
@@ -80,7 +80,7 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
     expect(listApprovalsMock).toHaveBeenCalledWith(
       WORKSPACE_ID,
       TOKEN,
-      expect.objectContaining({ zombieId: ZOMBIE_ID, limit: 50 }),
+      expect.objectContaining({ zombieId: AGENTSFLEET_ID, limit: 50 }),
     );
     expect(screen.getByText("approvals-a")).toBeTruthy();
   });
@@ -89,7 +89,7 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
     const element = await ZombieApprovalsPanel({
       workspaceId: WORKSPACE_ID,
-      zombieId: ZOMBIE_ID,
+      zombieId: AGENTSFLEET_ID,
       token: TOKEN,
     });
     render(element);

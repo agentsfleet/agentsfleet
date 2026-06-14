@@ -6,7 +6,7 @@ import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
-import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
+import { AGENTSFLEET_TOKEN_ENV } from "../services/config.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
@@ -50,7 +50,7 @@ export interface Lifecycle {
 type LifecycleCtx = Lifecycle[typeof CTX];
 
 // Thread runCli's env-resolved values into Effect's CliConfig override.
-// `ctx.token` is already a `creds.token || env.ZOMBIE_TOKEN` merge from
+// `ctx.token` is already a `creds.token || env.AGENTSFLEET_TOKEN` merge from
 // cli.ts; mirror it as the override's `accessToken` so commands' Effects
 // receive the merged value.
 function configOverrideFromCtx(ctx: LifecycleCtx): {
@@ -180,7 +180,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         const tokenOpt = opts["token"];
         // Raw env value (not the file-merged ctx.token) — an existing
         // credentials.json must not be re-read as a "direct token".
-        const envToken = lifecycle.ctx.env?.[ZOMBIE_TOKEN_ENV];
+        const envToken = lifecycle.ctx.env?.[AGENTSFLEET_TOKEN_ENV];
         return loginEffectFromFlags({
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,

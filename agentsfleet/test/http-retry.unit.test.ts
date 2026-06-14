@@ -1,5 +1,5 @@
 // Covers apiRequestWithRetry. Pins: classifier, backoff caps, jitter
-// bounds, ZOMBIE_NO_RETRY=1 escape hatch, maxAttempts bounds (1..10),
+// bounds, AGENTSFLEET_NO_RETRY=1 escape hatch, maxAttempts bounds (1..10),
 // Retry-After floor with one-sided positive jitter.
 
 import { test } from "bun:test";
@@ -193,7 +193,7 @@ test("apiRequestWithRetry: env escape hatch collapses to single attempt on 503",
       fetchImpl,
       sleepImpl: NO_SLEEP,
       randomFn: NO_JITTER,
-      env: { ZOMBIE_NO_RETRY: "1" },
+      env: { AGENTSFLEET_NO_RETRY: "1" },
       onAttempt: (i: AttemptInfo) => events.push({ kind: "attempt", ...i }),
       onRetry: (i: RetryInfo) => events.push({ kind: "retry", ...i }),
     }),

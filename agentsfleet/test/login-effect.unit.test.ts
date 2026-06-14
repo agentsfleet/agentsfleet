@@ -3,7 +3,7 @@
 // trip). This file pins the non-prompting branches that 5.C.1 wired:
 //
 //   - D20 idempotency  — existing creds + --no-input + no --force aborts
-//   - D26b env-token   — ZOMBIE_TOKEN set + --no-input + no --force aborts
+//   - D26b env-token   — AGENTSFLEET_TOKEN set + --no-input + no --force aborts
 //   - verify --no-input — verification prompt is skipped → InterruptedError
 //   - transport remap  — ServerError/NetworkError on POST /sessions become
 //                        AuthError so every login failure exits 1
@@ -488,7 +488,7 @@ describe("loginEffect — non-interactive direct-token path", () => {
     expect(browser.opens()).toBe(0);
   });
 
-  test("ZOMBIE_TOKEN env resolves the token with no browser opened", async () => {
+  test("AGENTSFLEET_TOKEN env resolves the token with no browser opened", async () => {
     const rec = makeRec();
     const browser = recordingBrowser();
     const creds = recordingCreds();

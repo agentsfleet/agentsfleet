@@ -3,9 +3,9 @@
  *
  * Proves the CLI's parse + help + auth-guard layer behaves correctly
  * against the same binary that ships to prod (worktree-DEV /
- * npm-global-PROD). No `ZOMBIE_TOKEN`, no `credentials.json`, no live
+ * npm-global-PROD). No `AGENTSFLEET_TOKEN`, no `credentials.json`, no live
  * API calls (the auth guard fires before any network I/O — the suite
- * sets `ZOMBIE_API_URL` to an unroutable address so a leaked fetch
+ * sets `AGENTSFLEET_API_URL` to an unroutable address so a leaked fetch
  * surfaces as ECONNREFUSED instead of the expected stem).
  */
 
@@ -55,7 +55,7 @@ beforeAll(async () => {
 });
 
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({ ZOMBIE_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
+  return composeEnv({ AGENTSFLEET_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
 }
 
 describe("help triplet", () => {
@@ -134,13 +134,13 @@ describe("unknown commands", () => {
   // Per-group `<group> pogo` reaches the group's dispatcher only after
   // auth + workspace-context resolution. The stubbed state-dir threads a
   // syntactically-valid-but-never-used token + workspace through that
-  // gate. `ZOMBIE_API_URL=http://127.0.0.1:1` ensures any accidental fetch
+  // gate. `AGENTSFLEET_API_URL=http://127.0.0.1:1` ensures any accidental fetch
   // surfaces as ECONNREFUSED — the dispatcher's "unknown action" branch
   // fires before any network attempt.
   for (const group of COMMAND_GROUPS) {
     it(`unknown subcommand on "${group}" exits non-zero (no network)`, async () => {
       if (!stubState) throw new Error("stubState not initialised");
-      const env = emptyEnv({ ZOMBIE_STATE_DIR: stubState.dir });
+      const env = emptyEnv({ AGENTSFLEET_STATE_DIR: stubState.dir });
       const result = await expectInvalidSubcommand(group, env);
       assertNoConnectionError(result, [group, "pogo"]);
     });

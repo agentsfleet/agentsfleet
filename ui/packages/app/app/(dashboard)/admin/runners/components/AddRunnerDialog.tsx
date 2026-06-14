@@ -220,7 +220,7 @@ function RevealPanel({ token, onClose }: { token: string; onClose: () => void })
       <DialogHeader>
         <DialogTitle>Save the runner token</DialogTitle>
         <DialogDescription>
-          This is the only time it is shown. Install it on the host as <span className="font-mono">ZOMBIE_RUNNER_TOKEN</span>{" "}
+          This is the only time it is shown. Install it on the host as <span className="font-mono">AGENTSFLEET_RUNNER_TOKEN</span>{" "}
           — you won&apos;t be able to see it again.
         </DialogDescription>
       </DialogHeader>

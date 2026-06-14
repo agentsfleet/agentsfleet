@@ -98,7 +98,7 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
     // ePrivacy/GDPR; localStorage-only analytics is the disclosure-then-
     // opt-out posture documented in Privacy.tsx. If/when a consent
     // banner ships, flip this back to "localStorage+cookie" to enable
-    // cross-subdomain identity stitching with usezombie.com ↔ app
+    // cross-subdomain identity stitching with agentsfleet.net ↔ app
     // (the cookie is what crosses subdomains; localStorage does not).
     autocapture: true,
     capture_pageview: "history_change",

@@ -22,10 +22,10 @@ import type { ActionDispatch, Handlers, ProgramState } from "./cli-tree-types.ts
 // files keep their bottom-declared blocks).
 const FLAG_LIMIT_N = "--limit <n>" as const;
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_ZOMBIE_ID = "--zombie <id>" as const;
+const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
 const MAX_ENTRIES = "Max entries to return" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
-const ZOMBIE_ID = "Zombie ID" as const;
+const AGENTSFLEET_ID = "Zombie ID" as const;
 
 const MEMORY_LIMIT_BOUNDS = { min: 1, max: MAX_RECALL_LIMIT };
 
@@ -42,7 +42,7 @@ export function buildMemoryTree(
   memory
     .command("list")
     .description(`List entries newest-first (server default ${DEFAULT_LIST_LIMIT}, cap ${MAX_RECALL_LIMIT})`)
-    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
+    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
     .option("--category <name>", "Filter by category")
     .option(FLAG_LIMIT_N, MAX_ENTRIES, parseIntOption(MEMORY_LIMIT_BOUNDS))
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
@@ -51,7 +51,7 @@ export function buildMemoryTree(
   memory
     .command("search <query>")
     .description(`Substring-search keys and content (server default ${DEFAULT_RECALL_LIMIT}, cap ${MAX_RECALL_LIMIT})`)
-    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
+    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
     .option(FLAG_LIMIT_N, MAX_ENTRIES, parseIntOption(MEMORY_LIMIT_BOUNDS))
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
     .action(actionFor("memory.search", (frame) => runHandler(state, frame, handlers.memory.search)));

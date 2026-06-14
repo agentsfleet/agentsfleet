@@ -17,7 +17,7 @@ import { ReplSignalEmitter } from "../src/lib/repl.ts";
 // part-1 steer suite so the two files cannot drift apart (makeLayer closes
 // over the part-1 constants, so only the values used directly here are imported).
 import {
-  ZOMBIE_ID,
+  AGENTSFLEET_ID,
   EVENT_ID,
   streamFrom,
   nullOutput,
@@ -43,7 +43,7 @@ describe("steer — SSE error path (lines 139-141)", () => {
       return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
     };
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: throwingStream as StreamGetFn,
@@ -64,7 +64,7 @@ describe("steer — SSE error path (lines 139-141)", () => {
       return { items: [{ event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }] } as T;
     };
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: throwingStream as StreamGetFn,
@@ -92,7 +92,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
       return { items: [] } as T;
     };
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: silentStream,
@@ -113,7 +113,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
       return { items: [] } as T;
     };
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, undefined, { forceTty: true }, {
+      steerEffectFromArgs(AGENTSFLEET_ID, undefined, { forceTty: true }, {
         stdin: streamFrom(["hi\n"], false),
         stdout: nullOutput(),
         streamGet: silentStream,
@@ -143,7 +143,7 @@ describe("steer — renderOutcome timeout path (lines 235-238, 255-261)", () => 
     };
     try {
       const exit = await Effect.runPromiseExit(
-        steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+        steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
           stdin: streamFrom([], false),
           stdout: nullOutput(),
           streamGet: silentStream,
@@ -189,7 +189,7 @@ describe("steer — REPL tryPromise catch (lines 319-324)", () => {
     };
 
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, undefined, { forceTty: true }, {
+      steerEffectFromArgs(AGENTSFLEET_ID, undefined, { forceTty: true }, {
         stdin: streamFrom(["first\nsecond\n"], false),
         stdout: nullOutput(),
         streamGet: eventStream([

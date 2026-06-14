@@ -5,7 +5,7 @@
 //   - persisted telemetry.json (consent state, distinct_id)
 //   - persisted session.json (device_id, session_id with timeout
 //     rotation — delegated to identity.ts → lib/state.ts)
-//   - process.env (ZOMBIE_TELEMETRY_DISABLED, DO_NOT_TRACK, CI vars, ZOMBIE_TELEMETRY_DEBUG)
+//   - process.env (AGENTSFLEET_TELEMETRY_DISABLED, DO_NOT_TRACK, CI vars, AGENTSFLEET_TELEMETRY_DEBUG)
 //   - node:os (platform, arch, hostname)
 //   - process.stdout.isTTY for TTY detection
 //
@@ -54,7 +54,7 @@ const CI_ENV_VARS = [
 const FIRST_RUN_NOTICE = [
   "",
   "  usezombie collects anonymous usage data to improve the CLI.",
-  "  Opt out by setting ZOMBIE_TELEMETRY_DISABLED=1 (or DO_NOT_TRACK=1).",
+  "  Opt out by setting AGENTSFLEET_TELEMETRY_DISABLED=1 (or DO_NOT_TRACK=1).",
   "  Learn more: https://docs.agentsfleet.net/cli/telemetry",
   "",
   "",
@@ -68,7 +68,7 @@ function detectIsCi(env: NodeJS.ProcessEnv): boolean {
 }
 
 function detectShowDebug(env: NodeJS.ProcessEnv): boolean {
-  const raw = env.ZOMBIE_TELEMETRY_DEBUG;
+  const raw = env.AGENTSFLEET_TELEMETRY_DEBUG;
   return raw === "1" || raw === "true";
 }
 

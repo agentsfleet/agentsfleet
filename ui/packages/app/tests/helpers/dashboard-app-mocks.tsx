@@ -71,7 +71,7 @@ export function zombiesApiMock() {
     getZombie: vi.fn(),
     installZombie: vi.fn(),
     deleteZombie: vi.fn(),
-    ZOMBIE_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed" },
+    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed" },
   };
 }
 

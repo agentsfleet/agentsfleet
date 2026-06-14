@@ -29,7 +29,7 @@
 # bun:test elsewhere). The prior rationale was bound-cleanly concerns
 # with long-lived child processes (Playwright Chromium, polling CLI
 # subprocesses); if those resurface live, revisit. Acceptance specs
-# self-gate on ZOMBIE_ACCEPTANCE_TARGET being an https URL — without
+# self-gate on AGENTSFLEET_ACCEPTANCE_TARGET being an https URL — without
 # the env they register skip-only placeholders. Default `bun test`
 # globs match `*.test.{js,ts}` so `*.spec.js` files are picked up
 # only by the explicit `bun test test/acceptance` invocation.

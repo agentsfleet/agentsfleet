@@ -48,7 +48,7 @@ describe("resolveDirectToken", () => {
     expect(Option.getOrNull(result)).toBe("pat_flag");
   });
 
-  test("falls back to ZOMBIE_TOKEN env when flag absent", async () => {
+  test("falls back to AGENTSFLEET_TOKEN env when flag absent", async () => {
     const result = await Effect.runPromise(
       resolveDirectToken({ tokenFlag: undefined, envToken: " pat_env " }).pipe(
         Effect.provide(stdinLayer(true)),
@@ -93,7 +93,7 @@ describe("resolveDirectToken", () => {
   test("InterruptedError carries the no-token suggestion", () => {
     const e = new InterruptedError({
       detail: "no token provided and stdin is not a terminal",
-      suggestion: "pass --token or set ZOMBIE_TOKEN",
+      suggestion: "pass --token or set AGENTSFLEET_TOKEN",
     });
     expect(e.message).toContain("no token provided");
     expect(e.suggestion).toContain("--token");
@@ -186,15 +186,15 @@ describe("saveDirectToken", () => {
   let tempStateDir: string | null = null;
   let prevStateDir: string | undefined;
   beforeEach(() => {
-    prevStateDir = process.env.ZOMBIE_STATE_DIR;
+    prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
     tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentsfleet-funcfill-"));
-    process.env.ZOMBIE_STATE_DIR = tempStateDir;
+    process.env.AGENTSFLEET_STATE_DIR = tempStateDir;
   });
   afterEach(() => {
     if (tempStateDir) fs.rmSync(tempStateDir, { recursive: true, force: true });
     tempStateDir = null;
-    if (prevStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = prevStateDir;
+    if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
   });
 
   test("validates then persists the token on a successful ping", async () => {

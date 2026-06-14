@@ -1,21 +1,21 @@
 /**
- * Hydrate workspaces.json for the ZOMBIE_TOKEN-injection suite.
+ * Hydrate workspaces.json for the AGENTSFLEET_TOKEN-injection suite.
  *
  * The CLI populates workspaces.json only inside the login flow's
  * post-success branch (`hydrateWorkspacesAfterLogin` in
  * src/commands/login-helpers.ts).
- * §4 injects a minted JWT directly via `ZOMBIE_TOKEN`, so it never walks
+ * §4 injects a minted JWT directly via `AGENTSFLEET_TOKEN`, so it never walks
  * that path — without help the read-only sweep sees an empty local list
  * even though the tenant has workspaces.
  *
  * This helper mirrors the hydrate flow: hits `/v1/tenants/me/workspaces`
  * with the bearer token, writes the normalised list to the suite's
- * tmpdir-scoped `ZOMBIE_STATE_DIR`. Returns the picked current workspace
+ * tmpdir-scoped `AGENTSFLEET_STATE_DIR`. Returns the picked current workspace
  * id so callers can chain into `workspace use` (idempotent) or pass via
  * `--workspace-id` per command.
  *
  * Discovery: the CLI lacks a `workspace pull` / `workspace sync` command
- * that an operator running under explicit `ZOMBIE_TOKEN` could call to
+ * that an operator running under explicit `AGENTSFLEET_TOKEN` could call to
  * hydrate. Follow-on PR can add one — at which point this fixture
  * collapses to one CLI invocation.
  */

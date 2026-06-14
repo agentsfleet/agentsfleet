@@ -5,7 +5,7 @@ import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000010c105";
-const ZOMBIE_ID = "01900000-0000-7000-8000-0000007090c5";
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000007090c5";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
@@ -13,21 +13,21 @@ describe("logs (paginated event tail)", () => {
   test("`logs <zombie_id>` with no events prints the empty-state message and exits 0", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["logs", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no events yet/i);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.method).toBe("GET");
-        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`);
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`);
         // The default limit=20 query is preserved on the wire.
         expect(calls[0]?.search).toContain("limit=20");
       });
@@ -37,7 +37,7 @@ describe("logs (paginated event tail)", () => {
   test("`logs <zombie_id>` with events prints one row per event with timestamp + actor + summary", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
               { created_at: 1700000000000, actor: "user",   status: "processed", response_text: "Hello, world." },
@@ -51,8 +51,8 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["logs", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -80,7 +80,7 @@ describe("logs (paginated event tail)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: ValidationError → exit 4 (EXIT_CODE.ValidationError).
         // The pre-Effect path returned 2 via writeError(MISSING_ARGUMENT, …); the

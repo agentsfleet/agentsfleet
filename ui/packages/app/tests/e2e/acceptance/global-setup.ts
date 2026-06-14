@@ -89,7 +89,7 @@ function failLoud(missing: string): never {
   throw new Error(
     `[e2e:auth] refusing to start: missing required env var ${missing}\n` +
       `Set in the workflow / shell before running:\n` +
-      `  NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com   # or other safe target\n` +
+      `  NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net   # or other safe target\n` +
       `  CLERK_SECRET_KEY=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')\n` +
       `  CLERK_WEBHOOK_SECRET=$(op read 'op://ZMB_CD_DEV/clerk-dev/webhook-secret')\n`,
   );

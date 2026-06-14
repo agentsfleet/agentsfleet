@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const WORKSPACE_ID = "ws_approvals_001";
-const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
-const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
+const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
+const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
 const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 
 // vi.hoisted because vi.mock factories run before module body. The mocks
@@ -50,7 +50,7 @@ afterEach(() => {
 function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
   return {
     gate_id: over.gate_id ?? "01999999-0000-7000-8000-000000000001",
-    zombie_id: over.zombie_id ?? ZOMBIE_A,
+    zombie_id: over.zombie_id ?? AGENTSFLEET_A,
     zombie_name: over.zombie_name ?? "approvals-a",
     workspace_id: WORKSPACE_ID,
     action_id: over.action_id ?? "act_001",
@@ -109,7 +109,7 @@ describe("ApprovalsList — initial render", () => {
         gate_id: "01999999-0000-7000-8000-000000000002",
         action_id: "a2",
         zombie_name: "approvals-b",
-        zombie_id: ZOMBIE_B,
+        zombie_id: AGENTSFLEET_B,
       }),
     ];
     render(
@@ -429,7 +429,7 @@ describe("ApprovalsList — zombieId scoping", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        zombieId: ZOMBIE_A,
+        zombieId: AGENTSFLEET_A,
         initialItems: [gate()],
         initialCursor: "cur_abc",
       }),
@@ -438,7 +438,7 @@ describe("ApprovalsList — zombieId scoping", () => {
     await waitFor(() => {
       expect(listApprovalsActionMock).toHaveBeenCalledWith(
         WORKSPACE_ID,
-        expect.objectContaining({ zombieId: ZOMBIE_A }),
+        expect.objectContaining({ zombieId: AGENTSFLEET_A }),
       );
     });
   });

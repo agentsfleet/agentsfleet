@@ -12,7 +12,7 @@
 import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listZombies } from "./seed";
-import { ZOMBIE_STATUS } from "./constants";
+import { AGENTSFLEET_STATUS } from "./constants";
 
 /**
  * agentsfleetd enforces a state-machine transition before delete:
@@ -31,9 +31,9 @@ export async function cleanWorkspaceZombies(
   let removed = 0;
   for (const z of zombies) {
     try {
-      if (z.status !== ZOMBIE_STATUS.killed) {
+      if (z.status !== AGENTSFLEET_STATUS.killed) {
         await c.patch(`/v1/workspaces/${workspaceId}/zombies/${z.id}`, {
-          status: ZOMBIE_STATUS.killed,
+          status: AGENTSFLEET_STATUS.killed,
         });
       }
       await c.delete(`/v1/workspaces/${workspaceId}/zombies/${z.id}`);

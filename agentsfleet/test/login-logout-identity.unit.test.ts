@@ -1,6 +1,6 @@
 // Distinct-id wiring for login/logout. captureLoginCompleted (from
 // login-helpers.ts) and logoutEffect (from commands/auth.ts) both
-// touch the telemetry.json file in ZOMBIE_STATE_DIR and emit
+// touch the telemetry.json file in AGENTSFLEET_STATE_DIR and emit
 // analytics alias/identify/capture calls. These tests run the two
 // effects against in-memory layers and assert on the recorded
 // side-effects + the on-disk telemetry.json state.
@@ -153,16 +153,16 @@ let tempStateDir: string | null = null;
 let prevStateDir: string | undefined = undefined;
 
 beforeEach(() => {
-  prevStateDir = process.env.ZOMBIE_STATE_DIR;
+  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
   tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentsfleet-identity-"));
-  process.env.ZOMBIE_STATE_DIR = tempStateDir;
+  process.env.AGENTSFLEET_STATE_DIR = tempStateDir;
 });
 
 afterEach(() => {
   if (tempStateDir) fs.rmSync(tempStateDir, { recursive: true, force: true });
   tempStateDir = null;
-  if (prevStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-  else process.env.ZOMBIE_STATE_DIR = prevStateDir;
+  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
 });
 
 describe("captureLoginCompleted", () => {

@@ -68,11 +68,11 @@ describe("api url resolution drives every fetch from runCli", () => {
       // createSession's POST has gone out to the resolved base URL (no poll).
       expect(code).toBe(130);
       expect(calls.length).toBeGreaterThan(0);
-      expect(calls[0]).toEqual({ url: "https://api.usezombie.com/v1/auth/sessions", method: "POST" });
+      expect(calls[0]).toEqual({ url: "https://api.agentsfleet.net/v1/auth/sessions", method: "POST" });
     });
   });
 
-  test("honors ZOMBIE_API_URL env override at the fetch boundary", async () => {
+  test("honors AGENTSFLEET_API_URL env override at the fetch boundary", async () => {
     await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
@@ -83,7 +83,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ZOMBIE_API_URL: "http://localhost:3000" },
+          env: { AGENTSFLEET_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -92,26 +92,26 @@ describe("api url resolution drives every fetch from runCli", () => {
     });
   });
 
-  test("honors --api flag over ZOMBIE_API_URL env at the fetch boundary", async () => {
+  test("honors --api flag over AGENTSFLEET_API_URL env at the fetch boundary", async () => {
     await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         [
-          "--api", "https://api-dev.usezombie.com",
+          "--api", "https://api-dev.agentsfleet.net",
           "login", "--no-open", "--no-input",
         ],
         {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ZOMBIE_API_URL: "http://localhost:3000" },
+          env: { AGENTSFLEET_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
       expect(code).toBe(130);
-      expect(calls[0]).toEqual({ url: "https://api-dev.usezombie.com/v1/auth/sessions", method: "POST" });
+      expect(calls[0]).toEqual({ url: "https://api-dev.agentsfleet.net/v1/auth/sessions", method: "POST" });
     });
   });
 
@@ -158,7 +158,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   // Full precedence-chain matrix. The bug fixed in bb1ca7c9 lived in the
   // cross-module short-circuit between the global-arg parser and creds
   // resolution — unit tests on the parser alone could not catch it. This
-  // 16-case matrix walks every combination of (--api flag, ZOMBIE_API_URL
+  // 16-case matrix walks every combination of (--api flag, AGENTSFLEET_API_URL
   // env, API_URL env, creds.api_url persisted) and asserts the resolved
   // URL drives the actual outbound fetch through the runCli dispatch.
   describe("full precedence matrix", () => {
@@ -166,7 +166,7 @@ describe("api url resolution drives every fetch from runCli", () => {
     const ZENV = "https://zombie-env.example";
     const AENV = "https://api-url-env.example";
     const CREDS = "https://saved-creds.example";
-    const DEFAULT = "https://api.usezombie.com";
+    const DEFAULT = "https://api.agentsfleet.net";
 
     interface MatrixCase {
       set: { flag: 0 | 1; zenv: 0 | 1; aenv: 0 | 1; creds: 0 | 1 };
@@ -183,12 +183,12 @@ describe("api url resolution drives every fetch from runCli", () => {
       { set: { flag: 1, zenv: 0, aenv: 1, creds: 0 }, expected: FLAG },
       { set: { flag: 1, zenv: 0, aenv: 0, creds: 1 }, expected: FLAG },
       { set: { flag: 1, zenv: 0, aenv: 0, creds: 0 }, expected: FLAG },
-      // Flag unset, ZOMBIE_API_URL set → ZOMBIE_API_URL wins over API_URL / creds / default.
+      // Flag unset, AGENTSFLEET_API_URL set → AGENTSFLEET_API_URL wins over API_URL / creds / default.
       { set: { flag: 0, zenv: 1, aenv: 1, creds: 1 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 1, creds: 0 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 0, creds: 1 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 0, creds: 0 }, expected: ZENV },
-      // Flag + ZOMBIE_API_URL unset, API_URL set → API_URL wins over creds / default.
+      // Flag + AGENTSFLEET_API_URL unset, API_URL set → API_URL wins over creds / default.
       { set: { flag: 0, zenv: 0, aenv: 1, creds: 1 }, expected: AENV },
       { set: { flag: 0, zenv: 0, aenv: 1, creds: 0 }, expected: AENV },
       // Only creds set → creds.api_url wins over default. (This is the leg
@@ -212,7 +212,7 @@ describe("api url resolution drives every fetch from runCli", () => {
             api_url: c.set.creds === 1 ? CREDS : null,
           });
           const env: NodeJS.ProcessEnv = {};
-          if (c.set.zenv === 1) env.ZOMBIE_API_URL = ZENV;
+          if (c.set.zenv === 1) env.AGENTSFLEET_API_URL = ZENV;
           if (c.set.aenv === 1) env.API_URL = AENV;
           const argv = c.set.flag === 1 ? ["--api", FLAG, "doctor"] : ["doctor"];
 
@@ -244,13 +244,13 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         [
-          "--api", "https://api.usezombie.com//",
+          "--api", "https://api.agentsfleet.net//",
           "login", "--no-open", "--no-input",
         ],
         { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(130);
-      expect(calls[0]?.url).toBe("https://api.usezombie.com/v1/auth/sessions");
+      expect(calls[0]?.url).toBe("https://api.agentsfleet.net/v1/auth/sessions");
     });
   });
 });

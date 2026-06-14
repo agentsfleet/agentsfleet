@@ -6,8 +6,8 @@ import path from "node:path";
 import { stateInternals } from "../src/lib/state.ts";
 
 test("resolveStatePaths defaults to XDG-style agentsfleet config directory", () => {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  delete process.env.ZOMBIE_STATE_DIR;
+  const previous = process.env.AGENTSFLEET_STATE_DIR;
+  delete process.env.AGENTSFLEET_STATE_DIR;
   try {
     const paths = stateInternals.resolveStatePaths();
     const expectedBase = path.join(os.homedir(), ".config", "agentsfleet");
@@ -15,20 +15,20 @@ test("resolveStatePaths defaults to XDG-style agentsfleet config directory", () 
     assert.equal(paths.credentialsPath, path.join(expectedBase, "credentials.json"));
     assert.equal(paths.workspacesPath, path.join(expectedBase, "workspaces.json"));
   } finally {
-    if (previous !== undefined) process.env.ZOMBIE_STATE_DIR = previous;
+    if (previous !== undefined) process.env.AGENTSFLEET_STATE_DIR = previous;
   }
 });
 
-test("resolveStatePaths honors ZOMBIE_STATE_DIR override", () => {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  process.env.ZOMBIE_STATE_DIR = "/tmp/agentsfleet-state-test";
+test("resolveStatePaths honors AGENTSFLEET_STATE_DIR override", () => {
+  const previous = process.env.AGENTSFLEET_STATE_DIR;
+  process.env.AGENTSFLEET_STATE_DIR = "/tmp/agentsfleet-state-test";
   try {
     const paths = stateInternals.resolveStatePaths();
     assert.equal(paths.baseDir, "/tmp/agentsfleet-state-test");
     assert.equal(paths.credentialsPath, "/tmp/agentsfleet-state-test/credentials.json");
     assert.equal(paths.workspacesPath, "/tmp/agentsfleet-state-test/workspaces.json");
   } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = previous;
   }
 });

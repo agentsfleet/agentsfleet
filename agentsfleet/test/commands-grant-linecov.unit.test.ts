@@ -21,7 +21,7 @@ import { Output, type OutputShape } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
-const ZOMBIE_ID = "01900000-0000-7000-8000-0000007670f7";
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000007670f7";
 const BEARER = "pat_grant_test";
 const NO_GRANTS_LINE = "no integration grants found";
 
@@ -122,7 +122,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
       items: [{ grant_id: "g1", service: "github", status: "approved" }],
     };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(undefined, ZOMBIE_ID), {
+      provideAll(grantListEffectFromArgs(undefined, AGENTSFLEET_ID), {
         config: configLayer({ jsonMode: true }),
         http: httpReturning(body),
         output: captureOutputLayer(cap),
@@ -138,7 +138,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("empty grant list (no jsonMode) emits the no-grants info line", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(ZOMBIE_ID, undefined), {
+      provideAll(grantListEffectFromArgs(AGENTSFLEET_ID, undefined), {
         config: configLayer({ jsonMode: false }),
         http: httpReturning({ items: [] }),
         output: captureOutputLayer(cap),
@@ -153,7 +153,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("missing items field is treated as an empty list", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(ZOMBIE_ID, undefined), {
+      provideAll(grantListEffectFromArgs(AGENTSFLEET_ID, undefined), {
         config: configLayer({ jsonMode: false }),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
@@ -168,7 +168,7 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
   test("a malformed zombie id fails with ValidationError carrying the uuidv7 hint", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantDeleteEffectFromArgs("not-a-uuid", ZOMBIE_ID), {
+      provideAll(grantDeleteEffectFromArgs("not-a-uuid", AGENTSFLEET_ID), {
         config: configLayer(),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
@@ -187,7 +187,7 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
   test("a valid zombie id but malformed grant id also fails validation", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantDeleteEffectFromArgs(ZOMBIE_ID, "bad-grant"), {
+      provideAll(grantDeleteEffectFromArgs(AGENTSFLEET_ID, "bad-grant"), {
         config: configLayer(),
         http: httpReturning({}),
         output: captureOutputLayer(cap),

@@ -1,6 +1,6 @@
 // Credentials service tests — exercise getAccessToken / getSavedAt /
 // getSessionId / getApiUrl / saveAccessToken / clearAccessToken
-// against a tempdir-backed state store. ZOMBIE_STATE_DIR is set per
+// against a tempdir-backed state store. AGENTSFLEET_STATE_DIR is set per
 // test so concurrent runs don't share files.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -16,13 +16,13 @@ let originalStateDir: string | undefined;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "agentsfleet-creds-test-"));
-  originalStateDir = process.env.ZOMBIE_STATE_DIR;
-  process.env.ZOMBIE_STATE_DIR = tempDir;
+  originalStateDir = process.env.AGENTSFLEET_STATE_DIR;
+  process.env.AGENTSFLEET_STATE_DIR = tempDir;
 });
 
 afterEach(() => {
-  if (originalStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-  else process.env.ZOMBIE_STATE_DIR = originalStateDir;
+  if (originalStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+  else process.env.AGENTSFLEET_STATE_DIR = originalStateDir;
   rmSync(tempDir, { recursive: true, force: true });
 });
 

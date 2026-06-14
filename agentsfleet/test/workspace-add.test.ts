@@ -22,14 +22,14 @@ function bufferStream(): { stream: Writable; read: () => string } {
 }
 
 async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
-  const old = process.env.ZOMBIE_STATE_DIR;
+  const old = process.env.AGENTSFLEET_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-state-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     return await fn(dir);
   } finally {
-    if (old === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = old;
+    if (old === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = old;
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
@@ -56,7 +56,7 @@ test("workspace add does not persist local state when API create fails", async (
     });
 
     const code = await runCli(["workspace", "add", "acme-prod"], {
-      env: { ...process.env, ZOMBIE_API_URL: apiOrigin, ZOMBIE_TOKEN: "header.payload.sig", BROWSER: "false" },
+      env: { ...process.env, AGENTSFLEET_API_URL: apiOrigin, AGENTSFLEET_TOKEN: "header.payload.sig", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -90,7 +90,7 @@ test("workspace add persists backend workspace_id in json mode", async () => {
     }));
 
     const code = await runCli(["--json", "workspace", "add"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,

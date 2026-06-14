@@ -1,7 +1,7 @@
 // telemetryRuntimeLayer coverage. usezombie's runtime layer reads
 // process.env / process.stdout.isTTY / os directly — there is no
-// CliConfig service to mock. Tests stub env (ZOMBIE_TELEMETRY_DISABLED,
-// DO_NOT_TRACK, ZOMBIE_TELEMETRY_DEBUG, CI, ZOMBIE_STATE_DIR) plus
+// CliConfig service to mock. Tests stub env (AGENTSFLEET_TELEMETRY_DISABLED,
+// DO_NOT_TRACK, AGENTSFLEET_TELEMETRY_DEBUG, CI, AGENTSFLEET_STATE_DIR) plus
 // process.stdout.isTTY for each case and clean up in afterEach.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -13,10 +13,10 @@ import { telemetryRuntimeLayer } from "../../src/services/telemetry/runtime.laye
 import { TelemetryRuntime } from "../../src/services/telemetry/runtime.service.ts";
 
 const ENV_KEYS = [
-  "ZOMBIE_TELEMETRY_DISABLED",
+  "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
-  "ZOMBIE_TELEMETRY_DEBUG",
-  "ZOMBIE_STATE_DIR",
+  "AGENTSFLEET_TELEMETRY_DEBUG",
+  "AGENTSFLEET_STATE_DIR",
   "CI",
   "GITHUB_ACTIONS",
   "GITLAB_CI",
@@ -61,7 +61,7 @@ async function buildRuntime() {
 describe("telemetryRuntimeLayer", () => {
   it("grants + bootstraps telemetry.json on first run (opt-OUT default, supabase parity)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -75,10 +75,10 @@ describe("telemetryRuntimeLayer", () => {
     }
   });
 
-  it("denies when ZOMBIE_TELEMETRY_DISABLED=1 (env clean otherwise)", async () => {
+  it("denies when AGENTSFLEET_TELEMETRY_DISABLED=1 (env clean otherwise)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -90,7 +90,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("denies when DO_NOT_TRACK=1 (env wins over telemetry.json granted)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     process.env.DO_NOT_TRACK = "1";
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -113,7 +113,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("marks the first granted invocation as isFirstRun=true", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -126,7 +126,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("emits the first-run notice on stderr when granted + TTY", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     setTty(true);
     const chunks: string[] = [];
     const original = process.stderr.write.bind(process.stderr);
@@ -146,7 +146,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("populates os / arch / cliVersion / tracesDir / configDir", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -163,7 +163,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("detects CI via the CI env var", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     process.env.CI = "true";
     setTty(false);
     try {
@@ -176,7 +176,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("detects CI via GITHUB_ACTIONS env var", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     process.env.GITHUB_ACTIONS = "1";
     setTty(false);
     try {
@@ -189,7 +189,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("isCi=false when no CI variable is set", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -199,10 +199,10 @@ describe("telemetryRuntimeLayer", () => {
     }
   });
 
-  it("respects ZOMBIE_TELEMETRY_DEBUG=1 (showDebug=true)", async () => {
+  it("respects AGENTSFLEET_TELEMETRY_DEBUG=1 (showDebug=true)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DEBUG = "1";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DEBUG = "1";
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -212,10 +212,10 @@ describe("telemetryRuntimeLayer", () => {
     }
   });
 
-  it("respects ZOMBIE_TELEMETRY_DEBUG=true (showDebug=true)", async () => {
+  it("respects AGENTSFLEET_TELEMETRY_DEBUG=true (showDebug=true)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DEBUG = "true";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DEBUG = "true";
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -225,10 +225,10 @@ describe("telemetryRuntimeLayer", () => {
     }
   });
 
-  it("showDebug=false when ZOMBIE_TELEMETRY_DEBUG is not '1' or 'true'", async () => {
+  it("showDebug=false when AGENTSFLEET_TELEMETRY_DEBUG is not '1' or 'true'", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DEBUG = "yes";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DEBUG = "yes";
     setTty(false);
     try {
       const rt = await buildRuntime();
@@ -240,7 +240,7 @@ describe("telemetryRuntimeLayer", () => {
 
   it("surfaces persisted distinctId when telemetry.json carries one", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       path.join(dir, "telemetry.json"),

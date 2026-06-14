@@ -25,7 +25,7 @@ describe("zombie id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["stop", "not-a-uuid"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("zombie_id");
@@ -41,7 +41,7 @@ describe("zombie id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["resume", "bad-id-string"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("zombie_id");
@@ -57,7 +57,7 @@ describe("zombie id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["kill", "12345-not-valid"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(calls).toHaveLength(0);
@@ -72,7 +72,7 @@ describe("zombie id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["delete", "garbage-id"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(calls).toHaveLength(0);

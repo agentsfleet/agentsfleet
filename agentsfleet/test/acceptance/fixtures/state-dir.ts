@@ -1,5 +1,5 @@
 /**
- * Stubbed `ZOMBIE_STATE_DIR` for tests that need the CLI's auth-guard
+ * Stubbed `AGENTSFLEET_STATE_DIR` for tests that need the CLI's auth-guard
  * and workspace-context layers to pass WITHOUT hitting a real API.
  *
  * The token is a syntactically-valid 3-segment string; the workspace is
@@ -10,7 +10,7 @@
  *   - unknown-subcommand sweep: needs to reach the per-group dispatcher,
  *     which is guarded by auth + workspace-context resolution. The
  *     dispatcher's "unknown action" branch fires BEFORE any fetch, so
- *     `ZOMBIE_API_URL=http://127.0.0.1:1` plus this stub yields the
+ *     `AGENTSFLEET_API_URL=http://127.0.0.1:1` plus this stub yields the
  *     expected stem without touching the network.
  */
 

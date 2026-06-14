@@ -41,7 +41,7 @@ function resolveBinary(opts) {
   if (requested === ACCEPTANCE_BINARY.worktree) {
     return { command: "node", prefixArgs: [WORKTREE_ENTRY] };
   }
-  throw new Error(`unknown ZOMBIE_ACCEPTANCE_BINARY: ${requested}`);
+  throw new Error(`unknown AGENTSFLEET_ACCEPTANCE_BINARY: ${requested}`);
 }
 
 function assertEnvComposed(env) {
@@ -132,7 +132,7 @@ export function spawnZombiectl(args, opts) {
 /**
  * Compose a child env from a known-allowlist of fixture-supplied vars.
  * Never reads `process.env` for fields the caller did not list — keeps
- * the parent's `ZOMBIE_TOKEN` (if any) out of every spawn unless the
+ * the parent's `AGENTSFLEET_TOKEN` (if any) out of every spawn unless the
  * caller asks for it explicitly.
  */
 export function composeEnv(fields) {
@@ -143,7 +143,7 @@ export function composeEnv(fields) {
     // PostHog over the network and hangs ~5s when the runner is offline.
     // Default every spawn to telemetry-off so the suite is hermetic under
     // any runner; a caller may still override by listing the key in fields.
-    ZOMBIE_TELEMETRY_DISABLED: "1",
+    AGENTSFLEET_TELEMETRY_DISABLED: "1",
   };
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;

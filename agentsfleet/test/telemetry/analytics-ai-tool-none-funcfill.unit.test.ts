@@ -55,10 +55,10 @@ const { cliConfigLayer } = await import("../../src/services/config.ts");
 const { Effect, Layer } = await import("effect");
 
 const ENV_KEYS = [
-  "ZOMBIE_TELEMETRY_POSTHOG_KEY",
-  "ZOMBIE_TELEMETRY_POSTHOG_HOST",
-  "ZOMBIE_STATE_DIR",
-  "ZOMBIE_TELEMETRY_DISABLED",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
+  "AGENTSFLEET_STATE_DIR",
+  "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
   "CI",
   "GITHUB_ACTIONS",
@@ -75,7 +75,7 @@ beforeEach(() => {
   for (const k of ENV_KEYS) delete process.env[k];
   captured.length = 0;
   tmpDir = mkdtempSync(pathMod.join(tmpdir(), "agentsfleet-aitool-none-"));
-  process.env.ZOMBIE_STATE_DIR = tmpDir;
+  process.env.AGENTSFLEET_STATE_DIR = tmpDir;
 });
 
 afterEach(() => {

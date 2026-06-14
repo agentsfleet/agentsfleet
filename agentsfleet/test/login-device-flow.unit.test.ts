@@ -126,18 +126,18 @@ describe("defaultTokenName", () => {
 
 describe("buildLoginUrl", () => {
   test("appends /cli-auth/{session_id} to the dashboard URL", () => {
-    expect(buildLoginUrl("https://app.usezombie.com", "sess_123")).toBe(
-      "https://app.usezombie.com/cli-auth/sess_123",
+    expect(buildLoginUrl("https://app.agentsfleet.net", "sess_123")).toBe(
+      "https://app.agentsfleet.net/cli-auth/sess_123",
     );
   });
   test("strips a trailing slash on the dashboard URL", () => {
-    expect(buildLoginUrl("https://app.usezombie.com/", "abc")).toBe(
-      "https://app.usezombie.com/cli-auth/abc",
+    expect(buildLoginUrl("https://app.agentsfleet.net/", "abc")).toBe(
+      "https://app.agentsfleet.net/cli-auth/abc",
     );
   });
   test("URL-encodes the session_id (defense-in-depth even though UUIDv7s don't need it)", () => {
-    expect(buildLoginUrl("https://app.usezombie.com", "a/b?c")).toBe(
-      "https://app.usezombie.com/cli-auth/a%2Fb%3Fc",
+    expect(buildLoginUrl("https://app.agentsfleet.net", "a/b?c")).toBe(
+      "https://app.agentsfleet.net/cli-auth/a%2Fb%3Fc",
     );
   });
 });

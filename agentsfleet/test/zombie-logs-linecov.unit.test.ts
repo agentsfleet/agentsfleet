@@ -18,8 +18,8 @@ import { ValidationError, type CliError } from "../src/errors/index.ts";
 
 // A real uuidv7 (version nibble = 7) so validateRequiredId returns ok and the
 // happy path proceeds; the invalid case below uses a deliberately malformed id.
-const VALID_ZOMBIE_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
-const INVALID_ZOMBIE_ID = "not-a-uuid";
+const VALID_AGENTSFLEET_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
+const INVALID_AGENTSFLEET_ID = "not-a-uuid";
 const WORKSPACE_ID = "ws_linecov";
 const CURSOR_TOKEN = "cur_abc123";
 const STORED_TOKEN = "tok_stored";
@@ -129,7 +129,7 @@ describe("logsEffectFromFlags — id validation guard", () => {
     const httpSpy: HttpSpy = { requestedPath: null };
     const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
     const exit = await runWith(
-      logsEffectFromFlags({ zombieId: INVALID_ZOMBIE_ID }),
+      logsEffectFromFlags({ zombieId: INVALID_AGENTSFLEET_ID }),
       {
         config: configLayer(false),
         output: outputLayer(outSpy),
@@ -159,7 +159,7 @@ describe("logsEffectFromFlags — JSON mode", () => {
       next_cursor: "next_xyz",
     };
     const exit = await runWith(
-      logsEffectFromFlags({ zombieId: VALID_ZOMBIE_ID }),
+      logsEffectFromFlags({ zombieId: VALID_AGENTSFLEET_ID }),
       {
         config: configLayer(true),
         output: outputLayer(outSpy),
@@ -180,7 +180,7 @@ describe("logsEffectFromFlags — cursor pagination", () => {
     const httpSpy: HttpSpy = { requestedPath: null };
     const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
     const exit = await runWith(
-      logsEffectFromFlags({ zombieId: VALID_ZOMBIE_ID, cursor: CURSOR_TOKEN }),
+      logsEffectFromFlags({ zombieId: VALID_AGENTSFLEET_ID, cursor: CURSOR_TOKEN }),
       {
         config: configLayer(false),
         output: outputLayer(outSpy),
@@ -188,7 +188,7 @@ describe("logsEffectFromFlags — cursor pagination", () => {
       },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    const base = wsZombieEventsPath(WORKSPACE_ID, VALID_ZOMBIE_ID);
+    const base = wsZombieEventsPath(WORKSPACE_ID, VALID_AGENTSFLEET_ID);
     expect(httpSpy.requestedPath).not.toBeNull();
     expect(httpSpy.requestedPath).toStartWith(`${base}?`);
     expect(httpSpy.requestedPath).toContain(`cursor=${CURSOR_TOKEN}`);
@@ -199,7 +199,7 @@ describe("logsEffectFromFlags — cursor pagination", () => {
     const httpSpy: HttpSpy = { requestedPath: null };
     const outSpy: OutputSpy = { jsonPayloads: [], infoLines: [] };
     const exit = await runWith(
-      logsEffectFromFlags({ zombieId: VALID_ZOMBIE_ID }),
+      logsEffectFromFlags({ zombieId: VALID_AGENTSFLEET_ID }),
       {
         config: configLayer(false),
         output: outputLayer(outSpy),

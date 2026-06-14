@@ -65,13 +65,13 @@ export async function installZombie(
 // Every zombie status the API can return. Source of truth — every consumer
 // that switches/compares against a status value reads from this const. Mirrors
 // the backend `ZombieStatus` enum in src/zombie/config_types.zig.
-export const ZOMBIE_STATUS = {
+export const AGENTSFLEET_STATUS = {
   ACTIVE: "active",
   PAUSED: "paused",
   STOPPED: "stopped",
   KILLED: "killed",
 } as const;
-export type ZombieStatus = typeof ZOMBIE_STATUS[keyof typeof ZOMBIE_STATUS];
+export type ZombieStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
 
 // Subset PATCH /v1/workspaces/{ws}/zombies/{id} accepts. `paused` is a gate-set
 // state — the API never lets callers transition to it. Throws ApiError

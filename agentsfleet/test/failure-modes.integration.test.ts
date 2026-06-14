@@ -28,7 +28,7 @@ import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-c
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1";
-const ZOMBIE_ID = "01900000-0000-7000-8000-000000fa17e2";
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-000000fa17e2";
 // Interactive-terminal stdin so `login` runs the device flow (where the
 // auth-service 503 is surfaced) rather than the non-TTY direct-token resolve.
 const ttyStdin = { isTTY: true } as unknown as NodeJS.ReadableStream;
@@ -55,7 +55,7 @@ describe("failure modes — login surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["login", "--no-open", "--no-input"],
-          { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(1);
         const text = err.read();
@@ -81,7 +81,7 @@ describe("failure modes — workspace surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(["workspace", "add", "my-repo"], {
-          stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl },
+          stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl },
         });
         // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
         // The pre-Effect path collapsed every API failure to exit 1.
@@ -104,7 +104,7 @@ describe("failure modes — install surface (local + server)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install", "--from", "/definitely/does/not/exist/zombie-template"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: SkillLoadError is rewrapped as
         // ConfigError → exit 5. The pre-Effect path returned 1 via
@@ -125,7 +125,7 @@ describe("failure modes — install surface (local + server)", () => {
           const err = bufferStream();
           const code = await runCli(
             ["install", "--from", tmpDir],
-            { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           // Effect-shape contract: SkillLoadError → ConfigError → exit 5.
           expect(code).toBe(5);
@@ -155,7 +155,7 @@ describe("failure modes — install surface (local + server)", () => {
           const err = bufferStream();
           const code = await runCli(
             ["install", "--from", tmpDir],
-            { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
           // The pre-Effect path collapsed every API failure to exit 1.
@@ -183,14 +183,14 @@ describe("failure modes — runtime / observability surface", () => {
         const routes: MockRoutes = {
           // Step 1: install returns 201 — the server side is happy.
           [`POST /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(201, {
-            zombie_id: ZOMBIE_ID,
+            zombie_id: AGENTSFLEET_ID,
             name: "runner-test",
             status: "running",
           }),
           // Step 2: events show the worker died after the fact. The user
           // discovers the failure only by tailing logs — the install
           // command itself returned success.
-          [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
+          [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
             () => jsonResponse(200, {
               items: [
                 {
@@ -211,7 +211,7 @@ describe("failure modes — runtime / observability surface", () => {
           const installCode = await runCli(
             ["install", "--from", tmpDir],
             { stdout: installOut.stream, stderr: installErr.stream,
-              env: { ZOMBIE_API_URL: apiUrl } },
+              env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(installCode).toBe(0);
 
@@ -219,9 +219,9 @@ describe("failure modes — runtime / observability surface", () => {
           const logsOut = bufferStream();
           const logsErr = bufferStream();
           const logsCode = await runCli(
-            ["logs", ZOMBIE_ID],
+            ["logs", AGENTSFLEET_ID],
             { stdout: logsOut.stream, stderr: logsErr.stream,
-              env: { ZOMBIE_API_URL: apiUrl } },
+              env: { AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(logsCode).toBe(0);
           const logsText = logsOut.read();
@@ -247,7 +247,7 @@ describe("failure modes — runtime / observability surface", () => {
   test("logs fetched with an expired token returns UZ-AUTH-003 / 401 — user knows to re-login", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(401,
             errorEnvelope("UZ-AUTH-003", "Token expired — run `agentsfleet login` to refresh")),
       };
@@ -255,8 +255,8 @@ describe("failure modes — runtime / observability surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["logs", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: HTTP 401 → ServerError → exit 3.
         // The user-visible message still carries UZ-AUTH-003 + the
@@ -290,7 +290,7 @@ describe("failure modes — infra / server-down surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["doctor"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(1);
         const text = out.read();

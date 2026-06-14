@@ -1,8 +1,8 @@
 // analyticsLayer — PostHog product-analytics implementation.
 //
 // Owns: PostHog client construction (key/host read from CliConfig,
-// itself resolved from env ZOMBIE_TELEMETRY_POSTHOG_KEY /
-// ZOMBIE_TELEMETRY_POSTHOG_HOST at layer construction), consent
+// itself resolved from env AGENTSFLEET_TELEMETRY_POSTHOG_KEY /
+// AGENTSFLEET_TELEMETRY_POSTHOG_HOST at layer construction), consent
 // gating (no-op when denied), base property merging,
 // CurrentAnalyticsContext merging on every capture, and shutdown via
 // Effect.addFinalizer (Scoped layer). The single owner of
