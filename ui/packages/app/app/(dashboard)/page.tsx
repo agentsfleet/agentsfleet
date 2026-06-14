@@ -77,7 +77,7 @@ function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
         title="Install your first agent"
         command="agentsfleet install --from ./platform-ops"
         actions={[
-          { label: "Read the docs", to: "https://docs.usezombie.com/quickstart", variant: "default", external: true },
+          { label: "Read the docs", to: "https://docs.agentsfleet.net/quickstart", variant: "default", external: true },
           { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },
         ]}
       />

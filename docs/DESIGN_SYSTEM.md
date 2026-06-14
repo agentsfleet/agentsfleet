@@ -1,7 +1,7 @@
 # Design System — Operational Restraint
 
 **Version:** 0.1 · 2026-05-08
-**Source of truth.** All visual, typographic, and motion decisions in `ui/packages/website`, `ui/packages/app`, `ui/packages/design-system`, `docs.usezombie.com`, and `agentsfleet` output read from this document. Do not deviate without explicit user approval and a corresponding update here.
+**Source of truth.** All visual, typographic, and motion decisions in `ui/packages/website`, `ui/packages/app`, `ui/packages/design-system`, `docs.agentsfleet.net`, and `agentsfleet` output read from this document. Do not deviate without explicit user approval and a corresponding update here.
 
 ---
 
@@ -20,7 +20,7 @@
   - `ui/packages/website` — marketing site (`usezombie.com`)
   - `ui/packages/app` — authenticated product UI (`app.usezombie.com`)
   - `ui/packages/design-system` — shared React component library
-  - `docs.usezombie.com` — long-form technical documentation
+  - `docs.agentsfleet.net` — long-form technical documentation
   - `agentsfleet` — CLI output (rendered in 256-color terminals)
 
 ---
@@ -258,7 +258,7 @@ This document is the spec. Implementation is a separate milestone. Suggested wor
 1. **W1 — `ui/packages/design-system`:** rewrite `tokens.css`, `theme.css`. Swap `@fontsource-variable/geist` for Commit Mono (self-host) + Instrument Sans (Google Fonts or self-host). Update every component (Button, Badge, Card, Input, etc.) to read new tokens. Add `<WakePulse />` primitive for the signature animation.
 2. **W2 — `ui/packages/website`:** apply new tokens, replace any Geist references, rebuild marketing hero with the new typography scale, add the dot-grid hero background.
 3. **W3 — `ui/packages/app`:** apply new tokens, audit every page against the dashboard mockup, ensure `<WakePulse />` only fires on actually-live zombies (data-driven, not decorative).
-4. **W4 — `docs.usezombie.com`:** apply new typography stack, single-column layout, ~68ch measure.
+4. **W4 — `docs.agentsfleet.net`:** apply new typography stack, single-column layout, ~68ch measure.
 5. **W5 — `agentsfleet`:** add 256-color terminal mode (detect via `tput colors`), implement status glyphs, audit every output line for the new palette mapping.
 6. **W6 — Wire-up:** add a `docs/DESIGN_SYSTEM.md` row to the EXECUTE doc-reads table in `AGENTS.md` (triggers: `*.tsx`, `*.css`, files under `ui/packages/**`, `agentsfleet/src/**` when touching output formatting). Triggers the Invariance Suite Gate — handle as its own commit.
 

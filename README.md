@@ -2,8 +2,8 @@
 
 # Your deploy failed. The agent already knows why.
 
-[![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
-[![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.usezombie.com)
+[![CI](https://github.com/agentsfleet/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agentsfleet/usezombie/actions/workflows/test.yml?query=branch%3Amain)
+[![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
@@ -25,7 +25,7 @@ bun install -g agentsfleet
 agentsfleet login
 ```
 
-Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — free to try, no card, under five minutes.
+Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart)** — free to try, no card, under five minutes.
 
 ---
 
@@ -48,7 +48,7 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 **Prerequisites:** [Zig 0.15.2](https://ziglang.org/download/) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
-git clone https://github.com/usezombie/usezombie.git
+git clone https://github.com/agentsfleet/usezombie.git
 cd usezombie
 
 # Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
@@ -77,9 +77,9 @@ Bootstrap steps and coding conventions live in [`playbooks/`](playbooks/) and [`
 
 | Repo | What |
 |---|---|
-| [usezombie/usezombie](https://github.com/usezombie/usezombie) | Control plane + runner + CLI (this repo) |
-| [usezombie/docs](https://github.com/usezombie/docs) | User docs ([docs.usezombie.com](https://docs.usezombie.com)) |
-| [usezombie/skills](https://github.com/usezombie/skills) | Agent skill libraries |
-| [usezombie/posthog-zig](https://github.com/usezombie/posthog-zig) | PostHog SDK for Zig |
+| [agentsfleet/usezombie](https://github.com/agentsfleet/usezombie) | Control plane + runner + CLI (this repo) |
+| [agentsfleet/docs](https://github.com/agentsfleet/docs) | User docs ([docs.agentsfleet.net](https://docs.agentsfleet.net)) |
+| [agentsfleet/skills](https://github.com/agentsfleet/skills) | Agent skill libraries |
+| [agentsfleet/posthog-zig](https://github.com/agentsfleet/posthog-zig) | PostHog SDK for Zig |
 
 MIT — Copyright (c) 2026 agentsfleet.

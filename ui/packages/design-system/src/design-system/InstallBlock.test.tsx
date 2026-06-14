@@ -6,8 +6,8 @@ const defaultProps = {
   title: "Install Zombiectl",
   command: "curl -fsSL https://usezombie.sh | bash",
   actions: [
-    { label: "Install now", to: "https://docs.usezombie.com/quickstart" },
-    { label: "Read the docs", to: "https://docs.usezombie.com", variant: "ghost" as const },
+    { label: "Install now", to: "https://docs.agentsfleet.net/quickstart" },
+    { label: "Read the docs", to: "https://docs.agentsfleet.net", variant: "ghost" as const },
     { label: "Setup dashboard", to: "https://app.usezombie.com", variant: "double-border" as const },
   ],
 };
