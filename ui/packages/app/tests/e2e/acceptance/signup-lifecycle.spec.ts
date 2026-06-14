@@ -43,7 +43,7 @@ function uniqueName(): string {
   return `lifecycle-${crypto.randomBytes(4).toString("hex")}`;
 }
 
-const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombie.com");
+const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
 test.describe("signup → install → lifecycle", () => {
   test.skip(isProdApi, "Scenario 1 only runs against DEV/local — Clerk test mode is DEV-only");

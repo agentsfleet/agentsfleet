@@ -38,7 +38,7 @@ test("newIdempotencyKey returns a 24-char hex string", () => {
 
 test("save/load/clear Credentials roundtrip writes mode 0600 and clears to nulls", async () => {
   const dir = tmpDir();
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     await saveCredentials({ token: "tok_abc", saved_at: 1, session_id: "sess", api_url: "https://api.example" });
     const after = await loadCredentials();
@@ -50,33 +50,33 @@ test("save/load/clear Credentials roundtrip writes mode 0600 and clears to nulls
     expect(cleared.token).toBeNull();
     expect(cleared.saved_at).toEqual(expect.any(Number));
   } finally {
-    delete process.env.ZOMBIE_STATE_DIR;
+    delete process.env.AGENTSFLEET_STATE_DIR;
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("save/load Workspaces roundtrip persists current_workspace_id + items[]", async () => {
   const dir = tmpDir();
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     await saveWorkspaces({ current_workspace_id: "ws_1", items: [{ workspace_id: "ws_1", name: "main", created_at: null }] });
     const after = await loadWorkspaces();
     expect(after.current_workspace_id).toBe("ws_1");
     expect(after.items).toHaveLength(1);
   } finally {
-    delete process.env.ZOMBIE_STATE_DIR;
+    delete process.env.AGENTSFLEET_STATE_DIR;
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("loadCredentials returns the default shape when no file exists", async () => {
   const dir = tmpDir();
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     const c = await loadCredentials();
     expect(c).toEqual({ token: null, saved_at: null, session_id: null, api_url: null });
   } finally {
-    delete process.env.ZOMBIE_STATE_DIR;
+    delete process.env.AGENTSFLEET_STATE_DIR;
   }
 });
 

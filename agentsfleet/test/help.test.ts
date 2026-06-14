@@ -22,13 +22,13 @@ async function withIsolatedStateDir<T>(
   run: (stateDir: string) => Promise<T>,
 ): Promise<T> {
   const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-help-"));
-  const previousStateDir = process.env.ZOMBIE_STATE_DIR;
-  process.env.ZOMBIE_STATE_DIR = stateDir;
+  const previousStateDir = process.env.AGENTSFLEET_STATE_DIR;
+  process.env.AGENTSFLEET_STATE_DIR = stateDir;
   try {
     return await run(stateDir);
   } finally {
-    if (previousStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previousStateDir;
+    if (previousStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = previousStateDir;
     await fs.rm(stateDir, { recursive: true, force: true });
   }
 }
@@ -68,9 +68,9 @@ describe("help output", () => {
       env: { ...process.env, NO_COLOR: "1" },
     });
     const output = out.read();
-    expect(output).toContain("ZOMBIE_API_URL");
-    expect(output).toContain("ZOMBIE_TOKEN");
-    expect(output).toContain("ZOMBIE_API_KEY");
+    expect(output).toContain("AGENTSFLEET_API_URL");
+    expect(output).toContain("AGENTSFLEET_TOKEN");
+    expect(output).toContain("AGENTSFLEET_API_KEY");
     expect(output).toContain("NO_COLOR");
   });
 

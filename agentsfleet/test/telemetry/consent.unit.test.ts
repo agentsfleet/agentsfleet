@@ -1,11 +1,11 @@
 // Consent + telemetry.json read/write coverage. Adapted from the
 // Supabase consent.unit.test.ts — usezombie's getEffectiveConsent is
 // a sync function reading process.env directly (no CliConfig service),
-// so the tests stub env via process.env.ZOMBIE_TELEMETRY_DISABLED /
+// so the tests stub env via process.env.AGENTSFLEET_TELEMETRY_DISABLED /
 // DO_NOT_TRACK and clean up in afterEach.
 //
 // Default is opt-OUT (granted) per supabase parity: only
-// ZOMBIE_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 flips to denied.
+// AGENTSFLEET_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 flips to denied.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Effect } from "effect";
@@ -33,7 +33,7 @@ function makeTempDir(): string {
   return mkdtempSync(path.join(tmpdir(), "agentsfleet-consent-test-"));
 }
 
-const ENV_KEYS = ["ZOMBIE_TELEMETRY_DISABLED", "DO_NOT_TRACK", "ZOMBIE_STATE_DIR"] as const;
+const ENV_KEYS = ["AGENTSFLEET_TELEMETRY_DISABLED", "DO_NOT_TRACK", "AGENTSFLEET_STATE_DIR"] as const;
 const saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -53,19 +53,19 @@ describe("getEffectiveConsent", () => {
     expect(getEffectiveConsent(makeConfig("granted"))).toBe("granted");
   });
 
-  it("returns denied when ZOMBIE_TELEMETRY_DISABLED=1", () => {
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+  it("returns denied when AGENTSFLEET_TELEMETRY_DISABLED=1", () => {
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
     expect(getEffectiveConsent(makeConfig("granted"))).toBe("denied");
   });
 
-  it("treats ZOMBIE_TELEMETRY_DISABLED=true as not '1' (still granted)", () => {
+  it("treats AGENTSFLEET_TELEMETRY_DISABLED=true as not '1' (still granted)", () => {
     // Mirrors supabase: only the literal string "1" opts out.
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "true";
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "true";
     expect(getEffectiveConsent(makeConfig("granted"))).toBe("granted");
   });
 
-  it("treats ZOMBIE_TELEMETRY_DISABLED=0 as not '1' (still granted)", () => {
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "0";
+  it("treats AGENTSFLEET_TELEMETRY_DISABLED=0 as not '1' (still granted)", () => {
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "0";
     expect(getEffectiveConsent(makeConfig("granted"))).toBe("granted");
   });
 
@@ -79,8 +79,8 @@ describe("getEffectiveConsent", () => {
     expect(getEffectiveConsent(null)).toBe("denied");
   });
 
-  it("ZOMBIE_TELEMETRY_DISABLED=1 beats DO_NOT_TRACK=1 (both flag denied)", () => {
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+  it("AGENTSFLEET_TELEMETRY_DISABLED=1 beats DO_NOT_TRACK=1 (both flag denied)", () => {
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
     process.env.DO_NOT_TRACK = "1";
     expect(getEffectiveConsent(makeConfig("granted"))).toBe("denied");
   });
@@ -104,12 +104,12 @@ describe("getEffectiveConsent", () => {
       getEffectiveConsent(makeConfig("granted"), { DO_NOT_TRACK: "1" }),
     ).toBe("denied");
     expect(
-      getEffectiveConsent(makeConfig("granted"), { ZOMBIE_TELEMETRY_DISABLED: "1" }),
+      getEffectiveConsent(makeConfig("granted"), { AGENTSFLEET_TELEMETRY_DISABLED: "1" }),
     ).toBe("denied");
   });
 
-  it("treats empty string ZOMBIE_TELEMETRY_DISABLED as unset (granted default)", () => {
-    expect(getEffectiveConsent(makeConfig("granted"), { ZOMBIE_TELEMETRY_DISABLED: "" })).toBe(
+  it("treats empty string AGENTSFLEET_TELEMETRY_DISABLED as unset (granted default)", () => {
+    expect(getEffectiveConsent(makeConfig("granted"), { AGENTSFLEET_TELEMETRY_DISABLED: "" })).toBe(
       "granted",
     );
   });
@@ -122,8 +122,8 @@ describe("getEffectiveConsent", () => {
 });
 
 describe("getConfigDir", () => {
-  it("respects ZOMBIE_STATE_DIR when set", async () => {
-    process.env.ZOMBIE_STATE_DIR = "/tmp/agentsfleet-cd-test";
+  it("respects AGENTSFLEET_STATE_DIR when set", async () => {
+    process.env.AGENTSFLEET_STATE_DIR = "/tmp/agentsfleet-cd-test";
     const dir = await Effect.runPromise(getConfigDir);
     expect(dir).toBe("/tmp/agentsfleet-cd-test");
   });

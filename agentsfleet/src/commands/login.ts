@@ -3,7 +3,7 @@
 //
 //   1. CLI generates an ephemeral P-256 keypair.
 //   2. POST /v1/auth/sessions { public_key, token_name } → session_id.
-//   3. CLI prints + opens https://app.usezombie.com/cli-auth/{session_id}.
+//   3. CLI prints + opens https://app.agentsfleet.net/cli-auth/{session_id}.
 //   4. Dashboard mints the JWT, AES-GCM-encrypts it to the CLI's public
 //      key, PATCHes the ciphertext + nonce + dashboard_public_key + a
 //      6-digit verification code to /v1/auth/sessions/{id}/approve.
@@ -58,7 +58,7 @@ export interface LoginFlags {
   readonly tokenName: string | undefined;
   // --token <pat>; non-interactive direct-token source (highest priority).
   readonly tokenFlag: string | undefined;
-  // Raw ZOMBIE_TOKEN env value (not the file-merged CliConfig.accessToken)
+  // Raw AGENTSFLEET_TOKEN env value (not the file-merged CliConfig.accessToken)
   // so an existing credentials.json is never mistaken for a direct token.
   readonly envToken: string | undefined;
 }
@@ -187,7 +187,7 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const noInput = flags.noInput || !stdin.isTTY;
   yield* idempotencyCheck({ force: flags.force, noInput });
 
-  // Non-interactive resolve (--token > ZOMBIE_TOKEN env > piped stdin)
+  // Non-interactive resolve (--token > AGENTSFLEET_TOKEN env > piped stdin)
   // ahead of the browser device flow. A directly-supplied token is
   // validated + persisted with no browser; `none` falls through to the
   // device flow below.

@@ -10,11 +10,11 @@
  *   - Per-test temp directory under `os.tmpdir()` holds:
  *       * TRIGGER.md + SKILL.md   (the bundle for `--from <path>`)
  *       * agentsfleet/credentials.json + workspaces.json   (CLI auth state)
- *   - `ZOMBIE_STATE_DIR=<tmpdir>/agentsfleet` points the CLI at that state.
- *   - `ZOMBIE_TOKEN=<fixture.sessionJwt>` populates the Bearer header.
- *     (The env var name is `ZOMBIE_TOKEN`, not `ZOMBIECTL_TOKEN` — see
+ *   - `AGENTSFLEET_STATE_DIR=<tmpdir>/agentsfleet` points the CLI at that state.
+ *   - `AGENTSFLEET_TOKEN=<fixture.sessionJwt>` populates the Bearer header.
+ *     (The env var name is `AGENTSFLEET_TOKEN`, not `ZOMBIECTL_TOKEN` — see
  *      `agentsfleet/src/cli.js:65`.)
- *   - `ZOMBIE_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
+ *   - `AGENTSFLEET_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
  *     workspace-id fetch hit the same agentsfleetd (mismatched URLs land at 404).
  *
  * No `signInAs` cookie-mount, no per-page DOM auth — just agentsfleet + a
@@ -130,7 +130,7 @@ test.describe("install-zombie-cli", () => {
     await fs.writeFile(path.join(bundleDir, "TRIGGER.md"), triggerMd(name));
     await fs.writeFile(path.join(bundleDir, "SKILL.md"), skillMd(name));
     // workspaces.json pins the install target. credentials.json wires
-    // the Bearer token (agentsfleet prefers it to ZOMBIE_TOKEN; both work).
+    // the Bearer token (agentsfleet prefers it to AGENTSFLEET_TOKEN; both work).
     await fs.writeFile(
       path.join(stateDir, "workspaces.json"),
       JSON.stringify(
@@ -145,9 +145,9 @@ test.describe("install-zombie-cli", () => {
     );
 
     const result = await spawnZombiectl(["--json", "install", "--from", bundleDir], {
-      ZOMBIE_STATE_DIR: stateDir,
-      ZOMBIE_API_URL: apiUrl,
-      ZOMBIE_TOKEN: token,
+      AGENTSFLEET_STATE_DIR: stateDir,
+      AGENTSFLEET_API_URL: apiUrl,
+      AGENTSFLEET_TOKEN: token,
       NO_COLOR: "1",
     });
     if (result.code !== 0) {

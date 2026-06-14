@@ -28,7 +28,7 @@ function uniqueEmail(): string {
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 const isLocal = !process.env.BASE_URL;
-const isProdApi = apiUrl.includes("api.usezombie.com");
+const isProdApi = apiUrl.includes("api.agentsfleet.net");
 const liveWebhookEnabled = process.env[LIVE_WEBHOOK_FLAG] === "1";
 const prodWebhookEnabled = process.env[PROD_WEBHOOK_FLAG] === "1";
 

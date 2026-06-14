@@ -1,7 +1,7 @@
 import { ApiError } from "./errors";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
-export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.usezombie.com";
+export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
 
 // BASE for fetch calls. On the server we hit the backend directly (no CORS).
 // In the browser we go through the same-origin `/backend` proxy configured in

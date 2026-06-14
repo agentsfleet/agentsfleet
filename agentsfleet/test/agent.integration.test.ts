@@ -5,7 +5,7 @@ import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000a6e711";
-const ZOMBIE_ID = "01900000-0000-7000-8000-000000a67e57";
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-000000a67e57";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
@@ -30,11 +30,11 @@ describe("agent (external API key) commands", () => {
           [
             "agent", "add",
             "--workspace", WS_ID,
-            "--zombie", ZOMBIE_ID,
+            "--zombie", AGENTSFLEET_ID,
             "--name", "langgraph-bot",
             "--description", "external orchestration",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -49,7 +49,7 @@ describe("agent (external API key) commands", () => {
           name?: string;
           description?: string;
         };
-        expect(parsed.zombie_id).toBe(ZOMBIE_ID);
+        expect(parsed.zombie_id).toBe(AGENTSFLEET_ID);
         expect(parsed.name).toBe("langgraph-bot");
         expect(parsed.description).toBe("external orchestration");
 
@@ -73,7 +73,7 @@ describe("agent (external API key) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["agent", "list", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -100,7 +100,7 @@ describe("agent (external API key) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["agent", "delete", "--workspace", WS_ID, "01900000-0000-7000-8000-0000a6e7de7e"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/01900000-0000-7000-8000-0000a6e7de7e.*invalidated/i);

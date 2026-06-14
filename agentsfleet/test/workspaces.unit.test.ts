@@ -8,7 +8,7 @@
 //      load returns current, save replaces it; isolated from disk entirely.
 //
 // Every test runs inside withFreshStateDir so disk reads/writes go to a
-// temp dir; process.env.ZOMBIE_STATE_DIR is restored on exit.
+// temp dir; process.env.AGENTSFLEET_STATE_DIR is restored on exit.
 
 import { describe, test, expect } from "bun:test";
 import fs from "node:fs/promises";
@@ -45,7 +45,7 @@ const WS_B: WorkspacesValue = {
 
 /** Run an Effect against workspacesLayer and extract the success value. */
 async function runLoad(stateDir: string): Promise<WorkspacesValue> {
-  void stateDir; // ZOMBIE_STATE_DIR already set by withFreshStateDir
+  void stateDir; // AGENTSFLEET_STATE_DIR already set by withFreshStateDir
   return Effect.runPromise(
     Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
       Effect.provide(workspacesLayer),
@@ -145,8 +145,8 @@ describe("workspacesLayer — save error path (lines 30-35)", () => {
       // Replace the dir with a plain file so mkdir inside writeJson throws.
       const blocker = path.join(dir, "blocker");
       await fs.writeFile(blocker, "x");
-      const prevDir = process.env.ZOMBIE_STATE_DIR;
-      process.env.ZOMBIE_STATE_DIR = blocker;
+      const prevDir = process.env.AGENTSFLEET_STATE_DIR;
+      process.env.AGENTSFLEET_STATE_DIR = blocker;
       try {
         return await Effect.runPromiseExit(
           Effect.flatMap(Workspaces, (svc) => svc.save(EMPTY_WS)).pipe(
@@ -154,8 +154,8 @@ describe("workspacesLayer — save error path (lines 30-35)", () => {
           ),
         );
       } finally {
-        if (prevDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-        else process.env.ZOMBIE_STATE_DIR = prevDir;
+        if (prevDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+        else process.env.AGENTSFLEET_STATE_DIR = prevDir;
       }
     });
 

@@ -1,7 +1,7 @@
 // Identity resolution coverage. resolveIdentity persists into
 // `telemetry.json` as the single source of truth (mirrors supabase's
 // `~/Projects/oss/cli/apps/cli/src/shared/telemetry/identity.ts`).
-// Tests redirect ZOMBIE_STATE_DIR to a per-case temp directory.
+// Tests redirect AGENTSFLEET_STATE_DIR to a per-case temp directory.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Effect } from "effect";
@@ -37,21 +37,21 @@ function readTelemetry(dir: string): TelemetryConfig {
   return JSON.parse(readFileSync(path.join(dir, "telemetry.json"), "utf8"));
 }
 
-const SAVED_ENV: { ZOMBIE_STATE_DIR?: string | undefined } = {};
+const SAVED_ENV: { AGENTSFLEET_STATE_DIR?: string | undefined } = {};
 
 beforeEach(() => {
-  SAVED_ENV.ZOMBIE_STATE_DIR = process.env.ZOMBIE_STATE_DIR;
+  SAVED_ENV.AGENTSFLEET_STATE_DIR = process.env.AGENTSFLEET_STATE_DIR;
 });
 
 afterEach(() => {
-  if (SAVED_ENV.ZOMBIE_STATE_DIR === undefined) delete process.env.ZOMBIE_STATE_DIR;
-  else process.env.ZOMBIE_STATE_DIR = SAVED_ENV.ZOMBIE_STATE_DIR;
+  if (SAVED_ENV.AGENTSFLEET_STATE_DIR === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+  else process.env.AGENTSFLEET_STATE_DIR = SAVED_ENV.AGENTSFLEET_STATE_DIR;
 });
 
 describe("resolveIdentity", () => {
   it("generates a fresh device_id (UUID) on first run", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
       expect(id.deviceId).toMatch(UUID_PATTERN);
@@ -62,7 +62,7 @@ describe("resolveIdentity", () => {
 
   it("generates a fresh session_id (UUID) on first run", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
       expect(id.sessionId).toMatch(UUID_PATTERN);
@@ -73,7 +73,7 @@ describe("resolveIdentity", () => {
 
   it("reports isFirstRun=true when no prior telemetry.json exists", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
       expect(id.isFirstRun).toBe(true);
@@ -84,7 +84,7 @@ describe("resolveIdentity", () => {
 
   it("persists telemetry.json after resolving identity", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       await Effect.runPromise(resolveIdentity(dir));
       expect(existsSync(path.join(dir, "telemetry.json"))).toBe(true);
@@ -95,7 +95,7 @@ describe("resolveIdentity", () => {
 
   it("preserves device_id across runs", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     const existingDevice = "11111111-1111-4111-8111-111111111111";
     const existingSession = "22222222-2222-4222-8222-222222222222";
     writeTelemetry(dir, {
@@ -114,7 +114,7 @@ describe("resolveIdentity", () => {
 
   it("reports isFirstRun=false when telemetry.json already exists", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
@@ -131,7 +131,7 @@ describe("resolveIdentity", () => {
 
   it("preserves session_id when last activity is within the 30-minute window", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     const sessionId = "33333333-3333-4333-8333-333333333333";
     writeTelemetry(dir, {
       consent: "granted",
@@ -149,7 +149,7 @@ describe("resolveIdentity", () => {
 
   it("rotates session_id after 30 minutes of inactivity", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     const oldSessionId = "44444444-4444-4444-8444-444444444444";
     writeTelemetry(dir, {
       consent: "granted",
@@ -168,7 +168,7 @@ describe("resolveIdentity", () => {
 
   it("persists an updated session_last_active on every call", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     const before = Date.now();
     writeTelemetry(dir, {
       consent: "granted",
@@ -187,7 +187,7 @@ describe("resolveIdentity", () => {
 
   it("surfaces persisted distinctId from telemetry.json", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
@@ -205,7 +205,7 @@ describe("resolveIdentity", () => {
 
   it("leaves distinctId undefined when telemetry.json has no distinct_id field", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
       expect(id.distinctId).toBeUndefined();
@@ -218,7 +218,7 @@ describe("resolveIdentity", () => {
 describe("saveDistinctId", () => {
   it("writes a new telemetry.json carrying the distinct_id", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       await Effect.runPromise(saveDistinctId(dir, "user-99"));
       const written = readTelemetry(dir);
@@ -231,7 +231,7 @@ describe("saveDistinctId", () => {
 
   it("preserves the existing consent value when one is persisted", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "denied",
       device_id: "11111111-1111-4111-8111-111111111111",
@@ -252,7 +252,7 @@ describe("saveDistinctId", () => {
 describe("clearDistinctId", () => {
   it("rewrites telemetry.json without the distinct_id field", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
@@ -272,7 +272,7 @@ describe("clearDistinctId", () => {
 
   it("falls back to consent=granted when no prior telemetry.json existed", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       await Effect.runPromise(clearDistinctId(dir));
       const written = readTelemetry(dir);

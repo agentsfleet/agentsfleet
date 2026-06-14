@@ -3,7 +3,7 @@
 // debug-console.ts.
 //
 // Emits a one-line human-readable summary per completed span. Activated
-// by ZOMBIE_TELEMETRY_DEBUG=1 (resolved into TelemetryRuntime.showDebug
+// by AGENTSFLEET_TELEMETRY_DEBUG=1 (resolved into TelemetryRuntime.showDebug
 // in runtime.layer.ts). Output goes to stderr — never stdout, since the
 // CLI's stdout is used for command payload (json mode, scripted callers).
 

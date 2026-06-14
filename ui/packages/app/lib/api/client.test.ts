@@ -74,7 +74,7 @@ describe("request", () => {
       ok: false,
       status: 409,
       json: async () => ({
-        docs_uri: "https://docs.usezombie.com/error-codes#UZ-ZMB-010",
+        docs_uri: "https://docs.agentsfleet.net/error-codes#UZ-ZMB-010",
         title: "Transition not allowed",
         detail: "already stopped",
         error_code: "UZ-ZMB-010",

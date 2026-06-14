@@ -8,7 +8,7 @@ const defaultProps = {
   actions: [
     { label: "Install now", to: "https://docs.agentsfleet.net/quickstart" },
     { label: "Read the docs", to: "https://docs.agentsfleet.net", variant: "ghost" as const },
-    { label: "Setup dashboard", to: "https://app.usezombie.com", variant: "double-border" as const },
+    { label: "Setup dashboard", to: "https://app.agentsfleet.net", variant: "double-border" as const },
   ],
 };
 

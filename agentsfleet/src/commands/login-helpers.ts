@@ -187,7 +187,7 @@ const trimToUndefined = (value: string | undefined): string | undefined => {
 };
 
 // Non-interactive token resolution, mirroring supabase login.handler.ts
-// resolveToken: --token flag → ZOMBIE_TOKEN env → piped stdin (non-TTY).
+// resolveToken: --token flag → AGENTSFLEET_TOKEN env → piped stdin (non-TTY).
 // `none` means "no direct token" → the caller falls through to the browser
 // device flow. A non-TTY shell with no token cannot complete the device
 // flow (the verification code is typed by a human), so it fails fast with
@@ -208,7 +208,7 @@ export const resolveDirectToken = (opts: {
     return yield* Effect.fail(
       new InterruptedError({
         detail: "no token provided and stdin is not a terminal",
-        suggestion: "pass --token or set ZOMBIE_TOKEN",
+        suggestion: "pass --token or set AGENTSFLEET_TOKEN",
       }),
     );
   });

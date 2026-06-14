@@ -32,7 +32,7 @@ export const RUN_NANOS_PER_SEC = 100_000;
 // the server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS
 // regardless of posture / model / tokens. `agentsfleet doctor --json`'s
 // `billing.free_trial` block surfaces the active state for clients.
-// Live window state lives on usezombie.com/#pricing.
+// Live window state lives on agentsfleet.net/#pricing.
 export const FREE_TRIAL_END_MS = 1_785_542_400_000; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0;
 

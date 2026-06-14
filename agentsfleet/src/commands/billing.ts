@@ -18,7 +18,7 @@ import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
-const BILLING_DASHBOARD_URL = "https://app.usezombie.com/settings/billing";
+const BILLING_DASHBOARD_URL = "https://app.agentsfleet.net/settings/billing";
 const PURCHASE_FOOTER_LINE_2 =
   "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 

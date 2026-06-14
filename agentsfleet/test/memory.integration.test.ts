@@ -11,9 +11,9 @@ import { bufferStream, withAuthedStateDir, withFreshStateDir, type TestStream } 
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-0000005e4e71";
-const ZOMBIE_ID = "01900000-0000-7000-8000-0000005e4e72";
-const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
-const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
+const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/memories`;
+const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/memories`;
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ITEMS = [
@@ -40,8 +40,8 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -74,8 +74,8 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const okCode = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID, "--category", "daily", "--limit", "5"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID, "--category", "daily", "--limit", "5"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(okCode).toBe(0);
         expect(calls[0]?.search).toContain("category=daily");
@@ -91,8 +91,8 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories stored/i);
@@ -112,8 +112,8 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--zombie", ZOMBIE_ID, "acme"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "search", "--zombie", AGENTSFLEET_ID, "acme"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(calls[0]?.search).toContain("query=acme");
@@ -131,8 +131,8 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--zombie", ZOMBIE_ID, "ghost"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "search", "--zombie", AGENTSFLEET_ID, "ghost"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories matched "ghost"/i);
@@ -157,8 +157,8 @@ describe("memory — machine-stable JSON", () => {
         const out = bufferStream(); // isTTY undefined — a pipe
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof envelope;
@@ -177,8 +177,8 @@ describe("memory — machine-stable JSON", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID, "--json"],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof ENVELOPE;
@@ -202,8 +202,8 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         const stderrText = err.read();
@@ -230,8 +230,8 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", ZOMBIE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-MEM-003");
@@ -245,8 +245,8 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--zombie", ZOMBIE_ID],
-        { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: "http://127.0.0.1:9" } },
+        ["memory", "list", "--zombie", AGENTSFLEET_ID],
+        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
       );
       expect(code).not.toBe(0);
       expect(err.read()).toMatch(/login/);
@@ -258,9 +258,9 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--zombie", ZOMBIE_ID],
+        ["memory", "list", "--zombie", AGENTSFLEET_ID],
         // loopback discard port — nothing listens, refuses instantly
-        { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: "http://127.0.0.1:9" } },
+        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
       );
       expect(code).not.toBe(0);
       const stderrText = err.read();

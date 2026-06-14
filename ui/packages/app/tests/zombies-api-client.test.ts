@@ -106,7 +106,7 @@ describe("lib/api/zombies", () => {
   it("webhookUrlFor composes the deterministic webhook URL", async () => {
     const mod = await import("../lib/api/zombies");
     expect(mod.webhookUrlFor("zom_abc")).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
+      "https://api-dev.agentsfleet.net/v1/webhooks/zom_abc",
     );
   });
 });

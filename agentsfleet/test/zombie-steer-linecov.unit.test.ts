@@ -18,7 +18,7 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
 import {
-  ZOMBIE_ID,
+  AGENTSFLEET_ID,
   EVENT_ID,
   streamFrom,
   nullOutput,
@@ -53,7 +53,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     };
 
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, SINGLE_MESSAGE, {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, SINGLE_MESSAGE, {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: throwingStream,
@@ -82,7 +82,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
 
     try {
       const exit = await Effect.runPromiseExit(
-        steerEffectFromArgs(ZOMBIE_ID, SINGLE_MESSAGE, {}, {
+        steerEffectFromArgs(AGENTSFLEET_ID, SINGLE_MESSAGE, {}, {
           stdin: streamFrom([], false),
           stdout: nullOutput(),
           streamGet: throwingStream,
@@ -116,7 +116,7 @@ describe("steer — onTurnError classifies CliError turn failures via the _tag a
     };
 
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, undefined, { forceTty: true }, {
+      steerEffectFromArgs(AGENTSFLEET_ID, undefined, { forceTty: true }, {
         stdin: streamFrom(["first\nsecond\n"], false),
         stdout: nullOutput(),
         streamGet: eventStream([
@@ -147,7 +147,7 @@ describe("steer — single-shot SSE error path is shielded by the recovery poll"
     };
 
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, SINGLE_MESSAGE, {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, SINGLE_MESSAGE, {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: silentStream,

@@ -321,9 +321,9 @@ describe("requestWithRetry — config", () => {
     expect(result.ok).toBe(1);
   });
 
-  it("ZOMBIE_NO_RETRY=1 collapses maxAttempts to a single attempt", async () => {
-    const prev = process.env.ZOMBIE_NO_RETRY;
-    process.env.ZOMBIE_NO_RETRY = "1";
+  it("AGENTSFLEET_NO_RETRY=1 collapses maxAttempts to a single attempt", async () => {
+    const prev = process.env.AGENTSFLEET_NO_RETRY;
+    process.env.AGENTSFLEET_NO_RETRY = "1";
     try {
       fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
       const onRetry = vi.fn();
@@ -338,8 +338,8 @@ describe("requestWithRetry — config", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1); // no retry despite a 503
       expect(onRetry).not.toHaveBeenCalled();
     } finally {
-      if (prev === undefined) delete process.env.ZOMBIE_NO_RETRY;
-      else process.env.ZOMBIE_NO_RETRY = prev;
+      if (prev === undefined) delete process.env.AGENTSFLEET_NO_RETRY;
+      else process.env.AGENTSFLEET_NO_RETRY = prev;
     }
   });
 });

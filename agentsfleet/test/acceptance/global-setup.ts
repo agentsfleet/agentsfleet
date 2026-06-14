@@ -58,7 +58,7 @@ export function resolveAcceptanceEnv(): AcceptanceEnv {
  * environment always pairs with the API environment, so the routing
  * is deterministic — no separate skip gate needed.
  *
- * Explicit `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` override wins (use this
+ * Explicit `AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL` override wins (use this
  * for `localhost:3000` against a locally-running dashboard).
  */
 export function resolveDashboardUrl(apiUrl: string): string {

@@ -24,7 +24,7 @@ describe("credential commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "add", "github", `--data={"token":"ghp_test_value"}`],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/stored/i);
@@ -58,7 +58,7 @@ describe("credential commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "add", "github", `--data={"token":"ghp_will_not_be_sent"}`],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/already exists/i);
@@ -84,7 +84,7 @@ describe("credential commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "add", "github", `--data={"token":"ghp_force"}`, "--force"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/overwritten/i);
@@ -113,7 +113,7 @@ describe("credential commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["credential", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();

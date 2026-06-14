@@ -5,21 +5,21 @@
  *   - handshake: drive `login --no-open --no-input`, parse login_url,
  *     complete the dashboard's CLI-auth approve action via browser.js,
  *     assert credentials.json mode 0600 + 3-segment JWT (WS-E #C3).
- *   - persisted-credentials read-only sweep (ZOMBIE_TOKEN explicitly
+ *   - persisted-credentials read-only sweep (AGENTSFLEET_TOKEN explicitly
  *     absent from spawn env; proves credentials.json is the load-
  *     bearing auth source).
  *   - prefix-scoped post-teardown emptiness (zombie list).
  *   - persisted-credentials install + lifecycle walk.
  *
  * Skip posture:
- *   - Live API target — ZOMBIE_ACCEPTANCE_TARGET must be an https URL.
+ *   - Live API target — AGENTSFLEET_ACCEPTANCE_TARGET must be an https URL.
  *   - Dashboard URL is *derived* from the API URL via
  *     `resolveDashboardUrl` — no separate env gate. Override via
- *     `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` for `localhost:3000` runs.
+ *     `AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL` for `localhost:3000` runs.
  *   - Dashboard `/cli-auth/{session_id}` page must be deployed.
  *     Until that page ships, the dashboard redirects unknown routes
  *     to `/sign-in`, breaking the handshake. Override the skip with
- *     `ZOMBIE_ACCEPTANCE_LOGIN_HANDSHAKE=1` once the page is live.
+ *     `AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1` once the page is live.
  *
  * WS-E #C1 regression: assertNoSecretLeak fires after every spawn.
  */
@@ -54,7 +54,7 @@ import {
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
-const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
+const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 // The dashboard's CLI-auth handoff page (`/cli-auth/{session_id}` with
@@ -78,7 +78,7 @@ function parseLoginUrl(stdout: string): string {
 }
 
 function rewriteHost(loginUrl: string, dashboardBase: string): string {
-  // The CLI's login_url is the API-host shape (api-dev.usezombie.com). The
+  // The CLI's login_url is the API-host shape (api-dev.agentsfleet.net). The
   // dashboard's CLI-auth handoff page lives on the dashboard host. We swap
   // the host while preserving path + query (which carries session_id).
   const src = new URL(loginUrl);
@@ -127,7 +127,7 @@ function awaitExit(child: ChildProcessWithoutNullStreams): Promise<ExitCapture> 
 
 if (!isLive) {
   describe("lifecycle-after-login.spec.ts", () => {
-    it.skip("requires ZOMBIE_ACCEPTANCE_TARGET to be an https URL", () => {});
+    it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else if (!dashboardHandshakeImplemented) {
   describe("lifecycle-after-login.spec.ts", () => {
@@ -162,10 +162,10 @@ if (!isLive) {
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-login-"));
       credentialsPath = path.join(stateDir, "credentials.json");
       baseEnv = composeEnv({
-        ZOMBIE_API_URL: apiUrl,
-        ZOMBIE_STATE_DIR: stateDir,
+        AGENTSFLEET_API_URL: apiUrl,
+        AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
-        // ZOMBIE_TOKEN intentionally absent — every spawn proves
+        // AGENTSFLEET_TOKEN intentionally absent — every spawn proves
         // credentials.json is the load-bearing auth source.
       });
     });
@@ -210,13 +210,13 @@ if (!isLive) {
       });
     });
 
-    // Persisted-credentials read-only sweep (no ZOMBIE_TOKEN).
+    // Persisted-credentials read-only sweep (no AGENTSFLEET_TOKEN).
     describe("read-only sweep using persisted credentials", () => {
       for (const row of READ_ONLY_COMMANDS) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 against persisted credentials.json`, async () => {
-          // Helper guards: env constructed here MUST NOT carry ZOMBIE_TOKEN.
-          assert.equal(baseEnv["ZOMBIE_TOKEN"], undefined, "baseEnv must not contain ZOMBIE_TOKEN");
+          // Helper guards: env constructed here MUST NOT carry AGENTSFLEET_TOKEN.
+          assert.equal(baseEnv["AGENTSFLEET_TOKEN"], undefined, "baseEnv must not contain AGENTSFLEET_TOKEN");
           const result = await spawn(row.args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
           const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
@@ -231,7 +231,7 @@ if (!isLive) {
     });
 
     // Prefix-scoped post-teardown emptiness (zombie list).
-    // Same contract as the ZOMBIE_TOKEN spec: shared DEV tenants carry
+    // Same contract as the AGENTSFLEET_TOKEN spec: shared DEV tenants carry
     // residual zombies; the only assertion that holds is "none of MY
     // run's zombies remain after teardown".
     describe("post-teardown emptiness (prefix-scoped)", () => {
@@ -250,8 +250,8 @@ if (!isLive) {
       });
     });
 
-    // Persisted-credentials install + lifecycle (no ZOMBIE_TOKEN).
-    describe("install + lifecycle (no ZOMBIE_TOKEN)", () => {
+    // Persisted-credentials install + lifecycle (no AGENTSFLEET_TOKEN).
+    describe("install + lifecycle (no AGENTSFLEET_TOKEN)", () => {
       let zombieId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {

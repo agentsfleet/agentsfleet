@@ -9,13 +9,13 @@
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import type { FetchImpl } from "../lib/http.ts";
 
-const DEFAULT_API_URL = "https://api.usezombie.com";
-// PROD dashboard is `app.usezombie.com` (DEV is the Vercel preview at
+const DEFAULT_API_URL = "https://api.agentsfleet.net";
+// PROD dashboard is `app.agentsfleet.net` (DEV is the Vercel preview at
 // `usezombie-app.vercel.app`; see `runtime_loader.zig:121 APP_URL`,
 // `BILLING_DASHBOARD_URL` in `commands/billing.ts`, and acceptance's
-// `DASHBOARD_URL_PROD`). The earlier `dashboard.usezombie.com` value
+// `DASHBOARD_URL_PROD`). The earlier `dashboard.agentsfleet.net` value
 // was a typo that pointed at a nonexistent domain.
-const DEFAULT_DASHBOARD_URL = "https://app.usezombie.com";
+const DEFAULT_DASHBOARD_URL = "https://app.agentsfleet.net";
 // PostHog project key is public-by-design (write-only capture scope,
 // no read/admin), same model as Stripe pk_live_…. Supabase ships
 // theirs as a plain string in cli-config.layer.ts; we match that.
@@ -24,7 +24,7 @@ export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3b
 // The single auth-token env-var name. One identifier shared by the
 // config resolver, the TTY-aware file/env resolver, and the login
 // command's direct-token source so the three never drift.
-export const ZOMBIE_TOKEN_ENV = "ZOMBIE_TOKEN";
+export const AGENTSFLEET_TOKEN_ENV = "AGENTSFLEET_TOKEN";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -54,17 +54,17 @@ const trimmed = (v: string | undefined): string | undefined => {
 };
 
 export const resolveCliConfig = (): CliConfigShape => {
-  const apiUrl = trimmed(readEnv("ZOMBIE_API_URL")) ?? DEFAULT_API_URL;
+  const apiUrl = trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL;
   const dashboardUrl =
-    trimmed(readEnv("ZOMBIE_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
-  // ZOMBIE_TOKEN is the auth-token env var. TTY-aware precedence vs
+    trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
+  // AGENTSFLEET_TOKEN is the auth-token env var. TTY-aware precedence vs
   // credentials.json is resolved in cli.ts before this layer; tests that
   // bypass runCli see the env value here.
-  const envToken = trimmed(readEnv(ZOMBIE_TOKEN_ENV));
+  const envToken = trimmed(readEnv(AGENTSFLEET_TOKEN_ENV));
   const telemetryPosthogKey =
-    trimmed(readEnv("ZOMBIE_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
+    trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =
-    trimmed(readEnv("ZOMBIE_TELEMETRY_POSTHOG_HOST")) ?? DEFAULT_POSTHOG_HOST;
+    trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_HOST")) ?? DEFAULT_POSTHOG_HOST;
   return {
     apiUrl,
     dashboardUrl,

@@ -44,8 +44,8 @@ test("extractRoleFromToken normalizes namespaced and invalid claims", () => {
   assert.equal(extractRoleFromToken("bad-token"), null);
 });
 
-test("extractRoleFromToken reads usezombie.com namespace claim", () => {
-  assert.equal(extractRoleFromToken(makeToken({ "https://usezombie.com/role": "operator" })), "operator");
+test("extractRoleFromToken reads agentsfleet.net namespace claim", () => {
+  assert.equal(extractRoleFromToken(makeToken({ "https://agentsfleet.net/role": "operator" })), "operator");
 });
 
 test("extractRoleFromToken returns first valid role in priority order", () => {
@@ -83,7 +83,7 @@ test("extractRoleFromToken reads namespaced metadata claims", () => {
     "operator",
   );
   assert.equal(
-    extractRoleFromToken(makeToken({ metadata: { "https://usezombie.com/role": "Admin" } })),
+    extractRoleFromToken(makeToken({ metadata: { "https://agentsfleet.net/role": "Admin" } })),
     "admin",
   );
 });

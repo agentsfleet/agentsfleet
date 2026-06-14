@@ -16,10 +16,10 @@ import { tracingLayer } from "../../src/services/telemetry/tracing.layer.ts";
 import { Tracing } from "../../src/services/telemetry/tracing.service.ts";
 
 const ENV_KEYS = [
-  "ZOMBIE_TELEMETRY_DISABLED",
+  "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
-  "ZOMBIE_TELEMETRY_DEBUG",
-  "ZOMBIE_STATE_DIR",
+  "AGENTSFLEET_TELEMETRY_DEBUG",
+  "AGENTSFLEET_STATE_DIR",
   "CI",
   "GITHUB_ACTIONS",
   "GITLAB_CI",
@@ -73,10 +73,10 @@ function fullLayer() {
 }
 
 describe("tracingLayer — construction and consent gate", () => {
-  it("builds when consent=denied (ZOMBIE_TELEMETRY_DISABLED=1); span end skips ndjson export", async () => {
+  it("builds when consent=denied (AGENTSFLEET_TELEMETRY_DISABLED=1); span end skips ndjson export", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
     try {
       const tracesDir = path.join(dir, "traces");
       const program = Effect.gen(function* () {
@@ -94,7 +94,7 @@ describe("tracingLayer — construction and consent gate", () => {
 
   it("creates the traces directory when consent=granted", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         yield* Tracing;
@@ -110,7 +110,7 @@ describe("tracingLayer — construction and consent gate", () => {
 describe("tracingLayer — span behaviour", () => {
   it("attaches global attributes to every new span", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         const tracer = yield* Tracing;
@@ -133,7 +133,7 @@ describe("tracingLayer — span behaviour", () => {
 
   it("span end exports to NDJSON when consent=granted", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const tracesDir = path.join(dir, "traces");
       const program = Effect.gen(function* () {
@@ -149,10 +149,10 @@ describe("tracingLayer — span behaviour", () => {
     }
   });
 
-  it("span end does NOT export NDJSON when ZOMBIE_TELEMETRY_DISABLED=1 (denied)", async () => {
+  it("span end does NOT export NDJSON when AGENTSFLEET_TELEMETRY_DISABLED=1 (denied)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
     try {
       const tracesDir = path.join(dir, "traces");
       const program = Effect.gen(function* () {
@@ -168,10 +168,10 @@ describe("tracingLayer — span behaviour", () => {
     }
   });
 
-  it("span end writes the debug-console line when ZOMBIE_TELEMETRY_DEBUG=1", async () => {
+  it("span end writes the debug-console line when AGENTSFLEET_TELEMETRY_DEBUG=1", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
-    process.env.ZOMBIE_TELEMETRY_DEBUG = "1";
+    process.env.AGENTSFLEET_STATE_DIR = dir;
+    process.env.AGENTSFLEET_TELEMETRY_DEBUG = "1";
     const chunks: string[] = [];
     const original = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: unknown) => {
@@ -194,7 +194,7 @@ describe("tracingLayer — span behaviour", () => {
 
   it("span end skips unsampled spans (no NDJSON export)", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const tracesDir = path.join(dir, "traces");
       const program = Effect.gen(function* () {
@@ -214,7 +214,7 @@ describe("tracingLayer — span behaviour", () => {
 
   it("CI env var flips is_ci=true on the span attributes", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     process.env.CI = "true";
     try {
       const program = Effect.gen(function* () {
@@ -232,7 +232,7 @@ describe("tracingLayer — span behaviour", () => {
 describe("ExportableSpan", () => {
   it("child span inherits traceId from parent span", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         const tracer = yield* Tracing;
@@ -250,7 +250,7 @@ describe("ExportableSpan", () => {
 
   it("root span generates a 32-char hex traceId and 16-char hex spanId", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     const HEX_32 = /^[0-9a-f]{32}$/;
     const HEX_16 = /^[0-9a-f]{16}$/;
     try {
@@ -268,7 +268,7 @@ describe("ExportableSpan", () => {
 
   it("event() and addLinks() are no-ops and never throw", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         const tracer = yield* Tracing;
@@ -284,7 +284,7 @@ describe("ExportableSpan", () => {
 
   it("attribute() persists key/value pairs onto the span", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         const tracer = yield* Tracing;
@@ -300,7 +300,7 @@ describe("ExportableSpan", () => {
 
   it("span end mutates status to Ended with the supplied endTime + exit", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const program = Effect.gen(function* () {
         const tracer = yield* Tracing;
@@ -317,7 +317,7 @@ describe("ExportableSpan", () => {
 
   it("span end with Failure exit still exports without throwing", async () => {
     const dir = makeTempDir();
-    process.env.ZOMBIE_STATE_DIR = dir;
+    process.env.AGENTSFLEET_STATE_DIR = dir;
     try {
       const tracesDir = path.join(dir, "traces");
       const program = Effect.gen(function* () {

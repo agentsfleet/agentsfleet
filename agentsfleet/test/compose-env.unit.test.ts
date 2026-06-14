@@ -10,9 +10,9 @@ import { describe, expect, test } from "bun:test";
 import { composeEnv } from "./acceptance/fixtures/cli.js";
 
 describe("composeEnv — hermetic spawn env", () => {
-  test("should default ZOMBIE_TELEMETRY_DISABLED=1 so spawned CLIs never flush telemetry", () => {
+  test("should default AGENTSFLEET_TELEMETRY_DISABLED=1 so spawned CLIs never flush telemetry", () => {
     const env = composeEnv({ NO_COLOR: "1" });
-    expect(env.ZOMBIE_TELEMETRY_DISABLED).toBe("1");
+    expect(env.AGENTSFLEET_TELEMETRY_DISABLED).toBe("1");
     expect(env.NO_COLOR).toBe("1");
   });
 
@@ -23,13 +23,13 @@ describe("composeEnv — hermetic spawn env", () => {
   });
 
   test("should let a caller override the telemetry default by listing the key in fields", () => {
-    const env = composeEnv({ ZOMBIE_TELEMETRY_DISABLED: "0" });
-    expect(env.ZOMBIE_TELEMETRY_DISABLED).toBe("0");
+    const env = composeEnv({ AGENTSFLEET_TELEMETRY_DISABLED: "0" });
+    expect(env.AGENTSFLEET_TELEMETRY_DISABLED).toBe("0");
   });
 
-  test("should omit null and undefined fields so a parent ZOMBIE_TOKEN never leaks into a spawn", () => {
-    const env = composeEnv({ ZOMBIE_TOKEN: undefined, EXTRA: null, KEEP: "yes" });
-    expect("ZOMBIE_TOKEN" in env).toBe(false);
+  test("should omit null and undefined fields so a parent AGENTSFLEET_TOKEN never leaks into a spawn", () => {
+    const env = composeEnv({ AGENTSFLEET_TOKEN: undefined, EXTRA: null, KEEP: "yes" });
+    expect("AGENTSFLEET_TOKEN" in env).toBe(false);
     expect("EXTRA" in env).toBe(false);
     expect(env.KEEP).toBe("yes");
   });

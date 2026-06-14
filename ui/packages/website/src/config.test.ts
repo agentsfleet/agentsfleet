@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * exercise every arm.
  */
 
-const PROD_HOST = "https://app.usezombie.com";
-const DEV_HOST = "https://app.dev.usezombie.com";
+const PROD_HOST = "https://app.agentsfleet.net";
+const DEV_HOST = "https://app.dev.agentsfleet.net";
 
 async function loadAppBaseUrl(): Promise<string> {
   vi.resetModules();
@@ -25,9 +25,9 @@ describe("APP_BASE_URL resolution", () => {
   });
 
   it("prefers a trimmed VITE_APP_BASE_URL override over the build-target hosts", async () => {
-    vi.stubEnv("VITE_APP_BASE_URL", "  https://app.staging.usezombie.com  ");
+    vi.stubEnv("VITE_APP_BASE_URL", "  https://app.staging.agentsfleet.net  ");
     vi.stubEnv("PROD", true);
-    expect(await loadAppBaseUrl()).toBe("https://app.staging.usezombie.com");
+    expect(await loadAppBaseUrl()).toBe("https://app.staging.agentsfleet.net");
   });
 
   it("uses the production host when building for prod with no override", async () => {
@@ -64,10 +64,10 @@ describe("rebrand pins — flipped values must not regress; operational strings 
     expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/agentsfleet");
   });
 
-  it("team email stays on the routed mailbox", async () => {
+  it("team email serves on the agentsfleet.net mailbox", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.TEAM_EMAIL).toBe("team@usezombie.com");
+    expect(mod.TEAM_EMAIL).toBe("team@agentsfleet.net");
   });
 
   it("docs URL serves on the agentsfleet host", async () => {

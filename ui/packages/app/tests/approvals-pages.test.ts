@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const WORKSPACE_ID = "ws_pages_001";
 const GATE_ID = "01999999-0000-7000-8000-000000000001";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_pages";
 
 const { getTokenMock, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound, redirect } =
@@ -81,7 +81,7 @@ describe("ApprovalsPage (workspace inbox)", () => {
       items: [
         {
           gate_id: GATE_ID,
-          zombie_id: ZOMBIE_ID,
+          zombie_id: AGENTSFLEET_ID,
           zombie_name: "approvals-a",
           workspace_id: WORKSPACE_ID,
           action_id: "act_001",
@@ -123,7 +123,7 @@ describe("ApprovalDetailPage", () => {
   function gateFixture(over: Partial<Record<string, unknown>> = {}) {
     return {
       gate_id: GATE_ID,
-      zombie_id: ZOMBIE_ID,
+      zombie_id: AGENTSFLEET_ID,
       zombie_name: "approvals-a",
       workspace_id: WORKSPACE_ID,
       action_id: "act_001",

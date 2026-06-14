@@ -32,7 +32,7 @@ export const RUN_NANOS_PER_SEC = 100_000n;
 // Promotional free-trial window. While `now_ms < FREE_TRIAL_END_MS` the
 // server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless
 // of posture / model / tokens. Identifier names match the Zig + JS mirrors.
-// Customer surface for live rates + window state: usezombie.com/#pricing.
+// Customer surface for live rates + window state: agentsfleet.net/#pricing.
 export const FREE_TRIAL_END_MS = 1_785_542_400_000n; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0n;
 

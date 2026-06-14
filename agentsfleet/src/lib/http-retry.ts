@@ -1,6 +1,6 @@
 // HTTP retry-with-backoff layer over the core `apiRequest` transport.
 // Owns retry classification, exponential backoff + jitter, Retry-After
-// honoring, the ZOMBIE_NO_RETRY escape hatch, and the server-5xx
+// honoring, the AGENTSFLEET_NO_RETRY escape hatch, and the server-5xx
 // idempotency gate. Split out of http.ts so transport and retry concerns
 // stay separable and each module stays under the line cap.
 
@@ -82,7 +82,7 @@ function backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn
 }
 
 function noRetryEnv(env: NodeJS.ProcessEnv | undefined): boolean {
-  const v = env?.ZOMBIE_NO_RETRY;
+  const v = env?.AGENTSFLEET_NO_RETRY;
   return v === "1" || v === "true";
 }
 

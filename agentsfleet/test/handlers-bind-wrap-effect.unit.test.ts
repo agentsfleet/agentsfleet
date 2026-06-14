@@ -58,17 +58,17 @@ let prevTelemetryDisabled: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "agentsfleet-wrap-effect-"));
-  prevStateDir = process.env.ZOMBIE_STATE_DIR;
-  prevTelemetryDisabled = process.env.ZOMBIE_TELEMETRY_DISABLED;
-  process.env.ZOMBIE_STATE_DIR = stateDir;
-  process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
+  prevTelemetryDisabled = process.env.AGENTSFLEET_TELEMETRY_DISABLED;
+  process.env.AGENTSFLEET_STATE_DIR = stateDir;
+  process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
 });
 
 afterEach(() => {
-  if (prevStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-  else process.env.ZOMBIE_STATE_DIR = prevStateDir;
-  if (prevTelemetryDisabled === undefined) delete process.env.ZOMBIE_TELEMETRY_DISABLED;
-  else process.env.ZOMBIE_TELEMETRY_DISABLED = prevTelemetryDisabled;
+  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
+  if (prevTelemetryDisabled === undefined) delete process.env.AGENTSFLEET_TELEMETRY_DISABLED;
+  else process.env.AGENTSFLEET_TELEMETRY_DISABLED = prevTelemetryDisabled;
   rmSync(stateDir, { recursive: true, force: true });
 });
 

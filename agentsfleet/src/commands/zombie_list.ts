@@ -28,7 +28,7 @@ interface ZombieListResponse {
 const FIELD_NAME = "name" as const;
 const FIELD_STATUS = "status" as const;
 const TYPE_STRING = "string" as const;
-const FIELD_ZOMBIE_ID = "zombie_id" as const;
+const FIELD_AGENTSFLEET_ID = "zombie_id" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
@@ -101,12 +101,12 @@ export const listEffectFromFlags = (
     yield* output.printTable(
       [
         { key: FIELD_NAME, label: "NAME" },
-        { key: FIELD_ZOMBIE_ID, label: "ZOMBIE" },
+        { key: FIELD_AGENTSFLEET_ID, label: "ZOMBIE" },
         { key: FIELD_STATUS, label: "STATUS" },
       ],
       items.map((z) => ({
         name: String(z[FIELD_NAME] ?? ""),
-        zombie_id: String(z[FIELD_ZOMBIE_ID] ?? z["id"] ?? ""),
+        zombie_id: String(z[FIELD_AGENTSFLEET_ID] ?? z["id"] ?? ""),
         status: String(z[FIELD_STATUS] ?? ""),
       })),
     );

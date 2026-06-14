@@ -1,8 +1,8 @@
 # agentsfleet
 
-The official Command Line Interface (CLI) for [usezombie](https://usezombie.com).
+The official Command Line Interface (CLI) for [usezombie](https://agentsfleet.net).
 
-[![Get early access](https://img.shields.io/badge/usezombie-Get_early_access-5EEAD4?style=for-the-badge)](https://usezombie.com)
+[![Get early access](https://img.shields.io/badge/usezombie-Get_early_access-5EEAD4?style=for-the-badge)](https://agentsfleet.net)
 [![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.agentsfleet.net)
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -131,10 +131,10 @@ Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash
 
 | Variable | Description |
 |----------|-------------|
-| `ZOMBIE_API_URL` | API base URL (overridden by `--api`) |
-| `ZOMBIE_TOKEN` | Auth token (overridden by `login`) |
-| `ZOMBIE_API_KEY` | API key for service auth |
-| `ZOMBIE_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
+| `AGENTSFLEET_API_URL` | API base URL (overridden by `--api`) |
+| `AGENTSFLEET_TOKEN` | Auth token (overridden by `login`) |
+| `AGENTSFLEET_API_KEY` | API key for service auth |
+| `AGENTSFLEET_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
 | `NO_COLOR` | Any non-empty value disables color |
 
 ## Configuration
@@ -144,12 +144,12 @@ Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash
 | Credentials | `~/.config/agentsfleet/credentials.json` |
 | Workspaces | `~/.config/agentsfleet/workspaces.json` |
 
-Precedence for API base URL: `--api` flag → `ZOMBIE_API_URL` → saved credentials → default (`https://api.usezombie.com`).
+Precedence for API base URL: `--api` flag → `AGENTSFLEET_API_URL` → saved credentials → default (`https://api.agentsfleet.net`).
 
 ## Links
 
 - [Documentation](https://docs.agentsfleet.net)
-- [Website](https://usezombie.com)
+- [Website](https://agentsfleet.net)
 - [GitHub](https://github.com/agentsfleet/agentsfleet)
 - [Discord](https://discord.gg/H9hH2nqQjh)
 

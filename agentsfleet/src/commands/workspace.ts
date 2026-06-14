@@ -94,7 +94,7 @@ export const workspaceAddEffect = (
     });
     // workspace_created carries just the command tag so PostHog
     // dashboards can pivot on command name (telemetry is opt-OUT
-    // default; ZOMBIE_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 disables).
+    // default; AGENTSFLEET_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 disables).
     yield* analytics.capture(EVT_WORKSPACE_CREATED, {
       command: "workspace.add",
     });

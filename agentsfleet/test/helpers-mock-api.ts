@@ -1,14 +1,14 @@
 // Loopback HTTP mock for CLI integration tests.
 //
 // Spawns a real Bun.serve on 127.0.0.1:<random> for the lifetime of `fn`.
-// Tests pass ZOMBIE_API_URL=<baseUrl> into runCli — no fetchImpl injection,
+// Tests pass AGENTSFLEET_API_URL=<baseUrl> into runCli — no fetchImpl injection,
 // so the request path exercises real globalThis.fetch + request() + http-client.
 //
 // `routes` maps "METHOD /path" → handler(req, url, body) returning Response.
 // `calls` is shared with the test as an ordered log of every request that
 // hit the mock — a fully-typed side-effect ledger you can assert against.
 //
-// See helpers-cli-state.ts for the matching ZOMBIE_STATE_DIR scope helper
+// See helpers-cli-state.ts for the matching AGENTSFLEET_STATE_DIR scope helper
 // and the documented serial-execution assumption that lets these tests
 // share `process.env` mutations safely under `bun test`.
 

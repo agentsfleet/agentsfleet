@@ -36,9 +36,9 @@ async function withStateDir<T>(
   opts: { workspace?: string },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const previous = process.env.ZOMBIE_STATE_DIR;
+  const previous = process.env.AGENTSFLEET_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-doctor-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     if (opts.workspace) {
       await fs.writeFile(
@@ -49,8 +49,8 @@ async function withStateDir<T>(
     }
     return await fn();
   } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = previous;
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
@@ -75,7 +75,7 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
       return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
     });
     const code = await runCli(["--json", "doctor"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -98,7 +98,7 @@ test("doctor --json: server unreachable → server_reachable false, exit 1", asy
       throw new Error("connect ECONNREFUSED");
     });
     const code = await runCli(["--json", "doctor"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -121,7 +121,7 @@ test("doctor --json: no workspace selected → workspace_selected false, binding
       throw new Error("unexpected request: " + url);
     });
     const code = await runCli(["--json", "doctor"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -148,7 +148,7 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
       throw new Error("unexpected request: " + url);
     });
     const code = await runCli(["--json", "doctor"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -171,9 +171,9 @@ test("doctor without local auth → AUTH_REQUIRED before any HTTP", async () => 
       throw new Error("should not be called");
     });
     const env = { ...process.env };
-    delete env.ZOMBIE_TOKEN;
+    delete env.AGENTSFLEET_TOKEN;
     delete env.API_KEY;
-    delete env.ZOMBIE_API_KEY;
+    delete env.AGENTSFLEET_API_KEY;
     const code = await runCli(["--json", "doctor"], {
       env,
       stdout: out.stream,

@@ -19,8 +19,8 @@ import { makeStubbedStateDir } from "./fixtures/state-dir.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "../helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-0000005e4e71";
-const ZOMBIE_ID = "01900000-0000-7000-8000-0000005e4e72";
-const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/memories`;
+const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
+const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/memories`;
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ENVELOPE = {
@@ -38,7 +38,7 @@ interface Envelope {
 }
 
 const helpEnv = (): Record<string, string> =>
-  composeEnv({ ZOMBIE_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1" });
+  composeEnv({ AGENTSFLEET_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1" });
 
 async function withStubbedRun<T>(
   routes: MockRoutes,
@@ -48,8 +48,8 @@ async function withStubbedRun<T>(
   try {
     return await withMockApi(routes, async (apiUrl, calls) => {
       const env = composeEnv({
-        ZOMBIE_API_URL: apiUrl,
-        ZOMBIE_STATE_DIR: stub.dir,
+        AGENTSFLEET_API_URL: apiUrl,
+        AGENTSFLEET_STATE_DIR: stub.dir,
         NO_COLOR: "1",
       });
       return fn((args) => runZombiectl(args, { env }), calls);
@@ -89,7 +89,7 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
 describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint", () => {
   it("piped `memory list` emits the strict envelope without --json (auto-JSON pillar)", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--zombie", ZOMBIE_ID]);
+      const result = await run(["memory", "list", "--zombie", AGENTSFLEET_ID]);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout) as Envelope;
       assert.equal(parsed.items[0]?.key, "acme_contact");
@@ -102,7 +102,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`memory search` forwards the query and renders JSON when piped", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "search", "--zombie", ZOMBIE_ID, "acme"]);
+      const result = await run(["memory", "search", "--zombie", AGENTSFLEET_ID, "acme"]);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout) as Envelope;
       assert.equal(parsed.total, 1);
@@ -114,7 +114,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     await withStubbedRun(
       { [MEMORIES_ROUTE]: () => jsonResponse(200, { items: [], total: 0, request_id: "req_mem_empty" }) },
       async (run) => {
-        const result = await run(["memory", "list", "--zombie", ZOMBIE_ID]);
+        const result = await run(["memory", "list", "--zombie", AGENTSFLEET_ID]);
         assert.equal(result.code, 0, result.stderr);
         const parsed = JSON.parse(result.stdout) as Envelope;
         assert.deepEqual(parsed.items, []);
@@ -129,7 +129,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
           jsonResponse(404, { error: { code: "UZ-MEM-002", message: "zombie not found" }, request_id: "req_mem_404" }),
       },
       async (run) => {
-        const result = await run(["memory", "list", "--zombie", ZOMBIE_ID]);
+        const result = await run(["memory", "list", "--zombie", AGENTSFLEET_ID]);
         assert.notEqual(result.code, 0);
         assert.match(result.stderr, /UZ-MEM-002/);
         assert.match(result.stderr, /agentsfleet list/);
@@ -139,7 +139,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`--limit 0` is rejected client-side before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--zombie", ZOMBIE_ID, "--limit", "0"]);
+      const result = await run(["memory", "list", "--zombie", AGENTSFLEET_ID, "--limit", "0"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /must be/);
       assert.equal(calls.length, 0, "invalid limit must not reach the API");
@@ -148,7 +148,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`--limit 101` exceeds the mirrored server cap and never reaches the API", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--zombie", ZOMBIE_ID, "--limit", "101"]);
+      const result = await run(["memory", "list", "--zombie", AGENTSFLEET_ID, "--limit", "101"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /must be ≤ 100/);
       assert.equal(calls.length, 0, "over-cap limit must not reach the API");
@@ -166,7 +166,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`memory search` without a query is rejected by commander before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "search", "--zombie", ZOMBIE_ID]);
+      const result = await run(["memory", "search", "--zombie", AGENTSFLEET_ID]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /missing|required/i);
       assert.equal(calls.length, 0);

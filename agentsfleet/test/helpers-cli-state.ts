@@ -2,7 +2,7 @@
 //
 // Five sibling *.integration.test.{js,ts} files were each carrying their
 // own copy of (a) a Writable buffer that captures stdout/stderr, (b) a
-// mkdtemp-based ZOMBIE_STATE_DIR scope guard, and (c) an authed variant
+// mkdtemp-based AGENTSFLEET_STATE_DIR scope guard, and (c) an authed variant
 // of the same that pre-seeds credentials.json + workspaces.json so
 // auth-required commands don't bounce off the auth guard. Hoisting them
 // here cuts ~150 lines of duplication and makes the per-test surface
@@ -11,16 +11,16 @@
 // IMPORTANT — serial-execution assumption:
 //
 // `withFreshStateDir` and `withAuthedStateDir` mutate
-// `process.env.ZOMBIE_STATE_DIR` during the body of `fn` and restore in
+// `process.env.AGENTSFLEET_STATE_DIR` during the body of `fn` and restore in
 // `finally`. This is safe only because `bun test` runs all files in a
 // single worker process serially within a file, and (as of Bun 1.3.x)
 // does not parallelize across files within a single `bun test` run.
 //
 // If that assumption ever changes — e.g., a `--parallel` flag is enabled,
 // or a shard runner forks — two tests could trample each other's
-// ZOMBIE_STATE_DIR mid-flight and one test would see the other's
+// AGENTSFLEET_STATE_DIR mid-flight and one test would see the other's
 // pre-seeded credentials. The clean fix at that point is to thread
-// ZOMBIE_STATE_DIR through `runCli`'s `io` param (a one-line change in
+// AGENTSFLEET_STATE_DIR through `runCli`'s `io` param (a one-line change in
 // state.ts to read from caller-provided env first) instead of relying
 // on the process-global. Until then this comment is the warning sign.
 
@@ -53,22 +53,22 @@ export function bufferStream(): { stream: TestStream; read: () => string } {
 }
 
 /**
- * Run `fn` inside an isolated, fresh ZOMBIE_STATE_DIR. The directory is
+ * Run `fn` inside an isolated, fresh AGENTSFLEET_STATE_DIR. The directory is
  * created empty (no credentials, no workspaces). Restores the previous
- * value of process.env.ZOMBIE_STATE_DIR + removes the temp dir on exit,
+ * value of process.env.AGENTSFLEET_STATE_DIR + removes the temp dir on exit,
  * regardless of whether `fn` threw.
  */
 export async function withFreshStateDir<T>(
   fn: (stateDir: string) => Promise<T>,
 ): Promise<T> {
-  const previous = process.env.ZOMBIE_STATE_DIR;
+  const previous = process.env.AGENTSFLEET_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-test-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
+  process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
     return await fn(dir);
   } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
+    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = previous;
     await fs.rm(dir, { recursive: true, force: true });
   }
 }

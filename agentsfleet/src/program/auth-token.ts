@@ -6,20 +6,20 @@
 // returns null when input shape is wrong, so callers can't trap on
 // malformed tokens.
 //
-// Resolution: whether `credentials.json` or `ZOMBIE_TOKEN` wins is
+// Resolution: whether `credentials.json` or `AGENTSFLEET_TOKEN` wins is
 // TTY-dependent. Interactive shells prefer the env-var the operator just
 // exported in the current session over a possibly-stale file; scripts
 // (CI, cron, pipes) prefer the on-disk credential a previous `agentsfleet
 // login` wrote, falling through to env only if no file exists.
 
-import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
+import { AGENTSFLEET_TOKEN_ENV } from "../services/config.ts";
 
 const ADMIN = "admin" as const;
 const NONE = "none" as const;
 const OPERATOR = "operator" as const;
 const TYPE_STRING = "string" as const;
 const USER = "user" as const;
-const ZOMBIE_ENV = "zombie_env" as const;
+const AGENTSFLEET_ENV = "zombie_env" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
@@ -55,9 +55,9 @@ export interface JwtClaims {
 }
 
 const ROLE_NAMESPACE_DEV = "https://usezombie.dev/role";
-const ROLE_NAMESPACE_COM = "https://usezombie.com/role";
+const ROLE_NAMESPACE_COM = "https://agentsfleet.net/role";
 
-export type AuthTokenSource = "file" | typeof ZOMBIE_ENV | typeof NONE;
+export type AuthTokenSource = "file" | typeof AGENTSFLEET_ENV | typeof NONE;
 
 export interface ResolvedAuthToken {
   readonly token: string | null;
@@ -82,11 +82,11 @@ const trimOrNull = (raw: string | undefined | null): string | null => {
 // inspected before file, but only "win" in TTY mode; non-TTY callers
 // fall through to file first.
 export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAuthToken {
-  const zombie = trimOrNull(input.env[ZOMBIE_TOKEN_ENV]);
+  const zombie = trimOrNull(input.env[AGENTSFLEET_TOKEN_ENV]);
   const file = trimOrNull(input.fileToken);
   const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
   const zombieResolved: ResolvedAuthToken | null = zombie
-    ? { token: zombie, source: ZOMBIE_ENV }
+    ? { token: zombie, source: AGENTSFLEET_ENV }
     : null;
   const order: ReadonlyArray<ResolvedAuthToken | null> = input.isTty
     ? [zombieResolved, fileResolved]

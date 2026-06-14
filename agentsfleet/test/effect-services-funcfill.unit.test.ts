@@ -33,7 +33,7 @@ import {
 
 // config.ts keeps DEFAULT_API_URL unexported (internal default); pin the
 // fallback literal here so a drift in the resolver's default is caught.
-const DEFAULT_API_URL = "https://api.usezombie.com";
+const DEFAULT_API_URL = "https://api.agentsfleet.net";
 
 // ── CommandRuntime free helpers ──────────────────────────────────────────
 // getCommandRuntimeCommand / getCommandRuntimeSpanName are only reached
@@ -130,25 +130,25 @@ describe("Input.makeLive default readline factory", () => {
 
 describe("CliConfig resolver and layers", () => {
   test("resolveCliConfig reads env (readEnv + trimmed) into apiUrl", () => {
-    const prev = process.env.ZOMBIE_API_URL;
-    process.env.ZOMBIE_API_URL = "  https://probe.api.local  ";
+    const prev = process.env.AGENTSFLEET_API_URL;
+    process.env.AGENTSFLEET_API_URL = "  https://probe.api.local  ";
     try {
       const cfg = resolveCliConfig();
       // trimmed() strips the padding; readEnv() sourced it.
       expect(cfg.apiUrl).toBe("https://probe.api.local");
     } finally {
-      if (prev === undefined) delete process.env.ZOMBIE_API_URL;
-      else process.env.ZOMBIE_API_URL = prev;
+      if (prev === undefined) delete process.env.AGENTSFLEET_API_URL;
+      else process.env.AGENTSFLEET_API_URL = prev;
     }
   });
 
   test("resolveCliConfig falls back to the default api url when env is unset", () => {
-    const prev = process.env.ZOMBIE_API_URL;
-    delete process.env.ZOMBIE_API_URL;
+    const prev = process.env.AGENTSFLEET_API_URL;
+    delete process.env.AGENTSFLEET_API_URL;
     try {
       expect(resolveCliConfig().apiUrl).toBe(DEFAULT_API_URL);
     } finally {
-      if (prev !== undefined) process.env.ZOMBIE_API_URL = prev;
+      if (prev !== undefined) process.env.AGENTSFLEET_API_URL = prev;
     }
   });
 

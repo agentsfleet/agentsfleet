@@ -21,7 +21,7 @@ export const FIXTURE_EMAIL_VAULT_PATHS = {
   admin: "op://VAULT/e2e-fixtures-email/admin",
 } as const;
 
-export const ZOMBIE_STATUS = {
+export const AGENTSFLEET_STATUS = {
   active: "active",
   paused: "paused",
   stopped: "stopped",
@@ -35,9 +35,9 @@ export const ZOMBIE_STATUS = {
 // `killZombie`. Omitting it would land terminated zombies in the
 // teardown `live` list, where the kill retry trips UZ-ZMB-010.
 export const TERMINAL_STATUSES: ReadonlyArray<string> = [
-  ZOMBIE_STATUS.killed,
-  ZOMBIE_STATUS.errored,
-  ZOMBIE_STATUS.terminated,
+  AGENTSFLEET_STATUS.killed,
+  AGENTSFLEET_STATUS.errored,
+  AGENTSFLEET_STATUS.terminated,
 ];
 
 export const PLATFORM_OPS_SAMPLE_DIR = "samples/platform-ops";
@@ -55,11 +55,11 @@ export const ACCEPTANCE_BINARY = {
   global: "global",
 } as const;
 
-export const ACCEPTANCE_TARGET_ENV = "ZOMBIE_ACCEPTANCE_TARGET";
+export const ACCEPTANCE_TARGET_ENV = "AGENTSFLEET_ACCEPTANCE_TARGET";
 
-export const ACCEPTANCE_BINARY_ENV = "ZOMBIE_ACCEPTANCE_BINARY";
+export const ACCEPTANCE_BINARY_ENV = "AGENTSFLEET_ACCEPTANCE_BINARY";
 
-export const ACCEPTANCE_DASHBOARD_URL_ENV = "ZOMBIE_ACCEPTANCE_DASHBOARD_URL";
+export const ACCEPTANCE_DASHBOARD_URL_ENV = "AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL";
 
 export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 
@@ -69,9 +69,9 @@ export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 //   - DEV dashboard is the Vercel-deploy URL used by the dev workflow
 //     (per `playbooks/founding/04_deploy_dev/001_playbook.md` +
 //     `playbooks/operations/credential_rotation/02_service_health.sh`).
-export const API_URL_PROD = "https://api.usezombie.com";
-export const API_URL_DEV = "https://api-dev.usezombie.com";
-export const DASHBOARD_URL_PROD = "https://app.usezombie.com";
+export const API_URL_PROD = "https://api.agentsfleet.net";
+export const API_URL_DEV = "https://api-dev.agentsfleet.net";
+export const DASHBOARD_URL_PROD = "https://app.agentsfleet.net";
 export const DASHBOARD_URL_DEV = "https://usezombie-app.vercel.app";
 
 // Per-process acceptance run identifier — every zombie created by this

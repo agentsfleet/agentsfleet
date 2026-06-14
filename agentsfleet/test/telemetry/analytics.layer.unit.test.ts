@@ -92,12 +92,12 @@ const { cliConfigLayer } = await import("../../src/services/config.ts");
 const { Effect, Layer } = await import("effect");
 
 const ENV_KEYS = [
-  "ZOMBIE_TELEMETRY_POSTHOG_KEY",
-  "ZOMBIE_TELEMETRY_POSTHOG_HOST",
-  "ZOMBIE_STATE_DIR",
-  "ZOMBIE_TELEMETRY_DISABLED",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
+  "AGENTSFLEET_STATE_DIR",
+  "AGENTSFLEET_TELEMETRY_DISABLED",
   "DO_NOT_TRACK",
-  "ZOMBIE_TELEMETRY_DEBUG",
+  "AGENTSFLEET_TELEMETRY_DEBUG",
   "CI",
   "GITHUB_ACTIONS",
   "GITLAB_CI",
@@ -117,7 +117,7 @@ beforeEach(() => {
   STUB.groupIdentified.length = 0;
   STUB.shutdownCalls = 0;
   tmpDir = mkdtempSync(pathMod.join(tmpdir(), "agentsfleet-analytics-test-"));
-  process.env.ZOMBIE_STATE_DIR = tmpDir;
+  process.env.AGENTSFLEET_STATE_DIR = tmpDir;
 });
 
 afterEach(() => {
@@ -137,7 +137,7 @@ function grantConsent(): void {
 }
 
 function denyConsentViaKillSwitch(): void {
-  process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+  process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
 }
 
 function denyConsentViaDoNotTrack(): void {
@@ -168,7 +168,7 @@ describe("analyticsLayer", () => {
     expect(STUB.captured).toHaveLength(1);
   });
 
-  it("returns a noop service when ZOMBIE_TELEMETRY_DISABLED=1", async () => {
+  it("returns a noop service when AGENTSFLEET_TELEMETRY_DISABLED=1", async () => {
     denyConsentViaKillSwitch();
     const program = Effect.scoped(
       Effect.gen(function* () {

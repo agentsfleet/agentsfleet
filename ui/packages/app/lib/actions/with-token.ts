@@ -13,7 +13,7 @@ export type ActionResult<T> =
 
 // Resolves the Bearer token server-side via clerkMiddleware. Post-Stage-1,
 // `auth().getToken()` returns the customized default session token —
-// `aud=https://api.usezombie.com` + `metadata.tenant_id` + `metadata.role`
+// `aud=https://api.agentsfleet.net` + `metadata.tenant_id` + `metadata.role`
 // arrive automatically without a template arg, so the dashboard no longer
 // needs the api-template path. Wraps the API call in try/catch and
 // normalises ApiError → status + errorCode so callers can branch on

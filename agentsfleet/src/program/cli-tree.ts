@@ -52,17 +52,17 @@ function helpTail(): string {
     ...subcommands.map((s) => `  ${s}`),
     "",
     "Environment variables:",
-    "  ZOMBIE_API_URL                  API base URL (overridden by --api)",
-    "  ZOMBIE_DASHBOARD_URL            Dashboard base URL (login verify page)",
-    "  ZOMBIE_TOKEN                    Auth token (interactive shells prefer env)",
-    "  ZOMBIE_API_KEY                  API key for service auth",
-    "  ZOMBIE_STATE_DIR                Directory for local CLI state files",
+    "  AGENTSFLEET_API_URL                  API base URL (overridden by --api)",
+    "  AGENTSFLEET_DASHBOARD_URL            Dashboard base URL (login verify page)",
+    "  AGENTSFLEET_TOKEN                    Auth token (interactive shells use env)",
+    "  AGENTSFLEET_API_KEY                  API key for service auth",
+    "  AGENTSFLEET_STATE_DIR                Directory for local CLI state files",
     "  NO_COLOR                        Any non-empty value disables color",
-    "  ZOMBIE_TELEMETRY_DISABLED       Set to 1 to opt out of analytics + tracing",
+    "  AGENTSFLEET_TELEMETRY_DISABLED       Set to 1 to opt out of analytics+tracing",
     "  DO_NOT_TRACK                    Set to 1 to opt out (industry-standard signal)",
-    "  ZOMBIE_TELEMETRY_POSTHOG_KEY    Override the PostHog project key",
-    "  ZOMBIE_TELEMETRY_POSTHOG_HOST   Override the PostHog ingest host",
-    "  ZOMBIE_TELEMETRY_DEBUG          Set to 1 to print span summaries to stderr",
+    "  AGENTSFLEET_TELEMETRY_POSTHOG_KEY    Override the PostHog project key",
+    "  AGENTSFLEET_TELEMETRY_POSTHOG_HOST   Override the PostHog ingest host",
+    "  AGENTSFLEET_TELEMETRY_DEBUG          Set to 1 to log span summaries to stderr",
   ].join("\n");
 }
 
@@ -147,7 +147,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   program
     .command(COMMAND_LOGIN)
     .description("Authenticate via browser")
-    .option("--token <token>", "Authenticate with this token directly, no browser (prefer ZOMBIE_TOKEN or piped stdin to keep it out of shell history)")
+    .option("--token <token>", "Authenticate with this token directly, no browser (prefer AGENTSFLEET_TOKEN or piped stdin to keep it out of shell history)")
     .option("--token-name <label>", "Label for this session, shown on the approval page and in `auth status` (default: platform family)")
     .option("--force", "Skip the existing-credential prompt and overwrite", false)
     .action(actionFor(COMMAND_LOGIN, (frame) => runHandler(state, frame, handlers.login)));
@@ -222,7 +222,7 @@ function buildAgentTree(program: Command, handlers: Handlers, state: ProgramStat
   agent.command(COMMAND_ADD)
     .description("Mint an agent API key for the workspace")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .option(FLAG_ZOMBIE_ID, "Zombie ID this key is bound to", parseIdOption)
+    .option(FLAG_AGENTSFLEET_ID, "Zombie ID this key is bound to", parseIdOption)
     .option("--name <name>", "Human-readable agent name")
     .option("--description <desc>", "Optional description")
     .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
@@ -245,12 +245,12 @@ function buildGrantTree(program: Command, handlers: Handlers, state: ProgramStat
 
   grant.command(COMMAND_LIST)
     .description("List integration grants for a zombie")
-    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
+    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
   grant.command("delete <grant_id>")
     .description("Revoke an integration grant")
-    .option(FLAG_ZOMBIE_ID, ZOMBIE_ID, parseIdOption)
+    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
@@ -289,9 +289,9 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_ZOMBIE_ID = "--zombie <id>" as const;
+const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
-const ZOMBIE_ID = "Zombie ID" as const;
+const AGENTSFLEET_ID = "Zombie ID" as const;
 const COMMAND_ADD = "add" as const;
 const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_LIST = "list" as const;

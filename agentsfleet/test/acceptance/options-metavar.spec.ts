@@ -104,7 +104,7 @@ function helpEnv(): Record<string, string> {
 
 function runEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({
-    ZOMBIE_STATE_DIR: stateDir.dir,
+    AGENTSFLEET_STATE_DIR: stateDir.dir,
     NO_COLOR: "1",
     ...(extra ?? {}),
   });
@@ -179,7 +179,7 @@ describe("option values flow end-to-end into the wire request", () => {
   }
   function clear(): void { requireStub().captured.length = 0; }
   function apiEnv(extra?: Record<string, string>): Record<string, string> {
-    return runEnv({ ZOMBIE_API_URL: requireStub().baseUrl, ...(extra ?? {}) });
+    return runEnv({ AGENTSFLEET_API_URL: requireStub().baseUrl, ...(extra ?? {}) });
   }
 
   it("zombie list --limit 25 --cursor abc123 → GET .../zombies?cursor=abc123&limit=25", async () => {
@@ -271,7 +271,7 @@ describe("non-wire option values reach the handler", () => {
   it("install --from /nonexistent/marker-7b → stderr names the resolved path", async () => {
     const result = await runZombiectl(
       ["install", "--from", "/nonexistent/marker-7b"],
-      { env: runEnv({ ZOMBIE_API_URL: "http://127.0.0.1:1" }) },
+      { env: runEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1" }) },
     );
     assert.notEqual(result.code, 0, `expected non-zero exit; stdout=${result.stdout}`);
     const combined = `${result.stdout}\n${result.stderr}`;

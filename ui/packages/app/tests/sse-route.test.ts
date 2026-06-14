@@ -2,7 +2,7 @@
 // app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream.
 //
 // The handler is the trust boundary between the browser (cookie-authed via
-// Clerk) and the Zig backend (Bearer-only, aud=api.usezombie.com). Coverage
+// Clerk) and the Zig backend (Bearer-only, aud=api.agentsfleet.net). Coverage
 // here pins the auth + error + stream-piping contract documented in
 // docs/AUTH.md "UI · SSE stream".
 
@@ -55,7 +55,7 @@ describe("SSE route handler — auth", () => {
 
   it("requests the customized default session token (no template arg)", async () => {
     // Post-Stage-1: the customized default session token carries
-    // `aud=https://api.usezombie.com` + `metadata.tenant_id`, satisfying
+    // `aud=https://api.agentsfleet.net` + `metadata.tenant_id`, satisfying
     // zombied's OIDC verifier without the api-template indirection.
     getTokenFn.mockResolvedValueOnce("session_jwt_token");
     fetchSpy.mockResolvedValueOnce(

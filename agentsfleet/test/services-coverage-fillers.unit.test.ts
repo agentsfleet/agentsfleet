@@ -51,16 +51,16 @@ describe("Credentials error path", () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "agentsfleet-creds-err-"));
-    originalStateDir = process.env.ZOMBIE_STATE_DIR;
-    process.env.ZOMBIE_STATE_DIR = tempDir;
+    originalStateDir = process.env.AGENTSFLEET_STATE_DIR;
+    process.env.AGENTSFLEET_STATE_DIR = tempDir;
   });
 
   afterEach(() => {
     try {
       chmodSync(tempDir, 0o755);
     } catch {}
-    if (originalStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = originalStateDir;
+    if (originalStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = originalStateDir;
     rmSync(tempDir, { recursive: true, force: true });
   });
 

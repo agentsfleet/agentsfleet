@@ -40,11 +40,11 @@ const SERVER_ERROR_TAG = "ServerError" as const;
 
 // Server error codes this command remaps to actionable suggestions — same
 // identifiers as src/agentsfleetd/errors/error_registry.zig (RULE UFS).
-const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
+const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 
 const MEMORY_HYGIENE_DOCS_URL = "https://docs.agentsfleet.net/memory";
-const SUGGEST_ZOMBIE_NOT_FOUND =
+const SUGGEST_AGENTSFLEET_NOT_FOUND =
   "run `agentsfleet list` to see the zombies in this workspace (or pass --workspace <id>)";
 const SUGGEST_MEM_UNAVAILABLE =
   "retry shortly — the memory backend is temporarily unavailable";
@@ -176,7 +176,7 @@ const buildPath = (wsId: string, zombieId: string, params: MemoryQueryParams): s
 // operator can actually take. Detail, code, status, request_id pass through
 // so support workflows keep their grep keys.
 const MEMORY_SUGGESTIONS: Record<string, string> = {
-  [ERR_MEM_ZOMBIE_NOT_FOUND]: SUGGEST_ZOMBIE_NOT_FOUND,
+  [ERR_MEM_AGENTSFLEET_NOT_FOUND]: SUGGEST_AGENTSFLEET_NOT_FOUND,
   [ERR_MEM_UNAVAILABLE]: SUGGEST_MEM_UNAVAILABLE,
 };
 

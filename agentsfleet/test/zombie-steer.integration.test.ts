@@ -24,7 +24,7 @@ import { withMockApi } from "./helpers-mock-api.ts";
 // Exported so the sibling error-path suite shares one source of truth for
 // the fixture ids + mocked-layer config (see makeLayer below).
 export const WS_ID = "01910000-0000-7000-8000-000000a6e711";
-export const ZOMBIE_ID = "01910000-0000-7000-8000-000000a67e57";
+export const AGENTSFLEET_ID = "01910000-0000-7000-8000-000000a67e57";
 export const TOKEN = "test.jwt.token";
 export const EVENT_ID = "1729874000000-abc";
 export const API_URL = "https://api.steer-test.local";
@@ -119,8 +119,8 @@ describe("steer — empty message validation via CLI (lines 340-345)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["steer", ZOMBIE_ID, "   "],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          ["steer", AGENTSFLEET_ID, "   "],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toMatch(/message is required/i);
@@ -156,7 +156,7 @@ describe("steer — SSE frame callbacks", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "ping", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "ping", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -173,7 +173,7 @@ describe("steer — SSE frame callbacks", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -190,7 +190,7 @@ describe("steer — SSE frame callbacks", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -207,7 +207,7 @@ describe("steer — SSE frame callbacks", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -226,7 +226,7 @@ describe("steer — terminal status checks (lines 65-67, 247-252)", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.AGENT_ERROR } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -242,7 +242,7 @@ describe("steer — terminal status checks (lines 65-67, 247-252)", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.GATE_BLOCKED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),
@@ -262,7 +262,7 @@ describe("steer — json mode renderOutcome (lines 127, 231)", () => {
       { id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
-      steerEffectFromArgs(ZOMBIE_ID, "go", {}, {
+      steerEffectFromArgs(AGENTSFLEET_ID, "go", {}, {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(events),

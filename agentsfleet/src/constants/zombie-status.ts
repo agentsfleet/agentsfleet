@@ -3,7 +3,7 @@
 // emit/compare site reads from here. `paused` is server-set
 // (rate-limit / circuit-breaker); the CLI never mutates to it.
 
-export const ZOMBIE_STATUS = Object.freeze({
+export const AGENTSFLEET_STATUS = Object.freeze({
   ACTIVE: "active",
   PAUSED: "paused",
   STOPPED: "stopped",
@@ -11,11 +11,11 @@ export const ZOMBIE_STATUS = Object.freeze({
 });
 
 export type ZombieStatus =
-  (typeof ZOMBIE_STATUS)[keyof typeof ZOMBIE_STATUS];
+  (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_STATUS];
 
 // Status values the CLI is allowed to PATCH. `paused` is excluded
 // because no CLI verb sets it.
 export type ZombieMutationStatus = Exclude<
   ZombieStatus,
-  typeof ZOMBIE_STATUS.PAUSED
+  typeof AGENTSFLEET_STATUS.PAUSED
 >;

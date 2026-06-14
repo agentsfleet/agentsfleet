@@ -13,7 +13,7 @@ import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { SIGINT } from "../src/constants/signals.ts";
 
 const WS_ID = "0195b4ba-8d3a-7f13-8abc-000000000010";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000020";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-000000000020";
 const TOKEN = "test-token";
 const EVENT_ID = "1729874000000-0";
 const API_URL = "https://api.test.local";
@@ -117,7 +117,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
   test("non-TTY without --tty reads stdin once and stays single-shot", async () => {
     const rec = makeRecorder();
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       undefined,
       {},
       { stdin: streamFrom(["howdy\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
@@ -134,7 +134,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
   test("--tty forces prompt loop for piped stdin and exits on EOF", async () => {
     const rec = makeRecorder();
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       undefined,
       { forceTty: true },
       { stdin: streamFrom(["first\nsecond\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
@@ -152,7 +152,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
   test("explicit message stays single-shot even when --tty is present", async () => {
     const rec = makeRecorder();
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       "explicit",
       { forceTty: true },
       { stdin: streamFrom(["ignored\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
@@ -168,7 +168,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     const rec = makeRecorder();
     let replies = 0;
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       undefined,
       { forceTty: true },
       { stdin: streamFrom(["first\nsecond\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
@@ -194,7 +194,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       return REPL_EXIT_OK;
     };
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       undefined,
       { forceTty: true },
       { stdin: streamFrom([], false), stdout: nullOutput(), streamGet: completeStream(rec), runRepl },
@@ -221,7 +221,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     };
     let polls = 0;
     const effect = steerEffectFromArgs(
-      ZOMBIE_ID,
+      AGENTSFLEET_ID,
       undefined,
       { forceTty: true },
       { stdin: streamFrom(["howdy\n"], false), stdout: nullOutput(), streamGet: noTerminalStream, signalSource },

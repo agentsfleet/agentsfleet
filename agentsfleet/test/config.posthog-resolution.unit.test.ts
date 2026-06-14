@@ -12,8 +12,8 @@ import {
 } from "../src/services/config.ts";
 
 const ENV_KEYS = [
-  "ZOMBIE_TELEMETRY_POSTHOG_KEY",
-  "ZOMBIE_TELEMETRY_POSTHOG_HOST",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
+  "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
 ] as const;
 const saved: Record<string, string | undefined> = {};
 
@@ -42,29 +42,29 @@ describe("CliConfig PostHog resolution", () => {
     expect(cfg.telemetryPosthogHost).toBe(DEFAULT_POSTHOG_HOST);
   });
 
-  it("ZOMBIE_TELEMETRY_POSTHOG_KEY env overrides default", () => {
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = "phc_test_override";
+  it("AGENTSFLEET_TELEMETRY_POSTHOG_KEY env overrides default", () => {
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_KEY = "phc_test_override";
     const cfg = resolveCliConfig();
     expect(cfg.telemetryPosthogKey).toBe("phc_test_override");
   });
 
-  it("ZOMBIE_TELEMETRY_POSTHOG_HOST env overrides default", () => {
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_HOST = "https://eu.i.posthog.com";
+  it("AGENTSFLEET_TELEMETRY_POSTHOG_HOST env overrides default", () => {
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_HOST = "https://eu.i.posthog.com";
     const cfg = resolveCliConfig();
     expect(cfg.telemetryPosthogHost).toBe("https://eu.i.posthog.com");
   });
 
   it("falls back to defaults when env values are empty strings", () => {
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = "";
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_HOST = "";
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_KEY = "";
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_HOST = "";
     const cfg = resolveCliConfig();
     expect(cfg.telemetryPosthogKey).toBe(DEFAULT_POSTHOG_KEY);
     expect(cfg.telemetryPosthogHost).toBe(DEFAULT_POSTHOG_HOST);
   });
 
   it("falls back to defaults when env values are whitespace-only", () => {
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = "   ";
-    process.env.ZOMBIE_TELEMETRY_POSTHOG_HOST = "\t\n";
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_KEY = "   ";
+    process.env.AGENTSFLEET_TELEMETRY_POSTHOG_HOST = "\t\n";
     const cfg = resolveCliConfig();
     expect(cfg.telemetryPosthogKey).toBe(DEFAULT_POSTHOG_KEY);
     expect(cfg.telemetryPosthogHost).toBe(DEFAULT_POSTHOG_HOST);

@@ -13,7 +13,7 @@ import {
 const WORKSPACE_ID = "ws_test_001";
 const TOKEN = "token_abc";
 const GATE_ID = "01999999-0000-7000-8000-000000000001";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const PATH_PREFIX = `/v1/workspaces/${WORKSPACE_ID}/approvals`;
 const BACKEND_BASE = "/backend";
 
@@ -40,7 +40,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
   return {
     gate_id: GATE_ID,
-    zombie_id: ZOMBIE_ID,
+    zombie_id: AGENTSFLEET_ID,
     zombie_name: "approvals-a",
     workspace_id: WORKSPACE_ID,
     action_id: "act_001",
@@ -83,13 +83,13 @@ describe("listApprovals", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], next_cursor: null }));
     await listApprovals(WORKSPACE_ID, TOKEN, {
       status: "pending",
-      zombieId: ZOMBIE_ID,
+      zombieId: AGENTSFLEET_ID,
       gateKind: "cost_overrun",
       cursor: "cur_abc",
       limit: 25,
     });
     const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain(`zombie_id=${encodeURIComponent(ZOMBIE_ID)}`);
+    expect(url).toContain(`zombie_id=${encodeURIComponent(AGENTSFLEET_ID)}`);
     expect(url).toContain("gate_kind=cost_overrun");
     expect(url).toContain("status=pending");
     expect(url).toContain("cursor=cur_abc");
@@ -310,12 +310,12 @@ describe("resolve base URL — server-side (window undefined)", () => {
   it("uses NEXT_PUBLIC_API_URL when set", async () => {
     vi.stubGlobal("window", undefined);
     const prev = process.env.NEXT_PUBLIC_API_URL;
-    process.env.NEXT_PUBLIC_API_URL = "https://api-test.usezombie.com";
+    process.env.NEXT_PUBLIC_API_URL = "https://api-test.agentsfleet.net";
     try {
       fetchMock.mockResolvedValueOnce(resolved());
       await approveApproval(WORKSPACE_ID, GATE_ID, TOKEN);
       const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe(`https://api-test.usezombie.com${PATH_PREFIX}/${GATE_ID}:approve`);
+      expect(url).toBe(`https://api-test.agentsfleet.net${PATH_PREFIX}/${GATE_ID}:approve`);
     } finally {
       if (prev === undefined) delete process.env.NEXT_PUBLIC_API_URL;
       else process.env.NEXT_PUBLIC_API_URL = prev;
@@ -330,7 +330,7 @@ describe("resolve base URL — server-side (window undefined)", () => {
       fetchMock.mockResolvedValueOnce(resolved());
       await denyApproval(WORKSPACE_ID, GATE_ID, TOKEN);
       const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toContain("usezombie.com");
+      expect(url).toContain("agentsfleet.net");
       expect(url).not.toContain(BACKEND_BASE);
     } finally {
       if (prev !== undefined) process.env.NEXT_PUBLIC_API_URL = prev;
