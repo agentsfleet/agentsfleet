@@ -65,9 +65,9 @@ own external-resolver step (DNS row, fly app create, Vercel rename, cred rotatio
 implicitly via a string sweep.
 
 **API host split (Indy verbatim, Jun 13, 2026):** prod `api.usezombie.com` →
-`api.agentsfleet.net`; dev `api-dev.usezombie.com` → `api-dev.agentsfleet.dev` — the
-deliberate prod-`.net` / dev-`.dev` split. (Supersedes the earlier naming-handoff line
-that sent dev to `.net`.) Blast radius rides with the host flip: Clerk JSON Web Token (JWT)
+`api.agentsfleet.net`; dev `api-dev.usezombie.com` → `api-dev.agentsfleet.net` — both
+on `.net` (Indy, Jun 14, 2026: reverts the brief Jun 13 dev-`.dev` split back to the
+original `.net` naming). Blast radius rides with the host flip: Clerk JSON Web Token (JWT)
 `aud` claims + backend audience validation, `NEXT_PUBLIC_API_URL` defaults + fixtures,
 fly/cloudflared host config, workflow health URLs, OpenAPI `servers`.
 

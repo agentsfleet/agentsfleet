@@ -156,7 +156,7 @@ One additive migration (`core.agents` + satellites, data move, updatable compat 
 
 ### §4 — Platform identities (four independent external gates; each parks only its surface)
 
-Fly apps `zombied-{dev,prod}` → new app names (create, deploy, traffic verify, retire); API hosts split prod `api.agentsfleet.net` / dev `api-dev.agentsfleet.dev` (DNS + Clerk JWT `aud` + `NEXT_PUBLIC_API_URL` + fixtures + cloudflared + workflow URLs + OpenAPI servers in one gated edit per host); Vercel projects `usezombie-{app,website}` renamed (then the kept `usezombie-app.vercel.app` URLs flip); Postgres creds `usezombie`/`usezombiedb`/`usezombie-admin` rotated to agentsfleet names via the vault (values only; `ZMB_*` vault names keep).
+Fly apps `zombied-{dev,prod}` → new app names (create, deploy, traffic verify, retire); API hosts split prod `api.agentsfleet.net` / dev `api-dev.agentsfleet.net` (DNS + Clerk JWT `aud` + `NEXT_PUBLIC_API_URL` + fixtures + cloudflared + workflow URLs + OpenAPI servers in one gated edit per host); Vercel projects `usezombie-{app,website}` renamed (then the kept `usezombie-app.vercel.app` URLs flip); Postgres creds `usezombie`/`usezombiedb`/`usezombie-admin` rotated to agentsfleet names via the vault (values only; `ZMB_*` vault names keep).
 
 - **Dimension 4.1** — fly cutover: new apps serve, old apps drained → Eval `E6` (Indy row: fly app create + DNS)
 - **Dimension 4.2** — API host split live; JWT `aud` validated on new hosts; old hosts alias until contract → Eval `E7` (Indy row: DNS + Clerk config)
@@ -190,7 +190,7 @@ Brand residue: Dockerfile labels, systemd `Description=`, compose headers, `gith
 
 ## Interfaces
 
-Locked surface — changes require amending this spec: `agent_id`/`agent_slug` field names; `/agents` + `/v1/workspaces/{ws}/agents/{id}` routes; `core.agents` + `core.agent_*` table names; `AGENTSFLEET_*` env prefix; `x-agentsfleet*` headers; `agentsfleet_runner_*` metric names; hosts `api.agentsfleet.net` / `api-dev.agentsfleet.dev`. During expand both name families serve; after contract only these remain. `ZMB_*` vault names are out of scope of every sweep (Indy keep).
+Locked surface — changes require amending this spec: `agent_id`/`agent_slug` field names; `/agents` + `/v1/workspaces/{ws}/agents/{id}` routes; `core.agents` + `core.agent_*` table names; `AGENTSFLEET_*` env prefix; `x-agentsfleet*` headers; `agentsfleet_runner_*` metric names; hosts `api.agentsfleet.net` / `api-dev.agentsfleet.net`. During expand both name families serve; after contract only these remain. `ZMB_*` vault names are out of scope of every sweep (Indy keep).
 
 ---
 
@@ -262,7 +262,7 @@ git grep -rnwE "zombie_id|zombie_slug|core\.zombie|ZOMBIE_[A-Z_]+|x-usezombie" -
 # E4: Env prefix — git grep -rn "ZOMBIE_" -- src/ agentsfleet/src ui/packages/*/src | head  (expect empty)
 # E5: Orphan sweep — grep -rn "core\.zombies\|/zombies" src/ | head  (expect empty post-contract)
 # E6/E8: fly + Vercel — flyctl status --app <new-app> ; curl -fsSI https://<renamed-project>.vercel.app (Indy rows; paste)
-# E7: hosts — curl -fsSI https://api.agentsfleet.net/healthz && curl -fsSI https://api-dev.agentsfleet.dev/healthz
+# E7: hosts — curl -fsSI https://api.agentsfleet.net/healthz && curl -fsSI https://api-dev.agentsfleet.net/healthz
 # E9: creds — make test-integration against rotated creds (paste tail)
 # E10: npm — npm view @usezombie/zombiectl deprecated
 ```
