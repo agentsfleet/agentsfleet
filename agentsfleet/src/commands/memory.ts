@@ -43,7 +43,7 @@ const SERVER_ERROR_TAG = "ServerError" as const;
 const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
 const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 
-const MEMORY_HYGIENE_DOCS_URL = "https://docs.usezombie.com/memory";
+const MEMORY_HYGIENE_DOCS_URL = "https://docs.agentsfleet.net/memory";
 const SUGGEST_ZOMBIE_NOT_FOUND =
   "run `agentsfleet list` to see the zombies in this workspace (or pass --workspace <id>)";
 const SUGGEST_MEM_UNAVAILABLE =

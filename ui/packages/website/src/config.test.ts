@@ -46,10 +46,10 @@ describe("APP_BASE_URL resolution", () => {
 /*
  * agentsfleet rebrand pins. Two directions, both deliberate:
  *  - operational strings that must NOT change until their own cutover
- *    spec lands (installer domain, GitHub org URL, team mailbox);
- *  - parked flips (docs host) that must not drift to agentsfleet.net
- *    before the host answers. Unpinning is the conscious act of the
- *    cutover edit, never a side effect.
+ *    spec lands (installer domain, team mailbox);
+ *  - flipped values (docs host, GitHub org) that must not regress to
+ *    the retired brand. Unpinning either direction is the conscious
+ *    act of a cutover edit, never a side effect.
  */
 describe("rebrand pins — operational strings stay until their cutover", () => {
   it("install command stays on the usezombie.sh installer verbatim", async () => {
@@ -58,10 +58,10 @@ describe("rebrand pins — operational strings stay until their cutover", () => 
     expect(mod.INSTALL_COMMAND).toBe("curl -fsSL https://usezombie.sh | bash");
   });
 
-  it("GitHub URL stays on the unchanged org", async () => {
+  it("GitHub URL serves on the renamed agentsfleet org", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.GITHUB_URL).toBe("https://github.com/usezombie/usezombie");
+    expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/usezombie");
   });
 
   it("team email stays on the routed mailbox", async () => {
@@ -70,9 +70,9 @@ describe("rebrand pins — operational strings stay until their cutover", () => 
     expect(mod.TEAM_EMAIL).toBe("team@usezombie.com");
   });
 
-  it("docs URL is parked on the serving host until docs.agentsfleet.net answers", async () => {
+  it("docs URL serves on the agentsfleet host", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.DOCS_URL).toBe("https://docs.usezombie.com");
+    expect(mod.DOCS_URL).toBe("https://docs.agentsfleet.net");
   });
 });
