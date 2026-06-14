@@ -9,7 +9,7 @@
 //
 // Pure `crypto.subtle` — no extra deps. The HKDF info string is pinned by
 // RULE UFS: a single named constant, never inlined. The CLI side reads the
-// same constant from `zombiectl`.
+// same constant from `agentsfleet`.
 
 const HKDF_INFO_STRING = "m74-002-v1" as const;
 const ECDH_CURVE = "P-256" as const;
@@ -46,7 +46,7 @@ export async function generateEphemeralKeypair(): Promise<EphemeralKeypair> {
 // HKDF salt convention: passes `new Uint8Array(0)` verbatim — Web Crypto hashes
 // the empty array literally, which is HMAC-SHA256("", IKM). This differs from
 // the RFC 5869 "no-salt" default (a string of HashLen=32 zero bytes). The
-// CLI-side mirror in zombiectl MUST replicate this empty-array choice exactly
+// CLI-side mirror in agentsfleet MUST replicate this empty-array choice exactly
 // or both sides will derive different AES keys and decryption will fail.
 export async function deriveSharedKey(
   privateKey: CryptoKey,

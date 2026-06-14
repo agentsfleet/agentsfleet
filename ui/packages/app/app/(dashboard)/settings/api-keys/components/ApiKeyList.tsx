@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { KeyRoundIcon } from "lucide-react";
 import {
   API_KEY_SORTS,

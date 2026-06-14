@@ -4,7 +4,7 @@
 Hosts long-lived, event-driven autonomous workers (Zombies) scoped to a
 workspace. Inbound events arrive via webhooks (or other configured triggers)
 and are appended to each Zombie's event stream; the control plane assigns
-them to a host-resident `zombie-runner` via a lease, which runs the Zombie's
+them to a host-resident `agentsfleet-runner` via a lease, which runs the Zombie's
 loop — calling tools, updating state, and emitting further events. Operators steer or kill running Zombies through the
 control-plane API.
 

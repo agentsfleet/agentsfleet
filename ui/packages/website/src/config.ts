@@ -18,7 +18,7 @@ export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const TEAM_EMAIL = "team@usezombie.com";
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
 
-// Bootstrap one-liner — one command that installs zombiectl AND the skill
+// Bootstrap one-liner — one command that installs agentsfleet AND the skill
 // bundle (host-detected) via the usezombie.sh installer. Bare-root form (no
 // /install.sh path) per the M75 canonical one-liner. Shared by Hero CTA
 // (clipboard payload + visible label) and OnboardingFlow step 01 — single

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { List, ListItem } from "@usezombie/design-system";
+import { List, ListItem } from "@agentsfleet/design-system";
 import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 
 const BRAND_NAME = "usezombie";

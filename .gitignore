@@ -13,8 +13,8 @@ zig-pkg/
 *.log
 .tmp/
 node_modules/
-# Build outputs only — ui/usezombie.sh/dist is a committed static site, not a build artifact
-zombiectl/dist/
+# Build outputs only — ui/agentsfleet.dev/dist is a committed static site, not a build artifact
+agentsfleet/dist/
 ui/packages/*/dist/
 coverage/
 .next/
@@ -37,6 +37,6 @@ scratch_pad.md
 .claude/skills/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
-zombiectl/docs/spec/new-feature.md
+agentsfleet/docs/spec/new-feature.md
 __pycache__/
 .gstack/

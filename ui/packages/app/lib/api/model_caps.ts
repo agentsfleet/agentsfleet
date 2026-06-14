@@ -1,13 +1,13 @@
 // The public model→cap catalogue plus the global, non-secret client config,
 // served unauthenticated at /_um/<key>/cap.json. The model list, per-model
 // context caps + token rates, and the global rates/billing block all come from
-// here — see src/zombied/http/handlers/model_caps.zig for the wire contract.
+// here — see src/agentsfleetd/http/handlers/model_caps.zig for the wire contract.
 // The wizard's key-format → provider heuristic (detect-provider.ts) is the ONLY
 // client-side data; everything catalogue-shaped is fetched from this endpoint.
 
 import { BASE } from "./client";
 
-// Public path obfuscator — NOT a secret. Shipped in zombiectl, the install-skill,
+// Public path obfuscator — NOT a secret. Shipped in agentsfleet, the install-skill,
 // and the zombied binary; mirrors MODEL_CAPS_PATH_KEY in model_caps.zig. It only
 // deflects opportunistic crawlers — the catalogue itself is public.
 const CAP_JSON_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:allow — public path obfuscator, not a credential

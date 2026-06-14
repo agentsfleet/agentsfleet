@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import {
   HOST_ID_REGEX,
   SANDBOX_TIERS,

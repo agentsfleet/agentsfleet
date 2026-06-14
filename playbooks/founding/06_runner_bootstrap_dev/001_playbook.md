@@ -4,7 +4,7 @@
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
 **Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
-Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `zombie-runner` daemon.)
+Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
 
 Environment setup for all commands in this playbook:
 
@@ -143,16 +143,16 @@ All remaining steps use the Tailscale hostname `zombie-dev-worker-ant`.
 
 ## 3.0 Agent: Install Runtime Dependencies
 
-**Goal:** Packages required by `zombie-runner` at runtime are installed.
+**Goal:** Packages required by `agentsfleet-runner` at runtime are installed.
 
 | Package | Required by | Why |
 |---------|------------|-----|
-| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing; the egress handoff needs `--info-fd` + `--block-fd` (bwrap ≥ 0.8; prod boxes run 0.11) |
-| `nftables` | `zombie-runner` | **Egress allowlist (M84_004)** — the per-lease kernel egress rules on the veth |
-| `iproute2` | `zombie-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
-| `git` | `zombie-runner` | Clones repos into workspace for agent runs |
-| `ca-certificates` | `zombie-runner` | TLS connection to the zombied control plane |
-| `openssl` | `zombie-runner` | TLS runtime libraries |
+| `bubblewrap` | `agentsfleet-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing; the egress handoff needs `--info-fd` + `--block-fd` (bwrap ≥ 0.8; prod boxes run 0.11) |
+| `nftables` | `agentsfleet-runner` | **Egress allowlist (M84_004)** — the per-lease kernel egress rules on the veth |
+| `iproute2` | `agentsfleet-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
+| `git` | `agentsfleet-runner` | Clones repos into workspace for agent runs |
+| `ca-certificates` | `agentsfleet-runner` | TLS connection to the agentsfleetd control plane |
+| `openssl` | `agentsfleet-runner` | TLS runtime libraries |
 
 Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12. The egress boundary also needs the service to hold **CAP_NET_ADMIN** — granted by the systemd unit (`AmbientCapabilities`), not a package; the runner's own startup probe + `doctor` confirm it at runtime.
 
@@ -206,7 +206,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 
 ## 4.0 Agent: Bootstrap `/opt/zombie/`
 
-**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `zombie-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
+**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -222,7 +222,7 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
 
 # Copy deploy script + the single runner systemd unit from repo
 scp $SSH_OPTS deploy/baremetal/deploy.sh             "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/deploy.sh"
-scp $SSH_OPTS deploy/baremetal/zombie-runner.service "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/"
+scp $SSH_OPTS deploy/baremetal/agentsfleet-runner.service "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/deploy/deploy.sh"
 ```
 
@@ -256,14 +256,14 @@ EOF
 
 The end-to-end provisioning above is also packaged as
 [`04_provision_runner_env.sh`](./04_provision_runner_env.sh) — run that for
-an idempotent one-shot (it also restarts `zombie-runner.service` and verifies
+an idempotent one-shot (it also restarts `agentsfleet-runner.service` and verifies
 it stays active).
 
 ### 4.3 Install the systemd unit
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
-sudo cp /opt/zombie/deploy/zombie-runner.service /etc/systemd/system/
+sudo cp /opt/zombie/deploy/agentsfleet-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 REMOTE
 ```
@@ -272,15 +272,15 @@ REMOTE
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/zombie-runner.service"
+  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/agentsfleet-runner.service"
 # Expected:
 #   755 /opt/zombie/deploy/deploy.sh
 #   600 /opt/zombie/.env
-#   644 /opt/zombie/deploy/zombie-runner.service
+#   644 /opt/zombie/deploy/agentsfleet-runner.service
 
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/zombie-runner.service"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/agentsfleet-runner.service"
 # Expected:
-#   /etc/systemd/system/zombie-runner.service
+#   /etc/systemd/system/agentsfleet-runner.service
 ```
 
 **Gate check:** run `./04_provision_runner_env.sh` — it verifies vault refs, writes the env file, restarts the service, and confirms `is-active`.
@@ -289,9 +289,9 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/zombie-run
 
 ## 5.0 Agent: First Deploy + Activate CI
 
-**Goal:** First deploy runs end-to-end. `zombie-runner.service` stays active. CI gate is lifted.
+**Goal:** First deploy runs end-to-end. `agentsfleet-runner.service` stays active. CI gate is lifted.
 
-After this step, all future deploys happen automatically via `deploy-dev.yml` on every push to `main`. The CI job (`deploy-worker-dev`) scp's the freshly compiled `zombie-runner` binary, the latest `deploy.sh`, and `zombie-runner.service` to the server — then calls `deploy.sh runner` to install and restart. No manual intervention needed after bootstrap.
+After this step, all future deploys happen automatically via `deploy-dev.yml` on every push to `main`. The CI job (`deploy-worker-dev`) scp's the freshly compiled `agentsfleet-runner` binary, the latest `deploy.sh`, and `agentsfleet-runner.service` to the server — then calls `deploy.sh runner` to install and restart. No manual intervention needed after bootstrap.
 
 ```bash
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
@@ -302,19 +302,19 @@ SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
 # scp binary to server
-scp $SSH_OPTS zig-out/bin/zombie-runner "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/zombie-runner"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/bin/zombie-runner"
+scp $SSH_OPTS zig-out/bin/agentsfleet-runner "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/agentsfleet-runner"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/bin/agentsfleet-runner"
 
 # Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "sudo /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner"
+  "sudo /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner"
 
 # Verify
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
 sleep 3
-systemctl is-active zombie-runner.service
-journalctl -u zombie-runner.service --no-pager -n 10
+systemctl is-active agentsfleet-runner.service
+journalctl -u agentsfleet-runner.service --no-pager -n 10
 REMOTE
 
 # Activate CI — flip the gate ONLY after the runner is verified active with a
@@ -328,7 +328,7 @@ echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
 ### Acceptance
 
 ```
-active                            <- zombie-runner.service running
+active                            <- agentsfleet-runner.service running
 <runner startup log lines>        <- no MissingEnvVar / InvalidRunnerToken
 DEV_WORKER_READY set              <- CI guard lifted
 ```
@@ -341,11 +341,11 @@ DEV_WORKER_READY set              <- CI guard lifted
 
 Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-worker-dev` job in `deploy-dev.yml`. It automatically:
 
-1. Downloads the freshly compiled `zombie-runner` binary (from the `compile-dev` job)
+1. Downloads the freshly compiled `agentsfleet-runner` binary (from the `compile-dev` job)
 2. Joins the Tailscale network
 3. Verifies worker host readiness (`03_deploy_readiness.sh`)
-4. scp's the binary + `deploy/baremetal/deploy.sh` + `zombie-runner.service` to the server
-5. Calls `sudo deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner` with the local binary path
+4. scp's the binary + `deploy/baremetal/deploy.sh` + `agentsfleet-runner.service` to the server
+5. Calls `sudo deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner` with the local binary path
 6. Sends Discord notification on success/failure
 
 No manual steps after bootstrap — the server is fully CI-managed. The env file (`/opt/zombie/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
@@ -359,8 +359,8 @@ No manual steps after bootstrap — the server is fully CI-managed. The env file
 1.0  Agent: Verify SSH key from vault reaches server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,zombie-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
-5.0  Agent: Build + scp the zombie-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real zrn_ in vault)
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real zrn_ in vault)
 --- CI-automated after this point ---
 ```
 

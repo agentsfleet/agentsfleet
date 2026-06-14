@@ -184,7 +184,7 @@ test "lease policy carries the resolved provider and api_key across the round-tr
 
 test "lease policy without provider or api_key fields parses to empty defaults (backward-additive)" {
     const a = std.testing.allocator;
-    // A lease emitted by an OLD zombied — no provider/api_key keys on the policy.
+    // A lease emitted by an OLD agentsfleetd — no provider/api_key keys on the policy.
     // The new runner must still parse it, defaulting both fields to "" (no key,
     // surfaces downstream as a clean engine config error, never a parse failure).
     const json_old =
@@ -221,7 +221,7 @@ test "lease payload carries the installed instructions across the round-trip" {
 
 test "lease payload without instructions parses to empty default (backward-additive)" {
     const a = std.testing.allocator;
-    // A lease emitted by an OLD zombied — no `instructions` key. The new runner
+    // A lease emitted by an OLD agentsfleetd — no `instructions` key. The new runner
     // must parse it, defaulting to "" (the runner then renders an explicit
     // no-instructions sentinel). Rollout is runners-first, so an OLD runner never
     // receives a NEW lease carrying the field.

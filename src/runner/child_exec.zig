@@ -123,7 +123,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // generic model turn. NullClaw is never invoked on a no-playbook run — we
     // report a clear "no installed instructions" outcome instead. Covers a
     // misconfigured frontmatter-only SKILL.md AND the mixed-version rollout
-    // window where an older `zombied` omits the field; either way the agent runs
+    // window where an older `agentsfleetd` omits the field; either way the agent runs
     // its playbook or nothing, never a generic chat.
     if (payload.instructions.len == 0) {
         log.warn("no_installed_instructions_fail_closed", .{ .zombie_id = payload.event.zombie_id });
@@ -163,7 +163,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
 }
 
 /// Fail-closed result for a lease whose installed instructions are absent (an
-/// empty `SKILL.md` body, or an older `zombied` that omitted the field): the
+/// empty `SKILL.md` body, or an older `agentsfleetd` that omitted the field): the
 /// model is never invoked, so the agent never runs as a generic chat. Reported
 /// as a startup-posture failure carrying an operator-facing message.
 fn noInstructionsResult() types.ExecutionResult {

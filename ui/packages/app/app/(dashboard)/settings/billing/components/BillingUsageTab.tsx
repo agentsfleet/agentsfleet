@@ -10,7 +10,7 @@ import {
   EmptyState,
   Spinner,
   type DataTableColumn,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { listTenantBillingChargesAction } from "../actions";
 import { PROVIDER_MODE } from "@/lib/types";
 import { formatDollars, groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";

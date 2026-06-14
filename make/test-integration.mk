@@ -2,21 +2,21 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-runner _test-integration-zombied _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-runner _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 
-# zombie-runner integration tests — real-process sandbox proofs (fork/spawn at
+# agentsfleet-runner integration tests — real-process sandbox proofs (fork/spawn at
 # the environ_map boundary, kill(-pgid) tree reap). Its own build graph
 # (build_runner.zig), no datastore and NO docker infra: it forks real children
 # and reads /proc, a distinct privileged-Linux execution environment from both
 # the app integration lane (Postgres/Redis below) and the fast unit lane. The
 # bodies are Linux-gated (SkipZigTest elsewhere); on macOS this compiles only.
-test-integration-runner:  ## Run zombie-runner integration tests (real-process sandbox proofs; Linux, no datastore)
-	@echo "→ [zombie-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
+test-integration-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
+	@echo "→ [agentsfleet-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build --build-file build_runner.zig test-integration --summary all
-	@echo "✓ [zombie-runner] Integration tests passed (Linux real-process proofs)"
+	@echo "✓ [agentsfleet-runner] Integration tests passed (Linux real-process proofs)"
 
 TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
@@ -33,11 +33,11 @@ _ensure-test-infra:
 	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
 	  exit 1; \
 	fi
-	@# container_name in docker-compose.yml is fixed (zombie-postgres / zombie-redis),
+	@# container_name in docker-compose.yml is fixed (agentsfleet-postgres / agentsfleet-redis),
 	@# so another worktree's compose can leave stale containers blocking ours. Remove
 	@# by name if they exist but are NOT owned by this project. Idempotent.
 	@this_project=$$(basename "$(CURDIR)"); \
-	for c in zombie-postgres zombie-redis; do \
+	for c in agentsfleet-postgres agentsfleet-redis; do \
 	  owner=$$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' $$c 2>/dev/null); \
 	  if [ -n "$$owner" ] && [ "$$owner" != "$$this_project" ]; then \
 	    echo "→ [infra] Removing stale $$c (owned by project '$$owner')..."; \
@@ -70,8 +70,8 @@ _reset-test-db: _ensure-test-infra
 	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a usezombie --no-auth-warning FLUSHALL >/dev/null
 	@echo "✓ [infra] Redis flushed"
 
-_test-integration-zombied:
-	@echo "→ [zombied] Running Zig integration tests..."
+_test-integration-agentsfleetd:
+	@echo "→ [agentsfleetd] Running Zig integration tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@env -u TEST_DATABASE_URL -u TEST_REDIS_TLS_URL -u LIVE_DB \
 	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -89,20 +89,20 @@ _test-integration-db: _reset-test-db
 	      *) db_url="$$db_url?sslmode=disable" ;; \
 	    esac ;; \
 	esac; \
-	echo "→ [zombied] Running DB-backed integration tests using $$db_url..."; \
+	echo "→ [agentsfleetd] Running DB-backed integration tests using $$db_url..."; \
 	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"; \
-	echo "→ [zombied] Auto-migrating test database..."; \
+	echo "→ [agentsfleetd] Auto-migrating test database..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
 	zig build run -- migrate; \
-	echo "→ [zombied] Migration done, running tests..."; \
+	echo "→ [agentsfleetd] Migration done, running tests..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
 	zig build test
-	@echo "✓ [zombied] DB-backed integration tests passed"
+	@echo "✓ [agentsfleetd] DB-backed integration tests passed"
 
 _test-integration-redis: _reset-test-db
 	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
@@ -112,7 +112,7 @@ _test-integration-redis: _reset-test-db
 	  esac; \
 	fi; \
 	if [ -z "$$redis_tls_test_url" ]; then redis_tls_test_url="$(TEST_REDIS_TLS_URL_LOCAL)"; fi; \
-	echo "→ [zombied] Running Redis integration tests using $$redis_tls_test_url..."; \
+	echo "→ [agentsfleetd] Running Redis integration tests using $$redis_tls_test_url..."; \
 	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"; \
 	env -u TEST_DATABASE_URL -u LIVE_DB \
 	  ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -121,7 +121,7 @@ _test-integration-redis: _reset-test-db
 	  REDIS_URL_API="$$redis_tls_test_url" \
 	  REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	  zig build test
-	@echo "✓ [zombied] Redis integration tests passed"
+	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
 _test-integration-full: _reset-test-db
 	@db_url="$$TEST_DATABASE_URL"; \
@@ -141,31 +141,31 @@ _test-integration-full: _reset-test-db
 	  esac; \
 	fi; \
 	if [ -z "$$redis_tls_test_url" ]; then redis_tls_test_url="$(TEST_REDIS_TLS_URL_LOCAL)"; fi; \
-	echo "→ [zombied] Auto-migrating test database..."; \
+	echo "→ [agentsfleetd] Auto-migrating test database..."; \
 	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
 	zig build run -- migrate; \
-	echo "→ [zombie-runner] Building the runner binary for the operator-CLI integration arm..."; \
+	echo "→ [agentsfleet-runner] Building the runner binary for the operator-CLI integration arm..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	zig build --build-file build_runner.zig; \
-	echo "→ [zombied] Running full integration suite against real DB + Redis..."; \
+	echo "→ [agentsfleetd] Running full integration suite against real DB + Redis..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	ZOMBIE_RUNNER_BIN="$$(pwd)/zig-out/bin/zombie-runner" \
+	ZOMBIE_RUNNER_BIN="$$(pwd)/zig-out/bin/agentsfleet-runner" \
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	REDIS_URL_API="$$redis_tls_test_url" \
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
 	zig build test
-	@echo "✓ [zombied] Full integration suite passed"
+	@echo "✓ [agentsfleetd] Full integration suite passed"
 
 test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
 
 test-integration-redis: _test-integration-redis  ## Run Redis-backed integration suite only
 
 test-integration: _test-integration-full  ## Run worker integration tests against real DB + Redis
-	@echo "✓ [zombied] All integration tests passed"
+	@echo "✓ [agentsfleetd] All integration tests passed"

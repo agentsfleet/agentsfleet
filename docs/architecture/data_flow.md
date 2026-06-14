@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Sibling: [`runner_fleet.md`](./runner_fleet.md) (the structural split this flow runs on).
 >
-> **Scope:** this file describes the runtime as it runs now — after the M80_002 cutover. `zombied` is the **control plane** (owns Postgres, Redis, the Vault, the HTTP API, and work assignment); the host-resident **`zombie-runner`** daemon is the **execution plane** (leases work over Hypertext Transfer Protocol Secure (HTTPS), runs NullClaw in a forked sandboxed child, reports back). The single-process `zombied worker` loop and the standalone sandbox sidecar are deleted. See [`runner_fleet.md`](./runner_fleet.md) for the why and the guarantees.
+> **Scope:** this file describes the runtime as it runs now — after the M80_002 cutover. `agentsfleetd` is the **control plane** (owns Postgres, Redis, the Vault, the HTTP API, and work assignment); the host-resident **`agentsfleet-runner`** daemon is the **execution plane** (leases work over Hypertext Transfer Protocol Secure (HTTPS), runs NullClaw in a forked sandboxed child, reports back). The single-process `agentsfleetd worker` loop and the standalone sandbox sidecar are deleted. See [`runner_fleet.md`](./runner_fleet.md) for the why and the guarantees.
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 
@@ -10,18 +10,18 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 
 | Process | Role |
 |---|---|
-| **`zombied-api`** (`zombied serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers all `XADD` directly to `zombie:{id}:events` — single ingress. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `zombie:{id}:activity`. Never runs language-model code. |
-| **`zombie-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `zrn_` token (env `ZOMBIE_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `zrn_` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `zombied` over the `activity` verb. |
+| **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers all `XADD` directly to `zombie:{id}:events` — single ingress. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `zombie:{id}:activity`. Never runs language-model code. |
+| **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `zrn_` token (env `ZOMBIE_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `zrn_` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `agentsfleetd` over the `activity` verb. |
 
 | Target | Producer | Consumer |
 |---|---|---|
-| `zombie:{id}:events` | `zombied-api` on steer / webhook / continuation; NullClaw cron-tool fires; `zombied` on chunk-continuation | **`zombied`** — non-blocking `XREADGROUP` on each `lease`, `XACK` on each `report` |
-| `zombie:{id}:activity` | `zombied` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | SSE streams in `zombied-api`, fanned out from the SubscriptionHub's one shared pub/sub connection (refcounted SUBSCRIBE per channel) |
-| `core.zombie_events` | `zombied` lease path (INSERT received) → report path (UPDATE terminal) | `zombied-api` `GET /events` endpoints, dashboard, `zombiectl events` |
-| `core.zombies` | `zombied-api` only | `zombied` at lease (config resolved fresh per lease) |
-| `core.zombie_sessions` | `zombied` lease path (mark busy) + report path (checkpoint) | `zombied` at lease + `zombiectl status` |
-| `fleet.runner_leases` / `fleet.runner_affinity` | `zombied` lease path (issue) + report/reclaim (flip / release) | `zombied` assignment + fencing + reclaim |
-| `vault.secrets` | `zombied-api` on `credential set` (upsert) | `zombied` resolves just-in-time at `lease`, ships inline in the lease reply |
+| `zombie:{id}:events` | `agentsfleetd-api` on steer / webhook / continuation; NullClaw cron-tool fires; `agentsfleetd` on chunk-continuation | **`agentsfleetd`** — non-blocking `XREADGROUP` on each `lease`, `XACK` on each `report` |
+| `zombie:{id}:activity` | `agentsfleetd` (sole publisher) — bracket frames directly, mid-run frames fed by the runner's `activity` stream | SSE streams in `agentsfleetd-api`, fanned out from the SubscriptionHub's one shared pub/sub connection (refcounted SUBSCRIBE per channel) |
+| `core.zombie_events` | `agentsfleetd` lease path (INSERT received) → report path (UPDATE terminal) | `agentsfleetd-api` `GET /events` endpoints, dashboard, `agentsfleet events` |
+| `core.zombies` | `agentsfleetd-api` only | `agentsfleetd` at lease (config resolved fresh per lease) |
+| `core.zombie_sessions` | `agentsfleetd` lease path (mark busy) + report path (checkpoint) | `agentsfleetd` at lease + `agentsfleet status` |
+| `fleet.runner_leases` / `fleet.runner_affinity` | `agentsfleetd` lease path (issue) + report/reclaim (flip / release) | `agentsfleetd` assignment + fencing + reclaim |
+| `vault.secrets` | `agentsfleetd-api` on `credential set` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
 | `zombie:control` | — (removed at the cutover) | — (removed at the cutover) |
 
 ---
@@ -35,25 +35,25 @@ Two distinct agents are in play. Keeping them straight is essential to understan
 │  CODING AGENT (laptop)         │         │  THE AGENT (host)            │
 │                                │         │                              │
 │  Claude Code / Amp / Codex /   │         │  NullClaw running inside the │
-│  OpenCode driving zombiectl    │         │  zombie-runner's sandboxed   │
+│  OpenCode driving agentsfleet    │         │  agentsfleet-runner's sandboxed   │
 │                                │         │  child (Landlock + cgroups + │
 │  This is what the human types  │         │  netns via bwrap; durable,   │
 │  into. Ephemeral.              │         │  persists across laptop close)│
 └────────────────────────────────┘         └──────────────────────────────┘
 ```
 
-The coding agent is a workstation tool driving `zombiectl`. The agent — the product itself — is a NullClaw instance inside the runner's sandboxed child. The coding agent never becomes the agent and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
+The coding agent is a workstation tool driving `agentsfleet`. The agent — the product itself — is a NullClaw instance inside the runner's sandboxed child. The coding agent never becomes the agent and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
 
 ## Steer flow end-to-end
 
 ```
                 "what's the deploy status?"
                           ↓
-         Coding Agent → zombiectl steer <zombie_id> "<msg>"
+         Coding Agent → agentsfleet steer <zombie_id> "<msg>"
                           ↓
 
            ╔═══════════════════════════════════╗
-           ║  zombied-api (HTTP)               ║
+           ║  agentsfleetd-api (HTTP)               ║
            ║  POST /v1/.../zombies/{id}/messages║
            ║  ───────────────────────────────  ║
            ║  XADD zombie:{id}:events *         ║   ← single ingress.
@@ -68,13 +68,13 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
         ( the event waits on the stream until a runner asks for work )
                           ↓
            ╔═══════════════════════════════════╗
-           ║  zombie-runner (host)             ║
+           ║  agentsfleet-runner (host)             ║
            ║  POST /v1/runners/me/leases        ║   ← long-poll; no work
            ║  Authorization: Bearer zrn_        ║     → null + retry_after_ms
            ╚═══════════════════════════════════╝
                           ↓
            ╔═══════════════════════════════════╗
-           ║  zombied (lease handler)          ║   ← the work the worker
+           ║  agentsfleetd (lease handler)          ║   ← the work the worker
            ║  ───────────────────────────────  ║     used to do, now on
            ║  assign.select():                  ║     the request thread:
            ║   non-blocking XREADGROUP across   ║
@@ -98,7 +98,7 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
            ╚═══════════════════════════════════╝
                           ↓
            ╔═══════════════════════════════════╗
-           ║  zombie-runner (parent + child)   ║
+           ║  agentsfleet-runner (parent + child)   ║
            ║  ───────────────────────────────  ║
            ║  parent: establish cgroup, fork,   ║       This is the
            ║  exec self as `__execute` under    ║       "THE AGENT" (host).
@@ -114,7 +114,7 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
            ║                                    ║
            ║   Each progress frame → stdout pipe ║   ← parent forwards
            ║   (A=activity, R=result, framed):  ║     each A frame to
-           ║     - tool_call_started            ║     zombied .../activity,
+           ║     - tool_call_started            ║     agentsfleetd .../activity,
            ║     - agent_response_chunk         ║     which PUBLISHes it.
            ║     - tool_call_completed          ║
            ║                                    ║
@@ -124,7 +124,7 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
            ╚═══════════════════════════════════╝
                           ↓
            ╔═══════════════════════════════════╗
-           ║  zombied (report handler)         ║
+           ║  agentsfleetd (report handler)         ║
            ║  POST /v1/runners/me/reports       ║
            ║  ───────────────────────────────  ║
            ║   claimReport(): atomic CAS —      ║   ← fence + flip + dedup
@@ -146,7 +146,7 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
            ║  12. release affinity (token-guard)║
            ╚═══════════════════════════════════╝
                           ↓
-   Coding Agent's `zombiectl steer <zombie_id>` polls GET /events
+   Coding Agent's `agentsfleet steer <zombie_id>` polls GET /events
    (or SSE-tails GET /events/stream which SUBSCRIBEs
     zombie:{id}:activity)
                           ↓
@@ -155,16 +155,16 @@ The coding agent is a workstation tool driving `zombiectl`. The agent — the pr
                   User reads it.
 ```
 
-The 12 numbered writes are the same durable effects the deleted worker's `processEvent` produced, in the same order — split across two protocol calls (`lease` does 1–6, `report` does 7–12) instead of one in-process loop. The control-plane handlers under `src/zombied/fleet/` are faithful mirrors of the old `event_loop_writepath`; the row-equivalence guarantee (cutover Invariant 2) is what keeps history, billing, and the SSE tail byte-identical to the pre-cutover path.
+The 12 numbered writes are the same durable effects the deleted worker's `processEvent` produced, in the same order — split across two protocol calls (`lease` does 1–6, `report` does 7–12) instead of one in-process loop. The control-plane handlers under `src/agentsfleetd/fleet/` are faithful mirrors of the old `event_loop_writepath`; the row-equivalence guarantee (cutover Invariant 2) is what keeps history, billing, and the SSE tail byte-identical to the pre-cutover path.
 
 ## The three durable stores: who owns what
 
-The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct user question, has a different cardinality, mutability, and retention contract. The cutover did not change their shape or their write order; it moved the writer from the per-agent worker thread to `zombied`'s lease/report path.
+The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct user question, has a different cardinality, mutability, and retention contract. The cutover did not change their shape or their write order; it moved the writer from the per-agent worker thread to `agentsfleetd`'s lease/report path.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
-| `core.zombie_sessions` | **One row per agent** | UPSERT — mutated on every event boundary | "Where is this agent *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `zombiectl status`. |
-| `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this agent do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `zombiectl events`. |
+| `core.zombie_sessions` | **One row per agent** | UPSERT — mutated on every event boundary | "Where is this agent *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
+| `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this agent do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
 | `zombie_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention contracts:
@@ -271,8 +271,8 @@ execution_started_at NULL
 
 ## Reading the three tables
 
-- `zombiectl status {id}` reads **`zombie_sessions`** — answers "is the agent executing right now, and where did it leave off?"
-- `zombiectl events {id} [--actor=…]` reads **`zombie_events`** — answers "what has this agent done, what was asked, what did it reply, did any gate block it?"
+- `agentsfleet status {id}` reads **`zombie_sessions`** — answers "is the agent executing right now, and where did it leave off?"
+- `agentsfleet events {id} [--actor=…]` reads **`zombie_events`** — answers "what has this agent done, what was asked, what did it reply, did any gate block it?"
 - Billing rollups + p95 dashboards read **`zombie_execution_telemetry`** — answers "how many tokens this month, what's the latency tail?"
 
 If only **one** table existed, every user query would either pay full-table-scan cost (one row per delivery for "is it busy now?") or lose immutability guarantees on billing audit (mutable narrative columns alongside immutable spend columns). Three tables, three contracts, one join key (`event_id`).
@@ -283,15 +283,15 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
-| `zombie:{id}:events` | Stream + consumer group `zombie_workers` | One per agent | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `zombied` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the agent handles. |
-| `zombie:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per agent | Best-effort live tail — `zombied` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `zombied`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
+| `zombie:{id}:events` | Stream + consumer group `zombie_workers` | One per agent | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the agent handles. |
+| `zombie:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per agent | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `zombie:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-agent threads — and there are no per-agent threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_zombie.ensureZombieConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
 `zombie:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live user UIs — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.zombie_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
 
 ## Connection topology — the cutover collapsed the dedicated tier
 
-Before the cutover, the worker held **one dedicated blocking Redis connection per agent** (`XREADGROUP … BLOCK 5000`) plus a watcher connection — that dedicated tier was the binding fleet constraint. The cutover **deleted that tier**. `zombied` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command, not a held connection. The runner's "blocking" is an HTTP long-poll against `zombied`, not a Redis `BLOCK`, and the runner holds no Redis at all.
+Before the cutover, the worker held **one dedicated blocking Redis connection per agent** (`XREADGROUP … BLOCK 5000`) plus a watcher connection — that dedicated tier was the binding fleet constraint. The cutover **deleted that tier**. `agentsfleetd` now claims work with a **non-blocking** `XREADGROUP` on the request thread that serves a `lease` call — a short-lived pooled command, not a held connection. The runner's "blocking" is an HTTP long-poll against `agentsfleetd`, not a Redis `BLOCK`, and the runner holds no Redis at all.
 
 ```
                         REDIS CONNECTION TOPOLOGY (post-cutover)
@@ -312,8 +312,8 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
   ┌──┴─────────┐         ┌────┴────────┐          ┌─────┴───────┐      ┌─────┴──────┐
   │ HTTP user  │         │ lease       │          │ lease +     │      │ report     │
   │ handlers   │         │ handler     │          │ report +    │      │ handler    │
-  │ (zombied-  │         │ (zombied-   │          │ activity    │      │ (zombied-  │
-  │  api)      │         │  api)       │          │ (zombied-api)│      │  api)      │
+  │ (agentsfleetd-  │         │ (agentsfleetd-   │          │ activity    │      │ (agentsfleetd-  │
+  │  api)      │         │  api)       │          │ (agentsfleetd-api)│      │  api)      │
   └────────────┘         └─────────────┘          └─────────────┘      └────────────┘
 
 
@@ -343,20 +343,20 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 ## Config reload — pull-per-lease, no signal
 
-`zombied` resolves an agent's config fresh from `core.zombies` on every `lease`, so a `PATCH /v1/workspaces/{ws}/zombies/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `zombie_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
+`agentsfleetd` resolves an agent's config fresh from `core.zombies` on every `lease`, so a `PATCH /v1/workspaces/{ws}/zombies/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `zombie_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
 
 A config change never alters a language-model turn already in flight (one lease = one run, and the run already has its resolved policy); the next run picks up the new config. The PATCH handler writes `core.zombies` and returns — there is no signal to emit, since the control stream was removed at the cutover. A status change (`paused` / `stopped` / `killed` / back to `active`) is read the same way: the lease assignment scan filters on `core.zombies.status = 'active'`, so a paused agent drops out of the candidate set on the next scan and a resumed one re-enters — no notification needed.
 
 ## End-to-end sequence
 
-### A. INSTALL  (`zombiectl install --from <path>`)
+### A. INSTALL  (`agentsfleet install --from <path>`)
 
 ```
    user / install-skill
     │  POST /v1/workspaces/{ws}/zombies
     │  body: { name, config_json, source_markdown }
     ▼
-  zombied-api (innerCreateZombie)
+  agentsfleetd-api (innerCreateZombie)
     │
     ├─► [PG]    INSERT core.zombies          (RLS: tenant boundary)
     ├─► [PG]    INSERT core.zombie_sessions  (idle row: execution_id=NULL,
@@ -389,7 +389,7 @@ A config change never alters a language-model turn already in flight (one lease 
        request       <opaque JSON — the message + metadata>
        created_at    <epoch milliseconds; project bigint convention>
 
-   STEER     zombiectl steer <zombie_id> "morning health check"
+   STEER     agentsfleet steer <zombie_id> "morning health check"
                → POST /v1/.../zombies/{id}/messages
                → XADD zombie:{id}:events *
                       actor=steer:kishore  type=chat
@@ -429,13 +429,13 @@ A config change never alters a language-model turn already in flight (one lease 
                `/v1/webhooks/` namespace is customer-data-plane only.
 
    CRON      NullClaw cron-tool fires on schedule (in the sandboxed child)
-               → the runner reports a cron-scheduling intent; zombied
+               → the runner reports a cron-scheduling intent; agentsfleetd
                → XADD zombie:{id}:events *
                       actor=cron:0_*/30_*_*_*  type=cron
                       workspace_id=<ws>        request=<msg>
                       created_at=<ms>
 
-   CONTINUATION  zombied re-enqueue (chunk-continuation or
+   CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
                  user-resumed fulfillment)
                → XADD zombie:{id}:events *
                       actor=continuation:<original_actor>
@@ -462,7 +462,7 @@ user action:
   `triggers[].source` is unknown to the provider registry, OR the
   workspace has no `zombie:<source>` vault credential (vault row missing
   OR `webhook_secret` field absent). User-recoverable misconfig — fix
-  with `zombiectl credential set <source> --data @-` and pipe JSON on stdin.
+  with `agentsfleet credential set <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has
@@ -479,10 +479,10 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
 The deleted worker's single in-process `processEvent` loop is now split across two protocol calls. `lease` does the pre-execution control-plane work and hands a self-contained `ExecutionPolicy` to the runner; `report` does the terminal control-plane work after the runner's sandboxed child finishes.
 
 ```
-   zombie-runner (host)
+   agentsfleet-runner (host)
     │  POST /v1/runners/me/leases   (long-poll; Bearer zrn_)
     ▼
-   zombied — lease handler:
+   agentsfleetd — lease handler:
 
      assign.select():
        non-blocking XREADGROUP zombie:{id}:events across all ACTIVE
@@ -512,7 +512,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         ExecutionPolicy.provider + ExecutionPolicy.api_key; it does NOT join
         secrets_map and is never substituted into a tool placeholder. The
         runner injects it into the NullClaw child for the inference call only,
-        and zombied secureZeros it after the lease serializes.
+        and agentsfleetd secureZeros it after the lease serializes.
      5. UPSERT core.zombie_sessions                ← marks busy
           SET execution_id, execution_started_at = now()
      6. issue fleet.runner_leases row              ← durable ownership
@@ -524,13 +524,13 @@ The deleted worker's single in-process `processEvent` loop is now split across t
         by ZombieSession, so the runner gives NullClaw the installed behaviour and
         not a generic chat — soft reasoning input, never a secret. M84_008.)
 
-   zombie-runner — parent (child_supervisor.zig):
-       establish cgroup → fork → exec self as `zombie-runner __execute`
+   agentsfleet-runner — parent (child_supervisor.zig):
+       establish cgroup → fork → exec self as `agentsfleet-runner __execute`
        under bwrap (unshare-all + ro-system + rw-workspace + die-with-parent)
        → feed the lease over child stdin (VLT: secrets only via stdin)
        → read framed frames off child stdout under the lease deadline (poll)
 
-   zombie-runner — sandboxed child (child_exec.zig):
+   agentsfleet-runner — sandboxed child (child_exec.zig):
        apply mandatory Landlock (fail-closed on the required tier) →
        build NullClaw config + tool set from the policy → run the agent turn.
        (fail-closed: an empty installed playbook OR a config-build allocation
@@ -553,12 +553,12 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           └─ terminal: R frame ExecutionResult{ content, tokens, ttft_ms,
                                                 wall_ms, outcome }
 
-   zombie-runner — parent:
+   agentsfleet-runner — parent:
        collect the ExecutionResult, classify timeout/OOM/crash/startup_posture,
        scope.destroy() (idempotent), then:
     │  POST /v1/runners/me/reports { lease_id, fencing_token, outcome, ... }
     ▼
-   zombied — report handler:
+   agentsfleetd — report handler:
 
      claimReport(): atomic CAS —
        UPDATE fleet.runner_leases SET status=reported
@@ -591,7 +591,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 ### D. WATCH  (user-side: how the live tail surfaces)
 
 ```
-   CLI       zombiectl steer <zombie_id> "<message>"   (batch mode)
+   CLI       agentsfleet steer <zombie_id> "<message>"   (batch mode)
                → opens GET /v1/.../zombies/{id}/events/stream (SSE)
                → server SUBSCRIBE zombie:{id}:activity on a dedicated
                  Redis connection held outside the request-handler pool
@@ -624,11 +624,11 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    Clients backfill via GET /events?cursor=<last_seen_event_id>&limit=20
    after reconnect; the new SSE then resumes from sequence 0.
 
-   HISTORY   zombiectl events {id} [--actor=…] [--since=2h]
+   HISTORY   agentsfleet events {id} [--actor=…] [--since=2h]
              Dashboard /zombies/{id}/events
                → reads core.zombie_events (cursor-paginated).
 
-   STATUS    zombiectl status {id}
+   STATUS    agentsfleet status {id}
                → reads core.zombie_sessions
                  ("busy or idle, last response").
 
@@ -643,12 +643,12 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    user
     │  POST /v1/.../zombies/{id}/kill
     ▼
-  zombied
+  agentsfleetd
     ├─► UPDATE core.zombies SET status='killed' (PG)
     ├─► mark the in-flight fleet.runner_leases row revoked
     └─► 202 to user
 
-  zombie-runner  (next heartbeat)
+  agentsfleet-runner  (next heartbeat)
     ├─► POST /v1/runners/me/heartbeats  → reply carries the revoked lease id
     ├─► kill the sandboxed child (cgroup tree-kill)
     └─► POST /v1/runners/me/reports { outcome: cancelled }
@@ -675,7 +675,7 @@ Before the cutover, a single worker thread owned all events for an agent, and th
 
 - `fleet.runner_affinity` holds one slot per agent. `assign.select` claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_seq`. So **at most one lease is active per agent at any time**, regardless of how many runners poll concurrently.
 - A runner that loses the race for an agent simply gets no lease for it and tries the next eligible agent (or backs off).
-- Continuity across runs is the checkpoint in `zombied`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
+- Continuity across runs is the checkpoint in `agentsfleetd`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: if the runner holding a lease dies, no other runner can claim that agent until `lease_expires_at`; the reclaim sweep then re-leases it with a higher fencing token. Recovery latency is bounded by the TTL (Time To Live) plus poll density — the S0 lazy-reclaim SLA. Tightening it (heartbeat-driven reassignment, sub-10 s recovery) is M80_006.
 
@@ -704,7 +704,7 @@ The API server (not a runner) is the side that writes to Redis during install. S
 
 ```
    TIME ──►
-   t=0  USER → zombiectl install → API
+   t=0  USER → agentsfleet install → API
    t=2  API: INSERT core.zombies (status='active') → PG ✓
    t=3  API: XGROUP CREATE MKSTREAM ╳ (4 retries exhausted, ~2.1s)
    t=4  API: DELETE core.zombies row ╳ (rare second failure)

@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
   WakePulse,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { AuthUserButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";

@@ -13,7 +13,7 @@ acceptance-e2e:  ## Dashboard auth acceptance — Clerk sign-in + install + life
 	@cd ui/packages/app && bun run test:e2e:acceptance
 	@echo "✓ [app] dashboard acceptance e2e passed"
 
-cli-acceptance:  ## CLI auth acceptance — zombiectl login + token lifecycle vs live API. Mirrors CI cli-acceptance-{dev,prod}.
-	@echo "→ [zombiectl] Running CLI acceptance e2e (login + token lifecycle)..."
-	@cd zombiectl && bun run test:acceptance
-	@echo "✓ [zombiectl] CLI acceptance e2e passed"
+cli-acceptance:  ## CLI auth acceptance — agentsfleet login + token lifecycle vs live API. Mirrors CI cli-acceptance-{dev,prod}.
+	@echo "→ [agentsfleet] Running CLI acceptance e2e (login + token lifecycle)..."
+	@cd agentsfleet && bun run test:acceptance
+	@echo "✓ [agentsfleet] CLI acceptance e2e passed"

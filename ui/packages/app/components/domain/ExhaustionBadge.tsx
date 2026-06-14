@@ -1,5 +1,5 @@
 import { AlertTriangleIcon } from "lucide-react";
-import { Badge, formatTimeAbsolute } from "@usezombie/design-system";
+import { Badge, formatTimeAbsolute } from "@agentsfleet/design-system";
 
 type Props = { exhaustedAt: number | null };
 

@@ -31,7 +31,7 @@ afterEach(() => cleanup());
 
 import { EventsList } from "../components/domain/EventsList";
 import { FRAME_KIND, type EventRow, type EventsPage, type LiveFrame } from "@/lib/api/events";
-import { TooltipProvider } from "@usezombie/design-system";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);

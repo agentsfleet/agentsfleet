@@ -1,6 +1,6 @@
 // Single canonical contact email for the marketing site. Mirrors
 // `SUPPORT_EMAIL` in src/config/contact.zig, ui/packages/app/lib/contact.ts,
-// zombiectl/src/lib/contact.js, and ~/Projects/docs/snippets/contact.mdx —
+// agentsfleet/src/lib/contact.js, and ~/Projects/docs/snippets/contact.mdx —
 // cross-tier parity rule says the identifier matches across every runtime,
 // so a future address rotation lands as a coordinated bump in all five
 // places. Surfaces using this constant: Pricing.tsx (design-partner CTA),

@@ -22,7 +22,7 @@ import {
   FormMessage,
   Input,
   Spinner,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX, type CreatedApiKey } from "@/lib/api/api_keys";
 import { presentErrorString } from "@/lib/errors";
 import { createApiKeyAction } from "../actions";

@@ -73,6 +73,6 @@ echo "  - DBSIZE: 0 (all keys flushed)"
 echo ""
 echo "NOTE: FLUSHALL removes the per-zombie event streams and their"
 echo "zombie_lease consumer groups. No manual re-priming is needed —"
-echo "zombied recreates each one on demand at zombie-create time."
+echo "agentsfleetd recreates each one on demand at zombie-create time."
 
 exit "$exit_code"

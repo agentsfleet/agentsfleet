@@ -6,14 +6,14 @@
  * /v1/sessions/{id}/tokens. Post-the mint uses the bare
  * `/tokens` endpoint (no template suffix) — the customized default
  * session token carries `aud=https://api.usezombie.com` +
- * `metadata.tenant_id` + `metadata.role`, which is exactly what zombied's
+ * `metadata.tenant_id` + `metadata.role`, which is exactly what agentsfleetd's
  * OIDC verifier and tenant-scope check rely on.
  *
  * The cookie-side of "sign in" is handled by `clerk.signIn` from
  * `@clerk/testing/playwright` (see `fixtures/auth.ts`) — that helper mints
  * a single-use ticket via Backend API + drives `Clerk.signIn.create` in
  * the page, so clerk-js owns every session cookie. The harness only owns
- * the customized-session Bearer JWT that direct zombied calls (seed/
+ * the customized-session Bearer JWT that direct agentsfleetd calls (seed/
  * teardown) use; clerkMiddleware never sees it.
  *
  * Uses fetch directly. No @clerk/backend SDK — the surface is small and
@@ -29,7 +29,7 @@ const CLERK_API_BASE = "https://api.clerk.com/v1";
 // observed p95 wall-clock on CI (suites complete in ~5 min). Tighter than
 // the historical 3600s posture to bound the impact of a leaked
 // .fixture-jwts.json file. `clientFor` callers that exceed this window
-// will fail loud with a 401 from zombied — re-mint if/when that happens.
+// will fail loud with a 401 from agentsfleetd — re-mint if/when that happens.
 const SESSION_TOKEN_TTL_SECONDS = 900;
 const CLERK_METADATA_POLL_MS = 500;
 const CLERK_METADATA_TIMEOUT_MS = 15_000;
@@ -49,7 +49,7 @@ export interface MintedFixture {
   /** Clerk session id — used by globalTeardown to revoke. */
   sessionId: string;
   /**
-   * Customized default session JWT — Bearer auth on zombied. Carries
+   * Customized default session JWT — Bearer auth on agentsfleetd. Carries
    * `aud=https://api.usezombie.com` + `metadata.tenant_id` + `metadata.role`
    * via Clerk's Session Token Customization, not via the
    * legacy `api` JWT template.
@@ -138,10 +138,10 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
 }
 
 /**
- * Mint an api-template session JWT for direct zombied calls.
+ * Mint an api-template session JWT for direct agentsfleetd calls.
  *
  * Carries `metadata.tenant_id` + `metadata.role` from publicMetadata; used
- * as Bearer auth on zombied. Default (non-template) session tokens omit
+ * as Bearer auth on agentsfleetd. Default (non-template) session tokens omit
  * publicMetadata, which would land at 403 UZ-AUTH-001 ("Tenant context
  * required"). The cookie-side of "sign in" is owned by clerk-js via
  * `clerk.signIn` in `fixtures/auth.ts`; this helper mints only the
@@ -214,7 +214,7 @@ export async function provisionUser(spec: FixtureUserSpec): Promise<ProvisionedU
  * Phase 3: mint the api-template session JWT after bootstrapTenant has
  * updated publicMetadata. The order matters — the template JWT snapshots
  * publicMetadata at mint time; minting before bootstrap produces a JWT
- * without tenant_id, which zombied rejects with UZ-AUTH-001 ("Tenant context
+ * without tenant_id, which agentsfleetd rejects with UZ-AUTH-001 ("Tenant context
  * required").
  */
 export async function attachJwt(user: ProvisionedUser): Promise<MintedFixture> {

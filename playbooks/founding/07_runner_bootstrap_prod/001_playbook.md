@@ -2,10 +2,10 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Status:** Worker era retired — each host now runs the single `zombie-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `zrn_` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `zrn_FAKE_…` placeholder until then.
+**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `zrn_` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `zrn_FAKE_…` placeholder until then.
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
-Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `zombie-runner` daemon.)
+Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
 
 **Fleet config:** PROD worker nodes are defined in the GitHub repository variable `PROD_WORKER_HOSTS` as a JSON array:
 
@@ -157,16 +157,16 @@ All remaining steps use the Tailscale hostname `${WORKER_NAME}`.
 
 ## 3.0 Agent: Install Runtime Dependencies
 
-**Goal:** Packages required by `zombie-runner` at runtime are installed.
+**Goal:** Packages required by `agentsfleet-runner` at runtime are installed.
 
 | Package | Required by | Why |
 |---------|------------|-----|
-| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all`; the egress handoff needs `--info-fd` + `--block-fd` (Trixie ships 0.11; ≥ 0.8 suffices) |
-| `nftables` | `zombie-runner` | **Egress allowlist (M84_004)** — per-lease kernel egress rules on the veth |
-| `iproute2` | `zombie-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
-| `git` | `zombie-runner` | Clones repos into workspace for agent runs |
-| `ca-certificates` | `zombie-runner` | TLS connection to the zombied control plane |
-| `openssl` | `zombie-runner` | TLS runtime libraries |
+| `bubblewrap` | `agentsfleet-runner` | Sandbox isolation — `bwrap --unshare-all`; the egress handoff needs `--info-fd` + `--block-fd` (Trixie ships 0.11; ≥ 0.8 suffices) |
+| `nftables` | `agentsfleet-runner` | **Egress allowlist (M84_004)** — per-lease kernel egress rules on the veth |
+| `iproute2` | `agentsfleet-runner` | **Egress allowlist (M84_004)** — veth pair + network-namespace plumbing |
+| `git` | `agentsfleet-runner` | Clones repos into workspace for agent runs |
+| `ca-certificates` | `agentsfleet-runner` | TLS connection to the agentsfleetd control plane |
+| `openssl` | `agentsfleet-runner` | TLS runtime libraries |
 
 The egress service also needs **CAP_NET_ADMIN** (granted by the systemd unit's `AmbientCapabilities`, not a package). The same `playbooks/lib/egress_host_deps.sh` probe used by the dev readiness scripts asserts + records the egress trio's versions here too — run it (or the acceptance one-liner below) after install; a prod box missing any of them must not take leases.
 
@@ -209,7 +209,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
 
 ## 4.0 Agent: Bootstrap `/opt/zombie/`
 
-**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `zombie-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
+**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -223,7 +223,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
   deploy/baremetal/deploy.sh             "${USER}@${WORKER_NAME}:/opt/zombie/deploy/deploy.sh"
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
-  deploy/baremetal/zombie-runner.service "${USER}@${WORKER_NAME}:/opt/zombie/deploy/"
+  deploy/baremetal/agentsfleet-runner.service "${USER}@${WORKER_NAME}:/opt/zombie/deploy/"
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
   "chmod +x /opt/zombie/deploy/deploy.sh"
@@ -266,7 +266,7 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << 'REMOTE'
-sudo cp /opt/zombie/deploy/zombie-runner.service /etc/systemd/system/
+sudo cp /opt/zombie/deploy/agentsfleet-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 REMOTE
 ```
@@ -278,16 +278,16 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/zombie-runner.service"
+  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/agentsfleet-runner.service"
 # Expected:
 #   755 /opt/zombie/deploy/deploy.sh
 #   600 /opt/zombie/.env
-#   644 /opt/zombie/deploy/zombie-runner.service
+#   644 /opt/zombie/deploy/agentsfleet-runner.service
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "ls /etc/systemd/system/zombie-runner.service"
+  "ls /etc/systemd/system/agentsfleet-runner.service"
 # Expected:
-#   /etc/systemd/system/zombie-runner.service
+#   /etc/systemd/system/agentsfleet-runner.service
 ```
 
 ---
@@ -306,20 +306,20 @@ zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
 # scp binary to server
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
-  zig-out/bin/zombie-runner "${USER}@${WORKER_NAME}:/opt/zombie/bin/zombie-runner"
+  zig-out/bin/agentsfleet-runner "${USER}@${WORKER_NAME}:/opt/zombie/bin/agentsfleet-runner"
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "chmod +x /opt/zombie/bin/zombie-runner"
+  "chmod +x /opt/zombie/bin/agentsfleet-runner"
 
 # Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "sudo DISCORD_WEBHOOK_URL='$DISCORD' /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner"
+  "sudo DISCORD_WEBHOOK_URL='$DISCORD' /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner"
 
 # Verify
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << 'REMOTE'
 sleep 3
-systemctl is-active zombie-runner.service
-journalctl -u zombie-runner.service --no-pager -n 10
+systemctl is-active agentsfleet-runner.service
+journalctl -u agentsfleet-runner.service --no-pager -n 10
 REMOTE
 ```
 
@@ -335,7 +335,7 @@ echo "CI activated. Next release tag will deploy to all prod workers."
 ### Acceptance
 
 ```
-active                            <- zombie-runner.service running on each node
+active                            <- agentsfleet-runner.service running on each node
 <runner startup log lines>        <- no MissingEnvVar / InvalidRunnerToken
 PROD_WORKER_READY set             <- CI guard lifted
 ```
@@ -359,7 +359,7 @@ Do not set `PROD_WORKER_READY=true` until every node in `PROD_WORKER_HOSTS` pass
 
 Once `PROD_WORKER_READY=true` is set, every version tag (`v*`) triggers the `deploy-prod-canary` and `deploy-prod-fleet` jobs in `release.yml`. CI automatically:
 
-1. Downloads the compiled `zombie-runner` binary from the GitHub Release assets
+1. Downloads the compiled `agentsfleet-runner` binary from the GitHub Release assets
 2. Joins the Tailscale network
 3. SSH-deploys to the canary node first
 4. Waits for human approval (GitHub environment: `production-fleet`)
@@ -377,8 +377,8 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 1.0  Agent: Verify SSH key from vault reaches each server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,zombie-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
-5.0  Agent: Build + scp the zombie-runner binary, run deploy.sh runner, verify zombie-runner.service is active
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, verify agentsfleet-runner.service is active
 --- After ALL nodes pass step 5 with a real admin-minted zrn_ in vault ---
 5.1  Agent: gh variable set PROD_WORKER_READY=true
 --- CI-automated after this point ---

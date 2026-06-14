@@ -1,4 +1,4 @@
-//! `zombie-runner status` — report this host's registration + current state.
+//! `agentsfleet-runner status` — report this host's registration + current state.
 //! Uses the read-only `GET /v1/runners/me` (`getSelf`), NOT the heartbeat — so
 //! inspecting a host never writes `last_seen_at` and can't mask a dead runner's
 //! liveness. Auto-JSON when stdout is piped.
