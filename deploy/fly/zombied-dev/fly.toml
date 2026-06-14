@@ -2,15 +2,15 @@ app = "zombied-dev"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/usezombie/zombied:dev-latest"
+  image = "ghcr.io/agentsfleet/agentsfleetd:dev-latest"
 
 [deploy]
-  release_command = "/usr/local/bin/zombied migrate"
+  release_command = "/usr/local/bin/agentsfleetd migrate"
 
 [processes]
-  app = "/usr/local/bin/zombied serve"
+  app = "/usr/local/bin/agentsfleetd serve"
 
-# HTTP concurrency tuning — see deploy/fly/zombied-prod/fly.toml for the full
+# HTTP concurrency tuning — see deploy/fly/agentsfleetd-prod/fly.toml for the full
 # rationale. API_HTTP_THREADS is the per-worker handler-pool size; pool threads
 # serve short-lived requests only (SSE runs on dedicated detached threads).
 # Pinned to 32 to MATCH prod's ceiling so dev surfaces pool-saturation before
@@ -33,7 +33,7 @@ primary_region = "iad"
   memory = "512mb"
 
 # No public *.fly.dev domain — all inbound traffic enters via Cloudflare Tunnel
-# (cloudflared-dev → zombied-dev.internal:3000 over Fly 6PN). Note: 6PN
+# (cloudflared-dev → agentsfleetd-dev.internal:3000 over Fly 6PN). Note: 6PN
 # traffic bypasses the Fly proxy, so `auto_start_machines = true` does NOT
 # wake stopped machines on inbound requests. CI explicitly pre-warms via
 # `flyctl machine start` in the verify-dev job before polling /healthz.

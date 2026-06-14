@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PageHeader, PageTitle, TabNav, type TabNavItem } from "@usezombie/design-system";
+import { PageHeader, PageTitle, TabNav, type TabNavItem } from "@agentsfleet/design-system";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 
 const NAV_SURFACE = "settings_tabs";

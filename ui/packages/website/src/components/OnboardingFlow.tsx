@@ -1,4 +1,4 @@
-import { Card, Terminal } from "@usezombie/design-system";
+import { Card, Terminal } from "@agentsfleet/design-system";
 import { DOCS_QUICKSTART_URL, INSTALL_COMMAND, INSTALL_SKILL_SLASH } from "../config";
 
 type Step = {
@@ -15,7 +15,7 @@ const STEPS: readonly Step[] = [
     number: "01",
     title: "Install the CLI",
     command: INSTALL_COMMAND,
-    caption: "One command — installs zombiectl + the skill bundle, host-detected (Claude Code, Amp, Codex, OpenCode).",
+    caption: "One command — installs agentsfleet + the skill bundle, host-detected (Claude Code, Amp, Codex, OpenCode).",
   },
   {
     id: "skill",
@@ -38,7 +38,7 @@ const STEPS: readonly Step[] = [
     id: "steer",
     number: "04",
     title: "Steer your agent",
-    command: 'zombiectl steer <zombie_id> "morning health check"',
+    command: 'agentsfleet steer <zombie_id> "morning health check"',
     caption:
       "Or type into the Dashboard chat composer on /zombies/{id}. Every wake lands on the durable event log.",
   },

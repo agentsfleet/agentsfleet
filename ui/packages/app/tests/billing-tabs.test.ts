@@ -15,7 +15,7 @@ import {
   TabsList,
   TabsTrigger,
   EmptyState,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 
 afterEach(() => cleanup());
 

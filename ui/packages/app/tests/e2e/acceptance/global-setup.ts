@@ -14,7 +14,7 @@
  *   3. Provision the fixture users in Clerk (idempotent on email) tagged
  *      with `is_test_fixture: true` metadata so prod ops dashboards can
  *      filter them out.
- *   4. Bootstrap each fixture user's tenant in zombied by Svix-signing a
+ *   4. Bootstrap each fixture user's tenant in agentsfleetd by Svix-signing a
  *      `user.created` payload and POSTing /v1/auth/identity-events/clerk —
  *      same path Clerk hits in production (renamed from /v1/webhooks/clerk
  *      in M68). Idempotent (replay returns created:false).
@@ -55,7 +55,7 @@ const REQUIRED_ENV = [
 // Fixture emails — opt-in env override. The CI workflows resolve these
 // from op:// vault items. Defaults remain the historical mailinator
 // addresses for local DEV runs (where the public-inbox concern is
-// acceptable: local zombied + DEV Clerk + DEV billing balance only).
+// acceptable: local agentsfleetd + DEV Clerk + DEV billing balance only).
 const DEFAULT_REGULAR_EMAIL = "regular-fixture@mailinator.com";
 const DEFAULT_ADMIN_EMAIL = "admin-fixture@mailinator.com";
 
@@ -125,10 +125,10 @@ export default async function globalSetup(): Promise<void> {
   //   1. provisionUser: ensure each Clerk user exists (no JWT yet).
   //      Tags new users with publicMetadata.is_test_fixture=true so
   //      prod ops can filter them.
-  //   2. bootstrapTenant: zombied creates tenant + writes tenant_id/role
+  //   2. bootstrapTenant: agentsfleetd creates tenant + writes tenant_id/role
   //      back to Clerk publicMetadata.
   //   3. attachJwt: mint session JWT — now the JWT snapshots the updated
-  //      publicMetadata, so zombied API calls that require tenant context
+  //      publicMetadata, so agentsfleetd API calls that require tenant context
   //      succeed.
   const users = fixtureUsers();
   const provisioned = await Promise.all(users.map(provisionUser));
@@ -142,7 +142,7 @@ export default async function globalSetup(): Promise<void> {
   writeCache(fixtures);
   console.log(
     `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
-      `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in zombied; ` +
+      `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +
       `JWTs cached to ${JWT_CACHE_PATH}`,
   );
 }

@@ -26,7 +26,7 @@ up: _prepare_local_zombied_binary ## Start all services and tail app logs
 	@echo "  Postgres:  localhost:5432"
 	@echo ""
 	@if [ "$${FOLLOW_LOGS:-1}" = "1" ]; then \
-		TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose logs -f zombied; \
+		TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose logs -f agentsfleetd; \
 	fi
 
 down:  ## Stop all services, remove volumes, and cleanup
@@ -37,10 +37,10 @@ down:  ## Stop all services, remove volumes, and cleanup
 
 _prepare_local_zombied_binary:
 	@mkdir -p dist
-	@echo "Preparing local zombied binary for linux/$(LOCAL_DOCKER_ARCH) ($(LOCAL_ZIG_TARGET))..."
+	@echo "Preparing local agentsfleetd binary for linux/$(LOCAL_DOCKER_ARCH) ($(LOCAL_ZIG_TARGET))..."
 	@zig build -Doptimize=ReleaseSafe -Dtarget=$(LOCAL_ZIG_TARGET)
-	@cp zig-out/bin/zombied dist/zombied-linux-$(LOCAL_DOCKER_ARCH)
-	@chmod +x dist/zombied-linux-$(LOCAL_DOCKER_ARCH)
+	@cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)
+	@chmod +x dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)
 
 _clean:
 	@rm -rf zig-out zig-cache .zig-cache

@@ -15,7 +15,7 @@ jobs:
   lint-zig:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     env:
       ZLINT_VERSION: v0.8.1
     steps:
@@ -54,10 +54,10 @@ jobs:
       - name: Install app dependencies
         run: bun install --frozen-lockfile
         working-directory: ui/packages/app
-      - name: Install zombiectl dependencies
+      - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
-        working-directory: zombiectl
-      - name: Run app + design-system + zombiectl lint gate
+        working-directory: agentsfleet
+      - name: Run app + design-system + agentsfleet lint gate
         run: make lint-apps-ds-ctl
 
   lint-usezombie-sh:
@@ -68,8 +68,8 @@ jobs:
       # Cloudflare Pages project never auto-deploys a broken curl|bash target.
       - name: Shellcheck + smoke-test the installer
         run: |
-          shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh
-          bash ui/usezombie.sh/install_test.sh
+          shellcheck -s bash ui/agentsfleet.dev/dist/install.sh ui/agentsfleet.dev/install_test.sh
+          bash ui/agentsfleet.dev/install_test.sh
 
   check-gh-actions-valid:
     runs-on: ubuntu-latest

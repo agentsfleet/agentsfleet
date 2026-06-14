@@ -1,11 +1,11 @@
 # =============================================================================
-# TEST-UNIT — zombied, zombiectl, website, app + multi-package coverage gate
+# TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-zombied test-unit-zigrunner test-unit-ziglib test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-zombied
+.PHONY: test-unit-agentsfleetd test-unit-zigrunner test-unit-ziglib test-unit-agentsfleet test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
 
-test-unit-zombied:  ## Run zombied unit tests (Zig)
-	@echo "→ [zombied] Running Zig unit tests..."
+test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
+	@echo "→ [agentsfleetd] Running Zig unit tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
 	 if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
@@ -20,13 +20,13 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 zig build test --summary all
 	@$(MAKE) _lint_zig_test_depth
 
-test-unit-zigrunner:  ## Run zombie-runner unit tests (Zig; own build graph, no datastore)
-	@echo "→ [zombie-runner] Running Zig unit tests via build_runner.zig (contract + daemon + common)..."
+test-unit-zigrunner:  ## Run agentsfleet-runner unit tests (Zig; own build graph, no datastore)
+	@echo "→ [agentsfleet-runner] Running Zig unit tests via build_runner.zig (contract + daemon + common)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build --build-file build_runner.zig test --summary all
-	@echo "✓ [zombie-runner] Unit tests passed (independent of zombied/src)"
+	@echo "✓ [agentsfleet-runner] Unit tests passed (independent of agentsfleetd/src)"
 
 test-unit-ziglib:  ## Run shared src/lib module unit tests (Zig; named modules, no datastore)
 	@echo "→ [lib] Running shared src/lib module unit tests..."
@@ -34,14 +34,14 @@ test-unit-ziglib:  ## Run shared src/lib module unit tests (Zig; named modules, 
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib --summary all
-	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by zombied + zombie-runner)"
+	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by agentsfleetd + agentsfleet-runner)"
 
-test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
-	@echo "→ [zombiectl] Building dist/ (tests spawn dist/bin/zombiectl.js)..."
-	@cd zombiectl && bun run build >/dev/null
-	@echo "→ [zombiectl] Running Bun unit tests..."
-	@cd zombiectl && bun test
-	@echo "✓ [zombiectl] Unit tests passed"
+test-unit-agentsfleet:  ## Run agentsfleet CLI unit tests (bun)
+	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
+	@cd agentsfleet && bun run build >/dev/null
+	@echo "→ [agentsfleet] Running Bun unit tests..."
+	@cd agentsfleet && bun test
+	@echo "✓ [agentsfleet] Unit tests passed"
 
 test-unit-website:  ## Run website unit tests (vitest)
 	@echo "→ [website] Running Vitest unit tests..."
@@ -58,34 +58,34 @@ test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
 	@cd ui/packages/design-system && bun run test
 	@echo "✓ [design-system] Unit tests passed"
 
-test-unit-bundle:  ## Run template-substitution + zombiectl-postinstall unit tests (node --test)
-	@echo "→ [bundle] Running template-substitution + zombiectl-postinstall suite..."
-	@node --test --test-reporter=spec $$(find tests/template-substitution tests/zombiectl-postinstall -name '*.test.js' | sort)
+test-unit-bundle:  ## Run template-substitution + agentsfleet-postinstall unit tests (node --test)
+	@echo "→ [bundle] Running template-substitution + agentsfleet-postinstall suite..."
+	@node --test --test-reporter=spec $$(find tests/template-substitution tests/agentsfleet-postinstall -name '*.test.js' | sort)
 	@echo "✓ [bundle] All bundle checks passed"
 
-test-coverage-all:  ## Run coverage gates across app + website + zombiectl + design-system
+test-coverage-all:  ## Run coverage gates across app + website + agentsfleet + design-system
 	@echo "→ [app] Running Vitest with --coverage..."
 	@cd ui/packages/app && bun run test:coverage
 	@echo "→ [website] Running Vitest with --coverage..."
 	@cd ui/packages/website && bun run test:coverage
-	@echo "→ [zombiectl] Running Bun test --coverage..."
-	@cd zombiectl && bun run test:coverage
+	@echo "→ [agentsfleet] Running Bun test --coverage..."
+	@cd agentsfleet && bun run test:coverage
 	@echo "→ [design-system] Running Vitest with --coverage..."
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"
 
-_test-coverage-zombied:
+_test-coverage-agentsfleetd:
 	@command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for backend coverage (install: brew install kcov or apt-get install kcov)"; exit 1; }
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" coverage/zombied .tmp
-	@echo "→ [zombied] Building backend test binary for coverage..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" coverage/agentsfleetd .tmp
+	@echo "→ [agentsfleetd] Building backend test binary for coverage..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-bin
-	@echo "→ [zombied] Running kcov coverage..."
-	@kcov --clean --include-pattern="$(CURDIR)/src" coverage/zombied zig-out/bin/zombied-tests >/dev/null
-	@line_rate=$$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' coverage/zombied/cobertura.xml | head -n 1); \
-	 if [ -z "$$line_rate" ]; then echo "✗ failed to parse backend line-rate from coverage/zombied/cobertura.xml"; exit 1; fi; \
+	@echo "→ [agentsfleetd] Running kcov coverage..."
+	@kcov --clean --include-pattern="$(CURDIR)/src" coverage/agentsfleetd zig-out/bin/agentsfleetd-tests >/dev/null
+	@line_rate=$$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' coverage/agentsfleetd/cobertura.xml | head -n 1); \
+	 if [ -z "$$line_rate" ]; then echo "✗ failed to parse backend line-rate from coverage/agentsfleetd/cobertura.xml"; exit 1; fi; \
 	 line_pct=$$(awk -v r="$$line_rate" 'BEGIN { printf "%.2f", r * 100 }'); \
-	 printf 'zombied_line_coverage_pct=%s\nzombied_line_coverage_min_pct=%s\n' "$$line_pct" "$(ZOMBIED_COVERAGE_MIN_LINES)" | tee .tmp/zombied-coverage.txt >/dev/null; \
+	 printf 'zombied_line_coverage_pct=%s\nzombied_line_coverage_min_pct=%s\n' "$$line_pct" "$(ZOMBIED_COVERAGE_MIN_LINES)" | tee .tmp/agentsfleetd-coverage.txt >/dev/null; \
 	 awk -v got="$$line_pct" -v min="$(ZOMBIED_COVERAGE_MIN_LINES)" 'BEGIN { if ((got + 0) < (min + 0)) { printf "✗ backend line coverage %.2f%% is below threshold %.2f%%\n", got, min; exit 1 } }'; \
-	 echo "✓ [zombied] backend line coverage gate passed ($$line_pct% >= $(ZOMBIED_COVERAGE_MIN_LINES)%)"
+	 echo "✓ [agentsfleetd] backend line coverage gate passed ($$line_pct% >= $(ZOMBIED_COVERAGE_MIN_LINES)%)"

@@ -14,7 +14,7 @@ import {
   Input,
   Label,
   Spinner,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { createWorkspaceAction } from "@/app/(dashboard)/actions";
 import { presentErrorString } from "@/lib/errors";
 

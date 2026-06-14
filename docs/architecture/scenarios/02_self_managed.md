@@ -23,11 +23,11 @@ This scenario uses Fireworks because it's the most-likely real choice (Western p
 ```mermaid
 flowchart LR
     subgraph Setup["Setup (one-time, tenant admin)"]
-        A[zombiectl credential set<br/>account-fireworks-key<br/>provider/api_key/model] --> B[zombiectl tenant provider set<br/>--credential account-fireworks-key]
+        A[agentsfleet credential set<br/>account-fireworks-key<br/>provider/api_key/model] --> B[agentsfleet tenant provider set<br/>--credential account-fireworks-key]
         B --> C{API resolves<br/>cap from<br/>caps endpoint}
         C -->|writes| D[(tenant_providers<br/>mode=self_managed<br/>provider/model<br/>context_cap_tokens<br/>credential_ref)]
     end
-    subgraph Trigger["Per event (lease path, zombied)"]
+    subgraph Trigger["Per event (lease path, agentsfleetd)"]
         E[XADD zombie:id:events] --> F[lease: gate + billing]
         F --> G[resolveActiveProvider]
         G --> D
@@ -50,9 +50,9 @@ John runs two CLI commands. He picks the credential name himself — `account-fi
 ```bash
 op read 'op://<vault>/fireworks/api_key' |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  zombiectl credential set account-fireworks-key --data @-
+  agentsfleet credential set account-fireworks-key --data @-
 
-zombiectl tenant provider set --credential account-fireworks-key
+agentsfleet tenant provider set --credential account-fireworks-key
 ```
 
 What each does:
@@ -76,7 +76,7 @@ The same setup works through the dashboard at `/settings/models`: a credential d
 
 When John runs `/usezombie-install-platform-ops` after self-managed is set:
 
-1. The skill calls `zombiectl doctor --json`. Doctor's `tenant_provider` block reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — doctor is a readiness surface, not a secret surface.
+1. The skill calls `agentsfleet doctor --json`. Doctor's `tenant_provider` block reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — doctor is a readiness surface, not a secret surface.
 2. The skill writes `.usezombie/platform-ops/SKILL.md` with sentinel frontmatter:
    ```yaml
    x-usezombie:
@@ -91,13 +91,13 @@ When John runs `/usezombie-install-platform-ops` after self-managed is set:
 
 **Overlay rule (at lease time):** `model == ""` OR the `model:` key absent from the frontmatter ⇒ the control plane overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The install-skill emits the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this agent inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
 
-If John later runs `zombiectl tenant provider set --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing agents pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
+If John later runs `agentsfleet tenant provider set --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing agents pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
 
 ---
 
 ## 4. Trigger and execute — the divergence point
 
-When a webhook arrives or the user steers, `zombied` builds the lease (the lease path):
+When a webhook arrives or the user steers, `agentsfleetd` builds the lease (the lease path):
 
 1. INSERT `core.zombie_events` (status='received').
 2. Balance gate fires. **Important:** the gate runs for self-managed too — see Scenario 03 for the full billing model. (Earlier drafts said self-managed skips the gate; that's wrong. self-managed skips only the **LLM-token meter**, not the orchestration-fee meter. The gate stays on.)
@@ -108,11 +108,11 @@ When a webhook arrives or the user steers, `zombied` builds the lease (the lease
    - if `frontmatter.context_cap_tokens == 0` → use `tenant_providers.context_cap_tokens`.
    - if `frontmatter.model == ""` → use `tenant_providers.model`.
    - both are mutually independent overlays; either can be pinned in frontmatter and overridden in tenant config or vice versa. The platform path leaves frontmatter populated; the self-managed path leaves it empty.
-7. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: "fw_…", context: {context_cap_tokens: 256000, model: "accounts/fireworks/models/kimi-k2.6", …}}`; the runner forks a sandboxed NullClaw child to execute it.
+7. `agentsfleetd` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: "fw_…", context: {context_cap_tokens: 256000, model: "accounts/fireworks/models/kimi-k2.6", …}}`; the runner forks a sandboxed NullClaw child to execute it.
 
-The provider key stays **separate** from `secrets_map` — `zombied` resolves it (`resolveActiveProvider`) and delivers it on `ExecutionPolicy.provider`/`api_key`; the runner injects it so NullClaw uses it as the `Authorization: Bearer <key>` on the inference call only. It never enters the agent's tool context, never substitutes into a tool call, never logs.
+The provider key stays **separate** from `secrets_map` — `agentsfleetd` resolves it (`resolveActiveProvider`) and delivers it on `ExecutionPolicy.provider`/`api_key`; the runner injects it so NullClaw uses it as the `Authorization: Bearer <key>` on the inference call only. It never enters the agent's tool context, never substitutes into a tool call, never logs.
 
-NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the user. The diagnosis streams from the sandboxed child to the runner over the pipe; the runner reports it to `zombied`, which handles it the same way as Scenario 01.
+NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the user. The diagnosis streams from the sandboxed child to the runner over the pipe; the runner reports it to `agentsfleetd`, which handles it the same way as Scenario 01.
 
 The runner's report arrives. Two telemetry rows exist for this event (per the credit-pool model — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3):
 - The receive row was INSERTed earlier at gate time: `charge_type='receive'`, `posture='self_managed'`, `credit_deducted_nanos=0` (events are free both postures under M66).
@@ -156,7 +156,7 @@ The provider hosting a given model is encoded in the `model_id` itself (`account
 Properties:
 
 - **Path key (`da5b6b3810543fe108d816ee972e4ff8`) is 64 bits of entropy.** Random scanning to find this URL is cost-prohibitive. Treat the key as obscurity, not secrecy — it's referenced from the public install-skill repo, but anyone who deliberately reads that repo is not the threat model. The threat model is opportunistic crawlers.
-- **Hard-coded in clients.** `zombiectl` and the install-skill embed the URL at build/release time. Rotation is a coordinated CLI + skill release on a quarterly cadence (or sooner if abuse is detected). Old key gets a 410 Gone with a "upgrade your CLI" hint for ~30 days, then 404.
+- **Hard-coded in clients.** `agentsfleet` and the install-skill embed the URL at build/release time. Rotation is a coordinated CLI + skill release on a quarterly cadence (or sooner if abuse is detected). Old key gets a 410 Gone with a "upgrade your CLI" hint for ~30 days, then 404.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (1 RPS sustained, burst 10) at the edge — well above any legitimate client and well below any scraping budget.
 - **Backed by a static table (v2.0) → admin-agent (later).** Initial implementation is a JSON file checked into the API repo and served by a route handler. Later, an admin-only agent owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a PR with deltas. Humans review/merge. Same endpoint, fresher data — the admin-agent is a dogfood instance of the platform-ops pattern.
 - **Resolved at provider-set / install time, never at trigger time.** Triggers must not depend on a network call to a sibling endpoint — the cap is pinned into either `tenant_providers` (self-managed) or frontmatter (platform).
@@ -173,10 +173,10 @@ This is the verbatim end-to-end CLI experience for the self-managed setup, model
 ```text
 $ op read 'op://<vault>/fireworks/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-    zombiectl credential set account-fireworks-key --data @-
+    agentsfleet credential set account-fireworks-key --data @-
 ✓ Credential `account-fireworks-key` stored in vault for tenant tnt_01HX9P…
 
-$ zombiectl tenant provider set --credential account-fireworks-key
+$ agentsfleet tenant provider set --credential account-fireworks-key
 ▸ Loading credential `account-fireworks-key` …                    ✓
 ▸ Validating shape (provider, api_key, model present) …            ✓
 ▸ Resolving cap for accounts/fireworks/models/kimi-k2.6 …          256000
@@ -190,13 +190,13 @@ $ zombiectl tenant provider set --credential account-fireworks-key
     Credential ref:     account-fireworks-key
 
 ⓘ Tip: run a test event to verify the key works against fireworks.
-   zombiectl steer <zombie_id> "ping"
+   agentsfleet steer <zombie_id> "ping"
 ```
 
 ### 6.2 Confirmation via doctor and `tenant provider get`
 
 ```text
-$ zombiectl doctor --json | jq .tenant_provider
+$ agentsfleet doctor --json | jq .tenant_provider
 {
   "mode": "self_managed",
   "provider": "fireworks",
@@ -205,7 +205,7 @@ $ zombiectl doctor --json | jq .tenant_provider
   "credential_ref": "account-fireworks-key"
 }
 
-$ zombiectl tenant provider get
+$ agentsfleet tenant provider get
 Mode:                self_managed
 Provider:            fireworks
 Model:               accounts/fireworks/models/kimi-k2.6
@@ -225,10 +225,10 @@ A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. H
 ```text
 $ op read 'op://<vault>/fireworks/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/deepseek-v4-pro"}' |
-    zombiectl credential set account-fireworks-key --data @-
+    agentsfleet credential set account-fireworks-key --data @-
 ✓ Credential `account-fireworks-key` updated.
 
-$ zombiectl tenant provider set --credential account-fireworks-key
+$ agentsfleet tenant provider set --credential account-fireworks-key
 ▸ Loading credential …                                             ✓
 ▸ Resolving cap for accounts/fireworks/models/deepseek-v4-pro …    131072
 ▸ Writing core.tenant_providers …                                  ✓
@@ -246,24 +246,24 @@ John's `.usezombie/platform-ops/SKILL.md` does not need regeneration. The sentin
 If John deletes the credential without first running `tenant provider reset`, the next event dead-letters cleanly:
 
 ```text
-$ zombiectl credential delete account-fireworks-key
+$ agentsfleet credential delete account-fireworks-key
 ✓ Credential `account-fireworks-key` removed from vault.
 
 # (a webhook fires later that day)
 
-$ zombiectl events zmb_01HX9N3K…
+$ agentsfleet events zmb_01HX9N3K…
 EVENT_ID                 ACTOR             STATUS               STARTED              FAILURE_LABEL
 evt_01HXC7P2…           webhook:github    dead_lettered        2026-06-03T11:08:42  provider_credential_missing
 
-$ zombiectl tenant provider get
+$ agentsfleet tenant provider get
 Mode:                self_managed
 Provider:            fireworks
 Model:               accounts/fireworks/models/deepseek-v4-pro
 Context cap tokens:  131072
 Credential ref:      account-fireworks-key
 ⚠ Credential `account-fireworks-key` is missing from vault.
-   Re-add it with `zombiectl credential set`, OR fall back to platform with
-   `zombiectl tenant provider reset`. Mode is NOT auto-reverted (would silently
+   Re-add it with `agentsfleet credential set`, OR fall back to platform with
+   `agentsfleet tenant provider reset`. Mode is NOT auto-reverted (would silently
    re-enable platform billing without your consent).
 ```
 
@@ -273,12 +273,12 @@ The system never auto-reverts the mode to platform. Either John re-adds the cred
 
 ## 7. What this scenario proves
 
-- self-managed is a tenant-scoped credential + provider-config flip. It does **not** require any code path that knows about provider identity inside `zombied` or the runner — both stay model-agnostic; the routing happens inside NullClaw.
+- self-managed is a tenant-scoped credential + provider-config flip. It does **not** require any code path that knows about provider identity inside `agentsfleetd` or the runner — both stay model-agnostic; the routing happens inside NullClaw.
 - The model→cap source of truth is the **same endpoint** for both platform and self-managed paths. The difference is *where the resolved cap is stored after lookup* (synth-default constants for tenants with no row, `tenant_providers` row for tenants with explicit config) and *when the control plane resolves it* (the resolver runs once per lease; sentinels in frontmatter trigger overlay from `tenant_providers`).
 - Fireworks + Kimi 2.6 works today because NullClaw already speaks OpenAI-compatible. No provider-specific work in this repo. The same path opens up Together AI, Groq, Cerebras, Moonshot, OpenRouter, DeepSeek, Nebius, xAI — every compatible provider in NullClaw's catalogue.
 - The self-managed credential body is `{provider, api_key, model}` only. Cap lives in `tenant_providers`. Splitting the two means the cap can be re-resolved when the model changes without touching vault.
 - The credential name is user-chosen, not a hardcoded convention. Multi-credential tenants are supported; the active credential is whichever name `tenant_providers.credential_ref` points at.
-- The api_key crosses one boundary cleanly — vault → resolver (`zombied`) → runner's NullClaw → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.2.
+- The api_key crosses one boundary cleanly — vault → resolver (`agentsfleetd`) → runner's NullClaw → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.2.
 
 ---
 

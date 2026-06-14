@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
   Skeleton,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import {
   deriveSharedKey,
   encryptJwt,

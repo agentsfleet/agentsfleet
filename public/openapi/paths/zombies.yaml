@@ -17,7 +17,7 @@
     - name: zombie_id
       in: path
       required: true
-      description: UUIDv7 of the target Zombie. Obtained from `POST /v1/workspaces/{workspace_id}/zombies` or `zombiectl install --from <path>`.
+      description: UUIDv7 of the target Zombie. Obtained from `POST /v1/workspaces/{workspace_id}/zombies` or `agentsfleet install --from <path>`.
       schema:
         type: string
         format: uuid
@@ -174,7 +174,7 @@
     summary: Create a zombie
     description: Creates a new zombie from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The
       server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived
-      server-side. The CLI (`zombiectl install --from <path>`) sends the two markdown files as raw bytes; no YAML
+      server-side. The CLI (`agentsfleet install --from <path>`) sends the two markdown files as raw bytes; no YAML
       parsing happens client-side.
     tags:
     - Zombies
@@ -224,7 +224,7 @@
                 name:
                   type: string
                   description: Zombie name parsed from TRIGGER.md frontmatter — the canonical identifier the user
-                    will see in `zombiectl status` and CLI output.
+                    will see in `agentsfleet status` and CLI output.
                 status:
                   type: string
       '400':
@@ -477,7 +477,7 @@
       '409':
         description: Zombie is paused or otherwise not active (`UZ-ZMB-012`). Steering refuses loudly instead of enqueuing
           work that would strand. The problem-details body carries `current_state` naming the actual zombie status
-          (e.g. `paused`). Resume with `zombiectl resume <zombie>`, then retry.
+          (e.g. `paused`). Resume with `agentsfleet resume <zombie>`, then retry.
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
   get:

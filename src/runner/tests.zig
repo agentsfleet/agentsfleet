@@ -1,10 +1,10 @@
-//! Aggregate test root for the zombie-runner binary —
+//! Aggregate test root for the agentsfleet-runner binary —
 //! `zig build --build-file build_runner.zig test` roots here (not `main.zig`)
 //! so the production entry point stays free of test wiring. Importing
 //! `main.zig` pulls in the prod module graph and main's own inline tests; the
 //! remaining lines force the daemon/ + engine/ modules and their `*_test.zig`
 //! files into the test compilation. No pg/redis — same isolation the runner
-//! exe ships with. Mirrors `src/zombied/tests.zig`.
+//! exe ships with. Mirrors `src/agentsfleetd/tests.zig`.
 
 test {
     _ = @import("main.zig");
