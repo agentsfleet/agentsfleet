@@ -5,7 +5,7 @@ import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
 import FAQ from "../components/FAQ";
-import { DisplayLG, SectionLabel } from "@usezombie/design-system";
+import { DisplayLG, SectionLabel } from "@agentsfleet/design-system";
 
 const features = [
   {

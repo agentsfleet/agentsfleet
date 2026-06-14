@@ -17,7 +17,7 @@ import {
   FormMessage,
   Spinner,
   Textarea,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { installZombieAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { EVENTS } from "@/lib/analytics/events";
@@ -31,7 +31,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-// Mirrors `zombiectl install --from`: paste TRIGGER.md + SKILL.md, zombied
+// Mirrors `agentsfleet install --from`: paste TRIGGER.md + SKILL.md, zombied
 // parses the YAML frontmatter and derives name + config from it. Same wire
 // contract as the CLI — no client-side compile, no hand-crafted JSON.
 export default function InstallZombieForm({ workspaceId }: Props) {
@@ -84,7 +84,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
     <Form {...form}>
       <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="max-w-xl space-y-4">
         <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Paste the two markdown files that <code className="font-mono">zombiectl install --from</code>
+          Paste the two markdown files that <code className="font-mono">agentsfleet install --from</code>
           {" "}reads from disk. <code className="font-mono">name</code> and the compiled config are
           derived from <code className="font-mono">TRIGGER.md</code> frontmatter server-side — same
           wire as the CLI.

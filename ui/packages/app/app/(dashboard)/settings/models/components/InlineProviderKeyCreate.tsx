@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { createCredentialAction } from "@/app/(dashboard)/credentials/actions";
 import { presentErrorString } from "@/lib/errors";
 import { modelsForProvider, type ModelCap } from "@/lib/api/model_caps";

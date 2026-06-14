@@ -5,7 +5,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-// Mirrors the cap.json wire shape from src/zombied/http/handlers/model_caps.zig.
+// Mirrors the cap.json wire shape from src/agentsfleetd/http/handlers/model_caps.zig.
 const CAP_JSON_OK = {
   version: "2026-04-29",
   models: [

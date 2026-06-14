@@ -3,7 +3,7 @@ import {
   PageHeader,
   PageTitle,
   Section,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { auth } from "@clerk/nextjs/server";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";

@@ -6,13 +6,13 @@ import {
   AccordionContent,
   DisplayLG,
   SectionLabel,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { AGENT_DEFINITION } from "../lib/copy";
 
 const items: { q: string; a: ReactNode }[] = [
   {
     q: "What is usezombie?",
-    a: `${AGENT_DEFINITION} The platform-ops agent, for example, wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via zombiectl steer for manual investigation.`,
+    a: `${AGENT_DEFINITION} The platform-ops agent, for example, wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via agentsfleet steer for manual investigation.`,
   },
   {
     q: "What does self-managed mean?",

@@ -1,4 +1,4 @@
-import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { DisplayXL, List, ListItem, SectionLabel } from "@agentsfleet/design-system";
 import { SUPPORT_EMAIL } from "../lib/contact";
 
 /*

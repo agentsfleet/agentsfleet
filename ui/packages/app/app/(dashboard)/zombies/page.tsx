@@ -6,7 +6,7 @@ import {
   EmptyState,
   PageHeader,
   PageTitle,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { resolveActiveWorkspace } from "@/lib/workspace";

@@ -3,7 +3,7 @@
 //! `POST /v1/runners/me/leases/{lease_id}/activity` carries an `ActivityRequest`
 //! (a batch of `ActivityFrame`s). The runner builds frames from NullClaw observer
 //! events inside the sandboxed child, streams them to its parent over the lease
-//! pipe, and the parent forwards them to `zombied`, which `PUBLISH`es each to
+//! pipe, and the parent forwards them to `agentsfleetd`, which `PUBLISH`es each to
 //! `zombie:{id}:activity` for the Server-Sent-Events (SSE) live tail.
 //!
 //! Two planes, kept apart on purpose: activity is ephemeral + best-effort (a
@@ -13,7 +13,7 @@
 //!
 //! The union tag names ARE the wire `kind` discriminators (std.json renders a
 //! `union(enum)` as `{"<tag>": value}`), so the enum is the single source (RULE
-//! UFS) — there are no re-spelled `kind` string literals. The zombied handler
+//! UFS) — there are no re-spelled `kind` string literals. The agentsfleetd handler
 //! switches on the variant and maps each to an `activity_publisher` SSE frame;
 //! that handler is the only place the runner-wire vocabulary and the SSE/UI
 //! vocabulary (`activity_publisher.KIND_*`, mirrored in `events.ts`) meet.

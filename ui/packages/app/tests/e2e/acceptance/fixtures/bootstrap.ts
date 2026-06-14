@@ -1,7 +1,7 @@
 /**
  * Tenant-bootstrap helper for the e2e harness.
  *
- * Replays Clerk's `user.created` webhook against zombied's
+ * Replays Clerk's `user.created` webhook against agentsfleetd's
  * POST /v1/auth/identity-events/clerk handler so each fixture user has a
  * tenant row, default workspace, and starter credit before any spec runs.
  * The wire shape mirrors the integration test at

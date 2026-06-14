@@ -7,7 +7,7 @@ store. Two halves write into one PostHog project:
 | Half | Owner | Captures |
 |---|---|---|
 | **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | zombied (`posthog-zig`, `src/zombied/observability/telemetry.zig`) | State-owning events: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, billing. |
+| **Server conversion truth** | agentsfleetd (`posthog-zig`, `src/agentsfleetd/observability/telemetry.zig`) | State-owning events: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, billing. |
 
 Client events stitch to the same person via `identify(clerk_user_id)`. A
 conversion that completes server-side (billing, signup completion, zombie runs)

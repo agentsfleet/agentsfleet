@@ -6,7 +6,7 @@ import {
   PageTitle,
   Section,
   SectionLabel,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";

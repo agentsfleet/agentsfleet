@@ -10,7 +10,7 @@
 #   --zig-version <v>   override ZIG_VERSION from versions.env (e.g. 0.16.0)
 #   --revision <r>      tag suffix for iterating without breaking pinned consumers
 #                       (e.g. --revision r3 → :0.16.0-r3). Empty by default.
-#   --registry <r>      default: ghcr.io/usezombie
+#   --registry <r>      default: ghcr.io/agentsfleet
 #   --image <name>      alpine | debian-trixie | ubuntu | all (default: all)
 #   --no-push           docker buildx --load instead of --push (single-arch only)
 
@@ -19,7 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSIONS_FILE="$SCRIPT_DIR/versions.env"
 
-REGISTRY_DEFAULT="ghcr.io/usezombie"
+REGISTRY_DEFAULT="ghcr.io/agentsfleet"
 IMAGE_DEFAULT="all"
 
 log()   { printf '  %s\n' "$*"; }

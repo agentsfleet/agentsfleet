@@ -1,14 +1,14 @@
-//! Dedicated build graph for the host-resident `zombie-runner` daemon.
+//! Dedicated build graph for the host-resident `agentsfleet-runner` daemon.
 //!
-//! Separate from the root `build.zig` (which builds `zombied`) by design:
+//! Separate from the root `build.zig` (which builds `agentsfleetd`) by design:
 //! the runner holds zero datastore credentials and links no server
 //! infrastructure — it can only ever depend on what is imported here, and
 //! `pg` / `httpz` / `redis` are deliberately absent. The runner is a
-//! long-running daemon and an HTTP *client* of `zombied` (it long-polls
+//! long-running daemon and an HTTP *client* of `agentsfleetd` (it long-polls
 //! `POST /v1/runners/me/leases`, runs the event, reports, loops) — it serves
 //! no inbound HTTP, so it has no router or handlers of its own.
 //!
-//! The frozen wire protocol (`src/lib/contract`) is shared with `zombied` as a
+//! The frozen wire protocol (`src/lib/contract`) is shared with `agentsfleetd` as a
 //! named module (`@import("contract")`) — one source, two build graphs — so the
 //! server and the client cannot drift. `src/runner/main.zig` runs the real
 //! register → heartbeat → lease → forked-sandboxed-child → report loop, with
@@ -37,14 +37,14 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Logfmt logging, shared by source with zombied.
+    // Logfmt logging, shared by source with agentsfleetd.
     const log_mod = b.createModule(.{
         .root_source_file = b.path("src/lib/logging/mod.zig"),
     });
 
     // The shared `/v1/runners` wire contract (src/lib/contract), reached as a
     // named module — the runner's ONLY shared surface beyond `log`. This is the
-    // entire reason it compiles the protocol without crossing into src/zombied/.
+    // entire reason it compiles the protocol without crossing into src/agentsfleetd/.
     // `pg`/`httpz`/`redis` remain deliberately absent.
     const contract_mod = b.createModule(.{
         .root_source_file = b.path("src/lib/contract/contract.zig"),
@@ -62,7 +62,7 @@ pub fn build(b: *std.Build) void {
     // runner's zero-credential invariant holds and there is no import cycle.
     log_mod.addImport(S_COMMON, common_mod);
 
-    // NullClaw engine dependency — same options as the zombied build graph.
+    // NullClaw engine dependency — same options as the agentsfleetd build graph.
     const nullclaw_dep = b.dependency(S_NULLCLAW, .{
         .target = target,
         .optimize = optimize,
@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
 
     // Build options. `version` (read from the repo VERSION file, kept in sync by
     // `make sync-version`) + `git_commit` (-Dgit-commit, passed from CI) back
-    // `--version` — the same git-commit knob zombied's build.zig exposes (RULE
+    // `--version` — the same git-commit knob agentsfleetd's build.zig exposes (RULE
     // UFS). `executor_provider_stub` (default false) is a TEST-ONLY build flag: a
     // child built with it emits a canned `result` frame instead of running the
     // NullClaw engine, and a daemon built with it redirects the forked child's
@@ -93,7 +93,7 @@ pub fn build(b: *std.Build) void {
     const build_options_mod = build_opts.createModule();
 
     const runner_exe = b.addExecutable(.{
-        .name = "zombie-runner",
+        .name = "agentsfleet-runner",
         .root_module = b.createModule(.{
             .root_source_file = b.path(SRC_RUNNER_MAIN),
             .target = target,
@@ -115,14 +115,14 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(runner_exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
-    b.step("run", "Run the zombie-runner daemon").dependOn(&run_cmd.step);
+    b.step("run", "Run the agentsfleet-runner daemon").dependOn(&run_cmd.step);
 
     // Runner-side test target — `zig build --build-file build_runner.zig test`
     // (the `test-unit-zigrunner` make target). Same root + module wiring as the
-    // exe, so it proves exactly what ships and links no datastore: a red zombied
+    // exe, so it proves exactly what ships and links no datastore: a red agentsfleetd
     // (`src/`) suite never blocks building, testing, or shipping the runner.
     const runner_tests = b.addTest(.{
-        .name = "zombie-runner-tests",
+        .name = "agentsfleet-runner-tests",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/tests.zig"),
             .target = target,
@@ -136,10 +136,10 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    b.step("test", "Run zombie-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
+    b.step("test", "Run agentsfleet-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
 
     // The stub child binary the worker-pool integration lane forks: a real
-    // `zombie-runner` built with `executor_provider_stub=true`, so its `__execute`
+    // `agentsfleet-runner` built with `executor_provider_stub=true`, so its `__execute`
     // mode emits a canned `result` frame with no engine/LLM. The integration test
     // binary can't be the child itself (a `zig test` binary has no `__execute`
     // dispatch), so the harness points the forked child at THIS artifact's path.
@@ -149,7 +149,7 @@ pub fn build(b: *std.Build) void {
     stub_exe_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     stub_exe_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     const stub_runner_exe = b.addExecutable(.{
-        .name = "zombie-runner-execstub",
+        .name = "agentsfleet-runner-execstub",
         .root_module = b.createModule(.{
             .root_source_file = b.path(SRC_RUNNER_MAIN),
             .target = target,
@@ -180,7 +180,7 @@ pub fn build(b: *std.Build) void {
     // Linux-only (SkipZigTest elsewhere); the `test-integration-runner` make lane
     // runs them on a Linux host.
     const runner_integration_tests = b.addTest(.{
-        .name = "zombie-runner-integration-tests",
+        .name = "agentsfleet-runner-integration-tests",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/sandbox_integration_test.zig"),
             .target = target,
@@ -194,5 +194,5 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    b.step("test-integration", "Run zombie-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
+    b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }

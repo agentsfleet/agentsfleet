@@ -1,0 +1,235 @@
+//! event_rows.zig — every durable `core.zombie_events` / `core.zombie_sessions`
+//! write the runner control-plane verbs make: the received-row INSERT (lease),
+//! the terminal-status UPDATE (report), and the session checkpoint UPSERT
+//! (report).
+//!
+//! The received INSERT was lifted from the worker's `event_loop_writepath_rows`
+//! at the M80 cutover — it keeps its `*ZombieSession` + `*ZombieEvent` params
+//! because the lease verb has a real session + acquired event. The terminal +
+//! checkpoint writers were narrowed to the few fields they read (the report
+//! path has a `zombie_id` + `event_id` + `ExecutionResult`, never a full
+//! `ZombieSession`), so the partial-struct/`undefined` shims the worker forced
+//! are gone. Each write is best-effort + logged (non-atomic, mirroring the
+//! deleted finalize); row-equivalence with the direct path is the invariant.
+
+const std = @import("std");
+const clock = @import("common").clock;
+const pg = @import("pg");
+const Allocator = std.mem.Allocator;
+
+const id_format = @import("../types/id_format.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const contract = @import("contract");
+const logging = @import("log");
+const redis_zombie = @import("../queue/redis_zombie.zig");
+const ZombieSession = @import("zombie_session.zig");
+
+const log = logging.scoped(.runner_report_rows);
+
+const ExecutionResult = contract.execution_result.ExecutionResult;
+
+/// `core.zombie_events.status` terminal values a runner report can produce
+/// (app-enforced, no SQL CHECK — RULE STS). `gate_blocked`/`dead_lettered` are
+/// agentsfleetd-side and never runner-reported.
+pub const STATUS_PROCESSED = "processed";
+pub const STATUS_AGENT_ERROR = "agent_error";
+/// Non-terminal ingress status; the guarded blocked-transition keys on it.
+pub const STATUS_RECEIVED = "received";
+/// agentsfleetd-side terminal status for lease-path gate refusals (scenario 03).
+pub const STATUS_GATE_BLOCKED = "gate_blocked";
+
+/// `failure_label` values for `gate_blocked` rows — single ownership site
+/// (RULE UFS); webhook/steer/tests import these, never restate them.
+/// `balance_exhausted` spelling is pinned by billing_and_provider_keys.md.
+pub const LABEL_BALANCE_EXHAUSTED = "balance_exhausted";
+pub const LABEL_TENANT_RESOLVE_FAILED = "tenant_resolve_failed";
+pub const LABEL_SECRET_MISSING = "secret_missing";
+pub const LABEL_APPROVAL_DENIED = "approval_denied";
+pub const LABEL_APPROVAL_EXPIRED = "approval_expired";
+
+const EVENT_TYPE_CONTINUATION = "continuation";
+const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
+
+/// INSERT the `received` event row at lease issue (the lease verb's first
+/// durable write, mirroring the deleted worker's write path step 1). Keeps the
+/// full `*ZombieSession` + `*ZombieEvent` because the lease has both. Idempotent
+/// via the (zombie_id, event_id) PK; returns false on the conflict no-op so the
+/// caller can tell a re-delivered stream entry from a first delivery (and skip
+/// the receive debit + the duplicate `event_received` frame).
+pub fn insertReceivedRow(
+    alloc: Allocator,
+    pool: *pg.Pool,
+    session: *ZombieSession,
+    event: *const redis_zombie.ZombieEvent,
+) !bool {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    const now_ms = clock.nowMillis();
+    var uid_buf: [36]u8 = undefined;
+    const uid = try id_format.formatUuidV7(&uid_buf);
+
+    // Continuation events carry parent event_id in request_json's
+    // `original_event_id` (§7); lift onto resumes_event_id for index walks.
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const resumes_event_id: ?[]const u8 = blk: {
+        if (!std.mem.eql(u8, event.event_type, EVENT_TYPE_CONTINUATION)) break :blk null;
+        const parsed = std.json.parseFromSlice(std.json.Value, arena.allocator(), event.request_json, .{}) catch break :blk null;
+        if (parsed.value != .object) break :blk null;
+        const v = parsed.value.object.get(FIELD_ORIGINAL_EVENT_ID) orelse break :blk null;
+        break :blk if (v == .string) v.string else null;
+    };
+
+    const affected = try conn.exec(
+        \\INSERT INTO core.zombie_events
+        \\  (uid, zombie_id, event_id, workspace_id, actor, event_type,
+        \\   status, request_json, resumes_event_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
+        \\ON CONFLICT (zombie_id, event_id) DO NOTHING
+    , .{
+        uid,
+        session.zombie_id,
+        event.event_id,
+        session.workspace_id,
+        event.actor,
+        event.event_type,
+        event.request_json,
+        resumes_event_id,
+        now_ms,
+        STATUS_RECEIVED,
+    });
+    return (affected orelse 0) > 0;
+}
+
+/// UPDATE the event row to the `gate_blocked` terminal + the named failure
+/// label. Guarded on `status = 'received'`: a terminal row is never reopened
+/// (a re-request after gate_blocked is a NEW delivery — RULE IDMP). Errors
+/// propagate so the caller withholds the XACK — the terminal write must commit
+/// before the stream entry is acked, or the delivery would be lost. Returns
+/// rows affected (0 = the row was already terminal; the XACK is still owed).
+pub fn markBlocked(
+    pool: *pg.Pool,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    failure_label: []const u8,
+) !i64 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    const affected = try conn.exec(
+        \\UPDATE core.zombie_events
+        \\SET status = $3, failure_label = $4, updated_at = $5
+        \\WHERE zombie_id = $1::uuid AND event_id = $2 AND status = $6
+    , .{
+        zombie_id,
+        event_id,
+        STATUS_GATE_BLOCKED,
+        failure_label,
+        clock.nowMillis(),
+        STATUS_RECEIVED,
+    });
+    return affected orelse 0;
+}
+
+/// Status class of an existing event row, for the lease path's PEL re-delivery
+/// branch. A re-delivery is a genuine re-poll only while the row is still
+/// `received` (a pending-gate re-poll or a reclaimed strand); a `terminal` row
+/// means a settled or `gate_blocked` entry whose XACK was lost — it must be
+/// re-acked, never re-executed (spec Invariant 2). `absent` cannot follow a
+/// conflicting insert but is treated as a proceed.
+pub const RowClass = enum { absent, received, terminal };
+
+pub fn classifyStatus(pool: *pg.Pool, zombie_id: []const u8, event_id: []const u8) !RowClass {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = PgQuery.from(try conn.query(
+        \\SELECT status FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2
+    , .{ zombie_id, event_id }));
+    defer q.deinit();
+    const row = (try q.next()) orelse return .absent;
+    const status = try row.get([]const u8, 0);
+    return if (std.mem.eql(u8, status, STATUS_RECEIVED)) .received else .terminal;
+}
+
+/// UPDATE the event row to its terminal status + response + telemetry + the
+/// granular failure label. Reads `exit_ok`/`content`/`token_count`/`failure`
+/// off the result; status is derived from `exit_ok`, and `failure_label` carries
+/// the runner's `FailureClass` tag (NULL on a clean run, or a failure whose
+/// reason the runner did not report). Best-effort (failures logged, not raised).
+pub fn markTerminal(
+    pool: *pg.Pool,
+    zombie_id: []const u8,
+    event_id: []const u8,
+    result: ExecutionResult,
+    wall_ms: u64,
+) void {
+    const conn = pool.acquire() catch |err| {
+        log.warn("terminal_acquire_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+        return;
+    };
+    defer pool.release(conn);
+    const now_ms = clock.nowMillis();
+    const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
+    const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
+    // Guarded on `status = 'received'`: a terminal row is never reopened
+    // (spec Invariant 2 — same one-way-door discipline as markBlocked). The
+    // happy path always transitions a single received→terminal; a 0-row write
+    // means the row was already terminal (a re-delivery whose XACK was lost)
+    // and is logged rather than silently overwriting the settled result.
+    const affected = conn.exec(
+        \\UPDATE core.zombie_events
+        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
+        \\WHERE zombie_id = $1::uuid AND event_id = $2 AND status = $9
+    , .{
+        zombie_id,
+        event_id,
+        status_text,
+        result.content,
+        @as(i64, @intCast(result.token_count)),
+        @as(i64, @intCast(wall_ms)),
+        now_ms,
+        failure_label,
+        STATUS_RECEIVED,
+    }) catch |err| {
+        log.warn("terminal_update_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+        return;
+    };
+    if ((affected orelse 0) == 0) {
+        log.warn("terminal_write_skipped_nonreceived", .{ .zombie_id = zombie_id, .event_id = event_id });
+    }
+}
+
+/// UPSERT the session resume cursor. Reads only `zombie_id` + the pre-built
+/// `context_json` ({last_event_id, last_response}).
+pub fn checkpointZombieSession(alloc: Allocator, pool: *pg.Pool, zombie_id: []const u8, context_json: []const u8) !void {
+    const row_id = try id_format.generateZombieId(alloc);
+    defer alloc.free(row_id);
+    const now_ms = clock.nowMillis();
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_sessions (id, zombie_id, context_json, checkpoint_at, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $4, $4)
+        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\  SET context_json = EXCLUDED.context_json,
+        \\      checkpoint_at = EXCLUDED.checkpoint_at,
+        \\      updated_at = EXCLUDED.updated_at
+    , .{ row_id, zombie_id, context_json, now_ms });
+}
+
+/// Truncate a response to a JSON-safe length on a UTF-8 boundary so the
+/// checkpoint's `last_response` is byte-identical to the direct path's.
+pub fn truncateForJson(s: []const u8) []const u8 {
+    const max_len: usize = 2048;
+    if (s.len <= max_len) return s;
+    var end = max_len;
+    while (end > 0 and (s[end] & 0xC0) == 0x80) end -= 1;
+    return s[0..end];
+}
+
+test "truncateForJson leaves short input untouched and caps long input on a UTF-8 boundary" {
+    try std.testing.expectEqualStrings("hi", truncateForJson("hi"));
+    const long = "x" ** 3000;
+    const out = truncateForJson(long);
+    try std.testing.expect(out.len <= 2048);
+    try std.testing.expect(out.len >= 2048 - 4); // boundary walk-back is bounded
+}

@@ -2,7 +2,7 @@
 
 import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, ConfirmDialog } from "@usezombie/design-system";
+import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { ZOMBIE_STATUS } from "@/lib/api/zombies";
 import type { Zombie, ZombieStatusSettable } from "@/lib/api/zombies";
 import { setZombieStatusAction } from "../../actions";

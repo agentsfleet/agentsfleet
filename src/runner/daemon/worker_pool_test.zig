@@ -20,7 +20,7 @@ fn staticCfg(worker_count: u32) Config {
         .runner_token = "zrn_test",
         .host_id = "pool-test-host",
         .sandbox_tier = "dev_none",
-        .workspace_base = "/tmp/zombie-runner-pool-test",
+        .workspace_base = "/tmp/agentsfleet-runner-pool-test",
         .network_policy = .deny_all_egress,
         .worker_count = worker_count,
         .cp_deadlines = .{},

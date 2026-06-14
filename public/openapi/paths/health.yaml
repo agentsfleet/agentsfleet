@@ -26,7 +26,7 @@
                   description: Always "ok" for a live process
                 service:
                   type: string
-                  const: zombied
+                  const: agentsfleetd
                   description: Service identifier
                 commit:
                   type: string

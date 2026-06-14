@@ -1,9 +1,9 @@
 //! Runner daemon startup configuration — read once from the environment at
 //! launch, before any control-plane contact.
 //!
-//! Env var naming follows the ZOMBIE_ namespace convention used by zombied; the
+//! Env var naming follows the ZOMBIE_ namespace convention used by agentsfleetd; the
 //! RUNNER_ prefix scopes variables that are runner-only and have no counterpart
-//! in zombied's config. All vars are required unless a default is documented.
+//! in agentsfleetd's config. All vars are required unless a default is documented.
 //!
 //! File-as-struct: the file IS the `Config` value. All slices are owned by the
 //! allocator passed to `load()`; call `deinit()` when done. Datastore-free
@@ -12,7 +12,7 @@
 
 const Config = @This();
 
-/// Base URL of the zombied control plane, e.g. `http://127.0.0.1:8080`.
+/// Base URL of the agentsfleetd control plane, e.g. `http://127.0.0.1:8080`.
 control_plane_url: []const u8,
 /// Pre-minted runner token (`zrn_…`) the platform operator installed on this
 /// host via `ZOMBIE_RUNNER_TOKEN`. Authenticates every control-plane call; the
@@ -251,7 +251,7 @@ pub const MAX_CP_DEADLINE_MS: u31 = 60_000;
 // Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
 // only tier that runs without isolation — dev default; prod must override.
 const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
-const DEFAULT_WORKSPACE_BASE = "/tmp/zombie-runner";
+const DEFAULT_WORKSPACE_BASE = "/tmp/agentsfleet-runner";
 
 /// Worker-pool sizing bounds (RULE UFS: the clamp is single-sourced). Default 1
 /// = today's one-agent-per-host daemon; MAX caps a misconfigured value so the

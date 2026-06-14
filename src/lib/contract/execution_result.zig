@@ -1,7 +1,7 @@
 //! execution_result.zig — the terminal result of one stage execution.
 //!
 //! Shared by both build graphs: the runner produces it (engine → child stdout
-//! `result` frame → parent), and `zombied`'s `report` verb consumes it to write
+//! `result` frame → parent), and `agentsfleetd`'s `report` verb consumes it to write
 //! the durable `core.zombie_events` row. One canonical type, so the runner's
 //! output and the control plane's write can never drift (it superseded the
 //! pre-cutover sidecar's `StageResult` at the M80 cutover).

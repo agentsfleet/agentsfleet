@@ -4,11 +4,11 @@
 
 ### 1. Prometheus (Grafana Cloud or self-hosted)
 
-Scrapes `zombied` at `/metrics`. All `zombie_*` counters, histograms, and gauges.
+Scrapes `agentsfleetd` at `/metrics`. All `zombie_*` counters, histograms, and gauges.
 
 ### 2. Tempo (Grafana Cloud)
 
-Receives OTLP traces from `zombied` background flush thread.
+Receives OTLP traces from `agentsfleetd` background flush thread.
 Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY`.
 
 ### 3. PostgreSQL
@@ -18,7 +18,7 @@ Direct connection to the zombie database for `usage_ledger` queries.
 **Setup:**
 1. In Grafana, add a PostgreSQL datasource.
 2. Connection: use the same `DATABASE_URL` as the worker (read-only replica preferred).
-3. Name it `zombie-postgres` (the dashboard references this name).
+3. Name it `agentsfleet-postgres` (the dashboard references this name).
 
 ## Dashboard Import
 
@@ -27,7 +27,7 @@ Import `agent_run_breakdown.json` via Grafana UI:
 2. Upload `docs/grafana/agent_run_breakdown.json`.
 3. Select datasources when prompted:
    - `prometheus` → your Prometheus datasource
-   - `zombie-postgres` → your PostgreSQL datasource
+   - `agentsfleet-postgres` → your PostgreSQL datasource
 4. Dashboard loads with template variables for `workspace_id` and time range.
 
 ## Panels
