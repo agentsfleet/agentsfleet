@@ -17,7 +17,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Priority:** P1 — the operator-facing brand seam: every install, `make` invocation, container pull, and systemd unit still says zombie after M92_002 flipped the identity surfaces
 **Categories:** API, CLI, INFRA, OBS
 **Batch:** B3 — independent of M92_001 (B2); follows M92_002 (B1, merged #405; wordmark continuation #406 in flight, non-blocking)
-**Branch:** feat/m92-003-agentsfleet-binaries
+**Branch:** feat/m92-003-agentsfleet-binaries (merged #408) · feat/m92-003-installer-npm-cutover (continuation — §4.3/4.5/4.6 gated flips + §5.2 residue + M92_004 repo-URL/skills/slash pulled forward per Indy)
 **Test Baseline:** unit=1946 integration=189
 **Depends on:** M92_002 (the rename principle, eval patterns, and brand assets this spec extends)
 **Provenance:** agent-generated (rename session with Indy, Jun 12, 2026 — name mapping Indy-decided in-session: "i think zombied is agentsfleetd"); blast radius measured on main b0e843ff; re-confirm at PLAN.
@@ -165,17 +165,17 @@ Repo-local now: `bin` key, dist entry, every caller, workspace package renames. 
 
 - **Dimension 4.1** — DONE (bin half) — `bin` key `agentsfleet` → `dist/bin/agentsfleet.js` emitted from `src/bin/agentsfleet.ts`; the manifest NAME flip to `@agentsfleet/cli` lands with 4.5's gated edit so the published listing never half-exists → Test `test_cli_bin_name_agentsfleet` + Eval `E3`
 - **Dimension 4.2** — DONE — `test-unit-agentsfleet` + `lint-agentsfleet` green spawning `dist/bin/agentsfleet.js`
-- **Dimension 4.3** — PARKED (IN_PROGRESS) — installer + its mocked test deliberately assert the gated old package today (`install_test.sh` green as-is); script, test, and `PKG` flip together when 4.5/4.6 verify → Eval `E7`
+- **Dimension 4.3** — DONE — installer `PKG` → `@agentsfleet/cli`, binary refs → `agentsfleet`, self-referencing domain → `agentsfleet.dev`; `install_test.sh` 43/43 green (hermetic) → Eval `E7`
 - **Dimension 4.4** — DONE — `@agentsfleet/design-system` + `agentsfleet-app`/`-website` across manifests, imports, lockfile; app + website suites green → Eval `E1`
-- **Dimension 4.5** — registry cutover: `@agentsfleet` npm org exists (Indy), publish token covers it, `release.yml` publishes the new name, first publish verified; installer `PKG` flips only after Eval `E9` passes (e2e, manual-verified)
-- **Dimension 4.6** — installer-domain cutover: `agentsfleet.dev` serves the installer (Indy: registrar + DNS + hosting attach + `usezombie.sh` alias); `INSTALL_COMMAND`, its pins, and README snippet flip in the same gated edit; unverified → parks → Eval `E10`
+- **Dimension 4.5** — DONE (repo-side) — `package.json` name + description, `release.yml`/`post-release.yml` publish refs, `manifest.unit.test` gate, postinstall/prepublish messages, READMEs → `@agentsfleet/cli`. First npm publish is Indy's offline step (acked, Jun 14 — see Discovery); `npm view @agentsfleet/cli` (Eval `E9`) is Indy-verified, not agent-runnable here
+- **Dimension 4.6** — DONE — `agentsfleet.dev` verified serving the installer (HTTP 200 `text/x-shellscript`, apex 308→www) while `usezombie.sh` now **404s** (old host dead → INSTALL_COMMAND on main was broken; this un-breaks it); `INSTALL_COMMAND` + `config.test.ts` pin + installer script + all website rendered copy/tests flipped → Eval `E10` (redirect-follow)
 
 ### §5 — Make targets + hooks
 
 Every token-bearing target renamed; every caller updated (workflows ride §6, hooks here). Hook path-globs stay on directories.
 
 - **Dimension 5.1** — DONE — Eval `E4` empty; renamed lanes ran green in-worktree (`test-unit-agentsfleetd`, `test-unit-zigrunner`)
-- **Dimension 5.2** — staging a `agentsfleet/`-path file fires the renamed lint lane → hook-fire check recorded in Discovery
+- **Dimension 5.2** — DONE — fixed a §5 residue the original E4/E1 `-w` word-boundary missed (`_`-bounded): `_zombiectl_lint`→`_agentsfleet_lint` (make/quality.mk) + hook vars `needs_{lint,test}_zombiectl`→`_agentsfleet` (.githooks); `make lint-agentsfleet` green via the renamed target
 
 ### §6 — Workflow strings pass
 
@@ -283,8 +283,8 @@ zig build && ls zig-out/bin | grep -q agentsfleetd && ! ls zig-out/bin | grep -q
 for t in "app = \"zombied-" "core\.zombie_" "usezombie-admin" "x-usezombie" "github\.com/usezombie"; do a=$(git grep -c "$t" origin/main | awk -F: '{s+=$NF}END{print s+0}'); b=$(grep -rc "$t" --exclude-dir=node_modules --exclude-dir=.git . | awk -F: '{s+=$NF}END{print s+0}'); echo "$t $([ "$a" = "$b" ] && echo OK || echo DRIFT)"; done
 # E9: Published package resolves (run after Indy's first publish; gates the PKG flip)
 npm view @agentsfleet/cli dist-tags --json && echo PASS
-# E10: Installer domain serves (gates the INSTALL_COMMAND flip; until PASS that surface parks)
-curl -fsSI https://agentsfleet.dev | grep -i "text/x-shellscript" && echo PASS
+# E10: Installer domain serves (FOLLOW redirects — apex 308->www serves the script; PASS as of Jun 14, 2026)
+curl -fsSIL https://agentsfleet.dev | grep -i "text/x-shellscript" && echo PASS
 # E4: Make targets — no token-bearing target remains (expect empty)
 make -qp 2>/dev/null | awk -F: '/^[A-Za-z0-9][^=\t]*:([^=]|$)/{print $1}' | grep -E "zombiectl|zombied|zombie-runner" | head
 # E5: Workflow diffs strings-only (expect empty)
@@ -319,6 +319,15 @@ docker manifest inspect "ghcr.io/agentsfleet/agentsfleetd:dev-latest" >/dev/null
 - **Mid-EXECUTE decisions (Indy, Jun 13, 2026):** UFS string-dup on `service_report.zig` → single-binding fix (Indy-approved). `audits/error-codes.sh` found pre-pointed at `src/agentsfleetd/errors/` (Indy forward-edit) → directory rename `src/zombied/` → `src/agentsfleetd/` pulled into this branch; zon fingerprint refreshed per the compiler for the renamed package. CLI naming settled: folder `agentsfleet/` (matches the pre-staged dotfiles audits; Indy final), package `@agentsfleet/cli`, bin `agentsfleet`. Entity noun zombie → agent approved — rides the follow-up mega-spec (M92_004: platform cutovers + wire/data/domain, expand-contract design doc in `docs/architecture/`); punch-list routing per Indy: one mega-spec, not three.
 - **Pickup-session discoveries (agent, Jun 13, 2026):** (1) GitHub org+repo renamed upstream — `usezombie` org 404s, `repos/usezombie/usezombie` redirects to `agentsfleet/agentsfleet`; ghcr packages moved with it (`zombied`, `ci-zig-*` now under `ghcr.io/agentsfleet/`, old namespace answers `manifest unknown` — main's `deploy (dev)` run 27439709322 red on container init). All operational ghcr refs flipped to `ghcr.io/agentsfleet/` (8 workflows, both fly tomls, `make/build.mk` IMAGE_REPO, ci_zig_images playbook); `github.com/usezombie` URL refs keep (redirects serve them) and ride M92_004. Three of the flipped workflows (`test-integration.yml`, `memleak.yml`, `bench.yml`) sit outside the six-workflow grant — surfaced as a gate ask in the PR body. (2) The runner has no container image anywhere (binary deploy via `deploy.sh` scp/Release) — E6 corrected to `agentsfleetd` only. (3) Premature Vercel resolver flips reverted (8 files): `agentsfleet-app.vercel.app` answers 404; the Vercel projects keep their `usezombie-*` names until M92_004.
 - **§1 ledger (Jun 12, 2026):** FLIP classes — CLI self-name strings (180 lines in `agentsfleet/{src,test}`; 24 path-like refs keep), daemon argv/usage fixtures + `logging.scoped(.zombied)` log scopes (grafana queries follow in §8), contract-lib + architecture-doc prose, website rendered copy naming the binary/package (vocab-guard/marketing-spec pins updated as conscious edits; the GitHub org slug and `/usezombie-install-platform-ops` keep), `public/llms.txt` + `public/skill.md` prose, telemetry service tags (internal dependency-injection ids, safe). KEEP classes — `docs/v1` + `docs/v2/done` history (append-only), directory-path refs, frozen `schema/*.sql` migration comments (editing frozen migrations breaks parity for zero operator gain — rides the schema cutover), fly/cloudflared/org/mail/header/user-db identifiers per the rename principle. UX note for Indy: the CLI config dir `~/.config/zombiectl` flips clean to `~/.config/agentsfleet` — telemetry consent re-asked once; no fallback shim (RULE NLG). E3 keep baseline (pre-flip counts): `app = "zombied-`=4 · `core.zombie_`=305 · `usezombie-admin`=28 · `x-usezombie`=216 · `github.com/usezombie`=44.
+- **Installer / npm / repo-URL / skills cutover (Indy, Jun 14, 2026 session):** the gated §4 flips landed, plus three M92_004 items Indy pulled forward in-session. Ack-quotes:
+  - > Indy (2026-06-14): "go and assume the npm @agentsfleet/cli will be pushed offline i want this spec milestone to be fixed" — un-gates 4.3/4.5: every repo-side ref → `@agentsfleet/cli`; first npm publish is Indy's offline step (Eval `E9` Indy-verified, not agent-runnable here). `manifest.unit.test` E9-gate flipped in lockstep.
+  - > Indy (2026-06-14): "This must be https://github.com/agentsfleet/agentsfleet from https://github.com/agentsfleet/usezombie" — pulls the repo-URL flip (was M92_003 Out-of-scope → M92_004 §7.1) forward: every `agentsfleet/usezombie` + fully-old `usezombie/usezombie` slug → `agentsfleet/agentsfleet` (4 workflows, Dockerfile + 3 ci-zig Dockerfiles, `deploy/baremetal/deploy.sh` REPO, 4 playbooks, `branding/README.md` raw URLs, `config.ts` GITHUB_URL + pin, root README incl. `cd agentsfleet`, `agentsfleet/package.json`). The `raw.githubusercontent.com` refs were likely broken (raw URLs don't redirect) — flip fixes the README hero.
+  - > Indy (2026-06-14): "This must be agentsfleet/skills and agentsfleet-install-platform-ops" — pulls M92_004 §5.3 forward: `usezombie/skills`→`agentsfleet/skills`, `usezombie-install-platform-ops`→`agentsfleet-install-platform-ops` (+ `/usezombie-{steer,doctor}` same family) across `install.sh` SKILL_REF/NEXT_CMD, `config.ts` INSTALL_SKILL_SLASH, website copy + tests, architecture docs.
+  - **§1 live re-probe (Jun 14):** `agentsfleet.dev` serves the installer 200 `text/x-shellscript` (apex 308→www); `usezombie.sh` now **404s** — old host dead, so INSTALL_COMMAND on main was broken; the 4.6 flip un-breaks it. E10 corrected to follow redirects.
+  - **§5.2 residue:** `_zombiectl_lint` + `needs_{lint,test}_zombiectl` survived #408 — the E1/E4 `-w` word-boundary can't see `_`-bounded tokens. Renamed; `make lint-agentsfleet` green.
+  - **Verification (Jun 14):** test-unit-website 153/153 · test-unit-design-system 403/403 · test-unit-agentsfleet 1154 pass / 0 fail · test-unit-bundle 17/17 · install_test.sh 43/43 · lint-website + lint-agentsfleet green · gitleaks clean. (Note: 4 escaped-slash/dot regex assertions across the test suite were initial sed misses — caught by audit + fixed before the suite ran.)
+  - **Flags for Indy (deliberate non-flips):** (1) `playbooks/operations/installer_deploy/001_playbook.md` domain prose left on `usezombie.sh` — real Vercel/DNS truth I can't verify; needs a domain rewrite. (2) `Agents.tsx` JSON-LD `url`/`sameAs`/`name:"usezombie"` left — website-identity (likely wants `agentsfleet.net`, not the installer domain). (3) brand-word `usezombie` + `usezombie.com` web domain (~292 hits), `USEZOMBIE_*` env + `.usezombie`/`.config/usezombie` dirs (~323), M92_004 entity `core.zombie_*`/`x-usezombie`/`/zombies`/`zombied` (~1001) — all deliberate keeps for the M92_002 brand-word / M92_004 entity+platform cutovers.
+  - **Still external (blocks the active→done move):** 7.2 ghcr `agentsfleet/agentsfleetd` image push (Indy + `docker manifest inspect`); 3.2 baremetal host unit migration (Indy SSH).
 
 ---
 

@@ -40,10 +40,10 @@ describe("OnboardingFlow", () => {
   it("renders each spec'd snippet inside its card's Terminal", () => {
     render(<OnboardingFlow />);
     const install = within(screen.getByTestId("onboarding-step-install"));
-    expect(install.getByText(/curl -fsSL https:\/\/usezombie\.sh \| bash/)).toBeInTheDocument();
+    expect(install.getByText(/curl -fsSL https:\/\/agentsfleet\.dev \| bash/)).toBeInTheDocument();
 
     const skill = within(screen.getByTestId("onboarding-step-skill"));
-    expect(skill.getByText(/\/usezombie-install-platform-ops/)).toBeInTheDocument();
+    expect(skill.getByText(/\/agentsfleet-install-platform-ops/)).toBeInTheDocument();
 
     const wire = within(screen.getByTestId("onboarding-step-wire"));
     expect(wire.getByText(/gh api -X POST repos/)).toBeInTheDocument();

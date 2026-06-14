@@ -11,8 +11,8 @@ vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
 
-const INSTALL_COMMAND = "curl -fsSL https://usezombie.sh | bash";
-const INSTALL_SKILL_COMMAND = "claude /usezombie-install-platform-ops";
+const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
+const INSTALL_SKILL_COMMAND = "claude /agentsfleet-install-platform-ops";
 
 function renderHero() {
   return render(
@@ -236,7 +236,7 @@ describe("Hero", () => {
     renderHero();
     const cli = screen.getByTestId("hero-cli");
     expect(cli).toBeInTheDocument();
-    expect(screen.getByLabelText(/install via usezombie\.sh/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/install via agentsfleet\.dev/i)).toBeInTheDocument();
     // `animate` hooks the CSS reveal onto the code block.
     expect(cli.querySelector("[data-terminal-reveal]")).not.toBeNull();
     // Copy hands back the next-step slash command, not the whole transcript.

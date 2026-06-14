@@ -2,7 +2,7 @@
 
 # Your deploy failed. The agent already knows why.
 
-[![CI](https://github.com/agentsfleet/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agentsfleet/usezombie/actions/workflows/test.yml?query=branch%3Amain)
+[![CI](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
 [![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -48,8 +48,8 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 **Prerequisites:** [Zig 0.15.2](https://ziglang.org/download/) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
-git clone https://github.com/agentsfleet/usezombie.git
-cd usezombie
+git clone https://github.com/agentsfleet/agentsfleet.git
+cd agentsfleet
 
 # Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
 make up           # Postgres + Redis + agentsfleetd (auto-migrates DB)
@@ -77,7 +77,7 @@ Bootstrap steps and coding conventions live in [`playbooks/`](playbooks/) and [`
 
 | Repo | What |
 |---|---|
-| [agentsfleet/usezombie](https://github.com/agentsfleet/usezombie) | Control plane + runner + CLI (this repo) |
+| [agentsfleet/agentsfleet](https://github.com/agentsfleet/agentsfleet) | Control plane + runner + CLI (this repo) |
 | [agentsfleet/docs](https://github.com/agentsfleet/docs) | User docs ([docs.agentsfleet.net](https://docs.agentsfleet.net)) |
 | [agentsfleet/skills](https://github.com/agentsfleet/skills) | Agent skill libraries |
 | [agentsfleet/posthog-zig](https://github.com/agentsfleet/posthog-zig) | PostHog SDK for Zig |

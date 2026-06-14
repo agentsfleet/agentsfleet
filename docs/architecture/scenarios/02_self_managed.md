@@ -74,7 +74,7 @@ The same setup works through the dashboard at `/settings/models`: a credential d
 
 ## 3. Subsequent install — the skill takes a different fork
 
-When John runs `/usezombie-install-platform-ops` after self-managed is set:
+When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
 
 1. The skill calls `agentsfleet doctor --json`. Doctor's `tenant_provider` block reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — doctor is a readiness surface, not a secret surface.
 2. The skill writes `.usezombie/platform-ops/SKILL.md` with sentinel frontmatter:

@@ -69,7 +69,7 @@ playbooks/
     │   ├── Dockerfile.debian-trixie
     │   ├── Dockerfile.ubuntu
     │   └── versions.env
-    ├── installer_deploy/              ← serve usezombie.sh one-URL installer
+    ├── installer_deploy/              ← serve agentsfleet.dev one-URL installer
     │   └── 001_playbook.md
     └── teardown/                      ← DESTRUCTIVE; own approval guards
         ├── database/

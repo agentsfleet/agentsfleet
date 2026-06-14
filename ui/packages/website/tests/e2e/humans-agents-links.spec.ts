@@ -23,7 +23,7 @@ async function assertFooterLinks(page: Page) {
   }
 
   await expect(footer.locator('a[href^="https://docs.agentsfleet.net"]')).toHaveCount(1);
-  await expect(footer.locator('a[href="https://github.com/agentsfleet/usezombie"]')).toHaveCount(1);
+  await expect(footer.locator('a[href="https://github.com/agentsfleet/agentsfleet"]')).toHaveCount(1);
   await expect(footer.locator('a[href="https://discord.gg/H9hH2nqQjh"]')).toHaveCount(1);
 }
 

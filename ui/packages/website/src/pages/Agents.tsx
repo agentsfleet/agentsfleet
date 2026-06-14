@@ -23,12 +23,12 @@ const apiOps = [
 ] as const;
 
 const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
-npm install -g @usezombie/zombiectl
+npm install -g @agentsfleet/cli
 agentsfleet login
-npx skills add usezombie/skills
+npx skills add agentsfleet/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
-#    /usezombie-install-platform-ops
+#    /agentsfleet-install-platform-ops
 #    The slash-command provisions the platform-ops agent and prints its zombie_id.
 
 # 3. Back in the shell — steer the agent
@@ -80,7 +80,7 @@ export default function Agents() {
         <div className="wrap flex flex-col gap-4">
           <InstallBlock
             title="Install agentsfleet"
-            command="npm install -g @usezombie/zombiectl"
+            command="npm install -g @agentsfleet/cli"
             actions={[
               { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
               { label: "read the docs", to: DOCS_URL, variant: "ghost" },

@@ -4,7 +4,7 @@ The official Command Line Interface (CLI) for [usezombie](https://usezombie.com)
 
 [![Get early access](https://img.shields.io/badge/usezombie-Get_early_access-5EEAD4?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.agentsfleet.net)
-[![npm](https://img.shields.io/npm/v/@usezombie/zombiectl?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
+[![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 Authenticate, manage workspaces, install agents, tail their events, and operate your usezombie deployment from the terminal.
@@ -14,7 +14,7 @@ Authenticate, manage workspaces, install agents, tail their events, and operate 
 ## Install
 
 ```bash
-npm install -g @usezombie/zombiectl@next
+npm install -g @agentsfleet/cli@next
 ```
 
 Requires Node.js ≥ 24 (or Bun ≥ 1.3).
@@ -150,7 +150,7 @@ Precedence for API base URL: `--api` flag → `ZOMBIE_API_URL` → saved credent
 
 - [Documentation](https://docs.agentsfleet.net)
 - [Website](https://usezombie.com)
-- [GitHub](https://github.com/agentsfleet/usezombie)
+- [GitHub](https://github.com/agentsfleet/agentsfleet)
 - [Discord](https://discord.gg/H9hH2nqQjh)
 
 ## License

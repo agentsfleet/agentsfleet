@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 //
 // Post-install copier — places the bundled zombie-template `samples/` tree
-// at a stable user-local path (~/.config/usezombie/samples/) so the agent
-// skills (e.g. /usezombie-install-platform-ops) can read the canonical
+// at a stable user-local path (~/.config/agentsfleet/samples/) so the agent
+// skills (e.g. /agentsfleet-install-platform-ops) can read the canonical
 // templates from a known location instead of fetching over the network.
 //
 // Defensive contract: this script never crashes `npm install`. Any FS or
 // permission error is logged as a warning and the process exits 0. The
 // skill's missing-samples failure mode catches the consequence at
 // invocation time and tells the user how to repair (re-run `npm install
-// -g @usezombie/zombiectl`).
+// -g @agentsfleet/cli`).
 //
 // Idempotency: a sha256 manifest of the source tree is written alongside
 // the copy. On subsequent installs we compare manifests and skip the
@@ -33,7 +33,7 @@ const dst = resolve(dstParent, "samples");
 const manifestPath = resolve(dstParent, ".samples-manifest");
 
 function warn(msg) {
-  console.warn(`@usezombie/zombiectl postinstall: ${msg} — skipping. Re-run \`npm install -g @usezombie/zombiectl\` if templates are missing.`);
+  console.warn(`@agentsfleet/cli postinstall: ${msg} — skipping. Re-run \`npm install -g @agentsfleet/cli\` if templates are missing.`);
 }
 
 function manifestOf(root) {
@@ -41,7 +41,7 @@ function manifestOf(root) {
   // file content. Mtimes deliberately excluded — git checkouts and tarball
   // extracts both smear them. Sizes alone aren't enough either: a one-char
   // edit that preserves total size would slip past a size-only manifest
-  // and leave stale templates at ~/.config/usezombie/samples/. Reading
+  // and leave stale templates at ~/.config/agentsfleet/samples/. Reading
   // bytes is fine — the source tree is small (<100 KB) and runs once per
   // npm install.
   const h = createHash("sha256");
@@ -98,7 +98,7 @@ try {
 
   cpSync(src, dst, { recursive: true });
   writeFileSync(manifestPath, newManifest + "\n");
-  console.log(`@usezombie/zombiectl postinstall: samples installed at ${dst}`);
+  console.log(`@agentsfleet/cli postinstall: samples installed at ${dst}`);
 } catch (err) {
   warn(err && err.message ? err.message : String(err));
   process.exit(0); // never crash npm install

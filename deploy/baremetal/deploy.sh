@@ -38,7 +38,7 @@ if [[ -z "${DISCORD_WEBHOOK_URL:-}" && -r "${_DISCORD_ENV_FILE}" ]]; then
   source "${_DISCORD_ENV_FILE}"
 fi
 
-readonly REPO="usezombie/usezombie"
+readonly REPO="agentsfleet/agentsfleet"
 readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/zombie/deploy"

@@ -176,7 +176,7 @@ The durable lease bookkeeping (`fleet.runner_leases`, `fleet.runner_affinity`) i
 
 ## Concrete platform-ops example
 
-A GitHub Actions deploy fails on `usezombie/usezombie@c0a151bd`. The webhook lands as `event_id=1729874000000-0`, `actor=webhook:github`. Here is exactly what each row holds at each step.
+A GitHub Actions deploy fails on `agentsfleet/agentsfleet@c0a151bd`. The webhook lands as `event_id=1729874000000-0`, `actor=webhook:github`. Here is exactly what each row holds at each step.
 
 **Before the event** — `zombie_sessions` shows the agent idle since the previous event:
 
@@ -204,10 +204,10 @@ event_type     webhook
 status         received
 request_json   {
   "message":  "GH Actions workflow_run failure on
-               usezombie/usezombie deploy.yml run 9876",
+               agentsfleet/agentsfleet deploy.yml run 9876",
   "metadata": {"run_id": 9876, "head_sha": "c0a151bd",
                "conclusion": "failure", "ref": "main",
-               "repo": "usezombie/usezombie", "attempt": 1}
+               "repo": "agentsfleet/agentsfleet", "attempt": 1}
 }
 response_text  NULL
 created_at     2026-04-25T08:00:00Z

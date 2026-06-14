@@ -118,14 +118,14 @@ describe("Terminal", () => {
 
     it("copies the explicit copyText payload over the JSX children", async () => {
       render(
-        <Terminal copyable copyText="curl -fsSL usezombie.sh | sh">
+        <Terminal copyable copyText="curl -fsSL agentsfleet.dev | sh">
           <span>colored log</span>
         </Terminal>,
       );
       fireEvent.click(screen.getByTestId("copy-btn"));
       await waitFor(() =>
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-          "curl -fsSL usezombie.sh | sh",
+          "curl -fsSL agentsfleet.dev | sh",
         ),
       );
     });

@@ -14,7 +14,7 @@ This scenario is the wedge demo. If this path doesn't work end-to-end, nothing e
 sequenceDiagram
     autonumber
     participant Op as User (in host)
-    participant Skill as /usezombie-install-platform-ops
+    participant Skill as /agentsfleet-install-platform-ops
     participant CLI as agentsfleet
     participant API as agentsfleetd-api
     participant Runner as agentsfleet-runner
@@ -56,14 +56,14 @@ sequenceDiagram
 The user is already inside their host (Claude Code, Amp, Codex CLI, or OpenCode). They invoke:
 
 ```
-/usezombie-install-platform-ops
+/agentsfleet-install-platform-ops
 ```
 
 The skill's first action is host-neutral: it reads its own `variables:` frontmatter and asks at most four questions through whatever question primitive the host provides (or falls back to inline natural-language Q&A on hosts that have none).
 
 ### 1.1 Skill steps
 
-1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/skills`, `agentsfleet auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @agentsfleet/cli`, `npx skills add agentsfleet/skills`, `agentsfleet auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
 2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
 3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
@@ -185,7 +185,7 @@ This is the verbatim end-to-end CLI experience. The skill drives most of it; Joh
 ### 3.1 Skill invocation through to first steer
 
 ```text
-$ /usezombie-install-platform-ops
+$ /agentsfleet-install-platform-ops
 
 ▸ Preconditions …
   agentsfleet   ✓ on PATH

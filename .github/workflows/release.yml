@@ -266,12 +266,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
-  # ── 3. CLI: publish @usezombie/zombiectl to npm ─────────────────────────
+  # ── 3. CLI: publish @agentsfleet/cli to npm ─────────────────────────
   # Tag lifecycle:
   #   - Release publishes to `next` dist-tag (--tag next)
   #   - After acceptance testing, promote manually:
-  #     npm dist-tag add @usezombie/zombiectl@<ver> latest
-  #   - Users installing without a tag pin (`npm install -g @usezombie/zombiectl`)
+  #     npm dist-tag add @agentsfleet/cli@<ver> latest
+  #   - Users installing without a tag pin (`npm install -g @agentsfleet/cli`)
   #     resolve `latest`, not `next`
   npm:
     runs-on: ubuntu-latest
@@ -310,8 +310,8 @@ jobs:
       - name: Publish to npm (skip if version already exists)
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          if npm view "@usezombie/zombiectl@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
-            echo "✓ @usezombie/zombiectl@${VERSION} already published — skipping"
+          if npm view "@agentsfleet/cli@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
+            echo "✓ @agentsfleet/cli@${VERSION} already published — skipping"
           else
             npm publish --provenance --access public --tag next
           fi

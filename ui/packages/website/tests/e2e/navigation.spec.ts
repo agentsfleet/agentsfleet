@@ -113,7 +113,7 @@ test.describe("Agents page — install block", () => {
   test("npm install command is readable in install block", async ({ page }) => {
     await page.goto("/agents");
     const block = page.getByLabel(/install agentsfleet command/i);
-    await expect(block).toContainText("npm install -g @usezombie/zombiectl");
+    await expect(block).toContainText("npm install -g @agentsfleet/cli");
   });
 
   test("read the docs button links to docs", async ({ page }) => {

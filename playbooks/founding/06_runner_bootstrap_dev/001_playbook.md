@@ -321,7 +321,7 @@ REMOTE
 # real (non-placeholder) zrn_ runner-token in the vault. The placeholder shape
 # (zrn_FAKE_…) is rejected by deploy.sh and by the daemon's startup prefix check;
 # leaving the gate true with a placeholder would just produce a red deploy.
-gh variable set DEV_WORKER_READY --body "true" --repo usezombie/usezombie
+gh variable set DEV_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
 echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
 ```
 

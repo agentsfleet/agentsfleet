@@ -55,4 +55,4 @@ ENV PATH=/opt/zig:$PATH
 
 LABEL org.opencontainers.image.title="usezombie ci-zig-ubuntu" \
       org.opencontainers.image.description="Ubuntu 24.04 + Zig — host-runner replacement for usezombie unit/bench/qa/lint-zig lanes" \
-      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

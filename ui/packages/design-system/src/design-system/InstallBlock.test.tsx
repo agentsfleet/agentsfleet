@@ -4,7 +4,7 @@ import InstallBlock from "./InstallBlock";
 
 const defaultProps = {
   title: "Install Zombiectl",
-  command: "curl -fsSL https://usezombie.sh | bash",
+  command: "curl -fsSL https://agentsfleet.dev | bash",
   actions: [
     { label: "Install now", to: "https://docs.agentsfleet.net/quickstart" },
     { label: "Read the docs", to: "https://docs.agentsfleet.net", variant: "ghost" as const },
@@ -28,7 +28,7 @@ describe("InstallBlock", () => {
     renderBlock();
     const terminal = screen.getByLabelText("Install Zombiectl command");
     expect(terminal).toBeInTheDocument();
-    expect(terminal).toHaveTextContent(/curl -fsSL https:\/\/usezombie\.sh \| bash/);
+    expect(terminal).toHaveTextContent(/curl -fsSL https:\/\/agentsfleet\.dev \| bash/);
   });
 
   it("renders all action links", () => {

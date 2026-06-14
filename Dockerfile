@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.title="usezombie agentsfleetd" \
       org.opencontainers.image.description="usezombie control-plane daemon (agentsfleetd) that runs your agents. Docs: https://docs.usezombie.com" \
       org.opencontainers.image.url="https://docs.usezombie.com" \
       org.opencontainers.image.documentation="https://docs.usezombie.com" \
-      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     ca-certificates \
