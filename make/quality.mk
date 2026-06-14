@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-agentsfleet lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-agentsfleet lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _agentsfleet_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -38,7 +38,7 @@ _design_system_lint:
 	@cd ui/packages/design-system && bun run lint
 	@echo "✓ [design-system] Lint passed"
 
-_zombiectl_lint:
+_agentsfleet_lint:
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
 	@cd agentsfleet && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
@@ -217,13 +217,13 @@ lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schem
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
-lint-apps-ds-ctl: _app_lint _design_system_lint _zombiectl_lint  ## Lint app + design-system + agentsfleet
+lint-apps-ds-ctl: _app_lint _design_system_lint _agentsfleet_lint  ## Lint app + design-system + agentsfleet
 
 lint-app: _app_lint  ## Lint ui/packages/app only (Oxlint + tsc)
 
 lint-design-system: _design_system_lint  ## Lint ui/packages/design-system only (Oxlint + tsc)
 
-lint-agentsfleet: _zombiectl_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits + tsc)
+lint-agentsfleet: _agentsfleet_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits + tsc)
 
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 

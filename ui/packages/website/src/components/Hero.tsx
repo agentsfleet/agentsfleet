@@ -151,7 +151,7 @@ export default function Hero() {
         </div>
 
         <Terminal
-          label="install via usezombie.sh"
+          label="install via agentsfleet.dev"
           data-testid="hero-cli"
           copyable
           animate
@@ -166,7 +166,7 @@ export default function Hero() {
           <LogLine severity="info"><LogToken severity="pulse">$</LogToken> {INSTALL_COMMAND}</LogLine>
           <LogLine severity="debug">› detecting host… <LogToken severity="info">claude code</LogToken></LogLine>
           <LogLine severity="debug">› installing <LogToken severity="info">agentsfleet</LogToken> + skill bundle…</LogLine>
-          <LogLine severity="done">✓ agentsfleet on PATH · skill added (<LogToken severity="evidence">usezombie/usezombie</LogToken>)</LogLine>
+          <LogLine severity="done">✓ agentsfleet on PATH · skill added (<LogToken severity="evidence">agentsfleet/agentsfleet</LogToken>)</LogLine>
           <LogLine severity="done">✓ webhook registered <LogToken severity="evidence">github.com/your-org/your-repo</LogToken></LogLine>
           <LogLine severity="debug">→ next: <LogToken severity="pulse">{INSTALL_SKILL_COMMAND}</LogToken></LogLine>
         </Terminal>

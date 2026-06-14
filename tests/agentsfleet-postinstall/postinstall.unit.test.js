@@ -37,7 +37,7 @@ function withBundledSamples(fn) {
   // Mirror repo-root samples/ into agentsfleet/samples/ via prepublish, run fn,
   // then clean up. Tests that need the bundled tree wrap with this helper.
   // Skills no longer bundle through prepublish — they live in
-  // github.com/usezombie/skills and install via `npx skills add usezombie/skills`.
+  // github.com/agentsfleet/skills and install via `npx skills add agentsfleet/skills`.
   const r = runNode(prepublish);
   if (r.status !== 0) throw new Error(`prepublish failed: ${r.stderr}`);
   try { return fn(); } finally {
@@ -57,7 +57,7 @@ test("postinstall in dev mode (no bundled samples) is a silent no-op", () => {
   });
 });
 
-test("postinstall populates ~/.config/usezombie/samples/ on first run", () => {
+test("postinstall populates ~/.config/agentsfleet/samples/ on first run", () => {
   withBundledSamples(() => withTempHome((home) => {
     const r = runNode(postinstall, { HOME: home });
     assert.equal(r.status, 0);
@@ -120,8 +120,8 @@ test("prepublish scrubs a stray local skills/ from the package dir", () => {
   // the skill bodies moved to their own repo. prepublish must actively remove
   // it so it can never sneak into the published tarball. Seed it, assert gone.
   const stray = resolve(zombiectlDir, "skills");
-  mkdirSync(resolve(stray, "usezombie-install-platform-ops"), { recursive: true });
-  writeFileSync(resolve(stray, "usezombie-install-platform-ops", "SKILL.md"), "stale\n");
+  mkdirSync(resolve(stray, "agentsfleet-install-platform-ops"), { recursive: true });
+  writeFileSync(resolve(stray, "agentsfleet-install-platform-ops", "SKILL.md"), "stale\n");
   try {
     const r = runNode(prepublish);
     assert.equal(r.status, 0, `prepublish failed: ${r.stderr}`);

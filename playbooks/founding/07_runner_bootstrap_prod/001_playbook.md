@@ -328,7 +328,7 @@ REMOTE
 Only set `PROD_WORKER_READY=true` once **every node** in `PROD_WORKER_HOSTS` has passed step 5 with a real admin-minted `zrn_` runner-token in vault (placeholder `zrn_FAKE_…` values are rejected by `deploy.sh` and by the daemon's startup prefix check).
 
 ```bash
-gh variable set PROD_WORKER_READY --body "true" --repo usezombie/usezombie
+gh variable set PROD_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
 echo "CI activated. Next release tag will deploy to all prod workers."
 ```
 

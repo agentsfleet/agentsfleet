@@ -2,7 +2,7 @@
 
 **Updated:** May 22, 2026
 **Owner:** Human (one-time Vercel project + custom domain — already provisioned)
-**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `usezombie/usezombie` (already used by `agentsfleet-website` and `usezombie-agents-sh`).
+**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `agentsfleet/agentsfleet` (already used by `agentsfleet-website` and `usezombie-agents-sh`).
 
 ## Why this playbook exists
 
@@ -34,7 +34,7 @@ It deploys the **same way as `agentsfleet-website`**: a **git-connected** Vercel
 
 ## Step 1 — The git-connected Vercel project (already provisioned)
 
-Vercel dashboard → **Add New → Project → Import** `usezombie/usezombie`. Current config:
+Vercel dashboard → **Add New → Project → Import** `agentsfleet/agentsfleet`. Current config:
 
 | Setting | Value |
 |---------|-------|
@@ -65,4 +65,4 @@ curl -sSI https://usezombie.sh/install.sh | grep -i content-type   # -> text/x-s
 
 ## Prerequisite for a meaningful end-to-end install
 
-The script runs `npm install -g @usezombie/zombiectl`. At authoring time npm lagged at `0.3.0` vs the repo's `0.37.0`, and GitHub Releases topped out at `v0.4.0`. Publish a current `@usezombie/zombiectl` to npm before treating a live `curl … | bash` install as the real end-to-end path — that is a separate release task, not part of this wiring.
+The script runs `npm install -g @agentsfleet/cli`. At authoring time npm lagged at `0.3.0` vs the repo's `0.37.0`, and GitHub Releases topped out at `v0.4.0`. Publish a current `@agentsfleet/cli` to npm before treating a live `curl … | bash` install as the real end-to-end path — that is a separate release task, not part of this wiring.

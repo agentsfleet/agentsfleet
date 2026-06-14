@@ -14,9 +14,9 @@ The Claude session becomes the place where the user defines, installs, updates, 
 
 For the full end-to-end install + first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
 
-## §8.0 The wedge surface: `/usezombie-install-platform-ops` skill
+## §8.0 The wedge surface: `/agentsfleet-install-platform-ops` skill
 
-The MVP's user-facing wedge is not raw `agentsfleet install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or run the one-liner `curl -fsSL https://usezombie.sh | bash`, which installs `agentsfleet` and adds the skill into the host path in one step (§8.2.1). No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
+The MVP's user-facing wedge is not raw `agentsfleet install`. It is a host-neutral SKILL.md invoked as **`/agentsfleet-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/agentsfleet-install-platform-ops/` or the host-equivalent path), or run the one-liner `curl -fsSL https://agentsfleet.dev | bash`, which installs `agentsfleet` and adds the skill into the host path in one step (§8.2.1). No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/agentsfleet-steer`, `/agentsfleet-doctor`).
 
 The skill is the install UX; `agentsfleet install --from <path>` is the substrate it drives.
 
@@ -66,18 +66,18 @@ Once the files are ready, the user installs the agent into the workspace.
 
 ### §8.2.1 Cold-machine bootstrap (run once per machine)
 
-The canonical entry is the one-liner served from `https://usezombie.sh` — it wraps the first two steps below (install `agentsfleet`, add the skill):
+The canonical entry is the one-liner served from `https://agentsfleet.dev` — it wraps the first two steps below (install `agentsfleet`, add the skill):
 
 ```bash
-curl -fsSL https://usezombie.sh | bash   # installs agentsfleet, then npx skills add agentsfleet/skills
+curl -fsSL https://agentsfleet.dev | bash   # installs agentsfleet, then npx skills add agentsfleet/skills
 ```
 
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
-npm install -g @usezombie/zombiectl     # CLI binary + bundled samples (postinstall copies to ~/.config/usezombie/samples/)
+npm install -g @agentsfleet/cli     # CLI binary + bundled samples (postinstall copies to ~/.config/agentsfleet/samples/)
 npx skills add agentsfleet/skills         # symlinks /usezombie-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
-agentsfleet auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
+agentsfleet auth login                     # Clerk OAuth → token in ~/.config/agentsfleet/auth.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
 
@@ -85,7 +85,7 @@ The install-skill's first action (§8.2.2 step 1) is a `which agentsfleet && whi
 
 ### §8.2.2 Per-agent install flow
 
-1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
+1. Claude (or another agent), typically driven by the `/agentsfleet-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, tenant provider readiness, and (M68) free-trial state. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
 3. The user (or skill) installs or updates the agent through `agentsfleet install --from <path>` or the dashboard install form at `/zombies/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/zombies`; the API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
 4. The API stores the agent config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).

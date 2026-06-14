@@ -33,7 +33,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Which coding agents work for the install skill?",
-    a: "Claude Code, Amp, Codex CLI, and OpenCode — same skill, same prompts in every host. Run npm install -g @usezombie/zombiectl, then /usezombie-install-platform-ops inside any of them.",
+    a: "Claude Code, Amp, Codex CLI, and OpenCode — same skill, same prompts in every host. Run npm install -g @agentsfleet/cli, then /agentsfleet-install-platform-ops inside any of them.",
   },
   {
     q: "What if my agent hits the model's context window?",

@@ -37,8 +37,8 @@ one of GitHub's two themes — always embed the theme-paired form:
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)"
-      srcset="https://raw.githubusercontent.com/usezombie/usezombie/main/branding/agentsfleet-dark.svg">
-    <img src="https://raw.githubusercontent.com/usezombie/usezombie/main/branding/agentsfleet-light.svg" alt="agentsfleet" width="360">
+      srcset="https://raw.githubusercontent.com/agentsfleet/agentsfleet/main/branding/agentsfleet-dark.svg">
+    <img src="https://raw.githubusercontent.com/agentsfleet/agentsfleet/main/branding/agentsfleet-light.svg" alt="agentsfleet" width="360">
   </picture>
 </p>
 ```

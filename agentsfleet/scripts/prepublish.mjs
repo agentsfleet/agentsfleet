@@ -2,9 +2,9 @@
 //
 // Pre-publish copier — bundles `samples/` from the repo root into the npm
 // package directory so it ships inside the published tarball. Agent skills
-// live in their own repo (github.com/usezombie/skills) and install via
-// `npx skills add usezombie/skills` — they no longer travel
-// with @usezombie/zombiectl.
+// live in their own repo (github.com/agentsfleet/skills) and install via
+// `npx skills add agentsfleet/skills` — they no longer travel
+// with @agentsfleet/cli.
 //
 // Why a copy rather than a symlink in `files:`? npm `files:` only resolves
 // relative to the package root; it cannot reference parent paths. The

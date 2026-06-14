@@ -254,8 +254,8 @@ op item create --vault "$VAULT_DEV" --title fly-api-token \
   --category "API Credential" "credential=<token>"
 
 # Set GitHub Actions vars
-gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo usezombie/usezombie
-gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo usezombie/usezombie
+gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo agentsfleet/agentsfleet
+gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo agentsfleet/agentsfleet
 ```
 
 CI deploy step in `deploy-dev.yml`:

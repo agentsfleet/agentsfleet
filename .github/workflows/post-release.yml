@@ -27,12 +27,12 @@ jobs:
         with:
           node-version: 25
 
-      - name: Install @usezombie/zombiectl from npm
-        run: npm install -g @usezombie/zombiectl@next
+      - name: Install @agentsfleet/cli from npm
+        run: npm install -g @agentsfleet/cli@next
 
       - name: Verify --version matches published version
         run: |
-          EXPECTED=$(npm view @usezombie/zombiectl@next version)
+          EXPECTED=$(npm view @agentsfleet/cli@next version)
           VERSION=$(agentsfleet --version 2>&1 | head -1)
           echo "agentsfleet version: $VERSION"
           echo "expected (npm @next): $EXPECTED"
@@ -55,7 +55,7 @@ jobs:
         shell: bash
 
   # CLI acceptance against api.usezombie.com using the just-published
-  # @usezombie/zombiectl@latest. WS-E #C2: secret-load comes AFTER `bun
+  # @agentsfleet/cli@latest. WS-E #C2: secret-load comes AFTER `bun
   # install` AND `npm i -g` so a hostile postinstall sees no Clerk admin
   # key. lifecycle-after-login is skipped on PROD (no dashboard URL is
   # provided — per spec §5 disposition).
@@ -81,7 +81,7 @@ jobs:
         working-directory: agentsfleet
 
       - name: Install agentsfleet from npm @latest (BEFORE secret load — WS-E #C2)
-        run: npm install -g @usezombie/zombiectl@latest
+        run: npm install -g @agentsfleet/cli@latest
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium

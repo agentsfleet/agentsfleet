@@ -90,4 +90,4 @@ ENV PATH=/opt/zig:$PATH
 
 LABEL org.opencontainers.image.title="usezombie ci-zig-alpine" \
       org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL ready for usezombie CI cross-compile lanes" \
-      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

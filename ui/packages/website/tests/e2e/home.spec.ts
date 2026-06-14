@@ -21,7 +21,7 @@ test.describe("Home page", () => {
     // The install one-liner sits in a copy-row; the primary CTA is a
     // copy-only button (no docs anchor, no scroll).
     const command = page.getByTestId("hero-install-command");
-    await expect(command).toContainText("curl -fsSL https://usezombie.sh | bash");
+    await expect(command).toContainText("curl -fsSL https://agentsfleet.dev | bash");
     const install = page.getByTestId("hero-cta-primary");
     await expect(install).toBeVisible();
     await expect(install).toHaveJSProperty("tagName", "BUTTON");
@@ -40,9 +40,9 @@ test.describe("Home page", () => {
   });
 
   test("renders the animated hero install Terminal", async ({ page }) => {
-    const term = page.getByLabel(/install via usezombie\.sh/i);
+    const term = page.getByLabel(/install via agentsfleet\.dev/i);
     await expect(term).toBeVisible();
-    await expect(term).toContainText("/usezombie-install-platform-ops");
+    await expect(term).toContainText("/agentsfleet-install-platform-ops");
   });
 
   test("topbar renders the install CTA + brand-mark pulse", async ({ page }) => {

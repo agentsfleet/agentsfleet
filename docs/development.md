@@ -115,14 +115,14 @@ production-dead (test-kept); `_test.zig` files in neither walk are true orphans.
 - Token at runtime: `VERCEL_TOKEN=$(op read 'op://ZMB_CD_DEV/vercel-api-token/credential')`
   — never print it. Team scope `indykishs-projects`.
 - Projects → domains: `agentsfleet-website` (marketing) · `agentsfleet-app`
-  (dashboard) · `usezombie-agents-sh` (serves the `usezombie.sh` installer
+  (dashboard) · `usezombie-agents-sh` (serves the `agentsfleet.dev` installer
   domain; static output `ui/agentsfleet.dev/dist/`).
 - **Preview URLs return 401** (`ssoProtection: all_except_custom_domains`); prod
   custom domains are raw-reachable. To curl a preview, fetch the project's
   automation-bypass secret (`GET /v9/projects/{name}` → `.protectionBypass |
   keys[0]`) and send `x-vercel-protection-bypass: <secret>`.
 - Vercel ignores Cloudflare-Pages `_redirects`/`_headers`; static dirs need
-  `framework=Other` + a `vercel.json` for rewrites/headers. The `usezombie.sh`
+  `framework=Other` + a `vercel.json` for rewrites/headers. The `agentsfleet.dev`
   root rewrite + `text/x-shellscript` content-type live in
   `ui/agentsfleet.dev/dist/vercel.json` (two explicit header sources — the
   optional-group regex form does not match bare `/`). Deploys ride the git
