@@ -1,4 +1,4 @@
-//! `zombie-runner doctor` — preflight a host before the daemon runs: are the
+//! `agentsfleet-runner doctor` — preflight a host before the daemon runs: are the
 //! required env vars present, and is the control plane reachable with this
 //! host's token? Reports each check; exits non-zero if any fails. Auto-JSON
 //! when piped. Reachability reuses the heartbeat verb (reachable + token-valid

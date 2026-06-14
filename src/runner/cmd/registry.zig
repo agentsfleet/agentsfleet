@@ -1,6 +1,6 @@
 //! Command register for the operator CLI — a typed `Command` enum mapped to a
 //! `Spec { handler, summary }`, mirroring the server's `route_table.specFor`
-//! (src/zombied/http/route_table.zig). It is the single source for both
+//! (src/agentsfleetd/http/route_table.zig). It is the single source for both
 //! dispatch and help: a command with no summary (or a summary with no command)
 //! is impossible by construction, so `--help` can never drift from the real
 //! command set (Invariant 2).

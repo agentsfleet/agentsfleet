@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
+import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@agentsfleet/design-system";
 import { listZombies, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -75,7 +75,7 @@ function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
       </p>
       <InstallBlock
         title="Install your first agent"
-        command="zombiectl install --from ./platform-ops"
+        command="agentsfleet install --from ./platform-ops"
         actions={[
           { label: "Read the docs", to: "https://docs.usezombie.com/quickstart", variant: "default", external: true },
           { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },

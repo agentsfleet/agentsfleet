@@ -1,5 +1,5 @@
 //! Frozen /v1/runners control protocol — the request/response types and enums
-//! `zombied` (the control plane) and the host-resident runner exchange over HTTPS.
+//! `agentsfleetd` (the control plane) and the host-resident runner exchange over HTTPS.
 //!
 //! These shapes are the interface the parallel runner workstreams build against;
 //! do not change a field without amending the keystone spec. Two conventions
@@ -30,7 +30,7 @@ const runner_events = @import("runner_events.zig");
 pub const PATH_RUNNERS = "/v1/runners";
 
 /// Runner-token prefix — the wire contract for the machine principal. Single-
-/// sourced here (RULE UFS) because BOTH build graphs reference it: zombied mints
+/// sourced here (RULE UFS) because BOTH build graphs reference it: agentsfleetd mints
 /// + validates it (`runner_bearer.zig`, `register.zig`) and the host daemon
 /// validates the env-supplied token's prefix before the lease loop. The literal
 /// must stay `zrn_` verbatim — runner_bearer carries the pin test.
@@ -45,7 +45,7 @@ pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 /// a live lease for that zombie (IDOR-safe — the client never reaches a zombie it
 /// does not lease). The POST fences the write via `fencing_token` in the body,
 /// like `/reports`. (`zombie_id` is our identifier end to end; its `zmb:`-prefixed
-/// storage form is internal to `zombied`'s memory adapter.) This is the collection
+/// storage form is internal to `agentsfleetd`'s memory adapter.) This is the collection
 /// prefix; the router appends the `{zombie_id}` segment. See
 /// `docs/architecture/runner_fleet.md` §Memory continuity.
 pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
@@ -107,7 +107,7 @@ pub const SecretDelivery = enum { @"inline", scoped, proxy };
 
 /// Terminal execution result the runner reports. Mirrors the
 /// `core.zombie_events.status` values a runner can produce —
-/// `gate_blocked`/`dead_lettered` are `zombied`-side and never runner-reported.
+/// `gate_blocked`/`dead_lettered` are `agentsfleetd`-side and never runner-reported.
 pub const Outcome = enum { processed, agent_error };
 
 /// Heartbeat reply status. `ok` is the only S0 value; `drain`/`stop` are
@@ -178,7 +178,7 @@ pub const RegisterRequest = struct {
 };
 
 /// register reply: the durable runner identity + its bearer token (returned once;
-/// `zombied` stores only the token hash).
+/// `agentsfleetd` stores only the token hash).
 pub const RegisterResponse = struct {
     runner_id: []const u8,
     runner_token: []const u8,
@@ -277,7 +277,7 @@ pub const ReportRequest = struct {
 /// report reply. S0 reproduces the direct worker's finalize() writes (terminal
 /// status + telemetry actuals + session checkpoint) then XACKs; true
 /// idempotency (`INSERT … ON CONFLICT`) + fencing verification are the later
-/// `zombied` lease/report logic.
+/// `agentsfleetd` lease/report logic.
 pub const ReportResponse = struct {
     ok: bool,
 };
@@ -306,7 +306,7 @@ pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
 /// One durable agent-memory item on the wire — the unit of both capture (POST
 /// body) and hydrate (GET response). Carries no scope: the zombie is the
 /// `{zombie_id}` path segment, server-validated against the runner's live lease.
-/// One shape for a memory item, shared zombied <-> runner (RULE UFS).
+/// One shape for a memory item, shared agentsfleetd <-> runner (RULE UFS).
 pub const MemoryDelta = struct {
     key: []const u8,
     content: []const u8,

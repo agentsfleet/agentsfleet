@@ -77,7 +77,7 @@ describe("Home", () => {
     // The old standalone InstallBlock below pricing was redundant with the
     // OnboardingFlow steps at the top of the page; it must be gone.
     expect(
-      screen.queryByRole("heading", { level: 2, name: /install zombiectl, then run/i }),
+      screen.queryByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
     ).not.toBeInTheDocument();
   });
 

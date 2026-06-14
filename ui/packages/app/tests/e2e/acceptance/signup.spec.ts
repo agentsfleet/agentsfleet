@@ -8,7 +8,7 @@
  *      documented testing email pattern shortcuts one-time-code delivery in
  *      development instances with test mode enabled.
  *   2. Drive Clerk's browser signup helper and replay the identity event so
- *      zombied creates the tenant workspace.
+ *      agentsfleetd creates the tenant workspace.
  *   3. Land on the authenticated dashboard.
  *   4. Cleanup: delete the freshly-created Clerk user so signup flows do
  *      not accumulate cruft in Clerk development.

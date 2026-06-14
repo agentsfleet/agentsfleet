@@ -8,13 +8,13 @@
  *   - prefers-reduced-motion overrides
  *
  * Fonts (Commit Mono + Instrument Sans) and the wake-pulse keyframe ride
- * in transitively via @usezombie/design-system/tokens.css.
+ * in transitively via @agentsfleet/design-system/tokens.css.
  */
 
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@usezombie/design-system/tokens.css";
-@import "@usezombie/design-system/theme.css";
+@import "@agentsfleet/design-system/tokens.css";
+@import "@agentsfleet/design-system/theme.css";
 
 /* Tailwind v4 auto-scans the website package; the design-system package
  * lives in a sibling workspace and must be registered explicitly so the

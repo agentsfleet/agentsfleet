@@ -13,7 +13,7 @@ export default defineConfig({
   test: {
     // Vitest's default exclude is `['**/node_modules/**', '**/dist/**', ...]`.
     // Overriding `exclude` REPLACES the default — losing the node_modules
-    // skip — so the workspace symlink `node_modules/@usezombie/design-system`
+    // skip — so the workspace symlink `node_modules/@agentsfleet/design-system`
     // got followed into the design-system's own tests, which ran without
     // that package's `test-setup.ts` and failed on `toBeInTheDocument`.
     // Restoring the defaults alongside the e2e exclude fixes the flake.

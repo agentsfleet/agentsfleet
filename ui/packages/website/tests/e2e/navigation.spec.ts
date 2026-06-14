@@ -105,14 +105,14 @@ test.describe("SPA routing — no full page reloads", () => {
 });
 
 test.describe("Agents page — install block", () => {
-  test("install zombiectl block is visible on /agents", async ({ page }) => {
+  test("install agentsfleet block is visible on /agents", async ({ page }) => {
     await page.goto("/agents");
-    await expect(page.getByRole("heading", { name: /install zombiectl/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /install agentsfleet/i })).toBeVisible();
   });
 
   test("npm install command is readable in install block", async ({ page }) => {
     await page.goto("/agents");
-    const block = page.getByLabel(/install zombiectl command/i);
+    const block = page.getByLabel(/install agentsfleet command/i);
     await expect(block).toContainText("npm install -g @usezombie/zombiectl");
   });
 

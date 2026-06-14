@@ -98,7 +98,7 @@ test.describe("auth e2e wire", () => {
     // existing rows from prior interrupted runs are noise we don't fail on.
     // Random suffix avoids (workspace_id, name) uniqueness collision when a
     // prior interrupted run left a killed zombie that couldn't be deleted
-    // (zombied has a known ConnectionBusy bug on delete; orphans stick).
+    // (agentsfleetd has a known ConnectionBusy bug on delete; orphans stick).
     const tag = Math.random().toString(36).slice(2, 8);
     const seeded = await seedZombie(FIXTURE_KEY.regular, ws, {
       name: `fixture-roundtrip-${tag}`,
@@ -110,7 +110,7 @@ test.describe("auth e2e wire", () => {
 
     // Teardown is tolerant of stale rows; we don't assert on the count
     // returned. Proof point: the freshly-seeded row is gone OR has been
-    // marked killed. The "OR killed" branch accommodates an open zombied
+    // marked killed. The "OR killed" branch accommodates an open agentsfleetd
     // bug where DELETE returns UZ-INTERNAL-002 (ConnectionBusy) — out of
     // scope here, tracked as a separate fix(zombie) PR. PATCH→killed is
     // what the harness can guarantee against that bug; once a future

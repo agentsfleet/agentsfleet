@@ -6,7 +6,7 @@
 
 ### Scope-based authorization (designed at the API level now, enforced in v2.1)
 
-Today authorization is **role-based**: `AuthRole = user < operator < admin` (`src/zombied/auth/rbac.zig`), enforced by the `RequireRole` middleware. JWTs already carry a `scope`/`scopes` claim — `src/zombied/auth/claims.zig` parses it — but the middleware frees it and never puts it on `AuthPrincipal`. So scopes are parsed-but-discarded; nothing is enforced on them.
+Today authorization is **role-based**: `AuthRole = user < operator < admin` (`src/agentsfleetd/auth/rbac.zig`), enforced by the `RequireRole` middleware. JWTs already carry a `scope`/`scopes` claim — `src/agentsfleetd/auth/claims.zig` parses it — but the middleware frees it and never puts it on `AuthPrincipal`. So scopes are parsed-but-discarded; nothing is enforced on them.
 
 v2.1 wires scope enforcement at the API level so a capability can be granted without handing out a whole role. The API surface is shaped for it now:
 

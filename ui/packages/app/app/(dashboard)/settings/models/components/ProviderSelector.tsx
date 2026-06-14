@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ActionForm, Alert, Badge, Button, RadioGroup, Spinner } from "@usezombie/design-system";
+import { ActionForm, Alert, Badge, Button, RadioGroup, Spinner } from "@agentsfleet/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";

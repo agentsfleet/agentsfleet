@@ -17,7 +17,7 @@ import {
   Skeleton,
   WakePulse,
   cn,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import {
   CONNECTION_STATUS,
   useZombieEventStream,

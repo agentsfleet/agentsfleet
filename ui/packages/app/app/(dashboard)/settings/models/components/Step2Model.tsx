@@ -8,7 +8,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { uniqueModelIds, type ModelCap } from "@/lib/api/model_caps";
 
 export type Step2ModelProps = {

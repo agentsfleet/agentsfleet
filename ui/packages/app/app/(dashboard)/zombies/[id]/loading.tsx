@@ -1,4 +1,4 @@
-import { PageHeader, PageTitle, Section, SectionLabel, Skeleton } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section, SectionLabel, Skeleton } from "@agentsfleet/design-system";
 
 export default function ZombieDetailLoading() {
   return (

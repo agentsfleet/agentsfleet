@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
-import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@usezombie/design-system";
+import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
 import { getZombie, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { listZombieEvents } from "@/lib/api/events";

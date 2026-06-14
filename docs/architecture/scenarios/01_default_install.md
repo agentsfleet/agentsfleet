@@ -6,7 +6,7 @@
 
 > **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
-**Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
+**Outcome under test:** From cold start (`agentsfleet` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
 This scenario is the wedge demo. If this path doesn't work end-to-end, nothing else matters.
 
@@ -15,9 +15,9 @@ sequenceDiagram
     autonumber
     participant Op as User (in host)
     participant Skill as /usezombie-install-platform-ops
-    participant CLI as zombiectl
-    participant API as zombied-api
-    participant Runner as zombie-runner
+    participant CLI as agentsfleet
+    participant API as agentsfleetd-api
+    participant Runner as agentsfleet-runner
     participant GH as GitHub Actions
     participant Slack
 
@@ -63,19 +63,19 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 ### 1.1 Skill steps
 
-1. **Preconditions.** The skill runs `which zombiectl && which gh && zombiectl doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/skills`, `zombiectl auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/skills`, `agentsfleet auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
 2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
 3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
-   then `zombiectl credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
+   then `agentsfleet credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
 
    For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced zombies share it; rotation rotates everywhere).
-5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
+5. **Model and cap from doctor.** The skill reads `agentsfleet doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
-   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
+   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
 6. **File generation.** The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
@@ -110,7 +110,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `zombiectl install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `zombie:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `zombie:control` watcher was retired at the cutover): a later trigger `XADD`s to `zombie:{id}:events`, and the control plane hands that event to whichever `zombie-runner` leases next. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
+7. **Install.** `agentsfleet install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `zombie:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `zombie:control` watcher was retired at the cutover): a later trigger `XADD`s to `zombie:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
 8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.usezombie/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
 9. **Register webhook(s) on the provider via the user's local `gh`.** For each webhook trigger in `triggers[]`, the skill runs:
    ```bash
@@ -124,7 +124,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    The user's `gh auth` does the work — the platform never holds the user's PAT for this step. Failure modes: `403`/`401` → skill prints `gh auth refresh -s admin:repo_hook` and stops; `404` → repo or token wrong, prints response verbatim and stops; `422 Hook already exists` → idempotent (skill `gh api repos/.../hooks`, matches on `config.url`, advances).
 10. **Self-verify the webhook end-to-end.** The skill computes HMAC-SHA256 over a synthetic payload using the stored `webhook_secret`, curls the receiver with the signed payload + `X-GitHub-Event: workflow_run` + `X-Hub-Signature-256` headers. Expects 202. Anything else → prints response verbatim and stops *before* declaring success. The user never finds out hours later that HMAC is wrong.
 11. **Post-install summary.** Prints agent id, registered hook id per source, HMAC-verified status, and the credentials stored — no manual paste prose. No GitHub web UI step.
-12. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
+12. **First steer (smoke test).** The skill runs `agentsfleet steer {id} "morning health check"` in batch mode and streams the response inline.
 
 ### 1.2 What the first steer actually returns
 
@@ -150,7 +150,7 @@ A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actio
 3. `XADD zombie:{id}:events *` with the envelope.
 4. Returns 202 to GitHub.
 
-A `zombie-runner` leases the event within ≤5s. The lease path (in `zombied`) walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
+A `agentsfleet-runner` leases the event within ≤5s. The lease path (in `agentsfleetd`) walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
@@ -160,7 +160,7 @@ A `zombie-runner` leases the event within ≤5s. The lease path (in `zombied`) w
 6. Approval gate (no destructive tools wired in this agent) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map`; `resolveActiveProvider`'s resolved provider+key ride the lease on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` (delivered fresh on every lease, including reclaim), separate from `secrets_map`, and the runner injects them into the NullClaw child for the inference call only.
 8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
-9. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `zombied`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`. The lease **also carries `instructions`** — the installed agent's stored `SKILL.md` body, extracted server-side by `ZombieSession` — so the runner composes the NullClaw turn from the installed instructions **plus** the event. This is what makes the GitHub deploy-failure path (and the install smoke-test steer below) run the stored playbook on every trigger instead of a generic chat; it is delivered on **each** lease, fresh and reclaim alike (M84_008).
+9. `agentsfleetd` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `agentsfleetd`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`. The lease **also carries `instructions`** — the installed agent's stored `SKILL.md` body, extracted server-side by `ZombieSession` — so the runner composes the NullClaw turn from the installed instructions **plus** the event. This is what makes the GitHub deploy-failure path (and the install smoke-test steer below) run the stored playbook on every trigger instead of a generic chat; it is delivered on **each** lease, fresh and reclaim alike (M84_008).
 10. The runner forks a sandboxed NullClaw child and runs the event (the webhook payload as the message).
 
 NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.
@@ -174,7 +174,7 @@ Worker:
 - PUBLISH `event_complete`.
 - XACK.
 
-After this event: `balance_nanos = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `zombiectl events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
+After this event: `balance_nanos = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `agentsfleet events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
 
 ---
 
@@ -188,7 +188,7 @@ This is the verbatim end-to-end CLI experience. The skill drives most of it; Joh
 $ /usezombie-install-platform-ops
 
 ▸ Preconditions …
-  zombiectl   ✓ on PATH
+  agentsfleet   ✓ on PATH
   gh          ✓ on PATH, scope admin:repo_hook present
   doctor      ✓ auth + workspace + tenant_provider OK
               tenant_provider: { mode: platform,
@@ -240,7 +240,7 @@ $ /usezombie-install-platform-ops
   Fly app widgetly-prod: healthy, last deploy 6h ago, 2 instances
   Posted to #platform-ops at 09:14 UTC.
 
-✓ Setup complete. To steer manually:  zombiectl steer zmb_01HX9N3K… "<msg>"
+✓ Setup complete. To steer manually:  agentsfleet steer zmb_01HX9N3K… "<msg>"
   Webhook ready. Next failed workflow_run on john-doe/widgetly will
   wake the agent automatically.
 ```
@@ -248,7 +248,7 @@ $ /usezombie-install-platform-ops
 ### 3.2 First production webhook fires (a few hours later)
 
 ```text
-$ zombiectl events zmb_01HX9N3K…
+$ agentsfleet events zmb_01HX9N3K…
 EVENT_ID                 ACTOR             STATUS     STARTED              TOKENS  CREDIT
 evt_01HX9P7M…           webhook:github    processed  2026-05-01T13:42:01  1840    4¢
 evt_01HX9N4P…           steer:john        processed  2026-05-01T09:14:22  1610    4¢
@@ -259,7 +259,7 @@ John clicks into `evt_01HX9P7M…` in the dashboard and sees the agent's evidenc
 ### 3.3 Provider posture confirmed by `tenant provider get`
 
 ```text
-$ zombiectl tenant provider get
+$ agentsfleet tenant provider get
 Mode:                platform   (synthesised default — no explicit row)
 Provider:            fireworks
 Model:               accounts/fireworks/models/kimi-k2.6
@@ -268,8 +268,8 @@ Context cap tokens:  256000
 ⓘ This is the platform default. To bring your own LLM key:
    op read 'op://<vault>/<item>/api_key' |
      jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-     zombiectl credential set <name> --data @-
-   zombiectl tenant provider set --credential <name>
+     agentsfleet credential set <name> --data @-
+   agentsfleet tenant provider set --credential <name>
 ```
 
 No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the self-managed setup commands.
