@@ -1,4 +1,4 @@
-import { PageHeader, PageTitle, Section, Skeleton } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section, Skeleton } from "@agentsfleet/design-system";
 
 export default function ApiKeysLoading() {
   return (

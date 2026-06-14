@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
   WakePulse,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { AuthUserButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
@@ -71,7 +71,7 @@ const ORGANIZATION_NAV: NavEntry[] = [
 ];
 
 const BOTTOM_NAV: NavEntry[] = [
-  { label: "Docs", href: "https://docs.usezombie.com", icon: BookOpenIcon, external: true },
+  { label: "Docs", href: "https://docs.agentsfleet.net", icon: BookOpenIcon, external: true },
 ];
 
 // Every internal destination, longest first so a nested route (e.g.

@@ -71,7 +71,7 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     var daemon: std.process.Environ.Map = .init(alloc);
     defer daemon.deinit();
     try daemon.put("ZOMBIE_RUNNER_TOKEN", PLANTED_TOKEN);
-    try daemon.put("HOME", "/home/zombie-runner");
+    try daemon.put("HOME", "/home/agentsfleet-runner");
     try daemon.put("PATH", "/usr/bin:/bin");
 
     // forkExec's REAL filter → a child that dumps its own environ.
@@ -93,7 +93,7 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     // HOME but never the planted token nor its ZOMBIE_ key.
     try std.testing.expect(std.mem.indexOf(u8, dump, PLANTED_TOKEN) == null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "ZOMBIE_RUNNER_TOKEN") == null);
-    try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=/home/zombie-runner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=/home/agentsfleet-runner") != null);
 }
 
 /// Spawn `sh -c <script>` as its own process-group leader (pgid=0) with a piped
@@ -165,7 +165,7 @@ test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollme
     // fails deterministically — the exact enrollment failure the fail-closed
     // path guards, with no root or real cgroup needed.
     var scope: ?cgroup.CgroupScope = .{
-        .path = "/sys/fs/cgroup/zombie-runner-no-such-scope/exec-enrolltest",
+        .path = "/sys/fs/cgroup/agentsfleet-runner-no-such-scope/exec-enrolltest",
         .alloc = std.testing.allocator,
         .io = io,
     };

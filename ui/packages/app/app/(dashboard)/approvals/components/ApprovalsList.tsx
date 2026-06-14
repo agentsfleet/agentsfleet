@@ -15,7 +15,7 @@ import {
   Input,
   List,
   ListItem,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { CheckCircle2Icon } from "lucide-react";
 
 import {

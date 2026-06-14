@@ -12,53 +12,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-unit-zombied:
+  test-unit-agentsfleetd:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
-      - name: Test zombied (Zig units)
-        run: make test-unit-zombied
+      - name: Test agentsfleetd (Zig units)
+        run: make test-unit-agentsfleetd
 
   test-unit-zigrunner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
-      - name: Test zombie-runner (Zig units)
+      - name: Test agentsfleet-runner (Zig units)
         run: make test-unit-zigrunner
 
   test-unit-ziglib:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
       - name: Test shared src/lib (Zig units)
         run: make test-unit-ziglib
 
-  test-unit-zombiectl:
+  test-unit-agentsfleet:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.13
-      - name: Install zombiectl dependencies
+      - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
-        working-directory: zombiectl
-      - name: Test zombiectl
+        working-directory: agentsfleet
+      - name: Test agentsfleet
         run: bun run test:coverage
-        working-directory: zombiectl
-      - name: Upload zombiectl coverage
+        working-directory: agentsfleet
+      - name: Upload agentsfleet coverage
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: usezombie/usezombie
-          flags: zombiectl
-          files: zombiectl/coverage/lcov.info
+          flags: agentsfleet
+          files: agentsfleet/coverage/lcov.info
           fail_ci_if_error: false
 
   test-unit-website:
@@ -146,7 +146,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [test-unit-zombied, test-unit-zigrunner, test-unit-ziglib, test-unit-zombiectl, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website]
+    needs: [test-unit-agentsfleetd, test-unit-zigrunner, test-unit-ziglib, test-unit-agentsfleet, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website]
     steps:
       - name: Preserve legacy test check name
         run: echo "All test lanes passed"

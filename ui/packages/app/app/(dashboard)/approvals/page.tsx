@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";

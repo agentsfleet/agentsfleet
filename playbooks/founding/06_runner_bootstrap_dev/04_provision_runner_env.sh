@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Section 4: provision the zombie-runner env file from vault.
+# Section 4: provision the agentsfleet-runner env file from vault.
 # Idempotent. Writes /opt/zombie/.env on the dev worker host with the three
-# vars the runner daemon requires (see deploy/baremetal/zombie-runner.service):
+# vars the runner daemon requires (see deploy/baremetal/agentsfleet-runner.service):
 #   ZOMBIE_API_URL       — control-plane base URL (literal for dev)
 #   ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (Option B; vault: runner-token)
 #   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
@@ -16,7 +16,7 @@
 # POST /v1/runners) on the live dev control plane and stored under runner-token.
 # This script requires that real token: it seeds both the source /opt/zombie/.env
 # (which deploy.sh copies on every CI run) and the unit's EnvironmentFile
-# /etc/default/zombie-runner, then restarts and verifies the daemon is active.
+# /etc/default/agentsfleet-runner, then restarts and verifies the daemon is active.
 # A zrn_FAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
 # until a real token brings the runner up green.
 set -euo pipefail
@@ -147,15 +147,15 @@ ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "chmod 600 /opt/zombie/.env"
 
 # Sync the source env to the unit's EnvironmentFile, then restart. The unit reads
-# /etc/default/zombie-runner (deploy.sh's ENV_DEST) — NOT /opt/zombie/.env — so a
+# /etc/default/agentsfleet-runner (deploy.sh's ENV_DEST) — NOT /opt/zombie/.env — so a
 # restart without this copy would re-read the previous /etc/default and ignore the
 # vars just written. /opt/zombie/.env stays the source-of-truth deploy.sh copies
 # from on every CI deploy; we seed both here so this restart and the is-active
 # check below actually exercise the new token. install -m 600 keeps it root-only.
-echo "-- syncing env -> /etc/default/zombie-runner + restarting zombie-runner.service"
+echo "-- syncing env -> /etc/default/agentsfleet-runner + restarting agentsfleet-runner.service"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "sudo install -m 600 -o root -g root /opt/zombie/.env /etc/default/zombie-runner \
-   && sudo systemctl restart zombie-runner.service"
+  "sudo install -m 600 -o root -g root /opt/zombie/.env /etc/default/agentsfleet-runner \
+   && sudo systemctl restart agentsfleet-runner.service"
 
 # Poll up to ~10s so we don't race systemd's RestartSec=5 (a daemon that
 # crashes and is in `scheduled-restart` would read as `failed` at +3s).
@@ -163,15 +163,15 @@ status=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
   status=$(ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-    "systemctl is-active zombie-runner.service 2>&1 || true")
+    "systemctl is-active agentsfleet-runner.service 2>&1 || true")
   [ "$status" = "active" ] && break
 done
 
 if [ "$status" = "active" ]; then
-  echo "  ✓ zombie-runner.service is active"
+  echo "  ✓ agentsfleet-runner.service is active"
 else
-  echo "  ✗ zombie-runner.service is not active (status: $status)"
-  echo "    inspect: ssh ${ssh_user}@${ssh_host} journalctl -u zombie-runner --no-pager -n 30"
+  echo "  ✗ agentsfleet-runner.service is not active (status: $status)"
+  echo "    inspect: ssh ${ssh_user}@${ssh_host} journalctl -u agentsfleet-runner --no-pager -n 30"
   exit 1
 fi
 

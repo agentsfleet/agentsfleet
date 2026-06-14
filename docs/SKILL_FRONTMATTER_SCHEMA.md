@@ -2,7 +2,7 @@
 
 Canonical reference for the YAML frontmatter on the two files that make up a zombie bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
 
-> Audience: implementing agents, parser authors, test writers. End-user docs live at `docs.usezombie.com/concepts/skill-frontmatter`.
+> Audience: implementing agents, parser authors, test writers. End-user docs live at `docs.agentsfleet.net/concepts/skill-frontmatter`.
 
 ---
 

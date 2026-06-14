@@ -31,7 +31,7 @@ describe("Footer", () => {
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^features$/i })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
-    expect(screen.getByRole("link", { name: /^docs$/i })).toHaveAttribute("href", "https://docs.usezombie.com");
+    expect(screen.getByRole("link", { name: /^docs$/i })).toHaveAttribute("href", "https://docs.agentsfleet.net");
     expect(screen.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
   });
 
@@ -39,7 +39,7 @@ describe("Footer", () => {
     renderFooter();
     expect(screen.getByText(/^community$/i)).toBeInTheDocument();
     const github = screen.getByRole("link", { name: /^github$/i });
-    expect(github).toHaveAttribute("href", "https://github.com/usezombie/usezombie");
+    expect(github).toHaveAttribute("href", "https://github.com/agentsfleet/usezombie");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noopener noreferrer");
 

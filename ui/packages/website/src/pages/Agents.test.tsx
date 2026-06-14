@@ -26,8 +26,8 @@ describe("Agents", () => {
 
   it("renders the install block with npm command", () => {
     renderAgents();
-    expect(screen.getByRole("heading", { name: /install zombiectl/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/install zombiectl command/i)).toHaveTextContent(
+    expect(screen.getByRole("heading", { name: /install agentsfleet/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/install agentsfleet command/i)).toHaveTextContent(
       /npm install -g @usezombie\/zombiectl/,
     );
   });
@@ -36,7 +36,7 @@ describe("Agents", () => {
     renderAgents();
     expect(screen.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
     expect(screen.getByRole("link", { name: /open dashboard/i })).toBeInTheDocument();
   });
@@ -46,7 +46,7 @@ describe("Agents", () => {
     const block = screen.getByLabelText(/bootstrap commands/i);
     expect(block).toBeInTheDocument();
     expect(block).toHaveTextContent(/npm install -g @usezombie\/zombiectl/);
-    expect(block).toHaveTextContent(/zombiectl login/);
+    expect(block).toHaveTextContent(/agentsfleet login/);
     expect(block).toHaveTextContent(/npx skills add usezombie\/skills/);
     expect(block).toHaveTextContent(/usezombie-install-platform-ops/);
   });

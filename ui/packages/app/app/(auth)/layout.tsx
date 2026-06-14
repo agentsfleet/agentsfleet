@@ -1,4 +1,4 @@
-import { WakePulse } from "@usezombie/design-system";
+import { WakePulse } from "@agentsfleet/design-system";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

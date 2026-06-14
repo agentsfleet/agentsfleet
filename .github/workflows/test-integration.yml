@@ -75,7 +75,7 @@ jobs:
   test-integration-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6

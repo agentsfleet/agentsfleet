@@ -1,4 +1,4 @@
-import { Button, DisplayLG } from "@usezombie/design-system";
+import { Button, DisplayLG } from "@agentsfleet/design-system";
 import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked } from "../analytics/posthog";
 

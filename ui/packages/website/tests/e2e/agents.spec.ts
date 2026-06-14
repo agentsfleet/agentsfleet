@@ -12,8 +12,8 @@ test.describe("Agents page (/agents)", () => {
   });
 
   test("renders install block with npm command", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /install zombiectl/i })).toBeVisible();
-    await expect(page.getByLabel(/install zombiectl command/i)).toContainText(
+    await expect(page.getByRole("heading", { name: /install agentsfleet/i })).toBeVisible();
+    await expect(page.getByLabel(/install agentsfleet command/i)).toContainText(
       "npm install -g @usezombie/zombiectl",
     );
   });
@@ -28,7 +28,7 @@ test.describe("Agents page (/agents)", () => {
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toBeVisible();
     await expect(block).toContainText("npm install -g @usezombie/zombiectl");
-    await expect(block).toContainText("zombiectl login");
+    await expect(block).toContainText("agentsfleet login");
     await expect(block).toContainText("npx skills add usezombie/skills");
     await expect(block).toContainText("/usezombie-install-platform-ops");
   });

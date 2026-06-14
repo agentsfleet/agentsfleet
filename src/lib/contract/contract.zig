@@ -1,5 +1,5 @@
-//! contract — the frozen `/v1/runners` wire interface, shared by the zombied
-//! control plane and the host-resident `zombie-runner` daemon.
+//! contract — the frozen `/v1/runners` wire interface, shared by the agentsfleetd
+//! control plane and the host-resident `agentsfleet-runner` daemon.
 //!
 //! Lives in `src/lib/` and is consumed as a **named module** (`@import("contract")`)
 //! by both build graphs, so neither binary reaches into the other's tree to
@@ -19,7 +19,7 @@ pub const execution_result = @import("execution_result.zig");
 
 // The contract's own unit tests run via `test-unit-ziglib` (the src/lib test
 // aggregator) in this module's own instance, so they can reach the internals
-// zombied/runner consumers never see.
+// agentsfleetd/runner consumers never see.
 test {
     _ = @import("protocol_test.zig");
     _ = @import("event_envelope_test.zig");

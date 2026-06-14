@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
+import { Alert, Button, Label, Textarea } from "@agentsfleet/design-system";
 
 import { approveApprovalAction, denyApprovalAction } from "../actions";
 import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals";

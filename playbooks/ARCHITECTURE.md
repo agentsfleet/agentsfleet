@@ -44,13 +44,13 @@ Cloudflare Edge  (api-dev.usezombie.com / api.usezombie.com)
   └──▶ cloudflared machine 2  (Fly app: cloudflared-dev, region: iad)
             │
             │  Fly 6PN (WireGuard mesh — internal only, never public internet)
-            │  zombied-dev.internal resolves to all API machines via DNS round-robin
+            │  agentsfleetd-dev.internal resolves to all API machines via DNS round-robin
             │
-            ├──▶ zombied-dev machine 1 :3000
-            └──▶ zombied-dev machine 2 :3000
+            ├──▶ agentsfleetd-dev machine 1 :3000
+            └──▶ agentsfleetd-dev machine 2 :3000
 ```
 
-**Key property:** `zombied-dev` has no public port. No public IP. No inbound firewall rules. It does not exist on the public internet. The only path in is through the tunnel.
+**Key property:** `agentsfleetd-dev` has no public port. No public IP. No inbound firewall rules. It does not exist on the public internet. The only path in is through the tunnel.
 
 ---
 
@@ -85,12 +85,12 @@ Cloudflare load balances incoming requests across all active connectors. If a ma
 
 ### Layer 2: API HA (private network side)
 
-`zombied-dev.internal:3000` resolves via Fly's internal DNS to all running API machines (IPv6, WireGuard). Each request from `cloudflared` gets DNS-resolved independently — natural round-robin load distribution with no LB in the path.
+`agentsfleetd-dev.internal:3000` resolves via Fly's internal DNS to all running API machines (IPv6, WireGuard). Each request from `cloudflared` gets DNS-resolved independently — natural round-robin load distribution with no LB in the path.
 
 ```
 cloudflared
-  ├──▶ zombied-dev.internal → DNS RR → machine 1 (fdaa::1:3000)
-  └──▶ zombied-dev.internal → DNS RR → machine 2 (fdaa::2:3000)
+  ├──▶ agentsfleetd-dev.internal → DNS RR → machine 1 (fdaa::1:3000)
+  └──▶ agentsfleetd-dev.internal → DNS RR → machine 2 (fdaa::2:3000)
 ```
 
 Zero additional infrastructure. No load balancer process. No single point of failure.
@@ -101,7 +101,7 @@ Zero additional infrastructure. No load balancer process. No single point of fai
 
 ```
 Cloudflare Edge → cloudflared       ~5–15 ms   (tunnel overhead, persistent conn)
-cloudflared → zombied-dev.internal  ~1–3 ms   (WireGuard, same region)
+cloudflared → agentsfleetd-dev.internal  ~1–3 ms   (WireGuard, same region)
 ─────────────────────────────────────────────
 Total overhead vs direct origin     ~6–18 ms
 ```
@@ -110,7 +110,7 @@ Acceptable for any API. The double-anycast trap (CF anycast → Fly anycast → 
 
 1. Running `cloudflared` **inside** the same private network as the API (Fly 6PN)
 2. Targeting the `.internal` DNS name — bypasses Fly's public anycast LB entirely
-3. Pinning `cloudflared` and `zombied-dev` to the **same region** (both `iad`)
+3. Pinning `cloudflared` and `agentsfleetd-dev` to the **same region** (both `iad`)
 
 Result: deterministic, low-latency routing with no re-routing surprises.
 
@@ -121,10 +121,10 @@ Result: deterministic, low-latency routing with no re-routing surprises.
 Internal Fly traffic (Cloudflare connector → API; Fly Prometheus → `:9091` metrics) stays on the private 6PN mesh:
 
 ```
-cloudflared-dev → zombied-dev.internal:3000  (Fly 6PN / WireGuard, never exits)
+cloudflared-dev → agentsfleetd-dev.internal:3000  (Fly 6PN / WireGuard, never exits)
 ```
 
-Only public ingress goes through the tunnel. The host-resident `zombie-runner` is off-platform — it reaches the API over HTTPS carrying a runner token, not the 6PN mesh.
+Only public ingress goes through the tunnel. The host-resident `agentsfleet-runner` is off-platform — it reaches the API over HTTPS carrying a runner token, not the 6PN mesh.
 
 ---
 
@@ -142,11 +142,11 @@ The architecture above is what usezombie's DEV + PROD deployments actually run.
 
 | Component | Implementation |
 |---|---|
-| Compute (control plane / API) | Fly.io (`zombied-dev`, plus prod equivalent) |
-| Compute (execution plane) | Host-resident `zombie-runner` daemon on a bare-metal node (not Fly) — bootstrapped via `06_/07_runner_bootstrap_*` |
+| Compute (control plane / API) | Fly.io (`agentsfleetd-dev`, plus prod equivalent) |
+| Compute (execution plane) | Host-resident `agentsfleet-runner` daemon on a bare-metal node (not Fly) — bootstrapped via `06_/07_runner_bootstrap_*` |
 | Tunnel connector | Fly.io (`cloudflared-dev`, 2 machines; `cloudflared-prod`, 2 machines) |
-| Edge | Cloudflare Tunnel (`zombied-dev` and `zombied-prod` tunnels) |
+| Edge | Cloudflare Tunnel (`agentsfleetd-dev` and `agentsfleetd-prod` tunnels) |
 | Private network | Fly 6PN (WireGuard mesh) |
-| DNS | `zombied-dev.internal`, `zombied-prod.internal` → all API machines |
+| DNS | `agentsfleetd-dev.internal`, `agentsfleetd-prod.internal` → all API machines |
 | Public hostname | `api-dev.usezombie.com`, `api.usezombie.com` → tunnel CNAME |
 | Public port on origin | None |

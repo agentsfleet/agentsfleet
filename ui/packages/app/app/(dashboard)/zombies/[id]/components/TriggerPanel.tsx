@@ -12,7 +12,7 @@ import {
   CardContent,
   Time,
   useResettableTimeout,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { webhookUrlFor } from "@/lib/api/zombies";
 import type { ZombieTrigger } from "@/lib/types";
 import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";

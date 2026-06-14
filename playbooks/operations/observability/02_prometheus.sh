@@ -26,5 +26,5 @@ if echo "$RESULT" | jq -e '.data.result | length > 0' >/dev/null 2>&1; then
   echo "PASS: zombie_runs_created_total is being scraped"
 else
   echo "WARN: zombie_runs_created_total returned no results (may be OK if no runs yet)"
-  echo "  Verify Prometheus scrape config includes zombied /metrics endpoint"
+  echo "  Verify Prometheus scrape config includes agentsfleetd /metrics endpoint"
 fi

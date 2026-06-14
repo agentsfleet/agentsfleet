@@ -10,7 +10,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars } from "../lib/groupCharges";

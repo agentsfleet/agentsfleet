@@ -8,7 +8,7 @@ import {
   Toast,
   WakePulse,
   useResettableTimeout,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 import { INSTALL_COMMAND, INSTALL_SKILL_COMMAND } from "../config";
 import { RATES_DISPLAY } from "../lib/rates";
@@ -159,14 +159,14 @@ export default function Hero() {
           className="max-w-wide"
         >
           {/* Animated, multi-colour demo of the one-command install
-            * (curl → zombiectl + skill bundle), ending in the next-step
+            * (curl → agentsfleet + skill bundle), ending in the next-step
             * slash command. Per-token colour via <LogToken> (prompt, host,
             * binaries, identifiers, next command) so it reads live, not
             * monotone. Copy hands back exactly that slash command. */}
           <LogLine severity="info"><LogToken severity="pulse">$</LogToken> {INSTALL_COMMAND}</LogLine>
           <LogLine severity="debug">› detecting host… <LogToken severity="info">claude code</LogToken></LogLine>
-          <LogLine severity="debug">› installing <LogToken severity="info">zombiectl</LogToken> + skill bundle…</LogLine>
-          <LogLine severity="done">✓ zombiectl on PATH · skill added (<LogToken severity="evidence">usezombie/usezombie</LogToken>)</LogLine>
+          <LogLine severity="debug">› installing <LogToken severity="info">agentsfleet</LogToken> + skill bundle…</LogLine>
+          <LogLine severity="done">✓ agentsfleet on PATH · skill added (<LogToken severity="evidence">usezombie/usezombie</LogToken>)</LogLine>
           <LogLine severity="done">✓ webhook registered <LogToken severity="evidence">github.com/your-org/your-repo</LogToken></LogLine>
           <LogLine severity="debug">→ next: <LogToken severity="pulse">{INSTALL_SKILL_COMMAND}</LogToken></LogLine>
         </Terminal>

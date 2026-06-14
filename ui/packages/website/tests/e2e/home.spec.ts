@@ -85,7 +85,7 @@ test.describe("Home page", () => {
     // The standalone InstallBlock was removed — the OnboardingFlow steps at the
     // top of the page already cover install + the slash command.
     await expect(
-      page.getByRole("heading", { level: 2, name: /install zombiectl, then run/i }),
+      page.getByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
     ).toHaveCount(0);
   });
 

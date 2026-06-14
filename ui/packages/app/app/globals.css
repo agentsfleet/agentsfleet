@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "@usezombie/design-system/tokens.css";
-@import "@usezombie/design-system/theme.css";
+@import "@agentsfleet/design-system/tokens.css";
+@import "@agentsfleet/design-system/theme.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */

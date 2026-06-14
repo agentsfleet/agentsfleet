@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md)
 >
-> **Scope:** the platform *guarantees* below are binding and unchanged by the M80_002 cutover. The *mechanism* now runs on the split — `zombied` (control plane) assigns work + resolves policy on `lease`; the host-resident `zombie-runner`'s sandboxed child enforces the hard layer. See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
+> **Scope:** the platform *guarantees* below are binding and unchanged by the M80_002 cutover. The *mechanism* now runs on the split — `agentsfleetd` (control plane) assigns work + resolves policy on `lease`; the host-resident `agentsfleet-runner`'s sandboxed child enforces the hard layer. See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
 
 An agent's capabilities split into two layers: what the language model is told it can do (a soft layer the model can ignore or get wrong), and what the platform actually enforces (a hard layer the model cannot escape from inside the sandbox). Both matter; the second is what makes the first safe.
 
@@ -26,7 +26,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 | `trigger.type` | `TRIGGER.md` frontmatter (static config) | `webhook` / `api` / `cron` / `chain` | **How an agent gets triggered** — the wiring at install time. |
 | `event_type` | `core.zombie_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
 
-A `trigger.type: api` agent typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` agent receives `event_type: webhook`. A continuation `zombied` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
+A `trigger.type: api` agent typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` agent receives `event_type: webhook`. A continuation `agentsfleetd` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
 Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/lib/contract/event_envelope.zig` (`EventType`) for `event_type`.
 
@@ -49,7 +49,7 @@ These are the tool primitives NullClaw exposes. The agent's `tools:` allowlist g
 
 | Capability | What it does | Primary owner |
 |---|---|---|
-| Work assignment + kill | `zombied` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease), and propagates kill via heartbeat-carried lease revocation. | zombied control plane |
+| Work assignment + kill | `agentsfleetd` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease), and propagates kill via heartbeat-carried lease revocation. | agentsfleetd control plane |
 | Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` — `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets inside the runner's sandboxed child. `network_policy` is `deny_all` (no egress) or network-enabled, where egress is constrained to an operator-declared host allowlist (see [`runner_fleet.md` §Egress model](./runner_fleet.md)). | Lease ExecutionPolicy |
 | Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook receiver |
@@ -75,7 +75,7 @@ x-usezombie:
                                                 # ExecutionPolicy (the engine's
                                                 # ContextBudget.model). Empty
                                                 # string ("") = self-managed overlay
-                                                # sentinel: zombied resolves
+                                                # sentinel: agentsfleetd resolves
                                                 # the real model from
                                                 # core.tenant_providers at
                                                 # lease time.
@@ -114,7 +114,7 @@ flowchart TD
     L2 -->|no| Fill
     Drop --> Fill[continue tool calls]
     Fill --> L3{context fill<br/>over stage_chunk_threshold?}
-    L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>zombied enqueues continuation]
+    L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>agentsfleetd enqueues continuation]
     L3 -->|no| Tool4[tool call N+1]
     Tool4 --> L1
     Chunk --> NextStage([Next run:<br/>memory_recall<br/>incident:X])
@@ -125,13 +125,13 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that zombie's prior memory into the run over the `zrn_` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `agentsfleetd` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that zombie's prior memory into the run over the `zrn_` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
 ### The chain-cap escape hatch — `chunk_chain_escalate_human`
 
-A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `zombied` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `zombiectl events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the agent itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
+A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `agentsfleetd` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `agentsfleet events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the agent itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
 
 Notification today is silent — observability only. Resume by steering a fresh message that calls `memory_recall` against whatever snapshot key the agent's own SKILL.md prose chose (the runtime never invents the key shape).
 

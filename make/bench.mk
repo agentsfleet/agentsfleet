@@ -9,7 +9,7 @@
 .PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin
 
 memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
-	@echo "→ [zombied] Running allocator leak guard tests..."
+	@echo "→ [agentsfleetd] Running allocator leak guard tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
@@ -18,22 +18,22 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
 	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe EXTRA_BUILD_FLAGS="-Dopenssl=false"; \
-	    echo "→ [zombied] Running valgrind leak gate..."; \
+	    echo "→ [agentsfleetd] Running valgrind leak gate..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 \
-	      zig-out/bin/zombied-tests;; \
+	      zig-out/bin/agentsfleetd-tests;; \
 	  Darwin) \
 	    if command -v leaks >/dev/null 2>&1; then \
 	      $(MAKE) _ensure-test-bin; \
-	      echo "→ [zombied] Running macOS leaks gate..."; \
-	      MallocStackLogging=1 leaks -atExit -- zig-out/bin/zombied-tests >/dev/null || \
-	        echo "→ [zombied] leaks check unavailable in current runtime (continuing with allocator gate)"; \
+	      echo "→ [agentsfleetd] Running macOS leaks gate..."; \
+	      MallocStackLogging=1 leaks -atExit -- zig-out/bin/agentsfleetd-tests >/dev/null || \
+	        echo "→ [agentsfleetd] leaks check unavailable in current runtime (continuing with allocator gate)"; \
 	    else \
-	      echo "→ [zombied] leaks not found; allocator gate only"; \
+	      echo "→ [agentsfleetd] leaks not found; allocator gate only"; \
 	    fi;; \
 	  *) \
-	    echo "→ [zombied] platform=$$(uname -s): allocator gate only";; \
+	    echo "→ [agentsfleetd] platform=$$(uname -s): allocator gate only";; \
 	esac
-	@echo "✓ [zombied] memleak gate passed"
+	@echo "✓ [agentsfleetd] memleak gate passed"
 
 bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen.
 	@$(MAKE) _bench-micro
@@ -42,23 +42,23 @@ bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen.
 bench-redis:  ## Redis XADD concurrency bench (skip-by-default unless BENCH_REDIS=1; needs local Redis).
 	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@if [ -z "$$BENCH_REDIS" ]; then \
-	  echo "→ [zombied] bench-redis skipped — set BENCH_REDIS=1 against a live Redis (override REDIS_URL to point elsewhere)."; \
+	  echo "→ [agentsfleetd] bench-redis skipped — set BENCH_REDIS=1 against a live Redis (override REDIS_URL to point elsewhere)."; \
 	  exit 0; \
 	fi
-	@echo "→ [zombied] bench-redis: 8 producer threads against $${REDIS_URL:-redis://localhost:6379} (ReleaseFast)..."
+	@echo "→ [agentsfleetd] bench-redis: 8 producer threads against $${REDIS_URL:-redis://localhost:6379} (ReleaseFast)..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 BENCH_REDIS="$$BENCH_REDIS" REDIS_URL="$$REDIS_URL" \
 	 zig build -Dwith-bench-tools=true -Doptimize=ReleaseFast bench-redis
-	@echo "✓ [zombied] bench-redis done"
+	@echo "✓ [agentsfleetd] bench-redis done"
 
 _bench-micro:  ## Internal: zbench-backed code micro-benchmarks (Tier-1).
 	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@echo "→ [zombied] Tier-1: running zbench micro-benchmarks (ReleaseFast)..."
+	@echo "→ [agentsfleetd] Tier-1: running zbench micro-benchmarks (ReleaseFast)..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build -Dwith-bench-tools=true -Doptimize=ReleaseFast bench-micro
-	@echo "✓ [zombied] Tier-1 zbench passed"
+	@echo "✓ [agentsfleetd] Tier-1 zbench passed"
 
 _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	@mkdir -p .tmp
@@ -85,7 +85,7 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 MAX_P95_MS="$${API_BENCH_MAX_P95_MS:-150}"; \
 	 TIMEOUT_SEC=$$(( (TIMEOUT_MS + 999) / 1000 )); \
 	 ARTIFACT=".tmp/api-bench-$$(date +%s).csv"; \
-	 echo "→ [zombied] Tier-2: hey -m $$METHOD -z $${DURATION}s -c $$CONC -t $$TIMEOUT_SEC $$URL"; \
+	 echo "→ [agentsfleetd] Tier-2: hey -m $$METHOD -z $${DURATION}s -c $$CONC -t $$TIMEOUT_SEC $$URL"; \
 	 hey -m "$$METHOD" -z "$${DURATION}s" -c "$$CONC" -t "$$TIMEOUT_SEC" -o csv "$$URL" > "$$ARTIFACT" || { echo "✗ hey exited non-zero"; exit 1; }; \
 	 TOTAL=$$(tail -n +2 "$$ARTIFACT" | wc -l | awk '{print $$1}'); \
 	 [ "$$TOTAL" -gt 0 ] || { echo "✗ hey produced zero samples"; exit 1; }; \
@@ -106,7 +106,7 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 echo "artifact=$$ARTIFACT"; \
 	 awk -v er=$$ERR_RATE -v max=$$MAX_ERR_RATE 'BEGIN{if (er+0 > max+0) {print "✗ error rate " er " exceeds gate " max; exit 1}}'; \
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
-	 echo "✓ [zombied] Tier-2 hey loadgen passed"
+	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
 
 _ensure-test-bin:
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"

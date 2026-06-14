@@ -1,5 +1,5 @@
 //! HTTP client the host daemon uses to drive the `/v1/runners/me/*` control
-//! plane. It POSTs lease/heartbeat/report/activity to a `zombied` instance
+//! plane. It POSTs lease/heartbeat/report/activity to a `agentsfleetd` instance
 //! using the same frozen `protocol` shapes the server speaks, so server and
 //! client cannot drift. Enrollment is not a daemon concern (Option B): the
 //! operator pre-mints the `zrn_` and the daemon authenticates with it directly.

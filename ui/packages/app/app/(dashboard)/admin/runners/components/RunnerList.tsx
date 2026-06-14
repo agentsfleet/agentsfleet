@@ -11,7 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { ActivityIcon, ServerIcon } from "lucide-react";
 import {
   RUNNER_ADMIN_ACTION,

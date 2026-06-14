@@ -1,5 +1,5 @@
 // SSR smoke tests asserting the design-system DataTable resolves through
-// the package boundary as `import { DataTable } from "@usezombie/design-system"`.
+// the package boundary as `import { DataTable } from "@agentsfleet/design-system"`.
 // The primitive itself is now owned by the design-system package — its
 // behavioural coverage lives co-located at
 // ui/packages/design-system/src/design-system/DataTable.test.tsx. The tests
@@ -18,7 +18,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { DataTable, type DataTableColumn } from "@usezombie/design-system";
+import { DataTable, type DataTableColumn } from "@agentsfleet/design-system";
 
 // ── DataTable ──────────────────────────────────────────────────────────────
 

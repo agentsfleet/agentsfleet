@@ -38,7 +38,7 @@ import ModeRadio from "@/app/(dashboard)/settings/models/components/ModeRadio";
 import Step1Credential from "@/app/(dashboard)/settings/models/components/Step1Credential";
 import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model";
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
-import { RadioGroup } from "@usezombie/design-system";
+import { RadioGroup } from "@agentsfleet/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 

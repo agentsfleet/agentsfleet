@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react-router-dom";
-import { Button, WakePulse } from "@usezombie/design-system";
+import { Button, WakePulse } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
 import { APP_BASE_URL, DOCS_URL } from "./config";

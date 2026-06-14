@@ -72,9 +72,11 @@ Every hex in these assets traces back to
   glow) — those stay dark even in light surroundings; the lockups
   are theme-paired instead (pick dark or light per surface).
 - `#5EEAD4` — `--pulse` (the wake-pulse, currency).
-- `#0D9488` — the light-theme `--pulse-dim` (the light lockup's
-  disc, holds contrast on white; the root `--pulse-dim` is
-  `#2DD4BF` per `docs/DESIGN_SYSTEM.md`).
+- `#0D9488` — `--pulse-dim` as declared in the light-theme block
+  of `tokens.css` (the light lockup's disc, holds contrast on
+  white). Not hand-picked: the root/dark-theme `--pulse-dim` is
+  `#2DD4BF` per `docs/DESIGN_SYSTEM.md`; the light lockup
+  deliberately takes the light-theme value.
 - `#E6EAEC` — `--text` (dark-theme value; the dark lockup's ink).
 
 If the design system ever shifts those hexes, the branding assets

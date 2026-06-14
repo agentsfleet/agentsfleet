@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CronExpressionParser } from "cron-parser";
-import { Card, CardContent, CardHeader, CardTitle, Time } from "@usezombie/design-system";
+import { Card, CardContent, CardHeader, CardTitle, Time } from "@agentsfleet/design-system";
 import type { ZombieTrigger } from "@/lib/types";
 
 type Props = {

@@ -1,4 +1,4 @@
-import { TooltipProvider } from "@usezombie/design-system";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import Shell from "@/components/layout/Shell";
 import { auth } from "@clerk/nextjs/server";
 import {

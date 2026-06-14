@@ -2,20 +2,20 @@
 
 **Updated:** May 22, 2026
 **Owner:** Human (one-time Vercel project + custom domain — already provisioned)
-**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `usezombie/usezombie` (already used by `usezombie-website` and `usezombie-agents-sh`).
+**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `usezombie/usezombie` (already used by `agentsfleet-website` and `usezombie-agents-sh`).
 
 ## Why this playbook exists
 
-`https://usezombie.sh` serves the one-URL installer (`curl -fsSL https://usezombie.sh | bash`). The deployable is a static directory (`ui/usezombie.sh/dist/` — `install.sh` + `vercel.json`); there is no build step.
+`https://usezombie.sh` serves the one-URL installer (`curl -fsSL https://usezombie.sh | bash`). The deployable is a static directory (`ui/agentsfleet.dev/dist/` — `install.sh` + `vercel.json`); there is no build step.
 
-It deploys the **same way as `usezombie-website`**: a **git-connected** Vercel project. Vercel's GitHub integration builds + deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main`. No GitHub Actions workflow, no Vercel credentials in CI — Vercel's own GitHub auth handles it. The merge is gated by the `lint-usezombie-sh` job (shellcheck + `install_test.sh`), so a broken installer never reaches `main`.
+It deploys the **same way as `agentsfleet-website`**: a **git-connected** Vercel project. Vercel's GitHub integration builds + deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main`. No GitHub Actions workflow, no Vercel credentials in CI — Vercel's own GitHub auth handles it. The merge is gated by the `lint-usezombie-sh` job (shellcheck + `install_test.sh`), so a broken installer never reaches `main`.
 
 `dist/vercel.json` carries the serving config: the `/ → /install.sh` rewrite (so the bare root pipes into bash) and the `text/x-shellscript` content-type + 5-minute cache. Vercel does **not** read Cloudflare-Pages `_redirects`/`_headers`, which is why the config lives in `vercel.json`.
 
 ## Sequence
 
 ```
-1. (once, done)  git-connected Vercel project `usezombie-agents-sh`, rootDir ui/usezombie.sh/dist
+1. (once, done)  git-connected Vercel project `usezombie-agents-sh`, rootDir ui/agentsfleet.dev/dist
 2. (once, done)  usezombie.sh attached as a custom domain  -> Vercel provisions apex DNS + TLS
 3. (per change)  open a PR -> Vercel auto-deploys a preview; merge to main -> auto prod
 4. (verify)      dig + curl the live domain
@@ -42,7 +42,7 @@ Vercel dashboard → **Add New → Project → Import** `usezombie/usezombie`. C
 | Production branch | `main` |
 | Framework preset | Other / None |
 | Build command | *(empty — no build)* |
-| Root directory | `ui/usezombie.sh/dist` |
+| Root directory | `ui/agentsfleet.dev/dist` |
 
 (The project was repurposed from the old "forward to usezombie.com/agents" approach; `usezombie.sh` now serves the installer. The serving config lives in `dist/vercel.json`.)
 
@@ -52,7 +52,7 @@ Project → **Settings → Domains → `usezombie.sh`**. Vercel issues the TLS c
 
 ## Step 3 — Deploy
 
-Automatic. Open a PR touching `ui/usezombie.sh/**` → Vercel posts a preview URL on the PR. Merge to `main` → Vercel deploys production → `https://usezombie.sh`. The `vercel.json` 5-minute `Cache-Control` propagates a bump globally within minutes. To change the served script, edit `ui/usezombie.sh/dist/install.sh` and merge.
+Automatic. Open a PR touching `ui/agentsfleet.dev/**` → Vercel posts a preview URL on the PR. Merge to `main` → Vercel deploys production → `https://usezombie.sh`. The `vercel.json` 5-minute `Cache-Control` propagates a bump globally within minutes. To change the served script, edit `ui/agentsfleet.dev/dist/install.sh` and merge.
 
 ## Step 4 — Verify (live cutover acceptance)
 

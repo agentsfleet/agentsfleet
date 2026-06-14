@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2Icon } from "lucide-react";
-import { Button, ConfirmDialog } from "@usezombie/design-system";
+import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { deleteZombieAction } from "../../actions";
 import { presentErrorString } from "@/lib/errors";
 

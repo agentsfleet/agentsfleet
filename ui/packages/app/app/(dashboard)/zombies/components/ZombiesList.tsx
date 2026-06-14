@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@usezombie/design-system";
+import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@agentsfleet/design-system";
 import { ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
 import { listZombiesAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";

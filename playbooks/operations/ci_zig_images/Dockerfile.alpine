@@ -3,7 +3,7 @@
 # Multi-arch Alpine + Zig base for CI cross-compile lanes.
 # Mirrors the apk install + symlink dance from
 # .github/workflows/cross-compile.yml so that lane becomes a pure
-#   container: image: ghcr.io/usezombie/ci-zig-alpine:<tag>
+#   container: image: ghcr.io/agentsfleet/ci-zig-alpine:<tag>
 # step with no per-job network fetch.
 #
 # Build:
@@ -13,7 +13,7 @@
 #     --build-arg ZIG_SHA256_X86_64_LINUX=... \
 #     --build-arg ZIG_SHA256_AARCH64_LINUX=... \
 #     -f Dockerfile.alpine \
-#     -t ghcr.io/usezombie/ci-zig-alpine:0.16.0 \
+#     -t ghcr.io/agentsfleet/ci-zig-alpine:0.16.0 \
 #     --push .
 
 FROM mirror.gcr.io/library/alpine:3.21

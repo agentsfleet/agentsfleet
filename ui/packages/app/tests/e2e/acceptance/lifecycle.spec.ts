@@ -3,7 +3,7 @@
  *
  * Wire: API-seed → /zombies/[id] → KillSwitch "Stop" → ConfirmDialog
  * confirm → return to /zombies and assert the row's `data-state` is
- * `parked` (the dashboard's translation of zombied's `stopped` status,
+ * `parked` (the dashboard's translation of agentsfleetd's `stopped` status,
  * per `liveStateOf` in
  * `app/(dashboard)/zombies/components/ZombiesList.tsx:19`).
  *
@@ -13,7 +13,7 @@
  *
  * Why no `waitForResponse(... PATCH)`: post-WS-A, KillSwitch fires
  * `setZombieStatusAction` (a Next.js Server Action) which POSTs to the app
- * origin, not directly to zombied. The PATCH happens server-side inside the
+ * origin, not directly to agentsfleetd. The PATCH happens server-side inside the
  * action. Asserting on the dashboard listing's `data-state` is the only
  * stable signal from the browser.
  */

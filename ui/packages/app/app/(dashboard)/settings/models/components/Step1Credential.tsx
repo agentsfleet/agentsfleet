@@ -9,7 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import type { ModelCap } from "@/lib/api/model_caps";
 import InlineProviderKeyCreate from "./InlineProviderKeyCreate";
