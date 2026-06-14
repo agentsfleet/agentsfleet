@@ -7,7 +7,7 @@
 target environment — the operator (`nkishore@megam.io`) is a Clerk user with
 `publicMetadata.platform_admin = true`. `op` is authenticated.
 
-Onboard a `zombie-runner` end to end: stand up the dashboard (locally or via the
+Onboard a `agentsfleet-runner` end to end: stand up the dashboard (locally or via the
 deployed dev app), mint a dedicated `zrn_` token from the platform-admin
 "Add runner" surface, store it in 1Password, and provision it onto a host. The
 host-bootstrap playbooks (`founding/06_runner_bootstrap_dev`,
@@ -27,8 +27,8 @@ contract.
 | File | Read by | Notes |
 |------|---------|-------|
 | `ui/packages/app/.env.local` | Next.js dashboard (local) | API base + dev Clerk keys |
-| `.env.zombied.local` | `zombied` container (`docker-compose.yml`, `make up`) | optional override; inline compose defaults already satisfy a from-scratch `make up` |
-| `.env.runner.local` | local `zombie-runner` (Linux container) | local/fake control-plane + token |
+| `.env.agentsfleetd.local` | `agentsfleetd` container (`docker-compose.yml`, `make up`) | optional override; inline compose defaults already satisfy a from-scratch `make up` |
+| `.env.runner.local` | local `agentsfleet-runner` (Linux container) | local/fake control-plane + token |
 
 ### `ui/packages/app/.env.local`
 
@@ -50,14 +50,14 @@ cd ui/packages/app
 ### `.env.runner.local` (only when running a runner locally)
 
 ```
-ZOMBIE_API_URL=http://zombied:3000        # compose service name; http://localhost:3000 if on host
+ZOMBIE_API_URL=http://agentsfleetd:3000        # compose service name; http://localhost:3000 if on host
 ZOMBIE_RUNNER_TOKEN=zrn_…                  # mint via §3 below; a fake zrn_ verifies structure only
 RUNNER_HOST_ID=local-dev-runner
 RUNNER_SANDBOX_TIER=dev_none               # local default; landlock_full needs a hardened Linux container
 ```
 
 The runner binary is Linux-only (bubblewrap + Landlock), so a local runner runs
-inside a Linux container joined to the compose network — hence the `zombied:3000`
+inside a Linux container joined to the compose network — hence the `agentsfleetd:3000`
 service-name endpoint.
 
 ---
@@ -125,7 +125,7 @@ op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV "runner-token=<zrn_…>"
 Then hand off:
 
 - **Bare-metal host** → `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh`
-  (writes `/opt/zombie/.env`, syncs `/etc/default/zombie-runner`, restarts, verifies active).
+  (writes `/opt/zombie/.env`, syncs `/etc/default/agentsfleet-runner`, restarts, verifies active).
 - **Local container** → drop the `zrn_` into `.env.runner.local`, restart the runner.
 
 ### Acceptance

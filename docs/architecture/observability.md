@@ -1,7 +1,7 @@
-# Observability — `zombied` is the plane, the runner is bare
+# Observability — `agentsfleetd` is the plane, the runner is bare
 
-> One decision drives this whole file: **`zombied` is the observability plane; the
-> host-resident `zombie-runner` is deliberately bare.** Metrics, traces, and product
+> One decision drives this whole file: **`agentsfleetd` is the observability plane; the
+> host-resident `agentsfleet-runner` is deliberately bare.** Metrics, traces, and product
 > analytics all originate in (or are reported back to) the control plane. A runner
 > emits local logs and reports liveness/results over the `/v1/runners` protocol —
 > nothing else. Everything below is a consequence of that split. Read it before
@@ -14,16 +14,16 @@ happens, where does the signal go, and who owns it.*
 
 ---
 
-## `zombied` — the observability plane
+## `agentsfleetd` — the observability plane
 
-All of `zombied`'s telemetry lives under `src/zombied/observability/`. Four
+All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`. Four
 independent signal paths, each with a different consumer:
 
 - **Prometheus metrics (pull).** The `zombie_*` metric families — counters,
   histograms, and gauges for external-call retries/failures, API backpressure and
   in-flight depth, execution, the runner fleet, workspace tokens, the Redis pool,
   run limits, and the signup funnel — render at the pull endpoint
-  `GET /metrics` (`src/zombied/http/handlers/health.zig`, via `metrics_render.zig`).
+  `GET /metrics` (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
   Nothing pushes; Prometheus scrapes.
 
 - **OpenTelemetry (OTel) logs + traces — LIVE, exported direct.** `otel_logs.zig`
@@ -37,10 +37,10 @@ independent signal paths, each with a different consumer:
 
 - **PostHog — product analytics.** A nullable client (see
   [`scaling.md`](./scaling.md) for where it sits in the request path). Present in
-  `zombied`, absent in the runner.
+  `agentsfleetd`, absent in the runner.
 
 - **Postgres execution telemetry.** Per-run accounting in
-  `src/zombied/state/` (execution telemetry + the billing/credit-pool counters) —
+  `src/agentsfleetd/state/` (execution telemetry + the billing/credit-pool counters) —
   durable, queryable, the system of record for what a run cost.
 
 ### The M61 naming trap (read before you "remove" OTel)
@@ -54,16 +54,16 @@ anything OTel-shaped, confirm against `otel_logs.zig` / `otel_traces.zig` and th
 
 ---
 
-## `zombie-runner` — deliberately bare
+## `agentsfleet-runner` — deliberately bare
 
 The host-resident runner (`src/runner/`) carries **no** metrics, OTel, PostHog, or
 telemetry of its own — the lone `record_metric` hook is a no-op stub. It:
 
 - emits **logfmt** logs locally (operator reads them on the host), and
-- reports **liveness and results** to `zombied` over the `/v1/runners` protocol
+- reports **liveness and results** to `agentsfleetd` over the `/v1/runners` protocol
   (heartbeat / `/renew` / result-report).
 
-The server side owns the runner's observable state: `zombied` holds
+The server side owns the runner's observable state: `agentsfleetd` holds
 `metrics_runner.zig` and derives fleet liveness itself (see `runner_fleet.md`). This
 is intentional — a runner is cattle (`runner_fleet.md`, "Runners are cattle, not
 pets"); it holds no datastore credentials and runs no exporter. Pushing telemetry

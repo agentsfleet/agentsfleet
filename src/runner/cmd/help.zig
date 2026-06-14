@@ -1,7 +1,7 @@
 //! `--help` renderer — table-driven off the command register (registry.zig), so
 //! the command list cannot drift from what dispatches. Plain ASCII, every line
 //! ≤80 columns, no ANSI / no decorative glyphs — the same output contract as
-//! `zombiectl`'s help, pinned by a byte-exact golden (test/golden). The version
+//! `agentsfleet`'s help, pinned by a byte-exact golden (test/golden). The version
 //! is deliberately NOT in the help body (so the golden is bump-stable);
 //! `--version` carries it.
 
@@ -10,12 +10,12 @@ const registry = @import("registry.zig");
 const output = @import("output.zig");
 
 const HEADER =
-    \\zombie-runner — host-resident runner daemon + operator CLI
+    \\agentsfleet-runner — host-resident runner daemon + operator CLI
     \\
     \\Usage:
-    \\  zombie-runner                     run the daemon (bare; reads the env)
-    \\  zombie-runner <command> [flags]
-    \\  zombie-runner --version | --help
+    \\  agentsfleet-runner                     run the daemon (bare; reads the env)
+    \\  agentsfleet-runner <command> [flags]
+    \\  agentsfleet-runner --version | --help
     \\
     \\Commands:
     \\
@@ -84,10 +84,10 @@ test "help body is ≤80 cols, ANSI-free, and lists every command" {
 }
 
 // Byte-exact drift guard against the checked-in golden (same contract as
-// zombiectl/test/golden/help-no-color.txt). @embedFile is compile-time and
+// agentsfleet/test/golden/help-no-color.txt). @embedFile is compile-time and
 // in-bounds (testdata/ lives under this module's root), so the test needs no
 // cwd. Regenerate on an intentional help change:
-//   NO_COLOR=1 zig-out/bin/zombie-runner --help > src/runner/cmd/testdata/help.txt
+//   NO_COLOR=1 zig-out/bin/agentsfleet-runner --help > src/runner/cmd/testdata/help.txt
 test "help matches the checked-in golden byte-for-byte" {
     const alloc = std.testing.allocator;
     const text = try render(alloc);

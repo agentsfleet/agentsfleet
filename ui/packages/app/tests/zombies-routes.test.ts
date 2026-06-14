@@ -23,7 +23,7 @@ vi.mock("@/components/domain/ZombieApprovalsPanel", () => ({
   default: () => React.createElement("div", { "data-stub": "ZombieApprovalsPanel" }),
 }));
 vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
-vi.mock("@usezombie/design-system", async (orig) => {
+vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });

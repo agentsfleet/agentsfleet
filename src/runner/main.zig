@@ -1,4 +1,4 @@
-//! `zombie-runner` — host-resident runner daemon entrypoint. Boots from the
+//! `agentsfleet-runner` — host-resident runner daemon entrypoint. Boots from the
 //! operator-installed `zrn_` (env `ZOMBIE_RUNNER_TOKEN`) straight into the
 //! heartbeat/lease/execute/report/activity loop (`daemon/loop.zig`) — the host
 //! never self-registers (Option B). This file owns process startup: arg
@@ -75,7 +75,7 @@ pub fn main(init: std.process.Init) void {
     // Fail-closed (Invariant 7): a release build is a real deployment, so refuse
     // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
     // rather than let it become the production default. Debug builds keep
-    // dev_none for local development. `builtin.mode` matches zombied's dev gate.
+    // dev_none for local development. `builtin.mode` matches agentsfleetd's dev gate.
     if (devNoneForbidden(builtin.mode, sandboxTierFromStr(cfg.sandbox_tier))) {
         log.err("dev_none_rejected_in_release_build", .{ .sandbox_tier = cfg.sandbox_tier });
         std.process.exit(1);
@@ -98,7 +98,7 @@ pub fn main(init: std.process.Init) void {
 
 /// Handle a CLI subcommand/flag if argv carries one, returning the process exit
 /// code to use; returns null to fall through to the daemon loop (a bare
-/// invocation — how the `zombie-runner.service` unit starts the runner). The
+/// invocation — how the `agentsfleet-runner.service` unit starts the runner). The
 /// single dispatch seam: operator subcommands (register/status/doctor) and
 /// `--help` attach here alongside `__execute` and `--version`.
 fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) ?u8 {

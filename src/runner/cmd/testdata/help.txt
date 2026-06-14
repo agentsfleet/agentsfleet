@@ -1,9 +1,9 @@
-zombie-runner — host-resident runner daemon + operator CLI
+agentsfleet-runner — host-resident runner daemon + operator CLI
 
 Usage:
-  zombie-runner                     run the daemon (bare; reads the env)
-  zombie-runner <command> [flags]
-  zombie-runner --version | --help
+  agentsfleet-runner                     run the daemon (bare; reads the env)
+  agentsfleet-runner <command> [flags]
+  agentsfleet-runner --version | --help
 
 Commands:
   status     show registration + fleet directive

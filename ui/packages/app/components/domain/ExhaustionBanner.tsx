@@ -1,5 +1,5 @@
 import { AlertTriangleIcon } from "lucide-react";
-import { Alert, AlertTitle, AlertDescription, Time } from "@usezombie/design-system";
+import { Alert, AlertTitle, AlertDescription, Time } from "@agentsfleet/design-system";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 

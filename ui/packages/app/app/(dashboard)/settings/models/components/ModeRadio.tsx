@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { Label, RadioGroupItem } from "@usezombie/design-system";
+import { Label, RadioGroupItem } from "@agentsfleet/design-system";
 import type { ProviderMode } from "@/lib/types";
 
 export type ModeRadioProps = {

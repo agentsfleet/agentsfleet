@@ -41,7 +41,7 @@
                   Operator-facing label for the resulting credential
                   (e.g. `macos-cli`, `linux-cli`, `windows-cli`).
                   Printable ASCII; appears in audit events and
-                  `zombiectl auth status`.
+                  `agentsfleet auth status`.
     responses:
       '201':
         description: Auth session created

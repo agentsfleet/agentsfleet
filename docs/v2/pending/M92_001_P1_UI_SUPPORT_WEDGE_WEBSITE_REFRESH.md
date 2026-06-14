@@ -74,7 +74,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | PUB / Struct-Shape | no — TS only | — |
 | File & Function Length (≤350/≤50/≤70) | yes — new `.tsx` components | each new component is single-purpose; the diagram splits its logo strip into a child component if it approaches the cap |
 | UFS (repeated/semantic literals) | yes — pillar tokens + step titles shared between components and guard tests | export named constants from one module; tests import them rather than re-typing |
-| UI Substitution / DESIGN TOKEN | yes — every `.tsx` edit | compose `@usezombie/design-system` primitives; theme tokens only, no arbitrary values |
+| UI Substitution / DESIGN TOKEN | yes — every `.tsx` edit | compose `@agentsfleet/design-system` primitives; theme tokens only, no arbitrary values |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no — static marketing site, no logging surface | — |
 
 ---

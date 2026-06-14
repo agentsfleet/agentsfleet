@@ -17,7 +17,7 @@ import {
   Pagination,
   Separator,
   Time,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { ActivityIcon } from "lucide-react";
 import {
   listWorkspaceEventsAction,

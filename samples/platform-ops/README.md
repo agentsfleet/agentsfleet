@@ -13,7 +13,7 @@ quick-start.
             │
             ▼
    ┌────────────────────────┐         read-only
-   │  zombied worker +      │ ─────▶  fly.io + upstash
+   │  agentsfleetd worker +      │ ─────▶  fly.io + upstash
    │  runner (LLM)          │
    │                        │ ─────▶  Slack #platform-ops
    │  reads SKILL.md +      │         (one plain-prose post)
@@ -23,22 +23,22 @@ quick-start.
 
 ## Quick start
 
-Prereqs: `zombiectl` installed (`npm install -g @usezombie/zombiectl`),
+Prereqs: `agentsfleet` installed (`npm install -g @usezombie/zombiectl`),
 a signed-in Clerk tenant, a fly.io PAT with read scope, an
 upstash account-management API token, and a Slack bot (`chat:write`)
 already invited to the channel you want posts in.
 
 ```bash
 # 1. Vault credentials — opaque JSON keyed by name, never seen by the agent.
-zombiectl credential add fly     --data='{"host":"api.machines.dev","api_token":"<fly-pat>"}'
-zombiectl credential add upstash --data='{"host":"api.upstash.com","api_token":"<mgmt-token>"}'
-zombiectl credential add slack   --data='{"host":"slack.com","bot_token":"<xoxb-...>"}'
+agentsfleet credential add fly     --data='{"host":"api.machines.dev","api_token":"<fly-pat>"}'
+agentsfleet credential add upstash --data='{"host":"api.upstash.com","api_token":"<mgmt-token>"}'
+agentsfleet credential add slack   --data='{"host":"slack.com","bot_token":"<xoxb-...>"}'
 
 # 2. Install. Output: a zombie id.
-zombiectl install --from samples/platform-ops
+agentsfleet install --from samples/platform-ops
 
 # 3. Chat.
-zombiectl chat <zombie_id>
+agentsfleet chat <zombie_id>
 > morning health check
 ```
 
@@ -54,7 +54,7 @@ Add a `github` credential and register a webhook on the repo:
 
 ```bash
 openssl rand -base64 32                                            # paste this into GitHub's webhook UI as the Secret
-zombiectl credential add github --data='{"webhook_secret":"<above>","api_token":"<gh-pat>"}'
+agentsfleet credential add github --data='{"webhook_secret":"<above>","api_token":"<gh-pat>"}'
 ```
 
 In the repo's *Settings → Webhooks*: payload URL

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Button, Card, SectionLabel } from "@usezombie/design-system";
+import { Button, Card, SectionLabel } from "@agentsfleet/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";

@@ -86,7 +86,7 @@ ENV=prod ./03_verify.sh
 
 ## Post-Teardown
 
-No manual re-priming is required. `FLUSHALL` removes the per-zombie event streams and their `zombie_lease` consumer groups, but zombied recreates each one on demand when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first zombie created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
+No manual re-priming is required. `FLUSHALL` removes the per-zombie event streams and their `zombie_lease` consumer groups, but agentsfleetd recreates each one on demand when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first zombie created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
 
 ## Troubleshooting
 

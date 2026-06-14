@@ -9,7 +9,7 @@ import {
   DescriptionDetails,
   Section,
   SectionLabel,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import SettingsTabs from "@/components/layout/SettingsTabs";
 
