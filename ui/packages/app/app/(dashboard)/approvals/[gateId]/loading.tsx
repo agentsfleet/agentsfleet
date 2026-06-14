@@ -1,4 +1,4 @@
-import { PageHeader, PageTitle, Skeleton } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Skeleton } from "@agentsfleet/design-system";
 
 export default function ApprovalDetailLoading() {
   return (

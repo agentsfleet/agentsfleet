@@ -6,7 +6,7 @@
 //! which re-exports these). Kept dependency-free so the frozen `/v1/runners`
 //! protocol can reuse `ExecutionPolicy` on the lease without dragging runner
 //! parsing internals onto the public wire surface. Shared as a named module by
-//! both `zombied` and the runner; migrates with the engine to the runner at the
+//! both `agentsfleetd` and the runner; migrates with the engine to the runner at the
 //! cutover.
 
 const std = @import("std");

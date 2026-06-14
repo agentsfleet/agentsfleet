@@ -1,7 +1,7 @@
 "use client";
 
 import nextDynamic from "next/dynamic";
-import { Skeleton } from "@usezombie/design-system";
+import { Skeleton } from "@agentsfleet/design-system";
 import type { ZombieThreadProps } from "./ZombieThread";
 
 // Client-Component shim around `next/dynamic` so the parent Server

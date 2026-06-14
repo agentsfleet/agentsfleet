@@ -4,7 +4,7 @@
 
 How users pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the user paying the language-model provider directly.
 
-This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`zombied`) and the runner's NullClaw child, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
+This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`agentsfleetd`) and the runner's NullClaw child, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
@@ -18,12 +18,12 @@ One persona carries the worked examples through this doc and the scenarios: **Jo
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per agent):
 
-- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`zombied`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
+- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`agentsfleetd`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
 - **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
 
 **Why Fireworks Kimi K2.6 is the v2.0 platform default.** Kimi K2.6 is a strong general-purpose model with a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so the same code path serves both postures — under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`; under self-managed it dials Fireworks (or any other provider in the catalogue) with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
-The posture flip lives in `core.tenant_providers.mode` (`platform` or `self_managed`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
+The posture flip lives in `core.tenant_providers.mode` (`platform` or `self_managed`). Switching is a single command (`agentsfleet tenant provider set --credential <name>` / `agentsfleet tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
 
 ---
 
@@ -49,7 +49,7 @@ While the window is active: the starter grant still inserts on tenant create and
 
 **Gate behaviour while the window is open.** Because run charge is `0` for every posture during the window, the balance gate (`balanceCoversEstimate`) **cannot refuse** any tenant at either money checkpoint — `0 balance ≥ 0 charge` always covers. Both the lease-issue gate and the M80_006 per-lease **renewal** gate are therefore open for all tenants until the cutoff. The instant the clock passes `FREE_TRIAL_END_MS` (no deploy — time-gated), real per-posture charges apply and the gate begins to bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended). The HTTP-path gate integration tests skip while the window is open — the refusal they assert is unreachable until then — while the charge math they rely on is covered now by the injected-`now_ms` unit tests above.
 
-Whether a window is currently active, and how it's presented to users, is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). Two consumer-visible reads surface the raw state for clients: `zombiectl doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
+Whether a window is currently active, and how it's presented to users, is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). Two consumer-visible reads surface the raw state for clients: `agentsfleet doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
 
 ### 2.4 Plan tiers
 
@@ -159,11 +159,11 @@ pub fn computeStageCharge(
 
 One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the agent.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `zombiectl/.../billing.ts`) by `audit-cross-tier-rates.sh` so a bump surfaces immediately.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `agentsfleet/.../billing.ts`) by `audit-cross-tier-rates.sh` so a bump surfaces immediately.
 
 `lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `computeStageCharge` synchronous and free of network calls in the hot path.
 
-`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `zombied` to fail the lease loudly, alert, and investigate, not silently use a default.
+`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `agentsfleetd` to fail the lease loudly, alert, and investigate, not silently use a default.
 
 ### 4.3 What an event costs — by shape, not by number
 
@@ -194,7 +194,7 @@ total_nanos = EVENT_NANOS                              // receive
 
 ## 5. The balance gate — code path
 
-`runBilling` (on the lease path, in `zombied`) runs both the gate and both debits. Single code path for both postures.
+`runBilling` (on the lease path, in `agentsfleetd`) runs both the gate and both debits. Single code path for both postures.
 
 ```mermaid
 flowchart TD
@@ -220,7 +220,7 @@ flowchart TD
 Properties:
 
 - **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the run portion.
-- **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `run` row + N `metering_periods` rows — see §3). If `zombied` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
+- **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `run` row + N `metering_periods` rows — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
@@ -230,8 +230,8 @@ Properties:
 
 When the gate blocks, the user's surfaces show:
 
-- **`zombiectl events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line pointer: *Credits exhausted. See https://app.usezombie.com/settings/billing.*
-- **`zombiectl billing show`** — balance reads `$0.00`; below it, the most recent N event rows showing where the credits went.
+- **`agentsfleet events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line pointer: *Credits exhausted. See https://app.usezombie.com/settings/billing.*
+- **`agentsfleet billing show`** — balance reads `$0.00`; below it, the most recent N event rows showing where the credits went.
 - **Dashboard `/zombies/{id}/events`** — the row renders with a red *Blocked: balance* chip linking to the billing page.
 - **Dashboard `/settings/billing`** — empty-balance hero state. The Purchase Credits button is visible but disabled in v2.0 with a tooltip *"Coming in v2.1 — contact support for a top-up."*. The Usage tab still shows the historical drain.
 
@@ -245,8 +245,8 @@ The reasoning is that a balance-exhausted event is usually evidence the user was
 
 A user can switch between platform and self-managed at any time. Effects on subsequent billing:
 
-- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=self_managed` immediately. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
-- **self-managed → platform** (user stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
+- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `agentsfleet tenant provider set --credential <name>` flips `tenant_providers.mode=self_managed` immediately. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
+- **self-managed → platform** (user stops paying their provider): `agentsfleet tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
 
 The "in-flight events" question matters because self-managed and platform have different per-event costs. We never want a request that the user started under one posture to bill at another.
@@ -271,9 +271,9 @@ Vault credentials are opaque JSON objects keyed by name (M45 contract). The self
 
 `provider` is one of the names NullClaw's provider catalogue recognises (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …). `model` is the provider's model identifier. `api_key` is the user's credential.
 
-The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `zombiectl tenant provider set --credential <other>`); only one is *active* at a time per tenant.
+The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider set --credential <other>`); only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `zombiectl credential set` write path) bridge through `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)` which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the contract.
+**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet credential set` write path) bridge through `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)` which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the contract.
 
 **`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `tenant provider set` time, from the public model-caps endpoint (§10), and pinned into `tenant_providers.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
 
@@ -284,18 +284,18 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `core.vault` rows (encrypted at rest via M45's tenant-scoped data key).
-- Server-side process memory — `zombied`'s process (the return value of `tenant_provider.resolveActiveProvider`) **and** the runner's NullClaw session + per-call HTTP client. `zombied` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner injects it into the engine for the inference call and `secureZero`s it after use. The key rides the same trusted-fleet inline envelope as `secrets_map` and is zeroed by `zombied` once the lease serializes.
+- Server-side process memory — `agentsfleetd`'s process (the return value of `tenant_provider.resolveActiveProvider`) **and** the runner's NullClaw session + per-call HTTP client. `agentsfleetd` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner injects it into the engine for the inference call and `secureZero`s it after use. The key rides the same trusted-fleet inline envelope as `secrets_map` and is zeroed by `agentsfleetd` once the lease serializes.
 - Outbound HTTPS request headers to the LLM provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
 
-- HTTP response bodies — `zombiectl doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
-- Logs — `zombied`, runner, structured logs, request logs.
+- HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
+- Logs — `agentsfleetd`, runner, structured logs, request logs.
 - The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
 - Persisted event rows — `core.zombie_events`, `zombie_execution_telemetry`, anything else under `core.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
-The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, `zombied` logs, runner logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, `agentsfleetd` logs, runner logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
 
 ---
 
@@ -362,7 +362,7 @@ Properties:
 
 - **Cryptic path key.** The `/_um/da5b6b3810543fe108d816ee972e4ff8/` prefix is sixty-four bits of entropy. Random scanning to find this URL is cost-prohibitive. The key is obscurity, not secrecy — the install-skill repository references it publicly. The threat model is opportunistic crawlers, not deliberate readers.
 - **Pricing visibility caveat.** The token-rate columns are in the same public-but-unguessable response. Anyone who finds the URL can read our platform margins. Acknowledged-controversial — the alternative (auth-required pricing endpoint) breaks the "hot, unauthenticated, cacheable" property that lets `tenant provider set` resolve at low latency. We accept the trade-off for now and revisit if a competitor uses our pricing strategically.
-- **Hard-coded in clients.** `zombiectl` and the install-skill embed the URL at build time. Rotation is a coordinated CLI + skill release, on a quarterly cadence or sooner if abuse is detected. Old keys serve `410 Gone` for ~30 days, then `404`.
+- **Hard-coded in clients.** `agentsfleet` and the install-skill embed the URL at build time. Rotation is a coordinated CLI + skill release, on a quarterly cadence or sooner if abuse is detected. Old keys serve `410 Gone` for ~30 days, then `404`.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (one request per second sustained, burst of ten) at the edge.
 - **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only agent owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
 - **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_providers` (self-managed) or the synth-default constant (platform). The token-rate cache is refreshed on API boot and on a slow background timer; the hot path never makes a network call.
@@ -398,12 +398,12 @@ Everything on the page is sourced from rows the runtime already writes:
 
 ---
 
-## 12. CLI billing surface — `zombiectl billing show`
+## 12. CLI billing surface — `agentsfleet billing show`
 
 One read-only subcommand in v2.0:
 
 ```
-zombiectl billing show [--limit N]
+agentsfleet billing show [--limit N]
 ```
 
 Output (shape — actual dollar columns reflect current rates):
@@ -416,12 +416,12 @@ Last 10 events drained credits:
   evt_01HXG3M2…  self_managed  accounts/fireworks/models/kimi-k2.6    800    1320    $0      $0.0001   $0.0001
   …
 ⓘ Out of credits? See https://app.usezombie.com/settings/billing
-   Or run zombiectl billing show --json | jq for machine-readable output.
+   Or run agentsfleet billing show --json | jq for machine-readable output.
 ```
 
 No `purchase` / `topup` / `configure` subcommands in v2.0. The CLI's job is to surface state, not to drive Stripe — that lives in the dashboard once it ships in v2.1.
 
-When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the user from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `zombiectl events`.
+When the gate trips, every event-emitting CLI command (e.g. `agentsfleet steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the user from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `agentsfleet events`.
 
 ---
 

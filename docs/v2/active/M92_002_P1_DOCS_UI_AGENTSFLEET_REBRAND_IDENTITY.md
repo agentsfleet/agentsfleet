@@ -17,7 +17,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Priority:** P1 — customer-facing identity: the product is now `agentsfleet` on `agentsfleet.net`; every README visitor, docs reader, and website tab still sees the retired brand
 **Categories:** DOCS, UI
 **Batch:** B1 — lands before M92_001 (the positioning copy is authored under the new brand)
-**Branch:** feat/m92-002-agentsfleet-rebrand
+**Branch:** feat/m92-002-agentsfleet-rebrand (merged as #405) · feat/m92-002-wordmark-refresh (continuation)
 **Test Baseline:** unit=1947 integration=182
 **Depends on:** —
 **Provenance:** agent-generated (rebranding session with Indy, Jun 12, 2026) — grounded in `branding/` (agentsfleet wordmarks + favicon already authored Jun 12), a zero-reference scan of `assets/`, and reads of README/LICENSE/website config; re-confirm at PLAN.
@@ -168,7 +168,7 @@ Marks rename to agentsfleet-*, the superseded text-bearing wordmark deletes, `br
 
 - **Dimension 6.1** — IN_PROGRESS — docs half flipped on `feat/m92-002-docs-domain-flip` (DOCS_URL + every display docs link + test pins; PR merge gated on `docs.agentsfleet.net` answering, per the Indy ack in Discovery). `app.agentsfleet.net` half still PARKED (Clerk origin + hosting attach outstanding); parked value pinned (see 6.2)
 - **Dimension 6.2** — DONE — rebrand-pin suite added to `config.test.ts` (install command, GitHub URL, team email, parked docs host)
-- **Dimension 6.3** — browser tab shows agentsfleet title + favicon in the dry lane → Test `test_site_identity_meta` (e2e)
+- **Dimension 6.3** — DONE — shipped in #405 as the `smoke.spec.ts` brand trio (title regex, favicon wired + resolves 200, meta description names agentsfleet); marker reconciled in the wordmark-refresh follow-up → Test `test_site_identity_meta` (e2e)
 
 ### §7 — Workflow hostname pass
 
@@ -180,7 +180,7 @@ Deploy/smoke workflows referencing flipped hostnames follow §1; brand strings i
 
 In `~/Projects/docs` on a fresh branch off `main` (`chore/m92-002-agentsfleet-brand-assets`): `favicon.svg`, `favicon.ico`, `logo/dark.svg`, `logo/light.svg`, `logo/mark-glow.svg` replaced with the agentsfleet equivalents from `branding/`. Asset swap only — `docs.json` textual rebrand rides the follow-up spec. Separate PR on that repo; linked from this spec's PR body.
 
-- **Dimension 8.1** — DONE — usezombie/docs#91, checksums matched → Eval `E6`
+- **Dimension 8.1** — DONE — usezombie/docs#91, checksums matched; the wordmark refresh re-propagates `logo/{dark,light}.svg` on the companion branch `chore/m92-002-wordmark-refresh` (E6 re-run, both lockups) → Eval `E6`
 
 ---
 
@@ -222,7 +222,7 @@ No code interface changes. The locked contract is `config.ts`: constant *names* 
 | 4.1, 5.1 | eval | Eval `E4` | zero references to deleted/renamed paths |
 | 6.1 | unit | `test_config_agentsfleet_domains` | `APP_BASE_URL`/`DOCS_URL` equal the agentsfleet.net hosts |
 | 6.2 | unit | `test_config_operational_strings_unchanged` | install command, GitHub URL, team email byte-identical to pre-rename values |
-| 6.3 | e2e | `test_site_identity_meta` | dry lane: document title contains agentsfleet; favicon link resolves |
+| 6.3 | e2e | `test_site_identity_meta` — landed as the `smoke.spec.ts` brand trio (`home page loads`, `brand favicon is wired and resolves`, `brand meta description names agentsfleet`) | dry lane: document title contains agentsfleet; favicon link resolves |
 | 7.1 | eval | Eval `E5` | workflow diffs are string-substitution only |
 | 8.1 | eval | Eval `E6` | docs-repo files at docs.json paths are the agentsfleet assets (checksum match vs `branding/`) |
 
@@ -253,8 +253,9 @@ grep -rnE "usezombie" docs/architecture --include='*.md' --exclude-dir=archive |
 grep -rn "usezombie-mark\|usezombie-wordmark\|^assets/\|(assets/\|\"assets/" --include='*.{md,ts,tsx,html,json,yml,svg}' . | grep -v node_modules | head
 # E5: Workflow diffs are strings-only (manual review of git diff .github/)
 git diff origin/main -- .github/ | grep -E "^[-+]" | grep -vE "^[-+]{3}|usezombie|agentsfleet" | head
-# E6: Docs-repo assets match branding/ (run in ~/Projects/docs)
-shasum ~/Projects/usezombie/branding/agentsfleet-dark.svg logo/dark.svg
+# E6: Docs-repo assets match branding/ — BOTH lockups (run in ~/Projects/docs;
+# source path is canonical post-merge — pre-merge, point it at the feature worktree)
+for v in dark light; do shasum ~/Projects/usezombie/branding/agentsfleet-$v.svg logo/$v.svg; done
 # E7: Operational identifiers byte-stable — count compare HEAD vs working tree (expect all OK)
 for t in "usezombie-admin" "zombied" "core\.zombie_" "@usezombie/" "x-usezombie" "usezombie\.sh"; do a=$(git grep -c "$t" origin/main -- docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); b=$(grep -rc "$t" docs/architecture README.md | awk -F: '{s+=$NF}END{print s+0}'); echo "$t $([ "$a" = "$b" ] && echo OK || echo DRIFT)"; done
 ```
@@ -281,6 +282,8 @@ for t in "usezombie-admin" "zombied" "core\.zombie_" "@usezombie/" "x-usezombie"
 - **EXECUTE findings (Jun 12, 2026):** §1 probe — apex 301→usezombie.com (registered, redirect currently points backwards), subdomains dead → 6.1 parked, checklist surfaced to Indy mid-turn. §7 — zero brand-display strings in workflows; all hits operational; no `.github/` edits shipped. The agentsfleet brand assets were untracked on disk (never committed) — tracked into this branch; `branding/github-avatar.png` + `github-social.png` remain untracked in the main checkout for the org-rename spec. E7 eval refined from a diff-line grep (false-positives on unchanged identifiers inside brand-edited lines) to a HEAD-vs-tree count compare — all six identifier families byte-stable.
 - **Authoring-time decisions (Indy, Jun 12, 2026 session):** `usezombie.sh` stays verbatim ("usezombie.sh to usezombie.sh"); `app.usezombie.com` → `app.agentsfleet.net` and `docs.usezombie.com` → `docs.agentsfleet.net` (Indy, mid-session); GitHub org, npm scope, binaries, schema names, team email → follow-up spec; `.github/` edits granted, strings-only scope; `assets/` removal requested if unused (zero references confirmed at authoring).
 - **Follow-up session (Indy, Jun 12, 2026):** > Indy: "the docs.agentsfleet.net can be edited as well, since you will send a PR which can be merged when things are ready" — context: un-parks Dimension 6.1's docs half on `feat/m92-002-docs-domain-flip`; the merge-when-ready gate replaces Eval `E1` for the docs host. Same session: "usezombie.sh to agentsfleet.dev" — supersedes the authoring-time "stays verbatim" call; the installer flip (INSTALL_COMMAND unpin, `ui/usezombie.sh/` Vercel project, DNS) rides the follow-up cutover spec, NOT this branch. API-emitted docs_uri surfaces (`src/zombied/errors/error_entries.zig` ERROR_DOCS_BASE, generated `openapi.json` examples, payload-mirror fixtures) stay on the old host until the backend cutover. Sister repo rebranded same session: agentsfleet/skills#4 (logos + brand strings + domain badges). Mid-session Indy renamed the GitHub org `usezombie` → `agentsfleet` (verified live via `gh api`); display repo URLs + `GITHUB_URL` (with its pin test) flipped on this branch — old org URLs redirect, so these flips are not merge-gated. ghcr image refs in workflows ride the binary/container rename workstream, alongside Indy's same-session asks: make-target/binary renames (`zombiectl`/`zombied`/`zombie-runner` → agentsfleet names) and npm scope `@usezombie/*` → `@agentsfleet/*`.
+- **Continuation — wordmark refresh (Indy, Jun 12, 2026 evening session):** both lockups drop their baked background rects (transparent — baked backgrounds stay reserved for self-contained renders like social cards/avatars) and tighten the canvas 720×160 → 600×160, same disc/type spec; `branding/README.md` asset map updated to token-named colours (`--bg`/`--text`/`--pulse`/`--pulse-dim`) and the new dims; docs-repo `logo/{dark,light}.svg` re-propagation rides the companion branch `chore/m92-002-wordmark-refresh` per Indy ("docs branding must use the newly updated branding/ logos") — Eval `E6` re-run after the swap; output and cross-links land in both PR bodies. Dimension 6.3 marker reconciled: its assertions shipped in #405 (`smoke.spec.ts` title/favicon/meta trio) but the dimension line was never flipped to DONE.
+- **§1 evening re-probe (Jun 12, 2026):** apex still 301→usezombie.com; `www`/`app`/`app.dev`/`docs` still publish no DNS records → 6.1 stays parked; console checklist re-surfaced to Indy with curl evidence. Old-host baseline: `usezombie.com` 307→`www` (200), `docs.usezombie.com` 200, `app.usezombie.com` resolves nowhere — the app host cutover is greenfield setup, not a migration. Merge-deploy triage (run 27413674218), all non-rebrand: `deploy-worker-dev` red on missing `nftables` at the dev worker host; `cli-acceptance-dev` red on one fixture-bootstrap case (`hydrateWorkspacesForToken: tenant has no workspaces`); the earlier post-deploy smoke failure sits on pre-rebrand main (#403).
 
 ---
 

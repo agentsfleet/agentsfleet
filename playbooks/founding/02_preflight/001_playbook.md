@@ -31,7 +31,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-bypass-website` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-agents` | `credential` | `smoke-post-deploy.yml` |
 | `vercel-bypass-app` | `credential` | `smoke-post-deploy.yml` |
-| `posthog-prod` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
+| `posthog-prod` | `credential` | Website, app, agentsfleetd, worker, and CLI PostHog env injection |
 | `clerk-prod` | `publishable-key` | Fly.io PROD `CLERK_PUBLISHABLE_KEY` |
 | `clerk-prod` | `secret-key` | Fly.io PROD `CLERK_SECRET_KEY` |
 | `clerk-prod` | `webhook-secret` | Fly.io PROD `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
@@ -40,8 +40,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
-| `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `zombied` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
-| `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `zombied` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
+| `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
+| `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
 | `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
@@ -49,7 +49,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
-| `fly-api-token` | `credential` | `release.yml` → `fly deploy --app zombied-prod` (see M2_002 §2.6) |
+| `fly-api-token` | `credential` | `release.yml` → `fly deploy --app agentsfleetd-prod` (see M2_002 §2.6) |
 | `cloudflare-tunnel-prod` | `credential` | Cloudflare Tunnel credentials for PROD origin shield (see M2_002 §2.4) |
 
 ### 1.2 Vault: `ZMB_CD_DEV`
@@ -64,16 +64,16 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
-| `auth-session-code-pepper` | `credential` | Fly.io DEV `AUTH_SESSION_CODE_PEPPER` — `zombied` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
-| `audit-log-pepper` | `credential` | Fly.io DEV `AUDIT_LOG_PEPPER` — `zombied` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
-| `e2e-fixture-email/regular` | `email`, `password` | Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/` and the CLI acceptance suite `zombiectl/test/acceptance/lifecycle-after-login.spec.ts` — regular-tenant-member Clerk DEV identity. |
+| `auth-session-code-pepper` | `credential` | Fly.io DEV `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
+| `audit-log-pepper` | `credential` | Fly.io DEV `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
+| `e2e-fixture-email/regular` | `email`, `password` | Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/` and the CLI acceptance suite `agentsfleet/test/acceptance/lifecycle-after-login.spec.ts` — regular-tenant-member Clerk DEV identity. |
 | `e2e-fixture-email/admin` | `email`, `password` | Same suites — tenant-admin-role Clerk DEV identity (used by scenarios that require admin permissions). |
 | `vercel-api-token` | `credential` | Vercel env var setup |
-| `posthog-dev` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
+| `posthog-dev` | `credential` | Website, app, agentsfleetd, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
-| `planetscale-dev` | `migrator-connection-string` | Fly.io DEV `DATABASE_URL_MIGRATOR` (`zombied migrate`) |
+| `planetscale-dev` | `migrator-connection-string` | Fly.io DEV `DATABASE_URL_MIGRATOR` (`agentsfleetd migrate`) |
 | `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
-| `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app zombied-dev` (see M2_002 §2.6) |
+| `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app agentsfleetd-dev` (see M2_002 §2.6) |
 | `cloudflare-tunnel-dev` | `credential` | Cloudflare Tunnel credentials for DEV origin shield (see M2_002 §2.4) |
 
 ---
@@ -159,8 +159,8 @@ curl -sf -X POST "$WEBHOOK" \
 ## 3.0 Acceptance Criteria
 
 - [x] 3.1 `check-credentials.yml` workflow exits 0 — all items present in vaults
-- [x] 3.2 Postgres DEV connectivity confirmed (DEV deploy active; `zombied-dev` running)
-- [x] 3.3 Redis DEV connectivity confirmed (DEV deploy active; `zombied-dev` running)
+- [x] 3.2 Postgres DEV connectivity confirmed (DEV deploy active; `agentsfleetd-dev` running)
+- [x] 3.3 Redis DEV connectivity confirmed (DEV deploy active; `agentsfleetd-dev` running)
 - [x] 3.4 Discord webhook fires successfully (CI notify jobs active)
 - [x] 3.5 No `✗ MISSING` lines in workflow output
 
@@ -177,7 +177,7 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
-| `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
+| `posthog-prod` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
 | `planetscale-prod` | `migrator-connection-string` | PlanetScale dashboard → create/get `db_migrator` connection string |
 | `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
@@ -193,12 +193,12 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `planetscale-dev` | `migrator-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `db_migrator` connection string |
 | `upstash-dev` | `api-url` | Upstash → Redis → `usezombie-dev` → create/get API role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
-| `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create zombied-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
-| `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
+| `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create agentsfleetd-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
+| `posthog-dev` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |
 
 **ZMB_CD_PROD — create these (add to existing list):**
 
 | Item name | Field | How to get the value |
 |---|---|---|
 | `fly-api-token` | `credential` | Same deploy token as DEV if org-scoped, or create a separate one for PROD isolation. |
-| `cloudflare-tunnel-prod` | `credential` | Agent-created: `cloudflared tunnel create zombied-prod` → base64-encode credentials JSON → store here (see M2_002 §2.4). |
+| `cloudflare-tunnel-prod` | `credential` | Agent-created: `cloudflared tunnel create agentsfleetd-prod` → base64-encode credentials JSON → store here (see M2_002 §2.4). |

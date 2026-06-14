@@ -21,8 +21,8 @@ Agents are defined in Markdown playbooks with tools, triggers, and investigation
 ## Quick start
 
 ```bash
-bun install -g zombiectl
-zombiectl login
+bun install -g agentsfleet
+agentsfleet login
 ```
 
 Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart)** — free to try, no card, under five minutes.
@@ -33,11 +33,11 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 
 | Directory | What |
 |---|---|
-| `src/` | Zig backend — `zombied` control plane (HTTP, leases) + `zombie-runner` execution daemon |
+| `src/` | Zig backend — `agentsfleetd` control plane (HTTP, leases) + `agentsfleet-runner` execution daemon |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
-| `zombiectl/` | CLI — install, manage agents, tail runs |
+| `agentsfleet/` | CLI — install, manage agents, tail runs |
 | `public/openapi/` | OpenAPI spec |
 | `schema/` | Postgres migrations |
 
@@ -52,7 +52,7 @@ git clone https://github.com/agentsfleet/usezombie.git
 cd usezombie
 
 # Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
-make up           # Postgres + Redis + zombied (auto-migrates DB)
+make up           # Postgres + Redis + agentsfleetd (auto-migrates DB)
 
 cd ui/packages/app
 echo "NEXT_PUBLIC_API_URL=http://localhost:3000" > .env.local
@@ -61,7 +61,7 @@ bun install && bun run dev
 
 **Verify:** `make lint-all` · `make test-unit-all` · `make test-integration` (needs `make up` running).
 
-`zombiectl` defaults to production; point it at local with `--api http://localhost:3000` or `export ZOMBIE_API_URL=http://localhost:3000`.
+`agentsfleet` defaults to production; point it at local with `--api http://localhost:3000` or `export ZOMBIE_API_URL=http://localhost:3000`.
 
 ---
 

@@ -15,7 +15,7 @@ import {
   Spinner,
   Textarea,
   Input,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { createCredentialAction, deleteCredentialAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credential-data";

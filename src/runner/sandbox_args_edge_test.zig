@@ -32,7 +32,7 @@ fn cfgWithTier(tier: []const u8) Config {
         .runner_token = "zrn_test",
         .host_id = "host-edge",
         .sandbox_tier = tier,
-        .workspace_base = "/tmp/zombie-runner",
+        .workspace_base = "/tmp/agentsfleet-runner",
         .network_policy = .deny_all_egress,
         .worker_count = 1,
         .cp_deadlines = .{},

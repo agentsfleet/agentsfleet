@@ -1,7 +1,7 @@
 {
   "__inputs": [
     { "name": "DS_PROMETHEUS", "label": "Prometheus", "type": "datasource", "pluginId": "prometheus" },
-    { "name": "DS_POSTGRES", "label": "zombie-postgres", "type": "datasource", "pluginId": "postgres" }
+    { "name": "DS_POSTGRES", "label": "agentsfleet-postgres", "type": "datasource", "pluginId": "postgres" }
   ],
   "title": "Agent Run Breakdown",
   "uid": "zombie-run-breakdown",

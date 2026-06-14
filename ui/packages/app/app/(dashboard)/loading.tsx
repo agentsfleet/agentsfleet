@@ -1,4 +1,4 @@
-import { Skeleton } from "@usezombie/design-system";
+import { Skeleton } from "@agentsfleet/design-system";
 
 // Dashboard-wide fallback skeleton. Routes without their own loading.tsx
 // (Dashboard, Runners) get instant feedback on navigation instead of hanging

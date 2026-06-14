@@ -232,7 +232,7 @@ fn stubCfg(url: []const u8) Config {
         .runner_token = "zrn_" ++ "a" ** 8,
         .host_id = "pool-integ-host",
         .sandbox_tier = "dev_none",
-        .workspace_base = "/tmp/zombie-runner-pool-integ",
+        .workspace_base = "/tmp/agentsfleet-runner-pool-integ",
         .network_policy = .deny_all_egress,
         .registry_allowlist = &.{},
         .cp_deadlines = .{},

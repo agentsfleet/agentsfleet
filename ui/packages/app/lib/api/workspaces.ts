@@ -30,7 +30,7 @@ export async function listTenantWorkspaces(
 }
 
 // POST /v1/workspaces — body { name? }. A blank/omitted name lets the server
-// pick a Heroku-style name (parity with signup + `zombiectl workspace add`).
+// pick a Heroku-style name (parity with signup + `agentsfleet workspace add`).
 // Backend reads tenant_id from the JWT principal.
 export async function createTenantWorkspace(
   token: string,

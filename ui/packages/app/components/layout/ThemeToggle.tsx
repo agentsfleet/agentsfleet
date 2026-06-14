@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SunIcon, MoonIcon } from "lucide-react";
-import { Button } from "@usezombie/design-system";
+import { Button } from "@agentsfleet/design-system";
 import { THEME_COOKIE, THEME_COOKIE_MAX_AGE, DEFAULT_THEME, normalizeTheme, type Theme } from "@/lib/theme";
 
 export default function ThemeToggle() {

@@ -49,7 +49,7 @@ describe("OnboardingFlow", () => {
     expect(wire.getByText(/gh api -X POST repos/)).toBeInTheDocument();
 
     const steer = within(screen.getByTestId("onboarding-step-steer"));
-    expect(steer.getByText(/zombiectl steer/)).toBeInTheDocument();
+    expect(steer.getByText(/agentsfleet steer/)).toBeInTheDocument();
   });
 
   it("anchors the outer section at #onboarding-flow (deep-link target)", () => {

@@ -1,7 +1,7 @@
 //! Engine error-code string constants.
 
-// Error-code mirrors of src/zombied/errors/error_registry.zig — the runner
-// binary tree forbids imports into src/zombied/ (build_runner.zig keeps the
+// Error-code mirrors of src/agentsfleetd/errors/error_registry.zig — the runner
+// binary tree forbids imports into src/agentsfleetd/ (build_runner.zig keeps the
 // runner portable) so the canonical strings are duplicated here. Every runner
 // source needing a UZ-EXEC-* / UZ-TOOL-* / UZ-RUN-* literal MUST import from
 // this file — never declare a local `const ERR_X` in another runner source.

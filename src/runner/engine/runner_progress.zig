@@ -255,7 +255,7 @@ fn observerRecordMetric(ptr: *anyopaque, metric: *const observability.ObserverMe
 }
 fn observerFlush(_: *anyopaque) void {}
 fn observerName(_: *anyopaque) []const u8 {
-    return "zombie-runner-progress";
+    return "agentsfleet-runner-progress";
 }
 fn observerGetTraceId(_: *anyopaque) ?[32]u8 {
     return null;

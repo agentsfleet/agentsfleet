@@ -12,7 +12,7 @@
 // without bringing the runtime import along.
 type Posthog = typeof import("posthog-js").default;
 
-// Signup *completion* is captured server-side by zombied (posthog-zig,
+// Signup *completion* is captured server-side by agentsfleetd (posthog-zig,
 // SignupBootstrapped) — the funnel is redirect-based, so this origin can
 // never observe it. No completion or lead-capture events exist here by
 // design; see docs/architecture/product_analytics.md.

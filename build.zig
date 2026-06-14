@@ -5,10 +5,10 @@ const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
-const S_SRC_MAIN_ZIG = "src/zombied/main.zig";
-const S_ZOMBIED_TESTS_ROOT = "src/zombied/tests.zig";
+const S_SRC_MAIN_ZIG = "src/agentsfleetd/main.zig";
+const S_ZOMBIED_TESTS_ROOT = "src/agentsfleetd/tests.zig";
 const S_NULLCLAW = "nullclaw";
-const S_ZOMBIED_TESTS = "zombied-tests";
+const S_ZOMBIED_TESTS = "agentsfleetd-tests";
 const S_LOG = "log";
 const S_HMAC_SIG = "hmac_sig";
 const S_AUTH_CODES = "auth_codes";
@@ -75,12 +75,12 @@ pub fn build(b: *std.Build) void {
     // test-auth portability gate, and from src/zombie/ as the canonical source
     // for webhook signature verification primitives.
     const hmac_sig_mod = b.createModule(.{
-        .root_source_file = b.path("src/zombied/crypto/hmac_sig.zig"),
+        .root_source_file = b.path("src/agentsfleetd/crypto/hmac_sig.zig"),
     });
 
     // Auth-plane error-code mirror leaf — see auth_codes.zig header.
     const auth_codes_mod = b.createModule(.{
-        .root_source_file = b.path("src/zombied/errors/auth_codes.zig"),
+        .root_source_file = b.path("src/agentsfleetd/errors/auth_codes.zig"),
     });
 
     // ── Logging module ───────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ pub fn build(b: *std.Build) void {
 
     // Single-source lease/runner knobs (src/lib/common) the control plane (fleet)
     // and the runner daemon both key off (RULE UFS). Named module: src/lib sits
-    // outside the zombied module root, so it cannot be relative-imported.
+    // outside the agentsfleetd module root, so it cannot be relative-imported.
     const common_mod = b.createModule(.{
         .root_source_file = b.path("src/lib/common/constants.zig"),
     });
@@ -132,7 +132,7 @@ pub fn build(b: *std.Build) void {
 
     // ── usezombie executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
-        .name = "zombied",
+        .name = "agentsfleetd",
         .root_module = b.createModule(.{
             .root_source_file = b.path(S_SRC_MAIN_ZIG),
             .target = target,
@@ -164,8 +164,8 @@ pub fn build(b: *std.Build) void {
 
     // Execution left this build graph at the M80 cutover: the standalone sandbox
     // sidecar (and its harness/stub fixtures) is gone, replaced
-    // by the host-resident `zombie-runner` daemon, which has its own build graph
-    // (`build_runner.zig`) and never links zombied's server infrastructure
+    // by the host-resident `agentsfleet-runner` daemon, which has its own build graph
+    // (`build_runner.zig`) and never links agentsfleetd's server infrastructure
     // (pg/httpz/redis). It shares only the frozen wire protocol by source.
 
     // ── Shared src/lib test step ─────────────────────────────────────────────
@@ -205,7 +205,7 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
-    b.step("run", "Run zombied").dependOn(&run_cmd.step);
+    b.step("run", "Run agentsfleetd").dependOn(&run_cmd.step);
 
     // ── Test step ─────────────────────────────────────────────────────────────
     const tests = b.addTest(.{
@@ -240,9 +240,9 @@ pub fn build(b: *std.Build) void {
     // Any import that escapes the folder (directly or transitively) fails the
     // link here — so src/auth/ stays extractable into a standalone zombie-auth.
     const test_auth = b.addTest(.{
-        .name = "zombied-test-auth",
+        .name = "agentsfleetd-test-auth",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/zombied/auth/tests.zig"),
+            .root_source_file = b.path("src/agentsfleetd/auth/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -276,7 +276,7 @@ pub fn build(b: *std.Build) void {
         // reach them. Rooted at `src/bench_exports.zig` (inside src/) so the
         // module-root walk stays legal under Zig 0.15.2's strict boundaries.
         const bench_app_mod = b.createModule(.{
-            .root_source_file = b.path("src/zombied/bench_exports.zig"),
+            .root_source_file = b.path("src/agentsfleetd/bench_exports.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

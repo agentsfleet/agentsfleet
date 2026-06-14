@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Section } from "@usezombie/design-system";
+import { Section } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import SettingsTabs from "@/components/layout/SettingsTabs";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
