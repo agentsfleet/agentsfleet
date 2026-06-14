@@ -15,7 +15,7 @@ import { listZombies } from "./seed";
 import { ZOMBIE_STATUS } from "./constants";
 
 /**
- * zombied enforces a state-machine transition before delete:
+ * agentsfleetd enforces a state-machine transition before delete:
  * PATCH status=killed must run first, otherwise DELETE 409s with UZ-ZMB-010.
  * Zombies in any non-killed state need to be killed before being deleted.
  *

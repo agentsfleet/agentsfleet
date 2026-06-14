@@ -3,7 +3,7 @@
 **Milestone:** M28
 **Workstream:** 001
 **Updated:** Apr 05, 2026
-**Prerequisite:** Grafana Cloud account (or self-hosted Grafana). Zombie database accessible. Prometheus scraping `zombied` at `/metrics`.
+**Prerequisite:** Grafana Cloud account (or self-hosted Grafana). Zombie database accessible. Prometheus scraping `agentsfleetd` at `/metrics`.
 
 Bootstrap the Grafana observability stack so operators can diagnose runs, token usage, and billing decisions from dashboards — not DB queries.
 
@@ -55,7 +55,7 @@ op read "op://ZMB_CD_DEV/grafana-observability/db-readonly-url"
 
 ## 1.0 Agent: Verify Prometheus Datasource
 
-**Goal:** Confirm Prometheus is scraping `zombied` and `zombie_*` metrics exist.
+**Goal:** Confirm Prometheus is scraping `agentsfleetd` and `zombie_*` metrics exist.
 
 ```bash
 GRAFANA_URL=$(op read "op://ZMB_CD_DEV/grafana-observability/grafana-url")
@@ -72,7 +72,7 @@ curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
 ### Acceptance
 
 - `zombie_runs_created_total` returns at least one result.
-- If not: check Prometheus scrape config targets include `zombied:PORT/metrics`.
+- If not: check Prometheus scrape config targets include `agentsfleetd:PORT/metrics`.
 
 ---
 
@@ -88,7 +88,7 @@ curl -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   "$GRAFANA_URL/api/datasources" \
   -d "{
-    \"name\": \"zombie-postgres\",
+    \"name\": \"agentsfleet-postgres\",
     \"type\": \"postgres\",
     \"url\": \"$(echo $DB_URL | sed 's|postgresql://[^@]*@||')\",
     \"database\": \"zombie\",
@@ -104,7 +104,7 @@ curl -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
 ```bash
 # Test connection
 curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/datasources/name/zombie-postgres" | jq '.id'
+  "$GRAFANA_URL/api/datasources/name/agentsfleet-postgres" | jq '.id'
 # Returns a numeric datasource ID (not an error).
 ```
 
@@ -117,7 +117,7 @@ curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
 ```bash
 # Get datasource UIDs
 PROM_UID=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" "$GRAFANA_URL/api/datasources/name/Prometheus" | jq -r '.uid')
-PG_UID=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" "$GRAFANA_URL/api/datasources/name/zombie-postgres" | jq -r '.uid')
+PG_UID=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" "$GRAFANA_URL/api/datasources/name/agentsfleet-postgres" | jq -r '.uid')
 
 # Import dashboard
 jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \

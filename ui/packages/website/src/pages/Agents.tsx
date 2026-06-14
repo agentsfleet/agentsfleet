@@ -1,4 +1,4 @@
-import { Card, DisplayLG, DisplayXL, InstallBlock, SectionLabel, Terminal } from "@usezombie/design-system";
+import { Card, DisplayLG, DisplayXL, InstallBlock, SectionLabel, Terminal } from "@agentsfleet/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const jsonLd = {
@@ -24,7 +24,7 @@ const apiOps = [
 
 const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
 npm install -g @usezombie/zombiectl
-zombiectl login
+agentsfleet login
 npx skills add usezombie/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
@@ -32,7 +32,7 @@ npx skills add usezombie/skills
 #    The slash-command provisions the platform-ops agent and prints its zombie_id.
 
 # 3. Back in the shell — steer the agent
-zombiectl steer <zombie_id> "morning health check"`;
+agentsfleet steer <zombie_id> "morning health check"`;
 
 const webhookPayload = `{
   "event_id": "evt_01JEXAMPLE",
@@ -79,7 +79,7 @@ export default function Agents() {
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
           <InstallBlock
-            title="Install zombiectl"
+            title="Install agentsfleet"
             command="npm install -g @usezombie/zombiectl"
             actions={[
               { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },

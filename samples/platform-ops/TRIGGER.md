@@ -3,7 +3,7 @@ name: platform-ops-zombie
 
 x-usezombie:
   # Both fields are populated by `/usezombie-install-platform-ops` from the
-  # `tenant_provider` block of `zombiectl doctor --json`. Under the platform
+  # `tenant_provider` block of `agentsfleet doctor --json`. Under the platform
   # default they carry resolved values (e.g. Fireworks Kimi K2.6 + 256K cap);
   # under self-managed they carry the empty-string / zero sentinels and the worker
   # overlays the real values from `core.tenant_providers` at trigger time.
@@ -38,7 +38,7 @@ x-usezombie:
     - upstash
     - slack
     - github
-    # Credential shapes — see README for the `zombiectl credential add` flag form.
+    # Credential shapes — see README for the `agentsfleet credential add` flag form.
     # fly      = { host: "api.machines.dev", api_token: "<fly token>" }
     # upstash  = { host: "api.upstash.com",  api_token: "<upstash token>" }
     # slack    = { host: "slack.com",        bot_token: "<slack bot token>" }

@@ -2,7 +2,7 @@
  * Idempotent fixture seeding helpers.
  *
  * Fixture rows are conceptually tagged with `x-test-fixture: true` for
- * cleanup discrimination. zombied does not
+ * cleanup discrimination. agentsfleetd does not
  * currently read that header, but each fixture user has its own dedicated
  * tenant + workspace — every zombie in that workspace is a fixture row by
  * construction. Per-spec cleanup deletes everything in the fixture user's

@@ -47,7 +47,7 @@ The `/usezombie-install-platform-ops` skill ([`user_flow.md`](./user_flow.md) §
 
 The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to manually bounce between CI, logs, infra dashboards, chat, and shell history while also remembering what they already tried. The agent should take ownership of that outcome: gather evidence, explain what is wrong, preserve the timeline, request approval when necessary, and continue until resolved or blocked.
 
-The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer** — one agent that wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence, posts a diagnosis to Slack, and is also reachable via `zombiectl steer` for manual investigation.
+The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer** — one agent that wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence, posts a diagnosis to Slack, and is also reachable via `agentsfleet steer` for manual investigation.
 
 ---
 
@@ -165,6 +165,6 @@ Trigger modes:
 
 - **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the agent's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **Steer.** A direct operator instruction via `zombiectl steer <zombie_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
+- **Steer.** A direct operator instruction via `agentsfleet steer <zombie_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The agent does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.

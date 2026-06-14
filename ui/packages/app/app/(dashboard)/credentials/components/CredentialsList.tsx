@@ -9,7 +9,7 @@ import {
   EmptyState,
   Spinner,
   type DataTableColumn,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";

@@ -1,5 +1,5 @@
 /*
- * @usezombie/design-system — semantic theme bridge (Layer 1 + Layer 2)
+ * @agentsfleet/design-system — semantic theme bridge (Layer 1 + Layer 2)
  *
  * Layer 0 (tokens.css) — palette + spacing + typography primitives.
  * Layer 1 (:root)      — semantic names mapping to Layer 0 (--background,

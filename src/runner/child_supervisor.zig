@@ -1,7 +1,7 @@
 //! child_supervisor.zig — fork-per-lease sandboxed execution (parent side).
 //!
 //! Each lease runs in a fresh child process. The runner forks; the child
-//! re-execs `zombie-runner __execute` under bubblewrap (Linux) or directly
+//! re-execs `agentsfleet-runner __execute` under bubblewrap (Linux) or directly
 //! (dev/macOS). The parent binds the child to a cgroup scope, feeds the lease
 //! in over the child's stdin, reads the `ExecutionResult` back over its stdout,
 //! and enforces a wall-clock deadline (`lease_expires_at`).

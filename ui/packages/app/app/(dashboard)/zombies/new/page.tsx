@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle } from "@usezombie/design-system";
+import { PageHeader, PageTitle } from "@agentsfleet/design-system";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import InstallZombieForm from "./InstallZombieForm";
 

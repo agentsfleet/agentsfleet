@@ -12,7 +12,7 @@
  * zombies. A future change that lifts the cap regresses this assertion.
  *
  * Note on status: seedZombie creates rows that start in `active` status
- * (zombied's default for new installs). All 6 are therefore "live" as far
+ * (agentsfleetd's default for new installs). All 6 are therefore "live" as far
  * as `liveStateOf()` is concerned, which is what the pulse-cap actually
  * exercises.
  */
@@ -33,7 +33,7 @@ test.describe("multi-zombie pulse cap", () => {
       const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
       const tag = Math.random().toString(36).slice(2, 8);
 
-      // Seed in series — zombied's per-tenant unique-name index can race
+      // Seed in series — agentsfleetd's per-tenant unique-name index can race
       // under parallel POSTs.
       for (let i = 0; i < SEED_COUNT; i++) {
         await seedZombie(FIXTURE_KEY.regular, ws, { name: `pulse-${tag}-${i}` });

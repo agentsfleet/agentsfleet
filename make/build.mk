@@ -6,9 +6,9 @@
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
-SERVICE_NAME := zombied
+SERVICE_NAME := agentsfleetd
 DOCKER_REGISTRY ?= ghcr.io
-IMAGE_REPO ?= $(DOCKER_REGISTRY)/usezombie/$(SERVICE_NAME)
+IMAGE_REPO ?= $(DOCKER_REGISTRY)/agentsfleet/$(SERVICE_NAME)
 _IMAGE := $(IMAGE_REPO)
 PLATFORMS ?= linux/amd64,linux/arm64
 _DEV_TAGS := --tag $(_IMAGE):$(VERSION)-dev --tag $(_IMAGE):$(VERSION)-dev-$(GIT_COMMIT) --tag $(_IMAGE):dev-latest
@@ -28,11 +28,11 @@ endef
 _prepare_prebuilt_linux_binaries:
 	mkdir -p dist
 	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
-	cp zig-out/bin/zombied dist/zombied-linux-amd64
-	chmod +x dist/zombied-linux-amd64
+	cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-amd64
+	chmod +x dist/agentsfleetd-linux-amd64
 	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
-	cp zig-out/bin/zombied dist/zombied-linux-arm64
-	chmod +x dist/zombied-linux-arm64
+	cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-arm64
+	chmod +x dist/agentsfleetd-linux-arm64
 
 build: _prepare_prebuilt_linux_binaries ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
@@ -57,9 +57,9 @@ build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts 
 			ZIG_URL="https://ziglang.org/download/0.15.2/zig-$$ZIG_ARCH-linux-0.15.2.tar.xz"; \
 			echo "  fetching zig 0.15.2 for $$ZIG_ARCH..." && \
 			(cd /tmp && wget -q "$$ZIG_URL" -O zig.tar.xz && tar xf zig.tar.xz && cp zig-*/zig /usr/local/bin/ && cp -r zig-*/lib /usr/local/lib/zig) && \
-			echo "  compiling zombied (aarch64-linux, static OpenSSL)..." && \
+			echo "  compiling agentsfleetd (aarch64-linux, static OpenSSL)..." && \
 			zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux && \
-			for bin in zig-out/bin/zombied; do \
+			for bin in zig-out/bin/agentsfleetd; do \
 				test -f "$$bin" || { echo "FAIL: $$bin not found"; exit 1; }; \
 				if readelf -d "$$bin" 2>/dev/null | grep -q " (NEEDED)"; then \
 					echo "FAIL: $$bin has dynamic NEEDED entries"; \
@@ -79,21 +79,21 @@ push: _docker_login ## Push production image (expects prebuilt binaries in dist/
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
 
-sync-version: ## Propagate VERSION → build.zig.zon + zombiectl/package.json (cli.js reads pkg.version at runtime)
+sync-version: ## Propagate VERSION → build.zig.zon + agentsfleet/package.json (cli.js reads pkg.version at runtime)
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
-	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' zombiectl/package.json; \
-	echo "✓ version $$V synced → build.zig.zon, zombiectl/package.json (cli.js reads it at runtime)"
+	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' agentsfleet/package.json; \
+	echo "✓ version $$V synced → build.zig.zon, agentsfleet/package.json (cli.js reads it at runtime)"
 
-check-version: ## Verify build.zig.zon and zombiectl/package.json match VERSION
+check-version: ## Verify build.zig.zon and agentsfleet/package.json match VERSION
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	FAIL=0; \
 	grep -q "\.version = \"$$V\"" build.zig.zon \
 		|| { printf 'DRIFT  build.zig.zon: %s\n' "$$(grep '\.version' build.zig.zon | head -1 | xargs)"; FAIL=1; }; \
-	grep -q "\"version\": \"$$V\"" zombiectl/package.json \
-		|| { printf 'DRIFT  zombiectl/package.json: %s\n' "$$(grep '"version"' zombiectl/package.json | head -1 | xargs)"; FAIL=1; }; \
+	grep -q "\"version\": \"$$V\"" agentsfleet/package.json \
+		|| { printf 'DRIFT  agentsfleet/package.json: %s\n' "$$(grep '"version"' agentsfleet/package.json | head -1 | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:

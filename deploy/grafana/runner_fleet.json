@@ -8,7 +8,7 @@
     }
   ],
   "title": "Runner Fleet",
-  "uid": "zombie-runner-fleet",
+  "uid": "agentsfleet-runner-fleet",
   "schemaVersion": 36,
   "version": 1,
   "time": { "from": "now-6h", "to": "now" },
@@ -30,7 +30,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Runner Failures by Reason",
-      "description": "sum by (runner_id, reason) aggregates over the per-replica `instance` axis — exact under multi-replica zombied because counters are additive and each replica's slice is disjoint.",
+      "description": "sum by (runner_id, reason) aggregates over the per-replica `instance` axis — exact under multi-replica agentsfleetd because counters are additive and each replica's slice is disjoint.",
       "datasource": "${DS_PROMETHEUS}",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
@@ -75,7 +75,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Active Leases per Runner — best-effort under multi-replica",
-      "description": "sum by (runner_id). APPROXIMATE when zombied runs N>1: the +1 grant and -1 release can land on different replicas, so this is correct only in aggregate and a single-replica restart can transiently skew it. Exact value awaits the deferred lease-table refresher (see runner_fleet.md → Observability).",
+      "description": "sum by (runner_id). APPROXIMATE when agentsfleetd runs N>1: the +1 grant and -1 release can land on different replicas, so this is correct only in aggregate and a single-replica restart can transiently skew it. Exact value awaits the deferred lease-table refresher (see runner_fleet.md → Observability).",
       "datasource": "${DS_PROMETHEUS}",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [

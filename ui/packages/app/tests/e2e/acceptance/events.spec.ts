@@ -6,7 +6,7 @@
  *   - a workspace credential keyed by `trigger.source` so HMAC verification
  *     can resolve a secret;
  *   - the operator to publish a triggered event row to Postgres + Redis,
- *     which depends on zombied's worker pool processing the enqueued
+ *     which depends on agentsfleetd's worker pool processing the enqueued
  *     stream entry.
  *
  * Both are heavyweight fixture dependencies that the M64_005 harness

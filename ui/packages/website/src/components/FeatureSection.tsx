@@ -1,4 +1,4 @@
-import { Card } from "@usezombie/design-system";
+import { Card } from "@agentsfleet/design-system";
 
 type Props = {
   number: string;

@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { MessageState } from "@assistant-ui/react";
-import { Badge, cn, type BadgeVariant } from "@usezombie/design-system";
+import { Badge, cn, type BadgeVariant } from "@agentsfleet/design-system";
 
 const ACTOR_STEER_PREFIX = "steer:";
 const ACTOR_WEBHOOK_PREFIX = "webhook:";

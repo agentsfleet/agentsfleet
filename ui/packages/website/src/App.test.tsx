@@ -45,7 +45,7 @@ describe("App", () => {
     expect(within(nav).getByRole("link", { name: /agents/i })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com",
+      "https://docs.agentsfleet.net",
     );
   });
 

@@ -12,7 +12,7 @@ import {
   Section,
   SectionLabel,
   Time,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";

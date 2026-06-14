@@ -12,9 +12,9 @@ The three images this playbook publishes are:
 
 | Image                                         | Arch              | Replaces in CI                                                                                       |
 | --------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `ghcr.io/usezombie/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job)          |
-| `ghcr.io/usezombie/ci-zig-debian-trixie`      | amd64             | `memleak.yml`                                                                                        |
-| `ghcr.io/usezombie/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
+| `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job)          |
+| `ghcr.io/agentsfleet/ci-zig-debian-trixie`      | amd64             | `memleak.yml`                                                                                        |
+| `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
 
 **Status:** images are live in GHCR (public) and every Zig-using workflow has been rewritten to consume them. The Zig + OpenSSL toolchain is no longer fetched per-job — every CI lane that needs Zig pulls the relevant `ci-zig-*` image and runs `make` directly.
 
@@ -74,7 +74,7 @@ gh auth refresh -h github.com -s write:packages
 
 ## 2. Build + push
 
-**Default — all three images, multi-arch where applicable, pushed to `ghcr.io/usezombie`:**
+**Default — all three images, multi-arch where applicable, pushed to `ghcr.io/agentsfleet`:**
 
 ```bash
 ./playbooks/operations/ci_zig_images/build_and_push.sh build
@@ -83,9 +83,9 @@ gh auth refresh -h github.com -s write:packages
 Tags produced:
 
 ```
-ghcr.io/usezombie/ci-zig-alpine:0.16.0          (linux/amd64 + linux/arm64 manifest)
-ghcr.io/usezombie/ci-zig-debian-trixie:0.16.0   (linux/amd64)
-ghcr.io/usezombie/ci-zig-ubuntu:0.16.0          (linux/amd64)
+ghcr.io/agentsfleet/ci-zig-alpine:0.16.0          (linux/amd64 + linux/arm64 manifest)
+ghcr.io/agentsfleet/ci-zig-debian-trixie:0.16.0   (linux/amd64)
+ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0          (linux/amd64)
 ```
 
 ### Iterating without breaking pinned consumers
@@ -96,7 +96,7 @@ pin to the new tag explicitly:
 
 ```bash
 ./build_and_push.sh build --revision r2
-# → ghcr.io/usezombie/ci-zig-alpine:0.16.0-r2  (and the other two)
+# → ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r2  (and the other two)
 ```
 
 Consumers (workflow YAMLs) should always pin to the full `<version>[-<rev>]`
@@ -138,21 +138,21 @@ ZIG_VERSION="$(grep '^ZIG_VERSION=' playbooks/operations/ci_zig_images/versions.
 
 # alpine — confirm zig + static OpenSSL symlinks
 docker run --rm --platform linux/amd64 \
-  ghcr.io/usezombie/ci-zig-alpine:"$ZIG_VERSION" \
+  ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION" \
   sh -c 'zig version && ls -l /usr/lib/x86_64-linux-gnu/libssl.a'
 
 docker run --rm --platform linux/arm64 \
-  ghcr.io/usezombie/ci-zig-alpine:"$ZIG_VERSION" \
+  ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION" \
   sh -c 'zig version && ls -l /usr/lib/aarch64-linux-gnu/libssl.a'
 
 # debian-trixie — confirm zig + valgrind
 docker run --rm \
-  ghcr.io/usezombie/ci-zig-debian-trixie:"$ZIG_VERSION" \
+  ghcr.io/agentsfleet/ci-zig-debian-trixie:"$ZIG_VERSION" \
   sh -c 'zig version && valgrind --version'
 
 # ubuntu — confirm zig + libssl + docker-cli
 docker run --rm \
-  ghcr.io/usezombie/ci-zig-ubuntu:"$ZIG_VERSION" \
+  ghcr.io/agentsfleet/ci-zig-ubuntu:"$ZIG_VERSION" \
   sh -c 'zig version && dpkg -s libssl-dev | head -2 && docker --version'
 ```
 
@@ -166,7 +166,7 @@ GHCR packages default to private, even when the repo is public. After the
 first push, visit each package on GitHub:
 
 ```
-https://github.com/usezombie?tab=packages
+https://github.com/agentsfleet?tab=packages
 ```
 
 Click each `ci-zig-*` package → **Package settings** → **Change visibility** → **Public**.

@@ -1,5 +1,5 @@
 {
-  "name": "usezombie-app",
+  "name": "agentsfleet-app",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -32,7 +32,7 @@
     "@radix-ui/react-separator": "1.1.9",
     "@radix-ui/react-slot": "1.2.5",
     "@radix-ui/react-tooltip": "1.2.9",
-    "@usezombie/design-system": "workspace:*",
+    "@agentsfleet/design-system": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cron-parser": "^5.5.0",

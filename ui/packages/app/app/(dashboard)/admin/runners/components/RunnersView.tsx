@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { PageHeader, PageTitle, Section } from "@usezombie/design-system";
+import { PageHeader, PageTitle, Section } from "@agentsfleet/design-system";
 import type { RunnerListResponse } from "@/lib/api/runners";
 import RunnerList, { type RunnerListHandle } from "./RunnerList";
 import AddRunnerDialog from "./AddRunnerDialog";

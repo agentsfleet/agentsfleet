@@ -49,7 +49,7 @@ describe("OnboardingFlow", () => {
     expect(wire.getByText(/gh api -X POST repos/)).toBeInTheDocument();
 
     const steer = within(screen.getByTestId("onboarding-step-steer"));
-    expect(steer.getByText(/zombiectl steer/)).toBeInTheDocument();
+    expect(steer.getByText(/agentsfleet steer/)).toBeInTheDocument();
   });
 
   it("anchors the outer section at #onboarding-flow (deep-link target)", () => {
@@ -61,6 +61,6 @@ describe("OnboardingFlow", () => {
   it("renders a tertiary link to the docs quickstart", () => {
     render(<OnboardingFlow />);
     const link = screen.getByTestId("onboarding-flow-quickstart");
-    expect(link.getAttribute("href")).toBe("https://docs.usezombie.com/quickstart");
+    expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/quickstart");
   });
 });

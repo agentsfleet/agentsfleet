@@ -7,7 +7,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@usezombie/design-system";
+} from "@agentsfleet/design-system";
 import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
