@@ -1,9 +1,5 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const logging = @import("log");
-
-const log = logging.scoped(.agentsfleetd);
-
 const S_T = " \t";
 const S_T_R_N = " \t\r\n";
 
@@ -32,7 +28,6 @@ pub fn applyEnvSources(
     env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
 ) !?std.process.Environ.Map {
-    warnDeprecatedDotenvEnvNames(env_map);
     if (!shouldLoadDotEnvLocal(env_map)) return null;
     var merged = try env_map.clone(alloc);
     errdefer merged.deinit();
@@ -51,23 +46,6 @@ fn shouldLoadDotEnvLocal(env_map: *const std.process.Environ.Map) bool {
         return std.ascii.eqlIgnoreCase(trimmed, ENV_MODE_DEV);
     }
     return builtin.mode == .Debug;
-}
-
-// DEPRECATED (remove at 2.0): these dotenv knobs were `ZOMBIED_*` before the
-// agentsfleetd binary rebrand (M92). The old names are no longer read; if an
-// out-of-repo `.env` / CI config still pins one, warn at boot so the rename is
-// surfaced rather than silently falling through to the build-mode default.
-const DEPRECATED_DOTENV_ENV = [_]struct { old: []const u8, use: []const u8 }{
-    .{ .old = "ZOMBIED_LOAD_DOTENV", .use = ENV_AGENTSFLEETD_LOAD_DOTENV },
-    .{ .old = "ZOMBIED_ENV_MODE", .use = ENV_AGENTSFLEETD_ENV_MODE },
-};
-
-fn warnDeprecatedDotenvEnvNames(env_map: *const std.process.Environ.Map) void {
-    for (DEPRECATED_DOTENV_ENV) |pair| {
-        if (env_map.get(pair.old) != null) {
-            log.warn("config.deprecated_dotenv_env_ignored", .{ .old = pair.old, .use = pair.use });
-        }
-    }
 }
 
 fn overlayDotEnvLocal(io: std.Io, merged: *std.process.Environ.Map, alloc: std.mem.Allocator) !void {
