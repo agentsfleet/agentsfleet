@@ -5,7 +5,7 @@
 # $VAULT_PROD) and upserts the website/agents/app project envs for both
 # `preview` and `production` targets via the v10 env API. Specifically:
 #   - agentsfleet-website   : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
-#   - agentsfleet-agents-sh : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
+#   - agentsfleet-agents-dev : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
 #   - agentsfleet-app       : NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
 #
 # Out of scope (live in the §2.7 table but require per-project values
@@ -56,8 +56,22 @@ resolve_project() {
     "$api_base/v10/projects/$name")" || return 1
   PROJECT_ID["$name"]="$(echo "$resp" | jq -r '.id')"
 }
-for p in agentsfleet-website agentsfleet-agents-sh agentsfleet-app; do
-  resolve_project "$p" || { echo "could not resolve project: $p" >&2; exit 2; }
+# List the team's actual Vercel project names — surfaced on a resolve
+# failure so stale rename residue is obvious instead of a bare curl 404.
+list_project_names() {
+  curl -fsS -H "Authorization: Bearer $vercel_token" \
+    "$api_base/v10/projects?limit=100" 2>/dev/null \
+    | jq -r '.projects[].name' | sort | sed 's/^/    - /' || true
+}
+for p in agentsfleet-website agentsfleet-agents-dev agentsfleet-app; do
+  resolve_project "$p" && continue
+  {
+    echo "✗ could not resolve Vercel project: $p (HTTP 404 — not on this team)"
+    echo "  likely a stale/renamed project name in this script. Vercel currently has:"
+    list_project_names
+    echo "  fix: correct the name above + the ROWS table, then re-run with --check"
+  } >&2
+  exit 2
 done
 
 # (project, key, prod-source, preview-source). Sources prefixed `op:` are
@@ -65,8 +79,8 @@ done
 ROWS=(
   "agentsfleet-website|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
   "agentsfleet-website|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
-  "agentsfleet-agents-sh|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
-  "agentsfleet-agents-sh|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
+  "agentsfleet-agents-dev|VITE_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
+  "agentsfleet-agents-dev|VITE_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
   "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY|op:op://$vault_prod/posthog-prod/credential|op:op://$vault_dev/posthog-dev/credential"
   "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST|lit:$posthog_host|lit:$posthog_host"
 )

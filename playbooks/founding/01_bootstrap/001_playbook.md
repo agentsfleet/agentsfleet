@@ -34,7 +34,7 @@ One key per service:
 | 1Password | Service account token for `agentsfleet-ci` | 1Password → Service Accounts |
 | Vercel | Account API token (Full Account scope) | Vercel → Account Settings → Tokens |
 | Vercel (`agentsfleet-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (`agentsfleet-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`agentsfleet-agents-dev`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`agentsfleet-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
 | Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o <org>` → copy output |
@@ -298,7 +298,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 | `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `NEXT_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
-**`agentsfleet-agents-sh`** and **`agentsfleet-website`:**
+**`agentsfleet-agents-dev`** and **`agentsfleet-website`:**
 
 | Variable | Preview | Production |
 |---|---|---|
