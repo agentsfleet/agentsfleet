@@ -28,7 +28,7 @@ import {
   tenantProviderDeleteEffect,
 } from "../commands/tenant.ts";
 import { billingShowEffectFromArgs } from "../commands/billing.ts";
-import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
+import { buildAgentHandlers } from "./handlers-bind-agent.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import { buildMemoryHandlers } from "./handlers-bind-memory.ts";
 
@@ -215,10 +215,10 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
               optString(opts, "workspace") ??
               optString(opts, "workspaceId") ??
               optString(opts, "workspace-id"),
-            zombieId:
-              optString(opts, "zombie") ??
-              optString(opts, "zombieId") ??
-              optString(opts, "zombie-id"),
+            agentId:
+              optString(opts, "agent") ??
+              optString(opts, "agentId") ??
+              optString(opts, "agent-id"),
             name: optString(opts, "name"),
             description: optString(opts, "description"),
           });
@@ -255,9 +255,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         (frame) =>
           grantListEffectFromArgs(
             frame.parsed.positionals[0],
-            optString(frame.parsed.options, "zombie") ??
-              optString(frame.parsed.options, "zombieId") ??
-              optString(frame.parsed.options, "zombie-id"),
+            optString(frame.parsed.options, "agent") ??
+              optString(frame.parsed.options, "agentId") ??
+              optString(frame.parsed.options, "agent-id"),
           ),
         lifecycle,
       ),
@@ -265,9 +265,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         "grant.delete",
         (frame) =>
           grantDeleteEffectFromArgs(
-            optString(frame.parsed.options, "zombie") ??
-              optString(frame.parsed.options, "zombieId") ??
-              optString(frame.parsed.options, "zombie-id"),
+            optString(frame.parsed.options, "agent") ??
+              optString(frame.parsed.options, "agentId") ??
+              optString(frame.parsed.options, "agent-id"),
             frame.parsed.positionals[0],
           ),
         lifecycle,
@@ -299,7 +299,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
     },
-    zombie: buildZombieHandlers(wrapE, wrapEFn),
+    agent: buildAgentHandlers(wrapE, wrapEFn),
     memory: buildMemoryHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
   };
 }

@@ -1,7 +1,7 @@
 //! StreamRegistry — the owner of this instance's live SSE streams.
 //!
 //! Replaces the bare in-flight counter: every live stream is an entry
-//! `{workspace_id, zombie_id, started_ms, client fd}`, so the instance can
+//! `{workspace_id, agent_id, started_ms, client fd}`, so the instance can
 //! (a) admit against the cap and keep the gauge from one source of truth,
 //! (b) DRAIN at shutdown — `shutdown(2)` each client socket so stream
 //! threads' next write fails fast instead of lingering on detached threads,
@@ -32,7 +32,7 @@ const AWAIT_EMPTY_POLL_MS: u64 = 50;
 
 const Entry = struct {
     workspace_id: []u8,
-    zombie_id: []u8,
+    agent_id: []u8,
     started_ms: i64,
     fd: std.posix.fd_t = FD_UNATTACHED,
 };
@@ -40,7 +40,7 @@ const Entry = struct {
 /// Operator-plane listing row — the client fd stays internal.
 pub const ListedStream = struct {
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     started_ms: i64,
 };
 
@@ -59,10 +59,10 @@ pub fn deinit(self: *StreamRegistry) void {
 
 /// Claim a stream slot: check-and-insert under one lock (no over-claim
 /// wobble). Null = at capacity or draining → the caller sheds.
-pub fn tryRegister(self: *StreamRegistry, workspace_id: []const u8, zombie_id: []const u8, started_ms: i64, max: u32) error{OutOfMemory}!?u64 {
+pub fn tryRegister(self: *StreamRegistry, workspace_id: []const u8, agent_id: []const u8, started_ms: i64, max: u32) error{OutOfMemory}!?u64 {
     const ws = try self.alloc.dupe(u8, workspace_id);
     errdefer self.alloc.free(ws);
-    const zid = try self.alloc.dupe(u8, zombie_id);
+    const zid = try self.alloc.dupe(u8, agent_id);
     errdefer self.alloc.free(zid);
 
     self.mutex.lockUncancelable(self.io);
@@ -76,7 +76,7 @@ pub fn tryRegister(self: *StreamRegistry, workspace_id: []const u8, zombie_id: [
     self.next_id += 1;
     try self.entries.put(self.alloc, id, .{
         .workspace_id = ws,
-        .zombie_id = zid,
+        .agent_id = zid,
         .started_ms = started_ms,
     });
     metrics.setSseInFlightStreams(@intCast(self.entries.count()));
@@ -150,7 +150,7 @@ pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMem
     var i: usize = 0;
     errdefer for (rows[0..i]) |row| {
         alloc.free(row.workspace_id);
-        alloc.free(row.zombie_id);
+        alloc.free(row.agent_id);
     };
     var it = self.entries.valueIterator();
     while (it.next()) |entry| : (i += 1) {
@@ -158,7 +158,7 @@ pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMem
         errdefer alloc.free(workspace_id);
         rows[i] = .{
             .workspace_id = workspace_id,
-            .zombie_id = try alloc.dupe(u8, entry.zombie_id),
+            .agent_id = try alloc.dupe(u8, entry.agent_id),
             .started_ms = entry.started_ms,
         };
     }
@@ -167,7 +167,7 @@ pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMem
 
 fn freeEntry(self: *StreamRegistry, entry: Entry) void {
     self.alloc.free(entry.workspace_id);
-    self.alloc.free(entry.zombie_id);
+    self.alloc.free(entry.agent_id);
 }
 
 const std = @import("std");

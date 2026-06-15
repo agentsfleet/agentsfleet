@@ -12,7 +12,7 @@
  *   - invalid-format identifier rejected client-side, no network
  *   - missing-required-arg sweep over REQUIRES_POSITIONAL_ARG
  *
- * WS-E #C1 regression fires after every `runZombiectl` call: the minted
+ * WS-E #C1 regression fires after every `runAgentctl` call: the minted
  * JWT must not appear in stdout/stderr.
  *
  * Live-only: the entire suite registers only when
@@ -37,7 +37,7 @@ import {
   REQUIRES_POSITIONAL_ARG,
 } from "./fixtures/command-matrix.ts";
 import { ACCEPTANCE_RUN_PREFIX, TERMINAL_STATUSES, UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { composeEnv, runZombiectl } from "./fixtures/cli.js";
+import { composeEnv, runAgentctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import {
   expectInvalidArgValue,
@@ -52,12 +52,12 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsZombie } from "./fixtures/seed.ts";
-import { cleanWorkspaceZombies } from "./fixtures/teardown.ts";
+import { installPlatformOpsAgent } from "./fixtures/seed.ts";
+import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
 import {
-  killZombie,
-  resumeZombie,
-  stopZombie,
+  killAgent,
+  resumeAgent,
+  stopAgent,
   expectStatus,
 } from "./fixtures/lifecycle.ts";
 
@@ -114,7 +114,7 @@ if (!isLive) {
       extraEnv?: Record<string, string>,
     ): Promise<RunResult> {
       const composed = extraEnv ? { ...env, ...extraEnv } : env;
-      const result = await runZombiectl(args, { env: composed });
+      const result = await runAgentctl(args, { env: composed });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -141,31 +141,31 @@ if (!isLive) {
 
     afterAll(async () => {
       if (env && workspaceId) {
-        try { await cleanWorkspaceZombies(env, { workspaceId }); } catch { /* best-effort teardown */ }
+        try { await cleanWorkspaceAgents(env, { workspaceId }); } catch { /* best-effort teardown */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // Full lifecycle walk against a freshly-installed zombie.
+    // Full lifecycle walk against a freshly-installed agent.
     describe("lifecycle walk", () => {
-      let zombieId: string = "";
+      let agentId: string = "";
 
       it("install platform-ops bundle", async () => {
-        const installed = await installPlatformOpsZombie({ env });
-        assert.ok(installed.id || installed.zombie_id, `install response missing id: ${JSON.stringify(installed)}`);
-        const id = installed.id ?? installed.zombie_id;
+        const installed = await installPlatformOpsAgent({ env });
+        assert.ok(installed.id || installed.agent_id, `install response missing id: ${JSON.stringify(installed)}`);
+        const id = installed.id ?? installed.agent_id;
         if (!id) throw new Error("install missing id");
-        zombieId = id;
+        agentId = id;
       });
 
-      // Per-zombie read-only sweep — runs against the live zombieId so
-      // commands like `grant list` (which require `--zombie <id>`) get
+      // Per-agent read-only sweep — runs against the live agentId so
+      // commands like `grant list` (which require `--agent <id>`) get
       // exercised inside the lifecycle suite instead of forcing
       // fixture state into the workspace-wide READ_ONLY_COMMANDS table.
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
-        const label = `${row.argsHead.join(" ")} --zombie <id>`;
+        const label = `${row.argsHead.join(" ")} --agent <id>`;
         it(`${label} exits 0 with parseable JSON`, async () => {
-          const args = [...row.argsHead, "--zombie", zombieId, "--json"];
+          const args = [...row.argsHead, "--agent", agentId, "--json"];
           const result = await runWithEnv(args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
           const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
@@ -179,16 +179,16 @@ if (!isLive) {
       }
 
       it("status reports active", async () => {
-        const payload = await expectStatus(env, zombieId, ["active", "starting", "running"]);
+        const payload = await expectStatus(env, agentId, ["active", "starting", "running"]);
         assert.equal(typeof payload.status, "string");
       });
 
       it("logs --json returns a parseable envelope", async () => {
         // `--since` lives on `events`, NOT `logs` (`logs` only takes
-        // `--zombie`, `--limit`, `--cursor`); commander would exit 1 on
+        // `--agent`, `--limit`, `--cursor`); commander would exit 1 on
         // an unknown flag. The recency bound here was misplaced — the
-        // intent is just to exercise the read path on a real zombie.
-        const result = await runWithEnv(["logs", "--zombie", zombieId, "--json"]);
+        // intent is just to exercise the read path on a real agent.
+        const result = await runWithEnv(["logs", "--agent", agentId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
@@ -202,24 +202,24 @@ if (!isLive) {
       });
 
       it("stop → resume → kill walks state", async () => {
-        await stopZombie(env, zombieId);
-        await expectStatus(env, zombieId, ["paused", "stopped"]);
-        await resumeZombie(env, zombieId);
-        await expectStatus(env, zombieId, ["active", "running", "starting"]);
-        await killZombie(env, zombieId);
-        await expectStatus(env, zombieId, ["killed", "errored", "terminated"]);
+        await stopAgent(env, agentId);
+        await expectStatus(env, agentId, ["paused", "stopped"]);
+        await resumeAgent(env, agentId);
+        await expectStatus(env, agentId, ["active", "running", "starting"]);
+        await killAgent(env, agentId);
+        await expectStatus(env, agentId, ["killed", "errored", "terminated"]);
       }, 30_000);
 
-      it("kill is idempotent on a terminal zombie", async () => {
-        const result = await runWithEnv(["kill", zombieId, "--json"]);
+      it("kill is idempotent on a terminal agent", async () => {
+        const result = await runWithEnv(["kill", agentId, "--json"]);
         // Either succeed silently, surface an already-terminal stem, or report
-        // not-found after the terminal transition hides the zombie from writes.
+        // not-found after the terminal transition hides the agent from writes.
         // What's not acceptable is re-emitting `status: active` later. The
         // status assertion below catches that.
         if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, /UZ-ZMB-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
+          assert.match(result.stderr + result.stdout, /UZ-AGT-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
         }
-        await expectStatus(env, zombieId, ["killed", "errored", "terminated"]);
+        await expectStatus(env, agentId, ["killed", "errored", "terminated"]);
       });
     });
 
@@ -242,16 +242,16 @@ if (!isLive) {
     });
 
     // Prefix-scoped post-teardown emptiness — shared DEV tenants carry
-    // residual zombies, so the contract is "none of MY run's zombies
+    // residual agents, so the contract is "none of MY run's agents
     // remain alive", not "the workspace is globally empty". Terminal
     // (killed/errored/terminated) rows still surface in the list and
     // prove teardown worked — filter them out before asserting.
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceZombies(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      it(`zombie list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
+      it(`agent list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await runWithEnv(["list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
@@ -262,7 +262,7 @@ if (!isLive) {
           !TERMINAL_STATUSES.includes(z.status ?? ""),
         );
         assert.equal(mineLive.length, 0,
-          `expected zero live zombies starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mineLive.length}: ${JSON.stringify(mineLive)}`);
+          `expected zero live agents starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mineLive.length}: ${JSON.stringify(mineLive)}`);
       });
     });
 
@@ -279,7 +279,7 @@ if (!isLive) {
     });
 
     // Invalid-format ID rejected client-side; no network call fires.
-    // Today only workspace use/delete run `validateRequiredId`. The zombie /
+    // Today only workspace use/delete run `validateRequiredId`. The agent /
     // agent / grant handlers send invalid strings straight to the API —
     // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
     // remaining ID-taking handlers, then this sweep widens automatically).
@@ -300,7 +300,7 @@ if (!isLive) {
               AGENTSFLEET_STATE_DIR: stateDir,
               NO_COLOR: "1",
             });
-            const result = await runZombiectl([...row.args, sample, "--json"], { env: unroutable });
+            const result = await runAgentctl([...row.args, sample, "--json"], { env: unroutable });
             assert.notEqual(result.code, 0, `expected non-zero exit; stdout=${result.stdout} stderr=${result.stderr}`);
             assertNoConnectionError(result, [...row.args, sample]);
             assertNoSecretLeak(result, sessionJwt);
@@ -325,20 +325,20 @@ if (!isLive) {
     });
 
     // Coverage check — every COMMAND_GROUP exercised somewhere in this suite
-    // (workspace-wide read-only sweep + per-zombie sweep together cover
-    // workspace/agent/grant/tenant/billing/zombie).
+    // (workspace-wide read-only sweep + per-agent sweep together cover
+    // workspace/agent/grant/tenant/billing/agent).
     it("touch every COMMAND_GROUP via the read-only sweep", () => {
       const exercised = new Set<string>();
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
         if (!head) continue;
-        if (head === "list" || head === "doctor") exercised.add("zombie");
+        if (head === "list" || head === "doctor") exercised.add("agent");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
         if (row.group) exercised.add(row.group);
       }
-      const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "zombie");
+      const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "agent");
       assert.deepEqual(missing, [], `command groups missing from read-only sweep: ${missing.join(",")}`);
     });
   });

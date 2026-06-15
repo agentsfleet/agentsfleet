@@ -126,7 +126,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // window where an older `agentsfleetd` omits the field; either way the agent runs
     // its playbook or nothing, never a generic chat.
     if (payload.instructions.len == 0) {
-        log.warn("no_installed_instructions_fail_closed", .{ .zombie_id = payload.event.zombie_id });
+        log.warn("no_installed_instructions_fail_closed", .{ .agent_id = payload.event.agent_id });
         return noInstructionsResult();
     }
 
@@ -148,7 +148,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // startup-posture failure. buildCallArgs is atomic, so a half-built
     // agent_config (e.g. provider-without-key) never reaches the engine.
     var args = input.buildCallArgs(alloc, payload) catch |err| {
-        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .zombie_id = payload.event.zombie_id });
+        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .agent_id = payload.event.agent_id });
         return configBuildFailedResult();
     };
     defer args.deinit(alloc);

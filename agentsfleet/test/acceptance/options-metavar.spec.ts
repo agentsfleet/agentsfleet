@@ -23,7 +23,7 @@ import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 
-import { runZombiectl, composeEnv } from "./fixtures/cli.js";
+import { runAgentctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import type { AddressInfo } from "node:net";
 
@@ -114,18 +114,18 @@ describe("--help bodies use angle-bracket metavar convention", () => {
   type HelpCase = readonly [string, ReadonlyArray<string>, ReadonlyArray<string>];
   const cases: ReadonlyArray<HelpCase> = [
     ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--cursor <token>", "--workspace-id <id>"]],
-    ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--zombie <id>"]],
+    ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--agent <id>"]],
     ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
     ["agentsfleet install --help",              ["install", "--help"],              ["--from <path>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
-    ["agentsfleet agent add --help",            ["agent", "add", "--help"],         ["--workspace <id>", "--zombie <id>", "--name <name>"]],
+    ["agentsfleet agent add --help",            ["agent", "add", "--help"],         ["--workspace <id>", "--agent <id>", "--name <name>"]],
     ["agentsfleet tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--credential <name>", "--model <name>"]],
   ];
 
   for (const [name, argv, metavars] of cases) {
     it(`${name} advertises ${metavars.join(", ")}`, async () => {
-      const result = await runZombiectl(argv, { env: helpEnv() });
+      const result = await runAgentctl(argv, { env: helpEnv() });
       assert.equal(result.code, 0, `expected exit 0; stderr=${result.stderr}`);
       for (const m of metavars) {
         assert.ok(
@@ -154,14 +154,14 @@ describe("validators reject invalid values with clear error stem", () => {
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // parseIdOption rejections (uuidv7 enforced)
-    ["agent add --workspace not-a-uuid", ["agent", "add", "--workspace", "not-a-uuid", "--zombie", FIXTURE_UUIDV7], /uuidv7 format/],
-    ["agent add --zombie not-a-uuid",    ["agent", "add", "--workspace", FIXTURE_UUIDV7, "--zombie", "not-a-uuid"], /uuidv7 format/],
+    ["agent add --workspace not-a-uuid", ["agent", "add", "--workspace", "not-a-uuid", "--agent", FIXTURE_UUIDV7], /uuidv7 format/],
+    ["agent add --agent not-a-uuid",    ["agent", "add", "--workspace", FIXTURE_UUIDV7, "--agent", "not-a-uuid"], /uuidv7 format/],
     ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
   ];
 
   for (const [name, argv, stemRe] of cases) {
     it(`${name} → non-zero exit + ${stemRe}`, async () => {
-      const result = await runZombiectl(argv, { env: runEnv() });
+      const result = await runAgentctl(argv, { env: runEnv() });
       assert.notEqual(result.code, 0, `expected non-zero exit; got 0; stderr=${result.stderr}`);
       assert.match(result.stderr, stemRe, `expected stderr to match ${stemRe}; stderr=${result.stderr}`);
     });
@@ -182,37 +182,37 @@ describe("option values flow end-to-end into the wire request", () => {
     return runEnv({ AGENTSFLEET_API_URL: requireStub().baseUrl, ...(extra ?? {}) });
   }
 
-  it("zombie list --limit 25 --cursor abc123 → GET .../zombies?cursor=abc123&limit=25", async () => {
+  it("agent list --limit 25 --cursor abc123 → GET .../agents?cursor=abc123&limit=25", async () => {
     clear();
-    const result = await runZombiectl(["list", "--limit", "25", "--cursor", "abc123", "--json"], { env: apiEnv() });
+    const result = await runAgentctl(["list", "--limit", "25", "--cursor", "abc123", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
-    const hit = captured.find((c) => c.url.includes("/zombies") && c.method === "GET");
-    assert.ok(hit, `no /zombies GET captured: ${JSON.stringify(captured)}`);
+    const hit = captured.find((c) => c.url.includes("/agents") && c.method === "GET");
+    assert.ok(hit, `no /agents GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=25(&|$)/);
     assert.match(hit.url, /[?&]cursor=abc123(&|$)/);
   });
 
-  it("zombie logs <id> --limit 50 → GET .../zombies/<id>/events?limit=50", async () => {
+  it("agent logs <id> --limit 50 → GET .../agents/<id>/events?limit=50", async () => {
     clear();
-    const result = await runZombiectl(["logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
+    const result = await runAgentctl(["logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
-    const hit = captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(captured)}`);
+    const hit = captured.find((c) => c.url.includes(`/agents/${FIXTURE_UUIDV7}/events`));
+    assert.ok(hit, `no per-agent events GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=50(&|$)/);
   });
 
   it("events <id> --limit 100 --since 2h --actor 'steer:*' → GET ...events?actor=&since=&limit=", async () => {
     clear();
-    const result = await runZombiectl(
+    const result = await runAgentctl(
       ["events", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
-    const hit = captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(captured)}`);
+    const hit = captured.find((c) => c.url.includes(`/agents/${FIXTURE_UUIDV7}/events`));
+    assert.ok(hit, `no per-agent events GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=100(&|$)/);
     assert.match(hit.url, /[?&]since=2h(&|$)/);
     assert.match(hit.url, /[?&]actor=steer(%3A|:)\*/);
@@ -220,7 +220,7 @@ describe("option values flow end-to-end into the wire request", () => {
 
   it("billing show --limit 5 --cursor xyz → GET .../billing/charges?limit=10&cursor=xyz (limit doubled)", async () => {
     clear();
-    const result = await runZombiectl(["billing", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
+    const result = await runAgentctl(["billing", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const charges = captured.find((c) => c.url.includes("/billing/charges"));
@@ -231,10 +231,10 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
   });
 
-  it("agent add --workspace <uuid7> --zombie <uuid7> --name fred → POST body has name=fred", async () => {
+  it("agent add --workspace <uuid7> --agent <uuid7> --name fred → POST body has name=fred", async () => {
     clear();
-    const result = await runZombiectl(
-      ["agent", "add", "--workspace", workspaceUuid, "--zombie", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
+    const result = await runAgentctl(
+      ["agent", "add", "--workspace", workspaceUuid, "--agent", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
@@ -242,14 +242,14 @@ describe("option values flow end-to-end into the wire request", () => {
     const post = captured.find((c) => c.method === "POST" && c.url.includes("/agent-keys"));
     assert.ok(post, `no agent-keys POST captured: ${JSON.stringify(captured)}`);
     assert.ok(post.url.includes(`/workspaces/${workspaceUuid}/agent-keys`), `wrong workspace in URL: ${post.url}`);
-    const body = JSON.parse(post.body) as { name?: string; zombie_id?: string };
+    const body = JSON.parse(post.body) as { name?: string; agent_id?: string };
     assert.equal(body.name, "fred", `expected name=fred in POST body; body=${post.body}`);
-    assert.equal(body.zombie_id, FIXTURE_UUIDV7_B, `expected zombie_id in POST body; body=${post.body}`);
+    assert.equal(body.agent_id, FIXTURE_UUIDV7_B, `expected agent_id in POST body; body=${post.body}`);
   });
 
   it("tenant provider add --credential keyname --model gpt-x → PUT body has credential + model", async () => {
     clear();
-    const result = await runZombiectl(
+    const result = await runAgentctl(
       ["tenant", "provider", "add", "--credential", "keyname", "--model", "gpt-x", "--json"],
       { env: apiEnv() },
     );
@@ -269,7 +269,7 @@ describe("non-wire option values reach the handler", () => {
   // path — proves the validator's parsePathOption ran AND the handler
   // observed it.
   it("install --from /nonexistent/marker-7b → stderr names the resolved path", async () => {
-    const result = await runZombiectl(
+    const result = await runAgentctl(
       ["install", "--from", "/nonexistent/marker-7b"],
       { env: runEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1" }) },
     );

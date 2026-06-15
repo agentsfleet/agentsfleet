@@ -10,7 +10,7 @@
 //   UZ-AUTH-003       (401, token expired)              error_entries.zig:78
 //   UZ-AUTH-004       (503, auth service unavailable)   error_entries.zig:80
 //   UZ-WORKSPACE-002  (402, workspace paused)           error_entries.zig:102
-//   UZ-ZMB-006        (409, zombie name conflict)       error_entries.zig:180
+//   UZ-AGT-006        (409, agent name conflict)       error_entries.zig:180
 //   UZ-EXEC-013       (500, runner agent run failed)    error_entries_runtime.zig:56
 //   UZ-INTERNAL-001   (503, database unavailable)       error_entries.zig:61
 //
@@ -103,7 +103,7 @@ describe("failure modes — install surface (local + server)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["install", "--from", "/definitely/does/not/exist/zombie-template"],
+          ["install", "--from", "/definitely/does/not/exist/agent-template"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: SkillLoadError is rewrapped as
@@ -138,17 +138,17 @@ describe("failure modes — install surface (local + server)", () => {
     });
   });
 
-  test("install hitting UZ-ZMB-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
+  test("install hitting UZ-AGT-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
     await authedScope(async () => {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-skill-bundle-"));
       try {
         await fs.writeFile(path.join(tmpDir, "SKILL.md"),
-          "---\nname: test-zombie\n---\n# test zombie\n", { mode: 0o644 });
+          "---\nname: test-agent\n---\n# test agent\n", { mode: 0o644 });
         await fs.writeFile(path.join(tmpDir, "TRIGGER.md"),
-          "---\nname: test-zombie\n---\n# trigger\n", { mode: 0o644 });
+          "---\nname: test-agent\n---\n# trigger\n", { mode: 0o644 });
         const routes: MockRoutes = {
-          [`POST /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(409,
-            errorEnvelope("UZ-ZMB-006", "Zombie name 'test-zombie' already exists in this workspace")),
+          [`POST /v1/workspaces/${WS_ID}/agents`]: () => jsonResponse(409,
+            errorEnvelope("UZ-AGT-006", "Agent name 'test-agent' already exists in this workspace")),
         };
         await withMockApi(routes, async (apiUrl) => {
           const out = bufferStream();
@@ -161,7 +161,7 @@ describe("failure modes — install surface (local + server)", () => {
           // The pre-Effect path collapsed every API failure to exit 1.
           expect(code).toBe(3);
           const text = err.read();
-          expect(text).toContain("UZ-ZMB-006");
+          expect(text).toContain("UZ-AGT-006");
           expect(text).toContain("already exists");
         });
       } finally {
@@ -182,15 +182,15 @@ describe("failure modes — runtime / observability surface", () => {
           "---\nname: runner-test\n---\n# trigger\n", { mode: 0o644 });
         const routes: MockRoutes = {
           // Step 1: install returns 201 — the server side is happy.
-          [`POST /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(201, {
-            zombie_id: AGENTSFLEET_ID,
+          [`POST /v1/workspaces/${WS_ID}/agents`]: () => jsonResponse(201, {
+            agent_id: AGENTSFLEET_ID,
             name: "runner-test",
             status: "running",
           }),
           // Step 2: events show the worker died after the fact. The user
           // discovers the failure only by tailing logs — the install
           // command itself returned success.
-          [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
+          [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
             () => jsonResponse(200, {
               items: [
                 {
@@ -198,7 +198,7 @@ describe("failure modes — runtime / observability surface", () => {
                   actor: "agent",
                   status: "agent_error",
                   error_code: "UZ-EXEC-013",
-                  response_text: "Runner agent run failed: nullclaw worker exited with signal SIGSEGV before claiming the zombie",
+                  response_text: "Runner agent run failed: nullclaw worker exited with signal SIGSEGV before claiming the agent",
                 },
               ],
               next_cursor: null,
@@ -230,7 +230,7 @@ describe("failure modes — runtime / observability surface", () => {
           // via events. The user MUST see the failure message in `logs`
           // output — otherwise the silent-success illusion is the bug.
           //
-          // Note on rendering: zombie.js commandLogs prefers response_text
+          // Note on rendering: agent.js commandLogs prefers response_text
           // over status when both are present, so the visible signal is
           // the runner's failure message, not the bare `agent_error` tag.
           // Surfacing the status itself when response_text is set is a
@@ -247,7 +247,7 @@ describe("failure modes — runtime / observability surface", () => {
   test("logs fetched with an expired token returns UZ-AUTH-003 / 401 — user knows to re-login", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(401,
             errorEnvelope("UZ-AUTH-003", "Token expired — run `agentsfleet login` to refresh")),
       };
@@ -283,7 +283,7 @@ describe("failure modes — infra / server-down surface", () => {
       const routes: MockRoutes = {
         "GET /healthz": () => jsonResponse(503,
           errorEnvelope("UZ-INTERNAL-001", "Database unavailable")),
-        [`GET /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(200, { items: [] }),
+        [`GET /v1/workspaces/${WS_ID}/agents`]: () => jsonResponse(200, { items: [] }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();

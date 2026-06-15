@@ -12,8 +12,8 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 
 const WS_ID = "01900000-0000-7000-8000-0000005e4e71";
 const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
-const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/memories`;
-const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/memories`;
+const MEMORIES_ROUTE = `GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/memories`;
+const MEMORIES_PATH = `/v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/memories`;
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const ITEMS = [
@@ -40,7 +40,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          ["memory", "list", "--agent", AGENTSFLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -74,7 +74,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const okCode = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID, "--category", "daily", "--limit", "5"],
+          ["memory", "list", "--agent", AGENTSFLEET_ID, "--category", "daily", "--limit", "5"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(okCode).toBe(0);
@@ -91,7 +91,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          ["memory", "list", "--agent", AGENTSFLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -112,7 +112,7 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--zombie", AGENTSFLEET_ID, "acme"],
+          ["memory", "search", "--agent", AGENTSFLEET_ID, "acme"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -131,7 +131,7 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--zombie", AGENTSFLEET_ID, "ghost"],
+          ["memory", "search", "--agent", AGENTSFLEET_ID, "ghost"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -157,7 +157,7 @@ describe("memory — machine-stable JSON", () => {
         const out = bufferStream(); // isTTY undefined — a pipe
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          ["memory", "list", "--agent", AGENTSFLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -177,7 +177,7 @@ describe("memory — machine-stable JSON", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID, "--json"],
+          ["memory", "list", "--agent", AGENTSFLEET_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -189,12 +189,12 @@ describe("memory — machine-stable JSON", () => {
 });
 
 describe("memory — error shapes", () => {
-  test("test_memory_unknown_zombie_error_shape: UZ-MEM-002 + zombie-listing suggestion, nonzero exit", async () => {
+  test("test_memory_unknown_agent_error_shape: UZ-MEM-002 + agent-listing suggestion, nonzero exit", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [MEMORIES_ROUTE]: () =>
           jsonResponse(404, {
-            error: { code: "UZ-MEM-002", message: "zombie not found" },
+            error: { code: "UZ-MEM-002", message: "agent not found" },
             request_id: "req_mem_404",
           }),
       };
@@ -202,7 +202,7 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          ["memory", "list", "--agent", AGENTSFLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
@@ -230,7 +230,7 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--zombie", AGENTSFLEET_ID],
+          ["memory", "list", "--agent", AGENTSFLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
@@ -245,7 +245,7 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--zombie", AGENTSFLEET_ID],
+        ["memory", "list", "--agent", AGENTSFLEET_ID],
         { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
       );
       expect(code).not.toBe(0);
@@ -258,7 +258,7 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--zombie", AGENTSFLEET_ID],
+        ["memory", "list", "--agent", AGENTSFLEET_ID],
         // loopback discard port — nothing listens, refuses instantly
         { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
       );

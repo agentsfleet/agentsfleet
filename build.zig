@@ -57,7 +57,7 @@ pub fn build(b: *std.Build) void {
     // ── zig-yaml (TRIGGER.md / SKILL.md frontmatter parsing) ────────────────
     // Pinned to 0.2.0 (Zig 0.15.x compatible). main targets Zig 0.16; do not
     // re-pin without verifying the toolchain. Replaces the bespoke YAML→JSON
-    // converter in src/zombie/yaml_frontmatter.zig — gains depth-N nesting,
+    // converter in src/agent/yaml_frontmatter.zig — gains depth-N nesting,
     // duplicate-key detection, and proper YAML 1.2 scalar handling.
     const zig_yaml_dep = b.dependency("zig_yaml", .{
         .target = target,
@@ -72,7 +72,7 @@ pub fn build(b: *std.Build) void {
 
     // ── Crypto primitives module: shared HMAC/CT/hex ─────────────────────────
     // Pure stdlib only; no deps. Importable from src/auth/ without breaking the
-    // test-auth portability gate, and from src/zombie/ as the canonical source
+    // test-auth portability gate, and from src/agent/ as the canonical source
     // for webhook signature verification primitives.
     const hmac_sig_mod = b.createModule(.{
         .root_source_file = b.path("src/agentsfleetd/crypto/hmac_sig.zig"),
@@ -169,7 +169,7 @@ pub fn build(b: *std.Build) void {
     // (pg/httpz/redis). It shares only the frozen wire protocol by source.
 
     // ── Shared src/lib test step ─────────────────────────────────────────────
-    // One step, two compilations. zombie-lib-tests file-imports contract +
+    // One step, two compilations. agentsfleet-lib-tests file-imports contract +
     // common so their tests collect into its root module (the test runner only
     // collects root-module tests). Logging cannot join that root: its files
     // resolve `@import("common")` as a named module, and one file cannot
@@ -177,7 +177,7 @@ pub fn build(b: *std.Build) void {
     // instance is a compile error — so the logging barrel roots its own
     // compilation in the exact module shape the production graphs use.
     const lib_tests = b.addTest(.{
-        .name = "zombie-lib-tests",
+        .name = "agentsfleet-lib-tests",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib/tests.zig"),
             .target = target,
@@ -186,7 +186,7 @@ pub fn build(b: *std.Build) void {
         .filters = test_filters,
     });
     const logging_tests = b.addTest(.{
-        .name = "zombie-logging-tests",
+        .name = "agentsfleet-logging-tests",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib/logging/mod.zig"),
             .target = target,
@@ -238,7 +238,7 @@ pub fn build(b: *std.Build) void {
     // Links ONLY src/auth/** and proves the portability contract: every module
     // under src/auth/ compiles in isolation without the rest of the project.
     // Any import that escapes the folder (directly or transitively) fails the
-    // link here — so src/auth/ stays extractable into a standalone zombie-auth.
+    // link here — so src/auth/ stays extractable into a standalone agentsfleet-auth.
     const test_auth = b.addTest(.{
         .name = "agentsfleetd-test-auth",
         .root_module = b.createModule(.{

@@ -23,7 +23,7 @@ export type BillingUsageTabProps = {
 
 /**
  * Read-only Usage tab — newest-first per-event drain history with
- * cursor-based "Load more" pagination. CSV export and zombie/time filters
+ * cursor-based "Load more" pagination. CSV export and agent/time filters
  * aren't built yet; this surface stays read-only on purpose so we can ship
  * without a dependency on a chart/filter primitive.
  *

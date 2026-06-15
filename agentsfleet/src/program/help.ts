@@ -1,6 +1,6 @@
-// ZombieHelp — commander.Help subclass that preserves agentsfleet's
+// AgentHelp — commander.Help subclass that preserves agentsfleet's
 // existing color scheme when commander renders --help. Wired by
-// cli-tree.ts via `program.createHelp = () => new ZombieHelp()`
+// cli-tree.ts via `program.createHelp = () => new AgentHelp()`
 // (configureHelp's `helpFactory` key is unsupported in commander 14).
 // Capability resolution (NO_COLOR, isTTY, ColorMode) flows through
 // formatHelpHeading + palette.subtle, both of which accept a
@@ -11,7 +11,7 @@ import { Help } from "commander";
 import { formatHelpHeading, palette } from "../output/index.ts";
 import type { WritableStreamLike } from "../output/capability.ts";
 
-export interface ZombieHelpOptions {
+export interface AgentHelpOptions {
   stream?: WritableStreamLike | undefined;
   env?: NodeJS.ProcessEnv | undefined;
 }
@@ -21,10 +21,10 @@ interface ResolvedStyleOpts {
   env: NodeJS.ProcessEnv;
 }
 
-export class ZombieHelp extends Help {
+export class AgentHelp extends Help {
   private readonly styleOpts: ResolvedStyleOpts;
 
-  constructor({ stream, env }: ZombieHelpOptions = {}) {
+  constructor({ stream, env }: AgentHelpOptions = {}) {
     super();
     this.styleOpts = {
       stream: stream ?? process.stdout,
@@ -43,7 +43,7 @@ export class ZombieHelp extends Help {
 // banner. cli-tree.ts passes it to `program.description()` pre-styled,
 // since commander renders the description through styleDescriptionText
 // (default identity) before printing.
-export function styleTagline(text: string, { stream, env }: ZombieHelpOptions = {}): string {
+export function styleTagline(text: string, { stream, env }: AgentHelpOptions = {}): string {
   return palette.subtle(text, {
     stream: stream ?? process.stdout,
     env: env ?? process.env,

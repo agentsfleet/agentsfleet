@@ -81,8 +81,8 @@ describe("ApprovalsPage (workspace inbox)", () => {
       items: [
         {
           gate_id: GATE_ID,
-          zombie_id: AGENTSFLEET_ID,
-          zombie_name: "approvals-a",
+          agent_id: AGENTSFLEET_ID,
+          agent_name: "approvals-a",
           workspace_id: WORKSPACE_ID,
           action_id: "act_001",
           tool_name: "write_repo",
@@ -123,8 +123,8 @@ describe("ApprovalDetailPage", () => {
   function gateFixture(over: Partial<Record<string, unknown>> = {}) {
     return {
       gate_id: GATE_ID,
-      zombie_id: AGENTSFLEET_ID,
-      zombie_name: "approvals-a",
+      agent_id: AGENTSFLEET_ID,
+      agent_name: "approvals-a",
       workspace_id: WORKSPACE_ID,
       action_id: "act_001",
       tool_name: "write_repo",

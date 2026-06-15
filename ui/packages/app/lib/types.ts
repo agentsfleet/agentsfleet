@@ -8,41 +8,41 @@ export type ApiError = {
   status: number;
 };
 
-// ── Zombies ──
+// ── Agents ──
 
 // Server projects `config_json->'x-agentsfleet'->'triggers'` into the list-row
-// response (`src/http/handlers/zombies/list.zig` ZombieListItem). One entry
+// response (`src/http/handlers/agents/list.zig` AgentListItem). One entry
 // per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
 // carries source + events; cron carries the raw schedule expression.
-export type ZombieTrigger =
+export type AgentTrigger =
   | { type: "webhook"; source: string; events?: string[] }
   | { type: "cron"; schedule: string }
   | { type: "api" };
 
 // `status` is typed as the loose `string` because the wire format may carry
 // values the front-end doesn't recognise (forward-compat). Consumers should
-// narrow with `AGENTSFLEET_STATUS` from `lib/api/zombies` before branching.
-export type Zombie = {
+// narrow with `AGENTSFLEET_STATUS` from `lib/api/agents` before branching.
+export type Agent = {
   id: string;
   name: string;
   status: string;
   created_at: number;
   updated_at: number;
-  triggers?: ZombieTrigger[];
+  triggers?: AgentTrigger[];
 };
 
-export type InstallZombieRequest = {
+export type InstallAgentRequest = {
   trigger_markdown: string;
   source_markdown: string;
 };
 
-export type InstallZombieResponse = {
-  zombie_id: string;
+export type InstallAgentResponse = {
+  agent_id: string;
   status: string;
 };
 
-export type ZombieListResponse = {
-  items: Zombie[];
+export type AgentListResponse = {
+  items: Agent[];
   total: number;
   cursor: string | null;
 };
@@ -97,7 +97,7 @@ export const PROVIDER_MODE = {
   self_managed: "self_managed" as ProviderMode,
 } as const;
 
-// Mirrors `ChargeType` enum in src/state/zombie_telemetry_store.zig — every
+// Mirrors `ChargeType` enum in src/state/agent_telemetry_store.zig — every
 // metered event yields up to two rows, one per charge_type. Use this rather
 // than typing "receive" / "stage" inline so a future rename catches every
 // callsite via the type.
@@ -121,7 +121,7 @@ export type TenantBillingChargesResponse = {
     id: string;
     tenant_id: string;
     workspace_id: string;
-    zombie_id: string;
+    agent_id: string;
     event_id: string;
     charge_type: ChargeType;
     posture: ProviderMode;

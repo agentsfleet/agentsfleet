@@ -15,8 +15,8 @@ const pg = @import("pg");
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
-const approval_gate_sweeper = @import("../../../zombie/approval_gate_sweeper.zig");
+const approval_gate_db = @import("../../../agent/approval_gate_db.zig");
+const approval_gate_sweeper = @import("../../../agent/approval_gate_sweeper.zig");
 
 const ALLOC = std.testing.allocator;
 const MS_PER_SECOND = 1000;
@@ -25,7 +25,7 @@ const MS_PER_SECOND = 1000;
 // events_integration_test.zig so we don't have to mint a fresh signature.
 // Workspace + tenant ids match events_integration_test; ON CONFLICT DO
 // NOTHING on the seed inserts handles the inevitable shared-row collisions.
-// Zombie ids are distinct so per-suite cleanup (DELETE WHERE workspace_id=…)
+// Agent ids are distinct so per-suite cleanup (DELETE WHERE workspace_id=…)
 // doesn't strand the other suite's rows.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
@@ -77,21 +77,21 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ OTHER_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'approvals-a', '---\nname: approvals-a\n---', '{"name":"approvals-a"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_A, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'approvals-b', '---\nname: approvals-b\n---', '{"name":"approvals-b"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_B, TEST_WORKSPACE_ID });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agent_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agent_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agents WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
@@ -99,7 +99,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
 const SeedGate = struct {
     gate_id: []const u8,
     action_id: []const u8,
-    zombie_id: []const u8 = AGENTSFLEET_A,
+    agent_id: []const u8 = AGENTSFLEET_A,
     workspace_id: []const u8 = TEST_WORKSPACE_ID,
     tool_name: []const u8 = "write_repo",
     action_name: []const u8 = "create_pr",
@@ -113,8 +113,8 @@ const SeedGate = struct {
 
 fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.zombie_approval_gates
-        \\  (id, zombie_id, workspace_id, action_id, tool_name, action_name,
+        \\INSERT INTO core.agent_approval_gates
+        \\  (id, agent_id, workspace_id, action_id, tool_name, action_name,
         \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
         \\   resolved_by, status, detail, requested_at, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
@@ -122,14 +122,14 @@ fn insertGate(conn: *pg.Conn, g: SeedGate) !void {
         \\        '', 'pending', '', $12, $12)
         \\ON CONFLICT (id) DO NOTHING
     , .{
-        g.gate_id,   g.zombie_id,       g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,
+        g.gate_id,   g.agent_id,       g.workspace_id,  g.action_id,    g.tool_name,  g.action_name,
         g.gate_kind, g.proposed_action, g.evidence_json, g.blast_radius, g.timeout_at, g.requested_at,
     });
 }
 
 fn statusOf(conn: *pg.Conn, alloc: std.mem.Allocator, gate_id: []const u8) ![]u8 {
     var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(
-        \\SELECT status FROM core.zombie_approval_gates WHERE id = $1::uuid
+        \\SELECT status FROM core.agent_approval_gates WHERE id = $1::uuid
     , .{gate_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return alloc.dupe(u8, "MISSING");
@@ -201,7 +201,7 @@ test "integration: approvals GET — pending row appears with all spec fields" {
     try std.testing.expect(std.mem.indexOf(u8, r.body, "approvals-a") != null);
 }
 
-test "integration: approvals GET — zombie_id filter scopes results" {
+test "integration: approvals GET — agent_id filter scopes results" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -211,10 +211,10 @@ test "integration: approvals GET — zombie_id filter scopes results" {
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
 
-    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000001", .action_id = "act-zf-a", .zombie_id = AGENTSFLEET_A });
-    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000002", .action_id = "act-zf-b", .zombie_id = AGENTSFLEET_B });
+    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000001", .action_id = "act-zf-a", .agent_id = AGENTSFLEET_A });
+    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000002", .action_id = "act-zf-b", .agent_id = AGENTSFLEET_B });
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals?zombie_id={s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals?agent_id={s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -370,7 +370,7 @@ test "integration: approvals POST :approve with reason — body persists in deta
     try r.expectStatus(.ok);
 
     var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(
-        \\SELECT detail FROM core.zombie_approval_gates WHERE id = $1::uuid
+        \\SELECT detail FROM core.agent_approval_gates WHERE id = $1::uuid
     , .{gid}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.MissingGateRow;
@@ -395,18 +395,18 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
 
-    const approval_gate = @import("../../../zombie/approval_gate.zig");
-    const cfg = @import("../../../zombie/config_gates.zig");
+    const approval_gate = @import("../../../agent/approval_gate.zig");
+    const cfg = @import("../../../agent/config_gates.zig");
     const ec = @import("../../../errors/error_registry.zig");
 
-    const test_zombie = "anomaly-ttl-zombie-001";
+    const test_agent = "anomaly-ttl-agent-001";
     const tool = "write_repo";
     const action = "create_pr";
     const window_s: u32 = 60;
 
     var key_buf: [256]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "{s}{s}:{s}:{s}", .{
-        ec.GATE_ANOMALY_KEY_PREFIX, test_zombie, tool, action,
+        ec.GATE_ANOMALY_KEY_PREFIX, test_agent, tool, action,
     });
     var del_resp = try h.queue.command(&.{ "DEL", key });
     del_resp.deinit(h.queue.alloc);
@@ -414,7 +414,7 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
     const rules = [_]cfg.AnomalyRule{
         .{ .pattern = .same_action, .threshold_count = 100, .threshold_window_s = window_s },
     };
-    const result = approval_gate.checkAnomaly(&h.queue, test_zombie, tool, action, &rules);
+    const result = approval_gate.checkAnomaly(&h.queue, test_agent, tool, action, &rules);
     try std.testing.expectEqual(approval_gate.AnomalyResult.normal, result);
 
     var ttl_resp = try h.queue.command(&.{ "PTTL", key });
@@ -433,7 +433,7 @@ test "integration: anomaly EVAL atomically sets TTL on first INCR" {
     // fresh 60_000ms. Without this guarantee a high-rate caller would never
     // accumulate count past threshold because every call would extend the
     // window.
-    const second = approval_gate.checkAnomaly(&h.queue, test_zombie, tool, action, &rules);
+    const second = approval_gate.checkAnomaly(&h.queue, test_agent, tool, action, &rules);
     try std.testing.expectEqual(approval_gate.AnomalyResult.normal, second);
 
     var ttl_resp_2 = try h.queue.command(&.{ "PTTL", key });
@@ -466,9 +466,9 @@ test "integration: worker self-timeout writes resolved_by=system:timeout" {
     const action_id = "act-worker-to-1";
     try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
 
-    const resolver = @import("../../../zombie/approval_gate_resolver.zig");
+    const resolver = @import("../../../agent/approval_gate_resolver.zig");
 
-    @import("../../../zombie/approval_gate.zig").resolveGateDecision(
+    @import("../../../agent/approval_gate.zig").resolveGateDecision(
         h.pool,
         action_id,
         .timed_out,
@@ -477,7 +477,7 @@ test "integration: worker self-timeout writes resolved_by=system:timeout" {
     );
 
     var q = @import("../../../db/pg_query.zig").PgQuery.from(try conn.query(
-        \\SELECT status, resolved_by FROM core.zombie_approval_gates WHERE id = $1::uuid
+        \\SELECT status, resolved_by FROM core.agent_approval_gates WHERE id = $1::uuid
     , .{gid}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.MissingGateRow;
@@ -616,7 +616,7 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     {
         const conn2 = try h.acquireConn();
         defer h.releaseConn(conn2);
-        var outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+        var outcome = try @import("../../../agent/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
             .action_id = "act-sweep-1",
             .outcome = .timed_out,
             .by = "system:timeout",
@@ -639,13 +639,13 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     _ = approval_gate_db;
 }
 
-// ── Cross-zombie defense ────────────────────────────────────────────────
-// When a Slack callback or webhook resolves a gate, the zombie_id from the
+// ── Cross-agent defense ────────────────────────────────────────────────
+// When a Slack callback or webhook resolves a gate, the agent_id from the
 // URL is bound into the SQL WHERE clause. A caller with HMAC access for
-// zombie A who guesses zombie B's action_id must NOT be able to mutate
-// zombie B's row — the resolve returns .not_found and the row stays pending.
+// agent A who guesses agent B's action_id must NOT be able to mutate
+// agent B's row — the resolve returns .not_found and the row stays pending.
 
-test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending" {
+test "approval_gate.resolve with mismatched agent_id_filter leaves row pending" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -658,11 +658,11 @@ test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending"
 
     const gid = "01999999-cccc-7000-8000-000000000001";
     // Gate is owned by AGENTSFLEET_A; attacker presents AGENTSFLEET_B in the URL.
-    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-cross-1", .zombie_id = AGENTSFLEET_A });
+    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-cross-1", .agent_id = AGENTSFLEET_A });
 
-    var attacker_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+    var attacker_outcome = try @import("../../../agent/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
         .action_id = "act-cross-1",
-        .zombie_id_filter = AGENTSFLEET_B,
+        .agent_id_filter = AGENTSFLEET_B,
         .outcome = .approved,
         .by = "attacker:slack-webhook",
     });
@@ -677,10 +677,10 @@ test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending"
     defer ALLOC.free(status_after);
     try std.testing.expectEqualStrings("pending", status_after);
 
-    // Legitimate caller with the matching zombie_id still resolves cleanly.
-    var legit_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
+    // Legitimate caller with the matching agent_id still resolves cleanly.
+    var legit_outcome = try @import("../../../agent/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
         .action_id = "act-cross-1",
-        .zombie_id_filter = AGENTSFLEET_A,
+        .agent_id_filter = AGENTSFLEET_A,
         .outcome = .approved,
         .by = "operator:slack-webhook",
     });

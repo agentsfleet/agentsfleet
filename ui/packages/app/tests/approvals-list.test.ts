@@ -50,8 +50,8 @@ afterEach(() => {
 function gate(over: Partial<ApprovalGate> = {}): ApprovalGate {
   return {
     gate_id: over.gate_id ?? "01999999-0000-7000-8000-000000000001",
-    zombie_id: over.zombie_id ?? AGENTSFLEET_A,
-    zombie_name: over.zombie_name ?? "approvals-a",
+    agent_id: over.agent_id ?? AGENTSFLEET_A,
+    agent_name: over.agent_name ?? "approvals-a",
     workspace_id: WORKSPACE_ID,
     action_id: over.action_id ?? "act_001",
     tool_name: over.tool_name ?? "write_repo",
@@ -87,7 +87,7 @@ describe("ApprovalsList — EmptyState", () => {
 // ── Initial render with items ─────────────────────────────────────────
 
 describe("ApprovalsList — initial render", () => {
-  it("renders zombie name, gate kind badge, and approve/deny buttons per row", () => {
+  it("renders agent name, gate kind badge, and approve/deny buttons per row", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
@@ -108,8 +108,8 @@ describe("ApprovalsList — initial render", () => {
       gate({
         gate_id: "01999999-0000-7000-8000-000000000002",
         action_id: "a2",
-        zombie_name: "approvals-b",
-        zombie_id: AGENTSFLEET_B,
+        agent_name: "approvals-b",
+        agent_id: AGENTSFLEET_B,
       }),
     ];
     render(
@@ -179,7 +179,7 @@ describe("ApprovalsList — client-side filter", () => {
       gate({
         gate_id: "01999999-1111-7000-8000-000000000002",
         proposed_action: "Drop production database",
-        zombie_name: "approvals-b",
+        agent_name: "approvals-b",
         action_id: "a2",
       }),
     ];
@@ -393,7 +393,7 @@ describe("ApprovalsList — pagination", () => {
           gate({
             gate_id: "01999999-0000-7000-8000-000000000099",
             action_id: "act_099",
-            zombie_name: "approvals-c",
+            agent_name: "approvals-c",
           }),
         ],
         next_cursor: null,
@@ -418,10 +418,10 @@ describe("ApprovalsList — pagination", () => {
   });
 });
 
-// ── zombie_id scoping ────────────────────────────────────────────────
+// ── agent_id scoping ────────────────────────────────────────────────
 
-describe("ApprovalsList — zombieId scoping", () => {
-  it("passes zombieId to listApprovalsAction on Load more", async () => {
+describe("ApprovalsList — agentId scoping", () => {
+  it("passes agentId to listApprovalsAction on Load more", async () => {
     listApprovalsActionMock.mockResolvedValueOnce({
       ok: true,
       data: { items: [], next_cursor: null },
@@ -429,7 +429,7 @@ describe("ApprovalsList — zombieId scoping", () => {
     render(
       React.createElement(ApprovalsList, {
         workspaceId: WORKSPACE_ID,
-        zombieId: AGENTSFLEET_A,
+        agentId: AGENTSFLEET_A,
         initialItems: [gate()],
         initialCursor: "cur_abc",
       }),
@@ -438,7 +438,7 @@ describe("ApprovalsList — zombieId scoping", () => {
     await waitFor(() => {
       expect(listApprovalsActionMock).toHaveBeenCalledWith(
         WORKSPACE_ID,
-        expect.objectContaining({ zombieId: AGENTSFLEET_A }),
+        expect.objectContaining({ agentId: AGENTSFLEET_A }),
       );
     });
   });
@@ -646,7 +646,7 @@ describe("ApprovalsList — 5s polling effect", () => {
           gate({
             gate_id: "01999999-bbbb-7000-8000-000000000099",
             action_id: "appended",
-            zombie_name: "approvals-c",
+            agent_name: "approvals-c",
           }),
         ],
         next_cursor: null,

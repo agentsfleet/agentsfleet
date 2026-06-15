@@ -34,7 +34,7 @@ describe("detectTokenInArgv", () => {
   });
 
   test("end-of-options `--` stops the scan — `--token` as positional doesn't fire", () => {
-    expect(detectTokenInArgv(["zombie", "steer", "z1", "--", "--token=value-as-positional"])).toBeNull();
+    expect(detectTokenInArgv(["agent", "steer", "z1", "--", "--token=value-as-positional"])).toBeNull();
   });
 
   test("multiple flags: --token=<value> in the middle still fires", () => {

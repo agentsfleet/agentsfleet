@@ -21,7 +21,7 @@ const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// Backoff (ms) on control-plane transport errors; lease polls use server-supplied retry_after_ms.
 const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
@@ -199,11 +199,11 @@ fn executeAndReport(
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
 
-    // Hydrate the zombie's prior memory over the trusted plane BEFORE the fork so
+    // Hydrate the agent's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
     // and holds no token. A hydrate miss degrades to empty memory, never blocks.
-    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.zombie_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
-        log.warn("memory_hydrate_failed", .{ .zombie_id = payload.event.zombie_id, .err = @errorName(err) });
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.agent_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
+        log.warn("memory_hydrate_failed", .{ .agent_id = payload.event.agent_id, .err = @errorName(err) });
         break :blk null;
     };
     defer if (hydrated) |h| h.deinit();
@@ -213,7 +213,7 @@ fn executeAndReport(
         .alloc = alloc,
         .cp = cp,
         .runner_token = runner_token,
-        .zombie_id = payload.event.zombie_id,
+        .agent_id = payload.event.agent_id,
         .lease_id = payload.lease_id,
         .fencing_token = payload.fencing_token,
         .deadline_ms = cfg.cp_deadlines.default_ms,

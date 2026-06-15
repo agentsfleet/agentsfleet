@@ -21,9 +21,9 @@ const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
-const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_zombie_event_failed";
+const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_agent_event_failed";
 
-// XADD argv slots for `xaddZombieEvent` — lifted to file scope so the
+// XADD argv slots for `xaddAgentEvent` — lifted to file scope so the
 // compile-folded prefix is a single comptime slice instead of six slot
 // assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
 // agent:{id}:events stream's retention (~10k approximate trim); `*`
@@ -184,15 +184,15 @@ pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
     };
 }
 
-/// XADD an EventEnvelope onto `agent:{envelope.zombie_id}:events`. The Redis
+/// XADD an EventEnvelope onto `agent:{envelope.agent_id}:events`. The Redis
 /// stream entry id IS the canonical event_id; this function returns it
 /// allocated via `self.alloc` so the caller (e.g. `POST /messages`) can
 /// surface it in the response body for SSE correlation.
 ///
 /// Stream is trimmed approximately to MAXLEN 10000 entries.
-pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
+pub fn xaddAgentEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     var stream_key_buf: [128]u8 = undefined;
-    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "agent:{s}:events", .{envelope.zombie_id});
+    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "agent:{s}:events", .{envelope.agent_id});
 
     const payload_argv = try envelope.encodeForXAdd(self.alloc);
     defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
@@ -209,16 +209,16 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
 
     const id_str = switch (resp) {
         .bulk => |v| v orelse {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .agent_id = envelope.agent_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
         else => {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .agent_id = envelope.agent_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
     };
     const owned_id = try self.alloc.dupe(u8, id_str);
-    log.debug("xadd_zombie_event", .{ .zombie_id = envelope.zombie_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
+    log.debug("xadd_agent_event", .{ .agent_id = envelope.agent_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
     return owned_id;
 }
 
@@ -292,7 +292,7 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
 /// Buffer size for `stableConsumerId`: prefix + '-' + max hostname.
 pub const CONSUMER_ID_BUF_LEN: usize = queue_consts.consumer_prefix.len + 1 + std.posix.HOST_NAME_MAX;
 
-/// Stable consumer identity for the zombie event streams: one per agentsfleetd
+/// Stable consumer identity for the agent event streams: one per agentsfleetd
 /// instance (host-derived, timestamp-free), so delivered-but-unacked entries
 /// stay recoverable in this consumer's PEL and group cardinality stays
 /// bounded — the retired per-probe minting orphaned every entry. The memcpys
@@ -302,7 +302,7 @@ pub fn stableConsumerId(buf: *[CONSUMER_ID_BUF_LEN]u8) []const u8 {
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
     // gethostname failure collapses this instance onto the shared `localhost`
     // consumer (one PEL for any such instance). Correctness is unaffected — the
-    // per-zombie Postgres affinity claim is the only lease serializer — but
+    // per-agent Postgres affinity claim is the only lease serializer — but
     // recovery attribution blurs, so the fallback is loud.
     const host = std.posix.gethostname(&host_buf) catch |err| blk: {
         log.warn("consumer_id_hostname_fallback", .{ .err = @errorName(err) });

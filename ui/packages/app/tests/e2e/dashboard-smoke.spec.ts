@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // Unauthenticated smoke for M27 routes. Authenticated kill-switch flow requires
-// a Clerk test user + a seeded zombie in api-dev; deferred until that harness
+// a Clerk test user + a seeded agent in api-dev; deferred until that harness
 // lands (see follow-up spec). These assertions confirm each route loads and
 // either renders content or redirects to sign-in — no third-party hosts.
 
@@ -9,7 +9,7 @@ const EXPECTED_HOSTNAME = new URL(
   process.env.BASE_URL ?? "http://localhost:3000",
 ).hostname;
 
-const M27_ROUTES = ["/", "/zombies", "/credentials", "/settings"];
+const M27_ROUTES = ["/", "/agents", "/credentials", "/settings"];
 
 test.describe("M27 dashboard routes — unauthenticated smoke", () => {
   for (const route of M27_ROUTES) {

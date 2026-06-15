@@ -8,10 +8,10 @@
  *      middleware accepts the JWT (a navigation to '/' does NOT redirect to
  *      /sign-in).
  *   4. Post-bootstrap, the dashboard renders authenticated content for the
- *      signed-in fixture user (a marker like usezombie/Zombies/Dashboard is
+ *      signed-in fixture user (a marker like usezombie/Agents/Dashboard is
  *      visible on body, not just the marketing/sign-in page).
  *
- * Per-spec teardown for fixture rows (zombies/credentials/events) lands with
+ * Per-spec teardown for fixture rows (agents/credentials/events) lands with
  * the WS-C spec workstream — the bootstrap state itself is reused across
  * runs (idempotent on the user.created replay).
  */
@@ -20,8 +20,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { getDefaultWorkspaceId, listZombies, seedZombie } from "./fixtures/seed";
-import { cleanWorkspaceZombies } from "./fixtures/teardown";
+import { getDefaultWorkspaceId, listAgents, seedAgent } from "./fixtures/seed";
+import { cleanWorkspaceAgents } from "./fixtures/teardown";
 import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
@@ -77,47 +77,47 @@ test.describe("auth e2e wire", () => {
 
   test("signInAs('regular') produces an accepted Clerk session", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/zombies");
-    await expect(page).toHaveURL(/\/zombies(\?|$)/);
+    await page.goto("/agents");
+    await expect(page).toHaveURL(/\/agents(\?|$)/);
   });
 
   test(
     "post-bootstrap dashboard renders authenticated content for fixture user",
     async ({ page }) => {
       await signInAs(page, FIXTURE_KEY.regular);
-      await page.goto("/zombies");
-      await expect(page).toHaveURL(/\/zombies(\?|$)/);
-      await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
+      await page.goto("/agents");
+      await expect(page).toHaveURL(/\/agents(\?|$)/);
+      await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
     },
   );
 
-  test("seed + teardown roundtrip: create, list, delete the freshly-seeded zombie", async () => {
+  test("seed + teardown roundtrip: create, list, delete the freshly-seeded agent", async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
-    // Seed a fresh zombie. Assertions only reference this row's id; pre-
+    // Seed a fresh agent. Assertions only reference this row's id; pre-
     // existing rows from prior interrupted runs are noise we don't fail on.
     // Random suffix avoids (workspace_id, name) uniqueness collision when a
-    // prior interrupted run left a killed zombie that couldn't be deleted
+    // prior interrupted run left a killed agent that couldn't be deleted
     // (agentsfleetd has a known ConnectionBusy bug on delete; orphans stick).
     const tag = Math.random().toString(36).slice(2, 8);
-    const seeded = await seedZombie(FIXTURE_KEY.regular, ws, {
+    const seeded = await seedAgent(FIXTURE_KEY.regular, ws, {
       name: `fixture-roundtrip-${tag}`,
     });
     expect(seeded.id).toBeTruthy();
 
-    const after = await listZombies(FIXTURE_KEY.regular, ws);
+    const after = await listAgents(FIXTURE_KEY.regular, ws);
     expect(after.some((z) => z.id === seeded.id)).toBe(true);
 
     // Teardown is tolerant of stale rows; we don't assert on the count
     // returned. Proof point: the freshly-seeded row is gone OR has been
     // marked killed. The "OR killed" branch accommodates an open agentsfleetd
     // bug where DELETE returns UZ-INTERNAL-002 (ConnectionBusy) — out of
-    // scope here, tracked as a separate fix(zombie) PR. PATCH→killed is
+    // scope here, tracked as a separate fix(agent) PR. PATCH→killed is
     // what the harness can guarantee against that bug; once a future
-    // fix(zombie) PR lands, this OR-clause can be removed.
-    await cleanWorkspaceZombies(FIXTURE_KEY.regular, ws);
+    // fix(agent) PR lands, this OR-clause can be removed.
+    await cleanWorkspaceAgents(FIXTURE_KEY.regular, ws);
 
-    const post = await listZombies(FIXTURE_KEY.regular, ws);
+    const post = await listAgents(FIXTURE_KEY.regular, ws);
     const lingering = post.find((z) => z.id === seeded.id);
     expect(lingering === undefined || lingering.status === "killed").toBe(true);
   });

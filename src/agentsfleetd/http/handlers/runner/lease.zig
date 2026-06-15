@@ -2,7 +2,7 @@
 //!
 //! Thin wrapper over the control-plane service. Identity is the runner token
 //! (`runnerBearer` populates `hx.principal.runner_id`); the service claims the
-//! runner's one assigned zombie, bills the event, persists a
+//! runner's one assigned agent, bills the event, persists a
 //! `fleet.runner_leases` row, and returns 200 `{ lease | null, retry_after_ms }`
 //! — never a 204.
 

@@ -99,7 +99,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
 
     var result = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
         .oidc_subject = oidc,
-        .email = "happy@test.zombie",
+        .email = "happy@test.agent",
         .display_name = "Happy Path",
     });
     defer result.deinit(std.testing.allocator);
@@ -130,7 +130,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualSlices(u8, result.tenant_id, try row.get([]const u8, 0));
-        try std.testing.expectEqualSlices(u8, "happy@test.zombie", try row.get([]const u8, 1));
+        try std.testing.expectEqualSlices(u8, "happy@test.agent", try row.get([]const u8, 1));
         try std.testing.expectEqualSlices(u8, "Happy Path", try row.get([]const u8, 2));
     }
 
@@ -170,14 +170,14 @@ test "bootstrapPersonalAccount: replay returns existing rows without re-insertin
 
     var first = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
         .oidc_subject = oidc,
-        .email = "replay@test.zombie",
+        .email = "replay@test.agent",
     });
     defer first.deinit(std.testing.allocator);
     try std.testing.expect(first.created);
 
     var second = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
         .oidc_subject = oidc,
-        .email = "replay@test.zombie",
+        .email = "replay@test.agent",
     });
     defer second.deinit(std.testing.allocator);
     try std.testing.expect(!second.created);
@@ -280,7 +280,7 @@ test "bootstrapTransaction: unique-violation mid-tx rolls back every preceding I
     , .{poison_tenant});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'poison@test.zombie', 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'poison@test.agent', 0, 0)
     , .{ poison_user, poison_tenant, oidc });
 
     // Snapshot tenant count globally so we can prove the bootstrap's tenant
@@ -298,7 +298,7 @@ test "bootstrapTransaction: unique-violation mid-tx rolls back every preceding I
     const err = bootstrap.bootstrapTransaction(
         db_ctx.conn,
         std.testing.allocator,
-        .{ .oidc_subject = oidc, .email = "rollback@test.zombie" },
+        .{ .oidc_subject = oidc, .email = "rollback@test.agent" },
         bootstrap.defaultHerokuNameGen,
     );
     try std.testing.expect(std.meta.isError(err));

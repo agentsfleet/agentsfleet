@@ -2,7 +2,7 @@
 //!
 //! Thin wrapper over the control-plane service. Identity is the runner token
 //! (`runnerBearer` populates `hx.principal.runner_id`); `lease_id` is the only
-//! runner-verb path param. The service resolves the lease's zombie + event
+//! runner-verb path param. The service resolves the lease's agent + event
 //! (scoped to the runner) and `PUBLISH`es each frame to `agent:{id}:activity`
 //! for the SSE live tail. Best-effort: a dropped frame is cosmetic, the durable
 //! record is `report`.

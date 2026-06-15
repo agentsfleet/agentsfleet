@@ -2,9 +2,9 @@
 // READ-ONLY tenant surface (the write-verb teardown: the runner plane is
 // the only writer).
 //
-//   GET    /v1/workspaces/{ws}/zombies/{zid}/memories          → list-or-search
-//   POST   /v1/workspaces/{ws}/zombies/{zid}/memories          → retired (404/405)
-//   DELETE /v1/workspaces/{ws}/zombies/{zid}/memories/{key}    → retired (404/405)
+//   GET    /v1/workspaces/{ws}/agents/{zid}/memories          → list-or-search
+//   POST   /v1/workspaces/{ws}/agents/{zid}/memories          → retired (404/405)
+//   DELETE /v1/workspaces/{ws}/agents/{zid}/memories/{key}    → retired (404/405)
 //
 // Entries are seeded directly (memory_runtime INSERT) since POST is gone. Uses
 // the shared TestHarness; DB-required; self-skips when TEST_DATABASE_URL is unset.
@@ -87,12 +87,12 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'mem-local', '---\nname: mem-local\n---\ntest', '{"name":"mem-local"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_LOCAL, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'mem-other', '---\nname: mem-other\n---\ntest', '{"name":"mem-other"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ AGENTSFLEET_OTHER_WS, OTHER_WS_ID });
@@ -100,13 +100,13 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("SET ROLE memory_runtime", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    // Memory is scoped by the raw zombie_id (UUID) after schema/013 — no zmb: form.
+    // Memory is scoped by the raw agent_id (UUID) after schema/013 — no zmb: form.
     _ = conn.exec(
-        "DELETE FROM memory.memory_entries WHERE zombie_id IN ($1::uuid, $2::uuid)",
+        "DELETE FROM memory.memory_entries WHERE agent_id IN ($1::uuid, $2::uuid)",
         .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS },
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombies WHERE id IN ($1, $2)", .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agents WHERE id IN ($1, $2)", .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -117,7 +117,7 @@ const SEED_TS_MS: i64 = 1_700_000_000_000;
 /// Seed one memory entry directly (the tenant write verbs are retired —
 /// the runner push is the only writer; here we INSERT under the memory_runtime
 /// role so the surviving GET surface has data to read).
-fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
+fn seedEntry(f: Fixture, agent_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
     const conn = try f.h.acquireConn();
     defer f.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
@@ -125,20 +125,20 @@ fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []cons
     var uid_buf: [36]u8 = undefined;
     const uid = try id_format.formatUuidV7(&uid_buf);
     var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ zombie_id, key });
+    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ agent_id, key });
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, agent_id, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
-        \\ON CONFLICT (key, zombie_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, zombie_id, SEED_TS_MS });
+        \\ON CONFLICT (key, agent_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
+    , .{ uid, id, key, content, category, agent_id, SEED_TS_MS });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/memories", .{ ws, zid });
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/agents/{s}/memories", .{ ws, zid });
 }
 
 fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/memories/{s}", .{ ws, zid, key });
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/agents/{s}/memories/{s}", .{ ws, zid, key });
 }
 
 // ── GET surface (the tenant memory API is read-only after the write-verb teardown) ──
@@ -297,7 +297,7 @@ test "integration: memories GET without bearer returns 401" {
 
 // ── Cross-workspace isolation on the surviving GET surface ──
 //   (a) URL workspace = OTHER_WS → auth middleware rejects 403
-//   (b) URL workspace = TEST_WS, zombie lives in OTHER_WS → handler 404 (no leak)
+//   (b) URL workspace = TEST_WS, agent lives in OTHER_WS → handler 404 (no leak)
 
 test "integration: memories GET cross-workspace URL returns 403" {
     const f = try fixture();
@@ -309,7 +309,7 @@ test "integration: memories GET cross-workspace URL returns 403" {
     try r.expectStatus(.forbidden);
 }
 
-test "integration: memories GET zombie-in-foreign-ws returns 404" {
+test "integration: memories GET agent-in-foreign-ws returns 404" {
     const f = try fixture();
     defer f.deinit();
     const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_OTHER_WS);

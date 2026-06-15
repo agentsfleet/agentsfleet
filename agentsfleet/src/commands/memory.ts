@@ -1,8 +1,8 @@
-// `agentsfleet memory list|search` — read-only window into a zombie's durable
-// memory over GET /v1/workspaces/{ws}/zombies/{zid}/memories.
+// `agentsfleet memory list|search` — read-only window into a agent's durable
+// memory over GET /v1/workspaces/{ws}/agents/{zid}/memories.
 //
-// agentsfleet memory list   --zombie <id> [--category <name>] [--limit <n>] [--workspace <id>]
-// agentsfleet memory search --zombie <id> <query> [--limit <n>] [--workspace <id>]
+// agentsfleet memory list   --agent <id> [--category <name>] [--limit <n>] [--workspace <id>]
+// agentsfleet memory search --agent <id> <query> [--limit <n>] [--workspace <id>]
 //
 // Output as a service (7 Pillars): a real terminal gets an aligned table;
 // `--json` or a piped/redirected stdout gets the published response envelope
@@ -17,7 +17,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
-import { wsZombieMemoriesPath } from "../lib/api-paths.ts";
+import { wsAgentMemoriesPath } from "../lib/api-paths.ts";
 import { ui } from "../output/index.ts";
 import {
   ConfigError,
@@ -45,16 +45,16 @@ const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 
 const MEMORY_HYGIENE_DOCS_URL = "https://docs.agentsfleet.net/memory";
 const SUGGEST_AGENTSFLEET_NOT_FOUND =
-  "run `agentsfleet list` to see the zombies in this workspace (or pass --workspace <id>)";
+  "run `agentsfleet list` to see the agents in this workspace (or pass --workspace <id>)";
 const SUGGEST_MEM_UNAVAILABLE =
   "retry shortly — the memory backend is temporarily unavailable";
 
 const USAGE_LIST =
-  "usage: agentsfleet memory list --zombie <id> [--category <name>] [--limit <n>] [--workspace <id>]";
+  "usage: agentsfleet memory list --agent <id> [--category <name>] [--limit <n>] [--workspace <id>]";
 const USAGE_SEARCH =
-  "usage: agentsfleet memory search --zombie <id> <query> [--limit <n>] [--workspace <id>]";
+  "usage: agentsfleet memory search --agent <id> <query> [--limit <n>] [--workspace <id>]";
 
-const EMPTY_LIST_MESSAGE = "No memories stored for this zombie yet.";
+const EMPTY_LIST_MESSAGE = "No memories stored for this agent yet.";
 
 const FIELD_KEY = "key" as const;
 const FIELD_CATEGORY = "category" as const;
@@ -78,7 +78,7 @@ interface MemoryListResponse {
 }
 
 export interface MemoryReadFlags {
-  readonly zombieId?: string | undefined;
+  readonly agentId?: string | undefined;
   readonly category?: string | undefined;
   readonly limit?: string | undefined;
   readonly workspaceId?: string | undefined;
@@ -126,14 +126,14 @@ export const previewText = (text: string | null | undefined): string => {
   return `${points.slice(0, PREVIEW_MAX - 1).join("")}…`;
 };
 
-const requireZombieId = (
+const requireAgentId = (
   value: string | undefined,
   usage: string,
 ): Effect.Effect<string, ValidationError> =>
   isString(value) && value.length > 0
     ? Effect.succeed(value)
     : Effect.fail(
-        new ValidationError({ detail: "--zombie <id> is required", suggestion: usage }),
+        new ValidationError({ detail: "--agent <id> is required", suggestion: usage }),
       );
 
 const resolveWorkspace = (
@@ -160,14 +160,14 @@ interface MemoryQueryParams {
   readonly limit: string | undefined;
 }
 
-const buildPath = (wsId: string, zombieId: string, params: MemoryQueryParams): string => {
+const buildPath = (wsId: string, agentId: string, params: MemoryQueryParams): string => {
   const qs = new URLSearchParams();
   if (isString(params.query) && params.query.length > 0) qs.set("query", params.query);
   // the wire param shares the table-field name by design — one const serves both
   if (isString(params.category) && params.category.length > 0) qs.set(FIELD_CATEGORY, params.category);
   if (isString(params.limit) && params.limit.length > 0) qs.set("limit", params.limit);
   const q = qs.toString();
-  const base = wsZombieMemoriesPath(wsId, zombieId);
+  const base = wsAgentMemoriesPath(wsId, agentId);
   return q ? `${base}?${q}` : base;
 };
 
@@ -194,7 +194,7 @@ const withMemorySuggestions = (err: NetworkError | ServerError): NetworkError | 
 };
 
 interface MemoryRequestSpec extends MemoryQueryParams {
-  readonly zombieId: string | undefined;
+  readonly agentId: string | undefined;
   readonly workspaceId: string | undefined;
   readonly stdoutIsTty: boolean | undefined;
   readonly usage: string;
@@ -209,12 +209,12 @@ const memoryReadEffect = (
     const output = yield* Output;
     const http = yield* HttpClient;
 
-    const zombieId = yield* requireZombieId(req.zombieId, req.usage);
+    const agentId = yield* requireAgentId(req.agentId, req.usage);
     const wsId = yield* resolveWorkspace(req.workspaceId);
     const token = yield* resolveAuthToken;
 
     const res = yield* http
-      .request<MemoryListResponse>({ path: buildPath(wsId, zombieId, req), token })
+      .request<MemoryListResponse>({ path: buildPath(wsId, agentId, req), token })
       .pipe(Effect.mapError(withMemorySuggestions));
 
     // Machine context — explicit --json, or stdout is not a terminal —
@@ -253,7 +253,7 @@ export const memoryListEffectFromFlags = (
   flags: MemoryReadFlags,
 ): Effect.Effect<void, CliError, CliConfig | Credentials | HttpClient | Output | Workspaces> =>
   memoryReadEffect({
-    zombieId: flags.zombieId,
+    agentId: flags.agentId,
     workspaceId: flags.workspaceId,
     query: undefined,
     category: flags.category,
@@ -272,7 +272,7 @@ export const memorySearchEffectFromArgs = (
   const trimmed = isString(query) ? query.trim() : "";
   return trimmed.length > 0
     ? memoryReadEffect({
-        zombieId: flags.zombieId,
+        agentId: flags.agentId,
         workspaceId: flags.workspaceId,
         query: trimmed,
         category: undefined,

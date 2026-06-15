@@ -28,7 +28,7 @@ const COLOR_ENV = { TERM: "xterm-256color" };
 // Decorative-ASCII teardown — these MUST NOT appear in the version banner
 // (per docs/DESIGN_SYSTEM.md "no decorative ASCII art"). Regression guards.
 const FORBIDDEN_BANNER_CHARS = [
-  "\u{1F9DF}", // 🧟 zombie face
+  "\u{1F9DF}", // 🧟 agent face
   "╭",    // ╭ box top-left
   "╮",    // ╮ box top-right
   "╰",    // ╰ box bottom-left

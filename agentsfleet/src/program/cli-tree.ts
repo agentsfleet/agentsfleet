@@ -12,10 +12,10 @@
 // then exits 2.
 
 import { Command, Option as CommanderOption, type Help } from "commander";
-import { ZombieHelp, styleTagline } from "./help.ts";
+import { AgentHelp, styleTagline } from "./help.ts";
 import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
-import { buildZombieTree } from "./cli-tree-zombie.ts";
+import { buildAgentTree } from "./cli-tree-agent.ts";
 import { buildMemoryTree } from "./cli-tree-memory.ts";
 import type {
   ActionFrame,
@@ -43,7 +43,7 @@ function helpTail(): string {
     "tenant provider show", "tenant provider add", "tenant provider delete",
     "billing show",
     "credential add", "credential show", "credential list", "credential delete",
-    "zombie update",
+    "agent update",
     "memory list", "memory search",
   ];
   return [
@@ -120,7 +120,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
 
   // commander 14: configureHelp() ignores unknown keys (incl. helpFactory);
   // the supported override is createHelp, invoked on each Command's --help.
-  program.createHelp = helpFactory ?? ((): Help => new ZombieHelp());
+  program.createHelp = helpFactory ?? ((): Help => new AgentHelp());
 
   program
     .name("agentsfleet")
@@ -177,7 +177,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   buildGrantTree(program, handlers, state);
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
-  buildZombieTree(program, handlers, state, { actionFor, runHandler });
+  buildAgentTree(program, handlers, state, { actionFor, runHandler });
   buildMemoryTree(program, handlers, state, { actionFor, runHandler });
 
   return program;
@@ -289,7 +289,7 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
+const FLAG_AGENTSFLEET_ID = "--agent <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
 const AGENTSFLEET_ID = "Agent ID" as const;
 const COMMAND_ADD = "add" as const;

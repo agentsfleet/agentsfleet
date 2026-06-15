@@ -17,7 +17,7 @@ const fleet = @import("route_matchers_fleet.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
-const S_ZOMBIES = "zombies";
+const S_AGENTS = "agents";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
 const S_ALL = "all";
@@ -75,7 +75,7 @@ pub const Path = struct {
     }
 
     /// Return the segment at `idx` if present and non-empty. Use this for
-    /// path-parameter slots (workspace_id, zombie_id, etc.) — empty segments
+    /// path-parameter slots (workspace_id, agent_id, etc.) — empty segments
     /// from `//` or trailing slashes get rejected at the matcher.
     pub fn param(self: Path, idx: usize) ?[]const u8 {
         if (idx >= self.segs.len) return null;
@@ -132,7 +132,7 @@ pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
-// suffix ∈ {"zombies", "credentials", "agent-keys", "events", "approvals"}.
+// suffix ∈ {"agents", "credentials", "agent-keys", "events", "approvals"}.
 
 pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
@@ -158,12 +158,12 @@ pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
 
 // ── /workspaces/{ws}/agent-keys/{agent_key_id} ─────────────────────────────────
 
-pub const WorkspaceAgentRoute = struct {
+pub const WorkspaceAgentKeyRoute = struct {
     workspace_id: []const u8,
     agent_key_id: []const u8,
 };
 
-pub fn matchWorkspaceAgentDelete(p: Path) ?WorkspaceAgentRoute {
+pub fn matchWorkspaceAgentKeyDelete(p: Path) ?WorkspaceAgentKeyRoute {
     if (p.segs.len != 4) return null;
     if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "agent-keys")) return null;
     const ws = p.param(1) orelse return null;
@@ -171,76 +171,76 @@ pub fn matchWorkspaceAgentDelete(p: Path) ?WorkspaceAgentRoute {
     return .{ .workspace_id = ws, .agent_key_id = agent_key_id };
 }
 
-// ── /workspaces/{ws}/zombies/{zombie_id} ───────────────────────────────────
+// ── /workspaces/{ws}/agents/{agent_id} ───────────────────────────────────
 
-pub const WorkspaceZombieRoute = struct {
+pub const WorkspaceAgentRoute = struct {
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
 };
 
-pub fn matchWorkspaceZombie(p: Path) ?WorkspaceZombieRoute {
+pub fn matchWorkspaceAgent(p: Path) ?WorkspaceAgentRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .zombie_id = zid };
+    return .{ .workspace_id = ws, .agent_id = zid };
 }
 
-// ── /workspaces/{ws}/zombies/{zombie_id}/{action} ──────────────────────────
+// ── /workspaces/{ws}/agents/{agent_id}/{action} ──────────────────────────
 // action ∈ {"events", "messages", "memories",
 // "integration-requests", "integration-grants"}.
 
-pub fn matchWorkspaceZombieAction(p: Path, action: []const u8) ?WorkspaceZombieRoute {
+pub fn matchWorkspaceAgentAction(p: Path, action: []const u8) ?WorkspaceAgentRoute {
     if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
     if (!p.eq(4, action)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .zombie_id = zid };
+    return .{ .workspace_id = ws, .agent_id = zid };
 }
 
-// ── /workspaces/{ws}/zombies/{zombie_id}/events/stream ─────────────────────
+// ── /workspaces/{ws}/agents/{agent_id}/events/stream ─────────────────────
 // Distinct shape (6 segments) from the bare /events action (5 segments).
 
-pub fn matchWorkspaceZombieEventsStream(p: Path) ?WorkspaceZombieRoute {
+pub fn matchWorkspaceAgentEventsStream(p: Path) ?WorkspaceAgentRoute {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
     if (!p.eq(4, "events") or !p.eq(5, "stream")) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .zombie_id = zid };
+    return .{ .workspace_id = ws, .agent_id = zid };
 }
 
-// ── /workspaces/{ws}/zombies/{zombie_id}/{leaf_segment}/{leaf_id} ──────────
-// Per-zombie sub-resource leaves. Each route gets its own typed struct with a
+// ── /workspaces/{ws}/agents/{agent_id}/{leaf_segment}/{leaf_id} ──────────
+// Per-agent sub-resource leaves. Each route gets its own typed struct with a
 // semantically named leaf field; the parsing logic is shared via a private
 // helper.
 
-const ZombieLeafView = struct {
+const AgentLeafView = struct {
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     leaf: []const u8,
 };
 
-fn matchZombieLeaf(p: Path, leaf_segment: []const u8) ?ZombieLeafView {
+fn matchAgentLeaf(p: Path, leaf_segment: []const u8) ?AgentLeafView {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
     if (!p.eq(4, leaf_segment)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
     const leaf = p.param(5) orelse return null;
-    return .{ .workspace_id = ws, .zombie_id = zid, .leaf = leaf };
+    return .{ .workspace_id = ws, .agent_id = zid, .leaf = leaf };
 }
 
-pub const WorkspaceZombieGrantRoute = struct {
+pub const WorkspaceAgentGrantRoute = struct {
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     grant_id: []const u8,
 };
 
-pub fn matchWorkspaceZombieGrant(p: Path) ?WorkspaceZombieGrantRoute {
-    const v = matchZombieLeaf(p, "integration-grants") orelse return null;
-    return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .grant_id = v.leaf };
+pub fn matchWorkspaceAgentGrant(p: Path) ?WorkspaceAgentGrantRoute {
+    const v = matchAgentLeaf(p, "integration-grants") orelse return null;
+    return .{ .workspace_id = v.workspace_id, .agent_id = v.agent_id, .grant_id = v.leaf };
 }
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
@@ -316,8 +316,8 @@ pub fn matchRunnerLeaseActivity(p: Path) ?[]const u8 {
     return p.param(3);
 }
 
-/// `GET|POST /v1/runners/me/memory/{zombie_id}` — runner-plane memory hydrate +
-/// capture. 4 segments after the v1 strip; the zombie is the leaf. The method
+/// `GET|POST /v1/runners/me/memory/{agent_id}` — runner-plane memory hydrate +
+/// capture. 4 segments after the v1 strip; the agent is the leaf. The method
 /// (GET hydrate vs POST capture) is disambiguated by the router, not here.
 pub fn matchRunnerMemory(p: Path) ?[]const u8 {
     if (p.segs.len != 4) return null;

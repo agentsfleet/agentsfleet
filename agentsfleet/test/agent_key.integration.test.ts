@@ -30,7 +30,7 @@ describe("agent (external API key) commands", () => {
           [
             "agent", "add",
             "--workspace", WS_ID,
-            "--zombie", AGENTSFLEET_ID,
+            "--agent", AGENTSFLEET_ID,
             "--name", "langgraph-bot",
             "--description", "external orchestration",
           ],
@@ -43,13 +43,13 @@ describe("agent (external API key) commands", () => {
         // The shown-once warning must be present in non-JSON mode.
         expect(text).toMatch(/shown once/i);
 
-        // POST body shape contract: zombie_id + name + description.
+        // POST body shape contract: agent_id + name + description.
         const parsed = JSON.parse(postBody ?? "{}") as {
-          zombie_id?: string;
+          agent_id?: string;
           name?: string;
           description?: string;
         };
-        expect(parsed.zombie_id).toBe(AGENTSFLEET_ID);
+        expect(parsed.agent_id).toBe(AGENTSFLEET_ID);
         expect(parsed.name).toBe("langgraph-bot");
         expect(parsed.description).toBe("external orchestration");
 

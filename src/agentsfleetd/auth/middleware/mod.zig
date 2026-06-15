@@ -155,7 +155,7 @@ pub const MiddlewareRegistry = struct {
         return &self._webhook_hmac_chain;
     }
 
-    /// Per-zombie HMAC signature for webhooks routed to a zombie (HMAC-only —
+    /// Per-agent HMAC signature for webhooks routed to a agent (HMAC-only —
     /// no Bearer fallback). The lookup function returns the HMAC scheme +
     /// secret resolved from the workspace credential identified by the
     /// matching `triggers[].source` entry (or an explicit

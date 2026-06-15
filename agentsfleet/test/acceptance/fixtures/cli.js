@@ -9,7 +9,7 @@
  * a prior `npm run build` (the test script chains build before bun test);
  * global mode resolves `agentsfleet` from PATH after `npm i -g`.
  *
- * The caller composes the full child env — `runZombiectl` NEVER mutates
+ * The caller composes the full child env — `runAgentctl` NEVER mutates
  * `process.env`. The minted Clerk JWT is per-call; leaking it into the
  * parent env would inherit into every later spawn.
  */
@@ -46,10 +46,10 @@ function resolveBinary(opts) {
 
 function assertEnvComposed(env) {
   if (env === undefined || env === null) {
-    throw new Error("runZombiectl requires explicit env (per-call composition is the contract)");
+    throw new Error("runAgentctl requires explicit env (per-call composition is the contract)");
   }
   if (typeof env !== "object") {
-    throw new Error("runZombiectl env must be an object");
+    throw new Error("runAgentctl env must be an object");
   }
 }
 
@@ -65,7 +65,7 @@ function assertEnvComposed(env) {
  * @param {"worktree"|"global"} [opts.binary] - default from env
  * @returns {Promise<{code:number, stdout:string, stderr:string, durationMs:number}>}
  */
-export function runZombiectl(args, opts) {
+export function runAgentctl(args, opts) {
   assertEnvComposed(opts?.env);
   const { command, prefixArgs } = resolveBinary(opts);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -118,7 +118,7 @@ export function runZombiectl(args, opts) {
  * (`agentsfleet login` poll loop, SIGINT scenarios). Caller is responsible
  * for awaiting exit and cleaning up.
  */
-export function spawnZombiectl(args, opts) {
+export function spawnAgentctl(args, opts) {
   assertEnvComposed(opts?.env);
   const { command, prefixArgs } = resolveBinary(opts);
   const cwd = opts.cwd ?? ZOMBIECTL_ROOT;

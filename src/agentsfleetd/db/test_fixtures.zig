@@ -52,7 +52,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 }
 
 /// Delete workspace. CASCADE removes everything that FKs `core.workspaces` —
-/// vault.secrets, integration_grants, agent_keys, memory_entries, zombies,
+/// vault.secrets, integration_grants, agent_keys, memory_entries, agents,
 /// and downstream telemetry / event rows.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
@@ -122,52 +122,52 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
 // M10_001: seedSpec, seedRun, teardownRuns, teardownSpecs removed.
 // Tables core.specs and core.runs were dropped in pipeline v1 removal.
 
-// ── Zombie helpers (M1_001 — event loop integration tests) ─────────────
+// ── Agent helpers (event loop integration tests) ─────────────
 
-/// Insert a minimal zombie row. Workspace must exist. Idempotent.
-pub fn seedZombie(
+/// Insert a minimal agent row. Workspace must exist. Idempotent.
+pub fn seedAgent(
     conn: *pg.Conn,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     workspace_id: []const u8,
     name: []const u8,
     config_json: []const u8,
     source_markdown: []const u8,
 ) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.zombies
+        \\INSERT INTO core.agents
         \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ zombie_id, workspace_id, name, source_markdown, config_json });
+    , .{ agent_id, workspace_id, name, source_markdown, config_json });
 }
 
-/// Insert a zombie session checkpoint. Zombie must exist. Idempotent.
-pub fn seedZombieSession(
+/// Insert a agent session checkpoint. Agent must exist. Idempotent.
+pub fn seedAgentSession(
     conn: *pg.Conn,
     session_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     context_json: []const u8,
 ) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.zombie_sessions
-        \\  (id, zombie_id, context_json, checkpoint_at, created_at, updated_at)
+        \\INSERT INTO core.agent_sessions
+        \\  (id, agent_id, context_json, checkpoint_at, created_at, updated_at)
         \\VALUES ($1, $2, $3, 0, 0, 0)
-        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\ON CONFLICT (agent_id) DO UPDATE
         \\  SET context_json = EXCLUDED.context_json
-    , .{ session_id, zombie_id, context_json });
+    , .{ session_id, agent_id, context_json });
 }
 
-/// Delete zombies for a workspace. Cascades to zombie_sessions (FK).
-pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
-    // Sessions first (FK to zombies), then zombies.
+/// Delete agents for a workspace. Cascades to agent_sessions (FK).
+pub fn teardownAgents(conn: *pg.Conn, workspace_id: []const u8) void {
+    // Sessions first (FK to agents), then agents.
     _ = conn.exec(
-        \\DELETE FROM core.zombie_sessions s
-        \\USING core.zombies z
-        \\WHERE s.zombie_id = z.id
+        \\DELETE FROM core.agent_sessions s
+        \\USING core.agents z
+        \\WHERE s.agent_id = z.id
         \\  AND z.workspace_id = $1
     , .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec(
-        "DELETE FROM core.zombies WHERE workspace_id = $1",
+        "DELETE FROM core.agents WHERE workspace_id = $1",
         .{workspace_id},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
@@ -232,7 +232,7 @@ pub fn seedPlatformProviderWithKey(
     try storeVaultJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.
-    const key_id = try id_format.generateZombieId(alloc);
+    const key_id = try id_format.generateAgentId(alloc);
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
@@ -256,7 +256,7 @@ pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agent_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 // ── Shared DB connection ────────────────────────────────────────────────

@@ -21,19 +21,19 @@ Commands:
   grant                         Manage integration grants
   tenant                        Tenant-scoped commands
   billing                       Tenant billing dashboard
-  install [options]             Register a zombie from a local skill bundle
-  zombie                        Zombie management subcommands
-  list [options]                List zombies in the active workspace (paginated)
-  status [zombie_id]            Show zombie status (workspace-wide if no id)
-  stop <zombie_id>              Halt the running session (resumable)
-  resume <zombie_id>            Resume from stopped or auto-paused
-  kill <zombie_id>              Mark terminal (irreversible)
-  delete <zombie_id>            Hard-delete a killed zombie
-  logs [options] [zombie_id]    Tail zombie activity
-  events [options] <zombie_id>  Page through historical events
-  steer <zombie_id> [message]   Send a message; stream the response
+  install [options]             Register a agent from a local skill bundle
+  agent                        Agent management subcommands
+  list [options]                List agents in the active workspace (paginated)
+  status [agent_id]            Show agent status (workspace-wide if no id)
+  stop <agent_id>              Halt the running session (resumable)
+  resume <agent_id>            Resume from stopped or auto-paused
+  kill <agent_id>              Mark terminal (irreversible)
+  delete <agent_id>            Hard-delete a killed agent
+  logs [options] [agent_id]    Tail agent activity
+  events [options] <agent_id>  Page through historical events
+  steer <agent_id> [message]   Send a message; stream the response
   credential                    Workspace credential vault
-  memory                        Inspect a zombie's durable memory (read-only)
+  memory                        Inspect a agent's durable memory (read-only)
   help [command]                display help for command
 
 Subcommands:
@@ -57,7 +57,7 @@ Subcommands:
   credential show
   credential list
   credential delete
-  zombie update
+  agent update
   memory list
   memory search
 

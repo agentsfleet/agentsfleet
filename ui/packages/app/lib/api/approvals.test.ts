@@ -40,8 +40,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 function gateFixture(over: Partial<ApprovalGate> = {}): ApprovalGate {
   return {
     gate_id: GATE_ID,
-    zombie_id: AGENTSFLEET_ID,
-    zombie_name: "approvals-a",
+    agent_id: AGENTSFLEET_ID,
+    agent_name: "approvals-a",
     workspace_id: WORKSPACE_ID,
     action_id: "act_001",
     tool_name: "write_repo",
@@ -79,17 +79,17 @@ describe("listApprovals", () => {
     expect(result.next_cursor).toBeNull();
   });
 
-  it("threads zombieId, gateKind, status, cursor, limit into the query string", async () => {
+  it("threads agentId, gateKind, status, cursor, limit into the query string", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], next_cursor: null }));
     await listApprovals(WORKSPACE_ID, TOKEN, {
       status: "pending",
-      zombieId: AGENTSFLEET_ID,
+      agentId: AGENTSFLEET_ID,
       gateKind: "cost_overrun",
       cursor: "cur_abc",
       limit: 25,
     });
     const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain(`zombie_id=${encodeURIComponent(AGENTSFLEET_ID)}`);
+    expect(url).toContain(`agent_id=${encodeURIComponent(AGENTSFLEET_ID)}`);
     expect(url).toContain("gate_kind=cost_overrun");
     expect(url).toContain("status=pending");
     expect(url).toContain("cursor=cur_abc");

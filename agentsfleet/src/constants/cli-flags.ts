@@ -11,8 +11,8 @@
 
 export const OPT_WORKSPACE = "workspace";
 export const OPT_WORKSPACE_ID = "workspace-id";
-export const OPT_ZOMBIE = "zombie";
-export const OPT_AGENTSFLEET_ID = "zombie-id";
+export const OPT_AGENT = "agent";
+export const OPT_AGENTSFLEET_ID = "agent-id";
 export const OPT_AGENT_ID = "agent-id";
 export const OPT_NAME = "name";
 export const OPT_DESCRIPTION = "description";

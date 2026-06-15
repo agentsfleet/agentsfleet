@@ -225,18 +225,18 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     const req_id = common.requestId(alloc);
     var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-    // Populate the webhook zombie slot before running the middleware
+    // Populate the webhook agent slot before running the middleware
     // chain. The webhook_sig + svix middlewares read it; all other
     // middlewares ignore the field.
     switch (matched) {
-        .receive_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .receive_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
-        .receive_svix_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .receive_svix_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
-        .github_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .github_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
         else => {},
     }

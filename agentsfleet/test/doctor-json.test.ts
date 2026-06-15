@@ -71,7 +71,7 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
     const err = bufferStream();
     const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok", service: "agentsfleetd" });
-      if (url.includes("/v1/workspaces/ws_test/zombies")) return jsonResponse({ items: [] });
+      if (url.includes("/v1/workspaces/ws_test/agents")) return jsonResponse({ items: [] });
       return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
     });
     const code = await runCli(["--json", "doctor"], {
@@ -142,7 +142,7 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
     const err = bufferStream();
     const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
-      if (url.includes("/v1/workspaces/ws_test/zombies")) {
+      if (url.includes("/v1/workspaces/ws_test/agents")) {
         return jsonResponse({ error: { code: "FORBIDDEN", message: "Workspace access denied" } }, 403);
       }
       throw new Error("unexpected request: " + url);

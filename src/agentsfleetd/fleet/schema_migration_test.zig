@@ -19,7 +19,7 @@ const EXPECTED_COLUMN_COUNT: i64 = 11;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
 
-// `uid id runner_id zombie_id workspace_id tenant_id event_id actor event_type
+// `uid id runner_id agent_id workspace_id tenant_id event_id actor event_type
 //  request_json event_created_at posture provider model metered_input_tokens
 //  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`

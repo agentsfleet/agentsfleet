@@ -13,7 +13,7 @@ const log = logging.scoped(.fleet_runner_events);
 pub const META_HOST_ID = "host_id";
 pub const META_SANDBOX_TIER = "sandbox_tier";
 pub const META_LEASE_ID = "lease_id";
-pub const META_AGENTSFLEET_ID = "zombie_id";
+pub const META_AGENTSFLEET_ID = "agent_id";
 pub const META_AGENTSFLEET_EVENT_ID = "event_id";
 pub const META_KIND = "kind";
 pub const META_FROM_ADMIN_STATE = "from_admin_state";
@@ -109,10 +109,10 @@ pub fn appendLeaseReleasedBestEffort(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,
-    zombie_id: []const u8,
-    zombie_event_id: []const u8,
+    agent_id: []const u8,
+    agent_event_id: []const u8,
 ) void {
-    appendLeaseReleased(pool, alloc, runner_id, lease_id, zombie_id, zombie_event_id) catch |err| {
+    appendLeaseReleased(pool, alloc, runner_id, lease_id, agent_id, agent_event_id) catch |err| {
         log.warn("lease_released_event_failed", .{ .runner_id = runner_id, .lease_id = lease_id, .err = @errorName(err) });
     };
 }
@@ -122,8 +122,8 @@ fn appendLeaseReleased(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,
-    zombie_id: []const u8,
-    zombie_event_id: []const u8,
+    agent_id: []const u8,
+    agent_event_id: []const u8,
 ) !void {
     const event_row_id = try id_format.generateRunnerEventId(alloc);
     defer alloc.free(event_row_id);
@@ -144,9 +144,9 @@ fn appendLeaseReleased(
         META_LEASE_ID,
         lease_id,
         META_AGENTSFLEET_ID,
-        zombie_id,
+        agent_id,
         META_AGENTSFLEET_EVENT_ID,
-        zombie_event_id,
+        agent_event_id,
     });
 }
 

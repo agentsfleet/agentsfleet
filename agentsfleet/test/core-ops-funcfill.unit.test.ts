@@ -5,7 +5,7 @@
 // Target: the runBindingCheck token-resolution-failure branch in
 // src/commands/core-ops.ts — a workspace IS selected (so the binding
 // check runs) but resolveAuthToken fails inside it, so the check folds
-// to ok=false WITHOUT issuing the zombies GET. That branch is otherwise
+// to ok=false WITHOUT issuing the agents GET. That branch is otherwise
 // unexercised because every other doctor test supplies a token.
 
 import { describe, test, expect } from "bun:test";

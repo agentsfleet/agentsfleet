@@ -5,13 +5,13 @@ import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { listZombieEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
-  listZombieEventsActionMock: vi.fn(),
+const { listAgentEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
+  listAgentEventsActionMock: vi.fn(),
   listWorkspaceEventsActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(dashboard)/events/actions", () => ({
-  listZombieEventsAction: listZombieEventsActionMock,
+  listAgentEventsAction: listAgentEventsActionMock,
   listWorkspaceEventsAction: listWorkspaceEventsActionMock,
 }));
 
@@ -37,7 +37,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
     event_id: "evt_1",
-    zombie_id: "zomb_1234567890ab",
+    agent_id: "zomb_1234567890ab",
     workspace_id: "ws_1",
     actor: "alice@example.com",
     event_type: "chat",
@@ -58,11 +58,11 @@ function row(over: Partial<EventRow> = {}): EventRow {
 function renderList(
   initial: EventsPage,
   scope:
-    | { kind: "zombie"; workspaceId: string; zombieId: string }
+    | { kind: "agent"; workspaceId: string; agentId: string }
     | { kind: "workspace"; workspaceId: string } = {
-    kind: "zombie",
+    kind: "agent",
     workspaceId: "ws_1",
-    zombieId: "zomb_1",
+    agentId: "zomb_1",
   },
   extra: { emptyTitle?: string; emptyDescription?: string } = {},
 ) {
@@ -85,7 +85,7 @@ describe("EventsList", () => {
   it("respects custom empty copy", () => {
     renderList(
       { items: [], next_cursor: null },
-      { kind: "zombie", workspaceId: "ws_1", zombieId: "zomb_1" },
+      { kind: "agent", workspaceId: "ws_1", agentId: "zomb_1" },
       { emptyTitle: "Nothing Here", emptyDescription: "yet" },
     );
     expect(screen.getByText(/Nothing Here/)).toBeTruthy();
@@ -127,10 +127,10 @@ describe("EventsList", () => {
     expect(txt).not.toMatch(/\s\s/);
   });
 
-  it("renders short zombie id only in workspace scope, full label in aria", () => {
+  it("renders short agent id only in workspace scope, full label in aria", () => {
     renderList(
       {
-        items: [row({ zombie_id: "zomb_abcdefghijkl" })],
+        items: [row({ agent_id: "zomb_abcdefghijkl" })],
         next_cursor: null,
       },
       { kind: "workspace", workspaceId: "ws_1" },
@@ -139,9 +139,9 @@ describe("EventsList", () => {
     expect(screen.getByText(/zomb…ijkl/)).toBeTruthy();
   });
 
-  it("does not render zombie id suffix in zombie scope", () => {
+  it("does not render agent id suffix in agent scope", () => {
     renderList({
-      items: [row({ zombie_id: "zomb_abcdefghijkl" })],
+      items: [row({ agent_id: "zomb_abcdefghijkl" })],
       next_cursor: null,
     });
     expect(screen.queryByText(/zomb…ijkl/)).toBeNull();
@@ -150,7 +150,7 @@ describe("EventsList", () => {
   it("shortId returns the id verbatim when length <= 12", () => {
     renderList(
       {
-        items: [row({ zombie_id: "abc12345" })],
+        items: [row({ agent_id: "abc12345" })],
         next_cursor: null,
       },
       { kind: "workspace", workspaceId: "ws_1" },
@@ -175,8 +175,8 @@ describe("EventsList", () => {
     expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}(\s?[ap]m)?$/i);
   });
 
-  it("loadMore (zombie scope) appends items and updates cursor", async () => {
-    listZombieEventsActionMock.mockResolvedValueOnce({
+  it("loadMore (agent scope) appends items and updates cursor", async () => {
+    listAgentEventsActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
         items: [row({ event_id: "p2", response_text: "page two" })],
@@ -189,8 +189,8 @@ describe("EventsList", () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listZombieEventsActionMock).toHaveBeenCalled());
-    expect(listZombieEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
+    await waitFor(() => expect(listAgentEventsActionMock).toHaveBeenCalled());
+    expect(listAgentEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
       cursor: "cur_1",
     });
     await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
@@ -220,7 +220,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
-    listZombieEventsActionMock.mockResolvedValueOnce({
+    listAgentEventsActionMock.mockResolvedValueOnce({
       ok: false,
       error: "Not authenticated",
       status: 401,
@@ -234,7 +234,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore surfaces error message when the action returns an error", async () => {
-    listZombieEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
+    listAgentEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
@@ -244,7 +244,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore falls back to default message when the action returns an empty error", async () => {
-    listZombieEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    listAgentEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));

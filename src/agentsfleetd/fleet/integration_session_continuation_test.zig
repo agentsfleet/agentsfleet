@@ -1,20 +1,20 @@
-// Session-continuation integration over the runner control plane: the zombie's
-// `core.zombie_sessions` checkpoint threads through a multi-stage lease, and a
+// Session-continuation integration over the runner control plane: the agent's
+// `core.agent_sessions` checkpoint threads through a multi-stage lease, and a
 // lease whose durable row was purged before renew is refused cleanly.
 //
 // Two journeys via the real HTTP router + runner_bearer middleware:
 //
-//   1. Continuation: a zombie carries a prior session checkpoint. A runner
+//   1. Continuation: a agent carries a prior session checkpoint. A runner
 //      leases the event, holds (renew), then reports — the report's checkpoint
 //      becomes the session's new resume cursor, so `context_json` reflects the
 //      final report state, not the seed. Session context survives the staged
 //      lease > renew > report continuation.
 //
 //   2. Mid-lease unavailability: after a lease is issued, its durable
-//      `runner_leases` row is purged (the zombie/session torn down out from under
+//      `runner_leases` row is purged (the agent/session torn down out from under
 //      the holder). A renew then loads no lease and is refused 404 UZ-RUN-006 —
-//      no extend, no orphaned active lease left behind. (`runner_leases.zombie_id`
-//      is not an FK to `core.zombies`, so the purge is modeled by removing the
+//      no extend, no orphaned active lease left behind. (`runner_leases.agent_id`
+//      is not an FK to `core.agents`, so the purge is modeled by removing the
 //      durable lease state itself — the row the renew path actually reads.)
 //
 // Mirrors control_plane_integration_test.zig's harness wiring + seed helpers.
@@ -29,7 +29,7 @@ const api_key = @import("../auth/api_key.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 
@@ -83,9 +83,9 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{ RUNNER_ID, hash[0..] });
 }
 
-fn seedActiveZombie(conn: *pg.Conn, context_json: []const u8) !void {
-    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "session-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, context_json);
+fn seedActiveAgent(conn: *pg.Conn, context_json: []const u8) !void {
+    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "session-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, context_json);
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -98,10 +98,10 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_ID);
-    const id = try h.queue.xaddZombieEvent(.{
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
+    const id = try h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = AGENTSFLEET_ID,
+        .agent_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -170,17 +170,17 @@ fn reportOnce(h: *TestHarness, lease_id: []const u8, event_id: []const u8, fenci
 
 /// Read the session's resume cursor. alloc-dup'd; caller frees.
 fn sessionContext(conn: *pg.Conn, alloc: std.mem.Allocator) ![]const u8 {
-    var q = PgQuery.from(try conn.query("SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID}));
+    var q = PgQuery.from(try conn.query("SELECT context_json::text FROM core.agent_sessions WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = try q.next() orelse return error.SessionRowMissing;
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
-/// Count active leases still referencing the zombie — proves no orphan after a
+/// Count active leases still referencing the agent — proves no orphan after a
 /// purge.
 fn activeLeaseCount(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
-        "SELECT count(*)::bigint FROM fleet.runner_leases WHERE zombie_id = $1::uuid AND status = 'active'",
+        "SELECT count(*)::bigint FROM fleet.runner_leases WHERE agent_id = $1::uuid AND status = 'active'",
         .{AGENTSFLEET_ID},
     ));
     defer q.deinit();
@@ -199,12 +199,12 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM core.agent_events WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownZombies(conn, WORKSPACE_ID);
+    base.teardownAgents(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }
@@ -227,7 +227,7 @@ test "session context advances across a staged lease then renew then report" {
     try fundLargeBalance(conn);
     try seedRunner(conn);
     // Seed a PRIOR checkpoint so we can prove the report advances (not seeds) it.
-    try seedActiveZombie(conn, SEED_CONTEXT);
+    try seedActiveAgent(conn, SEED_CONTEXT);
     try publishFreshEvent(h);
 
     // The seed cursor is present before the run.
@@ -270,16 +270,16 @@ test "renew is refused 404 when the lease was purged after issue, no orphan left
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn);
-    try seedActiveZombie(conn, "{}");
+    try seedActiveAgent(conn, "{}");
     try publishFreshEvent(h);
 
     const lv = try leaseOnce(h);
     defer lv.free();
     try std.testing.expect(lv.present);
 
-    // The zombie/session is torn down mid-lease: purge the durable lease row the
-    // renew path reads (runner_leases.zombie_id is not an FK to core.zombies, so
-    // a zombie delete alone would not touch it — we remove the lease state the
+    // The agent/session is torn down mid-lease: purge the durable lease row the
+    // renew path reads (runner_leases.agent_id is not an FK to core.agents, so
+    // a agent delete alone would not touch it — we remove the lease state the
     // renew actually loads).
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{lv.lease_id.?});
 
@@ -289,6 +289,6 @@ test "renew is refused 404 when the lease was purged after issue, no orphan left
     try renew_resp.expectStatus(.not_found);
     try renew_resp.expectErrorCode("UZ-RUN-006");
 
-    // No orphaned active lease remains for the zombie.
+    // No orphaned active lease remains for the agent.
     try std.testing.expectEqual(@as(i64, 0), try activeLeaseCount(conn));
 }

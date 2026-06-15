@@ -163,7 +163,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   // URL drives the actual outbound fetch through the runCli dispatch.
   describe("full precedence matrix", () => {
     const FLAG = "https://flag.example";
-    const ZENV = "https://zombie-env.example";
+    const ZENV = "https://agent-env.example";
     const AENV = "https://api-url-env.example";
     const CREDS = "https://saved-creds.example";
     const DEFAULT = "https://api.agentsfleet.net";

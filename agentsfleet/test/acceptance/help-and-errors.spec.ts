@@ -20,7 +20,7 @@ import {
   AUTH_REQUIRED_REPRESENTATIVE,
 } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { runZombiectl, composeEnv } from "./fixtures/cli.js";
+import { runAgentctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
   expectInvalidSubcommand,
@@ -63,7 +63,7 @@ describe("help triplet", () => {
 
   it("all four forms exit 0 and contain the help banner", async () => {
     const results = await Promise.all(
-      invocations.map((args) => runZombiectl(args, { env: emptyEnv() })),
+      invocations.map((args) => runAgentctl(args, { env: emptyEnv() })),
     );
     invocations.forEach((args, i) => {
       const r = results[i];
@@ -75,7 +75,7 @@ describe("help triplet", () => {
 
   it("all four forms emit byte-identical stripped stdout", async () => {
     const results = await Promise.all(
-      invocations.map((args) => runZombiectl(args, { env: emptyEnv() })),
+      invocations.map((args) => runAgentctl(args, { env: emptyEnv() })),
     );
     const stripped = results.map((r) => stripAnsi(r.stdout));
     const first = stripped[0];
@@ -92,7 +92,7 @@ describe("help triplet", () => {
 
 describe("--version", () => {
   it("--version exits 0 with stdout containing the package.json version", async () => {
-    const result = await runZombiectl(["--version"], { env: emptyEnv() });
+    const result = await runAgentctl(["--version"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(
       result.stdout.includes(pkgVersion),
@@ -101,13 +101,13 @@ describe("--version", () => {
   });
 
   it("-v is equivalent to --version", async () => {
-    const result = await runZombiectl(["-v"], { env: emptyEnv() });
+    const result = await runAgentctl(["-v"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(result.stdout.includes(pkgVersion));
   });
 
   it("--version --json emits parseable JSON with the version field", async () => {
-    const result = await runZombiectl(["--version", "--json"], { env: emptyEnv() });
+    const result = await runAgentctl(["--version", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     const parsed = JSON.parse(result.stdout.trim()) as { version: string };
     assert.equal(parsed.version, pkgVersion);
@@ -126,7 +126,7 @@ describe("unknown commands", () => {
   });
 
   it("unknown top-level command exits non-zero with suggest stem", async () => {
-    const result = await runZombiectl(["pogo"], { env: emptyEnv() });
+    const result = await runAgentctl(["pogo"], { env: emptyEnv() });
     assert.notEqual(result.code, 0);
     assert.match(result.stderr.toLowerCase(), /unknown|did you mean|usage/);
   });
@@ -158,7 +158,7 @@ describe("unknown commands", () => {
 describe("auth guard short-circuits before any network call", () => {
   for (const args of AUTH_REQUIRED_REPRESENTATIVE) {
     it(`"${args.join(" ")}" exits 1 with "not authenticated", no ECONNREFUSED`, async () => {
-      const result = await runZombiectl(args, { env: emptyEnv() });
+      const result = await runAgentctl(args, { env: emptyEnv() });
       assert.equal(result.code, 1, `expected exit 1; got ${result.code}; stderr=${result.stderr}`);
       const merged = `${result.stderr}\n${result.stdout}`.toLowerCase();
       assert.match(merged, /not authenticated|authentication required|please.*log/);
@@ -173,11 +173,11 @@ describe("validate.js error stem", () => {
   // that mismatch with the backend's strict uuidv7 is the motivation for
   // the optional library swap covered in the lifecycle suite.
   it("validateRequiredId is reachable and emits the invalid-format stem", () => {
-    const result = validateModule.validateRequiredId("abc def", "zombie_id");
+    const result = validateModule.validateRequiredId("abc def", "agent_id");
     assert.equal(result.ok, false);
     assert.match(
       result.message,
-      /invalid zombie_id: expected/i,
+      /invalid agent_id: expected/i,
       `unexpected stem: ${result.message}`,
     );
   });

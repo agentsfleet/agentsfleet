@@ -1,7 +1,7 @@
 // Integration Grant CLI commands — Effect-shaped.
 //
-// agentsfleet grant list   --zombie <id>              → list grants for a zombie
-// agentsfleet grant delete --zombie <id> <grant_id>   → revoke a grant immediately
+// agentsfleet grant list   --agent <id>              → list grants for a agent
+// agentsfleet grant delete --agent <id> <grant_id>   → revoke a grant immediately
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -57,8 +57,8 @@ const requireValidId = (
 };
 
 export const grantListEffectFromArgs = (
-  zombieIdPositional: string | undefined,
-  zombieIdFlag: string | undefined,
+  agentIdPositional: string | undefined,
+  agentIdFlag: string | undefined,
 ): Effect.Effect<
   void,
   CliError,
@@ -70,14 +70,14 @@ export const grantListEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const zombieId = yield* requireFlag(
-      zombieIdFlag ?? zombieIdPositional,
-      "grant list requires --zombie <id>",
-      "pass --zombie <zombie_id>",
+    const agentId = yield* requireFlag(
+      agentIdFlag ?? agentIdPositional,
+      "grant list requires --agent <id>",
+      "pass --agent <agent_id>",
     );
 
     const res = yield* http.request<GrantListResponse>({
-      path: wsGrantsListPath(workspaceId, zombieId),
+      path: wsGrantsListPath(workspaceId, agentId),
       token,
     });
     const grants = res.items ?? [];
@@ -113,7 +113,7 @@ export const grantListEffectFromArgs = (
   });
 
 export const grantDeleteEffectFromArgs = (
-  zombieIdFlag: string | undefined,
+  agentIdFlag: string | undefined,
   grantIdPositional: string | undefined,
 ): Effect.Effect<
   void,
@@ -126,12 +126,12 @@ export const grantDeleteEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const zombieIdRaw = yield* requireFlag(
-      zombieIdFlag,
+    const agentIdRaw = yield* requireFlag(
+      agentIdFlag,
       GRANT_DELETE_USAGE_ERROR,
-      "pass --zombie <zombie_id> <grant_id>",
+      "pass --agent <agent_id> <grant_id>",
     );
-    const zombieId = yield* requireValidId(zombieIdRaw, "zombie_id");
+    const agentId = yield* requireValidId(agentIdRaw, "agent_id");
     const grantIdRaw = yield* requireFlag(
       grantIdPositional,
       GRANT_DELETE_USAGE_ERROR,
@@ -140,7 +140,7 @@ export const grantDeleteEffectFromArgs = (
     const grantId = yield* requireValidId(grantIdRaw, GRANT_ID_FIELD);
 
     yield* http.request<unknown>({
-      path: wsGrantPath(workspaceId, zombieId, grantId),
+      path: wsGrantPath(workspaceId, agentId, grantId),
       method: "DELETE",
       token,
     });
@@ -149,8 +149,8 @@ export const grantDeleteEffectFromArgs = (
       yield* output.printJson({ deleted: true, grant_id: grantId });
     } else {
       yield* output.success(
-        `Grant ${grantId} deleted. The zombie can no longer use this integration; further attempts will be denied.`,
+        `Grant ${grantId} deleted. The agent can no longer use this integration; further attempts will be denied.`,
       );
     }
   });
-const GRANT_DELETE_USAGE_ERROR = "grant delete requires --zombie <id> <grant_id>" as const;
+const GRANT_DELETE_USAGE_ERROR = "grant delete requires --agent <id> <grant_id>" as const;

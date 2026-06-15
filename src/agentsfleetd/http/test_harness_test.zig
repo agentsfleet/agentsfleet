@@ -3,7 +3,7 @@
 // Scope: Request builder state + Response assertion helpers. Tests that touch
 // only in-memory state — no server, no DB, no network. `.send()` and
 // `TestHarness.start/deinit` are covered by the integration suites (tenant_provider,
-// rbac, telemetry, dashboard, zombie_steer, tenant_api_keys, webhook).
+// rbac, telemetry, dashboard, agent_steer, tenant_api_keys, webhook).
 //
 // Request.init takes *TestHarness but only reads `harness.alloc` unless
 // `.send()` is called. Tests build a partial harness with only `alloc` set.

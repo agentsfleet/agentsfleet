@@ -47,7 +47,7 @@ const TOP_NAV: NavEntry[] = [
 
 // The live work — what the agents do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Agents", href: "/zombies", icon: SkullIcon },
+  { label: "Agents", href: "/agents", icon: SkullIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];

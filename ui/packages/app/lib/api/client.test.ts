@@ -74,17 +74,17 @@ describe("request", () => {
       ok: false,
       status: 409,
       json: async () => ({
-        docs_uri: "https://docs.agentsfleet.net/error-codes#UZ-ZMB-010",
+        docs_uri: "https://docs.agentsfleet.net/error-codes#UZ-AGT-010",
         title: "Transition not allowed",
         detail: "already stopped",
-        error_code: "UZ-ZMB-010",
+        error_code: "UZ-AGT-010",
         request_id: "req_1",
       }),
     });
     const err = await request("/v1/test", { method: "DELETE" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(409);
-    expect(err.code).toBe("UZ-ZMB-010");
+    expect(err.code).toBe("UZ-AGT-010");
     expect(err.message).toBe("already stopped");
     expect(err.requestId).toBe("req_1");
   });

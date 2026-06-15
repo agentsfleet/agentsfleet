@@ -37,11 +37,11 @@ type Props = {
   workspaceId: string;
   initialItems: ApprovalGate[];
   initialCursor: string | null;
-  /** When set, the list is filtered server-side by this zombie. */
-  zombieId?: string;
+  /** When set, the list is filtered server-side by this agent. */
+  agentId?: string;
 };
 
-export default function ApprovalsList({ workspaceId, initialItems, initialCursor, zombieId }: Props) {
+export default function ApprovalsList({ workspaceId, initialItems, initialCursor, agentId }: Props) {
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [filter, setFilter] = useState<string>("");
@@ -53,7 +53,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     if (!q) return items;
     return items.filter(
       (g) =>
-        g.zombie_name.toLowerCase().includes(q) ||
+        g.agent_name.toLowerCase().includes(q) ||
         g.tool_name.toLowerCase().includes(q) ||
         g.action_name.toLowerCase().includes(q) ||
         g.gate_kind.toLowerCase().includes(q) ||
@@ -78,7 +78,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const alreadyPaged = () => hasLoadedMore.current;
     const tick = async () => {
       if (alreadyPaged()) return;
-      const result = await listApprovalsAction(workspaceId, { limit: 50, zombieId });
+      const result = await listApprovalsAction(workspaceId, { limit: 50, agentId });
       if (!alive || alreadyPaged()) return;
       if (!result.ok) {
         // 401 is terminal — silently retrying for 5s forever leaves the
@@ -100,14 +100,14 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       alive = false;
       clearInterval(id);
     };
-  }, [workspaceId, zombieId]);
+  }, [workspaceId, agentId]);
 
   // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
   // render guard on the trigger), so no in-function null check is needed.
   function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
-      const result = await listApprovalsAction(workspaceId, { cursor, zombieId, limit: 50 });
+      const result = await listApprovalsAction(workspaceId, { cursor, agentId, limit: 50 });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -223,8 +223,8 @@ function ApprovalCard({
               </Link>
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Link href={`/zombies/${gate.zombie_id}`} className="font-medium hover:underline">
-                {gate.zombie_name}
+              <Link href={`/agents/${gate.agent_id}`} className="font-medium hover:underline">
+                {gate.agent_name}
               </Link>
               {gate.gate_kind ? <Badge variant="default">{gate.gate_kind}</Badge> : null}
               <span>requested {ageMin}m ago</span>

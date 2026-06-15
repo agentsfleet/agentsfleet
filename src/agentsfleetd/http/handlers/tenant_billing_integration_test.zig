@@ -12,7 +12,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../auth/middleware/mod.zig");
 
 const tenant_billing = @import("../../state/tenant_billing.zig");
-const metering = @import("../../zombie/metering.zig");
+const metering = @import("../../agent/metering.zig");
 
 const harness_mod = @import("../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -60,19 +60,19 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
         \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
-    // activity_events.zombie_id carries a NOT NULL FK to core.zombies —
+    // activity_events.agent_id carries a NOT NULL FK to core.agents —
     // seed a minimal row so logEventOnConn writes do not fail.
     _ = try conn.exec(
-        \\INSERT INTO core.zombies
+        \\INSERT INTO core.agents
         \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
         \\   status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'zombie-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
+        \\VALUES ($1::uuid, $2::uuid, 'agent-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
         \\ON CONFLICT (id) DO NOTHING
     , .{ TEST_AGENTSFLEET_ID, TEST_WORKSPACE_ID, now_ms });
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agents WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});

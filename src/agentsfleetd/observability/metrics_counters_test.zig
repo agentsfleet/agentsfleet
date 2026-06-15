@@ -1,7 +1,7 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 comptime {
-    _ = @import("metrics_zombie.zig");
+    _ = @import("metrics_agent.zig");
 }
 
 // ── SSE hub counters (dropped frames + reconnects) ──────────────────────
@@ -34,10 +34,10 @@ test "renderPrometheus carries the SSE hub counter lines with snapshot values" {
     const output = try render.renderPrometheus(alloc, false);
     defer alloc.free(output);
     var dropped_buf: [128]u8 = undefined;
-    const dropped = try std.fmt.bufPrint(&dropped_buf, "zombie_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
+    const dropped = try std.fmt.bufPrint(&dropped_buf, "agent_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
     try std.testing.expect(std.mem.indexOf(u8, output, dropped) != null);
     var reconnects_buf: [128]u8 = undefined;
-    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "zombie_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
+    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "agent_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
     try std.testing.expect(std.mem.indexOf(u8, output, reconnects) != null);
 }
 

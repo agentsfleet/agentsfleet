@@ -3,7 +3,7 @@ name: m47-gate-fixture
 description: |
   Synthetic fixture used by the approval-inbox integration tests. NOT a public
   sample — lives under samples/fixtures/. Promote to samples/ only if and when
-  a real public zombie shape with gated destructive operations ships.
+  a real public agent shape with gated destructive operations ships.
 gates:
   - tool: write_repo
     action: '*'
@@ -15,7 +15,7 @@ gates:
 This skill exists solely to exercise the approval-gate path under integration
 test. It declares a single gated action — any `write_repo:*` tool call requires
 operator approval. The test harness drives a synthetic event whose tool/action
-matches this rule, observes a row land in `core.zombie_approval_gates`, and
+matches this rule, observes a row land in `core.agent_approval_gates`, and
 walks the approve / deny / dual-channel-dedup / sweeper-timeout flows through
 the dashboard inbox endpoints.
 

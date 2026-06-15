@@ -1,6 +1,6 @@
 // Mirrors of the server's published memory limit constants — same
 // identifiers as src/agentsfleetd/http/handlers/memory/helpers.zig and the
-// OpenAPI bounds on list_zombie_memories (RULE UFS: cross-runtime constants
+// OpenAPI bounds on list_agent_memories (RULE UFS: cross-runtime constants
 // share a name). The client validates against the cap and documents the
 // defaults in help text; it never invents its own caps, and it only
 // forwards `limit` when the operator passed one (the server applies its

@@ -25,26 +25,26 @@ components:
           type: string
           format: uri
           description: Stable link to documentation for this error code
-          example: https://docs.usezombie.com/error-codes#UZ-ZMB-009
+          example: https://docs.usezombie.com/error-codes#UZ-AGT-009
         title:
           type: string
           description: Short human-readable label, same for every occurrence of this code
-          example: Zombie not found
+          example: Agent not found
         detail:
           type: string
           description: Instance-specific context describing what went wrong
-          example: No zombie with id 'abc123' in this workspace.
+          example: No agent with id 'abc123' in this workspace.
         error_code:
           type: string
           description: Machine-readable error code
-          example: UZ-ZMB-009
+          example: UZ-AGT-009
         request_id:
           type: string
           description: Correlation ID for this request
         current_state:
           type: string
           description: Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that
-            forbade the requested transition, e.g. `paused` when steering a paused zombie (UZ-ZMB-012).
+            forbade the requested transition, e.g. `paused` when steering a paused agent (UZ-AGT-012).
           example: paused
     TenantApiKey:
       type: object
@@ -78,13 +78,13 @@ components:
       type: object
       required:
       - agent_key_id
-      - zombie_id
+      - agent_id
       - name
       - created_at
       properties:
         agent_key_id:
           type: string
-        zombie_id:
+        agent_id:
           type: string
           format: uuid
         name:
@@ -192,7 +192,7 @@ components:
           type: boolean
           description: True if the Redis queue backend is reachable
       additionalProperties: false
-    ZombieSummary:
+    AgentSummary:
       type: object
       required:
       - id
@@ -225,10 +225,10 @@ components:
           nullable: true
           description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
-            $ref: '#/components/schemas/ZombieTrigger'
-    ZombieTrigger:
+            $ref: '#/components/schemas/AgentTrigger'
+    AgentTrigger:
       type: object
-      description: A single trigger projected into the zombie list row.
+      description: A single trigger projected into the agent list row.
       oneOf:
       - type: object
         required:

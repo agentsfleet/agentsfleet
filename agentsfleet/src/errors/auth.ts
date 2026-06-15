@@ -10,7 +10,7 @@
 // derived variants additionally carry an optional requestId so the
 // dispatcher can render `request_id:` alongside the detail for support
 // workflows — mirrors AuthError's existing requestId convention. The
-// reference has a single field shape; zombie needs two (with/without
+// reference has a single field shape; agent needs two (with/without
 // requestId), hence two factories over the reference's one.
 
 import { Data } from "effect";

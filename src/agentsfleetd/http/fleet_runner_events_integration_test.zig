@@ -9,7 +9,7 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -112,15 +112,15 @@ fn seedFleetWork(conn: anytype) !void {
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
     try seedRunner(conn);
-    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "runner-events-zombie", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
+    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "runner-events-agent", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_ID);
-    const id = try h.queue.xaddZombieEvent(.{
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
+    const id = try h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = AGENTSFLEET_ID,
+        .agent_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:runner-events",
         .event_type = .chat,
@@ -211,7 +211,7 @@ fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup runner ignored: {s}", .{@errorName(err)});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownZombies(conn, WORKSPACE_ID);
+    base.teardownAgents(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }

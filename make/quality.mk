@@ -91,8 +91,8 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/state/topology.zig \
 	src/types.zig \
 	src/types/id_format.zig \
-	src/zombie/approval_gate.zig \
-	src/zombie/config.zig
+	src/agent/approval_gate.zig \
+	src/agent/config.zig
 
 ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
 ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$

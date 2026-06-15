@@ -13,9 +13,9 @@ describe("agent copy constants", () => {
     expect(AGENT_DEFINITION).toMatch(/not a one-shot prompt/i);
   });
 
-  it("names the product 'agent', never the retired noun 'zombie'", () => {
-    expect(AGENT_DEFINITION.toLowerCase()).not.toContain("zombie");
-    expect(AGENT_SHORT_GLOSS.toLowerCase()).not.toContain("zombie");
+  it("names the product 'agent', never the retired noun 'agent'", () => {
+    expect(AGENT_DEFINITION.toLowerCase()).not.toContain("agent");
+    expect(AGENT_SHORT_GLOSS.toLowerCase()).not.toContain("agent");
   });
 
   it("AGENT_SHORT_GLOSS is a one-liner naming the agent", () => {

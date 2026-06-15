@@ -1,5 +1,5 @@
 // RBAC integration tests — role enforcement on billing and
-// zombie-lifecycle endpoints over the live HTTP surface.
+// agent-lifecycle endpoints over the live HTTP surface.
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise via
 // `TestHarness.start` returning `error.SkipZigTest`.
@@ -80,7 +80,7 @@ fn cleanupSeedData(conn: *pg.Conn) !void {
     // narrow-clean now that workspace-scoped billing audit tables are gone.
 }
 
-// ── Test: role gates for admin + zombie-lifecycle; 404 pins for removed billing ───
+// ── Test: role gates for admin + agent-lifecycle; 404 pins for removed billing ───
 
 test "integration: RBAC endpoints enforce operator and admin roles over live HTTP" {
     const alloc = std.testing.allocator;
@@ -117,11 +117,11 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try r.expectStatus(.ok);
     }
 
-    // RULE BIL regression — destructive lifecycle (PATCH zombie status =
+    // RULE BIL regression — destructive lifecycle (PATCH agent status =
     // stopped/active/killed) fires workspace_guards.enforce(.minimum_role
-    // = .operator) BEFORE any zombie lookup, so a well-formed-but-
-    // nonexistent zombie_id yields 403 under TEST_USER_TOKEN.
-    const stop_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb", .{TEST_WORKSPACE_ID});
+    // = .operator) BEFORE any agent lookup, so a well-formed-but-
+    // nonexistent agent_id yields 403 under TEST_USER_TOKEN.
+    const stop_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb", .{TEST_WORKSPACE_ID});
     defer alloc.free(stop_path);
     {
         var req = h.request(.PATCH, stop_path);
@@ -139,7 +139,7 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/events",
         "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/scale",
         "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/billing/summary",
-        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/zombies/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary",
+        "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a71bb/billing/summary",
         "/v1/workspaces/" ++ TEST_WORKSPACE_ID ++ "/scoring/config",
     };
     for (removed_paths) |path| {

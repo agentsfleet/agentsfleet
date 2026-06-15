@@ -56,8 +56,8 @@ pub const ApiErrorWithContext = events.ApiErrorWithContext;
 pub const WorkspaceCreated = events.WorkspaceCreated;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
-pub const ZombieTriggered = events.ZombieTriggered;
-pub const ZombieCompleted = events.ZombieCompleted;
+pub const AgentTriggered = events.AgentTriggered;
+pub const AgentCompleted = events.AgentCompleted;
 pub const SignupBootstrapped = events.SignupBootstrapped;
 
 // ── Backends ────────────────────────────────────────────────────────

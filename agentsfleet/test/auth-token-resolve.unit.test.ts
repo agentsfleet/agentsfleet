@@ -19,10 +19,10 @@ describe("resolveAuthTokenForCli", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "file-tok",
-        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "agent-tok" }),
         isTty: true,
       }),
-    ).toEqual({ token: "zombie-tok", source: "zombie_env" });
+    ).toEqual({ token: "agent-tok", source: "agent_env" });
   });
 
   test("TTY: file token used when AGENTSFLEET_TOKEN unset", () => {
@@ -35,7 +35,7 @@ describe("resolveAuthTokenForCli", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: "file-tok",
-        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "agent-tok" }),
         isTty: false,
       }),
     ).toEqual({ token: "file-tok", source: "file" });
@@ -45,10 +45,10 @@ describe("resolveAuthTokenForCli", () => {
     expect(
       resolveAuthTokenForCli({
         fileToken: null,
-        env: env({ AGENTSFLEET_TOKEN: "zombie-tok" }),
+        env: env({ AGENTSFLEET_TOKEN: "agent-tok" }),
         isTty: false,
       }),
-    ).toEqual({ token: "zombie-tok", source: "zombie_env" });
+    ).toEqual({ token: "agent-tok", source: "agent_env" });
   });
 
   test("whitespace-only AGENTSFLEET_TOKEN is treated as unset (falls to file)", () => {
@@ -68,7 +68,7 @@ describe("resolveAuthTokenForCli", () => {
         env: env({ AGENTSFLEET_TOKEN: "  padded  " }),
         isTty: true,
       }),
-    ).toEqual({ token: "padded", source: "zombie_env" });
+    ).toEqual({ token: "padded", source: "agent_env" });
   });
 
   test("empty-string file token equivalent to unset (falls to AGENTSFLEET_TOKEN)", () => {
@@ -78,6 +78,6 @@ describe("resolveAuthTokenForCli", () => {
         env: env({ AGENTSFLEET_TOKEN: "fallback" }),
         isTty: false,
       }),
-    ).toEqual({ token: "fallback", source: "zombie_env" });
+    ).toEqual({ token: "fallback", source: "agent_env" });
   });
 });

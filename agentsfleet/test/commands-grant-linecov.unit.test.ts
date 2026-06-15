@@ -165,7 +165,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
 });
 
 describe("grantDeleteEffectFromArgs id validation branch", () => {
-  test("a malformed zombie id fails with ValidationError carrying the uuidv7 hint", async () => {
+  test("a malformed agent id fails with ValidationError carrying the uuidv7 hint", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
       provideAll(grantDeleteEffectFromArgs("not-a-uuid", AGENTSFLEET_ID), {
@@ -179,12 +179,12 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
       // The failure is the typed ValidationError minted by requireValidId.
       const text = String(exit.cause);
       expect(text).toContain("ValidationError");
-      expect(text).toContain("invalid zombie_id");
+      expect(text).toContain("invalid agent_id");
       expect(text).toContain("pass a valid uuidv7");
     }
   });
 
-  test("a valid zombie id but malformed grant id also fails validation", async () => {
+  test("a valid agent id but malformed grant id also fails validation", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
       provideAll(grantDeleteEffectFromArgs(AGENTSFLEET_ID, "bad-grant"), {

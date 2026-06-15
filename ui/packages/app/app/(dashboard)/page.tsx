@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@agentsfleet/design-system";
-import { listZombies, AGENTSFLEET_STATUS } from "@/lib/api/zombies";
+import { listAgents, AGENTSFLEET_STATUS } from "@/lib/api/agents";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
@@ -24,17 +24,17 @@ export async function StatusTiles() {
   // Request the server max (100) so the Active/Paused/Stopped tiles don't
   // silently under-report for workspaces above the 20-default page size.
   // A dedicated summary endpoint will replace this client-side rollup once it
-  // ships; until then 100 matches what the /zombies list page uses.
-  const [zombies, billing] = await Promise.all([
-    listZombies(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
+  // ships; until then 100 matches what the /agents list page uses.
+  const [agents, billing] = await Promise.all([
+    listAgents(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
     getTenantBilling(token).catch(() => null),
   ]);
 
-  const active = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
-  const paused = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
-  const stopped = zombies.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
+  const active = agents.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
+  const paused = agents.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
+  const stopped = agents.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
-  if (zombies.length === 0) {
+  if (agents.length === 0) {
     return (
       <>
         <ExhaustionBanner billing={billing} />
@@ -78,7 +78,7 @@ function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
         command="agentsfleet install --from ./platform-ops"
         actions={[
           { label: "Read the docs", to: "https://docs.agentsfleet.net/quickstart", variant: "default", external: true },
-          { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },
+          { label: "Or paste SKILL.md manually", to: "/agents/new", variant: "ghost" },
         ]}
       />
     </Section>

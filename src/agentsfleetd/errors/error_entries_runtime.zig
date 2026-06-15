@@ -49,9 +49,9 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
     e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets an agent that belongs to a different workspace. " ++
-        "Each agent's memory is scoped to its own zombie_id; cross-agent access is not permitted."),
-    e("UZ-MEM-002", .not_found, "Agent not found for memory op", "The zombie_id does not exist or does not belong to the requesting workspace. " ++
-        "Verify the zombie_id and workspace scope."),
+        "Each agent's memory is scoped to its own agent_id; cross-agent access is not permitted."),
+    e("UZ-MEM-002", .not_found, "Agent not found for memory op", "The agent_id does not exist or does not belong to the requesting workspace. " ++
+        "Verify the agent_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
     // ── AGENT KEYS (workspace-scoped, zmb_ prefix) ────────────────────────────
@@ -65,5 +65,5 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This agent has no approved grant for the target service. " ++
-        "Request one with: POST /v1/zombies/{id}/integration-requests"),
+        "Request one with: POST /v1/agents/{id}/integration-requests"),
 };

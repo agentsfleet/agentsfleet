@@ -269,13 +269,13 @@ export const workspaceCredentialsEffect: Effect.Effect<
     yield* output.printJson({
       status: "redirect",
       message:
-        "use `agentsfleet zombie credential` from the CLI, or manage workspace credentials at /credentials in the dashboard",
+        "use `agentsfleet agent credential` from the CLI, or manage workspace credentials at /credentials in the dashboard",
     });
     return;
   }
   yield* output.printSection("Workspace credentials");
   yield* output.info(
-    "Manage credentials at /credentials in the dashboard, or run: agentsfleet zombie credential",
+    "Manage credentials at /credentials in the dashboard, or run: agentsfleet agent credential",
   );
 });
 

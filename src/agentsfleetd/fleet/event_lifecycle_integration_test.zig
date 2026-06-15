@@ -29,8 +29,8 @@ const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const ec = @import("../errors/error_registry.zig");
 const queue_consts = @import("../queue/constants.zig");
-const redis_zombie = @import("../queue/redis_zombie.zig");
-const approval_gate_async = @import("../zombie/approval_gate_async.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
+const approval_gate_async = @import("../agent/approval_gate_async.zig");
 const event_rows = @import("event_rows.zig");
 const reclaim_sweeper = @import("reclaim_sweeper.zig");
 
@@ -51,7 +51,7 @@ const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 const RUNNER_TOKEN = "zrn_" ++ "e" ** 64;
 const DEAD_CONSUMER = "worker-retired-host-1700000000000";
 /// Idle injected onto a stranded entry — must exceed the reclaim min-idle.
-const FORCED_IDLE_MS = queue_consts.zombie_xautoclaim_min_idle_ms_int * 2;
+const FORCED_IDLE_MS = queue_consts.agent_xautoclaim_min_idle_ms_int * 2;
 
 const CONFIG_PLAIN =
     \\{"name":"lifecycle-plain","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
@@ -96,11 +96,11 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{ RUNNER_ID, hash[0..] });
 }
 
-fn seedZombieWithConfig(conn: *pg.Conn, zombie_id: []const u8, name: []const u8, config: []const u8, session_suffix: []const u8) !void {
-    try base.seedZombie(conn, zombie_id, WORKSPACE_ID, name, config, SOURCE_MD);
+fn seedAgentWithConfig(conn: *pg.Conn, agent_id: []const u8, name: []const u8, config: []const u8, session_suffix: []const u8) !void {
+    try base.seedAgent(conn, agent_id, WORKSPACE_ID, name, config, SOURCE_MD);
     var sid_buf: [64]u8 = undefined;
     const sid = try std.fmt.bufPrint(&sid_buf, "{s}{s}", .{ SESSION_BASE, session_suffix });
-    try base.seedZombieSession(conn, sid, zombie_id, "{}");
+    try base.seedAgentSession(conn, sid, agent_id, "{}");
 }
 
 const Env = struct {
@@ -110,7 +110,7 @@ const Env = struct {
         if (self.h.acquireConn()) |conn| {
             defer self.h.releaseConn(conn);
             cleanupRows(conn);
-            base.teardownZombies(conn, WORKSPACE_ID);
+            base.teardownAgents(conn, WORKSPACE_ID);
             base.teardownPlatformProvider(conn, WORKSPACE_ID);
             base.teardownWorkspace(conn, WORKSPACE_ID);
             _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -128,21 +128,21 @@ const Env = struct {
 };
 
 fn cleanupRows(conn: *pg.Conn) void {
-    // The approval-denial test leaves a gate row, and zombie_approval_gates
+    // The approval-denial test leaves a gate row, and agent_approval_gates
     // is append-only — DELETE raises via trigger, so a surviving row
-    // FK-blocks teardownZombies → teardownWorkspace → every later
+    // FK-blocks teardownAgents → teardownWorkspace → every later
     // teardownTenant of the shared TEST_TENANT (billing rows then leak
     // across suites). TRUNCATE bypasses row-level triggers; no test depends
     // on pre-existing gate rows (each seeds its own).
-    _ = conn.exec("TRUNCATE core.zombie_approval_gates", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("TRUNCATE core.agent_approval_gates", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runner_leases WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM fleet.runner_affinity WHERE zombie_id IN (SELECT id FROM core.zombies WHERE workspace_id = $1::uuid)", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM fleet.runner_affinity WHERE agent_id IN (SELECT id FROM core.agents WHERE workspace_id = $1::uuid)", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agent_events WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
-fn deleteStream(h: *TestHarness, zombie_id: []const u8) void {
+fn deleteStream(h: *TestHarness, agent_id: []const u8) void {
     var key_buf: [128]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id}) catch return;
+    const key = std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{agent_id}) catch return;
     var resp = h.queue.commandAllowError(&.{ "DEL", key }) catch return;
     resp.deinit(h.queue.alloc);
 }
@@ -165,11 +165,11 @@ fn setup() !Env {
 
 // ── Redis + HTTP helpers ────────────────────────────────────────────────────
 
-fn publishEvent(h: *TestHarness, zombie_id: []const u8) ![]const u8 {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, zombie_id);
-    return h.queue.xaddZombieEvent(.{
+fn publishEvent(h: *TestHarness, agent_id: []const u8) ![]const u8 {
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, agent_id);
+    return h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -189,12 +189,12 @@ fn pollLease(h: *TestHarness) !bool {
 
 const RowView = struct { status_buf: [32]u8, status_len: usize, label_buf: [64]u8, label_len: usize };
 
-/// Null when no row exists for (zombie_id, event_id).
-fn eventRow(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8) !?RowView {
+/// Null when no row exists for (agent_id, event_id).
+fn eventRow(conn: *pg.Conn, agent_id: []const u8, event_id: []const u8) !?RowView {
     var q = PgQuery.from(try conn.query(
-        \\SELECT status, COALESCE(failure_label, '') FROM core.zombie_events
-        \\WHERE zombie_id = $1::uuid AND event_id = $2
-    , .{ zombie_id, event_id }));
+        \\SELECT status, COALESCE(failure_label, '') FROM core.agent_events
+        \\WHERE agent_id = $1::uuid AND event_id = $2
+    , .{ agent_id, event_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
     // SAFETY: both buffers are fully written below before any read.
@@ -208,16 +208,16 @@ fn eventRow(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8) !?RowVi
     return out;
 }
 
-fn expectRow(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8, status: []const u8, label: []const u8) !void {
-    const row = (try eventRow(conn, zombie_id, event_id)) orelse return error.EventRowMissing;
+fn expectRow(conn: *pg.Conn, agent_id: []const u8, event_id: []const u8, status: []const u8, label: []const u8) !void {
+    const row = (try eventRow(conn, agent_id, event_id)) orelse return error.EventRowMissing;
     try std.testing.expectEqualStrings(status, row.status_buf[0..row.status_len]);
     try std.testing.expectEqualStrings(label, row.label_buf[0..row.label_len]);
 }
 
-fn pendingCount(h: *TestHarness, zombie_id: []const u8) !i64 {
+fn pendingCount(h: *TestHarness, agent_id: []const u8) !i64 {
     var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id});
-    var resp = try h.queue.command(&.{ "XPENDING", key, queue_consts.zombie_consumer_group });
+    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{agent_id});
+    var resp = try h.queue.command(&.{ "XPENDING", key, queue_consts.agent_consumer_group });
     defer resp.deinit(h.queue.alloc);
     const arr = resp.array orelse return error.RedisUnexpectedResponse;
     return switch (arr[0]) {
@@ -226,10 +226,10 @@ fn pendingCount(h: *TestHarness, zombie_id: []const u8) !i64 {
     };
 }
 
-fn consumerCount(h: *TestHarness, zombie_id: []const u8) !usize {
+fn consumerCount(h: *TestHarness, agent_id: []const u8) !usize {
     var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id});
-    var resp = try h.queue.command(&.{ "XINFO", "CONSUMERS", key, queue_consts.zombie_consumer_group });
+    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{agent_id});
+    var resp = try h.queue.command(&.{ "XINFO", "CONSUMERS", key, queue_consts.agent_consumer_group });
     defer resp.deinit(h.queue.alloc);
     const arr = resp.array orelse return error.RedisUnexpectedResponse;
     return arr.len;
@@ -237,11 +237,11 @@ fn consumerCount(h: *TestHarness, zombie_id: []const u8) !usize {
 
 /// Deliver the stream's next entry to a throwaway consumer name (the retired
 /// per-probe minting), simulating a stranded delivery.
-fn deliverToDeadConsumer(h: *TestHarness, zombie_id: []const u8) !void {
+fn deliverToDeadConsumer(h: *TestHarness, agent_id: []const u8) !void {
     var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id});
+    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{agent_id});
     var resp = try h.queue.command(&.{
-        "XREADGROUP", "GROUP", queue_consts.zombie_consumer_group, DEAD_CONSUMER,
+        "XREADGROUP", "GROUP", queue_consts.agent_consumer_group, DEAD_CONSUMER,
         "COUNT",      "1",     "STREAMS",                          key,
         ">",
     });
@@ -250,13 +250,13 @@ fn deliverToDeadConsumer(h: *TestHarness, zombie_id: []const u8) !void {
 
 /// Force an entry's idle clock via XCLAIM IDLE so the reclaim bound is
 /// crossed without waiting wall-clock minutes.
-fn forceIdle(h: *TestHarness, zombie_id: []const u8, event_id: []const u8, idle_ms: i64) !void {
+fn forceIdle(h: *TestHarness, agent_id: []const u8, event_id: []const u8, idle_ms: i64) !void {
     var key_buf: [128]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id});
+    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{agent_id});
     var idle_buf: [24]u8 = undefined;
     const idle = try std.fmt.bufPrint(&idle_buf, "{d}", .{idle_ms});
     var resp = try h.queue.command(&.{
-        "XCLAIM", key,      queue_consts.zombie_consumer_group, DEAD_CONSUMER,
+        "XCLAIM", key,      queue_consts.agent_consumer_group, DEAD_CONSUMER,
         "0",      event_id, "IDLE",                             idle,
     });
     resp.deinit(h.queue.alloc);
@@ -273,12 +273,12 @@ test "missing declared secret refuses the lease: gate_blocked + secret_missing +
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_CRED, "lifecycle-cred", CONFIG_GHOST_CRED, "1");
+    try seedAgentWithConfig(conn, AGENTSFLEET_CRED, "lifecycle-cred", CONFIG_GHOST_CRED, "1");
 
     const event_id = try publishEvent(h, AGENTSFLEET_CRED);
     defer h.queue.alloc.free(event_id);
 
-    // The zombie declares a credential that is not in the vault: no lease
+    // The agent declares a credential that is not in the vault: no lease
     // ships with a null secrets map (RULE ESO) — terminal row + XACK instead.
     try std.testing.expect(!try pollLease(h));
     try expectRow(conn, AGENTSFLEET_CRED, event_id, event_rows.STATUS_GATE_BLOCKED, event_rows.LABEL_SECRET_MISSING);
@@ -294,7 +294,7 @@ test "unresolvable provider credential blocks the event: gate_blocked + tenant_r
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_PROVIDER, "lifecycle-prov", CONFIG_PLAIN, "2");
+    try seedAgentWithConfig(conn, AGENTSFLEET_PROVIDER, "lifecycle-prov", CONFIG_PLAIN, "2");
     // self-managed row whose credential_ref has no vault row →
     // error.CredentialMissing → permanent refusal (RULE ECL).
     _ = try conn.exec(
@@ -321,7 +321,7 @@ test "approval denial writes the terminal row: gate_blocked + approval_denied + 
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_GATED, "lifecycle-gated", CONFIG_GATED_ALL, "3");
+    try seedAgentWithConfig(conn, AGENTSFLEET_GATED, "lifecycle-gated", CONFIG_GATED_ALL, "3");
 
     const event_id = try publishEvent(h, AGENTSFLEET_GATED);
     defer h.queue.alloc.free(event_id);
@@ -355,7 +355,7 @@ test "approval deadline expiry writes the terminal row: gate_blocked + approval_
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_GATED_EXP, "lifecycle-gatex", CONFIG_GATED_FAST, "8");
+    try seedAgentWithConfig(conn, AGENTSFLEET_GATED_EXP, "lifecycle-gatex", CONFIG_GATED_FAST, "8");
 
     const event_id = try publishEvent(h, AGENTSFLEET_GATED_EXP);
     defer h.queue.alloc.free(event_id);
@@ -383,16 +383,16 @@ test "markBlocked is guarded: terminal rows never reopen, second transition affe
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    // zombie_events.zombie_id references core.zombies — the row's zombie must exist.
-    try seedZombieWithConfig(conn, AGENTSFLEET_ROW, "lifecycle-row", CONFIG_PLAIN, "6");
+    // agent_events.agent_id references core.agents — the row's agent must exist.
+    try seedAgentWithConfig(conn, AGENTSFLEET_ROW, "lifecycle-row", CONFIG_PLAIN, "6");
     const EVENT_ID = "1700000000000-7";
     _ = try conn.exec(
-        \\INSERT INTO core.zombie_events
-        \\  (uid, zombie_id, event_id, workspace_id, actor, event_type, status,
+        \\INSERT INTO core.agent_events
+        \\  (uid, agent_id, event_id, workspace_id, actor, event_type, status,
         \\   request_json, created_at, updated_at)
         \\VALUES ('0195c9da-1e2a-7f13-8abc-2b3e1e0d7e01'::uuid, $1::uuid, $2, $3::uuid,
         \\        'steer:test', 'chat', $4, '{}'::jsonb, 0, 0)
-        \\ON CONFLICT (zombie_id, event_id) DO UPDATE SET status = EXCLUDED.status, failure_label = NULL
+        \\ON CONFLICT (agent_id, event_id) DO UPDATE SET status = EXCLUDED.status, failure_label = NULL
     , .{ AGENTSFLEET_ROW, EVENT_ID, WORKSPACE_ID, event_rows.STATUS_RECEIVED });
 
     // First transition: received → gate_blocked (balance label spelling is
@@ -414,7 +414,7 @@ test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_REACK, "lifecycle-reack", CONFIG_PLAIN, "7");
+    try seedAgentWithConfig(conn, AGENTSFLEET_REACK, "lifecycle-reack", CONFIG_PLAIN, "7");
 
     const event_id = try publishEvent(h, AGENTSFLEET_REACK);
     defer h.queue.alloc.free(event_id);
@@ -428,11 +428,11 @@ test "terminal entry re-delivered from the PEL is re-acked, never re-executed" {
     // lost (Redis blip): the row goes terminal, the lease/claim settle out of
     // active, and the entry is left pending (never acked).
     _ = try conn.exec(
-        "UPDATE core.zombie_events SET status = $3 WHERE zombie_id = $1::uuid AND event_id = $2",
+        "UPDATE core.agent_events SET status = $3 WHERE agent_id = $1::uuid AND event_id = $2",
         .{ AGENTSFLEET_REACK, event_id, event_rows.STATUS_PROCESSED },
     );
     _ = try conn.exec("DELETE FROM fleet.runner_leases WHERE workspace_id = $1::uuid", .{WORKSPACE_ID});
-    _ = try conn.exec("DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_REACK});
+    _ = try conn.exec("DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_REACK});
 
     // Poll 2: the own-PEL read re-delivers the terminal entry. It must be
     // re-acked (the owed XACK) and NOT re-leased — re-running a settled lease
@@ -454,8 +454,8 @@ test "consumer identity is stable: repeated idle probes leave one consumer in th
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_IDLE, "lifecycle-idle", CONFIG_PLAIN, "4");
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_IDLE);
+    try seedAgentWithConfig(conn, AGENTSFLEET_IDLE, "lifecycle-idle", CONFIG_PLAIN, "4");
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_IDLE);
 
     var i: usize = 0;
     while (i < 25) : (i += 1) _ = try pollLease(h);
@@ -471,7 +471,7 @@ test "reclaim sweep recovers a stranded delivery from a dead consumer and re-lea
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
+    try seedAgentWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
 
     const event_id = try publishEvent(h, AGENTSFLEET_STRAND);
     defer h.queue.alloc.free(event_id);
@@ -495,7 +495,7 @@ test "reclaim sweep never touches an entry inside the lease window" {
     const h = env.h;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try seedZombieWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
+    try seedAgentWithConfig(conn, AGENTSFLEET_STRAND, "lifecycle-strand", CONFIG_PLAIN, "5");
 
     const event_id = try publishEvent(h, AGENTSFLEET_STRAND);
     defer h.queue.alloc.free(event_id);
@@ -509,5 +509,5 @@ test "reclaim sweep never touches an entry inside the lease window" {
 test "reclaim min-idle exceeds the lease window" {
     // pin test: the comptime assertion in queue/constants.zig enforces this;
     // the runtime pin makes the relation visible in the test inventory.
-    try std.testing.expect(queue_consts.zombie_xautoclaim_min_idle_ms_int > @import("common").LEASE_TTL_MS);
+    try std.testing.expect(queue_consts.agent_xautoclaim_min_idle_ms_int > @import("common").LEASE_TTL_MS);
 }

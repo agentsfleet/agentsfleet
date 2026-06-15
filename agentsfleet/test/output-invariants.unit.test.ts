@@ -72,7 +72,7 @@ describe("no inline ANSI escapes outside palette.ts", () => {
 });
 
 describe("decorative-ASCII teardown", () => {
-  test("no zombie face emoji in src/", () => {
+  test("no agent face emoji in src/", () => {
     const offenders = [];
     for (const path of walk(SRC_DIR)) {
       const { text, path: rel } = readSource(path);

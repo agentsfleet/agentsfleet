@@ -44,11 +44,11 @@ describe("WakePulse", () => {
 
   it("forwards arbitrary HTML attributes", () => {
     const { container } = render(
-      <WakePulse live={true} aria-label="running zombie" />,
+      <WakePulse live={true} aria-label="running agent" />,
     );
     expect(
       (container.firstElementChild as HTMLElement).getAttribute("aria-label"),
-    ).toBe("running zombie");
+    ).toBe("running agent");
   });
 
   it("toggles data-live across re-renders", () => {

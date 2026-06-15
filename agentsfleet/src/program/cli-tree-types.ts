@@ -1,6 +1,6 @@
 // Shared types for the agentsfleet command tree. Lives outside cli-tree.ts
 // so the FLL cap (350L) does not block adding new verbs to the tree
-// itself; consumers (cli-tree.ts, cli-tree-zombie.ts, handlers-bind.ts)
+// itself; consumers (cli-tree.ts, cli-tree-agent.ts, handlers-bind.ts)
 // import this module directly.
 
 import type { Command, Help } from "commander";
@@ -54,14 +54,14 @@ export interface BillingHandlers {
   show: CommandHandlerFn;
 }
 
-export interface ZombieCredentialHandlers {
+export interface AgentCredentialHandlers {
   add: CommandHandlerFn;
   show: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
 }
 
-export interface ZombieHandlers {
+export interface AgentHandlers {
   install: CommandHandlerFn;
   update: CommandHandlerFn;
   list: CommandHandlerFn;
@@ -73,7 +73,7 @@ export interface ZombieHandlers {
   logs: CommandHandlerFn;
   events: CommandHandlerFn;
   steer: CommandHandlerFn;
-  credential: ZombieCredentialHandlers;
+  credential: AgentCredentialHandlers;
 }
 
 export interface MemoryHandlers {
@@ -91,7 +91,7 @@ export interface Handlers {
   grant: GrantHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;
-  zombie: ZombieHandlers;
+  agent: AgentHandlers;
   memory: MemoryHandlers;
 }
 

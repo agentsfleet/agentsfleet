@@ -25,7 +25,7 @@ describe("parseStringOption", () => {
   });
 
   test("returns plain string unchanged when no whitespace", () => {
-    expect(parseStringOption("zombie")).toBe("zombie");
+    expect(parseStringOption("agent")).toBe("agent");
   });
 
   test("empty string throws InvalidArgumentError", () => {
