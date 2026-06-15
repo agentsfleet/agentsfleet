@@ -21,8 +21,8 @@ import url from "node:url";
 import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..", "..");
-const WORKTREE_ENTRY = path.join(ZOMBIECTL_ROOT, "dist", "bin", "agentsfleet.js");
+const CLI_ROOT = path.resolve(HERE, "..", "..", "..");
+const WORKTREE_ENTRY = path.join(CLI_ROOT, "dist", "bin", "agentsfleet.js");
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -69,7 +69,7 @@ export function runAgentctl(args, opts) {
   assertEnvComposed(opts?.env);
   const { command, prefixArgs } = resolveBinary(opts);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const cwd = opts.cwd ?? ZOMBIECTL_ROOT;
+  const cwd = opts.cwd ?? CLI_ROOT;
   const started = Date.now();
 
   return new Promise((resolve, reject) => {
@@ -121,7 +121,7 @@ export function runAgentctl(args, opts) {
 export function spawnAgentctl(args, opts) {
   assertEnvComposed(opts?.env);
   const { command, prefixArgs } = resolveBinary(opts);
-  const cwd = opts.cwd ?? ZOMBIECTL_ROOT;
+  const cwd = opts.cwd ?? CLI_ROOT;
   return spawn(command, [...prefixArgs, ...args], {
     cwd,
     env: opts.env,
