@@ -95,7 +95,7 @@ test.describe("Cross-page link coverage", () => {
     ).toHaveCount(1);
     await expect(
       page.locator("a").filter({ hasText: /open dashboard/i }),
-    ).toHaveAttribute("href", /app\.(dev\.)?agentsfleet\.com/);
+    ).toHaveAttribute("href", /app\.(dev\.)?agentsfleet\.net/);
 
     await expect(page.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");
 

@@ -537,7 +537,7 @@ jobs:
 
       - name: Install agentsfleet dependencies (BEFORE secret load — WS-E #C2)
         run: bun install --frozen-lockfile
-        working-directory: agentsfleet
+        working-directory: cli
 
       - name: Restore Playwright browser cache
         id: playwright-cache-cli
@@ -555,7 +555,7 @@ jobs:
           else
             bunx playwright install --with-deps chromium
           fi
-        working-directory: agentsfleet
+        working-directory: cli
 
       - name: Load Clerk DEV credentials from 1Password (AFTER install)
         uses: 1password/load-secrets-action@v4
@@ -569,7 +569,7 @@ jobs:
 
       - name: Run CLI acceptance suite against api-dev
         run: bun run test:acceptance
-        working-directory: agentsfleet
+        working-directory: cli
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: worktree
@@ -583,7 +583,7 @@ jobs:
         if: always()
         with:
           name: cli-acceptance-dev-${{ github.sha }}
-          path: agentsfleet/playwright-cli-report/
+          path: cli/playwright-cli-report/
           retention-days: 7
 
   # ── 5. Discord notify ────────────────────────────────────────────────────
