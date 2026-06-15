@@ -235,7 +235,7 @@ fn cleanupPendingKey(redis: *queue_redis.Client, zombie_id: []const u8, action_i
 
 fn storeNotificationPayload(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8, payload: []const u8) void {
     var key_buf: [256]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "zombie:gate:notify:{s}:{s}", .{
+    const key = std.fmt.bufPrint(&key_buf, "agent:gate:notify:{s}:{s}", .{
         zombie_id, action_id,
     }) catch return;
     redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {

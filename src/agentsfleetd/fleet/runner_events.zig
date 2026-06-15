@@ -13,8 +13,8 @@ const log = logging.scoped(.fleet_runner_events);
 pub const META_HOST_ID = "host_id";
 pub const META_SANDBOX_TIER = "sandbox_tier";
 pub const META_LEASE_ID = "lease_id";
-pub const META_ZOMBIE_ID = "zombie_id";
-pub const META_ZOMBIE_EVENT_ID = "event_id";
+pub const META_AGENTSFLEET_ID = "zombie_id";
+pub const META_AGENTSFLEET_EVENT_ID = "event_id";
 pub const META_KIND = "kind";
 pub const META_FROM_ADMIN_STATE = "from_admin_state";
 pub const META_TO_ADMIN_STATE = "to_admin_state";
@@ -143,9 +143,9 @@ fn appendLeaseReleased(
         now_ms,
         META_LEASE_ID,
         lease_id,
-        META_ZOMBIE_ID,
+        META_AGENTSFLEET_ID,
         zombie_id,
-        META_ZOMBIE_EVENT_ID,
+        META_AGENTSFLEET_EVENT_ID,
         zombie_event_id,
     });
 }

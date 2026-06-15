@@ -71,7 +71,7 @@ const Setup = struct {
         const fx: fx_mod.Fixture = .{
             .tenant_id = fx_mod.ID_TENANT_A,
             .workspace_id = fx_mod.ID_WS_A,
-            .zombie_id = fx_mod.ID_ZOMBIE_A,
+            .zombie_id = fx_mod.ID_AGENTSFLEET_A,
         };
         const trigger = try fx_mod.buildTriggerConfig(alloc, "github", null);
         defer alloc.free(trigger);
@@ -304,7 +304,7 @@ fn requireRedis(h: *TestHarness) !void {
 }
 
 fn xlen(h: *TestHarness, alloc: std.mem.Allocator, zombie_id: []const u8) !i64 {
-    const stream = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{zombie_id});
+    const stream = try std.fmt.allocPrint(alloc, "agent:{s}:events", .{zombie_id});
     defer alloc.free(stream);
     return (try redisInt(h, &.{ "XLEN", stream })) orelse -1;
 }
@@ -316,7 +316,7 @@ fn dedupTtl(h: *TestHarness, alloc: std.mem.Allocator, zombie_id: []const u8, de
 }
 
 fn cleanupRedis(h: *TestHarness, alloc: std.mem.Allocator, zombie_id: []const u8, deliveries: []const []const u8) void {
-    const stream = std.fmt.allocPrint(alloc, "zombie:{s}:events", .{zombie_id}) catch return;
+    const stream = std.fmt.allocPrint(alloc, "agent:{s}:events", .{zombie_id}) catch return;
     defer alloc.free(stream);
     var v = h.queue.command(&.{ "DEL", stream }) catch return;
     v.deinit(alloc);
@@ -422,7 +422,7 @@ test "B4: credential_name override resolves to alternate vault key → 202" {
     const fx: fx_mod.Fixture = .{
         .tenant_id = fx_mod.ID_TENANT_A,
         .workspace_id = fx_mod.ID_WS_A,
-        .zombie_id = fx_mod.ID_ZOMBIE_A,
+        .zombie_id = fx_mod.ID_AGENTSFLEET_A,
     };
     // Trigger pins credential_name="github-prod"; default would be "github".
     const trigger = try fx_mod.buildTriggerConfig(alloc, "github", "github-prod");
@@ -514,7 +514,7 @@ test "B7: enqueue failure releases the dedup slot — retry of the same delivery
     cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b7"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b7"});
 
-    const stream_key = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{s.fx.zombie_id});
+    const stream_key = try std.fmt.allocPrint(alloc, "agent:{s}:events", .{s.fx.zombie_id});
     defer alloc.free(stream_key);
 
     // Inject the enqueue fault (loss-proof dedup ordering): park a plain
@@ -547,7 +547,7 @@ test "B7: enqueue failure releases the dedup slot — retry of the same delivery
 // injection proof runs against the generic `/v1/webhooks/{id}` route too,
 // signed with the linear scheme (bare-hex HMAC, no prefix). ──────────────
 
-const ZOMBIE_LINEAR = "0197a4ba-8d3a-7f13-8abc-11111111aa31";
+const AGENTSFLEET_LINEAR = "0197a4ba-8d3a-7f13-8abc-11111111aa31";
 const LINEAR_SECRET = "topsecret-linear-key";
 const LINEAR_EVENT_ID = "lin_c1";
 const LINEAR_BODY =
@@ -560,7 +560,7 @@ fn linearSetup(alloc: std.mem.Allocator, status: []const u8) !Setup {
     const fx: fx_mod.Fixture = .{
         .tenant_id = fx_mod.ID_TENANT_A,
         .workspace_id = fx_mod.ID_WS_A,
-        .zombie_id = ZOMBIE_LINEAR,
+        .zombie_id = AGENTSFLEET_LINEAR,
     };
     const trigger = try fx_mod.buildTriggerConfig(alloc, "linear", null);
     defer alloc.free(trigger);
@@ -586,11 +586,11 @@ fn postSignedLinear(alloc: std.mem.Allocator, s: *Setup, body: []const u8) !harn
 
 // Generic-route dedup key carries no provider segment: webhook:dedup:{zid}:{event_id}.
 fn cleanupLinearRedis(h: *TestHarness, alloc: std.mem.Allocator) void {
-    const stream = std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR}) catch return;
+    const stream = std.fmt.allocPrint(alloc, "agent:{s}:events", .{AGENTSFLEET_LINEAR}) catch return;
     defer alloc.free(stream);
     var v = h.queue.commandAllowError(&.{ "DEL", stream }) catch return;
     v.deinit(h.queue.alloc);
-    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, ZOMBIE_LINEAR, LINEAR_EVENT_ID }) catch return;
+    const k = std.fmt.allocPrint(alloc, "{s}{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, AGENTSFLEET_LINEAR, LINEAR_EVENT_ID }) catch return;
     defer alloc.free(k);
     var v2 = h.queue.commandAllowError(&.{ "DEL", k }) catch return;
     v2.deinit(h.queue.alloc);
@@ -604,7 +604,7 @@ test "C1: generic route — enqueue failure releases the dedup slot; retry deliv
     cleanupLinearRedis(s.h, alloc);
     defer cleanupLinearRedis(s.h, alloc);
 
-    const stream_key = try std.fmt.allocPrint(alloc, "zombie:{s}:events", .{ZOMBIE_LINEAR});
+    const stream_key = try std.fmt.allocPrint(alloc, "agent:{s}:events", .{AGENTSFLEET_LINEAR});
     defer alloc.free(stream_key);
 
     // Inject the enqueue fault: park a plain string at the stream key so
@@ -628,14 +628,14 @@ test "C1: generic route — enqueue failure releases the dedup slot; retry deliv
     const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
     defer r2.deinit();
     try r2.expectStatus(.accepted);
-    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, AGENTSFLEET_LINEAR));
 
     // Replay after success → deduped, stream unchanged (generic-side 3.2 pin).
     const r3 = try postSignedLinear(alloc, &s, LINEAR_BODY);
     defer r3.deinit();
     try r3.expectStatus(.ok);
     try std.testing.expect(r3.bodyContains("\"status\":\"duplicate\""));
-    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, AGENTSFLEET_LINEAR));
 }
 
 test "C2: generic route — paused zombie → 200 ignored zombie_paused, dedup slot not consumed" {
@@ -661,10 +661,10 @@ test "C2: generic route — paused zombie → 200 ignored zombie_paused, dedup s
     {
         const conn = try s.h.acquireConn();
         defer s.h.releaseConn(conn);
-        _ = try conn.exec("UPDATE core.zombies SET status = 'active' WHERE id = $1::uuid", .{ZOMBIE_LINEAR});
+        _ = try conn.exec("UPDATE core.zombies SET status = 'active' WHERE id = $1::uuid", .{AGENTSFLEET_LINEAR});
     }
     const r2 = try postSignedLinear(alloc, &s, LINEAR_BODY);
     defer r2.deinit();
     try r2.expectStatus(.accepted);
-    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, ZOMBIE_LINEAR));
+    try std.testing.expectEqual(@as(i64, 1), try xlen(s.h, alloc, AGENTSFLEET_LINEAR));
 }

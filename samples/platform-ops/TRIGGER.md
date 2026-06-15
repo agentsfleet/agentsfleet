@@ -1,7 +1,7 @@
 ---
 name: platform-ops-zombie
 
-x-usezombie:
+x-agentsfleet:
   # Both fields are populated by `/usezombie-install-platform-ops` from the
   # `tenant_provider` block of `agentsfleet doctor --json`. Under the platform
   # default they carry resolved values (e.g. Fireworks Kimi K2.6 + 256K cap);

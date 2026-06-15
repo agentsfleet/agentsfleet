@@ -106,7 +106,7 @@ export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard> = {
         `curl -X POST https://${workspace}.atlassian.net/rest/webhooks/1.0/webhook \\`,
         `  -u "$JIRA_USER:$JIRA_API_TOKEN" \\`,
         `  -H "Content-Type: application/json" \\`,
-        `  -d '{"name":"usezombie","url":"${webhookUrl}","events":${evts}}'`,
+        `  -d '{"name":"agentsfleet","url":"${webhookUrl}","events":${evts}}'`,
       ].join("\n");
     },
     webUiDeepLink: (vars) => {
@@ -125,7 +125,7 @@ export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard> = {
         `curl -X POST https://${stack}.grafana.net/api/v1/provisioning/contact-points \\`,
         `  -H "Authorization: Bearer $GRAFANA_API_TOKEN" \\`,
         `  -H "Content-Type: application/json" \\`,
-        `  -d '{"name":"usezombie","type":"webhook","settings":{"url":"${webhookUrl}"}}'`,
+        `  -d '{"name":"agentsfleet","type":"webhook","settings":{"url":"${webhookUrl}"}}'`,
       ].join("\n");
     },
     webUiDeepLink: (vars) => {

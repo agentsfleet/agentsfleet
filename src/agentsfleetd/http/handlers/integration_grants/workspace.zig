@@ -21,7 +21,7 @@ pub const Context = common.Context;
 // bearer policy — principal set by middleware.
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
-const S_ZOMBIE_NOT_FOUND = "Zombie not found";
+const S_AGENTSFLEET_NOT_FOUND = "Zombie not found";
 const S_PENDING = "pending";
 const S_REVOKED = "revoked";
 
@@ -49,11 +49,11 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
     // Verify zombie belongs to the path workspace (don't leak existence
     // of zombies in other workspaces — return 404, not 403).
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     };
     if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     }
 
@@ -108,11 +108,11 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     }
     // Verify zombie belongs to the path workspace.
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     };
     if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     }
 

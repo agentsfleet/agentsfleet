@@ -16,8 +16,8 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106011";
 const RUNNER_STALE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106a01";
 const RUNNER_LIVE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106b01";
-const ZOMBIE_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c01";
-const ZOMBIE_TWO_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c02";
+const AGENTSFLEET_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c01";
+const AGENTSFLEET_TWO_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106c02";
 const AFFINITY_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106e01";
 const LEASE_ONE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106f01";
 const LEASE_TWO_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e106f02";
@@ -90,7 +90,7 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, zombie
 }
 
 fn cleanup(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ONE_ID, ZOMBIE_TWO_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ONE_ID, AGENTSFLEET_TWO_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_STALE_ID, RUNNER_LIVE_ID });
 }
 
@@ -178,15 +178,15 @@ test "stale runner swept and work reassigned" {
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, ZOMBIE_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     try seedRunner(ctx.conn, RUNNER_LIVE_ID, LIVE_HOST, LIVE_HASH, .active, clock.nowMillis());
     const stats = try sweeper.sweepOnce(ctx.pool, ALLOC);
 
     try std.testing.expectEqual(@as(i64, 1), stats.offline_events);
     try std.testing.expectEqual(@as(i64, 1), try eventCount(ctx.conn, .runner_offline));
-    try std.testing.expect(try leasedUntil(ctx.conn, ZOMBIE_ONE_ID) < clock.nowMillis());
+    try std.testing.expect(try leasedUntil(ctx.conn, AGENTSFLEET_ONE_ID) < clock.nowMillis());
 
-    try reclaimAsLive(ctx.conn, ZOMBIE_ONE_ID);
+    try reclaimAsLive(ctx.conn, AGENTSFLEET_ONE_ID);
     try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_EXPIRED, try leaseStatus(ctx.conn, LEASE_ONE_ID));
 }
 
@@ -197,12 +197,12 @@ test "reassignment holds when no eligible target" {
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, ZOMBIE_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     _ = try sweeper.sweepOnce(ctx.pool, ALLOC);
     try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_ACTIVE, try leaseStatus(ctx.conn, LEASE_ONE_ID));
 
     try seedRunner(ctx.conn, RUNNER_LIVE_ID, LIVE_HOST, LIVE_HASH, .active, clock.nowMillis());
-    try reclaimAsLive(ctx.conn, ZOMBIE_ONE_ID);
+    try reclaimAsLive(ctx.conn, AGENTSFLEET_ONE_ID);
     try std.testing.expectEqualStrings(protocol.RUNNER_LEASE_STATUS_EXPIRED, try leaseStatus(ctx.conn, LEASE_ONE_ID));
 }
 
@@ -215,9 +215,9 @@ test "liveness derives active lease set without singular column" {
 
     try seedRunner(ctx.conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .active, clock.nowMillis());
     try std.testing.expectEqual(@as(i64, 0), try activeCount(ctx.conn, RUNNER_STALE_ID));
-    try seedLease(ctx.conn, LEASE_ONE_ID, RUNNER_STALE_ID, ZOMBIE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedLease(ctx.conn, LEASE_ONE_ID, RUNNER_STALE_ID, AGENTSFLEET_ONE_ID, EVENT_ID_ONE, 1);
     try std.testing.expectEqual(@as(i64, 1), try activeCount(ctx.conn, RUNNER_STALE_ID));
-    try seedLease(ctx.conn, LEASE_TWO_ID, RUNNER_STALE_ID, ZOMBIE_TWO_ID, EVENT_ID_TWO, 2);
+    try seedLease(ctx.conn, LEASE_TWO_ID, RUNNER_STALE_ID, AGENTSFLEET_TWO_ID, EVENT_ID_TWO, 2);
     try std.testing.expectEqual(@as(i64, 2), try activeCount(ctx.conn, RUNNER_STALE_ID));
     try std.testing.expectEqual(@as(i64, 0), try scalarI64(ctx.conn,
         \\SELECT COUNT(*)::bigint FROM information_schema.columns
@@ -259,7 +259,7 @@ test "concurrent sweepers emit one offline event" {
     cleanup(ctx.conn);
     defer cleanup(ctx.conn);
 
-    try seedStaleActiveLease(ctx.conn, ZOMBIE_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
+    try seedStaleActiveLease(ctx.conn, AGENTSFLEET_ONE_ID, AFFINITY_ONE_ID, LEASE_ONE_ID, EVENT_ID_ONE, 1);
     var workers: [CONCURRENT_SWEEPERS]SweepWorker = undefined;
     var threads: [CONCURRENT_SWEEPERS]std.Thread = undefined;
     for (&workers, &threads) |*worker, *thread| {

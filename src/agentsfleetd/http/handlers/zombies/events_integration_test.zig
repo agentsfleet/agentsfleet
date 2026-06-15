@@ -26,10 +26,10 @@ const ALLOC = std.testing.allocator;
 // so a shared id leaks ownership across suites and breaks the loser.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee01";
-const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee02";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee01";
+const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0eee02";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -68,20 +68,20 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'events-a', '---\nname: events-a\n---\ntest', '{"name":"events-a"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_A, TEST_WORKSPACE_ID });
+    , .{ AGENTSFLEET_A, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'events-b', '---\nname: events-b\n---\ntest', '{"name":"events-b"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_B, TEST_WORKSPACE_ID });
+    , .{ AGENTSFLEET_B, TEST_WORKSPACE_ID });
 
     // Seed a mix of actors across both zombies. Distinct created_at for
     // deterministic ordering. event_id mirrors the Redis stream entry shape.
-    try insertEvent(conn, ZOMBIE_A, "1700000000000-0", "steer:kishore", "chat", 1_700_000_000_000);
-    try insertEvent(conn, ZOMBIE_A, "1700000000001-0", "steer:kishore", "chat", 1_700_000_000_001);
-    try insertEvent(conn, ZOMBIE_A, "1700000000002-0", "webhook:github", "webhook", 1_700_000_000_002);
-    try insertEvent(conn, ZOMBIE_B, "1700000000003-0", "steer:kishore", "chat", 1_700_000_000_003);
-    try insertEvent(conn, ZOMBIE_B, "1700000000004-0", "cron:0_*/30", "cron", 1_700_000_000_004);
+    try insertEvent(conn, AGENTSFLEET_A, "1700000000000-0", "steer:kishore", "chat", 1_700_000_000_000);
+    try insertEvent(conn, AGENTSFLEET_A, "1700000000001-0", "steer:kishore", "chat", 1_700_000_000_001);
+    try insertEvent(conn, AGENTSFLEET_A, "1700000000002-0", "webhook:github", "webhook", 1_700_000_000_002);
+    try insertEvent(conn, AGENTSFLEET_B, "1700000000003-0", "steer:kishore", "chat", 1_700_000_000_003);
+    try insertEvent(conn, AGENTSFLEET_B, "1700000000004-0", "cron:0_*/30", "cron", 1_700_000_000_004);
 }
 
 fn insertEvent(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8, actor: []const u8, event_type: []const u8, ts: i64) !void {
@@ -112,7 +112,7 @@ test "integration: events GET — no bearer → 401" {
     };
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
 
     const r = try (h.get(url)).send();
@@ -131,7 +131,7 @@ test "integration: events GET — since and cursor mutually exclusive → 400" {
     };
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h&cursor=abc", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h&cursor=abc", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
 
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
@@ -151,7 +151,7 @@ test "integration: events GET — invalid since format → 400" {
     };
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=bogus", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=bogus", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
 
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
@@ -174,7 +174,7 @@ test "integration: events stream — no bearer → 401" {
     };
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
 
     const r = try (h.get(url)).send();
@@ -194,7 +194,7 @@ test "integration: events stream — invalid bearer → 401" {
     };
     defer h.deinit();
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events/stream", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
 
     const r = try (try (h.get(url)).bearer("not.a.real.jwt")).send();
@@ -216,7 +216,7 @@ test "integration: events GET — actor=steer:* glob filter returns steer events
     };
     defer h.deinit();
 
-    // Seed has 3 steer:kishore events (2 in ZOMBIE_A, 1 in ZOMBIE_B), 1 webhook,
+    // Seed has 3 steer:kishore events (2 in AGENTSFLEET_A, 1 in AGENTSFLEET_B), 1 webhook,
     // 1 cron — across the workspace. The glob `steer:*` becomes SQL `steer:%`.
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=steer:*", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
@@ -319,17 +319,17 @@ test "integration: workspace events GET — sorted DESC + zombie_id drill-down f
         try std.testing.expect(idx_004 < idx_000);
     }
 
-    // ?zombie_id=ZOMBIE_A drills down to that zombie's three events.
+    // ?zombie_id=AGENTSFLEET_A drills down to that zombie's three events.
     {
-        const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?zombie_id={s}", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+        const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?zombie_id={s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
         defer ALLOC.free(url);
         const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("1700000000000-0"));
         try std.testing.expect(r.bodyContains("1700000000002-0"));
-        try std.testing.expect(!r.bodyContains("1700000000003-0")); // ZOMBIE_B event
-        try std.testing.expect(!r.bodyContains("1700000000004-0")); // ZOMBIE_B event
+        try std.testing.expect(!r.bodyContains("1700000000003-0")); // AGENTSFLEET_B event
+        try std.testing.expect(!r.bodyContains("1700000000004-0")); // AGENTSFLEET_B event
     }
 
     const conn = try h.acquireConn();
@@ -355,11 +355,11 @@ test "integration: events GET — since=2h filters by relative duration" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try insertEvent(conn, ZOMBIE_A, recent_eid, "steer:kishore", "chat", recent_ts);
-        try insertEvent(conn, ZOMBIE_A, stale_eid, "steer:kishore", "chat", stale_ts);
+        try insertEvent(conn, AGENTSFLEET_A, recent_eid, "steer:kishore", "chat", recent_ts);
+        try insertEvent(conn, AGENTSFLEET_A, stale_eid, "steer:kishore", "chat", stale_ts);
     }
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2h", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -411,10 +411,10 @@ test "integration: resumes_event_id walks the chain via recursive CTE" {
     const d_eid = "1900000000023-0";
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    try insertEventWithParent(conn, ZOMBIE_A, a_eid, "steer:kishore", "processed", null, 1_900_000_000_020);
-    try insertEventWithParent(conn, ZOMBIE_A, b_eid, "continuation:steer:kishore", "processed", a_eid, 1_900_000_000_021);
-    try insertEventWithParent(conn, ZOMBIE_A, c_eid, "continuation:steer:kishore", "gate_blocked", b_eid, 1_900_000_000_022);
-    try insertEventWithParent(conn, ZOMBIE_A, d_eid, "continuation:steer:kishore", "processed", c_eid, 1_900_000_000_023);
+    try insertEventWithParent(conn, AGENTSFLEET_A, a_eid, "steer:kishore", "processed", null, 1_900_000_000_020);
+    try insertEventWithParent(conn, AGENTSFLEET_A, b_eid, "continuation:steer:kishore", "processed", a_eid, 1_900_000_000_021);
+    try insertEventWithParent(conn, AGENTSFLEET_A, c_eid, "continuation:steer:kishore", "gate_blocked", b_eid, 1_900_000_000_022);
+    try insertEventWithParent(conn, AGENTSFLEET_A, d_eid, "continuation:steer:kishore", "processed", c_eid, 1_900_000_000_023);
 
     // Walk from D back to A. Depth 1 = D, depth 4 = A.
     const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -430,7 +430,7 @@ test "integration: resumes_event_id walks the chain via recursive CTE" {
         \\    WHERE e.zombie_id = $1::uuid
         \\)
         \\SELECT event_id, depth FROM chain ORDER BY depth ASC
-    , .{ ZOMBIE_A, d_eid }));
+    , .{ AGENTSFLEET_A, d_eid }));
     defer q.deinit();
 
     const expected_order = [_][]const u8{ d_eid, c_eid, b_eid, a_eid };
@@ -460,11 +460,11 @@ test "integration: events GET — since=ISO8601 absolute timestamp" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try insertEvent(conn, ZOMBIE_A, before_eid, "steer:kishore", "chat", cutoff_ms - 1);
-        try insertEvent(conn, ZOMBIE_A, after_eid, "steer:kishore", "chat", cutoff_ms + 1);
+        try insertEvent(conn, AGENTSFLEET_A, before_eid, "steer:kishore", "chat", cutoff_ms - 1);
+        try insertEvent(conn, AGENTSFLEET_A, after_eid, "steer:kishore", "chat", cutoff_ms + 1);
     }
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2025-04-25T00:00:00Z", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=2025-04-25T00:00:00Z", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();

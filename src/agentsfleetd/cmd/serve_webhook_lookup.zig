@@ -4,7 +4,7 @@
 //!
 //! Secret resolution: each zombie declares one or more `triggers[].source`
 //! entries (e.g. `github`). Each names an HMAC scheme and a workspace
-//! credential. The credential is stored at vault key `zombie:<source>`
+//! credential. The credential is stored at vault key `agent:<source>`
 //! (overridable via `triggers[].credential_name`) and decodes to a JSON
 //! object whose `webhook_secret` field is the HMAC key.
 //!
@@ -123,11 +123,11 @@ fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) 
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->>'source'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1),
         \\       (SELECT trig->>'credential_name'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
         \\FROM core.zombies z WHERE z.id = $1::uuid
@@ -151,7 +151,7 @@ fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) 
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->'signature'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
         \\FROM core.zombies z WHERE z.id = $1::uuid

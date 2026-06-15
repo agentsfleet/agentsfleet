@@ -27,8 +27,8 @@ const DRAIN_POLL_NS: u64 = 100 * std.time.ns_per_ms;
 // path-workspace authorization matches these against the seeded rows.
 pub const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 pub const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-pub const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-pub const TEST_AUDIENCE = "https://api.usezombie.com";
+pub const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+pub const TEST_AUDIENCE = "https://api.agentsfleet.net";
 pub const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -107,7 +107,7 @@ pub fn streamPath(alloc: std.mem.Allocator, zombie_id: []const u8) ![]u8 {
 }
 
 pub fn activityChannel(alloc: std.mem.Allocator, zombie_id: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, "zombie:{s}:activity", .{zombie_id});
+    return std.fmt.allocPrint(alloc, "agent:{s}:activity", .{zombie_id});
 }
 
 /// Close the client socket, then PUBLISH one sentinel frame so the stream

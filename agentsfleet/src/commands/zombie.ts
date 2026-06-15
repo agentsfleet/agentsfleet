@@ -95,12 +95,12 @@ export const statusEffect: Effect.Effect<
   const zombies = res.items ?? [];
   if (zombies.length === 0) {
     yield* output.info(
-      "No zombies running. Install one with: agentsfleet install --from <path>",
+      "No agents running. Install one with: agentsfleet install --from <path>",
     );
     return;
   }
 
-  yield* output.printSection("Zombies");
+  yield* output.printSection("Agents");
   for (const z of zombies) {
     const budget =
       typeof z.budget_used_dollars === "number"

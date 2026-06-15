@@ -1,5 +1,5 @@
 ---
-# Common authoring mistake: runtime keys at top level instead of under x-usezombie:.
+# Common authoring mistake: runtime keys at top level instead of under x-agentsfleet:.
 # Parser should reject with RuntimeKeysOutsideBlock.
 name: misplaced-runtime
 trigger:

@@ -64,7 +64,7 @@ function PlatformModePanel({ isPending }: { isPending: boolean }) {
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Account
           </div>
-          <div className="mt-1 font-medium">usezombie managed</div>
+          <div className="mt-1 font-medium">agentsfleet managed</div>
         </div>
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

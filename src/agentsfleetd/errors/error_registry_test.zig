@@ -81,10 +81,10 @@ test "UZ-REQ-002 stays 413 (payload too large, pinned)" {
     );
 }
 
-test "UZ-ZMB-009 stays 404 (zombie not found, pinned)" {
+test "UZ-ZMB-009 stays 404 (agent not found, pinned)" {
     try std.testing.expectEqual(
         std.http.Status.not_found,
-        reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).http_status,
+        reg.lookup(reg.ERR_AGENTSFLEET_NOT_FOUND).http_status,
     );
 }
 
@@ -108,7 +108,7 @@ test "ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
 }
 
 test "UZ-ZMB-012 is 409 (paused steer = conflict, with a resume hint)" {
-    const entry = reg.lookup(reg.ERR_ZOMBIE_PAUSED_INGRESS);
+    const entry = reg.lookup(reg.ERR_AGENTSFLEET_PAUSED_INGRESS);
     try std.testing.expectEqual(std.http.Status.conflict, entry.http_status);
     try std.testing.expect(std.mem.indexOf(u8, entry.hint, "agentsfleet resume") != null);
 }
@@ -172,7 +172,7 @@ test "lookup never returns null — unknown codes return UNKNOWN" {
 test "lookup returns correct entry for known code" {
     const entry = reg.lookup("UZ-ZMB-009");
     try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
-    try std.testing.expectEqualStrings("Zombie not found", entry.title);
+    try std.testing.expectEqualStrings("Agent not found", entry.title);
     try std.testing.expect(entry.hint.len > 0);
     try std.testing.expect(std.mem.startsWith(u8, entry.docs_uri, reg.ERROR_DOCS_BASE));
 }
@@ -206,7 +206,7 @@ test "lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
 test "ERR_* constants match REGISTRY entry codes (spot check)" {
     // Verify the constant string equals the entry's code field
     try std.testing.expectEqualStrings(reg.ERR_UNAUTHORIZED, reg.lookup(reg.ERR_UNAUTHORIZED).code);
-    try std.testing.expectEqualStrings(reg.ERR_ZOMBIE_NOT_FOUND, reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).code);
+    try std.testing.expectEqualStrings(reg.ERR_AGENTSFLEET_NOT_FOUND, reg.lookup(reg.ERR_AGENTSFLEET_NOT_FOUND).code);
     try std.testing.expectEqualStrings(reg.ERR_EXEC_TIMEOUT_KILL, reg.lookup(reg.ERR_EXEC_TIMEOUT_KILL).code);
     try std.testing.expectEqualStrings(reg.ERR_APPROVAL_CONDITION_INVALID, reg.lookup(reg.ERR_APPROVAL_CONDITION_INVALID).code);
 }

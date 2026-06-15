@@ -28,12 +28,12 @@ const fixtures = @import("sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const ZOMBIE_BACKPRESSURE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001";
-const ZOMBIE_STREAM_CLASS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb002";
-const ZOMBIE_DRAIN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb003";
+const AGENTSFLEET_BACKPRESSURE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001";
+const AGENTSFLEET_STREAM_CLASS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb002";
+const AGENTSFLEET_DRAIN = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb003";
 /// Deliberately never seeded — drives the 404-after-registration path.
-const ZOMBIE_UNSEEDED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb004";
-const ZOMBIE_FD_CYCLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb005";
+const AGENTSFLEET_UNSEEDED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb004";
+const AGENTSFLEET_FD_CYCLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb005";
 /// Open/close cycles for the fd-return proof — enough that a one-fd-per-stream
 /// leak separates clearly from the baseline.
 const FD_CYCLES: usize = 3;
@@ -164,10 +164,10 @@ test "integration: registry drain closes live streams and rejects new ones" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try fixtures.seedZombie(conn, ZOMBIE_DRAIN, "bp-drain");
+        try fixtures.seedZombie(conn, AGENTSFLEET_DRAIN, "bp-drain");
     }
 
-    const path = try fixtures.streamPath(ALLOC, ZOMBIE_DRAIN);
+    const path = try fixtures.streamPath(ALLOC, AGENTSFLEET_DRAIN);
     defer ALLOC.free(path);
 
     var sc = try SseClient.connect(ALLOC, h.port, path, .{ .bearer = fixtures.TOKEN_OPERATOR });
@@ -208,14 +208,14 @@ test "integration: the SSE stream class is exempt from the api ceiling" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try fixtures.seedZombie(conn, ZOMBIE_STREAM_CLASS, "bp-class");
+        try fixtures.seedZombie(conn, AGENTSFLEET_STREAM_CLASS, "bp-class");
     }
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_STREAM_CLASS);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_STREAM_CLASS);
     defer ALLOC.free(channel);
-    const path = try fixtures.streamPath(ALLOC, ZOMBIE_STREAM_CLASS);
+    const path = try fixtures.streamPath(ALLOC, AGENTSFLEET_STREAM_CLASS);
     defer ALLOC.free(path);
 
     // api saturated; the stream must still be admitted (its gate is the
@@ -250,13 +250,13 @@ test "integration: a stream rejected after registration releases its slot" {
     };
     defer h.deinit();
 
-    const path = try fixtures.streamPath(ALLOC, ZOMBIE_UNSEEDED);
+    const path = try fixtures.streamPath(ALLOC, AGENTSFLEET_UNSEEDED);
     defer ALLOC.free(path);
 
     const denied = try (try h.get(path).bearer(fixtures.TOKEN_OPERATOR)).send();
     defer denied.deinit();
     try denied.expectStatus(.not_found);
-    try denied.expectErrorCode(ec.ERR_ZOMBIE_NOT_FOUND);
+    try denied.expectErrorCode(ec.ERR_AGENTSFLEET_NOT_FOUND);
 
     try std.testing.expectEqual(@as(usize, 0), h.streams.count());
     try std.testing.expectEqual(@as(u64, 0), metrics.snapshot().sse_in_flight_streams);
@@ -290,14 +290,14 @@ test "integration: finished streams return their socket fds to the OS" {
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try fixtures.seedZombie(conn, ZOMBIE_FD_CYCLE, "bp-fd");
+        try fixtures.seedZombie(conn, AGENTSFLEET_FD_CYCLE, "bp-fd");
     }
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_FD_CYCLE);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_FD_CYCLE);
     defer ALLOC.free(channel);
-    const path = try fixtures.streamPath(ALLOC, ZOMBIE_FD_CYCLE);
+    const path = try fixtures.streamPath(ALLOC, AGENTSFLEET_FD_CYCLE);
     defer ALLOC.free(path);
 
     // Warmup cycle: let lazily-created descriptors (pool checkout, caches)
@@ -350,14 +350,14 @@ test "integration: SSE streams above the cap shed 503 while healthz stays alive"
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try fixtures.seedZombie(conn, ZOMBIE_BACKPRESSURE, "bp-cap");
+        try fixtures.seedZombie(conn, AGENTSFLEET_BACKPRESSURE, "bp-cap");
     }
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_BACKPRESSURE);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_BACKPRESSURE);
     defer ALLOC.free(channel);
-    const path = try fixtures.streamPath(ALLOC, ZOMBIE_BACKPRESSURE);
+    const path = try fixtures.streamPath(ALLOC, AGENTSFLEET_BACKPRESSURE);
     defer ALLOC.free(path);
 
     h.ctx.sse_max_streams = 1;

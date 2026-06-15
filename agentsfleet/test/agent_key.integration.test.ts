@@ -17,7 +17,7 @@ describe("agent (external API key) commands", () => {
         [`POST /v1/workspaces/${WS_ID}/agent-keys`]: async (_req, _url, body) => {
           postBody = body;
           return jsonResponse(201, {
-            agent_id: "agent_key_001",
+            agent_key_id: "agent_key_001",
             key: "zmb_test_raw_key_value_only_shown_once",
             created_at: Date.now(),
           });
@@ -63,8 +63,8 @@ describe("agent (external API key) commands", () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/agent-keys`]: () => jsonResponse(200, {
           items: [
-            { agent_id: "agent_a", name: "langgraph-bot", description: "alpha", last_used_at: 1700000000000 },
-            { agent_id: "agent_b", name: "crewai-bot",    description: "beta",  last_used_at: null },
+            { agent_key_id: "agent_a", name: "langgraph-bot", description: "alpha", last_used_at: 1700000000000 },
+            { agent_key_id: "agent_b", name: "crewai-bot",    description: "beta",  last_used_at: null },
           ],
         }),
       };

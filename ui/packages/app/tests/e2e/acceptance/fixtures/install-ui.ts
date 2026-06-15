@@ -26,7 +26,7 @@ function fixtureTriggerMd(name: string): string {
   return [
     "---",
     `name: ${name}`,
-    "x-usezombie:",
+    "x-agentsfleet:",
     "  triggers:",
     "    - type: cron",
     '      schedule: "0 0 * * *"',

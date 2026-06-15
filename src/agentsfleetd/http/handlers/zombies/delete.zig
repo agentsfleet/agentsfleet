@@ -12,7 +12,7 @@
 //!   - core.zombie_approval_gates   — no FK cascade; explicit DELETE
 //!   - memory.memory_entries        — keyed by zombie_id (UUID, no FK); explicit
 //!   - zombie_execution_telemetry   — keyed by zombie_id (no FK); explicit
-//!   - zombie:{id}:events Redis stream — best-effort DEL after PG commit
+//!   - agent:{id}:events Redis stream — best-effort DEL after PG commit
 //!
 //! Auth: operator-minimum role per RULE BIL — destructive lifecycle action.
 
@@ -82,8 +82,8 @@ pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zo
             log.info("purged", .{ .id = zombie_id, .workspace = workspace_id, .actor = actor });
             hx.res.status = 204;
         },
-        .not_killed => hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Zombie must be killed before delete (PATCH status=killed first)"),
-        .not_found => hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND),
+        .not_killed => hx.fail(ec.ERR_AGENTSFLEET_ALREADY_TERMINAL, "Zombie must be killed before delete (PATCH status=killed first)"),
+        .not_found => hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND),
     }
 }
 
@@ -160,7 +160,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
 
 fn cleanupRedisStream(redis: *queue_redis.Client, zombie_id: []const u8) !void {
     var key_buf: [256]u8 = undefined;
-    const key = try std.fmt.bufPrint(&key_buf, "zombie:{s}:events", .{zombie_id});
+    const key = try std.fmt.bufPrint(&key_buf, "agent:{s}:events", .{zombie_id});
     var resp = try redis.commandAllowError(&.{ "DEL", key });
     resp.deinit(redis.alloc);
 }

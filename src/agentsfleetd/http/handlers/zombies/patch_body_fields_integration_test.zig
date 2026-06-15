@@ -38,9 +38,9 @@ const ALLOC = std.testing.allocator;
 // via the test-token mint helper or copying the canonical token instead.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0b6f21";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0b6f21";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -55,12 +55,12 @@ const TOKEN_USER =
 // Initial state — a webhook-only zombie. Tests will PATCH it to add a
 // cron trigger, change the source body, or both.
 const INITIAL_CONFIG_JSON =
-    \\{"name":"patch-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"patch-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
 ;
 const INITIAL_TRIGGER_MD =
     \\---
     \\name: patch-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: webhook
     \\      source: github
@@ -81,7 +81,7 @@ const INITIAL_SOURCE_MD =
 const NEW_TRIGGER_MD_WITH_CRON =
     \\---
     \\name: patch-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: cron
     \\      schedule: "*/30 * * * *"
@@ -107,7 +107,7 @@ const NEW_SOURCE_MD =
 const MALFORMED_TRIGGER_MD =
     \\---
     \\name: patch-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers: not-a-list   # YAML scalar where a list is required
     \\---
 ;
@@ -160,18 +160,18 @@ fn seedFixture(conn: *pg.Conn) !void {
         \\    config_json      = EXCLUDED.config_json,
         \\    status           = 'active',
         \\    updated_at       = EXCLUDED.updated_at
-    , .{ ZOMBIE_ID, TEST_WORKSPACE_ID, INITIAL_SOURCE_MD, INITIAL_TRIGGER_MD, INITIAL_CONFIG_JSON, now });
+    , .{ AGENTSFLEET_ID, TEST_WORKSPACE_ID, INITIAL_SOURCE_MD, INITIAL_TRIGGER_MD, INITIAL_CONFIG_JSON, now });
 }
 
 fn cleanup(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn patchUrl() ![]const u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, ZOMBIE_ID });
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_ID });
 }
 
 fn readRow(conn: *pg.Conn) !struct {
@@ -184,7 +184,7 @@ fn readRow(conn: *pg.Conn) !struct {
     var q = PgQuery.from(try conn.query(
         \\SELECT name, config_json::text, trigger_markdown, source_markdown, updated_at
         \\FROM core.zombies WHERE id = $1::uuid
-    , .{ZOMBIE_ID}));
+    , .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowNotFound;
     return .{
@@ -439,7 +439,7 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
 // `event_loop.reloadZombieConfig`, deleted at the M80 cutover. Config is now
 // resolved fresh from Postgres on every lease, so PATCH writes the row and the
 // next lease picks it up — there is no reload signal to assert. The vestigial
-// `zombie:control` publish was removed with the dead `control_stream` module.
+// `agent:control` publish was removed with the dead `control_stream` module.
 
 // Comptime JSON-string-encode a multi-line literal. `comptime`-block
 // concatenation needs `return` outside the block so the caller sees the

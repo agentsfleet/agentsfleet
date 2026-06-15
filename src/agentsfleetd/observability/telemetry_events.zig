@@ -10,7 +10,7 @@ const S_REQUEST_ID = "request_id";
 const S_WORKSPACE_ID = "workspace_id";
 const S_MESSAGE = "message";
 const S_TENANT_ID = "tenant_id";
-const S_ZOMBIE_ID = "zombie_id";
+const S_AGENTSFLEET_ID = "zombie_id";
 const S_EVENT_ID = "event_id";
 
 pub const EventKind = enum {
@@ -183,7 +183,7 @@ pub const ZombieTriggered = struct {
     pub fn properties(self: @This()) [4]posthog.Property {
         return .{
             .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
-            .{ .key = S_ZOMBIE_ID, .value = .{ .string = self.zombie_id } },
+            .{ .key = S_AGENTSFLEET_ID, .value = .{ .string = self.zombie_id } },
             .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "source", .value = .{ .string = self.source } },
         };
@@ -206,7 +206,7 @@ pub const ZombieCompleted = struct {
     pub fn properties(self: @This()) [7]posthog.Property {
         return .{
             .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
-            .{ .key = S_ZOMBIE_ID, .value = .{ .string = self.zombie_id } },
+            .{ .key = S_AGENTSFLEET_ID, .value = .{ .string = self.zombie_id } },
             .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
             .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },

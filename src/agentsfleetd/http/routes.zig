@@ -59,7 +59,7 @@ pub const Route = union(enum) {
     // Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
     grant_approval_webhook: []const u8,
     /// POST /v1/webhooks/{zombie_id}/github — GitHub Actions ingest. HMAC via
-    /// the workspace's `zombie:github` credential; handler filters to
+    /// the workspace's `agent:github` credential; handler filters to
     /// workflow_run/failure and XADDs the M42 envelope.
     github_webhook: []const u8,
     // Admin platform key management
@@ -89,7 +89,7 @@ pub const Route = union(enum) {
     revoke_integration_grant: matchers.WorkspaceZombieGrantRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{grant_id}
     // Workspace agent-key management
     agent_keys: []const u8, // POST|GET /v1/workspaces/{ws}/agent-keys
-    delete_agent_key: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_id}
+    delete_agent_key: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_key_id}
     // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}

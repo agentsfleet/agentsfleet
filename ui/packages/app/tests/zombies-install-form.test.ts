@@ -45,7 +45,7 @@ describe("InstallZombieForm interactions", () => {
   }
 
   const FIXTURE_TRIGGER =
-    "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
+    "---\nname: platform-ops\nx-agentsfleet:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
 
   it("empty TRIGGER.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup({ delay: null });
@@ -95,7 +95,7 @@ describe("InstallZombieForm interactions", () => {
     // source fixture.
     expect(Object.keys(callBody).sort()).toEqual(["source_markdown", "trigger_markdown"]);
     expect(callBody.trigger_markdown).toContain("name: platform-ops");
-    expect(callBody.trigger_markdown).toContain("x-usezombie:");
+    expect(callBody.trigger_markdown).toContain("x-agentsfleet:");
     expect(callBody.source_markdown).toContain("skill body");
     expect(routerPush).toHaveBeenCalledWith("/zombies/zom_new");
     // No router.refresh() — InstallZombieForm intentionally drops the refresh

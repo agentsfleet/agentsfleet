@@ -306,7 +306,7 @@ pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) v
         return;
     }
     const r = route.delete_agent_key;
-    agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
+    agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_key_id);
 }
 
 // ── Runner control plane — split to route_table_invoke_runner.zig (RULE FLL) ──

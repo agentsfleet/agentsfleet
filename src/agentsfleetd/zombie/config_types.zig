@@ -88,7 +88,7 @@ pub const WebhookSignatureConfig = struct {
 /// length 1..MAX_EVENTS_PER_TRIGGER.
 ///
 /// `credential_name` is an optional vault-key override. The webhook auth
-/// resolver builds the vault row name as `zombie:<credential_name orelse source>`.
+/// resolver builds the vault row name as `agent:<credential_name orelse source>`.
 /// Lets one workspace store distinct webhook secrets per zombie when two
 /// zombies subscribe to the same `source` (e.g. two GitHub orgs).
 pub const ZombieTrigger = union(ZombieTriggerType) {
@@ -111,10 +111,10 @@ pub const ZombieNetwork = struct {
     allow: []const []const u8,
 };
 
-/// Frontmatter knobs from `x-usezombie.context`. Zero means "auto" — the
+/// Frontmatter knobs from `x-agentsfleet.context`. Zero means "auto" — the
 /// runner's `ContextBudget.applyDefaults` substitutes `DEFAULT_*` constants.
 /// Mirrors the wire-shape of `src/runner/engine/context_budget.zig:ContextBudget`
-/// minus the opaque `model` (which lives one level up at `x-usezombie.model`).
+/// minus the opaque `model` (which lives one level up at `x-agentsfleet.model`).
 pub const ZombieContextBudget = struct {
     context_cap_tokens: u32 = 0,
     tool_window: u32 = 0,
@@ -134,12 +134,12 @@ pub const ZombieConfig = struct {
     // ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1").
     // Resolution deferred — stored but not fetched.
     skill: ?[]const u8,
-    // Opaque model identifier from `x-usezombie.model`. Pass-through: the
+    // Opaque model identifier from `x-agentsfleet.model`. Pass-through: the
     // runner's ContextBudget.model carries it; nothing in this binary
     // interprets it. Empty/null means "fall back to tenant_providers" (self-managed).
     model: ?[]const u8,
     // Frontmatter overrides for the context budget knobs. Null means
-    // "no `x-usezombie.context:` block authored — every knob is auto."
+    // "no `x-agentsfleet.context:` block authored — every knob is auto."
     context: ?ZombieContextBudget,
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {

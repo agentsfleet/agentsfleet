@@ -156,19 +156,19 @@ pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     return .{ .workspace_id = ws, .credential_name = name };
 }
 
-// ── /workspaces/{ws}/agent-keys/{agent_id} ─────────────────────────────────
+// ── /workspaces/{ws}/agent-keys/{agent_key_id} ─────────────────────────────────
 
 pub const WorkspaceAgentRoute = struct {
     workspace_id: []const u8,
-    agent_id: []const u8,
+    agent_key_id: []const u8,
 };
 
 pub fn matchWorkspaceAgentDelete(p: Path) ?WorkspaceAgentRoute {
     if (p.segs.len != 4) return null;
     if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "agent-keys")) return null;
     const ws = p.param(1) orelse return null;
-    const agent_id = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .agent_id = agent_id };
+    const agent_key_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .agent_key_id = agent_key_id };
 }
 
 // ── /workspaces/{ws}/zombies/{zombie_id} ───────────────────────────────────

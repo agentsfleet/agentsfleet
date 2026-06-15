@@ -10,7 +10,7 @@
 //! (zombie_events, integration_grants, agent_keys, api_keys, tenant_billing,
 //! tenant_providers) drop with their parent.
 //!
-//! Per-zombie Redis event streams (`zombie:{id}:events`) are left to expire via
+//! Per-zombie Redis event streams (`agent:{id}:events`) are left to expire via
 //! their TTL — the same fallback the per-zombie delete path documents when
 //! stream cleanup is skipped; the worker no-ops empty streams.
 

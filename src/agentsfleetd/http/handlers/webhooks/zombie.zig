@@ -13,7 +13,7 @@
 //       and RELEASED (DEL) on every post-claim failure path, so a transient
 //       serialize/enqueue failure never burns the slot: the sender's retry
 //       stays deliverable (loss-proof dedup ordering).
-// On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
+// On success: event enqueued to agent:{zombie_id}:events stream, returns 202.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -58,7 +58,7 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text, z.status,
         \\       (SELECT trig->>'source'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
         \\FROM core.zombies z WHERE z.id = $1::uuid
@@ -201,7 +201,7 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
             .zombie_id = zombie_id,
             .req_id = hx.req_id,
         });
-        hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return;
     };
     defer deinitZombieRow(&zombie, hx.alloc);
@@ -220,7 +220,7 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
             .event_id = payload.event_id,
             .req_id = hx.req_id,
         });
-        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_ZOMBIE_PAUSED });
+        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_AGENTSFLEET_PAUSED });
         return;
     }
 

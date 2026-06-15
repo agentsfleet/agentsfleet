@@ -5,7 +5,7 @@ const std = @import("std");
 const telemetry = @import("telemetry.zig");
 
 // Spec §6.0 row 2.1 — ZombieTriggered / ZombieCompleted comptime struct shape.
-test "M15_002 2.1: ZombieTriggered properties return expected keys" {
+test "ZombieTriggered properties return expected keys" {
     const props = (telemetry.ZombieTriggered{
         .distinct_id = "ws_1",
         .workspace_id = "ws_1",
@@ -20,7 +20,7 @@ test "M15_002 2.1: ZombieTriggered properties return expected keys" {
     try std.testing.expectEqualStrings("source", props[3].key);
 }
 
-test "M15_002 2.1: ZombieCompleted properties return expected keys and numeric types" {
+test "ZombieCompleted properties return expected keys and numeric types" {
     const props = (telemetry.ZombieCompleted{
         .distinct_id = "ws_1",
         .workspace_id = "ws_1",
@@ -43,7 +43,7 @@ test "M15_002 2.1: ZombieCompleted properties return expected keys and numeric t
 // Spec §6.0 row 2.3 — null PostHog client must not panic on Zombie captures.
 // ProdBackend is instantiated directly because the comptime-selected Backend
 // in test builds is TestBackend.
-test "M15_002 2.3: ProdBackend with null client does not panic on Zombie capture" {
+test "ProdBackend with null client does not panic on Zombie capture" {
     var prod = telemetry.ProdBackend{ .client = null };
     prod.capture(telemetry.ZombieTriggered, .{
         .distinct_id = "ws",

@@ -39,7 +39,7 @@ const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECK passes.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0de011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dea01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dec01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dec01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ded01";
 const RUNNER_TOKEN = "zrn_" ++ "1" ** 64;
 
@@ -48,7 +48,7 @@ const RUNNER_TOKEN = "zrn_" ++ "1" ** 64;
 const SEED_CONTEXT = "{\"last_event_id\":\"evt-prior\",\"last_response\":\"earlier-turn-marker\"}";
 
 const CONFIG_NO_GATES =
-    \\{"name":"session-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"session-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const SOURCE_MD =
     \\---
@@ -84,8 +84,8 @@ fn seedRunner(conn: *pg.Conn) !void {
 }
 
 fn seedActiveZombie(conn: *pg.Conn, context_json: []const u8) !void {
-    try base.seedZombie(conn, ZOMBIE_ID, WORKSPACE_ID, "session-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, ZOMBIE_ID, context_json);
+    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "session-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, context_json);
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -98,10 +98,10 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, ZOMBIE_ID);
+    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_ID);
     const id = try h.queue.xaddZombieEvent(.{
         .event_id = "",
-        .zombie_id = ZOMBIE_ID,
+        .zombie_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -170,7 +170,7 @@ fn reportOnce(h: *TestHarness, lease_id: []const u8, event_id: []const u8, fenci
 
 /// Read the session's resume cursor. alloc-dup'd; caller frees.
 fn sessionContext(conn: *pg.Conn, alloc: std.mem.Allocator) ![]const u8 {
-    var q = PgQuery.from(try conn.query("SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1::uuid", .{ZOMBIE_ID}));
+    var q = PgQuery.from(try conn.query("SELECT context_json::text FROM core.zombie_sessions WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = try q.next() orelse return error.SessionRowMissing;
     return alloc.dupe(u8, try row.get([]const u8, 0));
@@ -181,7 +181,7 @@ fn sessionContext(conn: *pg.Conn, alloc: std.mem.Allocator) ![]const u8 {
 fn activeLeaseCount(conn: *pg.Conn) !i64 {
     var q = PgQuery.from(try conn.query(
         "SELECT count(*)::bigint FROM fleet.runner_leases WHERE zombie_id = $1::uuid AND status = 'active'",
-        .{ZOMBIE_ID},
+        .{AGENTSFLEET_ID},
     ));
     defer q.deinit();
     const row = try q.next() orelse return error.RowMissing;
@@ -198,11 +198,11 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "zombie:" ++ ZOMBIE_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownZombies(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);

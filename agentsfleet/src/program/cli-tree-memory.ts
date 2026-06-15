@@ -25,7 +25,7 @@ const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
 const MAX_ENTRIES = "Max entries to return" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
-const AGENTSFLEET_ID = "Zombie ID" as const;
+const AGENTSFLEET_ID = "Agent ID" as const;
 
 const MEMORY_LIMIT_BOUNDS = { min: 1, max: MAX_RECALL_LIMIT };
 
@@ -37,7 +37,7 @@ export function buildMemoryTree(
 ): void {
   const memory = program
     .command("memory")
-    .description("Inspect a zombie's durable memory (read-only)");
+    .description("Inspect an agent's durable memory (read-only)");
 
   memory
     .command("list")

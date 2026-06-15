@@ -36,7 +36,7 @@ const log = logging.scoped(.runner_memory);
 
 const S_RUNNER_IDENTITY_REQUIRED = "runner identity required";
 const S_ROLE_SWITCH_FAILED = "memory backend role switch failed";
-const S_MALFORMED_ZOMBIE_ID = "zombie_id must be a valid UUIDv7";
+const S_MALFORMED_AGENTSFLEET_ID = "zombie_id must be a valid UUIDv7";
 const S_MALFORMED_LEASE_ID = "lease_id must be a valid UUIDv7";
 const S_NO_LIVE_LEASE = "runner holds no live lease for this zombie";
 
@@ -51,7 +51,7 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     };
     if (!id_format.isUuidV7(zombie_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MALFORMED_ZOMBIE_ID);
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MALFORMED_AGENTSFLEET_ID);
         return;
     }
     const raw_body = req.body() orelse {
@@ -173,7 +173,7 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, zombie_id: []const u8) void {
         return;
     };
     if (!id_format.isUuidV7(zombie_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, S_MALFORMED_ZOMBIE_ID);
+        hx.fail(ec.ERR_INVALID_REQUEST, S_MALFORMED_AGENTSFLEET_ID);
         return;
     }
 

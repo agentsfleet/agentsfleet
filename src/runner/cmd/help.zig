@@ -24,14 +24,14 @@ const HEADER =
 const FLAGS =
     \\
     \\Flags:
-    \\  --api <url>      control-plane base URL (else ZOMBIE_API_URL)
+    \\  --api <url>      control-plane base URL (else AGENTSFLEET_API_URL)
     \\  --json           machine-readable output (auto when piped)
     \\  --version, -V    print version
     \\  --help, -h       show this help
     \\
     \\Environment:
-    \\  ZOMBIE_API_URL        control-plane base URL
-    \\  ZOMBIE_RUNNER_TOKEN   this host's zrn_ token (daemon/status/doctor)
+    \\  AGENTSFLEET_API_URL        control-plane base URL
+    \\  AGENTSFLEET_RUNNER_TOKEN   this host's zrn_ token (daemon/status/doctor)
     \\  RUNNER_HOST_ID        stable host identifier (daemon)
     \\
 ;
@@ -96,12 +96,12 @@ test "help matches the checked-in golden byte-for-byte" {
 }
 
 // The runner never takes an enrollment-grade credential: no `register` command,
-// no `--token`/`ZOMBIE_TOKEN` surface. This guards against a future re-add.
+// no `--token`/`AGENTSFLEET_TOKEN` surface. This guards against a future re-add.
 test "help carries no enrollment-token surface" {
     const alloc = std.testing.allocator;
     const text = try render(alloc);
     defer alloc.free(text);
     try std.testing.expect(std.mem.indexOf(u8, text, "register") == null);
     try std.testing.expect(std.mem.indexOf(u8, text, "--token") == null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "ZOMBIE_TOKEN") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "AGENTSFLEET_TOKEN") == null);
 }

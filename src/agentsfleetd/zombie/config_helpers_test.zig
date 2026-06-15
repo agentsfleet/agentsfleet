@@ -32,7 +32,7 @@ fn freeTrigger(t: ZombieTrigger) void {
 fn parseTriggersForTest(src: []const u8) ![]const ZombieTrigger {
     const wrapped = try std.fmt.allocPrint(
         test_alloc,
-        \\{{"name":"t","x-usezombie":{{"triggers":{s},"tools":["x"],"budget":{{"daily_dollars":1.0}}}}}}
+        \\{{"name":"t","x-agentsfleet":{{"triggers":{s},"tools":["x"],"budget":{{"daily_dollars":1.0}}}}}}
     ,
         .{src},
     );

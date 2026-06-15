@@ -123,8 +123,8 @@ test "core key schemas: public text ids have explicit UUIDv7 constraints" {
         \\  AND rel.relname IN ('agent_keys', 'integration_grants')
         \\  AND c.conname IN (
         \\    'ck_agent_keys_uid_uuidv7',
-        \\    'ck_agent_keys_agent_id_uuidv7',
-        \\    'ck_agent_keys_uid_matches_agent_id',
+        \\    'ck_agent_keys_agent_key_id_uuidv7',
+        \\    'ck_agent_keys_uid_matches_agent_key_id',
         \\    'ck_integration_grants_uid_uuidv7',
         \\    'ck_integration_grants_grant_id_uuidv7',
         \\    'ck_integration_grants_uid_matches_grant_id'

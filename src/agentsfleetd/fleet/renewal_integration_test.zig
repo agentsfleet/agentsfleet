@@ -37,7 +37,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7f01";
 const EVENT_ID = "evt-renew-1"; // matches seedLease; metering rows keyed by it
@@ -65,7 +65,7 @@ fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, leased_until: i64) !void {
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, leased_until });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, leased_until });
 }
 
 /// Seed an active lease for the runner with a given fencing_token + created_at.
@@ -80,7 +80,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -94,7 +94,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -105,7 +105,7 @@ fn teardown(conn: *pg.Conn) void {
 /// read/write on a conn while a result is open).
 fn readDeadlines(conn: *pg.Conn) !struct { lease: i64, affinity: i64 } {
     const lease_until = try readBigint(conn, "SELECT lease_expires_at FROM fleet.runner_leases WHERE id = $1::uuid", LEASE_ID);
-    const aff_until = try readBigint(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID);
+    const aff_until = try readBigint(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", AGENTSFLEET_ID);
     return .{ .lease = lease_until, .affinity = aff_until };
 }
 

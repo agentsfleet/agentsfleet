@@ -1,5 +1,5 @@
 //! `agentsfleet-runner` — host-resident runner daemon entrypoint. Boots from the
-//! operator-installed `zrn_` (env `ZOMBIE_RUNNER_TOKEN`) straight into the
+//! operator-installed `zrn_` (env `AGENTSFLEET_RUNNER_TOKEN`) straight into the
 //! heartbeat/lease/execute/report/activity loop (`daemon/loop.zig`) — the host
 //! never self-registers (Option B). This file owns process startup: arg
 //! dispatch (child-execute mode), config load, the fail-closed `dev_none`

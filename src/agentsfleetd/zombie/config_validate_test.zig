@@ -8,7 +8,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 test "parseZombieConfig: credential names validated (no op:// paths)" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],
+        \\{"name":"x","x-agentsfleet":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],
         \\ "credentials":["op://ZMB_LOCAL_DEV/agentmail/api_key"],
         \\ "budget":{"daily_dollars":1.0}}}
     ;
@@ -46,12 +46,12 @@ test "validateCredentials: alphanumeric + underscore accepted" {
 
 test "parseZombieConfig: unknown tool name accepted (gate moved to runner sandbox)" {
     const alloc = std.testing.allocator;
-    // Runtime keys live under x-usezombie: post-M46. The semantic point
+    // Runtime keys live under x-agentsfleet: post-M46. The semantic point
     // of this test — that arbitrary tool names pass through the parser
     // because the runner sandbox is the binding authority on dispatch —
     // is independent of where the runtime block sits in the JSON tree.
     const json =
-        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}}
+        \\{"name":"x","x-agentsfleet":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}}
     ;
     var cfg = try config_parser.parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);

@@ -102,7 +102,7 @@ fn writeListResponse(hx: Hx, page: ZombiePage) void {
     hx.ok(.ok, .{ .items = items, .total = items.len, .cursor = page.next_cursor });
 }
 
-/// Wire shape per row — `triggers` projects `config_json->'x-usezombie'->'triggers'`
+/// Wire shape per row — `triggers` projects `config_json->'x-agentsfleet'->'triggers'`
 /// from the stored config so consumers can render a per-trigger card without a
 /// follow-up fetch. `null` means the column has no triggers entry yet (legacy
 /// rows pre-§1 reshape — should not exist post-v2.0 but the field stays optional).
@@ -129,7 +129,7 @@ const ZombieListRow = struct {
     status: []const u8,
     created_at: i64,
     updated_at: i64,
-    /// Raw JSONB projected from `config_json->'x-usezombie'->'triggers'`. `null`
+    /// Raw JSONB projected from `config_json->'x-agentsfleet'->'triggers'`. `null`
     /// when the column has no entry (should not occur post-§1 reshape).
     triggers_raw: ?[]const u8 = null,
 };
@@ -161,7 +161,7 @@ fn fetchZombiePageFirst(
 ) !ZombiePage {
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-usezombie'->'triggers')::text
+        \\       (config_json->'x-agentsfleet'->'triggers')::text
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC, id DESC
@@ -182,7 +182,7 @@ fn fetchZombiePageAfter(
 
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-usezombie'->'triggers')::text
+        \\       (config_json->'x-agentsfleet'->'triggers')::text
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\  AND (created_at < $2 OR (created_at = $2 AND id::text < $3))

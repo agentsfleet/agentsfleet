@@ -244,11 +244,11 @@ test "yamlFrontmatterToJson: quoted magic-word scalars collapse to bare type (kn
     try std.testing.expect(parsed.value.object.get("version").? == .null);
 }
 
-test "yamlFrontmatterToJson: two-level nesting via x-usezombie shape" {
+test "yamlFrontmatterToJson: two-level nesting via x-agentsfleet shape" {
     const alloc = std.testing.allocator;
     const src =
         \\name: foo
-        \\x-usezombie:
+        \\x-agentsfleet:
         \\  network:
         \\    allow:
         \\      - api.fly.dev
@@ -260,7 +260,7 @@ test "yamlFrontmatterToJson: two-level nesting via x-usezombie shape" {
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
-    const x = parsed.value.object.get("x-usezombie").?.object;
+    const x = parsed.value.object.get("x-agentsfleet").?.object;
     const allow = x.get("network").?.object.get("allow").?.array;
     try std.testing.expectEqual(@as(usize, 2), allow.items.len);
     try std.testing.expectEqualStrings("api.fly.dev", allow.items[0].string);

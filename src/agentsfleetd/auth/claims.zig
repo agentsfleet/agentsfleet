@@ -43,7 +43,7 @@ const CLAIM_PLATFORM_ADMIN = "platform_admin";
 // JWT claim namespace prefixes — these must match the identity provider's
 // custom claim configuration (Clerk/Auth0). Not user-configurable.
 const NAMESPACE_DEV = "https://usezombie.dev/";
-const NAMESPACE_PROD = "https://usezombie.com/";
+const NAMESPACE_PROD = "https://agentsfleet.net/";
 
 /// Validate and normalize a role string using the canonical RBAC enum.
 /// Returns the canonical label or null if the role is not recognized.

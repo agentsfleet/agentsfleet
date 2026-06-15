@@ -125,7 +125,7 @@ fn tryCandidate(hx: Hx, conn: *pg.Conn, runner_id: []const u8, zombie_id: []cons
     return acquireFresh(hx, conn, zombie_id, won, runner_id);
 }
 
-/// Pull the next event for the claimed zombie: the stable consumer's own PEL
+/// Pull the next event for the claimed agent: the stable consumer's own PEL
 /// first (re-delivering pending-gate re-polls and sweep-recovered strands —
 /// safe because this claim win proves no live lease exists), then a fresh
 /// undelivered entry. No event ⇒ release the claim so the next event (and

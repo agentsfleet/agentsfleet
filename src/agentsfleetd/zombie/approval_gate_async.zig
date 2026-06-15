@@ -3,8 +3,8 @@
 //! instead of parking a handler thread (the deleted blocking wait).
 //!
 //! Key shapes (prefixes owned by the error registry):
-//!   byevent ref: zombie:gate:byevent:{zombie_id}:{event_id} → "action_id|deadline_ms"
-//!   decision:    zombie:gate:response:{action_id}           → approve | deny
+//!   byevent ref: agent:gate:byevent:{zombie_id}:{event_id} → "action_id|deadline_ms"
+//!   decision:    agent:gate:response:{action_id}           → approve | deny
 
 const std = @import("std");
 const clock = @import("common").clock;

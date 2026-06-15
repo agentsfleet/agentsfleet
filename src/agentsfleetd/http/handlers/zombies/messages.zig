@@ -1,7 +1,7 @@
 // POST /v1/workspaces/{ws}/zombies/{id}/messages — operator-driven chat ingress.
 //
 // Verifies workspace ownership, normalizes the body into an EventEnvelope,
-// XADDs onto zombie:{id}:events, and returns 202 with the Redis-assigned
+// XADDs onto agent:{id}:events, and returns 202 with the Redis-assigned
 // event_id. The CLI uses event_id to filter SSE frames for the message it
 // just sent. No SETEX, no GETDEL, no synthetic-event injection in the
 // worker — the event hits the same single-ingress stream every other
@@ -137,7 +137,7 @@ fn verifyZombieInWorkspace(
         common.internalDbError(hx.res, hx.req_id);
         return false;
     }) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return false;
     };
 
@@ -147,7 +147,7 @@ fn verifyZombieInWorkspace(
     };
 
     if (!std.mem.eql(u8, path_workspace_id, zombie_workspace)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return false;
     }
 
@@ -158,14 +158,14 @@ fn verifyZombieInWorkspace(
     const status = zombie_config.ZombieStatus.fromSlice(raw_status) orelse .stopped;
     if (!status.isRunnable()) {
         log.warn("steer_zombie_paused", .{
-            .error_code = ec.ERR_ZOMBIE_PAUSED_INGRESS,
+            .error_code = ec.ERR_AGENTSFLEET_PAUSED_INGRESS,
             .zombie_id = zombie_id,
             .status = raw_status,
             .req_id = hx.req_id,
         });
         // 409s carry current_state (REST §4) — the caller branches on
         // paused vs stopped without re-fetching the zombie.
-        common.errorResponseConflict(hx.res, ec.ERR_ZOMBIE_PAUSED_INGRESS, ec.MSG_ZOMBIE_NOT_ACTIVE, hx.req_id, raw_status);
+        common.errorResponseConflict(hx.res, ec.ERR_AGENTSFLEET_PAUSED_INGRESS, ec.MSG_AGENTSFLEET_NOT_ACTIVE, hx.req_id, raw_status);
         return false;
     }
     return true;

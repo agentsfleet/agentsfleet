@@ -52,13 +52,13 @@ const ALLOC = std.testing.allocator;
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const OTHER_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbbf0"; // unique for this file
-const ZOMBIE_IN_FOREIGN_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
+const AGENTSFLEET_IN_FOREIGN_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
 const GRANT_ID_PLACEHOLDER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb99";
 
 // Same JWKS + token as the steer test — DO NOT regenerate independently.
-const TEST_JWKS_URL = "https://clerk.dev.usezombie.com/.well-known/jwks.json";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_JWKS_URL = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -158,12 +158,12 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'idor-foreign', '---\nname: idor-foreign\n---\nx', '{"name":"idor-foreign"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_IN_FOREIGN_WS, OTHER_WS_ID });
+    , .{ AGENTSFLEET_IN_FOREIGN_WS, OTHER_WS_ID });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.integration_grants WHERE zombie_id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.integration_grants WHERE zombie_id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{AGENTSFLEET_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // Delete OTHER_WS_ID only — TEST_WORKSPACE_ID is shared with other test files.
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
@@ -351,7 +351,7 @@ test "IDOR: PATCH /workspaces/{my}/zombies/{foreign} status=killed returns 404" 
     // handler scopes the UPDATE by both ids and returns 404 when no row
     // matches. The kill flow now rides on PATCH .../zombies/{id} with
     // body {status:"killed"} (folded from the retired POST /kill).
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_IN_FOREIGN_WS });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .PATCH, TOKEN_OPERATOR, "{\"status\":\"killed\"}");
@@ -371,7 +371,7 @@ test "IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404" {
     }
 
     // Caller's ws in path, foreign zombie in path. Must 404 — greptile P1 regression guard.
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/activity", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/activity", .{ TEST_WORKSPACE_ID, AGENTSFLEET_IN_FOREIGN_WS });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
@@ -409,7 +409,7 @@ test "IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants returns 40
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/integration-grants", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/integration-grants", .{ TEST_WORKSPACE_ID, AGENTSFLEET_IN_FOREIGN_WS });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
@@ -428,7 +428,7 @@ test "IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants/{g} ret
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/integration-grants/{s}", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS, GRANT_ID_PLACEHOLDER });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/integration-grants/{s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_IN_FOREIGN_WS, GRANT_ID_PLACEHOLDER });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
@@ -560,7 +560,7 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
 
     // Seed an agent key in TEST_WORKSPACE_ID for this test only. A zombie
     // record is also required because agent_keys.zombie_id has a FK.
-    const agent_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
+    const agent_key_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6204";
     const zombie_for_agent = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
     const conn = try srv.pool.acquire();
     _ = try conn.exec(
@@ -569,20 +569,20 @@ test "no-content: DELETE agent-key returns 204 with empty body" {
         \\ON CONFLICT DO NOTHING
     , .{ zombie_for_agent, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.agent_keys (uid, agent_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\INSERT INTO core.agent_keys (uid, agent_key_id, workspace_id, zombie_id, name, description, key_hash, created_at)
         \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, 'm26-204-test', '', 'stub-hash', 0)
-        \\ON CONFLICT (agent_id) DO NOTHING
-    , .{ agent_id, TEST_WORKSPACE_ID, zombie_for_agent });
+        \\ON CONFLICT (agent_key_id) DO NOTHING
+    , .{ agent_key_id, TEST_WORKSPACE_ID, zombie_for_agent });
     srv.pool.release(conn);
     defer {
         if (srv.pool.acquire()) |c| {
-            _ = c.exec("DELETE FROM core.agent_keys WHERE agent_id = $1", .{agent_id}) catch {};
+            _ = c.exec("DELETE FROM core.agent_keys WHERE agent_key_id = $1", .{agent_key_id}) catch {};
             _ = c.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_for_agent}) catch {};
             srv.pool.release(c);
         } else |_| {}
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/agent-keys/{s}", .{ TEST_WORKSPACE_ID, agent_id });
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/agent-keys/{s}", .{ TEST_WORKSPACE_ID, agent_key_id });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);

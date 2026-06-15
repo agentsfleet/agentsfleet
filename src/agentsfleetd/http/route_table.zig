@@ -257,7 +257,7 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
     _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg);
     _ = specFor(.{ .agent_keys = "ws1" }, &reg);
-    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg);
+    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_key_id = "a1" } }, &reg);
     _ = specFor(.{ .workspace_approvals = "ws1" }, &reg);
     _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
     _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);

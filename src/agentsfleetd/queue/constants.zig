@@ -13,9 +13,9 @@ pub const xautoclaim_count = "1";
 
 // ── Zombie event stream constants ────────────────────────────────────────
 
-/// Zombie stream key format: "zombie:{zombie_id}:events".
+/// Zombie stream key format: "agent:{zombie_id}:events".
 /// Built dynamically per zombie — not a single global stream.
-pub const zombie_stream_prefix = "zombie:";
+pub const zombie_stream_prefix = "agent:";
 pub const zombie_stream_suffix = ":events";
 
 /// Consumer group for zombie event processing. One group per zombie stream.

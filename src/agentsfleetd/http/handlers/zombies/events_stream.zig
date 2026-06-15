@@ -1,5 +1,5 @@
 //! GET /v1/workspaces/{ws}/zombies/{id}/events/stream — Server-Sent
-//! Events tail of the Redis pub/sub channel `zombie:{id}:activity`.
+//! Events tail of the Redis pub/sub channel `agent:{id}:activity`.
 //!
 //! Connection lifecycle:
 //!   1. Claim a StreamRegistry slot (cap or shutdown drain → 503) and
@@ -57,7 +57,7 @@ const log = logging.scoped(.http_zombie_events_stream);
 
 const Hx = hx_mod.Hx;
 
-const channel_prefix = "zombie:";
+const channel_prefix = "agent:";
 const channel_suffix = ":activity";
 
 /// Idle wake-up cadence for the subscription pop. Each tick with no frames
@@ -269,7 +269,7 @@ fn verifyZombieInWorkspace(hx: Hx, conn: *pg.Conn, path_workspace_id: []const u8
         common.internalDbError(hx.res, hx.req_id);
         return false;
     }) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return false;
     };
     const zombie_workspace = row.get([]const u8, 0) catch {
@@ -277,7 +277,7 @@ fn verifyZombieInWorkspace(hx: Hx, conn: *pg.Conn, path_workspace_id: []const u8
         return false;
     };
     if (!std.mem.eql(u8, path_workspace_id, zombie_workspace)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return false;
     }
     return true;

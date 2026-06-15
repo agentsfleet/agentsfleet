@@ -22,9 +22,9 @@ const TestHarness = harness_mod.TestHarness;
 // fresh so this suite does not collide with sibling suites.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f31";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f41";
-const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f51";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f51";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -68,7 +68,7 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
         \\   status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'zombie-m11-006', 'seed', null, '{}'::jsonb, 'active', $3, $3)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, now_ms });
+    , .{ TEST_AGENTSFLEET_ID, TEST_WORKSPACE_ID, now_ms });
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
@@ -284,8 +284,8 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     // A JWT that omits `metadata.tenant_id`. Same kid / signature flow as
     // the shared fixtures; payload minted for this suite only.
     // header: {"alg":"RS256","typ":"JWT","kid":"rbac-test-kid"}
-    // payload: {"sub":"user_m11_006","iss":"https://clerk.dev.usezombie.com",
-    //   "aud":"https://api.usezombie.com","exp":4102444800,
+    // payload: {"sub":"user_m11_006","iss":"https://clerk.dev.agentsfleet.net",
+    //   "aud":"https://api.agentsfleet.net","exp":4102444800,
     //   "metadata":{"role":"operator"}}
     // Signed with the same test RSA key used elsewhere in the suite.
     const TOKEN_NO_TENANT = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX20xMV8wMDYiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsicm9sZSI6Im9wZXJhdG9yIn19.placeholder-signature-will-fail-jwks-so-401-matches-UZ-AUTH";

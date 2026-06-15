@@ -2,9 +2,9 @@
 //
 // Parses the `config_json` value (server-derived from TRIGGER.md
 // frontmatter) into a ZombieConfig. The runtime keys (`triggers`, `tools`,
-// `credentials`, `network`, `budget`, `gates`) live under the `x-usezombie:`
+// `credentials`, `network`, `budget`, `gates`) live under the `x-agentsfleet:`
 // top-level object; `name` is the only top-level field outside that block.
-// Field parsers take the runtime ObjectMap (the inside of `x-usezombie:`),
+// Field parsers take the runtime ObjectMap (the inside of `x-agentsfleet:`),
 // not the root.
 //
 // Decomposed into per-field helpers so every function stays ≤50 lines and
@@ -110,10 +110,10 @@ pub fn parseZombieConfig(
     };
 }
 
-/// Runtime keys must live under `x-usezombie:`. Their presence at the top
+/// Runtime keys must live under `x-agentsfleet:`. Their presence at the top
 /// level is a structural error pointing the author at the schema doc.
 /// Forbidden set must mirror the `known` set in `ensureKnownRuntimeKeys` —
-/// any key that's accepted under `x-usezombie:` must also be rejected at
+/// any key that's accepted under `x-agentsfleet:` must also be rejected at
 /// top level. Otherwise an author who forgets the indentation gets a
 /// silently-dropped key (e.g. `gates:` at root → no rate limiting installed,
 /// no error surfaced).
@@ -127,18 +127,18 @@ fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!vo
     }
 }
 
-/// Extract the `x-usezombie:` runtime block from the parsed JSON root.
+/// Extract the `x-agentsfleet:` runtime block from the parsed JSON root.
 /// Distinguished from `MissingRequiredField` because the user fix is different:
 /// they need to add a whole namespaced block, not just one missing key.
 fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.ObjectMap {
-    const val = root.get("x-usezombie") orelse return ZombieConfigError.UsezombieBlockRequired;
+    const val = root.get("x-agentsfleet") orelse return ZombieConfigError.UsezombieBlockRequired;
     return switch (val) {
         .object => |o| o,
         else => ZombieConfigError.UsezombieBlockRequired,
     };
 }
 
-/// Rigid: any subkey under `x-usezombie:` outside the known set is an
+/// Rigid: any subkey under `x-agentsfleet:` outside the known set is an
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
@@ -271,7 +271,7 @@ fn parseModelField(
     return try alloc.dupe(u8, s);
 }
 
-/// Optional `x-usezombie.context:` block. Every field zero-defaults so the
+/// Optional `x-agentsfleet.context:` block. Every field zero-defaults so the
 /// runner's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
 /// Absent block → null; present-but-empty block → all-zero struct (still
 /// gets defaulted downstream — same observable behaviour).
@@ -291,7 +291,7 @@ fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieConte
 }
 
 /// Same rigid contract as `ensureKnownRuntimeKeys` but for the nested
-/// `x-usezombie.context:` object. Without this, a typo like
+/// `x-agentsfleet.context:` object. Without this, a typo like
 /// `tool_windw: 30` silently falls through to the zero auto-sentinel
 /// and the operator's intended override is dropped at runtime — the
 /// failure is invisible until somebody traces a confusing budget at

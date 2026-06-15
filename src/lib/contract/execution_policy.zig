@@ -17,7 +17,7 @@ pub const NetworkPolicy = struct {
     allow: []const []const u8 = &.{},
 };
 
-/// Context-budget knobs from `x-usezombie.context`. `model` + `context_cap_tokens`
+/// Context-budget knobs from `x-agentsfleet.context`. `model` + `context_cap_tokens`
 /// are upstream-populated passthrough; the runner does not interpret `model`.
 pub const ContextBudget = struct {
     tool_window: u32 = 0,

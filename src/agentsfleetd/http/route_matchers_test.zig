@@ -65,11 +65,11 @@ test "matchWorkspaceCredential: workspace_id and credential_name" {
     try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials", &buf)) == null);
 }
 
-test "matchWorkspaceAgentDelete: workspace_id and agent_id" {
+test "matchWorkspaceAgentDelete: workspace_id and agent_key_id" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const r = matchers.matchWorkspaceAgentDelete(parse("/v1/workspaces/ws1/agent-keys/ag1", &buf)).?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("ag1", r.agent_id);
+    try std.testing.expectEqualStrings("ag1", r.agent_key_id);
     try std.testing.expect(matchers.matchWorkspaceAgentDelete(parse("/v1/workspaces/ws1/agent-keys/", &buf)) == null);
     try std.testing.expect(matchers.matchWorkspaceAgentDelete(parse("/v1/workspaces//agent-keys/ag1", &buf)) == null);
     try std.testing.expect(matchers.matchWorkspaceAgentDelete(parse("/v1/workspaces/a/b/agent-keys/ag1", &buf)) == null);

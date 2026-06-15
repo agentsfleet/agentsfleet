@@ -30,7 +30,7 @@ pub const Fixture = struct {
 /// Caller must call `cleanup()` at end of test before `harness.deinit()`.
 ///
 /// `config_json` is the ENTIRE config — e.g.:
-///   {"name":"x","x-usezombie":{"triggers":[{"type":"webhook","source":"github"}]}}
+///   {"name":"x","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}]}}
 pub fn insertZombie(
     conn: *pg.Conn,
     fx: Fixture,
@@ -68,7 +68,7 @@ pub fn insertVaultSecret(
     try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
 }
 
-/// Insert a workspace credential at `zombie:<credential_name>` containing
+/// Insert a workspace credential at `agent:<credential_name>` containing
 /// `{"webhook_secret": "<plaintext>"}`. Used by webhook integration tests
 /// where the resolver reads the credential via `vault.loadJson`.
 pub fn insertWebhookCredential(
@@ -88,7 +88,7 @@ pub fn insertWebhookCredential(
         .{},
     );
     defer alloc.free(json);
-    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{credential_name});
+    const key_name = try std.fmt.allocPrint(alloc, "agent:{s}", .{credential_name});
     defer alloc.free(key_name);
     try crypto_store.store(alloc, conn, workspace_id, key_name, json);
 }
@@ -121,18 +121,18 @@ pub fn buildTriggerConfig(
         type: []const u8 = S_WEBHOOK,
         source: []const u8,
     };
-    const WrapWith = struct { @"x-usezombie": struct { triggers: [1]TriggerWith } };
-    const WrapNoOverride = struct { @"x-usezombie": struct { triggers: [1]TriggerNoOverride } };
+    const WrapWith = struct { @"x-agentsfleet": struct { triggers: [1]TriggerWith } };
+    const WrapNoOverride = struct { @"x-agentsfleet": struct { triggers: [1]TriggerNoOverride } };
     if (credential_name) |name| {
         return std.json.Stringify.valueAlloc(
             alloc,
-            WrapWith{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source, .credential_name = name }} } },
+            WrapWith{ .@"x-agentsfleet" = .{ .triggers = .{.{ .source = source, .credential_name = name }} } },
             .{},
         );
     }
     return std.json.Stringify.valueAlloc(
         alloc,
-        WrapNoOverride{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source }} } },
+        WrapNoOverride{ .@"x-agentsfleet" = .{ .triggers = .{.{ .source = source }} } },
         .{},
     );
 }
@@ -142,14 +142,14 @@ pub fn buildTriggerConfig(
 /// test are handled by `cleanup()` running at start of insertZombie.
 pub const ID_TENANT_A = "0197a4ba-8d3a-7f13-8abc-11111111aa01";
 pub const ID_WS_A = "0197a4ba-8d3a-7f13-8abc-11111111aa11";
-pub const ID_ZOMBIE_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
+pub const ID_AGENTSFLEET_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
 const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
 
 test "buildTriggerConfig with credential_name override produces valid JSON" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", "github-prod");
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}]}}";
+    const want = "{\"x-agentsfleet\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
@@ -157,13 +157,13 @@ test "buildTriggerConfig without override produces source-only config" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", null);
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\"}]}}";
+    const want = "{\"x-agentsfleet\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
 test "fixture IDs match UUIDv7 constraint (15th char is 7)" {
     try std.testing.expectEqual(@as(u8, '7'), ID_TENANT_A[14]);
     try std.testing.expectEqual(@as(u8, '7'), ID_WS_A[14]);
-    try std.testing.expectEqual(@as(u8, '7'), ID_ZOMBIE_A[14]);
+    try std.testing.expectEqual(@as(u8, '7'), ID_AGENTSFLEET_A[14]);
     try std.testing.expectEqual(@as(u8, '7'), ID_TENANT_B[14]);
 }

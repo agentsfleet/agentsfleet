@@ -1,7 +1,7 @@
 // POST /v1/webhooks/{zombie_id}/github — GitHub Actions webhook ingest.
 //
 // Auth: HMAC-SHA256 over the raw body (X-Hub-Signature-256), verified by the
-//       webhook_sig middleware against the workspace's `zombie:github`
+//       webhook_sig middleware against the workspace's `agent:github`
 //       credential. This handler runs only after the signature is valid.
 //
 // Body cap: 1 MiB (UZ-WH-030 before any other work).
@@ -17,7 +17,7 @@
 //         never consume it, and RELEASED (DEL) on every post-claim failure
 //         path — normalize failure included — so a transient fault leaves
 //         GitHub's redelivery deliverable (loss-proof dedup ordering).
-// On accept: normalized envelope is XADDed to zombie:{id}:events with
+// On accept: normalized envelope is XADDed to agent:{id}:events with
 //         `actor=webhook:github`, `event_type=webhook`. Returns 202.
 
 const std = @import("std");
@@ -106,7 +106,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         common.internalDbError(hx.res, hx.req_id);
         return;
     } orelse {
-        hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return;
     };
     defer deinitZombieRow(&zombie, hx.alloc);
@@ -122,7 +122,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
             .status = zombie.status,
             .delivery = delivery,
         });
-        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_ZOMBIE_PAUSED });
+        hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_AGENTSFLEET_PAUSED });
         return;
     }
 

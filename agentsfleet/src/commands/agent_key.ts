@@ -3,9 +3,9 @@
 // Manages zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
-// agentsfleet agent add    --workspace <ws> --zombie <id> --name <name> [--description <desc>]
-// agentsfleet agent list   --workspace <ws>
-// agentsfleet agent delete --workspace <ws> <agent_id>
+// agentsfleet agent-key add    --workspace <ws> --zombie <id> --name <name> [--description <desc>]
+// agentsfleet agent-key list   --workspace <ws>
+// agentsfleet agent-key delete --workspace <ws> <agent_key_id>
 
 import { Effect } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
@@ -20,13 +20,13 @@ import { validateRequiredId } from "../program/validators.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 
 interface AgentKeyResponse {
-  readonly agent_id?: string;
+  readonly agent_key_id?: string;
   readonly key?: string;
   readonly created_at?: number | string | null;
 }
 
 interface AgentRow {
-  readonly agent_id?: string;
+  readonly agent_key_id?: string;
   readonly name?: string;
   readonly description?: string;
   readonly last_used_at?: number | string | null;
@@ -77,7 +77,7 @@ const resolveWorkspaceId = (
     const state = yield* workspaces.load;
     return yield* requireFlag(
       state.current_workspace_id ?? undefined,
-      "agent command requires --workspace <id> or an active workspace context",
+      "agent-key command requires --workspace <id> or an active workspace context",
       "run `agentsfleet workspace use <id>` or pass --workspace <id>",
     );
   });
@@ -103,12 +103,12 @@ export const agentAddEffectFromArgs = (
     const workspaceId = yield* resolveWorkspaceId(args.workspaceId);
     const zombieId = yield* requireFlag(
       args.zombieId,
-      "agent add requires --zombie <id>",
+      "agent-key add requires --zombie <id>",
       "pass --zombie <zombie_id>",
     );
     const name = yield* requireFlag(
       args.name,
-      "agent add requires --name <name>",
+      "agent-key add requires --name <name>",
       "pass --name <name>",
     );
     const description = args.description ?? "";
@@ -124,7 +124,7 @@ export const agentAddEffectFromArgs = (
       yield* output.printJson(res);
       return;
     }
-    yield* output.success(`External agent added: ${res.agent_id ?? ""}`);
+    yield* output.success(`Agent key created: ${res.agent_key_id ?? ""}`);
     yield* output.info("");
     // The shown-once warning belongs on stdout next to the key.
     // Output.warn would route to stderr; surface this as an info line
@@ -141,7 +141,7 @@ export const agentAddEffectFromArgs = (
         { key: "value", label: "" },
       ],
       [
-        { label: AGENT_ID_2, value: res.agent_id ?? "" },
+        { label: AGENT_ID_2, value: res.agent_key_id ?? "" },
         { label: "zombie_id", value: zombieId },
         { label: FIELD_NAME, value: name },
         {
@@ -177,7 +177,7 @@ export const agentListEffectFromArgs = (
       return;
     }
     if (agents.length === 0) {
-      yield* output.info("no external agents found");
+      yield* output.info("no agent keys found");
       return;
     }
     yield* output.printTable(
@@ -185,7 +185,7 @@ export const agentListEffectFromArgs = (
         { key: FIELD_NAME, label: "NAME" },
         { key: "description", label: "DESCRIPTION" },
         { key: "last_used_at", label: "LAST_USED" },
-        { key: AGENT_ID_2, label: "AGENT_ID" },
+        { key: AGENT_ID_2, label: "AGENT_KEY_ID" },
       ],
       agents.map((a) => ({
         name: a.name ?? "",
@@ -193,7 +193,7 @@ export const agentListEffectFromArgs = (
         last_used_at: a.last_used_at
           ? new Date(a.last_used_at).toISOString()
           : "never",
-        agent_id: a.agent_id ?? "",
+        agent_key_id: a.agent_key_id ?? "",
       })),
     );
   });
@@ -216,8 +216,8 @@ export const agentDeleteEffectFromArgs = (
     yield* requireValidId(workspaceId, "workspace_id");
     const agentIdRaw = yield* requireFlag(
       agentIdPositional ?? agentIdFlag,
-      "agent delete requires <agent_id>",
-      "pass <agent_id> as positional or --agent-id <id>",
+      "agent-key delete requires <agent_key_id>",
+      "pass <agent_key_id> as positional or --agent-key-id <id>",
     );
     const agentId = yield* requireValidId(agentIdRaw, "key_id");
 
@@ -228,12 +228,12 @@ export const agentDeleteEffectFromArgs = (
     });
 
     if (config.jsonMode) {
-      yield* output.printJson({ deleted: true, agent_id: agentId });
+      yield* output.printJson({ deleted: true, agent_key_id: agentId });
     } else {
       yield* output.success(
-        `External agent ${agentId} deleted. Key immediately invalidated.`,
+        `Agent key ${agentId} deleted. Key immediately invalidated.`,
       );
     }
   });
-const AGENT_ID_2 = "agent_id" as const;
+const AGENT_ID_2 = "agent_key_id" as const;
 const FIELD_NAME = "name" as const;

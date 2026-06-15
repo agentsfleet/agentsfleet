@@ -1,6 +1,6 @@
 //! Zombie Redis stream operations.
 //!
-//! Operates on per-zombie streams (zombie:{zombie_id}:events) using
+//! Operates on per-zombie streams (agent:{zombie_id}:events) using
 //! XREADGROUP / XAUTOCLAIM / XACK with the shared `zombie_lease` consumer
 //! group. Decoded entries match the EventEnvelope wire shape; field names
 //! must stay in lockstep with `contract/event_envelope.zig::encodeForXAdd`.
@@ -17,7 +17,7 @@ const REDIS_XREADGROUP_COMMAND = "XREADGROUP";
 
 const log = logging.scoped(.redis_zombie);
 
-/// ZombieEvent fields decoded from a `zombie:{id}:events` stream message.
+/// ZombieEvent fields decoded from a `agent:{id}:events` stream message.
 ///
 /// `event_id` IS the Redis stream entry id (`<ms>-<seq>`); it is also the
 /// argument passed to `xackZombie`. Producer-side does NOT write a
@@ -78,7 +78,7 @@ pub fn ensureZombieConsumerGroup(client: *redis_client.Client, zombie_id: []cons
     }
 }
 
-/// XREADGROUP on zombie:{id}:events reading the consumer's OWN Pending
+/// XREADGROUP on agent:{id}:events reading the consumer's OWN Pending
 /// Entries List (id "0") — re-delivers the oldest entry that was delivered
 /// but never XACKed (a pending-gate re-poll, a sweep-recovered strand) before
 /// any new event is read. Null when the PEL is empty. Safe against
@@ -102,7 +102,7 @@ pub fn xreadgroupZombiePending(
     return decodeSingleZombieEvent(client.alloc, resp);
 }
 
-/// XREADGROUP on zombie:{id}:events WITHOUT BLOCK — returns the next undelivered
+/// XREADGROUP on agent:{id}:events WITHOUT BLOCK — returns the next undelivered
 /// event immediately, or null. The runner control plane's assignment scan
 /// probes many zombies per poll and must not park on any single stream; the
 /// runner long-polls client-side (via retry_after_ms) instead.

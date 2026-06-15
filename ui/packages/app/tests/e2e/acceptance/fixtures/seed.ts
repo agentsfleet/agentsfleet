@@ -54,7 +54,7 @@ function triggerMd(name: string): string {
     "---",
     `name: ${name}`,
     "",
-    "x-usezombie:",
+    "x-agentsfleet:",
     "  triggers:",
     "    - type: cron",
     '      schedule: "0 0 * * *"',

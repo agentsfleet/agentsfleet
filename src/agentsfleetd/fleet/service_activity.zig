@@ -3,7 +3,7 @@
 //! `POST /v1/runners/me/leases/{lease_id}/activity` forwards the live-tail
 //! progress frames a runner streams off its sandboxed child. A runner holds no
 //! Redis, so it ships frames here and `agentsfleetd` does the `PUBLISH` to
-//! `zombie:{id}:activity` — downstream Server-Sent-Events (SSE) is unchanged.
+//! `agent:{id}:activity` — downstream Server-Sent-Events (SSE) is unchanged.
 //!
 //! Best-effort + ephemeral by contract: a dropped frame is cosmetic (the durable
 //! record is `report`), so each publish swallows its own failure and the verb

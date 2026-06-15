@@ -42,7 +42,7 @@ describe("lib/api/zombies", () => {
     const mod = await import("../lib/api/zombies");
     const body = {
       trigger_markdown:
-        "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
+        "---\nname: platform-ops\nx-agentsfleet:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
       source_markdown: "---\nname: platform-ops\n---\nhi",
     };
     const res = await mod.installZombie("ws_1", body, "tkn");

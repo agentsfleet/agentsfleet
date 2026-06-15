@@ -99,7 +99,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormControl>
                 <Textarea
                   placeholder={
-                    "---\nname: my-agent\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n"
+                    "---\nname: my-agent\nx-agentsfleet:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n"
                   }
                   rows={8}
                   className="font-mono text-xs"
@@ -108,9 +108,9 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               </FormControl>
               <FormDescription>
                 YAML frontmatter must include <code className="font-mono">name</code> (kebab-case),
-                {" "}<code className="font-mono">x-usezombie.trigger</code>,{" "}
-                <code className="font-mono">x-usezombie.tools</code>, and{" "}
-                <code className="font-mono">x-usezombie.budget</code>.
+                {" "}<code className="font-mono">x-agentsfleet.trigger</code>,{" "}
+                <code className="font-mono">x-agentsfleet.tools</code>, and{" "}
+                <code className="font-mono">x-agentsfleet.budget</code>.
               </FormDescription>
               <FormMessage />
             </FormItem>

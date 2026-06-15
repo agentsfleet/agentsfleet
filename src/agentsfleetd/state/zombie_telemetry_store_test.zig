@@ -11,7 +11,7 @@ const MS_PER_SECOND = 1000;
 
 const ALLOC = std.testing.allocator;
 const WS_A = "0195b4ba-8d3a-7f13-8abc-aa1900000001";
-const ZOMBIE_A = "zombie-telem-a";
+const AGENTSFLEET_A = "zombie-telem-a";
 const PLATFORM_MODEL = tenant_provider.PLATFORM_DEFAULT_MODEL;
 
 fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8, event_id: []const u8, recorded_at: i64) !void {
@@ -58,8 +58,8 @@ test "insert_telemetry_idempotent_on_event_charge" {
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
     const evt = "evt-idem-aa19-0001";
-    try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, MS_PER_SECOND);
-    try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, MS_PER_SECOND); // duplicate — no-op
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND); // duplicate — no-op
 
     var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT COUNT(*)::BIGINT FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND event_id = $2",
@@ -82,8 +82,8 @@ test "insert_telemetry_two_rows_per_event" {
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
     const evt = "evt-two-aa19-0001";
-    try seedReceiveRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, MS_PER_SECOND);
-    try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, 2000);
+    try seedReceiveRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, 2000);
 
     var q = PgQuery.from(try db_ctx.conn.query(
         "SELECT COUNT(*)::BIGINT FROM core.zombie_execution_telemetry WHERE event_id = $1",
@@ -106,7 +106,7 @@ test "insert_receive_has_null_tokens_and_wall_ms" {
     defer teardownTelemetry(db_ctx.conn, WS_A);
 
     const evt = "evt-rcv-aa19-0001";
-    try seedReceiveRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, MS_PER_SECOND);
+    try seedReceiveRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT token_count_input, token_count_output, wall_ms

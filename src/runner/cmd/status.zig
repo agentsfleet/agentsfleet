@@ -12,10 +12,10 @@ const output = @import("output.zig");
 
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
     const a = output.audience(args.has(argv, output.FLAG_JSON));
-    const api = (args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
+    const api = (args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_AGENTSFLEET_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
         return output.fail(a, alloc, output.ERR_API_URL_UNSET);
     defer alloc.free(api);
-    const token = (args.envOwned(env_map, alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
+    const token = (args.envOwned(env_map, alloc, Config.ENV_AGENTSFLEET_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse
         return output.fail(a, alloc, ERR_NO_TOKEN);
     defer alloc.free(token);
 
@@ -36,7 +36,7 @@ fn renderStatus(buf: []u8, a: output.Audience, s: protocol.SelfResponse) []const
     } catch "\n";
 }
 
-const ERR_NO_TOKEN = output.CliError{ .code = "RUNNER_TOKEN_UNSET", .message = "this host has no runner token", .suggestion = "set ZOMBIE_RUNNER_TOKEN — ask a platform admin to mint one from the dashboard" };
+const ERR_NO_TOKEN = output.CliError{ .code = "RUNNER_TOKEN_UNSET", .message = "this host has no runner token", .suggestion = "set AGENTSFLEET_RUNNER_TOKEN — ask a platform admin to mint one from the dashboard" };
 
 test "renderStatus reports registration + status in both audiences" {
     var buf: [384]u8 = undefined;

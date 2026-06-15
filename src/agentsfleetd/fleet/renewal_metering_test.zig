@@ -36,7 +36,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const EVENT_ID = "evt-meter-1";
@@ -87,7 +87,7 @@ fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, m_in: i64, m_cached: i64, m_ou
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
         \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
@@ -100,7 +100,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
         \\   '{"message":"hi"}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0,
         \\   $7, $8, $9, $10, $10)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token, status = EXCLUDED.status
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
 }
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
@@ -119,7 +119,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -374,12 +374,12 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
 
     // A fresh lease issue resets it (insertLeaseRow on .fresh, fail-closed) so the
     // first /renew meters off 0/now, not the prior run — a reused slot can't over-charge.
-    try affinity.resetCursor(s.conn, ZOMBIE_ID, NOW_MS);
+    try affinity.resetCursor(s.conn, AGENTSFLEET_ID, NOW_MS);
 
     var q = PgQuery.from(try s.conn.query(
         \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms
         \\FROM fleet.runner_affinity WHERE zombie_id = $1::uuid
-    , .{ZOMBIE_ID}));
+    , .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));

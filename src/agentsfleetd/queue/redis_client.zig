@@ -21,28 +21,28 @@ const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
-const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
+const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_zombie_event_failed";
 
 // XADD argv slots for `xaddZombieEvent` — lifted to file scope so the
 // compile-folded prefix is a single comptime slice instead of six slot
 // assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
-// zombie:{id}:events stream's retention (~10k approximate trim); `*`
+// agent:{id}:events stream's retention (~10k approximate trim); `*`
 // asks Redis to generate the stream entry id (which IS the event_id).
 const XADD_VERB: []const u8 = "XADD";
 const XADD_MAXLEN_KEYWORD: []const u8 = "MAXLEN";
 const XADD_MAXLEN_APPROX: []const u8 = "~";
-const XADD_MAXLEN_ZOMBIE_EVENTS: []const u8 = "10000";
+const XADD_MAXLEN_AGENTSFLEET_EVENTS: []const u8 = "10000";
 const XADD_AUTO_ID: []const u8 = "*";
 
-/// Compile-folded tail for `XADD zombie:{id}:events MAXLEN ~ 10000 * …`.
+/// Compile-folded tail for `XADD agent:{id}:events MAXLEN ~ 10000 * …`.
 /// Slot 0 = `XADD`, slot 1 = stream key (runtime), slots 2..6 = this slice.
-const XADD_ZOMBIE_TRIM_TAIL: []const []const u8 = &.{
+const XADD_AGENTSFLEET_TRIM_TAIL: []const []const u8 = &.{
     XADD_MAXLEN_KEYWORD,
     XADD_MAXLEN_APPROX,
-    XADD_MAXLEN_ZOMBIE_EVENTS,
+    XADD_MAXLEN_AGENTSFLEET_EVENTS,
     XADD_AUTO_ID,
 };
-const XADD_ZOMBIE_PREFIX_LEN: usize = 2 + XADD_ZOMBIE_TRIM_TAIL.len;
+const XADD_AGENTSFLEET_PREFIX_LEN: usize = 2 + XADD_AGENTSFLEET_TRIM_TAIL.len;
 
 /// Per spec retry contract: pool-path operations get 2 attempts total
 /// before the error surfaces to the caller. No backoff at this layer —
@@ -184,7 +184,7 @@ pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
     };
 }
 
-/// XADD an EventEnvelope onto `zombie:{envelope.zombie_id}:events`. The Redis
+/// XADD an EventEnvelope onto `agent:{envelope.zombie_id}:events`. The Redis
 /// stream entry id IS the canonical event_id; this function returns it
 /// allocated via `self.alloc` so the caller (e.g. `POST /messages`) can
 /// surface it in the response body for SSE correlation.
@@ -192,28 +192,28 @@ pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
 /// Stream is trimmed approximately to MAXLEN 10000 entries.
 pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     var stream_key_buf: [128]u8 = undefined;
-    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "zombie:{s}:events", .{envelope.zombie_id});
+    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "agent:{s}:events", .{envelope.zombie_id});
 
     const payload_argv = try envelope.encodeForXAdd(self.alloc);
     defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
 
-    var argv = try self.alloc.alloc([]const u8, XADD_ZOMBIE_PREFIX_LEN + payload_argv.len);
+    var argv = try self.alloc.alloc([]const u8, XADD_AGENTSFLEET_PREFIX_LEN + payload_argv.len);
     defer self.alloc.free(argv);
     argv[0] = XADD_VERB;
     argv[1] = stream_key;
-    @memcpy(argv[2..XADD_ZOMBIE_PREFIX_LEN], XADD_ZOMBIE_TRIM_TAIL);
-    @memcpy(argv[XADD_ZOMBIE_PREFIX_LEN..], payload_argv);
+    @memcpy(argv[2..XADD_AGENTSFLEET_PREFIX_LEN], XADD_AGENTSFLEET_TRIM_TAIL);
+    @memcpy(argv[XADD_AGENTSFLEET_PREFIX_LEN..], payload_argv);
 
     var resp = try self.command(argv);
     defer resp.deinit(self.alloc);
 
     const id_str = switch (resp) {
         .bulk => |v| v orelse {
-            log.err(S_XADD_ZOMBIE_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
         else => {
-            log.err(S_XADD_ZOMBIE_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
     };

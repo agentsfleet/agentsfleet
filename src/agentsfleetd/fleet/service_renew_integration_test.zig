@@ -32,7 +32,7 @@ const ALLOC = std.testing.allocator;
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const RUNNER_TOKEN = "zrn_" ++ "c" ** 64;
 
@@ -68,7 +68,7 @@ fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
 }
 
 // Seed a PRESENT billing row at zero balance: balanceCoversEstimate reads a real

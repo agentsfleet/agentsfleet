@@ -62,7 +62,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0db011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dba01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbe01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbf01";
 
@@ -88,7 +88,7 @@ fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, leased_until: i64) !void {
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, leased_until });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, leased_until });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_at: i64) !void {
@@ -102,7 +102,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -135,7 +135,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -211,7 +211,7 @@ test "100 concurrent renews on one active lease converge to a single shared dead
     // The dual-row divergence guard held under contention: the lease row and
     // the affinity slot both hold the one shared deadline, never split.
     const lease_until = try readBigint(c_init, "SELECT lease_expires_at FROM fleet.runner_leases WHERE id = $1::uuid", LEASE_ID);
-    const aff_until = try readBigint(c_init, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID);
+    const aff_until = try readBigint(c_init, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", AGENTSFLEET_ID);
     try std.testing.expectEqual(want, lease_until);
     try std.testing.expectEqual(want, aff_until);
 }
@@ -257,7 +257,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
     // the other 99 block, re-read the advanced cursor (Δ=0), and charge ≈0 —
     // exactly-once under the race. Without the lock each would re-charge the full
     // slice off the stale pre-advance cursor (the P0 double-charge).
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
     defer teardown(c);
@@ -298,7 +298,7 @@ const Reclaimer = struct {
     fn run(h: *TestHarness) void {
         const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
-        _ = conn.exec("UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1, updated_at = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, NOW_MS }) catch return;
+        _ = conn.exec("UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1, updated_at = $2 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, NOW_MS }) catch return;
     }
 };
 
@@ -320,7 +320,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
     // 20s of run elapsed (bounded slice); ample balance so no clamp.
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
     defer teardown(c); // also clears metering_periods + telemetry for EVENT_ID
@@ -363,7 +363,7 @@ test "claim+settle racing a reclaim never reports without charging the final sli
 // substrate) summed to MORE than the wallet actually drained. The balance-row
 // lock serialises them, so the loser charges only the remaining balance.
 
-const ZOMBIE_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc02";
+const AGENTSFLEET_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbc02";
 const AFFINITY_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbe02";
 const LEASE_ID_2 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dbf02";
 const EVENT_ID_2 = "evt-conc-renew-2";
@@ -380,7 +380,7 @@ fn seedSecondLease(conn: *pg.Conn) !void {
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET fencing_seq = 5, leased_until = EXCLUDED.leased_until, last_metered_at_ms = EXCLUDED.last_metered_at_ms,
         \\      metered_input_tokens = 0, metered_cached_tokens = 0, metered_output_tokens = 0
-    , .{ AFFINITY_ID_2, ZOMBIE_ID_2, RUNNER_ID, NOW_MS - MS_PER_SECOND, CURSOR_BASE_MS });
+    , .{ AFFINITY_ID_2, AGENTSFLEET_ID_2, RUNNER_ID, NOW_MS - MS_PER_SECOND, CURSOR_BASE_MS });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
@@ -391,14 +391,14 @@ fn seedSecondLease(conn: *pg.Conn) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 5, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID_2, RUNNER_ID, ZOMBIE_ID_2, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID_2, NOW_MS - MS_PER_SECOND, NOW_MS - 2_000 });
+    , .{ LEASE_ID_2, RUNNER_ID, AGENTSFLEET_ID_2, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID_2, NOW_MS - MS_PER_SECOND, NOW_MS - 2_000 });
 }
 
 fn teardownSecond(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID_2});
     execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID_2});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID_2});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID_2});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID_2});
 }
 
 fn auditSum(conn: *pg.Conn) !i64 {
@@ -475,7 +475,7 @@ test "integration: two same-tenant renews at exhaustion record audit rows summin
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, CURSOR_BASE_MS });
     try seedSecondLease(c);
     defer teardown(c);
     defer teardownSecond(c);
@@ -531,7 +531,7 @@ test "integration: two same-tenant settles at exhaustion record audit rows summi
     try seedRunner(c);
     try seedAffinity(c, 5, NOW_MS - MS_PER_SECOND);
     try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
-    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, CURSOR_BASE_MS });
     try seedSecondLease(c);
     defer teardown(c);
     defer teardownSecond(c);
@@ -583,7 +583,7 @@ test "integration: a regressed cumulative token report charges zero tokens and n
     // runtime already elapsed.
     const seeded_cursor: i64 = 1000;
     const balance: i64 = 1_000_000_000_000;
-    _ = try c.exec("UPDATE fleet.runner_affinity SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2, last_metered_at_ms = $3 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, seeded_cursor, CURSOR_BASE_MS });
+    _ = try c.exec("UPDATE fleet.runner_affinity SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2, last_metered_at_ms = $3 WHERE zombie_id = $1::uuid", .{ AGENTSFLEET_ID, seeded_cursor, CURSOR_BASE_MS });
     _ = try c.exec("UPDATE fleet.runner_leases SET metered_input_tokens = $2, metered_cached_tokens = $2, metered_output_tokens = $2 WHERE id = $1::uuid", .{ LEASE_ID, seeded_cursor });
     try seedBalance(c, balance);
     defer teardown(c);
@@ -602,7 +602,7 @@ test "integration: a regressed cumulative token report charges zero tokens and n
     try std.testing.expect(out == .renewed);
 
     // The cursor held (GREATEST clamp), never rewound to the regressed 500.
-    try std.testing.expectEqual(seeded_cursor, try readBigint(c, "SELECT metered_input_tokens FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID));
+    try std.testing.expectEqual(seeded_cursor, try readBigint(c, "SELECT metered_input_tokens FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", AGENTSFLEET_ID));
     // Zero token delta charged for this slice (run_fee may be > 0; token cost is 0).
     try std.testing.expectEqual(@as(i64, 0), try readBigint(c, "SELECT COALESCE(token_cost_nanos,0)::bigint FROM fleet.metering_periods WHERE event_id = $1 ORDER BY slice_seq DESC LIMIT 1", EVENT_ID));
 }

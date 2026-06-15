@@ -1,5 +1,5 @@
 //! POST /v1/workspaces/{ws}/zombies — atomic install. INSERT core.zombies →
-//! XGROUP CREATE MKSTREAM zombie:{id}:events synchronously before the 201, so
+//! XGROUP CREATE MKSTREAM agent:{id}:events synchronously before the 201, so
 //! an event 1ms later finds the consumer group the lease XREADGROUP needs.
 //! Post-INSERT group-setup failure rolls the PG row back. A rare double-fault
 //! (setup retries exhausted AND rollback also fails) leaves an orphan that is
@@ -54,11 +54,11 @@ fn parseCreateBody(hx: Hx, req: *httpz.Request) ?CreateBody {
 
 fn validateCreateFields(hx: Hx, b: CreateBody) bool {
     if (b.source_markdown.len == 0 or b.source_markdown.len > MAX_SOURCE_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_SOURCE_REQUIRED);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_SOURCE_REQUIRED);
         return false;
     }
     if (b.trigger_markdown.len == 0 or b.trigger_markdown.len > MAX_TRIGGER_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_TRIGGER_REQUIRED);
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_TRIGGER_REQUIRED);
         return false;
     }
     return true;
@@ -73,7 +73,7 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     if (!validateCreateFields(hx, body)) return;
 
     var parsed = zombie_config.parseTriggerMarkdownWithJson(hx.alloc, body.trigger_markdown) catch {
-        hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG);
+        hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_INVALID_CONFIG);
         return;
     };
     defer parsed.deinit(hx.alloc);
@@ -89,13 +89,13 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
     // fields to columns or a config_json sidecar — don't assume they're
     // already persisted.
     var skill_meta = zombie_config.parseSkillMetadata(hx.alloc, body.source_markdown) catch {
-        hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_SKILL_INVALID);
+        hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_SKILL_INVALID);
         return;
     };
     defer skill_meta.deinit(hx.alloc);
 
     if (!std.mem.eql(u8, skill_meta.name, parsed.config.name)) {
-        hx.fail(ec.ERR_ZOMBIE_NAME_MISMATCH, ec.MSG_ZOMBIE_NAME_MISMATCH);
+        hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH);
         return;
     }
 
@@ -127,7 +127,7 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
 
     insertZombieOnConn(conn, workspace_id, body, parsed, skill_meta.tags, zombie_id, now_ms) catch |err| {
         if (isUniqueViolation(err)) {
-            hx.fail(ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS);
+            hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
         log.err("create_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
