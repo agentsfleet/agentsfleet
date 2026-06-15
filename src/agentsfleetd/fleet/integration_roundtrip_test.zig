@@ -41,8 +41,8 @@ const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dde01";
 const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddf01";
 
-const RUNNER_A_TOKEN = "zrn_" ++ "f" ** 64;
-const RUNNER_B_TOKEN = "zrn_" ++ "0" ** 64;
+const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
+const RUNNER_B_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "0" ** 64;
 
 const CONFIG_NO_GATES =
     \\{"name":"roundtrip-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}

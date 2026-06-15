@@ -35,7 +35,7 @@ there are no live external consumers to break. The line:
 | Layer | Decision | Examples |
 |---|---|---|
 | **Entity data surface — flips to `agent`** | Full clean-break rename. `schema/*.sql` edited directly (pre-launch; no migration, no `ALTER`). | `/zombies`→`/agents`; `zombie_id`→`agent_id`; `zombie_slug`→`agent_slug`; `core.zombies`→`core.agents`; `core.zombie_*`→`core.agent_*`; `UZ-ZMB-*`→`UZ-AGT-*` error codes; `zombie_paused`/`zombie_config_changed`→`agent_*` wire values; `Zombie*` types→`Agent*` |
-| **Agent-keys concept — keep the name, rename only the clash** | Option B (Indy Jun 15). The pre-existing "agent keys" concept already owns `agent`, so the entity rename collides; resolved by freeing the one colliding identifier. | key's own id `core.agent_keys.agent_id`→`agent_key_id`; foreign key (FK) `zombie_id`→`agent_id` (now references `core.agents(id)`); routes `/agent-keys/{agent_id}`→`/agent-keys/{agent_key_id}`; CLI group `agent …`→`agent-key …`; raw key prefix `zmb_`→`agt_`; `UZ-AGENT-*` codes + `AuthMode.agent_key` kept |
+| **Agent-keys concept — keep the name, rename only the clash** | Option B (Indy Jun 15). The pre-existing "agent keys" concept already owns `agent`, so the entity rename collides; resolved by freeing the one colliding identifier. | key's own id `core.agent_keys.agent_id`→`agent_key_id`; foreign key (FK) `zombie_id`→`agent_id` (now references `core.agents(id)`); routes `/agent-keys/{agent_id}`→`/agent-keys/{agent_key_id}`; CLI group `agent …`→`agent-key …`; **all three raw token prefixes flip symmetric `agt_<role>`** (Indy Jun 15) — agent-key `zmb_`→`agt_a`, tenant `zmb_t_`→`agt_t`, runner `zrn_`→`agt_r` (a=agent / t=tenant / r=runner; runner is `agt_r`, not `arn_`, to avoid the Amazon Resource Name (ARN) clash). Symmetric same-length prefixes → no containment, order-independent routing; `UZ-AGENT-*` codes + `AuthMode.agent_key` kept |
 | **User-facing prose — flips to `agent`** | (largely done in earlier passes; the rename now extends it into the identifiers the prose already describes) | error titles/hints; CLI `.description()`/help/output; User Interface (UI) labels/headings; OpenAPI descriptions/summaries |
 | **Brand/namespace — flips to `agentsfleet`** | the product namespace (NOT `agent` — `agent` is the entity) | `usezombie.com`→`agentsfleet.net`; `usezombie.sh`→`agentsfleet.dev`; `ZOMBIE_*` env→`AGENTSFLEET_*`; `x-usezombie*`→`x-agentsfleet*`; `zombie_runner_*`→`agentsfleet_runner_*` metrics; `zombiectl`/`zombied`→`agentsfleet`; hosts; npm; mail |
 | **Frozen history + vault — untouched** | Indy verbatim, Jun 15 | `docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md` (retain `zombie` as historical record); `ZMB_*` 1Password vault names |
@@ -237,7 +237,9 @@ Scoped to agent-keys files only. The key's own id `core.agent_keys.agent_id`→`
 constraints `ck_agent_keys_agent_id_uuidv7`→`…agent_key_id…`, `ck_agent_keys_uid_matches_agent_id`→
 `…agent_key_id`); the `zombie_id` FK is left for §1 to rename. Route path-param
 `/agent-keys/{agent_id}`→`{agent_key_id}` + matchers; OpenAPI `agent-keys.yaml`; CLI group
-`agent`→`agent-key`; raw key prefix `zmb_`→`agt_`. `UZ-AGENT-*` codes + `AuthMode.agent_key` kept.
+`agent`→`agent-key`; agent-key raw prefix `zmb_`→`agt_a`. `UZ-AGENT-*` codes + `AuthMode.agent_key`
+kept. (The sibling token prefixes — tenant `zmb_t_`→`agt_t`, runner `zrn_`→`agt_r` — flip in §2;
+all three settled together as symmetric `agt_<role>`, Indy Jun 15. See Discovery.)
 
 - **Dimension 0.1** — `core.agent_keys` has `agent_key_id` (own id) + `zombie_id` (FK, still) → Test `test_agent_key_id_renamed`
 - **Dimension 0.2** — `/agent-keys/{agent_key_id}` matches; CLI `agent-key add/list/delete` works → Test `test_agent_key_cli` + matcher test
@@ -261,6 +263,16 @@ The `core.agent_keys.zombie_id` FK becomes `agent_id` here (collision-free becau
 `usezombie.com`→`agentsfleet.net`; `usezombie.sh`→`agentsfleet.dev`; `ZOMBIE_*` env→`AGENTSFLEET_*`
 (hard cutover, loud diagnostic on legacy); `x-usezombie*`→`x-agentsfleet*`; `zombiectl`/`zombied`
 residue→`agentsfleet`; `zombie_runner_*`→`agentsfleet_runner_*` with grafana in the same commit.
+Raw token prefixes (brand abbreviations) flip with the brand, symmetric `agt_<role>`: agent key
+`zmb_`→`agt_a`, tenant API key `zmb_t_`→`agt_t`, runner token `zrn_`→`agt_r` (`agt_r`, not `arn_` —
+Amazon Resource Name (ARN) clash). Each prefix is single-sourced to one `pub const` (RULE UFS) —
+`api_key.KEY_PREFIX` / `tenant_api_key.TENANT_KEY_PREFIX` / `protocol.RUNNER_TOKEN_PREFIX` — every
+mint/validate site references the const and one pin test per prefix guards the literal, so a future
+flip is one line. Pre-launch clean break: token validation is prefix-relative (`startsWith`), no
+stored tokens; the three same-length prefixes differ at char 4 (`a`/`t`/`r`) → no containment,
+order-independent routing in `bearer_or_api_key`. `ZMB_*` 1Password vault names stay (Indy keep).
+`agentsfleetd` deploy/CI strings (`.github/workflows/deploy-dev.yml`, `deploy/baremetal/*` `agt_r`
+placeholder guard) flip under the CI/CD grant in §3/§5.
 
 - **Dimension 2.1** — `git grep usezombie` over source == flagged keeps only → Eval `E4`
 - **Dimension 2.2** — env flipped; no `ZOMBIE_*` read remains → Eval `E4` + negative grep
@@ -316,8 +328,10 @@ green.
 `agentsfleet_runner_*` metric names; hosts `api.agentsfleet.net` / `api-dev.agentsfleet.net`; installer
 `agentsfleet.dev`. **Agent-keys (kept distinct, Option B):** `core.agent_keys` with `agent_key_id`
 (own id) + `agent_id` (FK to `core.agents`); routes `/agent-keys/{agent_key_id}`; CLI `agent-key …`;
-`UZ-AGENT-*` codes; raw key prefix `agt_`. `ZMB_*` vault names are out of scope of every sweep (Indy
-keep).
+`UZ-AGENT-*` codes. **Raw token prefixes (locked, symmetric `agt_<role>`, each single-sourced to one
+`pub const`):** agent key `agt_a` (`api_key.KEY_PREFIX`), tenant API key `agt_t`
+(`tenant_api_key.TENANT_KEY_PREFIX`), runner token `agt_r` (`protocol.RUNNER_TOKEN_PREFIX`). `ZMB_*`
+vault names are out of scope of every sweep (Indy keep).
 
 ---
 
@@ -441,6 +455,18 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
   follow-up (deliberate override of `dispatch/write_spec.md` security-boundary guideline).
 - *Jun 15, 2026:* frozen-history dirs (`docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md`)
   locked untouched (Indy verbatim).
+- *Jun 15, 2026 (resume):* raw token prefixes resolved. A prior handoff had parked all three
+  (`zmb_`/`zmb_t_`/`zrn_`) as "Indy hasn't ruled" with no ack-quote, contradicting §0's explicit
+  agent-key flip mandate; surfaced as a single decision. **Indy verbatim:** *"zmb_ -> agt_, zmb_t to
+  agt_t, zrn_ to agt_r (since arn has a clash with AWS arn)"* — flip all three: agent-key
+  `zmb_`→`agt_`, tenant `zmb_t_`→`agt_t_`, runner `zrn_`→`agt_r_` (`agt_r_`, not `arn_`, to dodge the
+  Amazon Resource Name (ARN) clash). Flip is prefix-relative (`startsWith`) and length-safe; all three
+  stay mutually disjoint. The 3 CI/CD+deploy files holding `zrn_` are gated for an explicit CI grant.
+- *Jun 15, 2026 (resume):* `zmb:` memory `instance_id` prefix investigated — it is **comment/doc-only**
+  (zero live `"zmb:"` string literal in `src/`); `agent_memory.zig` states the legacy NullClaw
+  `zmb:` form "is gone with the in-child Postgres path." `protocol.zig` / `runner_fleet.md` still
+  describe it as current — **doc drift**, cleaned in the §5.1 residue sweep, not a live namespace
+  (no Indy decision required).
 
 ---
 

@@ -53,7 +53,7 @@ const NOW_MS: i64 = 1_900_000_000_000;
 /// Seeded lease fencing token; every push fences at exactly this value.
 const FENCE: u64 = 5;
 
-const RUNNER_TOKEN = "zrn_" ++ "f" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
 
 /// Per-row hydrate fixture sizing: key "hk{n}" (3) + content (60_000) +
 /// category "c" (1). Five rows at 60_004 bytes against the 256 KiB window

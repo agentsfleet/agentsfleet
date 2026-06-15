@@ -106,7 +106,7 @@ const BootWatchdog = struct {
     }
 };
 
-test "runner boots from a zrn_ token straight into the lease loop with no register call" {
+test "runner boots from a agt_r token straight into the lease loop with no register call" {
     const alloc = testing.allocator;
     loop.drain_requested.store(false, .seq_cst);
     defer loop.drain_requested.store(false, .seq_cst);
@@ -123,11 +123,11 @@ test "runner boots from a zrn_ token straight into the lease loop with no regist
 
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
     defer alloc.free(url);
-    // Identity is the pre-minted zrn_ — Config is built directly here; the
-    // env → Config parse (incl. the zrn_ prefix gate) is covered in config.zig.
+    // Identity is the pre-minted agt_r — Config is built directly here; the
+    // env → Config parse (incl. the agt_r prefix gate) is covered in config.zig.
     const cfg = Config{
         .control_plane_url = try alloc.dupe(u8, url),
-        .runner_token = try alloc.dupe(u8, "zrn_" ++ "a" ** 64),
+        .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
         .host_id = try alloc.dupe(u8, "boot-test-host"),
         .sandbox_tier = try alloc.dupe(u8, "dev_none"),
         .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-boot-test"),

@@ -19,7 +19,7 @@ Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given 
 | 1.0 | Human | Sign up at the website with the admin email + password |
 | 2.0 | Human | Set `publicMetadata.role=admin` **and** `platform_admin=true` in Clerk Dashboard |
 | 3.0 | Agent | Verify the admin JWT carries `role=admin` by calling an admin-gated endpoint |
-| 4.0 | Agent | Mint a `zmb_t_` tenant API key via `POST /v1/api-keys` |
+| 4.0 | Agent | Mint a `agt_t` tenant API key via `POST /v1/api-keys` |
 | 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/agentsfleet-admin` field `api_key` |
 | 6.0 | Agent | Verify the stored key authenticates a protected endpoint |
 | 7.0 | Agent | Store the platform Fireworks key in the admin workspace vault |
@@ -113,7 +113,7 @@ No other user in the environment receives either change.
 - `role=admin` is confirmed by step 3.0 below (an admin-gated endpoint returns 200).
 - `platform_admin=true` is confirmed behaviorally: a fresh dashboard session for
   `$ADMIN_EMAIL` shows **Configuration → Runners**, and that surface can mint a
-  `zrn_` — see `operations/runner_onboarding/001_playbook.md`. A non-platform-admin
+  `agt_r` — see `operations/runner_onboarding/001_playbook.md`. A non-platform-admin
   session 403s (`UZ-AUTH-021`) and the nav item is hidden.
 
 ---
@@ -150,7 +150,7 @@ Admin-gated endpoint returns 200. If 403, the Clerk JWT template is not embeddin
 
 ## 4.0 Agent: Mint tenant API key
 
-**Goal:** create one `zmb_t_` admin-CLI key via `POST /v1/api-keys` (M28_002 endpoint).
+**Goal:** create one `agt_t` admin-CLI key via `POST /v1/api-keys` (M28_002 endpoint).
 
 ```bash
 MINT_RESPONSE=$(curl -s -X POST \
@@ -164,7 +164,7 @@ echo "$MINT_RESPONSE" | jq .
 RAW_KEY=$(echo "$MINT_RESPONSE" | jq -r '.key')
 KEY_ID=$(echo "$MINT_RESPONSE" | jq -r '.id')
 
-[[ "$RAW_KEY" =~ ^zmb_t_[0-9a-f]{64}$ ]] || { echo "bad key shape"; exit 1; }
+[[ "$RAW_KEY" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "bad key shape"; exit 1; }
 echo "Minted key_id=$KEY_ID (raw key held in RAW_KEY)"
 ```
 
@@ -172,7 +172,7 @@ echo "Minted key_id=$KEY_ID (raw key held in RAW_KEY)"
 
 ### Acceptance
 
-`RAW_KEY` matches `^zmb_t_[0-9a-f]{64}$`. Response shape: `{id, key_name, key, created_at}`.
+`RAW_KEY` matches `^agt_t[0-9a-f]{64}$`. Response shape: `{id, key_name, key, created_at}`.
 
 ---
 
@@ -186,14 +186,14 @@ unset RAW_KEY
 
 # Verify:
 STORED=$(op read "op://$VAULT/agentsfleet-admin/api_key")
-[[ "$STORED" =~ ^zmb_t_[0-9a-f]{64}$ ]] || { echo "vault write verification failed"; exit 1; }
+[[ "$STORED" =~ ^agt_t[0-9a-f]{64}$ ]] || { echo "vault write verification failed"; exit 1; }
 echo "api_key stored at op://$VAULT/agentsfleet-admin/api_key"
 unset STORED
 ```
 
 ### Acceptance
 
-`op read` returns a well-formed `zmb_t_` key. Shell history contains no raw key (we unset the variables).
+`op read` returns a well-formed `agt_t` key. Shell history contains no raw key (we unset the variables).
 
 ---
 

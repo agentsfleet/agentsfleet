@@ -9,7 +9,7 @@
 //!
 //! The runner NAMES the agent (`{agent_id}`) — it already holds it in its
 //! LeasePayload, so explicit naming beats inferring it from ambient lease state.
-//! Auth: `runnerBearer` (`zrn_`), never the tenant plane. GET authorizes by "the
+//! Auth: `runnerBearer` (`agt_r`), never the tenant plane. GET authorizes by "the
 //! runner holds a live lease for {agent_id}"; POST loads the body's `lease_id`
 //! (like `/reports`), cross-checks `lease.agent_id == {agent_id}` (IDOR guard),
 //! and fences the write — a reclaimed holder (token below the agent's live fencing

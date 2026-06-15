@@ -25,8 +25,8 @@ const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003";
 const OP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 60;
 const TENANT_KEY_BODY_CHARS: usize = 48;
-const OP_RAW_TOKEN = "zrn_" ++ "p" ** RUNNER_TOKEN_BODY_HEX_CHARS;
-const ZMB_T_KEY = "zmb_t_" ++ "d" ** TENANT_KEY_BODY_CHARS;
+const OP_RAW_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "p" ** RUNNER_TOKEN_BODY_HEX_CHARS;
+const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "d" ** TENANT_KEY_BODY_CHARS;
 
 const BODY_CORDON = "{\"action\":\"cordon\"}";
 const BODY_DRAIN = "{\"action\":\"drain\"}";
@@ -72,7 +72,7 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
         \\VALUES ($1::uuid, 'Fleet Operator Test Tenant', $2::bigint, $2::bigint)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TENANT_ID, now_ms });
-    const key_hash = api_key.sha256Hex(ZMB_T_KEY);
+    const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'fleet-operator-test-key', '', $3::text, 'user_fleet_operator_test', TRUE, $4::bigint, $4::bigint)
@@ -179,7 +179,7 @@ test "fleet runner PATCH is platform-admin gated" {
     try tenant.expectStatus(.forbidden);
     try tenant.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 
-    const api_key_resp = try patchRunner(h, ZMB_T_KEY, BODY_CORDON);
+    const api_key_resp = try patchRunner(h, AGT_T_KEY, BODY_CORDON);
     defer api_key_resp.deinit();
     try api_key_resp.expectStatus(.forbidden);
     try api_key_resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);

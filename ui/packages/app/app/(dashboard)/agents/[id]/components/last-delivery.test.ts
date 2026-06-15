@@ -30,7 +30,7 @@ describe("resolveLastDeliveries", () => {
   });
 
   it("returns an empty map when no triggers are declared", async () => {
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", []);
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", []);
     expect(result).toEqual({});
     expect(eventsApi.listAgentEvents).not.toHaveBeenCalled();
   });
@@ -50,7 +50,7 @@ describe("resolveLastDeliveries", () => {
       { type: "webhook", source: "github", events: ["workflow_run"] },
       { type: "cron", schedule: "*/15 * * * *" },
     ];
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", triggers);
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", triggers);
     expect(result).toEqual({
       "webhook:github": 1_700_000_000_000,
       "cron:*/15 * * * *": 1_700_000_001_000,
@@ -59,7 +59,7 @@ describe("resolveLastDeliveries", () => {
 
   it("records null when the events page has no rows", async () => {
     eventsApi.listAgentEvents.mockResolvedValue({ items: [], next_cursor: null });
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", [
       { type: "webhook", source: "linear" },
     ]);
     expect(result).toEqual({ "webhook:linear": null });
@@ -67,7 +67,7 @@ describe("resolveLastDeliveries", () => {
 
   it("degrades a thrown events fetch into a null entry", async () => {
     eventsApi.listAgentEvents.mockRejectedValue(new Error("network down"));
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", [
       { type: "webhook", source: "jira" },
     ]);
     expect(result).toEqual({ "webhook:jira": null });
@@ -78,7 +78,7 @@ describe("resolveLastDeliveries", () => {
     // "parent did not look", suppressing the "never" delivery badge and
     // the auto-expand-on-mount path. Writing `null` would falsely fire
     // both on every api trigger.
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", [
       { type: "api" },
     ]);
     expect(result).toEqual({});
@@ -91,7 +91,7 @@ describe("resolveLastDeliveries", () => {
       items: [{ id: "evt_1", created_at: 1_700_000_000_000 }],
       next_cursor: null,
     });
-    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
+    const result = await resolveLastDeliveries("ws_1", "agt_a1", "tok", [
       { type: "webhook", source: "github" },
       { type: "api" },
     ]);

@@ -11,13 +11,13 @@ Today authorization is **role-based**: `AuthRole = user < operator < admin` (`sr
 v2.1 wires scope enforcement at the API level so a capability can be granted without handing out a whole role. The API surface is shaped for it now:
 
 - **`fleet:write`** — register / cordon runners. Runner provisioning carries cross-tenant blast radius (a trusted-fleet runner receives any tenant's secrets inline), so a dedicated scope is tighter than the blunt `admin` role.
-- finer tenant scopes (`runs:read`, `runs:write`, `workspace:pause`, …) on api keys / JWTs, replacing the all-or-nothing `zmb_t_ = admin` grant.
+- finer tenant scopes (`runs:read`, `runs:write`, `workspace:pause`, …) on api keys / JWTs, replacing the all-or-nothing `agt_t = admin` grant.
 
 Until v2.1, runner registration is gated by `RequireRole{.admin}` (see [`../AUTH.md`](../AUTH.md) → *Runner token*). The scope names above are the v2.1 target, documented so the `/v1/runners` surface is designed for them.
 
 ### Agent keys → first-class principal
 
-Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateAgent`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `agent_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` agent-identity path that the same handler accepts today.
+Today agent keys (`agt_a`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateAgent`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `agent_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` agent-identity path that the same handler accepts today.
 
 ## v2.1+ — other deferred items
 

@@ -25,7 +25,7 @@ const cgroup = @import("engine/cgroup.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
 const SH = "/bin/sh";
-const PLANTED_TOKEN = "zrn_planted_probe_value";
+const PLANTED_TOKEN = "agt_rplanted_probe_value";
 const WAIT_BUDGET_MS = 5_000;
 
 // Worker-pool concurrency proofs share the integration lane (real forked

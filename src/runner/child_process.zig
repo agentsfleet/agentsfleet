@@ -113,7 +113,7 @@ test "forkExec env filter forwards only the allowlist and drops daemon vars" {
     try daemon.put("HOME", "/home/runner");
     try daemon.put("PATH", "/usr/bin:/bin");
     // … and daemon-only vars that must NEVER reach the child.
-    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "zrn_super_secret");
+    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "agt_rsuper_secret");
     try daemon.put("RUNNER_HOST_ID", "host-1");
     try daemon.put("RUNNER_NETWORK_POLICY", "registry_allowlist");
 
@@ -133,7 +133,7 @@ test "forkExec env filter omits every AGENTSFLEET_ daemon secret from the child 
     var daemon: std.process.Environ.Map = .init(alloc);
     defer daemon.deinit();
     try daemon.put("HOME", "/home/runner");
-    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "zrn_super_secret");
+    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "agt_rsuper_secret");
     try daemon.put("AGENTSFLEET_API_URL", "https://api.agentsfleet.net");
 
     var child = try buildChildEnviron(alloc, &daemon);

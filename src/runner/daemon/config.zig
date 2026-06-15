@@ -14,7 +14,7 @@ const Config = @This();
 
 /// Base URL of the agentsfleetd control plane, e.g. `http://127.0.0.1:8080`.
 control_plane_url: []const u8,
-/// Pre-minted runner token (`zrn_…`) the platform operator installed on this
+/// Pre-minted runner token (`agt_r…`) the platform operator installed on this
 /// host via `AGENTSFLEET_RUNNER_TOKEN`. Authenticates every control-plane call; the
 /// host never self-registers (Option B). Prefix-validated at load; never logged.
 runner_token: []const u8,
@@ -55,7 +55,7 @@ pub const ConfigError = error{ MissingEnvVar, InvalidRunnerToken, OutOfMemory };
 
 /// Read configuration from the process environment. Returns
 /// `ConfigError.MissingEnvVar` for required vars that are absent, and
-/// `ConfigError.InvalidRunnerToken` when the token lacks the `zrn_` prefix.
+/// `ConfigError.InvalidRunnerToken` when the token lacks the `agt_r` prefix.
 pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigError!Config {
     const url = getRequired(env_map, alloc, ENV_AGENTSFLEET_API_URL) catch
         return ConfigError.MissingEnvVar;
@@ -198,8 +198,8 @@ pub fn deinit(self: Config) void {
     freeStrList(self.alloc, self.registry_allowlist);
 }
 
-/// Fail loud when `AGENTSFLEET_RUNNER_TOKEN` is not a `zrn_` runner token — a stale
-/// `zmb_t_` from the pre-Option-B bootstrap would otherwise loop on 401s with
+/// Fail loud when `AGENTSFLEET_RUNNER_TOKEN` is not a `agt_r` runner token — a stale
+/// `agt_t` from the pre-Option-B bootstrap would otherwise loop on 401s with
 /// no clear cause. Pure so the prefix contract is unit-testable without env.
 fn assertRunnerTokenPrefix(token: []const u8) ConfigError!void {
     if (!std.mem.startsWith(u8, token, contract.protocol.RUNNER_TOKEN_PREFIX))
@@ -260,11 +260,11 @@ pub const DEFAULT_WORKER_COUNT: u32 = 1;
 pub const MIN_WORKER_COUNT: u32 = 1;
 pub const MAX_WORKER_COUNT: u32 = 64;
 
-test "assertRunnerTokenPrefix accepts zrn_ tokens, rejects everything else" {
-    try assertRunnerTokenPrefix("zrn_" ++ "a" ** 64);
-    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zmb_t_deadbeef"));
+test "assertRunnerTokenPrefix accepts agt_r tokens, rejects everything else" {
+    try assertRunnerTokenPrefix("agt_r" ++ "a" ** 64);
+    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("agt_tdeadbeef"));
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix(""));
-    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zrn"));
+    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("agt_"));
 }
 
 test "worker count parses default and clamps" {

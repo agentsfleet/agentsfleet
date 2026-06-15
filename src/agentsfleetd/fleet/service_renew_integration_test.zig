@@ -34,7 +34,7 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
 const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
-const RUNNER_TOKEN = "zrn_" ++ "c" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 
 // The real DB-backed runner lookup, parked at module scope so the value outlives
 // the middleware chain (tests run sequentially in one process).

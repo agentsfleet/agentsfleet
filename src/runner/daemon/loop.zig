@@ -1,5 +1,5 @@
 //! The host-resident runner's parent event-leasing loop and graceful-drain
-//! signal handling. Boots from the operator-installed `zrn_` (Option B, no
+//! signal handling. Boots from the operator-installed `agt_r` (Option B, no
 //! self-register): `runLoop` goes straight to heartbeat → lease → execute →
 //! report → activity. Transport errors back off without crashing; un-acked
 //! leases re-deliver via reclaim. Each lease runs in a forked, sandboxed child
@@ -62,7 +62,7 @@ pub var stop_requested = std.atomic.Value(bool).init(false);
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
 /// signal-set `drain_requested`) onto the shared atomics, and owns the worker
-/// pool's spawn/join. Identity is `cfg.runner_token` (a pre-minted `zrn_`); the
+/// pool's spawn/join. Identity is `cfg.runner_token` (a pre-minted `agt_r`); the
 /// loop never registers — its first contact is a heartbeat (Option B).
 ///
 /// The pool is spawned lazily after the first `.ok` heartbeat, so the host's

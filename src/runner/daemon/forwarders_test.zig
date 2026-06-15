@@ -20,7 +20,7 @@ fn testForwarder(c: *client_mod) forwarders.ActivityForwarder {
     return .{
         .alloc = testing.allocator,
         .cp = c,
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .lease_id = "lease_test",
         .deadline_ms = client_mod.ACTIVITY_DEADLINE_MS,
     };
@@ -81,7 +81,7 @@ fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
     return .{
         .alloc = testing.allocator,
         .cp = c,
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .agent_id = "z_test",
         .lease_id = "lease_test",
         .fencing_token = 7,

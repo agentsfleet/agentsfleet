@@ -29,7 +29,7 @@ const WORKSPACE = "/tmp/agent-ws-edge";
 fn cfgWithTier(tier: []const u8) Config {
     return Config{
         .control_plane_url = "http://127.0.0.1:8080",
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .host_id = "host-edge",
         .sandbox_tier = tier,
         .workspace_base = "/tmp/agentsfleet-runner",

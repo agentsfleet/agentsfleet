@@ -3,7 +3,7 @@
 //! GET    /v1/workspaces/{ws}/agent-keys            → innerListAgentKeys
 //! DELETE /v1/workspaces/{ws}/agent-keys/{agent_key_id} → innerDeleteAgentKey
 //!
-//! Keys are issued as "zmb_{hex32}" — 32 random bytes as lower-hex prefixed with "zmb_".
+//! Keys are issued as "agt_a{hex32}" — 32 random bytes as lower-hex prefixed with "agt_a".
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
 
 const std = @import("std");
@@ -23,14 +23,14 @@ const log = logging.scoped(.agent_keys);
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
 
-const KEY_PREFIX = "zmb_";
+const KEY_PREFIX = api_key.KEY_PREFIX;
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 
 const KEY_RANDOM_BYTES: usize = 32;
 
 // ── Key generation ─────────────────────────────────────────────────────────
 
-/// Generate a zmb_ key: "zmb_{64 lower-hex chars}" from 32 random bytes.
+/// Generate a agt_a key: "agt_a{64 lower-hex chars}" from 32 random bytes.
 /// Returns allocated string owned by alloc. Total length = 4 + 64 = 68 chars.
 fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [KEY_RANDOM_BYTES]u8 = undefined;

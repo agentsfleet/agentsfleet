@@ -54,9 +54,9 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Verify the agent_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
-    // ── AGENT KEYS (workspace-scoped, zmb_ prefix) ────────────────────────────
+    // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Create one with: agentsfleet agent create --workspace {ws} --name my-agent"),
-    // ── TENANT API KEYS (tenant-scoped, zmb_t_ prefix) ────────────────────────
+    // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────
     e("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys"),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"),
     e("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant", "key_name must be unique per tenant. Pick a different name or revoke the existing key first."),

@@ -632,14 +632,14 @@ describe("app analytics", () => {
     await mod.initAnalytics();
 
     // Excess-property checks only cover object literals — a widened bag compiles.
-    const widened = { agent_id: "zom_1", runner_token: "zrn_smuggled" } as { agent_id: string };
+    const widened = { agent_id: "zom_1", runner_token: "agt_rsmuggled" } as { agent_id: string };
     mod.captureProductEvent(EVENTS.agent_created, widened);
 
     expect(client.capture).toHaveBeenCalledWith(EVENTS.agent_created, {
       path: "/agents/new",
       agent_id: "zom_1",
     });
-    expect(JSON.stringify(client.capture.mock.calls)).not.toContain("zrn_smuggled");
+    expect(JSON.stringify(client.capture.mock.calls)).not.toContain("agt_rsmuggled");
   });
 
   it("a throwing posthog capture never escapes captureProductEvent", async () => {

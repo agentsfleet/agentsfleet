@@ -5,7 +5,7 @@
 // Drives POST /v1/runners/me/leases and POST /v1/runners/me/reports through the
 // in-process TestHarness against the live test DB + Redis. The harness's default
 // runner lookup stubs to null (401); we wire the real DB-backed lookup and seed
-// fleet.runners rows whose token_hash matches the presented zrn_ token.
+// fleet.runners rows whose token_hash matches the presented agt_r token.
 //
 // Requires LIVE_DB=1 + a reachable Redis. Skipped when either is missing.
 
@@ -38,8 +38,8 @@ const AFFINITY_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6e01";
 const AFFINITY_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6e02";
 const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6f01";
 
-const RUNNER_A_TOKEN = "zrn_" ++ "a" ** 64;
-const RUNNER_B_TOKEN = "zrn_" ++ "b" ** 64;
+const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "a" ** 64;
+const RUNNER_B_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "b" ** 64;
 
 const CONFIG_NO_GATES =
     \\{"name":"runner-cp-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}

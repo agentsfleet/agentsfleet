@@ -205,7 +205,7 @@ describe("ApiKeyList component", () => {
     render(React.createElement(ApiKeysView, { initial: listResponse([ACTIVE]) } as never));
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "zmb_t_new", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: 1 },
     });
     await user.click(screen.getByRole("button", { name: /new api key/i }));
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");

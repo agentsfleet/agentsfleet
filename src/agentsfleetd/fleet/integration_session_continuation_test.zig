@@ -41,7 +41,7 @@ const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0de011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dea01";
 const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dec01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ded01";
-const RUNNER_TOKEN = "zrn_" ++ "1" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "1" ** 64;
 
 // A distinctive marker the seeded session checkpoint carries — the report must
 // overwrite it, so its absence after report proves the cursor advanced.

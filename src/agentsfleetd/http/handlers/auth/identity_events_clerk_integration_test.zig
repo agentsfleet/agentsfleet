@@ -27,7 +27,7 @@ const WHSEC_KEY: []const u8 = "whsec_MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3";
 
 const OIDC_HAPPY: []const u8 = "oidc-clerk-http-happy-01";
 const OIDC_REPLAY: []const u8 = "oidc-clerk-http-replay-02";
-const OIDC_DELETE_AGENTS: []const u8 = "oidc-clerk-http-del-zmb-03";
+const OIDC_DELETE_AGENTS: []const u8 = "oidc-clerk-http-del-agt-03";
 
 // Valid UUIDv7 (version char '7' at position 15) for the seeded agent row;
 // satisfies core.agents' ck_agents_uid_uuidv7 CHECK.
@@ -490,12 +490,12 @@ test "clerk webhook: user.deleted purges an account that still owns agents" {
     {
         const ts = try nowTsAlloc(ALLOC);
         defer ALLOC.free(ts);
-        const body = try userCreatedBody(ALLOC, OIDC_DELETE_AGENTS, "delzmb@acme.test");
+        const body = try userCreatedBody(ALLOC, OIDC_DELETE_AGENTS, "delagt@acme.test");
         defer ALLOC.free(body);
-        const sig = try signEntry(ALLOC, "msg_del_zmb_create", ts, body);
+        const sig = try signEntry(ALLOC, "msg_del_agt_acreate", ts, body);
         defer ALLOC.free(sig);
         const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
-            .header(svix.SVIX_ID_HEADER, "msg_del_zmb_create"))
+            .header(svix.SVIX_ID_HEADER, "msg_del_agt_acreate"))
             .header(svix.SVIX_TS_HEADER, ts))
             .header(svix.SVIX_SIG_HEADER, sig))
             .json(body)).send();
@@ -519,10 +519,10 @@ test "clerk webhook: user.deleted purges an account that still owns agents" {
     defer ALLOC.free(ts);
     const body = try userDeletedBody(ALLOC, OIDC_DELETE_AGENTS);
     defer ALLOC.free(body);
-    const sig = try signEntry(ALLOC, "msg_del_zmb_delete", ts, body);
+    const sig = try signEntry(ALLOC, "msg_del_agt_adelete", ts, body);
     defer ALLOC.free(sig);
     const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
-        .header(svix.SVIX_ID_HEADER, "msg_del_zmb_delete"))
+        .header(svix.SVIX_ID_HEADER, "msg_del_agt_adelete"))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
         .json(body)).send();

@@ -11,7 +11,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | Process | Role |
 |---|---|
 | **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers all `XADD` directly to `agent:{id}:events` — single ingress. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `agent:{id}:activity`. Never runs language-model code. |
-| **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `zrn_` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `zrn_` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `agentsfleetd` over the `activity` verb. |
+| **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `agentsfleetd` over the `activity` verb. |
 
 | Target | Producer | Consumer |
 |---|---|---|
@@ -70,7 +70,7 @@ The coding agent is a workstation tool driving `agentsfleet`. The agent — the 
            ╔═══════════════════════════════════╗
            ║  agentsfleet-runner (host)             ║
            ║  POST /v1/runners/me/leases        ║   ← long-poll; no work
-           ║  Authorization: Bearer zrn_        ║     → null + retry_after_ms
+           ║  Authorization: Bearer agt_r        ║     → null + retry_after_ms
            ╚═══════════════════════════════════╝
                           ↓
            ╔═══════════════════════════════════╗
@@ -480,7 +480,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
 ```
    agentsfleet-runner (host)
-    │  POST /v1/runners/me/leases   (long-poll; Bearer zrn_)
+    │  POST /v1/runners/me/leases   (long-poll; Bearer agt_r)
     ▼
    agentsfleetd — lease handler:
 
@@ -666,7 +666,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 |---|---|
 | PG (`core.agents`, `core.agent_events`, etc.) | Row-Level Security by `workspace_id`. The API enforces via `app.workspace_id` session var; the control-plane lease/report path uses the service role with explicit WHERE filtering. |
 | Redis data plane (`agent:{id}:events`) | Key namespaced by agent UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by `agent_id` being unguessable + API gatekeeping. |
-| Runner ↔ control plane | The `zrn_` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one agent's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only agentsfleet's platform admin may add a host to the shared fleet, via the dashboard "Add runner" (M84_001). Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to M85_001 (the stale "M80_007" reservation moved there; M80_007 shipped as the observability spec). |
+| Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one agent's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only agentsfleet's platform admin may add a host to the shared fleet, via the dashboard "Add runner" (M84_001). Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to M85_001 (the stale "M80_007" reservation moved there; M80_007 shipped as the observability spec). |
 | Sandboxed child | Per-execution: secrets resolved at the lease, delivered via the child's stdin only, substituted at the tool bridge inside the sandbox, never flowing as raw strings into agent context. |
 
 ## One active lease per agent — the ownership model

@@ -1,6 +1,6 @@
 // Runner-enrollment authz over the live HTTP surface: `POST /v1/runners` mints
-// a `zrn_` only for a verified JWT carrying `metadata.platform_admin == true`;
-// a tenant-admin JWT and a `zmb_t_` api_key are both rejected `403`.
+// a `agt_r` only for a verified JWT carrying `metadata.platform_admin == true`;
+// a tenant-admin JWT and a `agt_t` api_key are both rejected `403`.
 //
 // The DB-backed arms require TEST_DATABASE_URL — skipped gracefully otherwise
 // via `TestHarness.start` returning `error.SkipZigTest`. The first test needs
@@ -35,9 +35,9 @@ const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001";
 
-// A valid tenant api_key. The DB stores only its SHA-256 hash; a `zmb_t_`
+// A valid tenant api_key. The DB stores only its SHA-256 hash; a `agt_t`
 // authenticates as `.role=.admin` but never carries `platform_admin`.
-const ZMB_T_KEY = "zmb_t_" ++ "c" ** 48;
+const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "c" ** 48;
 
 const REGISTER_BODY =
     \\{"host_id":"host-enroll-test","sandbox_tier":"dev_none","labels":[]}
@@ -100,7 +100,7 @@ test "fixture tokens verify through the real oidc verifier; platform_admin parse
 var api_key_ctx: api_key_lookup.Ctx = undefined;
 // SAFETY: populated by configureRegistry (with the harness pool) before the
 // runner-bearer middleware — and thus the lookup — ever reads it. Wired so a
-// minted `zrn_` resolves against `fleet.runners` (the harness default uses a
+// minted `agt_r` resolves against `fleet.runners` (the harness default uses a
 // null stub).
 var runner_lookup_ctx: serve_runner_lookup.Ctx = undefined;
 
@@ -129,7 +129,7 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
         \\VALUES ($1::uuid, 'Runner Enroll Test Tenant', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TENANT_ID, now_ms });
-    const key_hash = api_key.sha256Hex(ZMB_T_KEY);
+    const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'runner-enroll-test-key', '', $3, 'user_enroll_test', TRUE, $4, $4)
@@ -146,7 +146,7 @@ fn cleanup(h: *TestHarness) void {
         std.log.warn("cleanup runners ignored: {s}", .{@errorName(err)});
 }
 
-test "register: a platform_admin JWT mints a zrn_ (201)" {
+test "register: a platform_admin JWT mints a agt_r (201)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
@@ -155,7 +155,7 @@ test "register: a platform_admin JWT mints a zrn_ (201)" {
     const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.created);
-    try std.testing.expect(resp.bodyContains("zrn_"));
+    try std.testing.expect(resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX));
 }
 
 test "register: a tenant-admin JWT without platform_admin is rejected 403" {
@@ -170,13 +170,13 @@ test "register: a tenant-admin JWT without platform_admin is rejected 403" {
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 }
 
-test "register: a zmb_t_ api_key cannot enroll a runner (403)" {
+test "register: a agt_t api_key cannot enroll a runner (403)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(ZMB_T_KEY)).json(REGISTER_BODY)).send();
+    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(AGT_T_KEY)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
@@ -204,7 +204,7 @@ test "register: the mint records last_seen_at = 0 (never connected → registere
 
 // ── Operator-plane fleet read (GET /v1/fleet/runners) ────────────────────────
 // Same platform-admin gate as enrollment; read-only; derives liveness and never
-// leaks the token hash or the raw zrn_.
+// leaks the token hash or the raw agt_r.
 
 test "fleet list: a platform_admin JWT lists the fleet with derived liveness (200)" {
     const h = try startHarness(ALLOC);
@@ -223,7 +223,7 @@ test "fleet list: a platform_admin JWT lists the fleet with derived liveness (20
     try std.testing.expect(resp.bodyContains("registered")); // never-connected liveness
     try std.testing.expect(resp.bodyContains("\"admin_state\":\"active\""));
     try std.testing.expect(!resp.bodyContains("token_hash")); // invariant: hash never leaves
-    try std.testing.expect(!resp.bodyContains("zrn_")); // the raw token is mint-only
+    try std.testing.expect(!resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX)); // the raw token is mint-only
 }
 
 test "fleet list: a tenant-admin JWT is rejected 403" {
@@ -238,13 +238,13 @@ test "fleet list: a tenant-admin JWT is rejected 403" {
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 }
 
-test "fleet list: a zmb_t_ api_key is rejected 403" {
+test "fleet list: a agt_t api_key is rejected 403" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(ZMB_T_KEY)).send();
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(AGT_T_KEY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
@@ -259,7 +259,7 @@ test "fleet list: a zmb_t_ api_key is rejected 403" {
 
 // UUIDv7 (version nibble 7) so the schema id CHECK passes; tenant_id NULL = trusted fleet.
 const GATE_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
-const GATE_RAW_TOKEN = "zrn_" ++ "g" ** 60;
+const GATE_RAW_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "g" ** 60;
 
 fn setGateRunner(h: *TestHarness, admin_state: []const u8) !void {
     const conn = try h.acquireConn();
@@ -305,5 +305,5 @@ test "runner auth admits an active admin_state and rejects a revoked one" {
 
 // Enrollment is mint-by-API only: the `agentsfleet-runner register` CLI was retired,
 // so there is no binary-spawned register arm. The handler authz above is the
-// enrollment contract; the `zrn_` is minted server-side from the dashboard's
+// enrollment contract; the `agt_r` is minted server-side from the dashboard's
 // session-authed POST (proven here directly against the live HTTP surface).

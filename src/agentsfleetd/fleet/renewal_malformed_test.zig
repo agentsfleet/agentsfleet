@@ -35,8 +35,8 @@ const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9f01";
 // A well-formed UUID that is never inserted — the unknown-lease case.
 const ABSENT_LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9fff";
-const RUNNER_A_TOKEN = "zrn_" ++ "d" ** 64;
-const RUNNER_B_TOKEN = "zrn_" ++ "e" ** 64;
+const RUNNER_A_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "d" ** 64;
+const RUNNER_B_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
 
 // The real DB-backed runner lookup, parked at module scope so the value outlives
 // the middleware chain (tests run sequentially in one process).

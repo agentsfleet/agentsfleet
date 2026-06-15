@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// The raw `zmb_t_*` API key is revealed exactly once and is secret from the
+// The raw `agt_t*` API key is revealed exactly once and is secret from the
 // network boundary. These three files mint, return, and render that raw value;
 // none may push it to a log sink. The type system can't catch a stray
 // `console.log(result)`, so pin the secret-handling surface as strictly

@@ -1,13 +1,13 @@
 //! `bearer_or_api_key` middleware.
 //!
-//! Accepts a valid OIDC JWT or a tenant-minted `zmb_t_` API key via
+//! Accepts a valid OIDC JWT or a tenant-minted `agt_t` API key via
 //! `Authorization: Bearer <token>`. The env-var `API_KEY` bootstrap path
 //! was deleted in M11_006 — there is no longer a global admin-by-env-var
 //! principal. Admin gating now flows through Clerk `publicMetadata.role`.
 //!
 //! Resolution order:
 //!   1. Bearer token is parsed.
-//!   2. If prefixed `zmb_t_` → DB-backed tenant_api_key lookup.
+//!   2. If prefixed `agt_t` → DB-backed tenant_api_key lookup.
 //!   3. Else if `verifier` is configured → JWT verification path.
 //!   4. Else → 401.
 
@@ -42,7 +42,7 @@ fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
 pub const BearerOrApiKey = struct {
     verifier: ?*oidc.Verifier,
     /// Populated by MiddlewareRegistry.initChains() when a tenant API-key
-    /// lookup is wired. When set, any `zmb_t_`-prefixed Bearer token is
+    /// lookup is wired. When set, any `agt_t`-prefixed Bearer token is
     /// routed to the tenant-key path (DB-backed lookup via host callback).
     tenant_api_key: ?*TenantApiKey = null,
 

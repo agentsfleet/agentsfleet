@@ -61,7 +61,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
 
   // Single dismissal path. Outside-click / Escape are locked during reveal (see
   // DialogContent), so this fires only from the X or the explicit button.
-  // Discarding `created` drops the raw zrn_ from React state → out of the DOM.
+  // Discarding `created` drops the raw agt_r from React state → out of the DOM.
   function handleOpenChange(next: boolean) {
     if (next) {
       setOpen(true);

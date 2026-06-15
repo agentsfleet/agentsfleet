@@ -34,7 +34,7 @@ After that, dip into whichever of these matches the change you're making:
 | [`scenarios/`](./scenarios/) | Three concrete end-to-end walkthroughs: [`01_default_install.md`](./scenarios/01_default_install.md), [`02_self_managed.md`](./scenarios/02_self_managed.md), [`03_balance_gate.md`](./scenarios/03_balance_gate.md). |
 | [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the agent-keys first-class revamp, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
 | [`archive/`](./archive/) | Historical, non-canon records: `office_hours.md` (the product-design session behind the v2 wedge), `office_hours_support_wedge_jun2026.md` (the support-engineer wedge exploration), and `plan_engg_review.md` (the pre-launch engineering review). Context for past decisions; not the truth about today. |
-| [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, agent key, and the `zrn_` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
+| [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, agent key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
 

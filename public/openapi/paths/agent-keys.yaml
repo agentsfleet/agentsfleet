@@ -42,7 +42,7 @@
   post:
     operationId: create_agent_key
     summary: Issue an agent key for a agent
-    description: Creates a new `zmb_` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256
+    description: Creates a new `agt_a` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256
       hash is persisted — the key cannot be retrieved again.
     tags:
     - Agent Keys
@@ -96,7 +96,7 @@
                   type: string
                 key:
                   type: string
-                  description: Raw `zmb_` API key. Shown once — store securely.
+                  description: Raw `agt_a` API key. Shown once — store securely.
                 created_at:
                   type: integer
                   format: int64

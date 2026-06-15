@@ -3,7 +3,7 @@
 -- (LangGraph, CrewAI, Composio). Each external agent gets a companion
 -- agent record so the full integration grant system applies identically
 -- to internal and external callers.
--- key_hash: SHA-256 hex of the raw zmb_ key. Raw key shown once at creation.
+-- key_hash: SHA-256 hex of the raw agt_a key. Raw key shown once at creation.
 -- Pre-v2.0 teardown: full file replace of the prior 027_core_external_agents.sql.
 
 CREATE TABLE IF NOT EXISTS core.agent_keys (

@@ -25,12 +25,12 @@ test "isValidKeyName rejects empty, oversized, and illegal chars" {
     try testing.expect(!api_keys.isValidKeyName("has.dot"));
 }
 
-test "generateRawKey produces zmb_t_ + 64 lower-hex chars" {
+test "generateRawKey produces agt_t + 64 lower-hex chars" {
     const k = try api_keys.generateRawKey(testing.allocator);
     defer testing.allocator.free(k);
-    try testing.expectEqual(@as(usize, 6 + 64), k.len);
+    try testing.expectEqual(@as(usize, api_keys.KEY_PREFIX.len + 64), k.len);
     try testing.expect(std.mem.startsWith(u8, k, api_keys.KEY_PREFIX));
-    for (k[6..]) |c| {
+    for (k[api_keys.KEY_PREFIX.len..]) |c| {
         const ok = (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f');
         try testing.expect(ok);
     }
