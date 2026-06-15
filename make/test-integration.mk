@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-runner _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-agentsfleet-runner _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 
 # agentsfleet-runner integration tests — real-process sandbox proofs (fork/spawn at
 # the environ_map boundary, kill(-pgid) tree reap). Its own build graph
@@ -10,7 +10,7 @@
 # and reads /proc, a distinct privileged-Linux execution environment from both
 # the app integration lane (Postgres/Redis below) and the fast unit lane. The
 # bodies are Linux-gated (SkipZigTest elsewhere); on macOS this compiles only.
-test-integration-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
+test-integration-agentsfleet-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
 	@echo "→ [agentsfleet-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \

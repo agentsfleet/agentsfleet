@@ -12,7 +12,7 @@
 //! the Linux CI runtime, not blind on macOS.
 //!
 //! Run on Linux: zig build --build-file build_runner.zig test-integration
-//! (the `make test-integration-runner` lane).
+//! (the `make test-integration-agentsfleet-runner` lane).
 
 const std = @import("std");
 const builtin = @import("builtin");

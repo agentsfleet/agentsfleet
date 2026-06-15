@@ -17,7 +17,7 @@ pub const execution_policy = @import("execution_policy.zig");
 pub const activity = @import("activity.zig");
 pub const execution_result = @import("execution_result.zig");
 
-// The contract's own unit tests run via `test-unit-ziglib` (the src/lib test
+// The contract's own unit tests run via `test-unit-agentsfleet-lib` (the src/lib test
 // aggregator) in this module's own instance, so they can reach the internals
 // agentsfleetd/runner consumers never see.
 test {

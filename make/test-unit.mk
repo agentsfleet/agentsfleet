@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-agentsfleetd test-unit-zigrunner test-unit-ziglib test-unit-agentsfleet test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
+.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-agentsfleet test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
 
 test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
 	@echo "→ [agentsfleetd] Running Zig unit tests..."
@@ -20,7 +20,7 @@ test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
 	 zig build test --summary all
 	@$(MAKE) _lint_zig_test_depth
 
-test-unit-zigrunner:  ## Run agentsfleet-runner unit tests (Zig; own build graph, no datastore)
+test-unit-agentsfleet-runner:  ## Run agentsfleet-runner unit tests (Zig; own build graph, no datastore)
 	@echo "→ [agentsfleet-runner] Running Zig unit tests via build_runner.zig (contract + daemon + common)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -28,7 +28,7 @@ test-unit-zigrunner:  ## Run agentsfleet-runner unit tests (Zig; own build graph
 	 zig build --build-file build_runner.zig test --summary all
 	@echo "✓ [agentsfleet-runner] Unit tests passed (independent of agentsfleetd/src)"
 
-test-unit-ziglib:  ## Run shared src/lib module unit tests (Zig; named modules, no datastore)
+test-unit-agentsfleet-lib:  ## Run shared src/lib module unit tests (Zig; named modules, no datastore)
 	@echo "→ [lib] Running shared src/lib module unit tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \

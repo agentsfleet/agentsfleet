@@ -458,10 +458,16 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
 - *Jun 15, 2026 (resume):* raw token prefixes resolved. A prior handoff had parked all three
   (`zmb_`/`zmb_t_`/`zrn_`) as "Indy hasn't ruled" with no ack-quote, contradicting §0's explicit
   agent-key flip mandate; surfaced as a single decision. **Indy verbatim:** *"zmb_ -> agt_, zmb_t to
-  agt_t, zrn_ to agt_r (since arn has a clash with AWS arn)"* — flip all three: agent-key
-  `zmb_`→`agt_`, tenant `zmb_t_`→`agt_t_`, runner `zrn_`→`agt_r_` (`agt_r_`, not `arn_`, to dodge the
-  Amazon Resource Name (ARN) clash). Flip is prefix-relative (`startsWith`) and length-safe; all three
-  stay mutually disjoint. The 3 CI/CD+deploy files holding `zrn_` are gated for an explicit CI grant.
+  agt_t, zrn_ to agt_r (since arn has a clash with AWS arn)"* — then refined to the **symmetric
+  `agt_<role>`** scheme (Indy follow-up, *"const agt_r, agt_t, agt_"*; corrected the agent-key from
+  bare `agt_` to `agt_a` so every prefix self-describes): agent-key `zmb_`→`agt_a`, tenant
+  `zmb_t_`→`agt_t`, runner `zrn_`→`agt_r` (`agt_r`, not `arn_`, to dodge the Amazon Resource Name
+  (ARN) clash). Flip is prefix-relative (`startsWith`) and length-safe; the three same-length prefixes
+  differ at char 4 (`a`/`t`/`r`) → no containment. **Constantized** (Indy follow-up, *"constantized so
+  we only flip in one place"*): each prefix single-sourced to one `pub const`
+  (`api_key.KEY_PREFIX` / `tenant_api_key.TENANT_KEY_PREFIX` / `protocol.RUNNER_TOKEN_PREFIX`) + a pin
+  test; all fixtures reference the const. The 3 CI/CD+deploy files (`deploy-dev.yml`,
+  `deploy/baremetal/*` incl. the `agt_rFAKE` placeholder guard) flipped under Indy's explicit CI grant.
 - *Jun 15, 2026 (resume):* `zmb:` memory `instance_id` prefix investigated — it is **comment/doc-only**
   (zero live `"zmb:"` string literal in `src/`); `agent_memory.zig` states the legacy NullClaw
   `zmb:` form "is gone with the in-child Postgres path." `protocol.zig` / `runner_fleet.md` still
