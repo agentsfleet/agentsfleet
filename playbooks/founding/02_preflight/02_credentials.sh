@@ -197,20 +197,40 @@ check_vercel_envs() {
   local -a expectations=(
     "agentsfleet-website|VITE_POSTHOG_KEY"
     "agentsfleet-website|VITE_POSTHOG_HOST"
-    "agentsfleet-agents-sh|VITE_POSTHOG_KEY"
-    "agentsfleet-agents-sh|VITE_POSTHOG_HOST"
+    "agentsfleet-agents-dev|VITE_POSTHOG_KEY"
+    "agentsfleet-agents-dev|VITE_POSTHOG_HOST"
     "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY"
     "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST"
   )
   declare -A ENV_CACHE
+  declare -A PROJECT_OK
   local entry project key envs targets
   for entry in "${expectations[@]}"; do
     IFS='|' read -r project key <<<"$entry"
     if [ -z "${ENV_CACHE[$project]:-}" ]; then
-      ENV_CACHE["$project"]="$(curl -fsS \
-        -H "Authorization: Bearer $token" \
-        "$api/v9/projects/$project/env?decrypt=false" 2>/dev/null || echo '{}')"
+      # Resolve the project first: a stale/renamed name (rename residue)
+      # must report as PROJECT NOT FOUND, not masquerade as a missing env
+      # row — a 404 on the env list yields {} and looks identical to "set
+      # but empty". That phantom shipped once already.
+      if curl -fsS -H "Authorization: Bearer $token" \
+           "$api/v10/projects/$project" >/dev/null 2>&1; then
+        PROJECT_OK["$project"]=1
+        ENV_CACHE["$project"]="$(curl -fsS \
+          -H "Authorization: Bearer $token" \
+          "$api/v9/projects/$project/env?decrypt=false" 2>/dev/null || echo '{}')"
+      else
+        PROJECT_OK["$project"]=0
+        ENV_CACHE["$project"]='{}'
+        echo "✗ PROJECT NOT FOUND: vercel:$project — name may be stale rename residue"
+        echo "  Vercel projects on this team:"
+        curl -fsS -H "Authorization: Bearer $token" \
+          "$api/v10/projects?limit=100" 2>/dev/null \
+          | jq -r '.projects[].name' | sort | sed 's/^/    - /' || true
+        echo "  fix: correct the name here + 01_bootstrap/02_vercel_env.sh, then re-run"
+        missing=$((missing + 1))
+      fi
     fi
+    [ "${PROJECT_OK[$project]}" = "1" ] || continue
     envs="${ENV_CACHE[$project]}"
     targets="$(echo "$envs" | jq -r --arg k "$key" \
       '[.envs[]? | select(.key==$k) | .target[]?] | unique | join(",")')"

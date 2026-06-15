@@ -52,7 +52,7 @@ network is ever touched.
 
 ## Deploying
 
-The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`agentsfleet-agents-sh`,
+The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`agentsfleet-agents-dev`,
 framework `None`, root directory `ui/agentsfleet.dev/dist`) — the same pattern as `agentsfleet-website`.
 There is no deploy workflow and no CI credentials; Vercel's GitHub integration handles it:
 
