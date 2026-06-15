@@ -19,7 +19,7 @@ const NONE = "none" as const;
 const OPERATOR = "operator" as const;
 const TYPE_STRING = "string" as const;
 const USER = "user" as const;
-const AGENTSFLEET_ENV = "zombie_env" as const;
+const AGENTSFLEET_ENV = "agent_env" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
@@ -82,15 +82,15 @@ const trimOrNull = (raw: string | undefined | null): string | null => {
 // inspected before file, but only "win" in TTY mode; non-TTY callers
 // fall through to file first.
 export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAuthToken {
-  const zombie = trimOrNull(input.env[AGENTSFLEET_TOKEN_ENV]);
+  const agent = trimOrNull(input.env[AGENTSFLEET_TOKEN_ENV]);
   const file = trimOrNull(input.fileToken);
   const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
-  const zombieResolved: ResolvedAuthToken | null = zombie
-    ? { token: zombie, source: AGENTSFLEET_ENV }
+  const agentResolved: ResolvedAuthToken | null = agent
+    ? { token: agent, source: AGENTSFLEET_ENV }
     : null;
   const order: ReadonlyArray<ResolvedAuthToken | null> = input.isTty
-    ? [zombieResolved, fileResolved]
-    : [fileResolved, zombieResolved];
+    ? [agentResolved, fileResolved]
+    : [fileResolved, agentResolved];
   for (const candidate of order) if (candidate) return candidate;
   return { token: null, source: NONE };
 }

@@ -35,7 +35,7 @@ const S_T_R_N = " \t\r\n";
 /// `startEventStream` spawns the dedicated thread — events_stream.zig module
 /// header has the full story). The empirical ceiling is Redis fan-out CPU,
 /// not memory — the M88-gated load test refines it, fed by the
-/// zombie_sse_in_flight_streams gauge.
+/// agent_sse_in_flight_streams gauge.
 pub const SSE_MAX_STREAMS_DEFAULT: u32 = 64;
 
 const SizesConfig = struct {

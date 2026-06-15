@@ -20,7 +20,7 @@ test "encodeForXAdd produces 5 field/value pairs in canonical order" {
     const alloc = std.testing.allocator;
     const env = EventEnvelope{
         .event_id = "1729874000000-0",
-        .zombie_id = "zb-1",
+        .agent_id = "zb-1",
         .workspace_id = "ws-1",
         .actor = "steer:kishore",
         .event_type = .chat,

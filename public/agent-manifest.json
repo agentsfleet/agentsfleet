@@ -2,7 +2,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "usezombie",
-  "description": "Agent Delivery Control Plane — long-lived, event-driven autonomous workers (Zombies) scoped to a workspace.",
+  "description": "Agent Delivery Control Plane — long-lived, event-driven autonomous workers (Agents) scoped to a workspace.",
   "url": "https://usezombie.com",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Linux",
@@ -14,44 +14,44 @@
   },
   "operations": [
     {
-      "operationId": "create_zombie",
+      "operationId": "create_agent",
       "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/zombies",
-      "description": "Provision a new Zombie in the given workspace. Returns the zombie_id used for subsequent operations.",
+      "path": "/v1/workspaces/{workspace_id}/agents",
+      "description": "Provision a new Agent in the given workspace. Returns the agent_id used for subsequent operations.",
       "actionClass": "sensitive"
     },
     {
-      "operationId": "patch_zombie",
+      "operationId": "patch_agent",
       "method": "PATCH",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
-      "description": "Partial update of a Zombie. Body fields are optional and presence-based: config_json (replace config) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
+      "path": "/v1/workspaces/{workspace_id}/agents/{agent_id}",
+      "description": "Partial update of a Agent. Body fields are optional and presence-based: config_json (replace config) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
       "actionClass": "sensitive"
     },
     {
-      "operationId": "delete_zombie",
+      "operationId": "delete_agent",
       "method": "DELETE",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
-      "description": "Hard-delete a Zombie and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the zombie before deleting. Returns 204 on success, 409 if not yet killed.",
+      "path": "/v1/workspaces/{workspace_id}/agents/{agent_id}",
+      "description": "Hard-delete a Agent and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the agent before deleting. Returns 204 on success, 409 if not yet killed.",
       "actionClass": "critical"
     },
     {
-      "operationId": "post_zombie_message",
+      "operationId": "post_agent_message",
       "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages",
-      "description": "Post a chat message to a running Zombie's loop.",
+      "path": "/v1/workspaces/{workspace_id}/agents/{agent_id}/messages",
+      "description": "Post a chat message to a running Agent's loop.",
       "actionClass": "sensitive"
     },
     {
-      "operationId": "list_zombie_events",
+      "operationId": "list_agent_events",
       "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events",
-      "description": "List the Zombie's event history with pagination.",
+      "path": "/v1/workspaces/{workspace_id}/agents/{agent_id}/events",
+      "description": "List the Agent's event history with pagination.",
       "actionClass": "safe"
     },
     {
-      "operationId": "stream_zombie_events",
+      "operationId": "stream_agent_events",
       "method": "GET",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream",
+      "path": "/v1/workspaces/{workspace_id}/agents/{agent_id}/events/stream",
       "description": "Server-Sent Events stream of new events as they arrive.",
       "actionClass": "safe"
     },
@@ -77,10 +77,10 @@
       "actionClass": "safe"
     },
     {
-      "operationId": "ingest_zombie_webhook",
+      "operationId": "ingest_agent_webhook",
       "method": "POST",
-      "path": "/v1/webhooks/{zombie_id}",
-      "description": "Deliver an inbound event to a Zombie. Body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
+      "path": "/v1/webhooks/{agent_id}",
+      "description": "Deliver an inbound event to a Agent. Body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching the Agent's trigger.source (e.g. vault row agent:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     }
   ],
@@ -94,8 +94,8 @@
     "description": "Users may supply their own Large Language Model (LLM) API keys. usezombie meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
-    "safe": ["list_zombie_events", "stream_zombie_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],
-    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook"],
-    "critical": ["delete_zombie"]
+    "safe": ["list_agent_events", "stream_agent_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],
+    "sensitive": ["create_agent", "patch_agent", "post_agent_message", "ingest_agent_webhook"],
+    "critical": ["delete_agent"]
   }
 }

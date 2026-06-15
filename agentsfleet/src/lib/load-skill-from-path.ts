@@ -1,4 +1,4 @@
-// Reads a two-file zombie bundle (SKILL.md + TRIGGER.md) from a local directory.
+// Reads a two-file agent bundle (SKILL.md + TRIGGER.md) from a local directory.
 // Pure: returns data or throws a typed SkillLoadError. Caller owns user-facing formatting.
 
 import { readFileSync, statSync } from "node:fs";
@@ -73,7 +73,7 @@ export function loadSkillFromPath(path: string): LoadedSkill {
     throw new SkillLoadError(ERR_TRIGGER_MISSING_2, triggerPath);
   }
 
-  // The canonical zombie name comes back in the install response after the
+  // The canonical agent name comes back in the install response after the
   // server parses TRIGGER.md frontmatter. The directory basename is only a
   // fallback hint for human-readable CLI output if the server omits it.
   return { skill_md, trigger_md, fallback_name: basename(path) };

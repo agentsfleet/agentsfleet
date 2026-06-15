@@ -11,15 +11,15 @@ const jsonLd = {
 };
 
 const apiOps = [
-  { action: "Create agent",   method: "POST",   path: "/v1/workspaces/:workspace_id/zombies",                                  purpose: "Provision a new agent in a workspace" },
-  { action: "Update agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Update mutable configuration (body: { config_json })." },
-  { action: "Stop agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Halt the running session, keep the record (body: { status: \"stopped\" })." },
-  { action: "Resume agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Return a stopped agent to active execution (body: { status: \"active\" })." },
-  { action: "Kill agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Mark the agent terminal — irreversible (body: { status: \"killed\" })." },
-  { action: "Delete agent",   method: "DELETE", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Hard-purge the agent and its history. Must kill first." },
-  { action: "Steer / chat",   method: "POST",   path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages",              purpose: "Send a steer message to an agent" },
-  { action: "Stream events",  method: "GET",    path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream",         purpose: "Server-Sent Events stream of new events" },
-  { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:zombie_id",                                                purpose: "Deliver an inbound event to an agent" },
+  { action: "Create agent",   method: "POST",   path: "/v1/workspaces/:workspace_id/agents",                                  purpose: "Provision a new agent in a workspace" },
+  { action: "Update agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Update mutable configuration (body: { config_json })." },
+  { action: "Stop agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Halt the running session, keep the record (body: { status: \"stopped\" })." },
+  { action: "Resume agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Return a stopped agent to active execution (body: { status: \"active\" })." },
+  { action: "Kill agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Mark the agent terminal — irreversible (body: { status: \"killed\" })." },
+  { action: "Delete agent",   method: "DELETE", path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Hard-purge the agent and its history. Must kill first." },
+  { action: "Steer / chat",   method: "POST",   path: "/v1/workspaces/:workspace_id/agents/:agent_id/messages",              purpose: "Send a steer message to an agent" },
+  { action: "Stream events",  method: "GET",    path: "/v1/workspaces/:workspace_id/agents/:agent_id/events/stream",         purpose: "Server-Sent Events stream of new events" },
+  { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:agent_id",                                                purpose: "Deliver an inbound event to an agent" },
 ] as const;
 
 const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
@@ -29,10 +29,10 @@ npx skills add agentsfleet/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
 #    /agentsfleet-install-platform-ops
-#    The slash-command provisions the platform-ops agent and prints its zombie_id.
+#    The slash-command provisions the platform-ops agent and prints its agent_id.
 
 # 3. Back in the shell — steer the agent
-agentsfleet steer <zombie_id> "morning health check"`;
+agentsfleet steer <agent_id> "morning health check"`;
 
 const webhookPayload = `{
   "event_id": "evt_01JEXAMPLE",
@@ -150,7 +150,7 @@ export default function Agents() {
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
-            <code className="font-mono">/v1/webhooks/:zombie_id</code>. Every inbound webhook must
+            <code className="font-mono">/v1/webhooks/:agent_id</code>. Every inbound webhook must
             carry a per-agent HMAC signature header — unsigned requests are rejected.
           </p>
           <Terminal label="Webhook payload example" className="max-w-wide">

@@ -101,26 +101,26 @@ pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
 pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 // PROFILE
 // WEBHOOK
-pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
+pub const ERR_WEBHOOK_NO_AGENT = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
 // UZ-WH-003 retired (paused-ingress rework) — paused webhook ingress answers 200-ignored;
-// steer uses ERR_AGENTSFLEET_PAUSED_INGRESS (UZ-ZMB-012).
+// steer uses ERR_AGENTSFLEET_PAUSED_INGRESS (UZ-AGT-012).
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
 pub const ERR_WEBHOOK_PAYLOAD_TOO_LARGE = "UZ-WH-030";
 // TOOL
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
-// ZOMBIE
-pub const ERR_AGENTSFLEET_CREDENTIAL_MISSING = "UZ-ZMB-003";
-pub const ERR_AGENTSFLEET_CLAIM_FAILED = "UZ-ZMB-004";
-pub const ERR_AGENTSFLEET_NAME_EXISTS = "UZ-ZMB-006";
-// UZ-ZMB-007 retired — superseded by UZ-VAULT-002 (credential data too large).
-pub const ERR_AGENTSFLEET_INVALID_CONFIG = "UZ-ZMB-008";
-pub const ERR_AGENTSFLEET_NOT_FOUND = "UZ-ZMB-009";
-pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-ZMB-010";
-pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-ZMB-011";
-pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-ZMB-012";
+// AGENT
+pub const ERR_AGENTSFLEET_CREDENTIAL_MISSING = "UZ-AGT-003";
+pub const ERR_AGENTSFLEET_CLAIM_FAILED = "UZ-AGT-004";
+pub const ERR_AGENTSFLEET_NAME_EXISTS = "UZ-AGT-006";
+// UZ-AGT-007 retired — superseded by UZ-VAULT-002 (credential data too large).
+pub const ERR_AGENTSFLEET_INVALID_CONFIG = "UZ-AGT-008";
+pub const ERR_AGENTSFLEET_NOT_FOUND = "UZ-AGT-009";
+pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
+pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
+pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -222,7 +222,7 @@ pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
 /// Webhook 200-ignored reason for a paused/non-active agent:
 /// sender retry queues add no value for an intentionally paused agent.
-pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "zombie_paused";
+pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "agent_paused";
 pub const STATUS_ACCEPTED = "accepted";
 // Slack signature constants
 pub const SLACK_SIG_VERSION = "v0";

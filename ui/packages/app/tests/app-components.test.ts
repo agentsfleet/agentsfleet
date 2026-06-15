@@ -237,7 +237,7 @@ describe("app components", () => {
 
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/zombies");
+    mocks.usePathname.mockReturnValue("/agents");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // Brand-mark always-alive contract.
@@ -264,7 +264,7 @@ describe("app components", () => {
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/zombies");
+    mocks.usePathname.mockReturnValue("/agents");
     const tree = Shell({ children: React.createElement("div") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
@@ -357,7 +357,7 @@ describe("app components", () => {
 
   it("Shell mobile-nav: clicking a link inside the dialog closes it", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/zombies");
+    mocks.usePathname.mockReturnValue("/agents");
     const user = userEvent.setup();
     render(
       React.createElement(Shell, null, React.createElement("div", null, "content")),
@@ -379,7 +379,7 @@ describe("app components", () => {
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
     // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
-    // 'Agents' (href /zombies) exercises the path-to-slug replaceAll branch.
+    // 'Agents' (href /agents) exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
     await user.click(screen.getByText("Agents"));
     // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
@@ -394,7 +394,7 @@ describe("app components", () => {
       (c) => (c[0] as { source: string }).source,
     );
     expect(sources).toContain("app_sidebar_root");
-    expect(sources).toContain("app_sidebar_zombies");
+    expect(sources).toContain("app_sidebar_agents");
     expect(sources).toContain("app_sidebar_docs");
     expect(sources).toContain("app_sidebar_settings");
     expect(sources).toContain("app_sidebar_settings_models");

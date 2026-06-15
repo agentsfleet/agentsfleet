@@ -1,8 +1,8 @@
 //! GET /v1/workspaces/{ws}/events — workspace-aggregate event history.
 //!
 //! Replaces the deleted `workspaces/activity.zig`. Same listing shape
-//! as the per-zombie endpoint, scoped to workspace, with optional
-//! `zombie_id` filter for drill-down. Reads `core.zombie_events`
+//! as the per-agent endpoint, scoped to workspace, with optional
+//! `agent_id` filter for drill-down. Reads `core.agent_events`
 //! filtered by `workspace_id` (RLS-protected via the tenant context
 //! set by `authorizeWorkspaceAndSetTenantContext`).
 
@@ -15,7 +15,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const events_store = @import("../../../state/zombie_events_store.zig");
+const events_store = @import("../../../state/agent_events_store.zig");
 
 const log = logging.scoped(.http_workspace_events);
 
@@ -38,9 +38,9 @@ pub fn innerListWorkspaceEvents(
     };
 
     const params = parseFilterParams(hx, qs) catch return;
-    if (params.zombie_id) |zid| {
+    if (params.agent_id) |zid| {
         if (!id_format.isSupportedWorkspaceId(zid)) {
-            hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a UUIDv7");
+            hx.fail(ec.ERR_INVALID_REQUEST, "agent_id must be a UUIDv7");
             return;
         }
     }
@@ -59,7 +59,7 @@ pub fn innerListWorkspaceEvents(
         return;
     }
 
-    const rows = events_store.listForWorkspace(conn, hx.alloc, workspace_id, params.zombie_id, filter) catch |err| {
+    const rows = events_store.listForWorkspace(conn, hx.alloc, workspace_id, params.agent_id, filter) catch |err| {
         if (err == error.InvalidCursor) {
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
             return;
@@ -78,7 +78,7 @@ const FilterParams = struct {
     actor: ?[]const u8,
     actor_prefix: ?[]const u8,
     since_raw: ?[]const u8,
-    zombie_id: ?[]const u8,
+    agent_id: ?[]const u8,
 };
 
 fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
@@ -90,7 +90,7 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
     const actor = qs.get("actor");
     const actor_prefix = qs.get("actor_prefix");
     const since_raw = qs.get("since");
-    const zombie_id = qs.get("zombie_id");
+    const agent_id = qs.get("agent_id");
 
     if (cursor != null and since_raw != null) {
         hx.fail(ec.ERR_INVALID_REQUEST, "since_and_cursor_mutually_exclusive");
@@ -107,7 +107,7 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
         .actor = actor,
         .actor_prefix = actor_prefix,
         .since_raw = since_raw,
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
     };
 }
 
@@ -141,7 +141,7 @@ fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.F
     };
 }
 
-/// `<prefix>%` with `%` and `_` escaped — see zombies/events.zig for the
+/// `<prefix>%` with `%` and `_` escaped — see agents/events.zig for the
 /// twin. Same rule, both endpoints. (Two callsites is below the threshold
 /// for hoisting into events_store; if a third endpoint grows it, lift it
 /// then.)

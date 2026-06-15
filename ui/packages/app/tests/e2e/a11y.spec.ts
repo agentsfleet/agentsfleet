@@ -4,8 +4,8 @@ import AxeBuilder from "@axe-core/playwright";
 /*
  * App accessibility audit on unauthenticated routes. Authenticated
  * dashboard routes are gated by Clerk; once @clerk/testing helpers are
- * wired into the e2e harness, extend ROUTES with `/zombies`,
- * `/zombies/new`, `/zombies/[id]`, `/settings`.
+ * wired into the e2e harness, extend ROUTES with `/agents`,
+ * `/agents/new`, `/agents/[id]`, `/settings`.
  *
  * The structural rules in DISABLED_RULES_PENDING_CLEANUP are known
  * violations on the Clerk-hosted sign-in/sign-up shells. The shells

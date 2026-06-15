@@ -64,7 +64,7 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .registry_allowlist = &.{},
         .alloc = alloc,
     };
-    const ws = "/tmp/zombie-ws-childexec";
+    const ws = "/tmp/agent-ws-childexec";
     const argv = try sandbox_args.buildArgv(globalIo(), alloc, cfg, ws, null);
     defer sandbox_args.freeArgv(alloc, argv);
 

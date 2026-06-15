@@ -1,4 +1,4 @@
--- fleet.runner_leases — one row per issued lease (zombie-runner split). The
+-- fleet.runner_leases — one row per issued lease (agent-runner split). The
 -- control plane (zombied) records a lease when it hands an event to a runner
 -- via POST /v1/runners/me/leases, and reads it back at
 -- POST /v1/runners/me/reports to reconstruct the write context the direct
@@ -6,9 +6,9 @@
 -- opaque lease id and fencing_token.
 --
 -- Why these columns: the report handler reproduces the direct worker's
--- finalize() — markTerminal (zombie_id, event_id), recordStageActuals
--- (tenant_id + workspace_id, zombie_id, event_id, posture, model) and
--- checkpointZombieSession (zombie_id). The lease persists exactly that context
+-- finalize() — markTerminal (agent_id, event_id), recordStageActuals
+-- (tenant_id + workspace_id, agent_id, event_id, posture, model) and
+-- checkpointAgentSession (agent_id). The lease persists exactly that context
 -- so report rebuilds it without re-resolving the tenant/provider.
 --
 -- Event envelope (actor, event_type, request_json, event_created_at): the
@@ -19,7 +19,7 @@
 --
 -- fencing_token: monotonic per lease; frozen here for the later fleet reclaim
 --   logic (lease_expires_at + fencing rejection). The control plane records it
---   but does not verify it yet — the single-zombie loopback skeleton has no
+--   but does not verify it yet — the single-agent loopback skeleton has no
 --   reclaim path to exercise.
 -- status: lease lifecycle — app-enforced values (active | reported | expired),
 --   no static-string CHECK (RULE STS).
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     CONSTRAINT ck_runner_leases_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
     id                UUID   NOT NULL UNIQUE,
     runner_id         UUID   NOT NULL REFERENCES fleet.runners(id) ON DELETE CASCADE,
-    zombie_id         UUID   NOT NULL,
+    agent_id         UUID   NOT NULL,
     workspace_id      UUID   NOT NULL,
     tenant_id         UUID   NOT NULL,
     event_id          TEXT   NOT NULL,

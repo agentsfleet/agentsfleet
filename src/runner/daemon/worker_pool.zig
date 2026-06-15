@@ -3,8 +3,8 @@
 //! each worker thread then runs the existing `loop.pollAndProcess` (lease →
 //! execute → report) verbatim, lifting per-host throughput from one concurrent
 //! agent to `cfg.worker_count`. No control-plane change is needed for
-//! correctness: the per-zombie `affinity.claim` admits exactly one of N racing
-//! pollers, so two workers never run the same zombie.
+//! correctness: the per-agent `affinity.claim` admits exactly one of N racing
+//! pollers, so two workers never run the same agent.
 //!
 //! Each worker owns an INDEPENDENT allocator scope (its own `DebugAllocator`) and
 //! a fresh control-plane client, so there is no cross-worker allocator mutex to
@@ -24,7 +24,7 @@ const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const loop = @import("loop.zig");
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// Spawn failure: either the threads handle could not be allocated, or the OS
 /// refused a thread. The caller (control loop) logs and exits; workers already

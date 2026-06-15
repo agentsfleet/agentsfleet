@@ -25,7 +25,7 @@ const child_supervisor = @import("../child_supervisor.zig");
 const pipe_proto = @import("../pipe_proto.zig");
 
 const LeasePayload = contract.protocol.LeasePayload;
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// A u32 token-split triple ready for the wire — the explicit carrier the renew
 /// body AND the report splits both map from, so neither path borrows the other's

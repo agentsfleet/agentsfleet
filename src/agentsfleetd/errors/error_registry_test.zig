@@ -81,7 +81,7 @@ test "UZ-REQ-002 stays 413 (payload too large, pinned)" {
     );
 }
 
-test "UZ-ZMB-009 stays 404 (agent not found, pinned)" {
+test "UZ-AGT-009 stays 404 (agent not found, pinned)" {
     try std.testing.expectEqual(
         std.http.Status.not_found,
         reg.lookup(reg.ERR_AGENTSFLEET_NOT_FOUND).http_status,
@@ -107,7 +107,7 @@ test "ERR_FORBIDDEN is 403 (authorization failure, not 401)" {
     try std.testing.expect(@intFromEnum(entry.http_status) != @intFromEnum(std.http.Status.unauthorized));
 }
 
-test "UZ-ZMB-012 is 409 (paused steer = conflict, with a resume hint)" {
+test "UZ-AGT-012 is 409 (paused steer = conflict, with a resume hint)" {
     const entry = reg.lookup(reg.ERR_AGENTSFLEET_PAUSED_INGRESS);
     try std.testing.expectEqual(std.http.Status.conflict, entry.http_status);
     try std.testing.expect(std.mem.indexOf(u8, entry.hint, "agentsfleet resume") != null);
@@ -170,7 +170,7 @@ test "lookup never returns null — unknown codes return UNKNOWN" {
 }
 
 test "lookup returns correct entry for known code" {
-    const entry = reg.lookup("UZ-ZMB-009");
+    const entry = reg.lookup("UZ-AGT-009");
     try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
     try std.testing.expectEqualStrings("Agent not found", entry.title);
     try std.testing.expect(entry.hint.len > 0);
@@ -275,7 +275,7 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
 }
 
-test "ZombieSession size pinned at 320 bytes" {
-    const ZombieSession = @import("../fleet/zombie_session.zig");
-    try std.testing.expectEqual(@as(usize, 320), @sizeOf(ZombieSession));
+test "AgentSession size pinned at 320 bytes" {
+    const AgentSession = @import("../fleet/agent_session.zig");
+    try std.testing.expectEqual(@as(usize, 320), @sizeOf(AgentSession));
 }

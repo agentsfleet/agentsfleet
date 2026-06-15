@@ -14,7 +14,7 @@ const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const tenant_billing = @import("../../state/tenant_billing.zig");
-const telemetry_store = @import("../../state/zombie_telemetry_store.zig");
+const telemetry_store = @import("../../state/agent_telemetry_store.zig");
 const fleet_metering_store = @import("../../state/fleet_metering_store.zig");
 
 const Hx = hx_mod.Hx;

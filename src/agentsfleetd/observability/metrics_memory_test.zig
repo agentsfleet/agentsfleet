@@ -27,7 +27,7 @@ test "memory capture counter accumulates and renders" {
     mm.incMemoryCaptured(3);
     mm.incMemoryCaptured(2);
     var buf: [8192]u8 = undefined;
-    try std.testing.expect(contains(try render(&buf), "zombie_memory_entries_captured_total 5"));
+    try std.testing.expect(contains(try render(&buf), "agent_memory_entries_captured_total 5"));
 }
 
 test "memory push-failure counter renders" {
@@ -35,7 +35,7 @@ test "memory push-failure counter renders" {
     mm.incMemoryPushFailure();
     mm.incMemoryPushFailure();
     var buf: [8192]u8 = undefined;
-    try std.testing.expect(contains(try render(&buf), "zombie_memory_push_failures_total 2"));
+    try std.testing.expect(contains(try render(&buf), "agent_memory_push_failures_total 2"));
 }
 
 test "hydration window gauge reflects the last set size" {
@@ -43,7 +43,7 @@ test "hydration window gauge reflects the last set size" {
     mm.incMemoryCaptured(1); // a counter must be non-zero for the family to render
     mm.setMemoryHydrationEntries(7);
     var buf: [8192]u8 = undefined;
-    try std.testing.expect(contains(try render(&buf), "zombie_memory_hydration_window_entries 7"));
+    try std.testing.expect(contains(try render(&buf), "agent_memory_hydration_window_entries 7"));
 }
 
 test "incMemoryCaptured(0) is a no-op and does not force render" {
@@ -62,13 +62,13 @@ test "test_existing_memory_families_unchanged" {
     mm.setMemoryHydrationEntries(7);
     var buf: [8192]u8 = undefined;
     const out = try render(&buf);
-    try std.testing.expect(contains(out, "# HELP zombie_memory_entries_captured_total "));
-    try std.testing.expect(contains(out, "# TYPE zombie_memory_entries_captured_total counter"));
-    try std.testing.expect(contains(out, "zombie_memory_entries_captured_total 5"));
-    try std.testing.expect(contains(out, "# TYPE zombie_memory_push_failures_total counter"));
-    try std.testing.expect(contains(out, "zombie_memory_push_failures_total 1"));
-    try std.testing.expect(contains(out, "# TYPE zombie_memory_hydration_window_entries gauge"));
-    try std.testing.expect(contains(out, "zombie_memory_hydration_window_entries 7"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_entries_captured_total "));
+    try std.testing.expect(contains(out, "# TYPE agent_memory_entries_captured_total counter"));
+    try std.testing.expect(contains(out, "agent_memory_entries_captured_total 5"));
+    try std.testing.expect(contains(out, "# TYPE agent_memory_push_failures_total counter"));
+    try std.testing.expect(contains(out, "agent_memory_push_failures_total 1"));
+    try std.testing.expect(contains(out, "# TYPE agent_memory_hydration_window_entries gauge"));
+    try std.testing.expect(contains(out, "agent_memory_hydration_window_entries 7"));
 }
 
 // ── The six memory-loss families ────────────────────────────────────────────
@@ -83,18 +83,18 @@ test "test_metrics_render_memory_loss_families" {
     var buf: [8192]u8 = undefined;
     const out = try render(&buf);
     // Every family renders its HELP line and the exact incremented value.
-    try std.testing.expect(contains(out, "# HELP zombie_memory_hydration_dropped_entries_total "));
-    try std.testing.expect(contains(out, "zombie_memory_hydration_dropped_entries_total 2"));
-    try std.testing.expect(contains(out, "# HELP zombie_memory_hydration_dropped_bytes_total "));
-    try std.testing.expect(contains(out, "zombie_memory_hydration_dropped_bytes_total 120"));
-    try std.testing.expect(contains(out, "# HELP zombie_memory_cap_evictions_total "));
-    try std.testing.expect(contains(out, "zombie_memory_cap_evictions_total 3"));
-    try std.testing.expect(contains(out, "# HELP zombie_memory_capture_truncated_total "));
-    try std.testing.expect(contains(out, "zombie_memory_capture_truncated_total 1"));
-    try std.testing.expect(contains(out, "# HELP zombie_memory_capture_skipped_total "));
-    try std.testing.expect(contains(out, "zombie_memory_capture_skipped_total 1"));
-    try std.testing.expect(contains(out, "# HELP zombie_memory_search_zero_hits_total "));
-    try std.testing.expect(contains(out, "zombie_memory_search_zero_hits_total 1"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_hydration_dropped_entries_total "));
+    try std.testing.expect(contains(out, "agent_memory_hydration_dropped_entries_total 2"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_hydration_dropped_bytes_total "));
+    try std.testing.expect(contains(out, "agent_memory_hydration_dropped_bytes_total 120"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_cap_evictions_total "));
+    try std.testing.expect(contains(out, "agent_memory_cap_evictions_total 3"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_capture_truncated_total "));
+    try std.testing.expect(contains(out, "agent_memory_capture_truncated_total 1"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_capture_skipped_total "));
+    try std.testing.expect(contains(out, "agent_memory_capture_skipped_total 1"));
+    try std.testing.expect(contains(out, "# HELP agent_memory_search_zero_hits_total "));
+    try std.testing.expect(contains(out, "agent_memory_search_zero_hits_total 1"));
 }
 
 test "test_render_no_db_no_alloc" {
@@ -152,5 +152,5 @@ test "a loss counter alone activates the exposition (loss is never invisible)" {
     mr.resetForTest();
     mm.incSearchZeroHit();
     var buf: [8192]u8 = undefined;
-    try std.testing.expect(contains(try render(&buf), "zombie_memory_search_zero_hits_total 1"));
+    try std.testing.expect(contains(try render(&buf), "agent_memory_search_zero_hits_total 1"));
 }

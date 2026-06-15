@@ -41,8 +41,8 @@
         $ref: ../components/responses.yaml#/components/responses/Error
   post:
     operationId: create_agent_key
-    summary: Issue an agent key for a zombie
-    description: Creates a new `zmb_` agent key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256
+    summary: Issue an agent key for a agent
+    description: Creates a new `zmb_` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256
       hash is persisted — the key cannot be retrieved again.
     tags:
     - Agent Keys
@@ -61,10 +61,10 @@
           schema:
             type: object
             required:
-            - zombie_id
+            - agent_id
             - name
             properties:
-              zombie_id:
+              agent_id:
                 type: string
                 format: uuid
               name:
@@ -89,7 +89,7 @@
                 workspace_id:
                   type: string
                   format: uuid
-                zombie_id:
+                agent_id:
                   type: string
                   format: uuid
                 name:

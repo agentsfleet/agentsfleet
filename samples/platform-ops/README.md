@@ -1,4 +1,4 @@
-# Platform Ops Zombie
+# Platform Ops Agent
 
 The flagship sample. A markdown-defined agent that diagnoses fly.io +
 upstash failures (and optionally GitHub Actions failures), posts a
@@ -34,11 +34,11 @@ agentsfleet credential add fly     --data='{"host":"api.machines.dev","api_token
 agentsfleet credential add upstash --data='{"host":"api.upstash.com","api_token":"<mgmt-token>"}'
 agentsfleet credential add slack   --data='{"host":"slack.com","bot_token":"<xoxb-...>"}'
 
-# 2. Install. Output: a zombie id.
+# 2. Install. Output: a agent id.
 agentsfleet install --from samples/platform-ops
 
 # 3. Chat.
-agentsfleet chat <zombie_id>
+agentsfleet chat <agent_id>
 > morning health check
 ```
 
@@ -58,7 +58,7 @@ agentsfleet credential add github --data='{"webhook_secret":"<above>","api_token
 ```
 
 In the repo's *Settings → Webhooks*: payload URL
-`https://api.usezombie.com/v1/webhooks/<zombie_id>/github`, content
+`https://api.usezombie.com/v1/webhooks/<agent_id>/github`, content
 type `application/json`, events *Workflow runs*. The next failed
 `workflow_run` lands within ~100 ms; the agent reads run logs,
 cross-references recent commits, posts to Slack. Successes and other
@@ -73,15 +73,15 @@ the GitHub config for you in one go.
 
 ## Limitations (v2.0-alpha)
 
-- One Slack channel per zombie; plain-text posts only (no blocks).
+- One Slack channel per agent; plain-text posts only (no blocks).
 - Read-only diagnosis — remediation lives in separate approval-gated
-  zombies.
-- Budget envelope ~$8/month per zombie.
+  agents.
+- Budget envelope ~$8/month per agent.
 
 ## Related
 
 - `SKILL.md` — agent prose (the authoritative behaviour, including
   webhook decisioning).
 - `TRIGGER.md` — tools, network allowlist, budget.
-- `docs/ARCHITECTURE_ZOMBIE_EVENT_FLOW.md` — install / chat / kill
+- `docs/ARCHITECTURE_AGENT_EVENT_FLOW.md` — install / chat / kill
   sequence diagrams.

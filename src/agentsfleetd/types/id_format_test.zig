@@ -8,9 +8,9 @@ test "generators produce uuidv7-shaped ids that pass their validators" {
     defer alloc.free(workspace_id);
     try std.testing.expect(id.isSupportedWorkspaceId(workspace_id));
 
-    const zombie_id = try id.generateZombieId(alloc);
-    defer alloc.free(zombie_id);
-    try std.testing.expect(id.isUuidV7(zombie_id));
+    const agent_id = try id.generateAgentId(alloc);
+    defer alloc.free(agent_id);
+    try std.testing.expect(id.isUuidV7(agent_id));
 
     const activity_id = try id.generateActivityEventId(alloc);
     defer alloc.free(activity_id);
@@ -40,7 +40,7 @@ test "all live id generators produce valid uuidv7" {
     const alloc = std.testing.allocator;
     inline for (.{
         id.generateWorkspaceId,
-        id.generateZombieId,
+        id.generateAgentId,
         id.generateActivityEventId,
         id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
@@ -53,16 +53,16 @@ test "all live id generators produce valid uuidv7" {
 
 test "generated ids are unique across calls" {
     const alloc = std.testing.allocator;
-    const id1 = try id.generateZombieId(alloc);
+    const id1 = try id.generateAgentId(alloc);
     defer alloc.free(id1);
-    const id2 = try id.generateZombieId(alloc);
+    const id2 = try id.generateAgentId(alloc);
     defer alloc.free(id2);
     try std.testing.expect(!std.mem.eql(u8, id1, id2));
 }
 
 test "all generated ids are 36 bytes" {
     const alloc = std.testing.allocator;
-    const idd = try id.generateZombieId(alloc);
+    const idd = try id.generateAgentId(alloc);
     defer alloc.free(idd);
     try std.testing.expectEqual(@as(usize, 36), idd.len);
 }
@@ -71,7 +71,7 @@ test "version nibble and variant bits are correctly set across all live generato
     const alloc = std.testing.allocator;
     inline for (.{
         id.generateWorkspaceId,
-        id.generateZombieId,
+        id.generateAgentId,
         id.generateActivityEventId,
         id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
@@ -91,7 +91,7 @@ test "ids from different generators are distinct" {
     const alloc = std.testing.allocator;
     const a = try id.generateWorkspaceId(alloc);
     defer alloc.free(a);
-    const b = try id.generateZombieId(alloc);
+    const b = try id.generateAgentId(alloc);
     defer alloc.free(b);
     const c = try id.generateActivityEventId(alloc);
     defer alloc.free(c);
@@ -101,7 +101,7 @@ test "ids from different generators are distinct" {
 
 test "all hex chars are lowercase" {
     const alloc = std.testing.allocator;
-    const idd = try id.generateZombieId(alloc);
+    const idd = try id.generateAgentId(alloc);
     defer alloc.free(idd);
     for (idd) |c| {
         if (c == '-') continue;
@@ -111,7 +111,7 @@ test "all hex chars are lowercase" {
 
 test "generator returns OutOfMemory when allocator fails" {
     var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const result = id.generateZombieId(fa.allocator());
+    const result = id.generateAgentId(fa.allocator());
     try std.testing.expectError(error.OutOfMemory, result);
 }
 
@@ -144,7 +144,7 @@ test "concurrent generation produces no duplicates" {
         fn worker(self: *@This(), base: usize) void {
             const alloc = std.testing.allocator;
             for (0..ids_per_thread) |i| {
-                self.ids[base + i] = id.generateZombieId(alloc) catch "FAILED";
+                self.ids[base + i] = id.generateAgentId(alloc) catch "FAILED";
             }
         }
     };

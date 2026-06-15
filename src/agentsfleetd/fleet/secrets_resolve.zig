@@ -1,6 +1,6 @@
 //! Credential resolver for structured (JSON-object) credentials.
 //!
-//! Sits between `crypto_store` (KMS envelope) and the runner engine. The zombie
+//! Sits between `crypto_store` (KMS envelope) and the runner engine. The agent
 //! config carries a list of credential *names*; this module resolves each one
 //! to a parsed JSON object the lease verb hands back as `secrets_map` in the
 //! `ExecutionPolicy`, which the runner's tool bridge consumes as
@@ -12,10 +12,10 @@ const Allocator = std.mem.Allocator;
 
 const error_codes = @import("../errors/error_registry.zig");
 const vault = @import("../state/vault.zig");
-const credential_key = @import("../zombie/credential_key.zig");
+const credential_key = @import("../agent/credential_key.zig");
 const logging = @import("log");
 
-const log = logging.scoped(.zombie_event_loop);
+const log = logging.scoped(.agent_event_loop);
 
 pub const ResolvedSecret = struct {
     name: []const u8, // duped, owned by caller

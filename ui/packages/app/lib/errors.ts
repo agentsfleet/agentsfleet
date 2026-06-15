@@ -5,8 +5,8 @@
  * here so the operator sees a consistent voice + an actionable next step.
  *
  * Pattern (Captain's call):
- *   - Second person, present tense — "Couldn't delete this zombie" beats
- *     "Failed to delete zombie".
+ *   - Second person, present tense — "Couldn't delete this agent" beats
+ *     "Failed to delete agent".
  *   - One line, ending on the next action the operator can take.
  *   - The UZ-XXX-NNN code is surfaced for support but never the lead;
  *     callers render it as a small monospaced trailer beneath the title.
@@ -23,7 +23,7 @@ export interface ErrorInput {
   /**
    * What the operator was trying to do, in present-tense lowercase. Used
    * to construct the fallback when no errorCode matches. Examples:
-   *   "delete this zombie", "store the credential", "load more events".
+   *   "delete this agent", "store the credential", "load more events".
    */
   action: string;
 }
@@ -75,8 +75,8 @@ const CODE_MAP = {
     title: "That credential already exists",
     body: "Pick a different name, or delete the existing one first.",
   },
-  "UZ-ZMB-009": {
-    title: "That zombie is in a state that blocks this action",
+  "UZ-AGT-009": {
+    title: "That agent is in a state that blocks this action",
     body: "Check the current status on the detail page and try the right transition.",
   },
   "UZ-AUTH-001": {

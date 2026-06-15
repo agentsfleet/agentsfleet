@@ -7,7 +7,7 @@
 // key, credential payload, or free-text typed into a sensitive field.
 
 export const EVENTS = {
-  zombie_created: "zombie_created",
+  agent_created: "agent_created",
   runner_token_minted: "runner_token_minted",
   api_key_minted: "api_key_minted",
   model_added: "model_added",
@@ -18,7 +18,7 @@ export const EVENTS = {
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 export type EventProps = {
-  [EVENTS.zombie_created]: { zombie_id: string };
+  [EVENTS.agent_created]: { agent_id: string };
   [EVENTS.runner_token_minted]: { runner_id: string; sandbox_tier: string };
   [EVENTS.api_key_minted]: { api_key_id: string };
   [EVENTS.model_added]: { provider: string; mode: string; model?: string };
@@ -30,7 +30,7 @@ export type EventProps = {
 // real prop keys, and the PII + emit-path tests assert against it (the type
 // alone is erased at runtime).
 export const EVENT_PROP_KEYS = {
-  [EVENTS.zombie_created]: ["zombie_id"],
+  [EVENTS.agent_created]: ["agent_id"],
   [EVENTS.runner_token_minted]: ["runner_id", "sandbox_tier"],
   [EVENTS.api_key_minted]: ["api_key_id"],
   [EVENTS.model_added]: ["provider", "mode", "model"],

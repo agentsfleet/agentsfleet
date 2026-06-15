@@ -317,7 +317,7 @@ describe("app analytics", () => {
 
   it("captures typed product events with every catalog prop intact (no allowlist drop)", async () => {
     const { mod, client } = await loadModule({
-      pathname: "/zombies/new",
+      pathname: "/agents/new",
       env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
     });
 
@@ -330,7 +330,7 @@ describe("app analytics", () => {
     // Event-specific keys are NOT in the legacy ALLOWED_PROP_KEYS allowlist —
     // they must survive the emit path untouched.
     expect(client.capture).toHaveBeenCalledWith(EVENTS.runner_token_minted, {
-      path: "/zombies/new",
+      path: "/agents/new",
       runner_id: "r1",
       sandbox_tier: "landlock_full",
     });
@@ -362,7 +362,7 @@ describe("app analytics", () => {
     });
 
     await mod.initAnalytics();
-    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_1" });
+    mod.captureProductEvent(EVENTS.agent_created, { agent_id: "zom_1" });
     mod.identifyAnalyticsUser({ id: "user_1", email: null });
     mod.resetAnalyticsIdentity();
 
@@ -602,7 +602,7 @@ describe("app analytics", () => {
 
     // The session degrades to analytics-off without throwing, and the sweep's
     // marker survives so the reset retries on the next load.
-    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_1" });
+    mod.captureProductEvent(EVENTS.agent_created, { agent_id: "zom_1" });
     expect(mod.hasStaleAnalyticsIdentity()).toBe(true);
   });
 
@@ -626,18 +626,18 @@ describe("app analytics", () => {
 
   it("smuggled extra keys never reach the payload (runtime catalog allowlist)", async () => {
     const { mod, client } = await loadModule({
-      pathname: "/zombies/new",
+      pathname: "/agents/new",
       env: { NEXT_PUBLIC_POSTHOG_KEY: "phc_live" },
     });
     await mod.initAnalytics();
 
     // Excess-property checks only cover object literals — a widened bag compiles.
-    const widened = { zombie_id: "zom_1", runner_token: "zrn_smuggled" } as { zombie_id: string };
-    mod.captureProductEvent(EVENTS.zombie_created, widened);
+    const widened = { agent_id: "zom_1", runner_token: "zrn_smuggled" } as { agent_id: string };
+    mod.captureProductEvent(EVENTS.agent_created, widened);
 
-    expect(client.capture).toHaveBeenCalledWith(EVENTS.zombie_created, {
-      path: "/zombies/new",
-      zombie_id: "zom_1",
+    expect(client.capture).toHaveBeenCalledWith(EVENTS.agent_created, {
+      path: "/agents/new",
+      agent_id: "zom_1",
     });
     expect(JSON.stringify(client.capture.mock.calls)).not.toContain("zrn_smuggled");
   });
@@ -670,7 +670,7 @@ describe("app analytics", () => {
     });
     vi.resetModules();
     vi.doMock("posthog-js", () => importGate);
-    vi.stubGlobal("window", createWindow("/zombies/new"));
+    vi.stubGlobal("window", createWindow("/agents/new"));
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_live");
     const mod = await import("../lib/analytics/posthog");
     const initPromise = mod.initAnalytics();
@@ -678,7 +678,7 @@ describe("app analytics", () => {
     // Pins the drop contract: unlike the website module there is no pre-init
     // buffer — every call site fires after a completed server round-trip, so
     // this window is effectively unreachable in practice.
-    mod.captureProductEvent(EVENTS.zombie_created, { zombie_id: "zom_early" });
+    mod.captureProductEvent(EVENTS.agent_created, { agent_id: "zom_early" });
     resolveImport({ default: client });
     await initPromise;
     expect(client.capture).not.toHaveBeenCalled();

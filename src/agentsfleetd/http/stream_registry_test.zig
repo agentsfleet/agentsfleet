@@ -170,7 +170,7 @@ fn raceRegister(reg: *StreamRegistry, gate: *std.atomic.Value(bool), slot: *?u64
     slot.* = reg.tryRegister(WS, ZID_A, STARTED_A_MS, RACE_CAP) catch null;
 }
 
-test "registry: listing rows carry workspace, zombie, and start time — never the fd" {
+test "registry: listing rows carry workspace, agent, and start time — never the fd" {
     var reg = StreamRegistry.init(testing.allocator, common.globalIo());
     defer reg.deinit();
 
@@ -213,7 +213,7 @@ fn listAndFree(alloc: std.mem.Allocator, reg: *StreamRegistry) !void {
     const rows = try reg.listAlloc(alloc);
     for (rows) |row| {
         alloc.free(row.workspace_id);
-        alloc.free(row.zombie_id);
+        alloc.free(row.agent_id);
     }
     alloc.free(rows);
 }

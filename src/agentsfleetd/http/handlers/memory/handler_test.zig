@@ -89,7 +89,7 @@ test "UZ-MEM-001 (scope denied) → HTTP 403 Forbidden" {
     try ht.expectStatus(403);
 }
 
-test "UZ-MEM-002 (zombie not found) → HTTP 404 Not Found" {
+test "UZ-MEM-002 (agent not found) → HTTP 404 Not Found" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
     common.errorResponse(ht.res, ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, "not found", "req-t3b");

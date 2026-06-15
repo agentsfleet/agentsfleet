@@ -8,7 +8,7 @@
  *   - persisted-credentials read-only sweep (AGENTSFLEET_TOKEN explicitly
  *     absent from spawn env; proves credentials.json is the load-
  *     bearing auth source).
- *   - prefix-scoped post-teardown emptiness (zombie list).
+ *   - prefix-scoped post-teardown emptiness (agent list).
  *   - persisted-credentials install + lifecycle walk.
  *
  * Skip posture:
@@ -32,7 +32,7 @@ import path from "node:path";
 
 import { READ_ONLY_COMMANDS } from "./fixtures/command-matrix.ts";
 import { ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
-import { composeEnv, runZombiectl, spawnZombiectl } from "./fixtures/cli.js";
+import { composeEnv, runAgentctl, spawnAgentctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -43,13 +43,13 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { completeCliAuthHandoff } from "./fixtures/browser.ts";
-import { installPlatformOpsZombie } from "./fixtures/seed.ts";
-import { cleanWorkspaceZombies } from "./fixtures/teardown.ts";
+import { installPlatformOpsAgent } from "./fixtures/seed.ts";
+import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
 import {
   expectStatus,
-  killZombie,
-  resumeZombie,
-  stopZombie,
+  killAgent,
+  resumeAgent,
+  stopAgent,
 } from "./fixtures/lifecycle.ts";
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
@@ -145,7 +145,7 @@ if (!isLive) {
 
     async function spawn(args: ReadonlyArray<string>, extraEnv?: Record<string, string>): Promise<RunResult> {
       const env = extraEnv ? { ...baseEnv, ...extraEnv } : baseEnv;
-      const result = await runZombiectl(args, { env });
+      const result = await runAgentctl(args, { env });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -171,7 +171,7 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      try { await cleanWorkspaceZombies(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
+      try { await cleanWorkspaceAgents(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
@@ -188,7 +188,7 @@ if (!isLive) {
       // are covered by the same PTY-harness follow-up.
       it.skip("login --no-open --no-input → approve via Chromium → credentials.json 0600", async () => {
         const args = ["login", "--no-open", "--no-input"];
-        const child = spawnZombiectl(args, { env: baseEnv });
+        const child = spawnAgentctl(args, { env: baseEnv });
         const seen = await waitForLine(child, (line: string) => /login_url/i.test(line), 30_000);
         const apiLoginUrl = parseLoginUrl(seen);
         const handoffUrl = rewriteHost(apiLoginUrl, dashboardUrl);
@@ -230,45 +230,45 @@ if (!isLive) {
       }
     });
 
-    // Prefix-scoped post-teardown emptiness (zombie list).
+    // Prefix-scoped post-teardown emptiness (agent list).
     // Same contract as the AGENTSFLEET_TOKEN spec: shared DEV tenants carry
-    // residual zombies; the only assertion that holds is "none of MY
-    // run's zombies remain after teardown".
+    // residual agents; the only assertion that holds is "none of MY
+    // run's agents remain after teardown".
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceZombies(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
+        await cleanWorkspaceAgents(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      it(`zombie list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
+      it(`agent list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await spawn(["list", "--json"]);
         assert.equal(result.code, 0);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string }>) : [];
         const mine = items.filter((z) => typeof z.name === "string" && z.name.startsWith(ACCEPTANCE_RUN_PREFIX));
         assert.equal(mine.length, 0,
-          `expected zero zombies starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
+          `expected zero agents starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
       });
     });
 
     // Persisted-credentials install + lifecycle (no AGENTSFLEET_TOKEN).
     describe("install + lifecycle (no AGENTSFLEET_TOKEN)", () => {
-      let zombieId: string = "";
+      let agentId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {
-        const installed = await installPlatformOpsZombie({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        const id = installed.id ?? installed.zombie_id;
+        const installed = await installPlatformOpsAgent({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        const id = installed.id ?? installed.agent_id;
         assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
-        zombieId = id as string;
+        agentId = id as string;
       });
 
       it("status → stop → resume → kill walks state", async () => {
-        await expectStatus(baseEnv, zombieId, ["active", "starting", "running"]);
-        await stopZombie(baseEnv, zombieId);
-        await expectStatus(baseEnv, zombieId, ["paused", "stopped"]);
-        await resumeZombie(baseEnv, zombieId);
-        await expectStatus(baseEnv, zombieId, ["active", "running", "starting"]);
-        await killZombie(baseEnv, zombieId);
-        await expectStatus(baseEnv, zombieId, ["killed", "errored", "terminated"]);
+        await expectStatus(baseEnv, agentId, ["active", "starting", "running"]);
+        await stopAgent(baseEnv, agentId);
+        await expectStatus(baseEnv, agentId, ["paused", "stopped"]);
+        await resumeAgent(baseEnv, agentId);
+        await expectStatus(baseEnv, agentId, ["active", "running", "starting"]);
+        await killAgent(baseEnv, agentId);
+        await expectStatus(baseEnv, agentId, ["killed", "errored", "terminated"]);
       });
     });
   });

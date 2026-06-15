@@ -1,7 +1,7 @@
-//! `webhook_sig` middleware — per-zombie webhook HMAC auth.
+//! `webhook_sig` middleware — per-agent webhook HMAC auth.
 //!
 //! HMAC-SHA256 over the raw body is the ONLY acceptable auth path. The
-//! resolver's job is to return the scheme + secret for the zombie's
+//! resolver's job is to return the scheme + secret for the agent's
 //! configured provider. Three failure modes, all fail-closed:
 //!
 //!   - Provider not recognized / no scheme configured →
@@ -33,7 +33,7 @@ const AuthCtx = auth_ctx.AuthCtx;
 
 const log = logging.scoped(.webhook_sig);
 
-/// Mirror of the fields `src/zombie/webhook_verify.VerifyConfig` needs at
+/// Mirror of the fields `src/agent/webhook_verify.VerifyConfig` needs at
 /// verify time. Local to `src/auth/` to preserve the `test-auth` portability
 /// gate; host populates these in `serve_webhook_lookup.zig` by translating
 /// from the canonical registry entry.
@@ -50,7 +50,7 @@ pub const SignatureScheme = struct {
 };
 
 /// Owned result from the host-supplied lookup callback. The resolver MUST
-/// set `signature_scheme` for any zombie configured with a recognized
+/// set `signature_scheme` for any agent configured with a recognized
 /// provider — even when the vault secret is missing — so the middleware
 /// fails closed via `UZ-WH-020` instead of silently rejecting as
 /// "unauthorized." Leaving `signature_scheme` null is reserved for "no
@@ -93,13 +93,13 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
         }
 
         pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
-            const zombie_id = ctx.webhook_zombie_id orelse {
+            const agent_id = ctx.webhook_agent_id orelse {
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
 
-            const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
-                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .err = @errorName(err) });
+            const result_opt = self.lookup_fn(self.lookup_ctx, agent_id, ctx.alloc) catch |err| {
+                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .agent_id = agent_id, .err = @errorName(err) });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
@@ -112,7 +112,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // No scheme = no provider configured. Reject as "credential not
             // configured" so operators see a recoverable error class.
             const scheme = result.signature_scheme orelse {
-                log.warn("no_scheme", .{ .req_id = ctx.req_id, .zombie_id = zombie_id });
+                log.warn("no_scheme", .{ .req_id = ctx.req_id, .agent_id = agent_id });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
@@ -120,7 +120,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // from "signature wrong" — this is a recoverable misconfiguration,
             // not an attack.
             const secret = result.signature_secret orelse {
-                log.warn("hmac_secret_unavailable", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .reason = "vault load failed or empty" });
+                log.warn("hmac_secret_unavailable", .{ .req_id = ctx.req_id, .agent_id = agent_id, .reason = "vault load failed or empty" });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };

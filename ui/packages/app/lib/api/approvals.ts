@@ -1,6 +1,6 @@
 import { request } from "./client";
 
-// Mirrors the server's PendingRow envelope (src/zombie/approval_gate_db_reads.zig)
+// Mirrors the server's PendingRow envelope (src/agent/approval_gate_db_reads.zig)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";
@@ -8,8 +8,8 @@ export type ApprovalStatusValue = ApprovalStatus | (string & {});
 
 export type ApprovalGate = {
   gate_id: string;
-  zombie_id: string;
-  zombie_name: string;
+  agent_id: string;
+  agent_name: string;
   workspace_id: string;
   action_id: string;
   tool_name: string;
@@ -53,7 +53,7 @@ export type ResolveOutcome =
 
 export type ListApprovalsOpts = {
   status?: string;
-  zombieId?: string;
+  agentId?: string;
   gateKind?: string;
   cursor?: string;
   limit?: number;
@@ -66,7 +66,7 @@ export async function listApprovals(
 ): Promise<ApprovalsListResponse> {
   const params = new URLSearchParams();
   if (opts.status) params.set("status", opts.status);
-  if (opts.zombieId) params.set("zombie_id", opts.zombieId);
+  if (opts.agentId) params.set("agent_id", opts.agentId);
   if (opts.gateKind) params.set("gate_kind", opts.gateKind);
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.limit != null) params.set("limit", String(opts.limit));

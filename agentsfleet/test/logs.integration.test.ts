@@ -10,10 +10,10 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
 describe("logs (paginated event tail)", () => {
-  test("`logs <zombie_id>` with no events prints the empty-state message and exits 0", async () => {
+  test("`logs <agent_id>` with no events prints the empty-state message and exits 0", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -27,17 +27,17 @@ describe("logs (paginated event tail)", () => {
         expect(out.read()).toMatch(/no events yet/i);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.method).toBe("GET");
-        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`);
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`);
         // The default limit=20 query is preserved on the wire.
         expect(calls[0]?.search).toContain("limit=20");
       });
     });
   });
 
-  test("`logs <zombie_id>` with events prints one row per event with timestamp + actor + summary", async () => {
+  test("`logs <agent_id>` with events prints one row per event with timestamp + actor + summary", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/zombies/${AGENTSFLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
               { created_at: 1700000000000, actor: "user",   status: "processed", response_text: "Hello, world." },
@@ -71,7 +71,7 @@ describe("logs (paginated event tail)", () => {
     });
   });
 
-  test("`logs` with no zombie_id exits ValidationError (4) with a missing-argument error", async () => {
+  test("`logs` with no agent_id exits ValidationError (4) with a missing-argument error", async () => {
     await authedScope(async () => {
       // No mock routes — the CLI's argument validation must fire before any
       // outbound fetch, otherwise the test traps an unexpected request.
@@ -86,7 +86,7 @@ describe("logs (paginated event tail)", () => {
         // The pre-Effect path returned 2 via writeError(MISSING_ARGUMENT, …); the
         // Effect dispatcher now classifies missing positionals as ValidationError.
         expect(code).toBe(4);
-        expect(err.read()).toMatch(/zombie/i);
+        expect(err.read()).toMatch(/agent/i);
         expect(calls).toHaveLength(0);
       });
     });

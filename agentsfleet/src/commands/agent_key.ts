@@ -3,7 +3,7 @@
 // Manages zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
-// agentsfleet agent-key add    --workspace <ws> --zombie <id> --name <name> [--description <desc>]
+// agentsfleet agent-key add    --workspace <ws> --agent <id> --name <name> [--description <desc>]
 // agentsfleet agent-key list   --workspace <ws>
 // agentsfleet agent-key delete --workspace <ws> <agent_key_id>
 
@@ -38,7 +38,7 @@ interface AgentListResponse {
 
 export interface AgentAddArgs {
   readonly workspaceId: string | undefined;
-  readonly zombieId: string | undefined;
+  readonly agentId: string | undefined;
   readonly name: string | undefined;
   readonly description: string | undefined;
 }
@@ -101,10 +101,10 @@ export const agentAddEffectFromArgs = (
     const http = yield* HttpClient;
     const token = yield* resolveAuthToken;
     const workspaceId = yield* resolveWorkspaceId(args.workspaceId);
-    const zombieId = yield* requireFlag(
-      args.zombieId,
-      "agent-key add requires --zombie <id>",
-      "pass --zombie <zombie_id>",
+    const agentId = yield* requireFlag(
+      args.agentId,
+      "agent-key add requires --agent <id>",
+      "pass --agent <agent_id>",
     );
     const name = yield* requireFlag(
       args.name,
@@ -116,7 +116,7 @@ export const agentAddEffectFromArgs = (
     const res = yield* http.request<AgentKeyResponse>({
       path: agentKeysPath(workspaceId),
       method: "POST",
-      body: { zombie_id: zombieId, name, description },
+      body: { agent_id: agentId, name, description },
       token,
     });
 
@@ -133,7 +133,7 @@ export const agentAddEffectFromArgs = (
     yield* output.info(`  ${res.key ?? ""}`);
     yield* output.info("");
     yield* output.info(`Use as: Authorization: Bearer <key>`);
-    yield* output.info(`Authenticated zombie: ${zombieId}`);
+    yield* output.info(`Authenticated agent: ${agentId}`);
     yield* output.info("");
     yield* output.printTable(
       [
@@ -142,7 +142,7 @@ export const agentAddEffectFromArgs = (
       ],
       [
         { label: AGENT_ID_2, value: res.agent_key_id ?? "" },
-        { label: "zombie_id", value: zombieId },
+        { label: "agent_id", value: agentId },
         { label: FIELD_NAME, value: name },
         {
           label: "created_at",

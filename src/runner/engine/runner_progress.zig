@@ -160,7 +160,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // NullClaw exposes the tool name at start but not the args —
             // emit `tool_call_started` with an empty redacted args object
             // so live tail shows the tool kicking off; the args appear
-            // in the durable record (zombie_events.request_json) and in
+            // in the durable record (agent_events.request_json) and in
             // the `tool_call_completed` follow-up frame's UI affordances.
             const frame = ActivityFrame{
                 .tool_call_started = .{ .name = b.tool, .args_redacted = "{}" },

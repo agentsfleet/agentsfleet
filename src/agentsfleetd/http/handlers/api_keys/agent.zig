@@ -44,7 +44,7 @@ fn generateApiKey(alloc: std.mem.Allocator) ![]const u8 {
 // Returns the raw key exactly once — not stored, cannot be retrieved later.
 
 const CreateAgentBody = struct {
-    zombie_id: []const u8,
+    agent_id: []const u8,
     name: []const u8,
     description: ?[]const u8 = null,
 };
@@ -64,8 +64,8 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     defer parsed.deinit();
     const body = parsed.value;
 
-    if (!id_format.isSupportedAgentId(body.zombie_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
+    if (!id_format.isSupportedAgentId(body.agent_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "agent_id must be a valid UUIDv7");
         return;
     }
     if (body.name.len == 0 or body.name.len > MAX_NAME_LEN) {
@@ -90,21 +90,21 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         return;
     }
 
-    // Verify zombie belongs to this workspace before minting key material.
+    // Verify agent belongs to this workspace before minting key material.
     {
-        var zombie_q = PgQuery.from(conn.query(
-            \\SELECT 1 FROM core.zombies WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
-        , .{ body.zombie_id, workspace_id }) catch {
+        var agent_q = PgQuery.from(conn.query(
+            \\SELECT 1 FROM core.agents WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1
+        , .{ body.agent_id, workspace_id }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
         });
-        defer zombie_q.deinit();
-        const zombie_row = zombie_q.next() catch {
+        defer agent_q.deinit();
+        const agent_row = agent_q.next() catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
-        if (zombie_row == null) {
-            hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, "Zombie not found in this workspace");
+        if (agent_row == null) {
+            hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, "Agent not found in this workspace");
             return;
         }
     }
@@ -116,7 +116,7 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     const key_hash_arr = api_key.sha256Hex(raw_key);
     const key_hash: []const u8 = key_hash_arr[0..];
 
-    const agent_key_id = id_format.generateZombieId(hx.alloc) catch {
+    const agent_key_id = id_format.generateAgentId(hx.alloc) catch {
         common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
@@ -125,9 +125,9 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
 
     _ = conn.exec(
         \\INSERT INTO core.agent_keys
-        \\  (uid, agent_key_id, workspace_id, zombie_id, name, description, key_hash, created_at)
+        \\  (uid, agent_key_id, workspace_id, agent_id, name, description, key_hash, created_at)
         \\VALUES ($1::uuid, $1, $2::uuid, $3::uuid, $4, $5, $6, $7)
-    , .{ agent_key_id, workspace_id, body.zombie_id, body.name, desc, key_hash, now_ms }) catch {
+    , .{ agent_key_id, workspace_id, body.agent_id, body.name, desc, key_hash, now_ms }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -135,14 +135,14 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     log.info("created", .{
         .agent_key_id = agent_key_id,
         .workspace_id = workspace_id,
-        .zombie_id = body.zombie_id,
+        .agent_id = body.agent_id,
     });
 
     // Return the raw key once — callers must store it; it cannot be retrieved again.
     hx.ok(.created, .{
         .agent_key_id = agent_key_id,
         .workspace_id = workspace_id,
-        .zombie_id = body.zombie_id,
+        .agent_id = body.agent_id,
         .name = body.name,
         .key = raw_key, // shown once — store securely
         .created_at = now_ms,
@@ -156,7 +156,7 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
 
 const AgentRow = struct {
     agent_key_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     name: []const u8,
     description: []const u8,
     created_at: i64,
@@ -176,7 +176,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     }
 
     var q = PgQuery.from(conn.query(
-        \\SELECT agent_key_id, zombie_id::text, name, description, created_at, last_used_at
+        \\SELECT agent_key_id, agent_id::text, name, description, created_at, last_used_at
         \\FROM core.agent_keys
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC
@@ -189,14 +189,14 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     var agents: std.ArrayList(AgentRow) = .empty;
     while (q.next() catch null) |row| {
         const agent_key_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const zombie_id = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const agent_id = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
         const name = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
         const description = hx.alloc.dupe(u8, row.get([]u8, 3) catch continue) catch continue;
         const created_at = row.get(i64, 4) catch continue;
         const last_used = row.get(i64, 5) catch null;
         agents.append(hx.alloc, .{
             .agent_key_id = agent_key_id,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .name = name,
             .description = description,
             .created_at = created_at,

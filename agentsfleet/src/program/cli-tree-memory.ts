@@ -1,12 +1,12 @@
 // Memory subtree of the agentsfleet command program — the read-only window
-// into a zombie's durable memory. Pure construction; caller
+// into a agent's durable memory. Pure construction; caller
 // (cli-tree.ts#buildProgram) passes the parent program, the wired handler
 // map, and the shared `state` object runHandler writes exit codes onto.
-// Own file per the cli-tree-zombie.ts precedent so the LENGTH GATE on
+// Own file per the cli-tree-agent.ts precedent so the LENGTH GATE on
 // cli-tree.ts keeps headroom as verbs accrue.
 //
 // Top-level `memory` noun (the grant/agent convention for nouns acting on
-// per-zombie resources via flags); no write verb exists by architecture —
+// per-agent resources via flags); no write verb exists by architecture —
 // the tenant memory plane is read-only.
 
 import type { Command } from "commander";
@@ -22,7 +22,7 @@ import type { ActionDispatch, Handlers, ProgramState } from "./cli-tree-types.ts
 // files keep their bottom-declared blocks).
 const FLAG_LIMIT_N = "--limit <n>" as const;
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
+const FLAG_AGENTSFLEET_ID = "--agent <id>" as const;
 const MAX_ENTRIES = "Max entries to return" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
 const AGENTSFLEET_ID = "Agent ID" as const;

@@ -90,7 +90,7 @@ describe("Terminal", () => {
 
   it("renders the copy button for JSX children once an explicit copyText is supplied", () => {
     render(
-      <Terminal copyable copyText="npm install zombie">
+      <Terminal copyable copyText="npm install agent">
         <span>npm ERR! log line</span>
       </Terminal>,
     );

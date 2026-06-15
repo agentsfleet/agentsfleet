@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 
 // Vocab guard (website twin of ui/packages/app/tests/vocab-guard.test.ts): the
-// user-facing product noun is "agent". The word "zombie" may appear in code
+// user-facing product noun is "agent". The word "agent" may appear in code
 // identifiers, routes, schema names, the brand (usezombie), and CLI/daemon
 // names — but never as a bare English product noun in *rendered copy*. This
 // scan extracts user-visible text (string literals + JSX text) across the whole
 // website src tree (Hero, FAQ, Pricing, Agents, CTABlock, OnboardingFlow, …)
-// and fails if a multi-word phrase still contains the standalone word "zombie",
+// and fails if a multi-word phrase still contains the standalone word "agent",
 // so the rename can't silently regress on the marketing site either.
 //
 // Sources are read with Vite import.meta.glob (?raw) — the browser-friendly
@@ -18,8 +18,8 @@ import { describe, it, expect } from "vitest";
 //     identifiers / paths / test-ids / class names / enum values, not copy
 //   - comment lines are skipped
 //   - brand/route/schema fragments are allowlisted
-const ALLOW_FRAGMENTS = ["usezombie", "/zombies", "zombie:", "zombie_", "core.zombie", "zombie-"];
-const WORD = /\bzombies?\b/i;
+const ALLOW_FRAGMENTS = ["usezombie", "/agents", "agent:", "agent_", "core.agent", "agent-"];
+const WORD = /\bagents?\b/i;
 
 const SEGMENT = /"([^"]*)"|'([^']*)'|`([^`]*)`|>([^<>{}]*)</g;
 
@@ -33,8 +33,8 @@ function isComment(line: string): boolean {
   return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
 }
 
-describe("vocab guard — no user-facing 'zombie' product noun (website)", () => {
-  it("rendered copy names the agent, never the retired noun 'zombie'", () => {
+describe("vocab guard — no user-facing 'agent' product noun (website)", () => {
+  it("rendered copy names the agent, never the retired noun 'agent'", () => {
     const offenders: string[] = [];
     for (const [path, content] of Object.entries(sources)) {
       content.split("\n").forEach((line, i) => {
@@ -48,6 +48,6 @@ describe("vocab guard — no user-facing 'zombie' product noun (website)", () =>
         }
       });
     }
-    expect(offenders, `user-facing "zombie" copy found:\n${offenders.join("\n")}`).toEqual([]);
+    expect(offenders, `user-facing "agent" copy found:\n${offenders.join("\n")}`).toEqual([]);
   });
 });

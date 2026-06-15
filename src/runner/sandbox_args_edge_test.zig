@@ -21,7 +21,7 @@ const Config = @import("daemon/config.zig");
 const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 const LANDLOCK_FULL = @tagName(contract.protocol.SandboxTier.landlock_full);
 const CONTAINER_NESTED = @tagName(contract.protocol.SandboxTier.container_nested);
-const WORKSPACE = "/tmp/zombie-ws-edge";
+const WORKSPACE = "/tmp/agent-ws-edge";
 
 /// Build a daemon Config struct literal for argv tests. buildArgv reads only
 /// `sandbox_tier`; the other slices are inert placeholders, never freed here

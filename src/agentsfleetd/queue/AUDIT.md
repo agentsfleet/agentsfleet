@@ -2,7 +2,7 @@
 
 Read-only research artifact. Compares usezombie's hand-rolled Redis client against two third-party Zig Redis libraries, with the goal of seeding a follow-up implementation spec that fixes the M42_003 contention bottleneck.
 
-**Hard constraints honoured:** no code edits in this dimension; no recommendation to switch libraries (the zombie-stream / pub-sub code stays in-tree); every comparative claim cites a reference-lib `file:LN-LN`.
+**Hard constraints honoured:** no code edits in this dimension; no recommendation to switch libraries (the agent-stream / pub-sub code stays in-tree); every comparative claim cites a reference-lib `file:LN-LN`.
 
 **Reference libraries (read-only):**
 - `~/Projects/oss/redis.zig/` — karlseguin's `redis.zig` (RESP2, pool-based, blocking I/O via `zio`)
@@ -13,7 +13,7 @@ Read-only research artifact. Compares usezombie's hand-rolled Redis client again
 - `src/queue/redis_transport.zig` — `PlainTransport` + `TlsTransport` + `Transport` tagged union (197 lines)
 - `src/queue/redis_pubsub.zig` — `Subscriber` (152 lines)
 - `src/queue/redis_subscriber.zig` — second `Subscriber` (147 lines) — see Dimension 8 note
-- `src/queue/redis_zombie.zig` — zombie stream ops (204 lines)
+- `src/queue/redis_agent.zig` — agent stream ops (204 lines)
 - `src/queue/redis_config.zig`, `redis_protocol.zig`, `redis_types.zig`, `redis.zig` facade
 
 ---
@@ -23,8 +23,8 @@ Read-only research artifact. Compares usezombie's hand-rolled Redis client again
 1. **The single-mutex bottleneck is real and fixable by sharded locks, not by a pool.** Both reference libs avoid one big lock: `redis.zig` shards by acquiring a fresh connection from a pool (`Pool.zig:52-72`), `zig-okredis` splits the single connection into a write-side `wl` and read-side `rl` mutex with a `Pending` queue (`client.zig:22-23`, `client.zig:133-140`, `client.zig:142-235`). usezombie holds **one** `std.Thread.Mutex` for the full write+read round-trip (`redis_client.zig:8`, `:167-186`); every XADD/PUBLISH/XACK serializes against every other.
 2. **No pool today, but adding one is the most direct win.** `Pool.zig` in `redis.zig` is 105 lines, a `SinglyLinkedList` of idle `Connection`s with `acquire`/`release` and a health flag (`Pool.zig:13`, `:52-72`, `:80-105`). Slotting an equivalent under `Client` is small surface change, big contention relief — and is strictly more practical than rewriting around `zig-okredis`'s pipelining model, which assumes the new `std.Io` async runtime usezombie hasn't adopted.
 3. **The reconnect strategy is sound on the write phase and intentionally absent on the read phase; both libs agree.** usezombie reconnects only when the write fails (`redis_client.zig:179-184`) and explicitly does NOT retry post-write (the comment at `redis_client.zig:174-178` is correct). `redis.zig` makes the same distinction via `Protocol.isResumable` (`Protocol.zig:30-35`) — only `RedisError` (a server-side application error after a clean round-trip) is resumable; transport errors close the connection. This is one place where usezombie is already aligned with the reference; **do not regress this** when adding a pool.
-4. **Per-command argv allocation in `xaddZombieEvent` is wasteful but bounded.** `redis_client.zig:129` allocates a fresh `[][]const u8` for every XADD; both reference libs avoid this — `redis.zig` uses a fixed `[max_keys + 1][]const u8` stack buffer for commands like DEL (`Connection.zig:143-146`), `zig-okredis` serializes directly via a comptime `CommandSerializer` (`client.zig:196`, `serializer.zig`). For XADD specifically, the variable-length payload (`payload_argv`) makes a stack buffer harder, but the outer 6 control slots (`"XADD"`, key, `"MAXLEN"`, `"~"`, `"10000"`, `"*"`) could live on the stack. Medium-priority cleanup.
-5. **The package is one layering violation + one duplication-cleanup away from being extractable as `~/Projects/usezombie-queue-zig`.** Captain's posthog-zig precedent applies. The blockers today: (a) `redis_client.zig:122-155` (xaddZombieEvent imports `EventEnvelope` from `src/zombie/`), (b) `redis_client.zig:253` and `redis_zombie.zig:13` (`error_codes` import from `src/errors/`), (c) `logging.scoped(.redis_queue)` on every file (`log` module), and (d) two near-identical `Subscriber` types — `redis_subscriber.zig` (production SSE, `events_stream.zig:34`) vs `redis_pubsub.zig` (test harness + facade export, `test_harness_helpers.zig:48`). Move zombie-shaped code out, dedup the subscribers, and the rest is a clean library. See "Package extraction viability" at the end.
+4. **Per-command argv allocation in `xaddAgentEvent` is wasteful but bounded.** `redis_client.zig:129` allocates a fresh `[][]const u8` for every XADD; both reference libs avoid this — `redis.zig` uses a fixed `[max_keys + 1][]const u8` stack buffer for commands like DEL (`Connection.zig:143-146`), `zig-okredis` serializes directly via a comptime `CommandSerializer` (`client.zig:196`, `serializer.zig`). For XADD specifically, the variable-length payload (`payload_argv`) makes a stack buffer harder, but the outer 6 control slots (`"XADD"`, key, `"MAXLEN"`, `"~"`, `"10000"`, `"*"`) could live on the stack. Medium-priority cleanup.
+5. **The package is one layering violation + one duplication-cleanup away from being extractable as `~/Projects/usezombie-queue-zig`.** Captain's posthog-zig precedent applies. The blockers today: (a) `redis_client.zig:122-155` (xaddAgentEvent imports `EventEnvelope` from `src/agent/`), (b) `redis_client.zig:253` and `redis_agent.zig:13` (`error_codes` import from `src/errors/`), (c) `logging.scoped(.redis_queue)` on every file (`log` module), and (d) two near-identical `Subscriber` types — `redis_subscriber.zig` (production SSE, `events_stream.zig:34`) vs `redis_pubsub.zig` (test harness + facade export, `test_harness_helpers.zig:48`). Move agent-shaped code out, dedup the subscribers, and the rest is a clean library. See "Package extraction viability" at the end.
 
 ---
 
@@ -34,7 +34,7 @@ Read-only research artifact. Compares usezombie's hand-rolled Redis client again
 
 **usezombie today.**
 - Per-command argv allocation: `redis_client.zig:129-130` (`alloc.alloc` + `defer alloc.free`) on every XADD.
-- Response value lifetime: caller owns; `RespValue.deinit` recurses through the union (`redis_protocol.zig:10-23`). Each string field in a stream entry is a separate `alloc.dupe` (`redis_zombie.zig:176-183`).
+- Response value lifetime: caller owns; `RespValue.deinit` recurses through the union (`redis_protocol.zig:10-23`). Each string field in a stream entry is a separate `alloc.dupe` (`redis_agent.zig:176-183`).
 - Buffer sizing: 16 KiB read + 16 KiB write for plain transport (`redis_transport.zig:56-58`); for TLS, `min_buffer_len * 8` for the TLS write buffer and `min_buffer_len` for the others (`redis_transport.zig:115`). All statically sized.
 
 **redis.zig.**
@@ -46,7 +46,7 @@ Read-only research artifact. Compares usezombie's hand-rolled Redis client again
 - Per-command argv: none — `CommandSerializer.serializeCommand` writes directly to the `Io.Writer` interface at `client.zig:196`. No intermediate `[][]const u8`.
 - Response value lifetime: `RESP3.parseAlloc` returns a typed value; caller frees via the allocator (`parser.zig`).
 
-**Verdict for usezombie.** P2. The argv-alloc on `xaddZombieEvent` is real but small (one alloc per XADD, 8 slots), and `EventEnvelope.encodeForXAdd` already returns a `[][]const u8` so the call site receives a slice. The buffer size of 16 KiB for plain transport is generous — could drop to 4 KiB to match `redis.zig`'s default, but that risks reframing XREADGROUP responses across multiple buffer fills with no measured benefit. **Leave alone unless bench shows allocator pressure.**
+**Verdict for usezombie.** P2. The argv-alloc on `xaddAgentEvent` is real but small (one alloc per XADD, 8 slots), and `EventEnvelope.encodeForXAdd` already returns a `[][]const u8` so the call site receives a slice. The buffer size of 16 KiB for plain transport is generous — could drop to 4 KiB to match `redis.zig`'s default, but that risks reframing XREADGROUP responses across multiple buffer fills with no measured benefit. **Leave alone unless bench shows allocator pressure.**
 
 ### 2. Connection pooling
 
@@ -107,9 +107,9 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 
 **TLS handshake failure.** usezombie logs at `:147` of `redis_transport.zig` and returns the error — but the partial TLS init has multi-stage allocations (`:109-122`) all wrapped in `errdefer`, so the failure path is clean. Spot-checked the chain: `socket_read_buffer`, `socket_write_buffer`, `tls_read_buffer`, `tls_write_buffer`, the two `create`d wrappers, and the `ca_bundle` all have matching `errdefer`s. **This is the cleanest part of the file.**
 
-**Memleak guards.** `redis_protocol.zig:74-81` correctly tears down already-parsed array elements when a later parse fails — bug-free implementation of the standard pattern. `redis_zombie.zig:188-194` does the same when a stream entry is missing required fields.
+**Memleak guards.** `redis_protocol.zig:74-81` correctly tears down already-parsed array elements when a later parse fails — bug-free implementation of the standard pattern. `redis_agent.zig:188-194` does the same when a stream entry is missing required fields.
 
-**Pub/sub disconnection.** Production SSE uses `redis_subscriber.nextMessage()` (`redis_subscriber.zig:88-111`), which returns `null` on `EndOfStream` / `ReadFailed`. The SSE handler at `src/http/handlers/zombies/events_stream.zig:104-105` treats `null` as a clean disconnect from the Redis side and returns — so the browser reconnects via the SSE retry semantics. Test harness uses `redis_pubsub.readMessage()` (`redis_pubsub.zig:103-117`), which has the same null-on-error shape but additionally sets SO_RCVTIMEO=25_000 so a test budget loop can fire without messages. **Both paths are correct as designed; the duplication is what's wrong (see Dimension 8).** A unified subscriber with an optional read_timeout_ms preserves both behaviours.
+**Pub/sub disconnection.** Production SSE uses `redis_subscriber.nextMessage()` (`redis_subscriber.zig:88-111`), which returns `null` on `EndOfStream` / `ReadFailed`. The SSE handler at `src/http/handlers/agents/events_stream.zig:104-105` treats `null` as a clean disconnect from the Redis side and returns — so the browser reconnects via the SSE retry semantics. Test harness uses `redis_pubsub.readMessage()` (`redis_pubsub.zig:103-117`), which has the same null-on-error shape but additionally sets SO_RCVTIMEO=25_000 so a test budget loop can fire without messages. **Both paths are correct as designed; the duplication is what's wrong (see Dimension 8).** A unified subscriber with an optional read_timeout_ms preserves both behaviours.
 
 ### 6. Performance
 
@@ -123,7 +123,7 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 
 **Where M42_003 bites.** XADD ratchets through one connection at ~40 ops/sec/connection (25 ms round-trip ceiling) regardless of how many CPU cores or worker threads exist. With a pool of 4 connections, ceiling = 160 ops/sec; pool of 8 = 320 ops/sec. **Pool size, not lock granularity, is the dial.**
 
-**Verdict.** P0 = pool. P2 = prepared XADD argv (skip MAXLEN/`~`/`10000` per call if comptime'd). Pipelining = no, the zombie workflow doesn't have batches of commands a pipeline would group; each XADD is independent and arrives on its own request.
+**Verdict.** P0 = pool. P2 = prepared XADD argv (skip MAXLEN/`~`/`10000` per call if comptime'd). Pipelining = no, the agent workflow doesn't have batches of commands a pipeline would group; each XADD is independent and arrives on its own request.
 
 ### 7. Pooling return patterns
 
@@ -136,14 +136,14 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 ### 8. What usezombie does that neither library handles
 
 Confirmed stays:
-- Per-zombie stream consumer groups (`redis_zombie.zig:50-66`).
-- `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle (`redis_zombie.zig:69-126`).
+- Per-agent stream consumer groups (`redis_agent.zig:50-66`).
+- `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle (`redis_agent.zig:69-126`).
 - Pub/sub subscriber with SO_RCVTIMEO heartbeat (`redis_pubsub.zig:84-96`, `:103-117`).
 - Role-based ACL env vars `REDIS_URL` / `REDIS_URL_API` (`redis_types.zig`, `redis_config.zig`). The worker-role Redis URL retired with the worker substrate.
 
 **One thing this audit surfaces that the spec didn't.** There are **two** subscriber implementations and they have split responsibilities:
-- `src/queue/redis_subscriber.zig` — file-as-struct shape, used by **production** at `src/http/handlers/zombies/events_stream.zig:34` (SSE handler). API: `nextMessage()` loops internally past non-message frames (PSUBSCRIBE pmessage, pong, subscribe count) at `redis_subscriber.zig:88-111`, returns `null` only on `EndOfStream`/`ReadFailed` (`:90-93`). No SO_RCVTIMEO — relies on the client (browser) to retry; the SSE handler at `events_stream.zig:104-105` treats `null` as "clean disconnect from Redis side" and returns.
-- `src/queue/redis_pubsub.zig` — re-exported via the facade `redis.zig:11` as `redis.Subscriber`. Used by **test harnesses only**: `src/zombie/test_harness_helpers.zig:48-51` and `src/zombie/event_loop_harness_heartbeat_test.zig:61`. API: `readMessage()` (`redis_pubsub.zig:103-117`) sets SO_RCVTIMEO to 25_000 ms (`:79`, `:84-96`), returns `null` on the resulting `ReadFailed` so the test budget loop can advance.
+- `src/queue/redis_subscriber.zig` — file-as-struct shape, used by **production** at `src/http/handlers/agents/events_stream.zig:34` (SSE handler). API: `nextMessage()` loops internally past non-message frames (PSUBSCRIBE pmessage, pong, subscribe count) at `redis_subscriber.zig:88-111`, returns `null` only on `EndOfStream`/`ReadFailed` (`:90-93`). No SO_RCVTIMEO — relies on the client (browser) to retry; the SSE handler at `events_stream.zig:104-105` treats `null` as "clean disconnect from Redis side" and returns.
+- `src/queue/redis_pubsub.zig` — re-exported via the facade `redis.zig:11` as `redis.Subscriber`. Used by **test harnesses only**: `src/agent/test_harness_helpers.zig:48-51` and `src/agent/event_loop_harness_heartbeat_test.zig:61`. API: `readMessage()` (`redis_pubsub.zig:103-117`) sets SO_RCVTIMEO to 25_000 ms (`:79`, `:84-96`), returns `null` on the resulting `ReadFailed` so the test budget loop can advance.
 
 Both files contain duplicated logic: identical `sendCommand` argv serializers (`redis_subscriber.zig:118-129` vs `redis_pubsub.zig:138-151`), near-identical `connectFromUrl` plumbing, two divergent `Message`/`PubSubMessage` struct definitions for the same wire shape. **Not dead code — duplicated code.** RULE NLR (touch-it-fix-it) applies whenever either is edited; the follow-up implementation spec should fold the two into a single `Subscriber` with an explicit `read_timeout_ms: ?u32` option (null = block forever, value = SO_RCVTIMEO + null-on-ReadFailed). Production passes `null`; test harness passes `25_000`.
 
@@ -234,7 +234,7 @@ value.deinit(self.alloc);
 return error.RedisCommandError;
 ```
 
-The string is already in `value.err`; just log it before `value.deinit`. Same change at `:144`/`:148` for `xadd_zombie_event_failed`.
+The string is already in `value.err`; just log it before `value.deinit`. Same change at `:144`/`:148` for `xadd_agent_event_failed`.
 
 ### P1 — Verify `connectFromUrl`'s partial-init story
 
@@ -267,23 +267,23 @@ Captain's question: can `src/queue/` move out into a standalone `usezombie-queue
 | File | Import | Crosses `src/queue/` boundary? |
 |---|---|---|
 | `redis_client.zig:253` | `@import("../errors/error_registry.zig")` | YES |
-| `redis_client.zig:254` | `@import("../zombie/event_envelope.zig")` | YES |
+| `redis_client.zig:254` | `@import("../agent/event_envelope.zig")` | YES |
 | `redis_client.zig:247` | `@import("log")` | YES (project-wide logger module) |
-| `redis_zombie.zig:13` | `@import("../errors/error_registry.zig")` | YES |
-| `redis_zombie.zig:9` | `@import("log")` | YES |
+| `redis_agent.zig:13` | `@import("../errors/error_registry.zig")` | YES |
+| `redis_agent.zig:9` | `@import("log")` | YES |
 | `redis_transport.zig:3,5` | `@import("log")`, `@import("../errors/error_registry.zig")` | YES |
 | `redis_pubsub.zig:5` | `@import("log")` | YES |
 | `redis_subscriber.zig:142` | `@import("log")` | YES |
 
 Three things to fix before a clean extraction:
 
-1. **`EventEnvelope` is zombie-shaped business logic in a "generic" Redis layer.** `xaddZombieEvent` (`redis_client.zig:122-155`) builds a `zombie:{id}:events` stream key and decodes a domain envelope. **Move out of the package**: keep generic `xadd(stream_key, []FV)` in `redis_client.zig`, move the wrapper to `src/zombie/redis_events.zig`. Same for `redis_zombie.zig` — the stream-key formatting and EventEnvelope decoding belong on the zombie side.
+1. **`EventEnvelope` is agent-shaped business logic in a "generic" Redis layer.** `xaddAgentEvent` (`redis_client.zig:122-155`) builds a `agent:{id}:events` stream key and decodes a domain envelope. **Move out of the package**: keep generic `xadd(stream_key, []FV)` in `redis_client.zig`, move the wrapper to `src/agent/redis_events.zig`. Same for `redis_agent.zig` — the stream-key formatting and EventEnvelope decoding belong on the agent side.
 
 2. **`error_codes.ERR_INTERNAL_OPERATION_FAILED`** is only used at log sites — not part of the public surface. Two options: (a) drop the error_code embedding inside the package and let the caller log with its own scheme, or (b) define a package-local error registry (`queue_errors.zig`) and let the lead-repo logger remap. **Option (a)** is cleaner — log discipline (LOGGING_STANDARD §error-codes) is a lead-repo concern, not a library concern.
 
 3. **`logging.scoped(.redis_queue)`.** The `log` module is a project-private module declared in `build.zig`. Package-extracted, the queue would use `std.log.scoped(.redis_queue)` directly. One-line change per file, eight files. The logger consumer (the lead repo) wires up `pub const std_options = .{ .logFn = ... }` to route std.log → the project logger.
 
-**Conclusion.** Extraction is feasible — call it ~1 day of work — and produces a library with the same public footprint as posthog-zig: `Pool`, `Client`, `Subscriber`, `Config` types, `RespValue`. The carve-out makes the package usable for any Zig service Captain ships (queue infra is the same shape across products), and the lead repo's `src/zombie/redis_events.zig` becomes the only place EventEnvelope semantics live.
+**Conclusion.** Extraction is feasible — call it ~1 day of work — and produces a library with the same public footprint as posthog-zig: `Pool`, `Client`, `Subscriber`, `Config` types, `RespValue`. The carve-out makes the package usable for any Zig service Captain ships (queue infra is the same shape across products), and the lead repo's `src/agent/redis_events.zig` becomes the only place EventEnvelope semantics live.
 
 **Recommendation: do the pool work IN-TREE first (P0 above) so the contention fix lands without waiting on a package split.** Then extract once the surface has stabilized — the package would inherit the pool, not race the pool.
 

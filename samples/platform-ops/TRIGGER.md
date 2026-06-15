@@ -1,5 +1,5 @@
 ---
-name: platform-ops-zombie
+name: platform-ops-agent
 
 x-agentsfleet:
   # Both fields are populated by `/usezombie-install-platform-ops` from the
@@ -18,8 +18,8 @@ x-agentsfleet:
     - type: webhook
       source: github
       # Default credential lookup: vault `github`, field `webhook_secret`. The
-      # install-skill rewrites `credential_name:` to `github-{zombie_slug}` only
-      # when the operator picks per-zombie scoping at second-install time.
+      # install-skill rewrites `credential_name:` to `github-{agent_slug}` only
+      # when the operator picks per-agent scoping at second-install time.
       signature:
         secret_ref: github_secret
         header: x-hub-signature-256
@@ -63,7 +63,7 @@ x-agentsfleet:
     # They do NOT compose (daily × 30 ≠ monthly); this is intentional.
     #
     # `monthly_dollars` is the real spend envelope: the $10 starter credit
-    # minus $2 of headroom so a second zombie fits. At typical cost (~$0.30
+    # minus $2 of headroom so a second agent fits. At typical cost (~$0.30
     # per diagnosis) it bites after ~26 runs in a normal month.
     #
     # `daily_dollars` is a blast-radius guard, not a pro-rated monthly share

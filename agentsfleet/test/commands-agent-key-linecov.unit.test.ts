@@ -110,7 +110,7 @@ const provideAll = <A, E>(
 
 const baseAddArgs: AgentAddArgs = {
   workspaceId: WS_ID,
-  zombieId: WS_ID,
+  agentId: WS_ID,
   name: "langgraph-bot",
   description: undefined,
 };

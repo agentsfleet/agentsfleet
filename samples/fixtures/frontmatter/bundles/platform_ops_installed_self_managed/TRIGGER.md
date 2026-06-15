@@ -1,5 +1,5 @@
 ---
-name: platform-ops-zombie
+name: platform-ops-agent
 
 x-agentsfleet:
   model: ""

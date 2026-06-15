@@ -1,7 +1,7 @@
-// Parser-level unit tests for buildProgram (top-level + non-zombie tree).
+// Parser-level unit tests for buildProgram (top-level + non-agent tree).
 // Drives commander directly with a no-op handlers tree so every actionFor()
-// closure fires for its argv. Companion file cli-tree.zombie.unit.test.js
-// covers the zombie / credential subtree.
+// closure fires for its argv. Companion file cli-tree.agent.unit.test.js
+// covers the agent / credential subtree.
 
 import { test, expect } from "bun:test";
 import { CommanderError, type Help } from "commander";
@@ -91,18 +91,18 @@ test("workspace delete <id> captures required positional", async () => {
 
 // ── Agent tree ──────────────────────────────────────────────────────────
 
-test("agent add accepts --workspace / --zombie / --name / --description", async () => {
+test("agent add accepts --workspace / --agent / --name / --description", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
     "agent", "add",
     "--workspace", VALID_ID,
-    "--zombie",    VALID_ID,
+    "--agent",    VALID_ID,
     "--name",      "scout",
     "--description", "for scouting",
   ], handlers);
   expect(calls[0]?.name).toBe("agent.add");
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.zombie).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.agent).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.name).toBe("scout");
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
 });
@@ -123,16 +123,16 @@ test("agent delete <id> with --workspace captures both", async () => {
 
 // ── Grant tree ──────────────────────────────────────────────────────────
 
-test("grant list dispatches with --zombie option", async () => {
+test("grant list dispatches with --agent option", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["grant", "list", "--zombie", VALID_ID], handlers);
+  await dispatch(["grant", "list", "--agent", VALID_ID], handlers);
   expect(calls[0]?.name).toBe("grant.list");
-  expect(calls[0]?.frame.parsed.options.zombie).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.agent).toBe(VALID_ID);
 });
 
-test("grant delete <id> with --zombie captures both", async () => {
+test("grant delete <id> with --agent captures both", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["grant", "delete", VALID_ID, "--zombie", VALID_ID], handlers);
+  await dispatch(["grant", "delete", VALID_ID, "--agent", VALID_ID], handlers);
   expect(calls[0]?.name).toBe("grant.delete");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
@@ -267,10 +267,10 @@ test("helpFactory is deferred — not invoked at construction, fires when help r
 
 // ── Default help factory closure fires when no helpFactory is injected ───
 
-test("default createHelp (() => new ZombieHelp()) renders --help when no factory is supplied", async () => {
+test("default createHelp (() => new AgentHelp()) renders --help when no factory is supplied", async () => {
   const { handlers } = makeSpyTree();
   const state = { exitCode: 0 };
-  // No helpFactory → buildProgram installs the default `() => new ZombieHelp()`
+  // No helpFactory → buildProgram installs the default `() => new AgentHelp()`
   // closure. Rendering --help invokes it, covering that arrow.
   const program = buildProgram({ handlers, version: "0.0.0-test", state });
   program.exitOverride();

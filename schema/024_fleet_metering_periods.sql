@@ -4,7 +4,7 @@
 -- run-time fee and the per-token cost. zombied owns it; the runner never sees it.
 --
 -- Why a separate table from the telemetry `stage` row: the per-EVENT total is
--- the single accumulated `core.zombie_execution_telemetry` stage row the Usage
+-- the single accumulated `core.agent_execution_telemetry` stage row the Usage
 -- tab already renders (UNIQUE (event_id, charge_type) means it is updated in
 -- place, never multiplied). This table is the slice-by-slice drill-down behind
 -- that one number — auditable as "how did this run's debit accrue, renewal by

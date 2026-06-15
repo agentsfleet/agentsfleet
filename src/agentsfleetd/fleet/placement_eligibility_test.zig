@@ -1,17 +1,17 @@
 // Label-placement eligibility over the real HTTP lease path + live test DB +
-// Redis. The candidate scan (fleet.assign.listCandidates) admits a zombie for a
-// runner only when the zombie's `required_tags` are a subset of the runner's
+// Redis. The candidate scan (fleet.assign.listCandidates) admits a agent for a
+// runner only when the agent's `required_tags` are a subset of the runner's
 // advertised `labels`. These tests drive the actual `POST /v1/runners/leases`
 // route so the filter, the atomic claim, and the event read are all exercised
 // end-to-end — not a re-implemented SELECT.
 //
 // Coverage:
-//   * subset match: a [gpu] zombie leases to a gpu-labelled runner, never to a
+//   * subset match: a [gpu] agent leases to a gpu-labelled runner, never to a
 //     plain one;
 //   * empty required_tags: any runner leases it (back-compat with the global race);
 //   * sticky hint never overrides eligibility: an expired affinity pointing at an
 //     ineligible runner does not let that runner win; an eligible runner does;
-//   * hold then schedule: an unsatisfiable zombie stays unclaimed (the event is
+//   * hold then schedule: an unsatisfiable agent stays unclaimed (the event is
 //     NOT consumed during the hold), then leases once a matching runner enrolls.
 //
 // Mirrors integration_roundtrip_test.zig's harness wiring + seed helpers.
@@ -25,7 +25,7 @@ const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
 const api_key = @import("../auth/api_key.zig");
 const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const id_format = @import("../types/id_format.zig");
@@ -40,8 +40,8 @@ const PLAIN_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0b01";
 const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0d01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0e01";
-// Second zombie + an arm runner for the complex two-zombie routing test.
-const ZOMBIE2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
+// Second agent + an arm runner for the complex two-agent routing test.
+const AGENT2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
 const SESSION2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1001";
 const ARM_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1101";
 
@@ -82,7 +82,7 @@ fn startHarness() !*TestHarness {
 // ── Seed helpers ────────────────────────────────────────────────────────────
 
 /// A runner with explicit JSON `labels` (the capability advertisement matched
-/// against a zombie's required_tags). `labels_json` is a literal like '["gpu"]'.
+/// against a agent's required_tags). `labels_json` is a literal like '["gpu"]'.
 fn seedRunnerWithLabels(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token: []const u8, labels_json: []const u8) !void {
     const hash = api_key.sha256Hex(token);
     _ = try conn.exec(
@@ -94,15 +94,15 @@ fn seedRunnerWithLabels(conn: *pg.Conn, runner_id: []const u8, host_id: []const 
     , .{ runner_id, host_id, hash[0..], labels_json });
 }
 
-/// Seed the zombie + session, then stamp its required_tags. `tags_literal` is a
-/// Postgres TEXT[] literal like '{gpu}' or '{}'. base.seedZombie omits
+/// Seed the agent + session, then stamp its required_tags. `tags_literal` is a
+/// Postgres TEXT[] literal like '{gpu}' or '{}'. base.seedAgent omits
 /// required_tags, so it lands as the column DEFAULT '{}' first; this UPDATE sets
 /// the test value.
-fn seedZombieWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
-    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
+fn seedAgentWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
+    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
     _ = try conn.exec(
-        "UPDATE core.zombies SET required_tags = $1::text[] WHERE id = $2::uuid",
+        "UPDATE core.agents SET required_tags = $1::text[] WHERE id = $2::uuid",
         .{ tags_literal, AGENTSFLEET_ID },
     );
 }
@@ -113,11 +113,11 @@ fn seedZombieWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
 fn seedExpiredAffinity(conn: *pg.Conn, last_runner_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\ON CONFLICT (agent_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id, fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
     , .{ AFFINITY_ID, AGENTSFLEET_ID, last_runner_id });
@@ -132,11 +132,11 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
 }
 
-fn publishEventFor(h: *TestHarness, zombie_id: []const u8) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, zombie_id);
-    const id = try h.queue.xaddZombieEvent(.{
+fn publishEventFor(h: *TestHarness, agent_id: []const u8) !void {
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, agent_id);
+    const id = try h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -146,16 +146,16 @@ fn publishEventFor(h: *TestHarness, zombie_id: []const u8) !void {
     h.queue.alloc.free(id);
 }
 
-/// Seed a second tagged zombie (ZOMBIE2_ID) + its session + a fresh event, for
-/// the two-zombie routing test. `tags_literal` is a TEXT[] literal.
-fn seedSecondZombie(h: *TestHarness, conn: *pg.Conn, name: []const u8, tags_literal: []const u8) !void {
-    try base.seedZombie(conn, ZOMBIE2_ID, WORKSPACE_ID, name, CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION2_ID, ZOMBIE2_ID, "{}");
+/// Seed a second tagged agent (AGENT2_ID) + its session + a fresh event, for
+/// the two-agent routing test. `tags_literal` is a TEXT[] literal.
+fn seedSecondAgent(h: *TestHarness, conn: *pg.Conn, name: []const u8, tags_literal: []const u8) !void {
+    try base.seedAgent(conn, AGENT2_ID, WORKSPACE_ID, name, CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION2_ID, AGENT2_ID, "{}");
     _ = try conn.exec(
-        "UPDATE core.zombies SET required_tags = $1::text[] WHERE id = $2::uuid",
-        .{ tags_literal, ZOMBIE2_ID },
+        "UPDATE core.agents SET required_tags = $1::text[] WHERE id = $2::uuid",
+        .{ tags_literal, AGENT2_ID },
     );
-    try publishEventFor(h, ZOMBIE2_ID);
+    try publishEventFor(h, AGENT2_ID);
 }
 
 /// Seed a runtime-generated racer with the `CONC_HOST_PREFIX` host so cleanup
@@ -185,21 +185,21 @@ const Racer = struct {
 };
 
 /// Common seed for every test: tenant, workspace, platform provider, balance,
-/// the zombie carrying `tags_json`, and one fresh event. Runners are seeded
+/// the agent carrying `tags_json`, and one fresh event. Runners are seeded
 /// per-test (their labels are the variable under test).
 fn seedBase(h: *TestHarness, conn: *pg.Conn, tags_json: []const u8) !void {
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
-    try seedZombieWithTags(conn, tags_json);
+    try seedAgentWithTags(conn, tags_json);
     try publishEventFor(h, AGENTSFLEET_ID);
 }
 
 // ── Lease helper ────────────────────────────────────────────────────────────
 
 /// True iff the lease response carried a non-null lease (the runner was
-/// assigned the zombie's event). Frees the parsed body internally.
+/// assigned the agent's event). Frees the parsed body internally.
 fn leasePresent(h: *TestHarness, token: []const u8) !bool {
     const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
     const resp = try req.send();
@@ -222,21 +222,21 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
-    delStream(h, "agent:" ++ ZOMBIE2_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
+    delStream(h, "agent:" ++ AGENT2_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE agent_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, AGENT2_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, AGENT2_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ GPU_RUNNER_ID, PLAIN_RUNNER_ID, ARM_RUNNER_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE host_id LIKE 'plc-conc-%'", .{});
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
+    execIgnore(conn, "DELETE FROM core.agent_events WHERE agent_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, AGENT2_ID });
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownZombies(conn, WORKSPACE_ID);
+    base.teardownAgents(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test "claim respects required tag subset: a [gpu] zombie leases only to a gpu runner" {
+test "claim respects required tag subset: a [gpu] agent leases only to a gpu runner" {
     const h = startHarness() catch |err| {
         if (err == error.SkipZigTest) return error.SkipZigTest;
         return err;
@@ -250,10 +250,10 @@ test "claim respects required tag subset: a [gpu] zombie leases only to a gpu ru
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
 
-    // The plain runner does not satisfy [gpu] → never sees the zombie. It must
+    // The plain runner does not satisfy [gpu] → never sees the agent. It must
     // NOT consume the event (so the gpu runner can still claim it next).
     try std.testing.expect(!try leasePresent(h, PLAIN_TOKEN));
-    // The gpu runner's labels ⊇ [gpu] → it leases the zombie.
+    // The gpu runner's labels ⊇ [gpu] → it leases the agent.
     try std.testing.expect(try leasePresent(h, GPU_TOKEN));
 }
 
@@ -270,7 +270,7 @@ test "empty required_tags leases to any runner (back-compat with the global race
     try seedBase(h, conn, "{}");
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
 
-    // [] ⊆ any labels ⇒ a label-less runner claims an untagged zombie.
+    // [] ⊆ any labels ⇒ a label-less runner claims an untagged agent.
     try std.testing.expect(try leasePresent(h, PLAIN_TOKEN));
 }
 
@@ -308,11 +308,11 @@ test "unsatisfiable tags hold then schedule once a matching runner enrolls" {
     defer cleanupAll(h, conn);
 
     try seedBase(h, conn, "{gpu}");
-    // Only a plain runner exists: the zombie's [gpu] is unsatisfiable → holds.
+    // Only a plain runner exists: the agent's [gpu] is unsatisfiable → holds.
     try seedRunnerWithLabels(conn, PLAIN_RUNNER_ID, "plc-plain", PLAIN_TOKEN, "[]");
     try std.testing.expect(!try leasePresent(h, PLAIN_TOKEN));
 
-    // A matching runner enrolls → the still-unclaimed zombie schedules. (The
+    // A matching runner enrolls → the still-unclaimed agent schedules. (The
     // event survived the hold because the plain poll never consumed it.)
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try std.testing.expect(try leasePresent(h, GPU_TOKEN));
@@ -379,7 +379,7 @@ test "edge: tag matching is exact-string (case-sensitive) — GPU does not satis
 
 // ── Concurrency ─────────────────────────────────────────────────────────────────
 
-test "concurrent: eligible runners race one tagged zombie — exactly one wins, ineligible never do" {
+test "concurrent: eligible runners race one tagged agent — exactly one wins, ineligible never do" {
     const h = startHarness() catch |err| {
         if (err == error.SkipZigTest) return error.SkipZigTest;
         return err;
@@ -389,7 +389,7 @@ test "concurrent: eligible runners race one tagged zombie — exactly one wins, 
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    // One [gpu] zombie carrying exactly ONE event.
+    // One [gpu] agent carrying exactly ONE event.
     try seedBase(h, conn, "{gpu}");
 
     const N_GPU = 3;
@@ -429,7 +429,7 @@ test "concurrent: eligible runners race one tagged zombie — exactly one wins, 
 
 // ── Complex routing ─────────────────────────────────────────────────────────────
 
-test "complex: two tagged zombies route only to their matching runner" {
+test "complex: two tagged agents route only to their matching runner" {
     const h = startHarness() catch |err| {
         if (err == error.SkipZigTest) return error.SkipZigTest;
         return err;
@@ -439,19 +439,19 @@ test "complex: two tagged zombies route only to their matching runner" {
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    // Z_GPU [gpu] (the default AGENTSFLEET_ID) + Z_ARM [arm64] (ZOMBIE2_ID), each
+    // Z_GPU [gpu] (the default AGENTSFLEET_ID) + Z_ARM [arm64] (AGENT2_ID), each
     // with its own event; one gpu runner and one arm runner.
     try seedBase(h, conn, "{gpu}");
-    try seedSecondZombie(h, conn, "placement-arm-bot", "{arm64}");
+    try seedSecondAgent(h, conn, "placement-arm-bot", "{arm64}");
     try seedRunnerWithLabels(conn, GPU_RUNNER_ID, "plc-gpu", GPU_TOKEN, "[\"gpu\"]");
     try seedRunnerWithLabels(conn, ARM_RUNNER_ID, "plc-arm", ARM_TOKEN, "[\"arm64\"]");
 
-    // The gpu runner gets its zombie...
+    // The gpu runner gets its agent...
     try std.testing.expect(try leasePresent(h, GPU_TOKEN));
     // ...and a second poll yields nothing: Z_ARM is ineligible to it and Z_GPU's
     // event is consumed. So the gpu runner is bounded to its own tag.
     try std.testing.expect(!try leasePresent(h, GPU_TOKEN));
     // The arm runner still gets Z_ARM — proving the gpu runner never reached
-    // across to consume the other zombie's event.
+    // across to consume the other agent's event.
     try std.testing.expect(try leasePresent(h, ARM_TOKEN));
 }

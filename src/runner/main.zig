@@ -19,7 +19,7 @@ const registry = @import("cmd/registry.zig");
 
 const protocol = contract.protocol;
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 pub const std_options: std.Options = .{
     .logFn = runnerLog,

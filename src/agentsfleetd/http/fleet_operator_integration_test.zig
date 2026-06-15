@@ -13,8 +13,8 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const SseClient = @import("handlers/zombies/test_sse_client.zig");
-const sse_fixtures = @import("handlers/zombies/sse_test_fixtures.zig");
+const SseClient = @import("handlers/agents/test_sse_client.zig");
+const sse_fixtures = @import("handlers/agents/sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -251,7 +251,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         try sse_fixtures.seedWorkspace(conn);
-        try sse_fixtures.seedZombie(conn, AGENTSFLEET_FLEET_STREAM, "fleet-streams");
+        try sse_fixtures.seedAgent(conn, AGENTSFLEET_FLEET_STREAM, "fleet-streams");
     }
 
     // tenant admin (verified JWT, but no platform_admin claim) → 403
@@ -265,7 +265,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     try empty.expectStatus(.ok);
     try std.testing.expect(empty.bodyContains("\"total\":0"));
 
-    // a live stream appears with its workspace + zombie (the platform-admin
+    // a live stream appears with its workspace + agent (the platform-admin
     // token's workspace metadata matches the seeded fixture workspace)
     const stream_path = try sse_fixtures.streamPath(ALLOC, AGENTSFLEET_FLEET_STREAM);
     defer ALLOC.free(stream_path);

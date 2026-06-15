@@ -25,9 +25,9 @@ const SIGNOUT_TIMEOUT_MS = 15_000;
 test.describe("signout → signin round-trip", () => {
   test("authenticated session signs out cleanly and signs back in", async ({ page }) => {
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/zombies");
-    await expect(page).toHaveURL(/\/zombies(\?|$)/);
-    await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
+    await page.goto("/agents");
+    await expect(page).toHaveURL(/\/agents(\?|$)/);
+    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
 
     // Drive the SDK-level sign-out the UserButton's "Sign out" item triggers.
     // The button is Clerk-rendered inside a Radix portal, which can race
@@ -37,13 +37,13 @@ test.describe("signout → signin round-trip", () => {
 
     // Next protected navigation re-enters clerkMiddleware with no session
     // cookie → redirect to /sign-in.
-    await page.goto("/zombies");
+    await page.goto("/agents");
     await expect(page).toHaveURL(/\/sign-in(\?|$|\/)/, { timeout: SIGNOUT_TIMEOUT_MS });
 
     // Sign back in via the persistent fixture; protected page renders.
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/zombies");
-    await expect(page).toHaveURL(/\/zombies(\?|$)/, { timeout: SIGNOUT_TIMEOUT_MS });
-    await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
+    await page.goto("/agents");
+    await expect(page).toHaveURL(/\/agents(\?|$)/, { timeout: SIGNOUT_TIMEOUT_MS });
+    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
   });
 });

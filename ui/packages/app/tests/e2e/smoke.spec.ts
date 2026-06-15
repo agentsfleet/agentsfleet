@@ -11,13 +11,13 @@ test.describe("App smoke", () => {
   });
 
   test("protected route stays on first-party app surfaces", async ({ page }) => {
-    await page.goto("/zombies");
+    await page.goto("/agents");
     await page.waitForTimeout(MS_PER_SECOND);
     const redirected = new URL(page.url());
     expect(redirected.hostname).toBe(EXPECTED_HOSTNAME);
-    expect(["/sign-in", "/zombies", "/"]).toContain(redirected.pathname);
+    expect(["/sign-in", "/agents", "/"]).toContain(redirected.pathname);
     expect(page.url()).not.toContain("accounts.dev");
-    await expect(page.locator("body")).toContainText(/usezombie|Zombies|Dashboard/);
+    await expect(page.locator("body")).toContainText(/usezombie|Agents|Dashboard/);
   });
 });
 const MS_PER_SECOND = 1000 as const;

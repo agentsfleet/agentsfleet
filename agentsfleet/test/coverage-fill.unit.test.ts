@@ -6,11 +6,11 @@ import fs from "node:fs/promises";
 import { newIdempotencyKey, loadCredentials, saveCredentials, clearCredentials, loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
 import { printSection, printKeyValue, printTable } from "../src/output/index.ts";
 import {
-  wsZombiesPath,
-  wsZombiePath,
-  wsZombieMessagesPath,
-  wsZombieEventsPath,
-  wsZombieEventsStreamPath,
+  wsAgentsPath,
+  wsAgentPath,
+  wsAgentMessagesPath,
+  wsAgentEventsPath,
+  wsAgentEventsStreamPath,
   wsEventsPath,
   wsCredentialsPath,
   wsCredentialPath,
@@ -92,10 +92,10 @@ test("printSection writes the section header to the stream", () => {
 test("printKeyValue writes each row as a labelled pair", () => {
   const s = captureStream();
   printKeyValue(s, [
-    ["zombie_id", "zmb_1"],
+    ["agent_id", "zmb_1"],
     ["status", "active"],
   ]);
-  expect(s.text).toContain("zombie_id");
+  expect(s.text).toContain("agent_id");
   expect(s.text).toContain("zmb_1");
   expect(s.text).toContain("status");
 });
@@ -113,18 +113,18 @@ test("printTable writes columns and rows", () => {
 
 // ── api-paths.js (URL-encoding contract) ────────────────────────────────
 
-test("path helpers URL-encode workspace id and zombie id components", () => {
+test("path helpers URL-encode workspace id and agent id components", () => {
   const ws = "ws/with slash";
   const z = "zmb spaces";
-  expect(wsZombiesPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies");
-  expect(wsZombiePath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces");
-  expect(wsZombieMessagesPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/messages");
-  expect(wsZombieEventsPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/events");
-  expect(wsZombieEventsStreamPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/events/stream");
+  expect(wsAgentsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents");
+  expect(wsAgentPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces");
+  expect(wsAgentMessagesPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/messages");
+  expect(wsAgentEventsPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/events");
+  expect(wsAgentEventsStreamPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/events/stream");
   expect(wsEventsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/events");
   expect(wsCredentialsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/credentials");
   expect(wsCredentialPath(ws, "github_token")).toBe("/v1/workspaces/ws%2Fwith%20slash/credentials/github_token");
-  expect(wsGrantRequestPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/integration-requests");
-  expect(wsGrantsListPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/integration-grants");
-  expect(wsGrantPath(ws, z, "grant_x")).toBe("/v1/workspaces/ws%2Fwith%20slash/zombies/zmb%20spaces/integration-grants/grant_x");
+  expect(wsGrantRequestPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/integration-requests");
+  expect(wsGrantsListPath(ws, z)).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/integration-grants");
+  expect(wsGrantPath(ws, z, "grant_x")).toBe("/v1/workspaces/ws%2Fwith%20slash/agents/zmb%20spaces/integration-grants/grant_x");
 });

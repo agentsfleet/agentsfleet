@@ -93,7 +93,7 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
 /// signal is the only thing that actually kills it; it also covers the
 /// enroll-succeeds-then-races path. Safe against pid reuse because this always
 /// runs BEFORE the supervisor's single `wait()` — the target is still an
-/// un-reaped (zombie-at-most) pid. `ESRCH` (group already gone via the cgroup
+/// un-reaped (agent-at-most) pid. `ESRCH` (group already gone via the cgroup
 /// kill) is harmless.
 pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
     if (scope.*) |*s| s.kill() catch |err|

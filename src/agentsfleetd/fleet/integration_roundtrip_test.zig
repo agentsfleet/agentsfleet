@@ -24,7 +24,7 @@ const api_key = @import("../auth/api_key.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
@@ -80,19 +80,19 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token:
     , .{ runner_id, host_id, hash[0..] });
 }
 
-fn seedActiveZombie(conn: *pg.Conn) !void {
-    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "roundtrip-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
+fn seedActiveAgent(conn: *pg.Conn) !void {
+    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "roundtrip-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
 }
 
 fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\ON CONFLICT (agent_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
     , .{ AFFINITY_ID, AGENTSFLEET_ID, last_runner_id, fencing_seq, leased_until });
@@ -101,7 +101,7 @@ fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, le
 fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fencing_token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -122,10 +122,10 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_ID);
-    const id = try h.queue.xaddZombieEvent(.{
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
+    const id = try h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = AGENTSFLEET_ID,
+        .agent_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -207,7 +207,7 @@ fn reportFailureAs(h: *TestHarness, token: []const u8, lease_id: []const u8, eve
 /// in-function so the row-backed slice never outlives the query.
 fn failureLabelMatches(conn: *pg.Conn, event_id: []const u8, expected: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
-        "SELECT failure_label FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
+        "SELECT failure_label FROM core.agent_events WHERE agent_id = $1::uuid AND event_id = $2",
         .{ AGENTSFLEET_ID, event_id },
     ));
     defer q.deinit();
@@ -241,12 +241,12 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
     delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM core.agent_events WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownZombies(conn, WORKSPACE_ID);
+    base.teardownAgents(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }
@@ -268,10 +268,10 @@ test "single runner completes a full lease then renew then report round-trip" {
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
-    try seedActiveZombie(conn);
+    try seedActiveAgent(conn);
     try publishFreshEvent(h);
 
-    // 1. Lease — the runner polls and is assigned the zombie's event.
+    // 1. Lease — the runner polls and is assigned the agent's event.
     const lv = try leaseAs(h, RUNNER_A_TOKEN);
     defer lv.free();
     try std.testing.expect(lv.present);
@@ -307,10 +307,10 @@ test "a failed runner report persists the granular failure_label and increments 
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
-    try seedActiveZombie(conn);
+    try seedActiveAgent(conn);
     try publishFreshEvent(h);
 
-    // Lease (inserts the received core.zombie_events row), then report a FAILURE
+    // Lease (inserts the received core.agent_events row), then report a FAILURE
     // carrying the granular reason.
     const lv = try leaseAs(h, RUNNER_A_TOKEN);
     defer lv.free();
@@ -351,7 +351,7 @@ test "the reclaim chain enforces monotonic token ordering across runners" {
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "roundtrip-b", RUNNER_B_TOKEN); // reclaimer
-    try seedActiveZombie(conn);
+    try seedActiveAgent(conn);
     // A holds an expired affinity (claimable) at token 1 + its still-active lease
     // carrying the durable event envelope to re-lease.
     try seedAffinity(conn, RUNNER_A_ID, 1, 0);

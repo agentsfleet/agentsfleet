@@ -5,9 +5,9 @@ import { EmptyState } from "./EmptyState";
 
 describe("EmptyState", () => {
   it("renders title and sets role=status + aria-live=polite", () => {
-    render(<EmptyState title="Nothing here" description="Add a zombie to get started." />);
+    render(<EmptyState title="Nothing here" description="Add a agent to get started." />);
     expect(screen.getByText("Nothing here")).toBeInTheDocument();
-    expect(screen.getByText("Add a zombie to get started.")).toBeInTheDocument();
+    expect(screen.getByText("Add a agent to get started.")).toBeInTheDocument();
     const root = screen.getByTestId("empty-state");
     expect(root).toHaveAttribute("role", "status");
     expect(root).toHaveAttribute("aria-live", "polite");

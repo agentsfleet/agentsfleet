@@ -4,22 +4,22 @@
  * Fixture rows are conceptually tagged with `x-test-fixture: true` for
  * cleanup discrimination. agentsfleetd does not
  * currently read that header, but each fixture user has its own dedicated
- * tenant + workspace — every zombie in that workspace is a fixture row by
+ * tenant + workspace — every agent in that workspace is a fixture row by
  * construction. Per-spec cleanup deletes everything in the fixture user's
  * workspace; no extra discriminator needed today.
  */
 import { clientFor, type ClientHandle } from "./api-client";
-import type { FixtureKey, ZombieStatus } from "./constants";
+import type { FixtureKey, AgentStatus } from "./constants";
 
 export interface Workspace {
   id: string;
   name: string | null;
 }
 
-export interface Zombie {
+export interface Agent {
   id: string;
   name: string;
-  status?: ZombieStatus;
+  status?: AgentStatus;
 }
 
 interface ListResp<T> {
@@ -46,7 +46,7 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 }
 
 function triggerMd(name: string): string {
-  // Minimum valid shape for create_zombie. Mirrors
+  // Minimum valid shape for create_agent. Mirrors
   // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md: `triggers`
   // is a list, and `type: api` is rejected by the parser (config_helpers.zig)
   // — use a single `cron` trigger, the smallest valid shape.
@@ -79,39 +79,39 @@ function skillMd(name: string): string {
     "",
     `# ${name}`,
     "",
-    "Body for fixture zombie used by e2e harness.",
+    "Body for fixture agent used by e2e harness.",
     "",
   ].join("\n");
 }
 
-export interface SeedZombieOpts {
+export interface SeedAgentOpts {
   name: string;
 }
 
-interface CreateZombieResp {
-  zombie_id: string;
+interface CreateAgentResp {
+  agent_id: string;
   name: string;
   status: string;
 }
 
-export async function seedZombie(
+export async function seedAgent(
   key: FixtureKey,
   workspaceId: string,
-  opts: SeedZombieOpts,
-): Promise<Zombie> {
+  opts: SeedAgentOpts,
+): Promise<Agent> {
   const c = clientFor(key);
-  // create_zombie returns `zombie_id`; list_zombies items have `id`. Normalize
-  // to the listing shape so callers can compare against listZombies output.
-  const resp = await c.post<CreateZombieResp>(`/v1/workspaces/${workspaceId}/zombies`, {
+  // create_agent returns `agent_id`; list_agents items have `id`. Normalize
+  // to the listing shape so callers can compare against listAgents output.
+  const resp = await c.post<CreateAgentResp>(`/v1/workspaces/${workspaceId}/agents`, {
     trigger_markdown: triggerMd(opts.name),
     source_markdown: skillMd(opts.name),
   });
-  return { id: resp.zombie_id, name: resp.name };
+  return { id: resp.agent_id, name: resp.name };
 }
 
-export async function listZombies(handle: ClientHandle, workspaceId: string): Promise<Zombie[]> {
+export async function listAgents(handle: ClientHandle, workspaceId: string): Promise<Agent[]> {
   const c = clientFor(handle);
-  const res = await c.get<ListResp<Zombie>>(`/v1/workspaces/${workspaceId}/zombies`);
+  const res = await c.get<ListResp<Agent>>(`/v1/workspaces/${workspaceId}/agents`);
   return res.items;
 }
 

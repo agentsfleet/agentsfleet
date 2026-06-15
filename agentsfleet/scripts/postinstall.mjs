@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// Post-install copier — places the bundled zombie-template `samples/` tree
+// Post-install copier — places the bundled agent-template `samples/` tree
 // at a stable user-local path (~/.config/agentsfleet/samples/) so the agent
 // skills (e.g. /agentsfleet-install-platform-ops) can read the canonical
 // templates from a known location instead of fetching over the network.

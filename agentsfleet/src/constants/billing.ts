@@ -1,5 +1,5 @@
 // Wire-format constants for billing endpoints. Mirrors the canonical
-// definitions in src/state/zombie_telemetry_store.zig (`ChargeType`) and
+// definitions in src/state/agent_telemetry_store.zig (`ChargeType`) and
 // src/state/tenant_provider.zig (`Mode`). Keep values verbatim — the API
 // rejects anything else.
 

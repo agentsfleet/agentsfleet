@@ -31,9 +31,9 @@ export interface RunOptions {
   readonly binary?: "worktree" | "global";
 }
 
-export function runZombiectl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;
+export function runAgentctl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;
 
-export function spawnZombiectl(
+export function spawnAgentctl(
   args: ReadonlyArray<string>,
   opts: Pick<RunOptions, "env" | "cwd" | "binary">,
 ): ChildProcessWithoutNullStreams;

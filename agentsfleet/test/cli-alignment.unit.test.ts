@@ -34,9 +34,9 @@ async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-// ── --help surfaces the zombie group + new workspace subcommands ─────────
+// ── --help surfaces the agent group + new workspace subcommands ─────────
 
-test("--help lists the zombie subcommand group", async () => {
+test("--help lists the agent subcommand group", async () => {
   const out = bufferStream();
   const err = bufferStream();
   const code = await runCli(["--help"], {
@@ -46,7 +46,7 @@ test("--help lists the zombie subcommand group", async () => {
   });
   assert.equal(code, 0);
   const text = out.read();
-  // Commander emits a flat Commands list — each zombie op gets its
+  // Commander emits a flat Commands list — each agent op gets its
   // own line in the top-level body. The added Subcommands block lists
   // the namespaced credential vault.
   assert.ok(text.includes("install"), "install line missing");
@@ -230,9 +230,9 @@ test("workspace credentials --json returns status=redirect", async () => {
   });
 });
 
-// ── zombie list: paginated list with cursor/limit flags ──────────────────
+// ── agent list: paginated list with cursor/limit flags ──────────────────
 
-test("zombie list calls the paginated endpoint and prints rows", async () => {
+test("agent list calls the paginated endpoint and prints rows", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
@@ -251,8 +251,8 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
         headers: makeHeaders([["content-type", "application/json"]]),
         text: async () => JSON.stringify({
           items: [
-            { zombie_id: "zom_1", name: "alpha", status: "active" },
-            { zombie_id: "zom_2", name: "beta", status: "paused" },
+            { agent_id: "zom_1", name: "alpha", status: "active" },
+            { agent_id: "zom_2", name: "beta", status: "paused" },
           ],
           total: 2,
           cursor: "1713700000000:zom_2",
@@ -266,15 +266,15 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
       fetchImpl,
     });
     assert.equal(code, 0);
-    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000001/zombies?limit=2"));
+    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000001/agents?limit=2"));
     const text = out.read();
     assert.ok(text.includes("alpha"));
     assert.ok(text.includes("beta"));
-    assert.ok(text.includes("agentsfleet zombie list --cursor"));
+    assert.ok(text.includes("agentsfleet agent list --cursor"));
   });
 });
 
-test("zombie list --json returns the raw envelope incl. cursor", async () => {
+test("agent list --json returns the raw envelope incl. cursor", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
@@ -300,7 +300,7 @@ test("zombie list --json returns the raw envelope incl. cursor", async () => {
   });
 });
 
-test("zombie list honors --workspace-id override over current_workspace_id", async () => {
+test("agent list honors --workspace-id override over current_workspace_id", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
@@ -328,11 +328,11 @@ test("zombie list honors --workspace-id override over current_workspace_id", asy
       env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
       fetchImpl,
     });
-    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/zombies"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
+    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/agents"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
   });
 });
 
-test("zombie list errors with ConfigError when no active workspace and no --workspace-id", async () => {
+test("agent list errors with ConfigError when no active workspace and no --workspace-id", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({ current_workspace_id: null, items: [] });
     const out = bufferStream();

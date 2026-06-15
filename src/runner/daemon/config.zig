@@ -33,7 +33,7 @@ workspace_base: []const u8,
 network_policy: network.Mode,
 /// Number of concurrent worker threads the daemon runs (env
 /// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
-/// the per-zombie `affinity.claim` keeps two off the same zombie. Default 1 is
+/// the per-agent `affinity.claim` keeps two off the same agent. Default 1 is
 /// today's single-agent-per-host behaviour; clamped to `[1, MAX_WORKER_COUNT]`
 /// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
 /// is out of scope — the operator sizes N to the host.
@@ -227,7 +227,7 @@ const client_mod = @import("control_plane_client.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// Environment variable names — single-sourced (RULE UFS).
 pub const ENV_AGENTSFLEET_API_URL = "AGENTSFLEET_API_URL";

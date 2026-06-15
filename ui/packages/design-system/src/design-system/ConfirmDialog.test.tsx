@@ -9,11 +9,11 @@ describe("ConfirmDialog", () => {
       <ConfirmDialog
         open={false}
         onOpenChange={() => {}}
-        title="Stop zombie?"
+        title="Stop agent?"
         onConfirm={() => {}}
       />,
     );
-    expect(screen.queryByText("Stop zombie?")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stop agent?")).not.toBeInTheDocument();
   });
 
   it("renders title + description when open (alertdialog role + aria-describedby)", () => {
@@ -21,12 +21,12 @@ describe("ConfirmDialog", () => {
       <ConfirmDialog
         open
         onOpenChange={() => {}}
-        title="Stop zombie?"
+        title="Stop agent?"
         description="This will halt the agent."
         onConfirm={() => {}}
       />,
     );
-    expect(screen.getByText("Stop zombie?")).toBeInTheDocument();
+    expect(screen.getByText("Stop agent?")).toBeInTheDocument();
     expect(screen.getByText("This will halt the agent.")).toBeInTheDocument();
     const dlg = screen.getByTestId("confirm-dialog");
     expect(dlg).toHaveAttribute("role", "alertdialog");
@@ -245,10 +245,10 @@ describe("ConfirmDialog", () => {
       <ConfirmDialog
         open={false}
         onOpenChange={() => {}}
-        title="Stop zombie?"
+        title="Stop agent?"
         onConfirm={() => {}}
       />,
     );
-    expect(html).not.toContain("Stop zombie?");
+    expect(html).not.toContain("Stop agent?");
   });
 });

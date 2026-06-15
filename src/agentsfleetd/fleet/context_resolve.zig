@@ -1,4 +1,4 @@
-//! Resolve the shared `ContextBudget` from a parsed `ZombieConfig`.
+//! Resolve the shared `ContextBudget` from a parsed `AgentConfig`.
 //!
 //! Lifted from the worker's `event_loop_helpers.zig` at the M80 cutover onto
 //! the lease verb's per-event prep. The wiring is small (frontmatter overrides
@@ -8,41 +8,41 @@
 
 const std = @import("std");
 const context_budget = @import("contract").execution_policy;
-const config_types = @import("../zombie/config_types.zig");
+const config_types = @import("../agent/config_types.zig");
 
-// Drift guard: every field on the parser-side `ZombieContextBudget` must
+// Drift guard: every field on the parser-side `AgentContextBudget` must
 // exist on the runner-side `ContextBudget` at the same name + type, OR
 // the field-by-field copy below silently drops the operator override at
 // trigger time. Adding `max_tool_calls` to `ContextBudget` without a
-// matching `ZombieContextBudget` field is a separate failure mode (the
+// matching `AgentContextBudget` field is a separate failure mode (the
 // new knob would be runtime-only, never frontmatter-overridable) — caught
 // by the inverse check.
 comptime {
-    const ZB = config_types.ZombieContextBudget;
+    const ZB = config_types.AgentContextBudget;
     const CB = context_budget.ContextBudget;
     const zb_fields = std.meta.fields(ZB);
     for (zb_fields) |f| {
         if (!@hasField(CB, f.name)) {
-            @compileError("ZombieContextBudget field '" ++ f.name ++ "' missing from ContextBudget — pair them or rename");
+            @compileError("AgentContextBudget field '" ++ f.name ++ "' missing from ContextBudget — pair them or rename");
         }
         const cb_field_type = @FieldType(CB, f.name);
         if (cb_field_type != f.type) {
-            @compileError("ZombieContextBudget." ++ f.name ++ " type drifts from ContextBudget." ++ f.name ++ " — pair them");
+            @compileError("AgentContextBudget." ++ f.name ++ " type drifts from ContextBudget." ++ f.name ++ " — pair them");
         }
     }
     // Inverse guard: any new ContextBudget field that LOOKS like a
     // frontmatter knob (numeric, non-`model`) but isn't paired in
-    // ZombieContextBudget would silently be runtime-only forever.
-    // Pin ZombieContextBudget's size so a zombie-side addition without
+    // AgentContextBudget would silently be runtime-only forever.
+    // Pin AgentContextBudget's size so a agent-side addition without
     // a matching parser entry trips this assert in the same commit.
     std.debug.assert(@sizeOf(ZB) == 16);
 }
 
-/// Build a fully-resolved `ContextBudget` from the zombie's parsed config.
+/// Build a fully-resolved `ContextBudget` from the agent's parsed config.
 /// Frontmatter overrides win; absent / zero fields fall through to
 /// `ContextBudget.applyDefaults`. `model` is opaque pass-through.
 pub fn resolveContextBudget(
-    config_ctx: ?config_types.ZombieContextBudget,
+    config_ctx: ?config_types.AgentContextBudget,
     config_model: ?[]const u8,
 ) context_budget.ContextBudget {
     var ctx: context_budget.ContextBudget = .{};

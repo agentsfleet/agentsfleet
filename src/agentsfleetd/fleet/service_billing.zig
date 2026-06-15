@@ -18,12 +18,12 @@ const pg = @import("pg");
 const hx_mod = @import("../http/handlers/hx.zig");
 const assign = @import("assign.zig");
 const lease_row = @import("service_lease_row.zig");
-const ZombieSession = @import("zombie_session.zig");
+const AgentSession = @import("agent_session.zig");
 const approval_gate = @import("approval_gate.zig");
 const rows = @import("event_rows.zig");
-const metering = @import("../zombie/metering.zig");
-const activity_publisher = @import("../zombie/activity_publisher.zig");
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const metering = @import("../agent/metering.zig");
+const activity_publisher = @import("../agent/activity_publisher.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
@@ -34,7 +34,7 @@ const log = logging.scoped(.runner_lease);
 
 /// Fresh → run the pre-execution write-path billing; reclaim → reuse the prior
 /// lease's billing (the original lease already debited; never re-charged).
-pub fn resolveBilling(hx: Hx, session: *ZombieSession, acq: assign.Acquired) ?Billed {
+pub fn resolveBilling(hx: Hx, session: *AgentSession, acq: assign.Acquired) ?Billed {
     switch (acq.kind) {
         .reclaim => {
             const r = acq.reused.?;
@@ -53,23 +53,23 @@ pub fn resolveBilling(hx: Hx, session: *ZombieSession, acq: assign.Acquired) ?Bi
 /// the delivery stays reclaimable. Zero rows affected means the row was
 /// already terminal (a refused re-delivery whose earlier XACK was lost) — the
 /// XACK is still owed.
-pub fn blockEvent(hx: Hx, zombie_id: []const u8, event_id: []const u8, label: []const u8) void {
-    const affected = rows.markBlocked(hx.ctx.pool, zombie_id, event_id, label) catch |err| {
-        log.warn("lease_block_write_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
+pub fn blockEvent(hx: Hx, agent_id: []const u8, event_id: []const u8, label: []const u8) void {
+    const affected = rows.markBlocked(hx.ctx.pool, agent_id, event_id, label) catch |err| {
+        log.warn("lease_block_write_failed", .{ .agent_id = agent_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
         return;
     };
     var scratch = activity_publisher.Scratch.init(hx.alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, zombie_id, event_id, rows.STATUS_GATE_BLOCKED);
-    redis_zombie.xackZombie(hx.ctx.queue, zombie_id, event_id) catch |err| {
-        log.warn("lease_block_xack_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, agent_id, event_id, rows.STATUS_GATE_BLOCKED);
+    redis_agent.xackAgent(hx.ctx.queue, agent_id, event_id) catch |err| {
+        log.warn("lease_block_xack_failed", .{ .agent_id = agent_id, .event_id = event_id, .err = @errorName(err) });
     };
-    log.info("lease_gate_blocked", .{ .zombie_id = zombie_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
+    log.info("lease_gate_blocked", .{ .agent_id = agent_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
 }
 
-/// A borrowed `ZombieEvent` view over the acquired envelope for the leaf write
+/// A borrowed `AgentEvent` view over the acquired envelope for the leaf write
 /// helpers (read-only — never mutated or freed; the slices are arena-owned).
-fn eventView(acq: assign.Acquired) redis_zombie.ZombieEvent {
+fn eventView(acq: assign.Acquired) redis_agent.AgentEvent {
     return .{
         .event_id = @constCast(acq.event_id),
         .actor = @constCast(acq.actor),
@@ -87,12 +87,12 @@ fn eventView(acq: assign.Acquired) redis_zombie.ZombieEvent {
 /// null; transient failures return null with no terminal write so the
 /// delivery stays leasable. The caller releases the claim and answers no-work
 /// on every null.
-fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.ZombieEvent) ?Billed {
+fn runBilling(hx: Hx, session: *AgentSession, event: *const redis_agent.AgentEvent) ?Billed {
     const alloc = hx.alloc;
     const pool = hx.ctx.pool;
 
     const first_delivery = rows.insertReceivedRow(alloc, pool, session, event) catch |err| {
-        log.err("lease_received_insert_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.err("lease_received_insert_failed", .{ .agent_id = session.agent_id, .event_id = event.event_id, .err = @errorName(err) });
         return null;
     };
     if (!first_delivery) {
@@ -102,18 +102,18 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         // side effects and re-meters tokens (spec Invariant 2). A still
         // `received` row is a legitimate re-poll (pending-gate, reclaimed
         // strand): fall through to re-evaluate the gates.
-        const klass = rows.classifyStatus(pool, session.zombie_id, event.event_id) catch |err| {
+        const klass = rows.classifyStatus(pool, session.agent_id, event.event_id) catch |err| {
             // Uncertain: leave the entry pending (no XACK, no lease) so the
             // next poll retries the classification rather than risking a
             // double-execution on a guess.
-            log.warn("lease_status_classify_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+            log.warn("lease_status_classify_failed", .{ .agent_id = session.agent_id, .event_id = event.event_id, .err = @errorName(err) });
             return null;
         };
         if (klass == .terminal) {
-            redis_zombie.xackZombie(hx.ctx.queue, session.zombie_id, event.event_id) catch |err| {
-                log.warn("lease_terminal_reack_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+            redis_agent.xackAgent(hx.ctx.queue, session.agent_id, event.event_id) catch |err| {
+                log.warn("lease_terminal_reack_failed", .{ .agent_id = session.agent_id, .event_id = event.event_id, .err = @errorName(err) });
             };
-            log.info("lease_terminal_redelivery_acked", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            log.info("lease_terminal_redelivery_acked", .{ .agent_id = session.agent_id, .event_id = event.event_id });
             return null;
         }
     }
@@ -123,13 +123,13 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         // a duplicate `event_received` frame. Best-effort.
         var scratch = activity_publisher.Scratch.init(alloc);
         defer scratch.deinit();
-        activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.zombie_id, event.event_id, event.actor);
+        activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.agent_id, event.event_id, event.actor);
     }
 
     var tr = switch (resolveTenant(alloc, pool, session.workspace_id)) {
         .ok => |t| t,
         .failed_permanent => {
-            blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_TENANT_RESOLVE_FAILED);
+            blockEvent(hx, session.agent_id, event.event_id, rows.LABEL_TENANT_RESOLVE_FAILED);
             return null;
         },
         .failed_transient => return null,
@@ -146,7 +146,7 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     defer if (!committed) tr.resolved.deinit(alloc);
     const ctx = metering.PreflightContext{
         .workspace_id = session.workspace_id,
-        .zombie_id = session.zombie_id,
+        .agent_id = session.agent_id,
         .event_id = event.event_id,
         .posture = tr.resolved.mode,
         .provider = tr.resolved.provider,
@@ -155,8 +155,8 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
     if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
-        log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
-        blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
+        log.info("lease_balance_exhausted", .{ .agent_id = session.agent_id, .event_id = event.event_id });
+        blockEvent(hx, session.agent_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
         return null;
     }
     // Receive debits exactly once per event — a re-delivered entry already
@@ -165,13 +165,13 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
         .deducted => {},
         .exhausted => {
-            blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
+            blockEvent(hx, session.agent_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
             return null;
         },
         // Operator-fixable bootstrap gap / transient DB fault: no terminal
         // write, no XACK — the delivery redelivers once the fault clears.
         .missing_tenant_billing, .db_error => {
-            log.warn("lease_receive_debit_unavailable", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            log.warn("lease_receive_debit_unavailable", .{ .agent_id = session.agent_id, .event_id = event.event_id });
             return null;
         },
     };
@@ -181,29 +181,29 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
             // Human decision outstanding: answer no-work; the next lease poll
             // re-delivers the entry from the PEL and re-evaluates the recorded
             // gate ref. No thread waits.
-            log.info("lease_gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+            log.info("lease_gate_pending", .{ .agent_id = session.agent_id, .event_id = event.event_id });
             return null;
         },
         .blocked => |reason| switch (reason) {
             .approval_denied => {
-                blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_APPROVAL_DENIED);
+                blockEvent(hx, session.agent_id, event.event_id, rows.LABEL_APPROVAL_DENIED);
                 return null;
             },
             .timeout => {
-                blockEvent(hx, session.zombie_id, event.event_id, rows.LABEL_APPROVAL_EXPIRED);
+                blockEvent(hx, session.agent_id, event.event_id, rows.LABEL_APPROVAL_EXPIRED);
                 return null;
             },
             // Redis-unavailable default-deny is transient: no terminal write;
             // the entry stays leasable and the next poll retries the gate.
             .unavailable => {
-                log.warn("lease_gate_unavailable", .{ .zombie_id = session.zombie_id, .event_id = event.event_id });
+                log.warn("lease_gate_unavailable", .{ .agent_id = session.agent_id, .event_id = event.event_id });
                 return null;
             },
         },
         .auto_killed => |trigger| {
-            // The gate paused the zombie; the event is retained un-acked so a
+            // The gate paused the agent; the event is retained un-acked so a
             // resume re-delivers it (Failure Modes: paused mid-flight).
-            log.info("lease_gate_auto_killed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .trigger = @tagName(trigger) });
+            log.info("lease_gate_auto_killed", .{ .agent_id = session.agent_id, .event_id = event.event_id, .trigger = @tagName(trigger) });
             return null;
         },
     }

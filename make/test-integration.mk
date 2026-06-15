@@ -54,9 +54,9 @@ _ensure-test-infra:
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
-# fixture rows behind (paused zombies, lingering secrets) that break subsequent runs.
+# fixture rows behind (paused agents, lingering secrets) that break subsequent runs.
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
-# Redis is flushed in the same reset: fixture zombie ids are fixed, so streams,
+# Redis is flushed in the same reset: fixture agent ids are fixed, so streams,
 # consumer groups, and unacked PEL entries persist across runs — and the strand
 # recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
 # replaying prior-run events into a freshly reset DB (shared-tenant balance drift).

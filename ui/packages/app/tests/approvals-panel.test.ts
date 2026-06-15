@@ -27,7 +27,7 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 
-import ZombieApprovalsPanel from "@/components/domain/ZombieApprovalsPanel";
+import AgentApprovalsPanel from "@/components/domain/AgentApprovalsPanel";
 
 beforeEach(() => {
   listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
@@ -43,14 +43,14 @@ afterEach(() => {
   listApprovalsActionMock.mockReset();
 });
 
-describe("ZombieApprovalsPanel — server-side fetch", () => {
-  it("calls listApprovals with the zombieId scope and forwards items to the list", async () => {
+describe("AgentApprovalsPanel — server-side fetch", () => {
+  it("calls listApprovals with the agentId scope and forwards items to the list", async () => {
     listApprovalsMock.mockResolvedValueOnce({
       items: [
         {
           gate_id: "01999999-1111-7000-8000-000000000001",
-          zombie_id: AGENTSFLEET_ID,
-          zombie_name: "approvals-a",
+          agent_id: AGENTSFLEET_ID,
+          agent_name: "approvals-a",
           workspace_id: WORKSPACE_ID,
           action_id: "act_001",
           tool_name: "write_repo",
@@ -70,9 +70,9 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
       next_cursor: null,
     });
 
-    const element = await ZombieApprovalsPanel({
+    const element = await AgentApprovalsPanel({
       workspaceId: WORKSPACE_ID,
-      zombieId: AGENTSFLEET_ID,
+      agentId: AGENTSFLEET_ID,
       token: TOKEN,
     });
     render(element);
@@ -80,16 +80,16 @@ describe("ZombieApprovalsPanel — server-side fetch", () => {
     expect(listApprovalsMock).toHaveBeenCalledWith(
       WORKSPACE_ID,
       TOKEN,
-      expect.objectContaining({ zombieId: AGENTSFLEET_ID, limit: 50 }),
+      expect.objectContaining({ agentId: AGENTSFLEET_ID, limit: 50 }),
     );
     expect(screen.getByText("approvals-a")).toBeTruthy();
   });
 
   it("falls back to empty initial items when the upstream fetch rejects", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
-    const element = await ZombieApprovalsPanel({
+    const element = await AgentApprovalsPanel({
       workspaceId: WORKSPACE_ID,
-      zombieId: AGENTSFLEET_ID,
+      agentId: AGENTSFLEET_ID,
       token: TOKEN,
     });
     render(element);

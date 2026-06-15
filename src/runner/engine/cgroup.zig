@@ -5,7 +5,7 @@
 //! - cpu.max: CPU quota/period throttling
 //! - io.max: disk write rate limiting
 //!
-//! The cgroup is created under /sys/fs/cgroup/zombie.runner/ and
+//! The cgroup is created under /sys/fs/cgroup/agent.runner/ and
 //! cleaned up when the session is destroyed.
 //! Linux-only; no-ops on other platforms.
 
@@ -17,7 +17,7 @@ const BYTES_PER_KIB = 1024;
 
 const log = logging.scoped(.runner_cgroup);
 
-const CGROUP_BASE = "/sys/fs/cgroup/zombie.runner";
+const CGROUP_BASE = "/sys/fs/cgroup/agent.runner";
 
 const S_THROTTLED_USEC = "throttled_usec ";
 const S_D = "{d}";

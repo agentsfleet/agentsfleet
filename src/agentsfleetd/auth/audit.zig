@@ -1,7 +1,7 @@
 //! Auth-audit primitives — `.auth_audit` log scope + session_id pseudonymization.
 //!
 //! Pure functions only; no HTTP, no Redis, no handler imports. Keeps
-//! `src/auth/` portable into a standalone `zombie-auth` repo per the
+//! `src/auth/` portable into a standalone `agent-auth` repo per the
 //! existing chain/bearer convention.
 //!
 //! Session_id classification: a sensitive ephemeral capability equivalent

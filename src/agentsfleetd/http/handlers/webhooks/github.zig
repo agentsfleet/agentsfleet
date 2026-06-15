@@ -1,4 +1,4 @@
-// POST /v1/webhooks/{zombie_id}/github — GitHub Actions webhook ingest.
+// POST /v1/webhooks/{agent_id}/github — GitHub Actions webhook ingest.
 //
 // Auth: HMAC-SHA256 over the raw body (X-Hub-Signature-256), verified by the
 //       webhook_sig middleware against the workspace's `agent:github`
@@ -9,10 +9,10 @@
 //         `conclusion=failure` are XADDed; everything else returns 200 OK
 //         with a `{"ignored":"<reason>"}` body so the diagnostic survives
 //         CDN / HTTP/2 proxy paths (RFC 9110 §6.4.5 forbids 204+body).
-// Idempotency: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` (72 h TTL,
+// Idempotency: `webhook:dedup:{agent_id}:gh:{X-GitHub-Delivery}` (72 h TTL,
 //         covers GitHub's max retry window for the same delivery UUID).
 //         The slot is claimed atomically (SET NX EX — concurrent duplicate
-//         deliveries still single-enqueue) AFTER zombie validation + action
+//         deliveries still single-enqueue) AFTER agent validation + action
 //         filter pass, so 4xx-rejected and intentionally ignored deliveries
 //         never consume it, and RELEASED (DEL) on every post-claim failure
 //         path — normalize failure included — so a transient fault leaves
@@ -29,11 +29,11 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const zombie_config = @import("../../../zombie/config.zig");
+const agent_config = @import("../../../agent/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
-const normalizer = @import("../../../zombie/webhook/normalizer/github.zig");
+const normalizer = @import("../../../agent/webhook/normalizer/github.zig");
 const filter = @import("github_filter.zig");
 const BYTES_PER_KIB = 1024;
 
@@ -51,7 +51,7 @@ const GITHUB_DEDUP_TTL_SECONDS: u32 = 72 * 60 * 60;
 const HEADER_EVENT = "x-github-event";
 const HEADER_DELIVERY = "x-github-delivery";
 
-pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, agent_id: []const u8) void {
     // Pre-read fence: reject oversized payloads before httpz buffers them.
     // The httpz server-level max_body_size may be larger than our 1 MiB cap,
     // so without this guard a >1 MiB body would be fully buffered + discarded.
@@ -88,7 +88,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
         // body when an operator inspects "Recent Deliveries".
         log.info("ignored_event", .{
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
             .event = event,
         });
@@ -96,30 +96,30 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     }
 
-    var zombie = fetchZombieById(hx.ctx.pool, hx.alloc, zombie_id) catch |err| {
+    var agent = fetchAgentById(hx.ctx.pool, hx.alloc, agent_id) catch |err| {
         log.err("db_error", .{
             .error_code = ec.ERR_INTERNAL_DB_QUERY,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .err = @errorName(err),
             .req_id = hx.req_id,
         });
         common.internalDbError(hx.res, hx.req_id);
         return;
     } orelse {
-        hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_AGENTSFLEET_NOT_FOUND);
+        hx.fail(ec.ERR_WEBHOOK_NO_AGENT, ec.MSG_AGENTSFLEET_NOT_FOUND);
         return;
     };
-    defer deinitZombieRow(&zombie, hx.alloc);
+    defer deinitAgentRow(&agent, hx.alloc);
 
-    // Paused zombie → 200-ignored, not 4xx: GitHub retry queues add no value
-    // for an intentionally paused zombie, and the dedup slot is NOT consumed
+    // Paused agent → 200-ignored, not 4xx: GitHub retry queues add no value
+    // for an intentionally paused agent, and the dedup slot is NOT consumed
     // so an operator redelivery after resume processes correctly.
     // The triggered metric is not incremented — nothing was accepted.
-    const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
+    const status = agent_config.AgentStatus.fromSlice(agent.status) orelse .stopped;
     if (!status.isRunnable()) {
-        log.info("zombie_not_active", .{
-            .zombie_id = zombie_id,
-            .status = zombie.status,
+        log.info("agent_not_active", .{
+            .agent_id = agent_id,
+            .status = agent.status,
             .delivery = delivery,
         });
         hx.ok(.ok, .{ .ignored = ec.IGNORED_REASON_AGENTSFLEET_PAUSED });
@@ -130,7 +130,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch |err| {
         log.warn("parse_failed", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
             .err = @errorName(err),
         });
@@ -146,7 +146,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     if (decision == null) {
         log.warn("malformed_payload", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
         });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
@@ -154,7 +154,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     }
     if (!decision.?.ingest) {
         log.info("filter_ignored", .{
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
             .reason = decision.?.reason,
         });
@@ -165,19 +165,19 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     // Atomic claim after validation+filter; released on every post-claim
     // failure below — see file header for why.
     var dedup_key_buf: [256]u8 = undefined;
-    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, zombie_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
+    const dedup_key = std.fmt.bufPrint(&dedup_key_buf, "{s}{s}:{s}:{s}", .{ ec.WEBHOOK_DEDUP_KEY_PREFIX, agent_id, PROVIDER_DEDUP_NAMESPACE, delivery }) catch {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
         return;
     };
-    if (!claimDedupSlot(hx, zombie_id, delivery, dedup_key)) return;
+    if (!claimDedupSlot(hx, agent_id, delivery, dedup_key)) return;
 
     const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, clock.nowSeconds()) catch |err| {
         // Normalize failure must not burn the slot: GitHub's redelivery of a
         // (possibly fixed) payload for this delivery UUID stays deliverable.
-        releaseDedupSlot(hx, zombie_id, dedup_key);
+        releaseDedupSlot(hx, agent_id, dedup_key);
         log.err("normalize_failed", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .err = @errorName(err),
             .req_id = hx.req_id,
         });
@@ -188,20 +188,20 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
 
     const envelope = EventEnvelope{
         .event_id = "",
-        .zombie_id = zombie_id,
-        .workspace_id = zombie.workspace_id,
+        .agent_id = agent_id,
+        .workspace_id = agent.workspace_id,
         .actor = ACTOR,
         .event_type = .webhook,
         .request_json = request_json,
         .created_at = clock.nowMillis(),
     };
-    const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
+    const new_event_id = hx.ctx.queue.xaddAgentEvent(envelope) catch |err| {
         // Release the slot — GitHub's redelivery of this UUID stays
         // deliverable (loss-proof dedup ordering).
-        releaseDedupSlot(hx, zombie_id, dedup_key);
+        releaseDedupSlot(hx, agent_id, dedup_key);
         log.err("enqueue_failed", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
             .err = @errorName(err),
         });
@@ -210,9 +210,9 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     };
     defer hx.ctx.alloc.free(new_event_id);
 
-    recordAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, delivery);
+    recordAccepted(hx.ctx.telemetry, agent.workspace_id, agent_id, delivery);
     log.info("accepted", .{
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
         .delivery = delivery,
         .stream_event_id = new_event_id,
     });
@@ -222,11 +222,11 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
 /// Atomically claim the delivery's idempotency slot (SET NX — exactly one of
 /// N concurrent identical deliveries wins). The caller releases it on every
 /// post-claim failure path.
-fn claimDedupSlot(hx: Hx, zombie_id: []const u8, delivery: []const u8, dedup_key: []const u8) bool {
+fn claimDedupSlot(hx: Hx, agent_id: []const u8, delivery: []const u8, dedup_key: []const u8) bool {
     const is_new = hx.ctx.queue.setNx(dedup_key, "1", GITHUB_DEDUP_TTL_SECONDS) catch |err| {
         log.err("dedup_error", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .delivery = delivery,
             .err = @errorName(err),
         });
@@ -234,7 +234,7 @@ fn claimDedupSlot(hx: Hx, zombie_id: []const u8, delivery: []const u8, dedup_key
         return false;
     };
     if (!is_new) {
-        log.debug("duplicate", .{ .zombie_id = zombie_id, .delivery = delivery });
+        log.debug("duplicate", .{ .agent_id = agent_id, .delivery = delivery });
         hx.ok(.ok, .{ .deduped = true });
         return false;
     }
@@ -244,28 +244,28 @@ fn claimDedupSlot(hx: Hx, zombie_id: []const u8, delivery: []const u8, dedup_key
 /// Release a claimed idempotency slot after a post-claim failure so GitHub's
 /// redelivery is not answered "duplicate" for an event that never landed.
 /// Best-effort: on a DEL failure the slot expires at its TTL (logged).
-fn releaseDedupSlot(hx: Hx, zombie_id: []const u8, dedup_key: []const u8) void {
+fn releaseDedupSlot(hx: Hx, agent_id: []const u8, dedup_key: []const u8) void {
     hx.ctx.queue.del(dedup_key) catch |err| {
-        log.warn("dedup_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+        log.warn("dedup_release_failed", .{ .agent_id = agent_id, .err = @errorName(err) });
     };
 }
 
-const ZombieRow = struct {
+const AgentRow = struct {
     workspace_id: []const u8,
     status: []const u8,
 };
 
-fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
+fn deinitAgentRow(row: *const AgentRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
 }
 
-fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const u8) !?ZombieRow {
+fn fetchAgentById(pool: *pg.Pool, alloc: std.mem.Allocator, agent_id: []const u8) !?AgentRow {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, status FROM core.zombies WHERE id = $1::uuid
-    , .{zombie_id}));
+        \\SELECT workspace_id::text, status FROM core.agents WHERE id = $1::uuid
+    , .{agent_id}));
     defer q.deinit();
     const row = try q.next() orelse return null;
     const workspace_id = try alloc.dupe(u8, try row.get([]const u8, 0));
@@ -277,14 +277,14 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
 fn recordAccepted(
     tel: *telemetry_mod.Telemetry,
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     delivery: []const u8,
 ) void {
-    metrics_counters.incZombiesTriggered();
-    tel.capture(telemetry_mod.ZombieTriggered, .{
+    metrics_counters.incAgentsTriggered();
+    tel.capture(telemetry_mod.AgentTriggered, .{
         .distinct_id = workspace_id,
         .workspace_id = workspace_id,
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
         .event_id = delivery,
         .source = "github",
     });

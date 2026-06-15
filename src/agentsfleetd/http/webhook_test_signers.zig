@@ -34,7 +34,7 @@ pub fn signGithub(alloc: std.mem.Allocator, secret: []const u8, body: []const u8
 }
 
 // Linear: `linear-signature: <hex>` over raw body bytes — bare hex, no prefix
-// (LINEAR in zombie/webhook_verify.zig). Exercises the generic webhook route.
+// (LINEAR in agent/webhook_verify.zig). Exercises the generic webhook route.
 pub fn signLinear(alloc: std.mem.Allocator, secret: []const u8, body: []const u8) !Signed {
     return .{
         .header_name = "linear-signature",
