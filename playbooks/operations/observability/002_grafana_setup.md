@@ -4,7 +4,7 @@
 
 ### 1. Prometheus (Grafana Cloud or self-hosted)
 
-Scrapes `agentsfleetd` at `/metrics`. All `zombie_*` counters, histograms, and gauges.
+Scrapes `agentsfleetd` at `/metrics`. All `agent_*` counters, histograms, and gauges.
 
 ### 2. Tempo (Grafana Cloud)
 
@@ -13,7 +13,7 @@ Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_K
 
 ### 3. PostgreSQL
 
-Direct connection to the zombie database for `usage_ledger` queries.
+Direct connection to the agent database for `usage_ledger` queries.
 
 **Setup:**
 1. In Grafana, add a PostgreSQL datasource.
@@ -34,8 +34,8 @@ Import `agent_run_breakdown.json` via Grafana UI:
 
 | Panel | Source | Query |
 |-------|--------|-------|
-| Token consumption by workspace | Prometheus | `zombie_agent_tokens_by_workspace_total` |
-| Run outcomes by workspace | Prometheus | `zombie_runs_completed_by_workspace_total` / `blocked` |
+| Token consumption by workspace | Prometheus | `agent_agent_tokens_by_workspace_total` |
+| Run outcomes by workspace | Prometheus | `agent_runs_completed_by_workspace_total` / `blocked` |
 | Score-gated run rate | PostgreSQL | `usage_ledger WHERE lifecycle_event = 'run_not_billable_score_gated'` |
 | Top-N runs by token consumption | PostgreSQL | `usage_ledger ORDER BY token_count DESC LIMIT 10` |
 | Per-stage token breakdown | PostgreSQL | `usage_ledger WHERE source = 'runtime_stage' GROUP BY actor` |

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
 import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 
-const BRAND_NAME = "usezombie";
+const BRAND_NAME = "agentsfleet";
 
 const COL_LABEL =
   "font-mono text-label uppercase tracking-label text-text-muted m-0 mb-3";

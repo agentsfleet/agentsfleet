@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * Smoke tests — fast subset for CI pre-deploy gate.
  * Run with: bunx playwright test tests/e2e/smoke.spec.ts
- * For post-deploy Vercel: BASE_URL=https://usezombie.com bunx playwright test tests/e2e/smoke.spec.ts
+ * For post-deploy Vercel: BASE_URL=https://agentsfleet.net bunx playwright test tests/e2e/smoke.spec.ts
  */
 test.describe("Smoke", () => {
   test("home page loads", async ({ page }) => {

@@ -24,13 +24,15 @@ const log = logging.scoped(.tenant_provider_resolver);
 const S_API_KEY = "api_key";
 
 pub const ProviderRow = struct {
+    const Self = @This();
+
     mode: Mode,
     provider: []u8,
     model: []u8,
     context_cap_tokens: u32,
     credential_ref: ?[]u8,
 
-    pub fn deinit(self: *ProviderRow, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.provider);
         alloc.free(self.model);
         if (self.credential_ref) |c| alloc.free(c);
@@ -38,21 +40,25 @@ pub const ProviderRow = struct {
 };
 
 pub const PlatformKey = struct {
+    const Self = @This();
+
     provider: []u8,
     source_workspace_id: []u8,
 
-    pub fn deinit(self: *PlatformKey, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.provider);
         alloc.free(self.source_workspace_id);
     }
 };
 
 pub const ProbedCredential = struct {
+    const Self = @This();
+
     provider: []u8,
     api_key: []u8,
     model: []u8,
 
-    pub fn deinit(self: *ProbedCredential, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         std.crypto.secureZero(u8, self.api_key);
         alloc.free(self.api_key);
         alloc.free(self.provider);

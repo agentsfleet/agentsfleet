@@ -18,8 +18,8 @@ describe("Spinner", () => {
   });
 
   it("shows a visible label for standalone loaders", () => {
-    const { getByText } = render(<Spinner label="Loading zombies…" />);
-    expect(getByText("Loading zombies…")).toBeTruthy();
+    const { getByText } = render(<Spinner label="Loading agents…" />);
+    expect(getByText("Loading agents…")).toBeTruthy();
   });
 
   it("falls back to a screen-reader-only label when no visible label", () => {

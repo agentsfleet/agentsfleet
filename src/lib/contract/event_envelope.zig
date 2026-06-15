@@ -4,7 +4,7 @@
 //!
 //! The Redis stream entry ID IS the canonical event_id — never carry a
 //! separate ID in the payload fields. XADD `*` returns the stream ID;
-//! that ID flows into `core.zombie_events.event_id` and out to clients
+//! that ID flows into `core.agent_events.event_id` and out to clients
 //! via SSE / GET /events.
 //!
 //! Encoded on the wire as flat field/value pairs (Redis stream
@@ -19,7 +19,7 @@ const S_CRON = "cron";
 const S_WEBHOOK = "webhook";
 
 event_id: []const u8,
-zombie_id: []const u8,
+agent_id: []const u8,
 workspace_id: []const u8,
 actor: []const u8,
 event_type: EventType,

@@ -33,10 +33,10 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
     const event_row_id = try id_format.generateRunnerEventId(hx.alloc);
     defer hx.alloc.free(event_row_id);
     const now_ms = clock.nowMillis();
-    // Fresh event → reset the per-zombie metering cursor (the slot may carry a
+    // Fresh event → reset the per-agent metering cursor (the slot may carry a
     // prior run's preserved cursor); a reclaim leaves it so the re-leased run
     // meters forward. Fail-closed: a reset error fails issue, never over-charges.
-    if (acq.kind == .fresh) affinity.resetCursor(conn, acq.zombie_id, now_ms) catch return error.DbError;
+    if (acq.kind == .fresh) affinity.resetCursor(conn, acq.agent_id, now_ms) catch return error.DbError;
     // The provider name resolved at billing — stored alongside posture/model so
     // the renew credit gate + the report settle can key the rate row by
     // (provider, model) without re-resolving. Fresh leases always carry it.
@@ -48,7 +48,7 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
     _ = conn.exec(
         \\WITH inserted AS (
         \\  INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id,
+        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id,
         \\   actor, event_type, request_json, event_created_at,
         \\   posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
@@ -58,18 +58,18 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         \\        $7, $8, $9, $10, $11, $12, $13,
         \\        0, 0, 0, $17,
         \\        $14, $15, $16, $17, $17)
-        \\  RETURNING id, runner_id, zombie_id, event_id
+        \\  RETURNING id, runner_id, agent_id, event_id
         \\)
         \\INSERT INTO fleet.runner_events
         \\  (id, runner_id, event_type, occurred_at, metadata, dedup_key, created_at)
         \\SELECT $18::uuid, runner_id, $19::text, $17::bigint,
-        \\       jsonb_build_object($20::text, id::text, $21::text, zombie_id::text, $22::text, event_id, $23::text, $24::text),
+        \\       jsonb_build_object($20::text, id::text, $21::text, agent_id::text, $22::text, event_id, $23::text, $24::text),
         \\       NULL, $17::bigint
         \\FROM inserted
     , .{
         lease_id,
         runner_id,
-        acq.zombie_id,
+        acq.agent_id,
         acq.workspace_id,
         billed.tenant_id,
         acq.event_id,
@@ -87,8 +87,8 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         event_row_id,
         @tagName(protocol.RunnerEventType.lease_acquired),
         runner_events.META_LEASE_ID,
-        runner_events.META_ZOMBIE_ID,
-        runner_events.META_ZOMBIE_EVENT_ID,
+        runner_events.META_AGENTSFLEET_ID,
+        runner_events.META_AGENTSFLEET_EVENT_ID,
         runner_events.META_KIND,
         @tagName(acq.kind),
     }) catch return error.DbError;

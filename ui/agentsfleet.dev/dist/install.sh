@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# usezombie installer — bootstraps the zombiectl CLI + platform-ops skill.
+# agentsfleet installer — bootstraps the agentsfleet CLI + platform-ops skill.
 #
 # Usage:
-#   curl -fsSL https://usezombie.sh | bash
-#   curl -fsSL https://usezombie.sh | bash -s v0.37.0       # version-pinned
-#   curl -fsSL https://usezombie.sh | bash -s -- --force    # reinstall, no prompt
+#   curl -fsSL https://agentsfleet.dev | bash
+#   curl -fsSL https://agentsfleet.dev | bash -s v0.37.0       # version-pinned
+#   curl -fsSL https://agentsfleet.dev | bash -s -- --force    # reinstall, no prompt
 #
 # Environment variables:
-#   USEZOMBIE_INSTALL  - install prefix (default: ~/.usezombie); CLI lands in <prefix>/bin
-#   USEZOMBIE_HOST     - force the agent host (claude|amp|codex|opencode); skips detection
+#   AGENTSFLEET_INSTALL  - install prefix (default: ~/.agentsfleet); CLI lands in <prefix>/bin
+#   AGENTSFLEET_HOST     - force the agent host (claude|amp|codex|opencode); skips detection
 #
-# zombiectl is a Node CLI distributed on npm, so Node.js (node + npm) is required.
+# agentsfleet is a Node CLI distributed on npm, so Node.js (node + npm) is required.
 #
 # Partial-download safety: helpers + constants below are side-effect-free until the
 # final `main "$@"` line runs. If the curl stream truncates, that line never arrives
@@ -18,9 +18,9 @@
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
-readonly PKG="@usezombie/zombiectl"
-readonly SKILL_REF="usezombie/skills"
-readonly NEXT_CMD="/usezombie-install-platform-ops"
+readonly PKG="@agentsfleet/cli"
+readonly SKILL_REF="agentsfleet/skills"
+readonly NEXT_CMD="/agentsfleet-install-platform-ops"
 readonly NODE_MIN="18"
 readonly NODE_URL="https://nodejs.org"
 readonly HOST_CANDIDATES=(claude amp codex opencode)
@@ -71,14 +71,14 @@ parse_args() {
   if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     die "$EX_NPM" "invalid version: ${VERSION}
   Expected a semantic version, e.g. 0.37.0. Usage:
-    curl -fsSL https://usezombie.sh | bash -s v0.37.0"
+    curl -fsSL https://agentsfleet.dev | bash -s v0.37.0"
   fi
 }
 
 # ─── Host detection ──────────────────────────────────────────────────────────
 
 detect_host() {
-  HOST="${USEZOMBIE_HOST:-}"
+  HOST="${AGENTSFLEET_HOST:-}"
   [[ -n "$HOST" ]] && return 0
   local found=() candidate
   for candidate in "${HOST_CANDIDATES[@]}"; do
@@ -87,7 +87,7 @@ detect_host() {
   if (( ${#found[@]} > 1 )); then
     die "$EX_HOST" "multiple agent hosts found on PATH: ${found[*]}.
   The skill install destination differs per host, so pick one:
-    USEZOMBIE_HOST=${found[0]} curl -fsSL https://usezombie.sh | bash"
+    AGENTSFLEET_HOST=${found[0]} curl -fsSL https://agentsfleet.dev | bash"
   fi
   HOST="${found[0]:-generic}"
 }
@@ -97,23 +97,23 @@ detect_host() {
 require_node() {
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
     die "$EX_NODE" "Node.js (node + npm) is required but was not found.
-  zombiectl is a Node CLI — install Node.js >=${NODE_MIN} from ${NODE_URL}, then re-run:
-    curl -fsSL https://usezombie.sh | bash"
+  agentsfleet is a Node CLI — install Node.js >=${NODE_MIN} from ${NODE_URL}, then re-run:
+    curl -fsSL https://agentsfleet.dev | bash"
   fi
 }
 
 ensure_prefix() {
-  PREFIX="${USEZOMBIE_INSTALL:-$HOME/.usezombie}"
+  PREFIX="${AGENTSFLEET_INSTALL:-$HOME/.agentsfleet}"
   # The prefix is written verbatim into the shell rc (export PATH="$PREFIX/bin:$PATH").
   # Reject characters that would break out of that quoting or expand at rc-load time.
   if printf "%s" "$PREFIX" | grep -q '["`$]' || [[ "$PREFIX" == *$'\n'* ]]; then
-    die "$EX_PREFIX" "USEZOMBIE_INSTALL must not contain quotes, backticks, \$, or newlines."
+    die "$EX_PREFIX" "AGENTSFLEET_INSTALL must not contain quotes, backticks, \$, or newlines."
   fi
   BIN_DIR="$PREFIX/bin"
   if ! mkdir -p "$BIN_DIR" 2>/dev/null || [[ ! -w "$BIN_DIR" ]]; then
     die "$EX_PREFIX" "install prefix is not writable: ${PREFIX}
-  Set USEZOMBIE_INSTALL to a writable directory and re-run:
-    USEZOMBIE_INSTALL=\$HOME/.usezombie curl -fsSL https://usezombie.sh | bash"
+  Set AGENTSFLEET_INSTALL to a writable directory and re-run:
+    AGENTSFLEET_INSTALL=\$HOME/.agentsfleet curl -fsSL https://agentsfleet.dev | bash"
   fi
 }
 
@@ -121,10 +121,10 @@ ensure_prefix() {
 
 maybe_prompt_upgrade() {
   local existing=""
-  if [[ -x "$BIN_DIR/zombiectl" ]]; then
-    existing="$BIN_DIR/zombiectl"
-  elif command -v zombiectl >/dev/null 2>&1; then
-    existing="$(command -v zombiectl)"
+  if [[ -x "$BIN_DIR/agentsfleet" ]]; then
+    existing="$BIN_DIR/agentsfleet"
+  elif command -v agentsfleet >/dev/null 2>&1; then
+    existing="$(command -v agentsfleet)"
   fi
   [[ -z "$existing" ]] && return 0
   info "Existing install detected at $(tildify "$existing") — upgrading."
@@ -184,7 +184,7 @@ shell_config_path() {
   case "$(basename "${SHELL:-}")" in
     zsh)  echo "${ZDOTDIR:-$HOME}/.zshrc" ;;
     bash) [[ "$(uname -s)" == "Darwin" ]] && echo "$HOME/.bash_profile" || echo "$HOME/.bashrc" ;;
-    fish) echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/usezombie.fish" ;;
+    fish) echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/agentsfleet.fish" ;;
     *)    echo "" ;;
   esac
 }
@@ -200,7 +200,7 @@ setup_path() {
   fi
   if [[ -n "$config" ]] && { [[ -w "$config" ]] || [[ -w "$(dirname "$config")" ]]; }; then
     mkdir -p "$(dirname "$config")"
-    grep -qF "$BIN_DIR" "$config" 2>/dev/null || printf '\n# usezombie\n%s\n' "$line" >>"$config"
+    grep -qF "$BIN_DIR" "$config" 2>/dev/null || printf '\n# agentsfleet\n%s\n' "$line" >>"$config"
     info "Added ${BIN_DIR} to PATH in $(tildify "$config") — restart your shell or run: source $(tildify "$config")"
   else
     info "Add this to your shell config:"
@@ -213,11 +213,11 @@ setup_path() {
 print_next() {
   echo ""
   if [[ "$HOST" == "generic" ]]; then
-    success "zombiectl installed."
+    success "agentsfleet installed."
     info "Add the platform-ops skill to your agent host, then run:"
     bold "    ${Cyan}${NEXT_CMD}${Off}"
   else
-    success "zombiectl + platform-ops skill installed for ${HOST}."
+    success "agentsfleet + platform-ops skill installed for ${HOST}."
     bold "  Run ${Cyan}${NEXT_CMD}${Off}${Bold} in ${HOST} to get started.${Off}"
   fi
   echo ""
@@ -229,7 +229,7 @@ main() {
   set -euo pipefail
   setup_colors
   parse_args "$@"
-  [[ "${EUID:-$(id -u)}" -eq 0 ]] && warn "running as root is not required for a ~/.usezombie install."
+  [[ "${EUID:-$(id -u)}" -eq 0 ]] && warn "running as root is not required for a ~/.agentsfleet install."
   require_node
   detect_host
   ensure_prefix

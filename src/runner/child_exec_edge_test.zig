@@ -54,7 +54,7 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
     const contract = @import("contract");
     const cfg = Config{
         .control_plane_url = "http://127.0.0.1:8080",
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .host_id = "host-edge",
         .sandbox_tier = @tagName(contract.protocol.SandboxTier.dev_none),
         .workspace_base = "/tmp/agentsfleet-runner",
@@ -64,7 +64,7 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
         .registry_allowlist = &.{},
         .alloc = alloc,
     };
-    const ws = "/tmp/zombie-ws-childexec";
+    const ws = "/tmp/agent-ws-childexec";
     const argv = try sandbox_args.buildArgv(globalIo(), alloc, cfg, ws, null);
     defer sandbox_args.freeArgv(alloc, argv);
 

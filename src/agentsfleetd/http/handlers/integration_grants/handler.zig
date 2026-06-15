@@ -1,5 +1,5 @@
-//! Integration Grant request handler (zombie auth).
-//! POST /v1/zombies/{id}/integration-requests → handleRequestGrant
+//! Integration Grant request handler (agent auth).
+//! POST /v1/agents/{id}/integration-requests → handleRequestGrant
 //! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
@@ -12,7 +12,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const grant_notifier = @import("../../../zombie/notifications/grant_notifier.zig");
+const grant_notifier = @import("../../../agent/notifications/grant_notifier.zig");
 const api_key = @import("../../../auth/api_key.zig");
 
 const log = logging.scoped(.integration_grants);
@@ -27,11 +27,13 @@ const S_SESSION = "Session ";
 const S_REVOKED = "revoked";
 
 pub const GrantStatus = enum {
+    const Self = @This();
+
     pending,
     approved,
     revoked,
 
-    pub fn toSlice(self: GrantStatus) []const u8 {
+    pub fn toSlice(self: Self) []const u8 {
         return switch (self) {
             .pending => S_PENDING,
             .approved => "approved",
@@ -42,38 +44,38 @@ pub const GrantStatus = enum {
 
 const STATUS_PENDING = GrantStatus.pending.toSlice();
 
-// ── Zombie auth helpers (Path A + Path B) ─────────────────────────────────
-// Mirrors execute.zig auth — caller must prove zombie identity.
+// ── Agent auth helpers (Path A + Path B) ─────────────────────────────────
+// Mirrors execute.zig auth — caller must prove agent identity.
 
 const Caller = struct {
-    zombie_id: []const u8,
+    agent_id: []const u8,
     workspace_id: []const u8,
 };
 
-fn zombieFromSession(alloc: std.mem.Allocator, conn: *pg.Conn, token: []const u8) ?Caller {
+fn agentFromSession(alloc: std.mem.Allocator, conn: *pg.Conn, token: []const u8) ?Caller {
     var q = PgQuery.from(conn.query(
-        \\SELECT s.zombie_id::text, z.workspace_id::text
-        \\FROM core.zombie_sessions s
-        \\JOIN core.zombies z ON z.id = s.zombie_id
+        \\SELECT s.agent_id::text, z.workspace_id::text
+        \\FROM core.agent_sessions s
+        \\JOIN core.agents z ON z.id = s.agent_id
         \\WHERE s.id = $1::uuid
         \\LIMIT 1
     , .{token}) catch return null);
     defer q.deinit();
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;
-    const zombie_id = row.get([]u8, 0) catch return null;
+    const agent_id = row.get([]u8, 0) catch return null;
     const workspace_id = row.get([]u8, 1) catch return null;
     return .{
-        .zombie_id = alloc.dupe(u8, zombie_id) catch return null,
+        .agent_id = alloc.dupe(u8, agent_id) catch return null,
         .workspace_id = alloc.dupe(u8, workspace_id) catch return null,
     };
 }
 
-fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8) ?Caller {
+fn agentFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8) ?Caller {
     const hex = api_key.sha256Hex(raw_key);
     const computed_hash: []const u8 = hex[0..];
     var q = PgQuery.from(conn.query(
-        \\SELECT ea.key_hash, ea.zombie_id::text, ea.workspace_id::text
+        \\SELECT ea.key_hash, ea.agent_id::text, ea.workspace_id::text
         \\FROM core.agent_keys ea
         \\WHERE ea.key_hash = $1
         \\LIMIT 1
@@ -82,7 +84,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;
     const stored_hash = row.get([]u8, 0) catch return null;
-    const zombie_id = row.get([]u8, 1) catch return null;
+    const agent_id = row.get([]u8, 1) catch return null;
     const workspace_id = row.get([]u8, 2) catch return null;
     if (!api_key.constantTimeEql(computed_hash, stored_hash)) return null;
 
@@ -92,20 +94,20 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 
     return .{
-        .zombie_id = alloc.dupe(u8, zombie_id) catch return null,
+        .agent_id = alloc.dupe(u8, agent_id) catch return null,
         .workspace_id = alloc.dupe(u8, workspace_id) catch return null,
     };
 }
 
-fn authenticateZombie(alloc: std.mem.Allocator, conn: *pg.Conn, req: *httpz.Request) ?Caller {
+fn authenticateAgent(alloc: std.mem.Allocator, conn: *pg.Conn, req: *httpz.Request) ?Caller {
     const auth_header = req.header("authorization") orelse return null;
     if (std.mem.startsWith(u8, auth_header, S_SESSION))
-        return zombieFromSession(alloc, conn, auth_header[S_SESSION.len..]);
+        return agentFromSession(alloc, conn, auth_header[S_SESSION.len..]);
     const bearer_prefix = "Bearer ";
     if (std.mem.startsWith(u8, auth_header, bearer_prefix)) {
         const token = auth_header[bearer_prefix.len..];
-        if (std.mem.startsWith(u8, token, "zmb_"))
-            return zombieFromApiKey(alloc, conn, token);
+        if (std.mem.startsWith(u8, token, api_key.KEY_PREFIX))
+            return agentFromApiKey(alloc, conn, token);
     }
     return null;
 }
@@ -123,8 +125,8 @@ fn isSupportedService(service: []const u8) bool {
 }
 
 // ── handleRequestGrant ─────────────────────────────────────────────────────
-// POST /v1/zombies/{zombie_id}/integration-requests
-// Zombie authenticates; zombie_id in path must match caller identity.
+// POST /v1/agents/{agent_id}/integration-requests
+// Agent authenticates; agent_id in path must match caller identity.
 // Idempotent: returns existing pending grant if one already exists for service.
 
 const RequestGrantBody = struct {
@@ -133,32 +135,32 @@ const RequestGrantBody = struct {
 };
 
 const ExistingGrant = struct {
-    zombie_name: []const u8,
+    agent_name: []const u8,
     grant_id: []const u8,
     status: []const u8,
     requested_at: i64,
 };
 
-pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
+pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8, agent_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer hx.ctx.pool.release(conn);
 
-    const caller = authenticateZombie(hx.alloc, conn, req) orelse {
-        hx.fail(ec.ERR_APIKEY_INVALID, "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx");
+    const caller = authenticateAgent(hx.alloc, conn, req) orelse {
+        hx.fail(ec.ERR_APIKEY_INVALID, "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer agt_axxx");
         return;
     };
 
-    if (!std.mem.eql(u8, caller.zombie_id, zombie_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Zombie identity mismatch: authenticated zombie_id does not match path");
+    if (!std.mem.eql(u8, caller.agent_id, agent_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Agent identity mismatch: authenticated agent_id does not match path");
         return;
     }
 
-    // Defence in depth — verify zombie's workspace matches the path workspace_id.
+    // Defence in depth — verify agent's workspace matches the path workspace_id.
     if (!std.mem.eql(u8, caller.workspace_id, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace identity mismatch: zombie does not belong to path workspace_id");
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace identity mismatch: agent does not belong to path workspace_id");
         return;
     }
 
@@ -186,7 +188,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     //   pending | approved → return existing (no new request needed)
     //   revoked           → UPDATE back to pending with new reason (re-request allowed)
     //   no row             → INSERT new grant
-    const existing = fetchExistingGrant(hx, conn, zombie_id, body.service) orelse {
+    const existing = fetchExistingGrant(hx, conn, agent_id, body.service) orelse {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -199,10 +201,10 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED);
         if (!is_terminal) {
             // pending or approved — idempotent return.
-            log.info("already_exists", .{ .zombie_id = zombie_id, .service = body.service, .status = existing_st });
+            log.info("already_exists", .{ .agent_id = agent_id, .service = body.service, .status = existing_st });
             hx.ok(.ok, .{
                 .grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id,
-                .zombie_id = zombie_id,
+                .agent_id = agent_id,
                 .service = body.service,
                 .status = hx.alloc.dupe(u8, existing_st) catch existing_st,
                 .requested_at = existing_at,
@@ -222,7 +224,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
-        log.info("re_requested", .{ .zombie_id = zombie_id, .service = body.service, .grant_id = existing_id });
+        log.info("re_requested", .{ .agent_id = agent_id, .service = body.service, .grant_id = existing_id });
 
         // Notify for the re-request using the existing grant_id.
         const existing_grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id;
@@ -230,16 +232,16 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             hx.ctx.pool,
             hx.ctx.queue,
             hx.alloc,
-            zombie_id,
+            agent_id,
             caller.workspace_id,
             existing_grant_id,
-            existing.zombie_name,
+            existing.agent_name,
             body.service,
             body.reason,
         );
         hx.ok(.created, .{
             .grant_id = existing_grant_id,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .service = body.service,
             .status = STATUS_PENDING,
             .requested_at = now_ms_reopen,
@@ -248,7 +250,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     }
 
-    const grant_id = id_format.generateZombieId(hx.alloc) catch {
+    const grant_id = id_format.generateAgentId(hx.alloc) catch {
         common.internalOperationError(hx.res, "ID generation failed", hx.req_id);
         return;
     };
@@ -256,30 +258,30 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
 
     _ = conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\  (uid, grant_id, agent_id, service, status, requested_at, requested_reason)
         \\VALUES ($1::uuid, $1, $2::uuid, $3, $4, $5, $6)
-    , .{ grant_id, zombie_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
+    , .{ grant_id, agent_id, body.service, STATUS_PENDING, now_ms, body.reason }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    log.info("requested", .{ .zombie_id = zombie_id, .service = body.service, .grant_id = grant_id });
+    log.info("requested", .{ .agent_id = agent_id, .service = body.service, .grant_id = grant_id });
 
     grant_notifier.notifyGrantRequest(
         hx.ctx.pool,
         hx.ctx.queue,
         hx.alloc,
-        zombie_id,
+        agent_id,
         caller.workspace_id,
         grant_id,
-        existing.zombie_name,
+        existing.agent_name,
         body.service,
         body.reason,
     );
 
     hx.ok(.created, .{
         .grant_id = grant_id,
-        .zombie_id = zombie_id,
+        .agent_id = agent_id,
         .service = body.service,
         .status = S_PENDING,
         .requested_at = now_ms,
@@ -287,27 +289,27 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     });
 }
 
-fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, zombie_id: []const u8, service: []const u8) ?ExistingGrant {
+fn fetchExistingGrant(hx: hx_mod.Hx, conn: *pg.Conn, agent_id: []const u8, service: []const u8) ?ExistingGrant {
     var existing_q = PgQuery.from(conn.query(
         \\SELECT z.name, COALESCE(g.grant_id, ''), COALESCE(g.status, ''), COALESCE(g.requested_at, 0)
-        \\FROM core.zombies z
+        \\FROM core.agents z
         \\LEFT JOIN core.integration_grants g
-        \\  ON g.zombie_id = z.id
+        \\  ON g.agent_id = z.id
         \\ AND g.service = $2
         \\WHERE z.id = $1::uuid
         \\LIMIT 1
-    , .{ zombie_id, service }) catch return null);
+    , .{ agent_id, service }) catch return null);
     defer existing_q.deinit();
 
     const existing_row = (existing_q.next() catch return null) orelse return .{
-        .zombie_name = zombie_id,
+        .agent_name = agent_id,
         .grant_id = "",
         .status = "",
         .requested_at = 0,
     };
 
     return .{
-        .zombie_name = hx.alloc.dupe(u8, existing_row.get([]u8, 0) catch zombie_id) catch zombie_id,
+        .agent_name = hx.alloc.dupe(u8, existing_row.get([]u8, 0) catch agent_id) catch agent_id,
         .grant_id = hx.alloc.dupe(u8, existing_row.get([]u8, 1) catch "") catch "",
         .status = hx.alloc.dupe(u8, existing_row.get([]u8, 2) catch "") catch "",
         .requested_at = existing_row.get(i64, 3) catch 0,

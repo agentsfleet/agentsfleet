@@ -2,7 +2,7 @@
 //!
 //! Modeled on httpz's `Middleware(H)` — generic over the request-scoped
 //! context so `src/auth/` stays free of handler/HTTP-layer imports and
-//! remains extractable into a standalone `zombie-auth` repository.
+//! remains extractable into a standalone `agent-auth` repository.
 //!
 //! A chain runs middlewares in order. The first one to write a response
 //! returns `.short_circuit`; subsequent middlewares and the handler are

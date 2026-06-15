@@ -16,7 +16,7 @@
 
 ### Steps
 
-1. Open Vercel dashboard → `usezombie-app` project → Settings → Deployment Protection
+1. Open Vercel dashboard → `agentsfleet-app` project → Settings → Deployment Protection
 2. Regenerate the bypass secret (Vercel creates a new random value)
 3. Copy the new value
 4. Update 1Password:
@@ -46,7 +46,7 @@ Field: credential → paste new value
 ./playbooks/founding/01_bootstrap/02_vercel_env.sh           # apply
 ```
 
-3. Trigger one redeploy per affected project (`usezombie-website`, `usezombie-agents-sh`, `usezombie-app`) without build cache so the new bundles inline the rotated key.
+3. Trigger one redeploy per affected project (`agentsfleet-website`, `agentsfleet-agents-sh`, `agentsfleet-app`) without build cache so the new bundles inline the rotated key.
 4. Verify post-deploy: `ENV=prod ./playbooks/founding/02_preflight/02_credentials.sh` reports `✓ vercel:<project>/<key>` for all PostHog rows.
 
 ---
@@ -138,8 +138,8 @@ gh run view <run-id> --json conclusion
 3. Verify API is healthy with the new credentials:
 
 ```bash
-curl -sf https://api-dev.usezombie.com/healthz
-curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+curl -sf https://api-dev.agentsfleet.net/healthz
+curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
 ```
 
 4. Verify Vercel bypass works with the new (rotated) secret from vault:
@@ -148,7 +148,7 @@ curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
 NEW_SECRET="$(op read 'op://ZMB_CD_PROD/vercel-bypass-app/credential')"
 curl -sf -o /dev/null -w '%{http_code}' \
   -H "x-vercel-protection-bypass: $NEW_SECRET" \
-  "https://usezombie-app.vercel.app/sign-in"
+  "https://agentsfleet-app.vercel.app/sign-in"
 # Expected: 200
 ```
 
@@ -158,7 +158,7 @@ curl -sf -o /dev/null -w '%{http_code}' \
 OLD_BYPASS="$(cat /tmp/old-bypass-secret.txt)"
 curl -sf -o /dev/null -w '%{http_code}' \
   -H "x-vercel-protection-bypass: $OLD_BYPASS" \
-  "https://usezombie-app.vercel.app/sign-in"
+  "https://agentsfleet-app.vercel.app/sign-in"
 # Expected: 401 or 403
 rm /tmp/old-bypass-secret.txt
 ```

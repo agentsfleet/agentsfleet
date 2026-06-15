@@ -3,7 +3,7 @@
 //! install-after-subscribe-ack path and the `nextMessage → null` swallow
 //! on read timeout are covered end-to-end. Unit-shape coverage of the
 //! subscribe-ack parser lives inside `redis_subscriber.zig`; the broker
-//! consumers in `src/zombie/event_loop_harness_*_test.zig` exercise the
+//! consumers in `src/agent/event_loop_harness_*_test.zig` exercise the
 //! blocking-mode `.{ .read_timeout_ms = N }` path under a real workload.
 //!
 //! Skip-by-default unless `TEST_REDIS_TLS_URL=rediss://...` is exported.

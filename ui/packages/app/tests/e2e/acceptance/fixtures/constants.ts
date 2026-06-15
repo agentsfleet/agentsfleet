@@ -8,12 +8,12 @@
  * code paths (RULE UFS).
  *
  * Canonical agentsfleetd state values live at
- * `ui/packages/app/lib/api/zombies.ts:ZOMBIE_STATUS`. The harness mirrors
+ * `ui/packages/app/lib/api/agents.ts:AGENTSFLEET_STATUS`. The harness mirrors
  * them (lowercased keys so teardown / specs read naturally; values match
  * exactly).
  */
 
-export const ZOMBIE_STATUS = {
+export const AGENTSFLEET_STATUS = {
   active: "active",
   paused: "paused",
   stopped: "stopped",
@@ -21,7 +21,7 @@ export const ZOMBIE_STATUS = {
   errored: "errored",
 } as const;
 
-export type ZombieStatus = (typeof ZOMBIE_STATUS)[keyof typeof ZOMBIE_STATUS];
+export type AgentStatus = (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_STATUS];
 
 export const FIXTURE_KEY = {
   regular: "regular",

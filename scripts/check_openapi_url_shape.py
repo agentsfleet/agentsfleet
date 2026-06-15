@@ -2,7 +2,7 @@
 """REST §1 — every URL path's final segment must be plural-noun shaped.
 
 The rule (from docs/REST_API_DESIGN_GUIDELINES.md §1):
-  - Plural noun for collections:        /products, /zombies/{id}/events
+  - Plural noun for collections:        /products, /agents/{id}/events
   - Path parameter at the leaf:         /products/{id}
   - Colon-noun operation (use sparingly): /approvals/{id}:approve
 
@@ -37,18 +37,18 @@ TOP_LEVEL_ALLOW: set[str] = {
 # it could be a verb". Every entry needs a one-line justification.
 NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     # Resource collections (plural nouns, end-of-path):
-    "events",            # zombie_events resource
-    "messages",          # chat messages collection (per-zombie ingress)
-    "memories",          # memory entries collection (per-zombie scratchpad)
+    "events",            # agent_events resource
+    "messages",          # chat messages collection (per-agent ingress)
+    "memories",          # memory entries collection (per-agent scratchpad)
     "credentials",       # core.credentials
-    "zombies",           # core.zombies
+    "agents",           # core.agents
     "workspaces",        # core.workspaces
     "api-keys",          # api keys collection
     "agent-keys",        # agent keys collection
     "platform-keys",     # admin platform keys
     "sessions",          # auth sessions
     "tenants",           # tenant resource
-    "telemetry",         # zombie_execution_telemetry rows
+    "telemetry",         # agent_execution_telemetry rows
     "billing",           # billing summary view
     "charges",           # credit-pool charge rows (receive + stage per event)
     "diagnostics",       # tenant doctor block (provider posture, resolver state)

@@ -19,7 +19,7 @@ const EXPECTED_COLUMN_COUNT: i64 = 11;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
 
-// `uid id runner_id zombie_id workspace_id tenant_id event_id actor event_type
+// `uid id runner_id agent_id workspace_id tenant_id event_id actor event_type
 //  request_json event_created_at posture provider model metered_input_tokens
 //  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
@@ -123,8 +123,8 @@ test "core key schemas: public text ids have explicit UUIDv7 constraints" {
         \\  AND rel.relname IN ('agent_keys', 'integration_grants')
         \\  AND c.conname IN (
         \\    'ck_agent_keys_uid_uuidv7',
-        \\    'ck_agent_keys_agent_id_uuidv7',
-        \\    'ck_agent_keys_uid_matches_agent_id',
+        \\    'ck_agent_keys_agent_key_id_uuidv7',
+        \\    'ck_agent_keys_uid_matches_agent_key_id',
         \\    'ck_integration_grants_uid_uuidv7',
         \\    'ck_integration_grants_grant_id_uuidv7',
         \\    'ck_integration_grants_uid_matches_grant_id'

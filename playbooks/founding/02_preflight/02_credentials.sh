@@ -118,9 +118,9 @@ check_prod() {
   check_ref "op://$v/planetscale-prod/migrator-connection-string"
   check_ref "op://$v/upstash-prod/api-url"
   check_ref "op://$v/tailscale/authkey"
-  check_ref "op://$v/zombie-prod-worker-ant/ssh-private-key"
-  check_ref "op://$v/zombie-prod-worker-ant/runner-token"
-  check_ref "op://$v/zombie-prod-worker-bird/ssh-private-key"
+  check_ref "op://$v/agent-prod-worker-ant/ssh-private-key"
+  check_ref "op://$v/agent-prod-worker-ant/runner-token"
+  check_ref "op://$v/agent-prod-worker-bird/ssh-private-key"
   check_ref "op://$v/discord-ci-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-prod/credential"
@@ -195,12 +195,12 @@ check_vercel_envs() {
   echo "-- checking Vercel project envs"
   local api="${VERCEL_API:-https://api.vercel.com}"
   local -a expectations=(
-    "usezombie-website|VITE_POSTHOG_KEY"
-    "usezombie-website|VITE_POSTHOG_HOST"
-    "usezombie-agents-sh|VITE_POSTHOG_KEY"
-    "usezombie-agents-sh|VITE_POSTHOG_HOST"
-    "usezombie-app|NEXT_PUBLIC_POSTHOG_KEY"
-    "usezombie-app|NEXT_PUBLIC_POSTHOG_HOST"
+    "agentsfleet-website|VITE_POSTHOG_KEY"
+    "agentsfleet-website|VITE_POSTHOG_HOST"
+    "agentsfleet-agents-sh|VITE_POSTHOG_KEY"
+    "agentsfleet-agents-sh|VITE_POSTHOG_HOST"
+    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_KEY"
+    "agentsfleet-app|NEXT_PUBLIC_POSTHOG_HOST"
   )
   declare -A ENV_CACHE
   local entry project key envs targets

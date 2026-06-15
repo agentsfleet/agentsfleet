@@ -16,7 +16,7 @@ const log = logging.scoped(.memory_http_helpers);
 
 pub const Hx = hx_mod.Hx;
 
-const S_ZOMBIE_NOT_FOUND = "zombie not found";
+const S_AGENTSFLEET_NOT_FOUND = "agent not found";
 const S_COLLECT_TRUNCATED = "collect_truncated";
 
 pub const MAX_KEY_LEN: usize = 255;
@@ -37,19 +37,19 @@ pub const MemoryEntry = struct {
     updated_at: i64,
 };
 
-/// Verify the principal can access the path workspace and the zombie
-/// belongs to that workspace, then return the validated zombie_id used to
-/// scope the memory query (memory_entries.zombie_id, a $N::uuid parameter).
+/// Verify the principal can access the path workspace and the agent
+/// belongs to that workspace, then return the validated agent_id used to
+/// scope the memory query (memory_entries.agent_id, a $N::uuid parameter).
 ///
 /// Runs under api_runtime (core.* access) before any SET ROLE.
-pub fn resolveZombieInWorkspace(
+pub fn resolveAgentInWorkspace(
     hx: Hx,
     conn: *pg.Conn,
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
 ) ?[]const u8 {
-    if (!id_format.isUuidV7(zombie_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
+    if (!id_format.isUuidV7(agent_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "agent_id must be a valid UUIDv7");
         return null;
     }
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
@@ -57,8 +57,8 @@ pub fn resolveZombieInWorkspace(
         return null;
     }
     var q = PgQuery.from(conn.query(
-        "SELECT workspace_id::text FROM core.zombies WHERE id = $1::uuid",
-        .{zombie_id},
+        "SELECT workspace_id::text FROM core.agents WHERE id = $1::uuid",
+        .{agent_id},
     ) catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
@@ -69,23 +69,23 @@ pub fn resolveZombieInWorkspace(
         common.internalDbError(hx.res, hx.req_id);
         return null;
     }) orelse {
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return null;
     };
 
-    const zombie_ws = row.get([]const u8, 0) catch {
+    const agent_ws = row.get([]const u8, 0) catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
     };
-    if (!std.mem.eql(u8, workspace_id, zombie_ws)) {
+    if (!std.mem.eql(u8, workspace_id, agent_ws)) {
         // 404 not 403 — don't leak existence across workspaces.
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return null;
     }
 
-    // The memory scope is the raw zombie_id (UUID) — the memory_entries.zombie_id
+    // The memory scope is the raw agent_id (UUID) — the memory_entries.agent_id
     // column — used as a $N::uuid query parameter by the caller.
-    return zombie_id;
+    return agent_id;
 }
 
 /// SET ROLE memory_runtime. Returns false and caller must abort on failure.

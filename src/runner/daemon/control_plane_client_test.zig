@@ -102,7 +102,7 @@ test "a hung control plane surfaces a transport error within the armed deadline"
     // the socket down and bound the read (SO_RCVTIMEO was rejected — the
     // threaded Io recv path panics on its EAGAIN; see call_deadline.zig).
     const t0 = common.clock.nowMillis();
-    try testing.expectError(error.RequestFailed, c.heartbeat(alloc, "zrn_test", DEADLINE_PROBE_MS));
+    try testing.expectError(error.RequestFailed, c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS));
     const elapsed = common.clock.nowMillis() - t0;
     try testing.expect(elapsed < DEADLINE_PROBE_BOUND_MS);
 }
@@ -157,9 +157,9 @@ test "two verbs ride one pooled connection (keep-alive reuse)" {
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
     var c = client.init(alloc, io, url);
 
-    const first = try c.heartbeat(alloc, "zrn_test", DEADLINE_PROBE_MS);
+    const first = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
     try testing.expectEqual(.ok, first.status);
-    const second = try c.heartbeat(alloc, "zrn_test", DEADLINE_PROBE_MS);
+    const second = try c.heartbeat(alloc, "agt_rtest", DEADLINE_PROBE_MS);
     try testing.expectEqual(.ok, second.status);
 
     // Closing the client closes the pooled connection; the responder sees
@@ -267,7 +267,7 @@ test "renew puts the cumulative splits on the wire as the POST body (production 
     var c = client.init(alloc, io, url);
     defer c.deinit();
 
-    const out = try c.renew(alloc, "zrn_test", "lease-1", .{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 }, DEADLINE_PROBE_MS);
+    const out = try c.renew(alloc, "agt_rtest", "lease-1", .{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 }, DEADLINE_PROBE_MS);
     responder.join();
 
     try testing.expectEqual(client.RenewResult{ .renewed = 1_900_000_000_123 }, out);

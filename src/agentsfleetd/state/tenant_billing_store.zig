@@ -5,12 +5,14 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const BillingRow = struct {
+    const Self = @This();
+
     balance_nanos: i64,
     grant_source: []u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
 
-    pub fn deinit(self: *BillingRow, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.grant_source);
     }
 };

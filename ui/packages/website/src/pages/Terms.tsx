@@ -17,13 +17,13 @@ export default function Terms() {
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">1. Acceptance</h2>
       <p className="text-text-muted m-0">
-        By accessing or using usezombie (&quot;the Service&quot;), you agree to these Terms of Service.
+        By accessing or using agentsfleet (&quot;the Service&quot;), you agree to these Terms of Service.
         If you do not agree, do not use the Service.
       </p>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">2. Service description</h2>
       <p className="text-text-muted m-0">
-        usezombie is an agent delivery control plane that processes specification queues into
+        agentsfleet is an agent delivery control plane that processes specification queues into
         validated pull requests. The Service operates on your Git repositories using branch-based
         state and self-managed (self-managed provider keys) model access.
       </p>
@@ -38,7 +38,7 @@ export default function Terms() {
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem>usezombie is free to try through July 31, 2026 (UTC); see the Pricing section on the home page for current rates and trial details. Each new account receives a starter credit; the specific value is displayed on the Pricing page. Stealth-mode testing rate — will rise post-GA.</ListItem>
+        <ListItem>agentsfleet is free to try through July 31, 2026 (UTC); see the Pricing section on the home page for current rates and trial details. Each new account receives a starter credit; the specific value is displayed on the Pricing page. Stealth-mode testing rate — will rise post-GA.</ListItem>
         <ListItem>Hosted execution is metered per second of active agent runtime against a credit pool. Run-time fees accrue only while an agent is actively working and are settled incrementally as it runs; idle time and event receipts are not billed.</ListItem>
         <ListItem>Model-token costs on the platform default are passed through at your provider&apos;s rates with zero markup; on your own provider key they are billed to you directly by your provider.</ListItem>
         <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via the Dashboard.</ListItem>
@@ -47,12 +47,12 @@ export default function Terms() {
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">5. Intellectual property</h2>
       <p className="text-text-muted m-0">
         You retain all rights to your source code, specifications, and generated artifacts.
-        usezombie claims no ownership over outputs produced by the pipeline.
+        agentsfleet claims no ownership over outputs produced by the pipeline.
       </p>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">6. Limitation of liability</h2>
       <p className="text-text-muted m-0">
-        usezombie is provided &quot;as is&quot; without warranty. We are not liable for damages arising
+        agentsfleet is provided &quot;as is&quot; without warranty. We are not liable for damages arising
         from agent-generated code, pipeline failures, or third-party service outages. Enterprise
         tier customers may negotiate contractual SLAs.
       </p>

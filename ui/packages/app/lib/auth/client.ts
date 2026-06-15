@@ -9,7 +9,7 @@ import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextj
 // infrastructure" for the full picture.
 
 // Hook returning the current user's identity. Keyed on Clerk today;
-// swapping to zombie-auth means replacing only this file + server.ts.
+// swapping to agent-auth means replacing only this file + server.ts.
 export function useCurrentUser(): {
   isLoaded: boolean;
   isSignedIn: boolean;

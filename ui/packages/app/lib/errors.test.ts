@@ -13,9 +13,9 @@ describe("presentError", () => {
     const p = presentError({
       errorCode: "UZ-NEW-CODE",
       message: "trigger source must be set",
-      action: "install the zombie",
+      action: "install the agent",
     });
-    expect(p.title).toBe("Couldn't install the zombie — trigger source must be set.");
+    expect(p.title).toBe("Couldn't install the agent — trigger source must be set.");
     expect(p.code).toBe("UZ-NEW-CODE");
   });
 
@@ -26,8 +26,8 @@ describe("presentError", () => {
   });
 
   it("ignores a useless 'Failed to ...' server message in the fallback", () => {
-    const p = presentError({ message: "Failed to delete zombie", action: "delete this zombie" });
-    expect(p.title).toBe("Couldn't delete this zombie. Try again, or check Events for what blocked it.");
+    const p = presentError({ message: "Failed to delete agent", action: "delete this agent" });
+    expect(p.title).toBe("Couldn't delete this agent. Try again, or check Events for what blocked it.");
   });
 });
 
@@ -38,8 +38,8 @@ describe("presentErrorString", () => {
   });
 
   it("returns just the title when no body is provided", () => {
-    const s = presentErrorString({ action: "kill this zombie" });
-    expect(s).toContain("Couldn't kill this zombie");
+    const s = presentErrorString({ action: "kill this agent" });
+    expect(s).toContain("Couldn't kill this agent");
   });
 
   // Invariant guard: every curated map title must NOT end in terminal

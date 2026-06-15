@@ -32,7 +32,7 @@ export default defineConfig({
     coverage: {
       // Istanbul (source-instrumented counters), not the default v8 provider.
       // v8 maps executed byte-ranges back onto the AST and merges across
-      // workers; for async React components (ZombieThread's steer/retry paths)
+      // workers; for async React components (AgentThread's steer/retry paths)
       // that remap is non-deterministic under parallel load — branch coverage
       // flickered run-to-run at this suite's exact-97% margin (vitest#7660,
       // "v8 does not properly report react coverage, istanbul does"; #9725).

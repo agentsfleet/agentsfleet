@@ -1,10 +1,10 @@
 //! Builder functions for each NullClaw built-in tool.
 //!
 //! Each function takes a BuildCtx and returns a NullClaw Tool.
-//! Called by tool_bridge.zig when a zombie spec explicitly lists tools.
+//! Called by tool_bridge.zig when a agent spec explicitly lists tools.
 //!
 //! Binary boundary: imports only `nullclaw`. Must NOT import from
-//! src/zombie/, src/pipeline/, or src/main.zig.
+//! src/agent/, src/pipeline/, or src/main.zig.
 
 const std = @import("std");
 const nullclaw = @import("nullclaw");
@@ -185,7 +185,7 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
         const ptr = try ctx.alloc.create(PolicyHttpRequestTool);
         // `inner.allowed_domains` mirrors the per-execution allowlist so
         // NullClaw treats these hosts as operator-trusted: skip SSRF, allow
-        // private-IP resolution for hosts the zombie config explicitly
+        // private-IP resolution for hosts the agent config explicitly
         // declared. Our outer allowlist remains authoritative — anything
         // off-list never reaches the inner tool.
         ptr.* = .{

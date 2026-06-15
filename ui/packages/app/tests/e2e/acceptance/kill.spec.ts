@@ -1,11 +1,11 @@
 /**
- * kill.spec.ts — operator kills a running zombie via the dashboard.
+ * kill.spec.ts — operator kills a running agent via the dashboard.
  *
- * Wire: API-seed → /zombies/[id] → KillSwitch "Kill" → ConfirmDialog
- * confirm → return to /zombies and assert the row's `data-state` is
+ * Wire: API-seed → /agents/[id] → KillSwitch "Kill" → ConfirmDialog
+ * confirm → return to /agents and assert the row's `data-state` is
  * `failed` (the dashboard's translation of agentsfleetd's `killed` status,
  * per `liveStateOf` in
- * `app/(dashboard)/zombies/components/ZombiesList.tsx:19`).
+ * `app/(dashboard)/agents/components/AgentsList.tsx:19`).
  *
  * Sister to lifecycle.spec.ts; both exercise the same KillSwitch +
  * ConfirmDialog wiring but with different target statuses. Killing is
@@ -15,9 +15,9 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { expectDetailKilled, expectRowState, killZombie } from "./fixtures/lifecycle";
-import { getDefaultWorkspaceId, seedZombie } from "./fixtures/seed";
-import { cleanWorkspaceZombies } from "./fixtures/teardown";
+import { expectDetailKilled, expectRowState, killAgent } from "./fixtures/lifecycle";
+import { getDefaultWorkspaceId, seedAgent } from "./fixtures/seed";
+import { cleanWorkspaceAgents } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 test.describe("kill", () => {
@@ -27,23 +27,23 @@ test.describe("kill", () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const name = `kill-${tag}`;
-    const seeded = await seedZombie(FIXTURE_KEY.regular, ws, { name });
+    const seeded = await seedAgent(FIXTURE_KEY.regular, ws, { name });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(`/zombies/${seeded.id}`);
-    await expect(page).toHaveURL(new RegExp(`/zombies/${seeded.id}(\\?|$)`));
+    await page.goto(`/agents/${seeded.id}`);
+    await expect(page).toHaveURL(new RegExp(`/agents/${seeded.id}(\\?|$)`));
 
-    await killZombie(page);
+    await killAgent(page);
     await expectDetailKilled(page);
 
     // Dashboard listing: row still appears (list.zig does not filter killed
     // rows) but state dot is `failed`.
-    await page.goto("/zombies");
+    await page.goto("/agents");
     await expectRowState(page, seeded.id, "failed");
   });
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceZombies(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceAgents(FIXTURE_KEY.regular, ws);
   });
 });

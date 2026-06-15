@@ -28,7 +28,7 @@ function uniqueEmail(): string {
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 const isLocal = !process.env.BASE_URL;
-const isProdApi = apiUrl.includes("api.usezombie.com");
+const isProdApi = apiUrl.includes("api.agentsfleet.net");
 const liveWebhookEnabled = process.env[LIVE_WEBHOOK_FLAG] === "1";
 const prodWebhookEnabled = process.env[PROD_WEBHOOK_FLAG] === "1";
 
@@ -58,8 +58,8 @@ test.describe("signup webhook live", () => {
       requireWorkspaceSession: true,
     });
 
-    await page.goto("/zombies");
-    await expect(page).toHaveURL((url) => url.pathname === "/zombies");
+    await page.goto("/agents");
+    await expect(page).toHaveURL((url) => url.pathname === "/agents");
     await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expect(page.getByText(/no agents yet/i)).toBeVisible();

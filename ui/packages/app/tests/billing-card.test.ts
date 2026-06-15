@@ -68,6 +68,6 @@ describe("BillingBalanceCard", () => {
     const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
     render(React.createElement(BillingBalanceCard, { billing: exhausted }));
     const link = screen.getByRole("link", { name: /support/i }) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("mailto:usezombie@agentmail.to");
+    expect(link.getAttribute("href")).toBe("mailto:agentsfleet@agentmail.to");
   });
 });

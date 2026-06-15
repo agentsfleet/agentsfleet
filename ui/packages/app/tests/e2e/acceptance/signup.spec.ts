@@ -38,7 +38,7 @@ function uniqueEmail(): string {
 // one-time password (OTP) delivery and the spec would either hang on the
 // verification screen or send a real OTP to a publicly-readable mailinator
 // inbox. Both are unsafe.
-const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombie.com");
+const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
 test.describe("signup", () => {
   test.skip(isProdApi, "signup spec only runs against development/local — see comment above");
@@ -69,6 +69,6 @@ test.describe("signup", () => {
 
     expect(page.url()).not.toContain("/sign-in");
     expect(page.url()).not.toContain("/sign-up");
-    await expect(page.locator("body")).toContainText(/usezombie|Zombies|Dashboard/i);
+    await expect(page.locator("body")).toContainText(/agentsfleet|Agents|Dashboard/i);
   });
 });

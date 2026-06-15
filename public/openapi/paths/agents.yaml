@@ -1,0 +1,601 @@
+/v1/webhooks/{agent_id}:
+  post:
+    operationId: receive_webhook
+    summary: Deliver an inbound webhook event to an Agent
+    description: 'Delivers an inbound event to the agent identified by `agent_id`. The agent is looked up by primary
+      key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace
+      credential keyed by the agent''s `trigger.source` (e.g. vault row `agent:linear`, field `webhook_secret`). The
+      provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is
+      verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no
+      Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200
+      `{status: "duplicate"}`. A webhook for a paused agent returns 200 `{ignored: "agent_paused"}` without consuming
+      the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the agent''s Redis stream
+      and returns 202.'
+    tags:
+    - Agents
+    parameters:
+    - name: agent_id
+      in: path
+      required: true
+      description: UUIDv7 of the target agent. Obtained from `POST /v1/workspaces/{workspace_id}/agents` or `agentsfleet install --from <path>`.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - event_id
+            - type
+            - data
+            properties:
+              event_id:
+                type: string
+                description: Unique identifier for this event. Used for idempotency deduplication (24-hour window).
+              type:
+                type: string
+                description: Event type label (e.g. `email.received`, `push`, `payment.succeeded`).
+              data:
+                type: object
+                additionalProperties: true
+                description: Event payload — any JSON object. Passed as-is into the agent event loop.
+    responses:
+      '202':
+        description: Event accepted and enqueued for the agent.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - event_id
+              properties:
+                status:
+                  type: string
+                  const: accepted
+                event_id:
+                  type: string
+      '200':
+        description: 'Not enqueued, intentionally. Two shapes: duplicate event (`{"status": "duplicate"}` — already processed
+          within the 24-hour dedup window) or event ignored (`{"ignored": "agent_paused"}` — agent is paused; the dedup
+          slot is not consumed, so redelivery after resume processes normally).'
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  const: duplicate
+                ignored:
+                  type: string
+                  description: Reason the event was ignored (e.g. `agent_paused`).
+      '400':
+        description: Malformed payload — missing `event_id` or `type`.
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '401':
+        description: 'Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured`
+          (agent has no recognized provider, OR the workspace has no matching `agent:<source>` vault credential, OR
+          the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path);
+          `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or
+          the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).'
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '404':
+        description: No active agent is configured for this source (UZ-WH-001).
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security: []
+/v1/workspaces/{workspace_id}/agents:
+  get:
+    operationId: list_agents
+    summary: List agents in a workspace
+    description: >
+      Returns agents the caller has access to in the given workspace. Keyset
+      paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first
+      page; pass the response `cursor` back verbatim to fetch the next page.
+      `cursor` is `null` when the last page has been reached. Response envelope
+      follows the RAD §8 `items`/`total` convention (`total` is the size of
+      this page, not a global count).
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: >
+        Opaque page cursor from a prior response's `cursor` field, formatted
+        `{created_at_epoch_ms}:{agent_id}`. Omit for the first page.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      description: Page size. Defaults to 20. Clamped to a maximum of 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              - cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/AgentSummary
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+                cursor:
+                  type: string
+                  nullable: true
+                  description: >
+                    Opaque cursor to fetch the next page. `null` when there are
+                    no more pages.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_agent
+    summary: Create an agent
+    description: Creates a new agent from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The
+      server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived
+      server-side. The CLI (`agentsfleet install --from <path>`) sends the two markdown files as raw bytes; no YAML
+      parsing happens client-side.
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - trigger_markdown
+            - source_markdown
+            properties:
+              trigger_markdown:
+                type: string
+                maxLength: 65536
+                description: TRIGGER.md raw bytes — YAML frontmatter (`name`, `trigger`, `tools`, `credentials`,
+                  `network`, `budget`, `gates`) between `---` delimiters. Server parses this to derive `name`
+                  and the persisted `config_json`.
+              source_markdown:
+                type: string
+                maxLength: 65536
+                description: SKILL.md raw bytes — the agent instructions, stored as-is.
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - agent_id
+              - name
+              - status
+              properties:
+                agent_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                  description: Agent name parsed from TRIGGER.md frontmatter — the canonical identifier the user
+                    will see in `agentsfleet status` and CLI output.
+                status:
+                  type: string
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/agents/{agent_id}:
+  patch:
+    operationId: patch_agent
+    summary: Update agent config or drive its status FSM
+    description: |
+      Partial update of an agent. Body fields are optional and presence-based:
+
+      - `config_json` — replace the agent's config blob whole; publishes
+        `agent_config_changed`.
+      - `trigger_markdown` — replace the agent's stored `TRIGGER.md`; the server
+        reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of
+        `config_json`. The agent's `name` is rewritten to the reparsed name.
+        Mutually exclusive with `config_json` (both drive the same column).
+      - `source_markdown` — replace the agent's stored `SKILL.md`; the server
+        reparses the frontmatter and overlays the tools / credentials / network /
+        budget halves of `config_json`. The reparsed `name` must equal the
+        agent's current name (renames require a fresh install).
+      - `status` — drive the lifecycle FSM. Allowed values: `active` (resume from
+        stopped or auto-paused), `stopped` (halt the running session, resumable),
+        `killed` (terminal mark, irreversible). The `paused` state is platform-only
+        (set by the anomaly gate) and rejected here.
+
+      All field-bearing branches run inside a single transaction that takes a
+      row-level `FOR UPDATE` lock on `core.agents`, applies field-level merge
+      semantics, and commits with a single `UPDATE`. Two writers patching
+      different body fields land both halves; two writers patching the same
+      field collapse to last-write-wins. Per-transaction `lock_timeout=5s`,
+      `statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make
+      pathological waits fail fast as `503` (retryable).
+
+      The SQL UPDATE is one statement; one control-stream publish fires when any
+      dirty surface lands. Returns the new `config_revision` (a strictly
+      monotonic ms-epoch timestamp).
+
+      FSM rules:
+
+      - `killed` is terminal — any further PATCH on a killed agent returns 404
+        (the row is a tombstone).
+      - Stop requires status ∈ {active, paused}; Resume requires status ∈
+        {stopped, paused}; Kill is allowed from any non-killed state.
+      - Disallowed transitions return 409 (e.g. resume on an active agent).
+
+      Status transitions (stop/resume/kill) require operator-minimum role
+      per RULE BIL — destructive lifecycle actions. Pure config updates stay
+      at workspace-member.
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: agent_id
+      in: path
+      required: true
+      description: UUIDv7 of the agent.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              config_json:
+                type: string
+                description: |
+                  The new agent config as a JSON string. Validated server-side.
+                  Mutually exclusive with `trigger_markdown`.
+              trigger_markdown:
+                type: string
+                description: |
+                  The full TRIGGER.md to persist; the server reparses the
+                  frontmatter and overlays the `x_agentsfleet.triggers` half of
+                  `config_json`. Must be non-empty. Mutually exclusive with
+                  `config_json`.
+              source_markdown:
+                type: string
+                description: |
+                  The full SKILL.md to persist; the server reparses the
+                  frontmatter and overlays the tools / credentials / network /
+                  budget halves of `config_json`. The reparsed `name` must
+                  match the agent's current name. Must be non-empty.
+              status:
+                type: string
+                enum:
+                - active
+                - stopped
+                - killed
+                description: |
+                  Target FSM state. `active` resumes from stopped/paused; `stopped`
+                  halts the running session (resumable); `killed` is terminal. Note
+                  that `paused` is intentionally not in this enum — it is set only
+                  by the platform's anomaly gate.
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agent_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - stopped
+                  - killed
+                  description: 'Present only when the request body included a `status` field. Echoes the new status.'
+                config_revision:
+                  type: integer
+                  format: int64
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_agent
+    summary: Hard-delete a agent and cascade its history
+    description: |
+      Hard-purge a agent. Removes the `core.agents` row and cascades every
+      per-agent record across PG schemas (events, telemetry, sessions,
+      approval gates, integration grants, agent keys, memory entries) plus
+      best-effort DELs the Redis event stream.
+
+      Two-step lifecycle for safety: kill first (PATCH `{status:"killed"}`),
+      then delete. Returns 409 if the agent is not yet `killed`.
+
+      Operator-minimum role required (RULE BIL — destructive lifecycle).
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: agent_id
+      in: path
+      required: true
+      description: UUIDv7 of the agent.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Agent purged.
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/agents/{agent_id}/messages:
+  post:
+    operationId: post_agent_message
+    summary: Post a chat message to a agent
+    description: Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `agent:{id}:events`.
+      The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter
+      frames for the message they just sent. Same single-ingress contract as webhook and continuation events — no separate
+      "queued vs instant" mode.
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: agent_id
+      in: path
+      required: true
+      description: UUIDv7 of the agent.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - message
+            properties:
+              message:
+                type: string
+                description: Operator message body. Up to 8192 bytes. The server wraps it in a JSON object with a "message"
+                  field as the envelope's request payload.
+    responses:
+      '202':
+        description: Event enqueued. The CLI uses event_id to filter SSE frames.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - event_id
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - accepted
+                event_id:
+                  type: string
+                  description: Redis stream entry id (the canonical event_id). Format `<ms>-<seq>`.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Agent is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing
+          work that would strand. The problem-details body carries `current_state` naming the actual agent status
+          (e.g. `paused`). Resume with `agentsfleet resume <agent>`, then retry.
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/agents/{agent_id}/events:
+  get:
+    operationId: list_agent_events
+    summary: List a agent's event history
+    description: >
+      Cursor-paginated list of operator-visible events for one agent,
+      newest first. Each row is a `core.agent_events` entry — the
+      durable record produced by the worker write path on every steer,
+      webhook, cron, or continuation event. Filter by actor glob
+      (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style
+      duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and
+      `cursor=` are mutually exclusive.
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: agent_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.
+      schema:
+        type: string
+    - name: actor
+      in: query
+      required: false
+      description: Glob filter against the row's actor. `*` is a wildcard. Examples - 'steer:kishore', 'webhook:github', 'webhook:*'.
+      schema:
+        type: string
+    - name: since
+      in: query
+      required: false
+      description: Lower bound on `created_at`. Accepts Go-style durations (15s/30m/2h/7d) or RFC 3339 timestamps. Mutually exclusive with `cursor`.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - next_cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    description: One agent_events row.
+                next_cursor:
+                  type: string
+                  nullable: true
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/agents/{agent_id}/events/stream:
+  get:
+    operationId: stream_agent_events
+    summary: Subscribe to a agent's live activity stream (SSE)
+    description: >
+      Server-Sent Events tail of the Redis pub/sub channel
+      `agent:{id}:activity`. The server fans the channel out from one
+      shared subscription and forwards each PUBLISH frame as one SSE
+      event with id (per-connection monotonic counter), event (frame
+      kind), and data (JSON payload) lines. Frame kinds - event_received,
+      tool_call_started, tool_call_progress, chunk, tool_call_completed,
+      event_complete. Sequence ids reset to 0 on every new stream and
+      the server ignores `Last-Event-ID`. Concurrent streams per
+      instance are capped - above the cap the request is rejected with
+      503 (code UZ-API-002) and a Retry-After header. Clients reconnect
+      by calling GET /events with a cursor to backfill the durable
+      record, then re-open this stream. Authentication this slice is
+      Bearer-only (CLI / programmatic). Browser cookie auth lands with
+      the dashboard slice.
+    tags:
+    - Agents
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: agent_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: SSE stream opened.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: SSE-formatted frames.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []

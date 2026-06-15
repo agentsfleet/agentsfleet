@@ -361,7 +361,7 @@ test "commandAllowError: residual bytes after parsed reply poison the conn and s
 // `log.warn("redis_command_err_reply", .{ .cmd, .server_err })` fires.
 // BufferedSink captures the emitted line so the test can assert the
 // log carries the server's error text — pre-sink-refactor this surface
-// was impossible to assert on (zombiedLog hardcoded stderr.writeAll).
+// was impossible to assert on (agentsfleetdLog hardcoded stderr.writeAll).
 const WrongtypeErrReply = struct {
     io: std.Io,
     server: net.Server,

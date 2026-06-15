@@ -1,0 +1,62 @@
+# Coverage knobs for `bun test --coverage`. Floor pinned per Captain
+# ack: line ≥99%, function ≥97%.
+#
+# Why the two differ — a measured JSC artefact, not a coverage gap:
+# bun's coverage is JSC-based (not V8) and counts every
+# `class X extends Context.Service<…>()("tag") {}` as a "function" it can
+# never credit. The constructor is synthesised in Effect's base class, so
+# neither `new X()` nor a Layer build maps a hit back to the declaration
+# line — these tag files measure 100% LINES (all real logic runs) yet each
+# reports one uncreditable function. bun 1.3.x has NO line/function ignore
+# (`/* v8 ignore */`, `/* c8 ignore */`, `// istanbul ignore */` are all
+# silently dropped — verified empirically), and c8/v8 cannot attach to JSC.
+# Therefore:
+#   * line ≥99 is the meaningful gate — every behavioural line must execute.
+#   * function ≥97 is a regression gate set just under the artefact ceiling
+#     (every REAL function covered + the phantom Context.Service ctors). A
+#     real function left untested, or a new uncredited service, trips it.
+# Pushing function to 99 would require coverage-gaming (a boilerplate
+# `constructor(){ super() }` plus a `new()` test that asserts nothing) or
+# splitting every tag into an ignored `.service.ts` (the pattern the four
+# services in coveragePathIgnorePatterns below already follow). Captain ack:
+# keep the honest 99/97 gate — no gaming, no architecture change for a number.
+# Enforced by scripts/enforce-coverage.mjs (bun 1.3.x parses but does
+# not enforce the bunfig threshold itself).
+#
+# The acceptance suite (`test/acceptance/*.spec.js`) runs under the
+# same `bun:test` runtime as the rest of the suite — Captain
+# consolidated the dual-runner split (was node:test for acceptance,
+# bun:test elsewhere). The prior rationale was bound-cleanly concerns
+# with long-lived child processes (Playwright Chromium, polling CLI
+# subprocesses); if those resurface live, revisit. Acceptance specs
+# self-gate on AGENTSFLEET_ACCEPTANCE_TARGET being an https URL — without
+# the env they register skip-only placeholders. Default `bun test`
+# globs match `*.test.{js,ts}` so `*.spec.js` files are picked up
+# only by the explicit `bun test test/acceptance` invocation.
+#
+# Coverage scope: production code under src/ only. test/** is
+# excluded because helpers, fixtures, and matrix tables are scaffolding,
+# not subjects-under-test. coverageSkipTestFiles handles *.test.*
+# automatically; the explicit ignore catches the non-test files under
+# test/ that bun's heuristic doesn't.
+[test]
+# Preload forces telemetry-off so the suite is network-free (see
+# test/setup.ts). Without it, in-process runCli tests hang on the
+# PostHog flush and time out at 5s when the runner is offline.
+preload = ["./test/setup.ts"]
+coverage = true
+coverageThreshold = { line = 0.99, function = 0.97 }
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = [
+  "test/**",
+  # Context.Tag-only shapes (Supabase split pattern: .service.ts
+  # holds the tag, .layer.ts holds the implementation + tests).
+  # See bunfig.toml header re: bun's per-function coverage of
+  # Context.Tag classes.
+  "src/services/browser.service.ts",
+  "src/services/telemetry/analytics.service.ts",
+  "src/services/telemetry/ai-tool.service.ts",
+  "src/services/telemetry/runtime.service.ts",
+]

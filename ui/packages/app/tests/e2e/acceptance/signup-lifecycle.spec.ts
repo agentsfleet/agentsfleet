@@ -3,7 +3,7 @@
  * install via dashboard UI → observe → bill → halt.
  *
  * End-to-end UI-driven: the operator never leaves the browser. signup goes
- * through Clerk's hosted form, install goes through /zombies/new, every
+ * through Clerk's hosted form, install goes through /agents/new, every
  * lifecycle transition is a real click in the dashboard. No API short-cuts.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
@@ -12,7 +12,7 @@
  *
  * Why this spec exists: the persistent-fixture suite covers each lifecycle
  * slice individually but no spec walks a fresh operator from "I just signed
- * up" through to "I just killed a zombie I observed running." The dashboard's
+ * up" through to "I just killed a agent I observed running." The dashboard's
  * route-guard chain (workspace auto-provision, starter credit, empty-state →
  * populated transition) only runs on a brand-new tenant — that surface is
  * uncovered without this spec.
@@ -24,12 +24,12 @@ import { installViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
-  killZombie,
-  resumeZombie,
-  stopZombie,
+  killAgent,
+  resumeAgent,
+  stopAgent,
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
-import { cleanWorkspaceZombies } from "./fixtures/teardown";
+import { cleanWorkspaceAgents } from "./fixtures/teardown";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -43,7 +43,7 @@ function uniqueName(): string {
   return `lifecycle-${crypto.randomBytes(4).toString("hex")}`;
 }
 
-const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombie.com");
+const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
 
 test.describe("signup → install → lifecycle", () => {
   test.skip(isProdApi, "Scenario 1 only runs against DEV/local — Clerk test mode is DEV-only");
@@ -54,7 +54,7 @@ test.describe("signup → install → lifecycle", () => {
 
   test.afterEach(async () => {
     if (cleanupSession) {
-      await cleanWorkspaceZombies(
+      await cleanWorkspaceAgents(
         { sessionJwt: cleanupSession.sessionJwt },
         cleanupSession.workspaceId,
       ).catch(() => undefined);
@@ -81,47 +81,47 @@ test.describe("signup → install → lifecycle", () => {
     if (!signup.workspaceId) throw new Error("signup did not return a workspace id");
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId: signup.workspaceId };
 
-    // Dashboard /zombies renders auto-provisioned workspace + empty state.
+    // Dashboard /agents renders auto-provisioned workspace + empty state.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
-    await page.goto("/zombies");
+    await page.goto("/agents");
     await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     await expect(page.getByText(/no agents yet/i)).toBeVisible();
 
     // Install via dashboard form. Browser-driven; no API short-cut.
     const name = uniqueName();
-    const zombieId = await installViaUI(page, name);
+    const agentId = await installViaUI(page, name);
 
-    // Post-install: the form redirects to /zombies/${id}. Recent Activity
+    // Post-install: the form redirects to /agents/${id}. Recent Activity
     // section is the section-scaffolding assertion (matches logs-detail's
     // downgrade — section presence, not payload contents).
-    await expect(page).toHaveURL(new RegExp(`/zombies/${zombieId}(\\?|$)`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${agentId}(\\?|$)`));
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
-    await page.goto("/zombies");
-    await expectRowState(page, zombieId, "live");
+    await page.goto("/agents");
+    await expectRowState(page, agentId, "live");
 
     // Billing page renders the balance card (starter credit).
     await page.goto("/settings/billing");
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
     // Lifecycle: Stop → Resume → Kill, each via the AlertDialog confirm.
-    await page.goto(`/zombies/${zombieId}`);
-    await stopZombie(page);
-    await page.goto("/zombies");
-    await expectRowState(page, zombieId, "parked");
+    await page.goto(`/agents/${agentId}`);
+    await stopAgent(page);
+    await page.goto("/agents");
+    await expectRowState(page, agentId, "parked");
 
-    await page.goto(`/zombies/${zombieId}`);
-    await resumeZombie(page);
-    await page.goto("/zombies");
-    await expectRowState(page, zombieId, "live");
+    await page.goto(`/agents/${agentId}`);
+    await resumeAgent(page);
+    await page.goto("/agents");
+    await expectRowState(page, agentId, "live");
 
-    await page.goto(`/zombies/${zombieId}`);
-    await killZombie(page);
+    await page.goto(`/agents/${agentId}`);
+    await killAgent(page);
     await expectDetailKilled(page);
-    await page.goto("/zombies");
-    await expectRowState(page, zombieId, "failed");
+    await page.goto("/agents");
+    await expectRowState(page, agentId, "failed");
   });
 });

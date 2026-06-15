@@ -22,17 +22,19 @@ const events = @import("telemetry_events.zig");
 pub const EventKind = events.EventKind;
 
 pub const RecordedEvent = struct {
+    const Self = @This();
+
     kind: EventKind,
     distinct_id_buf: [64]u8 = .{0} ** 64,
     distinct_id_len: u8 = 0,
     workspace_id_buf: [64]u8 = .{0} ** 64,
     workspace_id_len: u8 = 0,
 
-    pub fn distinctId(self: *const RecordedEvent) []const u8 {
+    pub fn distinctId(self: *const Self) []const u8 {
         return self.distinct_id_buf[0..self.distinct_id_len];
     }
 
-    pub fn workspaceId(self: *const RecordedEvent) []const u8 {
+    pub fn workspaceId(self: *const Self) []const u8 {
         return self.workspace_id_buf[0..self.workspace_id_len];
     }
 
@@ -56,16 +58,18 @@ pub const ApiErrorWithContext = events.ApiErrorWithContext;
 pub const WorkspaceCreated = events.WorkspaceCreated;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
-pub const ZombieTriggered = events.ZombieTriggered;
-pub const ZombieCompleted = events.ZombieCompleted;
+pub const AgentTriggered = events.AgentTriggered;
+pub const AgentCompleted = events.AgentCompleted;
 pub const SignupBootstrapped = events.SignupBootstrapped;
 
 // ── Backends ────────────────────────────────────────────────────────
 
 pub const ProdBackend = struct {
+    const Self = @This();
+
     client: ?*posthog.PostHogClient,
 
-    pub fn capture(self: *ProdBackend, comptime E: type, event: E) void {
+    pub fn capture(self: *Self, comptime E: type, event: E) void {
         const ph = self.client orelse return;
         const props = event.properties();
         const did = if (@hasField(E, DISTINCT_ID_FIELD))
@@ -122,9 +126,11 @@ pub const TestBackend = struct {
 pub const Backend = if (builtin.is_test) TestBackend else ProdBackend;
 
 pub const Telemetry = struct {
+    const Self = @This();
+
     backend: Backend,
 
-    pub fn capture(self: *Telemetry, comptime E: type, event: E) void {
+    pub fn capture(self: *Self, comptime E: type, event: E) void {
         self.backend.capture(E, event);
     }
 

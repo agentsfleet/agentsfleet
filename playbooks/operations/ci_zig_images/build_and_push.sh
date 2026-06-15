@@ -65,7 +65,7 @@ ensure_ghcr_login() {
     token="$(gh auth token 2>/dev/null || true)"
   fi
   [ -n "$token" ] || fatal "GHCR auth missing — set GHCR_TOKEN or run 'gh auth login' (needs write:packages)"
-  local user="${GHCR_USER:-${GITHUB_USER:-$(gh api user --jq .login 2>/dev/null || echo usezombie)}}"
+  local user="${GHCR_USER:-${GITHUB_USER:-$(gh api user --jq .login 2>/dev/null || echo agentsfleet)}}"
   printf '%s' "$token" | docker login ghcr.io -u "$user" --password-stdin >/dev/null
   ok "logged in to ghcr.io as $user"
 }

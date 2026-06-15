@@ -7,10 +7,10 @@ store. Two halves write into one PostHog project:
 | Half | Owner | Captures |
 |---|---|---|
 | **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | agentsfleetd (`posthog-zig`, `src/agentsfleetd/observability/telemetry.zig`) | State-owning events: `ZombieTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, billing. |
+| **Server conversion truth** | agentsfleetd (`posthog-zig`, `src/agentsfleetd/observability/telemetry.zig`) | State-owning events: `AgentTriggered`/`Completed`, `SignupBootstrapped`, `AuthLoginCompleted`, billing. |
 
 Client events stitch to the same person via `identify(clerk_user_id)`. A
-conversion that completes server-side (billing, signup completion, zombie runs)
+conversion that completes server-side (billing, signup completion, agent runs)
 is captured server-side only — browser events get ad-blocked and lost on tab
 close, so the backend is authoritative for them.
 
@@ -18,7 +18,7 @@ close, so the backend is authoritative for them.
 
 Single-sourced in `ui/packages/app/lib/analytics/events.ts` (`EVENTS`,
 `EventProps`, and the `EVENT_PROP_KEYS` runtime mirror). Naming: snake_case,
-object-first past tense (`zombie_created`, `api_key_minted`). Props carry IDs,
+object-first past tense (`agent_created`, `api_key_minted`). Props carry IDs,
 names, and enum values only — never a token, raw API key, credential payload,
 or free-text from a sensitive field. Call sites import `EVENTS` +
 `captureProductEvent`; a grep test fails on any bare event-name literal outside
@@ -31,7 +31,7 @@ never break the product flow it instruments.
 
 | Event | Fires when | Props |
 |---|---|---|
-| `zombie_created` | the dashboard install form succeeds | `zombie_id` |
+| `agent_created` | the dashboard install form succeeds | `agent_id` |
 | `runner_token_minted` | the add-runner dialog mints a registration token (the runner goes live later, host-side) | `runner_id`, `sandbox_tier` |
 | `api_key_minted` | the API-key dialog succeeds | `api_key_id` (never the key) |
 | `model_added` | the models wizard saves a Bring-Your-Own-Key (BYOK) setup (a platform-defaults reset emits nothing) | `provider`, `mode`, `model?` |

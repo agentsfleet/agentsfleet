@@ -113,7 +113,7 @@ const ControlPlaneStub = struct {
 };
 
 /// Serialize a `LeaseResponse` carrying lease #idx — distinct lease_id / event_id
-/// / zombie_id so a double-claim would surface as a duplicate downstream.
+/// / agent_id so a double-claim would surface as a duplicate downstream.
 fn leaseJson(alloc: std.mem.Allocator, idx: u32) ![]const u8 {
     const payload = protocol.LeasePayload{
         .lease_id = try std.fmt.allocPrint(alloc, "lease-{d}", .{idx}),
@@ -122,7 +122,7 @@ fn leaseJson(alloc: std.mem.Allocator, idx: u32) ![]const u8 {
         .secret_delivery = .@"inline",
         .event = .{
             .event_id = try std.fmt.allocPrint(alloc, "1700000000000-{d}", .{idx}),
-            .zombie_id = try std.fmt.allocPrint(alloc, "0190aaaa-bbbb-7ccc-8ddd-00000000000{d}", .{idx}),
+            .agent_id = try std.fmt.allocPrint(alloc, "0190aaaa-bbbb-7ccc-8ddd-00000000000{d}", .{idx}),
             .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
             .actor = "steer:test",
             .event_type = .chat,
@@ -229,7 +229,7 @@ test "concurrent forked children spawn and reap from many threads without deadlo
 fn stubCfg(url: []const u8) Config {
     return .{
         .control_plane_url = url,
-        .runner_token = "zrn_" ++ "a" ** 8,
+        .runner_token = contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 8,
         .host_id = "pool-integ-host",
         .sandbox_tier = "dev_none",
         .workspace_base = "/tmp/agentsfleet-runner-pool-integ",

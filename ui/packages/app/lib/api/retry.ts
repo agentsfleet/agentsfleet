@@ -2,7 +2,7 @@ import { ApiError } from "./errors";
 import { request } from "./client";
 
 /**
- * HTTP retry wrapper mirroring `agentsfleet/src/lib/http-retry.ts`'s
+ * HTTP retry wrapper mirroring `cli/src/lib/http-retry.ts`'s
  * `apiRequestWithRetry`. Same retryable-status set, same backoff
  * math, same Retry-After honoring, same server-5xx idempotency gate,
  * same `onAttempt`/`onRetry` hook surface — so dashboard + CLI
@@ -123,7 +123,7 @@ function isNoRetryEnv(): boolean {
   // `process.env` is defined in every runtime this ships to (Node on the
   // server, the webpack/Edge shim in the browser); a non-public var simply
   // reads back undefined off-server, so no `typeof process` guard is needed.
-  const v = process.env.ZOMBIE_NO_RETRY;
+  const v = process.env.AGENTSFLEET_NO_RETRY;
   return v === "1" || v === "true";
 }
 

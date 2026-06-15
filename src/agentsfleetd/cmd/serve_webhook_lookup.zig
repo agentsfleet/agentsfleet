@@ -1,16 +1,16 @@
-//! Webhook-sig lookup: resolves Bearer token + per-zombie HMAC scheme/secret
+//! Webhook-sig lookup: resolves Bearer token + per-agent HMAC scheme/secret
 //! for the webhook_sig middleware. Lives in `src/cmd/` so it can import both
-//! `src/auth/` and `src/zombie/`.
+//! `src/auth/` and `src/agent/`.
 //!
-//! Secret resolution: each zombie declares one or more `triggers[].source`
+//! Secret resolution: each agent declares one or more `triggers[].source`
 //! entries (e.g. `github`). Each names an HMAC scheme and a workspace
-//! credential. The credential is stored at vault key `zombie:<source>`
+//! credential. The credential is stored at vault key `agent:<source>`
 //! (overridable via `triggers[].credential_name`) and decodes to a JSON
 //! object whose `webhook_secret` field is the HMAC key.
 //!
-//! Multi-webhook-per-zombie URL routing (`{source}` segment in the webhook
+//! Multi-webhook-per-agent URL routing (`{source}` segment in the webhook
 //! URL) lands with the install + list response slice. Until then the URL
-//! carries `zombie_id` alone and the queries below pull the first webhook
+//! carries `agent_id` alone and the queries below pull the first webhook
 //! trigger from the `triggers[]` array.
 
 const std = @import("std");
@@ -18,8 +18,8 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const crypto_store = @import("../secrets/crypto_store.zig");
 const vault = @import("../state/vault.zig");
-const credential_key = @import("../zombie/credential_key.zig");
-const webhook_verify = @import("../zombie/webhook_verify.zig");
+const credential_key = @import("../agent/credential_key.zig");
+const webhook_verify = @import("../agent/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const logging = @import("log");
 
@@ -33,13 +33,13 @@ const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
 pub fn lookup(
     pool: *pg.Pool,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?LookupResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchHmacRow(conn, alloc, zombie_id)) orelse return null;
+    const row_data = (try fetchHmacRow(conn, alloc, agent_id)) orelse return null;
     defer freeHmacRow(alloc, row_data);
 
     var scheme: ?SignatureScheme = null;
@@ -67,17 +67,17 @@ pub fn lookup(
 }
 
 /// Svix middleware lookup. Fetches the Clerk-style `signature.secret_ref` from
-/// the zombie's config_json and resolves it to the `whsec_<base64>` secret via
+/// the agent's config_json and resolves it to the `whsec_<base64>` secret via
 /// the workspace vault. Middleware handles prefix stripping + base64 decoding.
 pub fn lookupSvix(
     pool: *pg.Pool,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?SvixLookupResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchSvixRow(conn, alloc, zombie_id)) orelse return null;
+    const row_data = (try fetchSvixRow(conn, alloc, agent_id)) orelse return null;
     defer freeSvixRow(alloc, row_data);
 
     const sig_json = row_data.signature_json orelse return .{ .secret = null };
@@ -119,19 +119,19 @@ const SvixRow = struct {
     signature_json: ?[]const u8,
 };
 
-fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?HmacRow {
+fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !?HmacRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->>'source'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1),
         \\       (SELECT trig->>'credential_name'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
-        \\FROM core.zombies z WHERE z.id = $1::uuid
-    , .{zombie_id}));
+        \\FROM core.agents z WHERE z.id = $1::uuid
+    , .{agent_id}));
     defer q.deinit();
 
     const row = try q.next() orelse return null;
@@ -147,15 +147,15 @@ fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) 
     };
 }
 
-fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?SvixRow {
+fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !?SvixRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->'signature'
-        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
-        \\FROM core.zombies z WHERE z.id = $1::uuid
-    , .{zombie_id}));
+        \\FROM core.agents z WHERE z.id = $1::uuid
+    , .{agent_id}));
     defer q.deinit();
 
     const row = try q.next() orelse return null;

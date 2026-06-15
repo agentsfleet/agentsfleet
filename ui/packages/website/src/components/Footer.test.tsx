@@ -14,7 +14,7 @@ function renderFooter() {
 describe("Footer", () => {
   it("renders the brand name", () => {
     renderFooter();
-    expect(screen.getByText(/^usezombie$/)).toBeInTheDocument();
+    expect(screen.getByText(/^agentsfleet$/)).toBeInTheDocument();
   });
 
   it("renders the tagline without the self-managed/open-source tail", () => {
@@ -39,7 +39,7 @@ describe("Footer", () => {
     renderFooter();
     expect(screen.getByText(/^community$/i)).toBeInTheDocument();
     const github = screen.getByRole("link", { name: /^github$/i });
-    expect(github).toHaveAttribute("href", "https://github.com/agentsfleet/usezombie");
+    expect(github).toHaveAttribute("href", "https://github.com/agentsfleet/agentsfleet");
     expect(github).toHaveAttribute("target", "_blank");
     expect(github).toHaveAttribute("rel", "noopener noreferrer");
 

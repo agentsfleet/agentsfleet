@@ -58,6 +58,8 @@ const JwkKey = jwks_types.JwkKey;
 const JwksCache = jwks_types.JwksCache;
 
 pub const Verifier = struct {
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     jwks_url: []u8,
     issuer: ?[]u8,
@@ -84,7 +86,7 @@ pub const Verifier = struct {
         };
     }
 
-    pub fn deinit(self: *Verifier) void {
+    pub fn deinit(self: *Self) void {
         self.mutex.lock();
         defer self.mutex.unlock();
         if (self.cache) |*cache| cache.deinit(self.alloc);
@@ -97,7 +99,7 @@ pub const Verifier = struct {
 
     /// Verify JWT signature, check standard claims (sub, iss, aud, exp),
     /// return verified claims including raw JSON for provider-specific extraction.
-    pub fn verifyAndDecode(self: *Verifier, alloc: std.mem.Allocator, authorization: []const u8) !VerifiedClaims {
+    pub fn verifyAndDecode(self: *Self, alloc: std.mem.Allocator, authorization: []const u8) !VerifiedClaims {
         const token = extractBearerToken(authorization) catch return VerifyError.InvalidAuthorization;
         const parts = splitJwt(token) catch return VerifyError.TokenMalformed;
 
@@ -141,7 +143,7 @@ pub const Verifier = struct {
         return parseStandardClaims(alloc, payload_raw, self.issuer, self.audience);
     }
 
-    pub fn checkJwksConnectivity(self: *Verifier) !void {
+    pub fn checkJwksConnectivity(self: *Self) !void {
         try self.refreshSingleFlight(.expired);
     }
 
@@ -149,7 +151,7 @@ pub const Verifier = struct {
     const RefreshReason = enum { expired, kid_miss };
     const CacheLookup = union(enum) { hit: JwkKey, miss_fresh, miss_stale_or_none };
 
-    fn lookupKey(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8) !JwkKey {
+    fn lookupKey(self: *Self, alloc: std.mem.Allocator, kid: []const u8) !JwkKey {
         switch (try self.cachedKey(alloc, kid, .fresh_only)) {
             .hit => |key| return key,
             // Fresh cache without this kid: the issuer likely rotated keys —
@@ -160,7 +162,7 @@ pub const Verifier = struct {
         }
     }
 
-    fn lookupAfterRefresh(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8, reason: RefreshReason) !JwkKey {
+    fn lookupAfterRefresh(self: *Self, alloc: std.mem.Allocator, kid: []const u8, reason: RefreshReason) !JwkKey {
         if (self.refreshSingleFlight(reason)) |_| {
             switch (try self.cachedKey(alloc, kid, .allow_stale)) {
                 .hit => |key| return key,
@@ -180,7 +182,7 @@ pub const Verifier = struct {
         }
     }
 
-    fn cachedKey(self: *Verifier, alloc: std.mem.Allocator, kid: []const u8, scan: CacheScan) !CacheLookup {
+    fn cachedKey(self: *Self, alloc: std.mem.Allocator, kid: []const u8, scan: CacheScan) !CacheLookup {
         self.mutex.lock();
         defer self.mutex.unlock();
         const cache = if (self.cache) |*c| c else return .miss_stale_or_none;
@@ -202,7 +204,7 @@ pub const Verifier = struct {
     /// the cache. The network round-trip happens with the mutex RELEASED, so
     /// cache-hit verification never blocks behind a slow identity provider.
     /// A failed fetch (or parse) leaves the previous cache in place.
-    fn refreshSingleFlight(self: *Verifier, reason: RefreshReason) !void {
+    fn refreshSingleFlight(self: *Self, reason: RefreshReason) !void {
         const entered_ms = clock.nowMillis();
         self.mutex.lock();
         while (self.refresh_inflight) self.refresh_cond.wait(&self.mutex);
@@ -244,7 +246,7 @@ pub const Verifier = struct {
         log.info("jwks_fetched", .{ .keys = parsed.keys.len, .reason = @tagName(reason) });
     }
 
-    fn fetchJwksJson(self: *Verifier) ![]u8 {
+    fn fetchJwksJson(self: *Self) ![]u8 {
         self.refresh_fetch_count += 1;
         if (self.inline_jwks_json) |raw| return self.alloc.dupe(u8, raw);
 

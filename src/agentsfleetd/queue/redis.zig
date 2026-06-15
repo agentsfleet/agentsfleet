@@ -61,5 +61,5 @@ pub const testing = struct {
 test {
     _ = @import("redis_test.zig");
     _ = @import("redis_protocol.zig");
-    _ = @import("redis_zombie.zig");
+    _ = @import("redis_agent.zig");
 }

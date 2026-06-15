@@ -91,10 +91,10 @@ describe("DataTable", () => {
         columns={COLUMNS}
         rows={ROWS}
         rowKey={(r) => r.id}
-        caption="Spend by zombie"
+        caption="Spend by agent"
       />,
     );
-    const cap = screen.getByText("Spend by zombie");
+    const cap = screen.getByText("Spend by agent");
     expect(cap.tagName).toBe("CAPTION");
     expect(cap.className).toContain("sr-only");
   });

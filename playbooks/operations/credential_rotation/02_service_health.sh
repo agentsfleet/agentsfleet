@@ -50,16 +50,16 @@ op_read_with_retry() {
 
 # --- 4.0 API health checks ---
 echo ""
-echo "-- API health (api-dev.usezombie.com)"
+echo "-- API health (api-dev.agentsfleet.net)"
 
-if curl -sf --max-time 10 "https://api-dev.usezombie.com/healthz" >/dev/null 2>&1; then
+if curl -sf --max-time 10 "https://api-dev.agentsfleet.net/healthz" >/dev/null 2>&1; then
   echo "  ✓ /healthz returned 200"
 else
   echo "  ✗ /healthz did not return 200"
   failures=$((failures + 1))
 fi
 
-if curl -sf --max-time 10 "https://api-dev.usezombie.com/readyz" | jq -e '.ready == true' >/dev/null 2>&1; then
+if curl -sf --max-time 10 "https://api-dev.agentsfleet.net/readyz" | jq -e '.ready == true' >/dev/null 2>&1; then
   echo "  ✓ /readyz reports ready=true"
 else
   echo "  ✗ /readyz did not report ready=true"
@@ -68,7 +68,7 @@ fi
 
 # --- 4.0 Vercel bypass with rotated secret ---
 echo ""
-echo "-- Vercel bypass (usezombie-app.vercel.app)"
+echo "-- Vercel bypass (agentsfleet-app.vercel.app)"
 
 bypass_ref="op://$vault_prod/vercel-bypass-app/credential"
 bypass_secret="$(op_read_with_retry "$bypass_ref" || true)"
@@ -79,7 +79,7 @@ if [ -z "$bypass_secret" ]; then
 else
   http_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 \
     -H "x-vercel-protection-bypass: $bypass_secret" \
-    "https://usezombie-app.vercel.app/sign-in" 2>/dev/null || true)"
+    "https://agentsfleet-app.vercel.app/sign-in" 2>/dev/null || true)"
 
   if [ "$http_code" = "200" ]; then
     echo "  ✓ Vercel bypass returned 200"

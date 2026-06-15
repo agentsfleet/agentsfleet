@@ -26,8 +26,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/zombies", async () => (await import("./helpers/dashboard-app-mocks")).zombiesApiMock());
-vi.mock("@/app/(dashboard)/zombies/actions", async () => (await import("./helpers/dashboard-app-mocks")).zombieActionsMock());
+vi.mock("@/lib/api/agents", async () => (await import("./helpers/dashboard-app-mocks")).agentsApiMock());
+vi.mock("@/app/(dashboard)/agents/actions", async () => (await import("./helpers/dashboard-app-mocks")).agentActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-app-mocks")).modelCapsMock());
@@ -226,7 +226,7 @@ describe("placeholder pages", () => {
     listTenantBillingChargesMock.mockResolvedValue({
       items: [
         {
-          id: "tel_1", tenant_id: "t", workspace_id: "w", zombie_id: "z",
+          id: "tel_1", tenant_id: "t", workspace_id: "w", agent_id: "z",
           event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform,
           model: "kimi-k2.6", credit_deducted_nanos: 1,
           token_count_input: null, token_count_output: null, wall_ms: null, recorded_at: 1,

@@ -1,7 +1,7 @@
 //! Runner daemon startup configuration — read once from the environment at
 //! launch, before any control-plane contact.
 //!
-//! Env var naming follows the ZOMBIE_ namespace convention used by agentsfleetd; the
+//! Env var naming follows the AGENTSFLEET_ namespace convention used by agentsfleetd; the
 //! RUNNER_ prefix scopes variables that are runner-only and have no counterpart
 //! in agentsfleetd's config. All vars are required unless a default is documented.
 //!
@@ -14,8 +14,8 @@ const Config = @This();
 
 /// Base URL of the agentsfleetd control plane, e.g. `http://127.0.0.1:8080`.
 control_plane_url: []const u8,
-/// Pre-minted runner token (`zrn_…`) the platform operator installed on this
-/// host via `ZOMBIE_RUNNER_TOKEN`. Authenticates every control-plane call; the
+/// Pre-minted runner token (`agt_r…`) the platform operator installed on this
+/// host via `AGENTSFLEET_RUNNER_TOKEN`. Authenticates every control-plane call; the
 /// host never self-registers (Option B). Prefix-validated at load; never logged.
 runner_token: []const u8,
 /// Stable machine identifier, logged for operator correlation. The fleet row's
@@ -33,7 +33,7 @@ workspace_base: []const u8,
 network_policy: network.Mode,
 /// Number of concurrent worker threads the daemon runs (env
 /// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
-/// the per-zombie `affinity.claim` keeps two off the same zombie. Default 1 is
+/// the per-agent `affinity.claim` keeps two off the same agent. Default 1 is
 /// today's single-agent-per-host behaviour; clamped to `[1, MAX_WORKER_COUNT]`
 /// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
 /// is out of scope — the operator sizes N to the host.
@@ -55,13 +55,13 @@ pub const ConfigError = error{ MissingEnvVar, InvalidRunnerToken, OutOfMemory };
 
 /// Read configuration from the process environment. Returns
 /// `ConfigError.MissingEnvVar` for required vars that are absent, and
-/// `ConfigError.InvalidRunnerToken` when the token lacks the `zrn_` prefix.
+/// `ConfigError.InvalidRunnerToken` when the token lacks the `agt_r` prefix.
 pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigError!Config {
-    const url = getRequired(env_map, alloc, ENV_ZOMBIE_API_URL) catch
+    const url = getRequired(env_map, alloc, ENV_AGENTSFLEET_API_URL) catch
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(url);
 
-    const token = getRequired(env_map, alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
+    const token = getRequired(env_map, alloc, ENV_AGENTSFLEET_RUNNER_TOKEN) catch
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(token);
     try assertRunnerTokenPrefix(token);
@@ -198,8 +198,8 @@ pub fn deinit(self: Config) void {
     freeStrList(self.alloc, self.registry_allowlist);
 }
 
-/// Fail loud when `ZOMBIE_RUNNER_TOKEN` is not a `zrn_` runner token — a stale
-/// `zmb_t_` from the pre-Option-B bootstrap would otherwise loop on 401s with
+/// Fail loud when `AGENTSFLEET_RUNNER_TOKEN` is not a `agt_r` runner token — a stale
+/// `agt_t` from the pre-Option-B bootstrap would otherwise loop on 401s with
 /// no clear cause. Pure so the prefix contract is unit-testable without env.
 fn assertRunnerTokenPrefix(token: []const u8) ConfigError!void {
     if (!std.mem.startsWith(u8, token, contract.protocol.RUNNER_TOKEN_PREFIX))
@@ -227,11 +227,11 @@ const client_mod = @import("control_plane_client.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// Environment variable names — single-sourced (RULE UFS).
-pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
-pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
+pub const ENV_AGENTSFLEET_API_URL = "AGENTSFLEET_API_URL";
+pub const ENV_AGENTSFLEET_RUNNER_TOKEN = "AGENTSFLEET_RUNNER_TOKEN";
 pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
@@ -260,11 +260,11 @@ pub const DEFAULT_WORKER_COUNT: u32 = 1;
 pub const MIN_WORKER_COUNT: u32 = 1;
 pub const MAX_WORKER_COUNT: u32 = 64;
 
-test "assertRunnerTokenPrefix accepts zrn_ tokens, rejects everything else" {
-    try assertRunnerTokenPrefix("zrn_" ++ "a" ** 64);
-    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zmb_t_deadbeef"));
+test "assertRunnerTokenPrefix accepts agt_r tokens, rejects everything else" {
+    try assertRunnerTokenPrefix("agt_r" ++ "a" ** 64);
+    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("agt_tdeadbeef"));
     try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix(""));
-    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("zrn"));
+    try std.testing.expectError(ConfigError.InvalidRunnerToken, assertRunnerTokenPrefix("agt_"));
 }
 
 test "worker count parses default and clamps" {

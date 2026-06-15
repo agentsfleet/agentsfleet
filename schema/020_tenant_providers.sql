@@ -32,5 +32,5 @@ CREATE INDEX IF NOT EXISTS idx_tenant_providers_mode
     ON core.tenant_providers (mode);
 
 -- api_runtime: GET/PUT/DELETE /v1/tenants/me/provider, plus resolveActiveProvider
--- at lease issue (runs in zombied post-cutover).
+-- at lease issue (runs in agentsfleetd post-cutover).
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.tenant_providers TO api_runtime;

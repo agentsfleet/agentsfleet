@@ -19,7 +19,7 @@ happens, where does the signal go, and who owns it.*
 All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`. Four
 independent signal paths, each with a different consumer:
 
-- **Prometheus metrics (pull).** The `zombie_*` metric families — counters,
+- **Prometheus metrics (pull).** The `agent_*` metric families — counters,
   histograms, and gauges for external-call retries/failures, API backpressure and
   in-flight depth, execution, the runner fleet, workspace tokens, the Redis pool,
   run limits, and the signup funnel — render at the pull endpoint

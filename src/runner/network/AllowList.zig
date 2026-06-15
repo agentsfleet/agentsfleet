@@ -2,7 +2,7 @@
 //!
 //! The single source the kernel layer (nftables) and the L7 tool checks
 //! (`http_request`/`web_fetch`) both consume: the operator-fed registry baseline
-//! ∪ the per-zombie `network.allow` ∪ the lease's inference host. Deduped
+//! ∪ the per-agent `network.allow` ∪ the lease's inference host. Deduped
 //! first-seen, validated, fail-closed on a malformed entry. File-as-struct
 //! (`@This()`), std idiom.
 //!
@@ -34,7 +34,7 @@ pub const DEFAULT_REGISTRY = [_][]const u8{
 pub const Error = error{ InvalidDomain, OutOfMemory };
 
 /// Build the merged allowlist: `inference_host` (skipped when empty) ∪
-/// `registry` (operator-fed) ∪ `network_allow` (per-zombie), deduped in
+/// `registry` (operator-fed) ∪ `network_allow` (per-agent), deduped in
 /// first-seen order. Every entry is validated; a malformed one fails closed with
 /// `error.InvalidDomain` rather than silently widening egress. Caller owns the
 /// result — call `deinit`.

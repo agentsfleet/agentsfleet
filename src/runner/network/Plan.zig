@@ -89,7 +89,7 @@ pub fn hostsFile(self: Plan, alloc: std.mem.Allocator) Error![]u8 {
 /// DNS attempt fails fast and the DNS-tunnel channel stays closed. Static — no
 /// allocation.
 pub fn resolvConf() []const u8 {
-    return "# usezombie egress: names resolve via /etc/hosts only; no resolver.\n";
+    return "# agentsfleet egress: names resolve via /etc/hosts only; no resolver.\n";
 }
 
 pub fn deinit(self: *Plan) void {

@@ -6,7 +6,7 @@ The one credential path humans use from a terminal: a browser-mediated device fl
 
 ## Non-interactive token seeding (no device flow)
 
-When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → the `ZOMBIE_TOKEN` env var → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds (a Flow 3 tenant key or a previously-minted JWT), so the human-led binding of the device flow is untouched.
+When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → the `AGENTSFLEET_TOKEN` env var → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds (a Flow 3 tenant key or a previously-minted JWT), so the human-led binding of the device flow is untouched.
 
 ## Where the JWT lives in plaintext (data lifecycle)
 
@@ -68,14 +68,14 @@ This view points in the *opposite* direction from the temporal sequence below, b
 sequenceDiagram
     actor User
     participant CLI as agentsfleet
-    participant UI as Dashboard<br/>(app.usezombie.com)
-    participant API as Zig backend<br/>(api.usezombie.com)
+    participant UI as Dashboard<br/>(app.agentsfleet.net)
+    participant API as Zig backend<br/>(api.agentsfleet.net)
     participant Clerk
 
     User->>CLI: agentsfleet login [--token <pat>] [--token-name LABEL]
     Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input: it fails loudly rather than consuming a piped<br/>token as the replace-prompt answer.
 
-    alt direct token — resolveDirectToken: --token flag > ZOMBIE_TOKEN env > piped stdin (non-TTY)
+    alt direct token — resolveDirectToken: --token flag > AGENTSFLEET_TOKEN env > piped stdin (non-TTY)
         Note over CLI: first source wins; no browser, no session_id
         CLI->>API: GET /v1/me   (validate-first — before any write)
         alt token valid
@@ -91,7 +91,7 @@ sequenceDiagram
 
         CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
         API-->>CLI: 201 { session_id }
-        CLI-->>User: open https://app.usezombie.com/cli-auth/{session_id}
+        CLI-->>User: open https://app.agentsfleet.net/cli-auth/{session_id}
 
         Note over CLI: prompt "Verification code:" immediately — no polling.<br/>Possessing the code implies the dashboard approved.<br/>6-digit shape validated client-side (bad input re-prompts,<br/>no round-trip); SIGINT / EOF → exit 130, nothing persisted.
 
@@ -196,7 +196,7 @@ Rate limiting decomposes across three layers. Only L3 lives inside agentsfleetd.
 | Layer | Owner | Surface | Limit |
 |---|---|---|---|
 | **L1** | Clerk edge | Sign-in / sign-up | 3 attempts / 10 s, 5 creates / 10 s per IP — bounds upstream Clerk-identity supply |
-| **L2** | Cloudflare WAF in front of `api.usezombie.com` | `POST /v1/auth/sessions` | 10 / IP / minute — request never reaches origin on block |
+| **L2** | Cloudflare WAF in front of `api.agentsfleet.net` | `POST /v1/auth/sessions` | 10 / IP / minute — request never reaches origin on block |
 | **L3** | agentsfleetd — `verifyAndConsume` Lua (already shipped) | `POST /v1/auth/sessions/{id}/verify` | 5 attempts per session → `auth.session.aborted` reason `rate_limit_exceeded` |
 
 No in-app rate-limit middleware in agentsfleetd. The per-IP and per-Clerk-user counters that an earlier revision of the M74_002 spec described inside agentsfleetd are not authored — per-IP belongs at edge (L2), per-Clerk-user backstop is deferred post-launch (L1 already throttles the upstream Clerk identity supply). See `docs/v2/active/M74_002_*.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
@@ -237,7 +237,7 @@ Six invariants. All are tested explicitly.
 3. **Verified sessions cannot revert.** The state machine is monotonic; no path from `consumed` / `expired` / `aborted` back to any active state.
 4. **PATCH /approve is single-write.** Calling it against a session already in `verification_pending` returns HTTP 409 Conflict. The dashboard MUST NOT retry PATCH /approve if it has previously succeeded for the same session.
 5. **`session_id` is high-entropy.** UUIDv7; 128 bits; CSPRNG; not enumerable.
-6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the primary verification URL (`https://app.usezombie.com/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — use the `redactSessionId()` helper), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
+6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the primary verification URL (`https://app.agentsfleet.net/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — use the `redactSessionId()` helper), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
 
 ## Cryptographic primitives (pinned)
 
@@ -271,11 +271,11 @@ sequenceDiagram
     participant CLI as agentsfleet
     participant API as Zig backend
 
-    CLI->>API: GET /v1/zombies/{id}/events<br/>Authorization: Bearer <user-jwt>
+    CLI->>API: GET /v1/agents/{id}/events<br/>Authorization: Bearer <user-jwt>
     Note over API: bearer_or_api_key:<br/>JWKS verify (cached 6h),<br/>iss + aud + exp checks,<br/>→ AuthPrincipal{ mode=jwt_oidc, user_id, tenant_id, … }
     API-->>CLI: 200 events
 
-    CLI->>API: GET /v1/zombies/{id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
+    CLI->>API: GET /v1/agents/{id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
     API-->>CLI: 200 text/event-stream (long-lived)
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```
@@ -290,7 +290,7 @@ Flow 1's protocol assumes the following deploy contract. Diverging from these tu
 
 | Requirement | Detail |
 |---|---|
-| **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.usezombie.com` already enforces this in prod. |
+| **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.agentsfleet.net` already enforces this in prod. |
 | **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. Source: load balancer or `src/http/middleware/security_headers.zig`. |
 | **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
 | **Redis required** | `REDIS_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. agentsfleetd fails fast on boot if `REDIS_URL` is unset. |

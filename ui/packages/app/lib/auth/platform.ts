@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
  * Reads the `platform_admin` claim from the Clerk session metadata.
  *
  * `platform_admin` is a boolean claim set by a manual Clerk `publicMetadata`
- * flip on usezombie's operator user (docs/AUTH.md). It gates the runner
+ * flip on agentsfleet's operator user (docs/AUTH.md). It gates the runner
  * operator plane — enrollment (`POST /v1/runners`) and the fleet read
  * (`GET /v1/fleet/runners`). This is the frontend's defence-in-depth check:
  * the dashboard hides the surface for non-admins, and the backend independently

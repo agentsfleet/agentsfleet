@@ -37,7 +37,7 @@ test.describe("mobile dashboard — 375px viewport", () => {
   test("auth shell brand-mark stays visible at 375px", async ({ page }) => {
     await page.goto("/sign-in");
     await page.waitForLoadState("domcontentloaded");
-    const wordmark = page.getByText("usezombie", { exact: false }).first();
+    const wordmark = page.getByText("agentsfleet", { exact: false }).first();
     await expect(wordmark).toBeVisible();
   });
 });

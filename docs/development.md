@@ -57,7 +57,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   in production (no env backdoor): `child_exec` emits a canned `result` frame,
   and the integration target forks a prebuilt stub-flagged
   `agentsfleet-runner-execstub` exe per lease. Exercised by
-  `src/runner/worker_pool_integration_test.zig` via `make test-integration-runner`.
+  `src/runner/worker_pool_integration_test.zig` via `make test-integration-agentsfleet-runner`.
 - **Benign stderr in green runs:** `expected 5, found 1` /
   `expected .worker_started, found .server_started` lines come from the
   *negative* tests in `telemetry_test.zig` (deliberate mismatches asserted via
@@ -115,14 +115,14 @@ production-dead (test-kept); `_test.zig` files in neither walk are true orphans.
 - Token at runtime: `VERCEL_TOKEN=$(op read 'op://ZMB_CD_DEV/vercel-api-token/credential')`
   — never print it. Team scope `indykishs-projects`.
 - Projects → domains: `agentsfleet-website` (marketing) · `agentsfleet-app`
-  (dashboard) · `usezombie-agents-sh` (serves the `usezombie.sh` installer
+  (dashboard) · `agentsfleet-agents-sh` (serves the `agentsfleet.dev` installer
   domain; static output `ui/agentsfleet.dev/dist/`).
 - **Preview URLs return 401** (`ssoProtection: all_except_custom_domains`); prod
   custom domains are raw-reachable. To curl a preview, fetch the project's
   automation-bypass secret (`GET /v9/projects/{name}` → `.protectionBypass |
   keys[0]`) and send `x-vercel-protection-bypass: <secret>`.
 - Vercel ignores Cloudflare-Pages `_redirects`/`_headers`; static dirs need
-  `framework=Other` + a `vercel.json` for rewrites/headers. The `usezombie.sh`
+  `framework=Other` + a `vercel.json` for rewrites/headers. The `agentsfleet.dev`
   root rewrite + `text/x-shellscript` content-type live in
   `ui/agentsfleet.dev/dist/vercel.json` (two explicit header sources — the
   optional-group regex form does not match bare `/`). Deploys ride the git
@@ -132,14 +132,14 @@ production-dead (test-kept); `_test.zig` files in neither walk are true orphans.
 
 ## Dashboard performance — read dev numbers carefully
 
-The dev-mode `/zombies` 1.5–5 s is mostly **not** a backend bug: Turbopack
+The dev-mode `/agents` 1.5–5 s is mostly **not** a backend bug: Turbopack
 on-demand route compilation (zero in prod) + local dev calling the **remote**
 `api-dev` backend (`lib/api/client.ts` `API_ORIGIN` default) + uncompressed dev
 RSC streaming. The `route?_rsc=…` request is the App Router navigation payload,
 not the JSON API. The Approvals 5 s repeat is an intentional poll; the Clerk
 `/touch`+`/tokens` pair is SDK session management doubled by StrictMode in dev.
 The one prod-relevant lever (own perf PR): the server components make 3
-*sequential* remote hops (`getToken → workspaces → zombies`) — parallelize
+*sequential* remote hops (`getToken → workspaces → agents`) — parallelize
 billing with workspace resolution and skip the workspaces round-trip when the
 `active_workspace_id` cookie is set. Measure a Vercel preview first; never
 optimize against dev numbers.

@@ -1,6 +1,6 @@
 // Codified version of the install-skill's step-8 placeholder substitution.
 // The agent following SKILL.md does this textually before writing the
-// generated `.usezombie/platform-ops/{SKILL,TRIGGER}.md` files. Tests use
+// generated `.agentsfleet/platform-ops-sample/{SKILL,TRIGGER}.md` files. Tests use
 // this helper to assert the substitution is total and correct.
 
 import { readFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const PARENT_DIR = "..";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(__dirname, PARENT_DIR, PARENT_DIR);
-export const platformOpsDir = resolve(repoRoot, "samples", "platform-ops");
+export const platformOpsDir = resolve(repoRoot, "samples", "fixtures", "platform-ops-sample");
 
 /** Apply `{{key}}` placeholder substitution. Throws on any `{{...}}` left
  * after substitution — the install-skill must produce a fully-substituted
