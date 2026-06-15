@@ -36,6 +36,8 @@ const PENDING_STATUS = GateStatus.pending.toSlice();
 // ── Public types ────────────────────────────────────────────────────────
 
 pub const ResolvedRow = struct {
+    const Self = @This();
+
     gate_id: []const u8,
     action_id: []const u8,
     workspace_id: []const u8,
@@ -45,7 +47,7 @@ pub const ResolvedRow = struct {
     resolved_by: []const u8,
     detail: []const u8,
 
-    pub fn deinit(self: *ResolvedRow, alloc: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.gate_id);
         alloc.free(self.action_id);
         alloc.free(self.workspace_id);
@@ -56,11 +58,13 @@ pub const ResolvedRow = struct {
 };
 
 pub const ResolveDbOutcome = union(enum) {
+    const Self = @This();
+
     resolved: ResolvedRow,
     already_resolved: ResolvedRow,
     not_found,
 
-    pub fn deinit(self: *ResolveDbOutcome, alloc: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
             .resolved => |*r| r.deinit(alloc),
             .already_resolved => |*r| r.deinit(alloc),
@@ -130,6 +134,8 @@ pub fn resolveGateDecision(
 /// access for agent A could resolve agent B's gate by guessing its
 /// action_id.
 pub const ResolveArgs = struct {
+    const Self = @This();
+
     action_id: []const u8,
     outcome: GateStatus,
     by: []const u8,
@@ -140,7 +146,7 @@ pub const ResolveArgs = struct {
     /// way: .resolved means this caller won the race; .already_resolved
     /// means an earlier writer (different channel or concurrent retry)
     /// already terminated the row.
-    pub fn atomic(self: ResolveArgs, pool: *pg.Pool, alloc: Allocator) !ResolveDbOutcome {
+    pub fn atomic(self: Self, pool: *pg.Pool, alloc: Allocator) !ResolveDbOutcome {
         if (self.outcome == .pending) return error.InvalidGateStatus;
 
         const conn = try pool.acquire();
@@ -203,7 +209,7 @@ fn insertPendingRow(
         \\   resolved_by, status, detail, requested_at, created_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $13)
     , .{
-        gate_id,          agent_id,              workspace_id,         action_id,           detail.tool, detail.action,
+        gate_id,          agent_id,               workspace_id,         action_id,           detail.tool, detail.action,
         detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
         now_ms,
     });

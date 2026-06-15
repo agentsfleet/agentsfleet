@@ -16,6 +16,8 @@ const S_STOP = "stop";
 const S_WARN = "warn";
 
 pub const Policy = enum {
+    const Self = @This();
+
     /// Log + let the run proceed. Zero nanos deducted.
     @"continue",
     /// Same as `continue` plus a rate-limited activity event. Default.
@@ -23,7 +25,7 @@ pub const Policy = enum {
     /// Pre-claim gate rejects the delivery; agent never runs.
     stop,
 
-    pub fn label(self: Policy) []const u8 {
+    pub fn label(self: Self) []const u8 {
         return switch (self) {
             .@"continue" => S_CONTINUE,
             .warn => S_WARN,

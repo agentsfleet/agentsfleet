@@ -34,6 +34,8 @@ const EMPTY_WORKSPACE = "";
 const EMPTY_JSON_BODY = "{}";
 
 pub const AgentEvent = struct {
+    const Self = @This();
+
     event_id: []u8,
     actor: []u8,
     event_type: []u8,
@@ -41,7 +43,7 @@ pub const AgentEvent = struct {
     request_json: []u8,
     created_at_ms: i64,
 
-    pub fn deinit(self: *AgentEvent, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.event_id);
         alloc.free(self.actor);
         alloc.free(self.event_type);
@@ -64,7 +66,7 @@ pub fn ensureAgentConsumerGroup(client: *redis_client.Client, agent_id: []const 
     var key_buf: [128]u8 = undefined;
     const stream_key = try agentStreamKey(&key_buf, agent_id);
     var resp = try client.commandAllowError(&.{
-        "XGROUP",                           "CREATE", stream_key,
+        "XGROUP",                          "CREATE", stream_key,
         queue_consts.agent_consumer_group, "0",      "MKSTREAM",
     });
     defer resp.deinit(client.alloc);
@@ -92,10 +94,10 @@ pub fn xreadgroupAgentPending(
     var key_buf: [128]u8 = undefined;
     const stream_key = try agentStreamKey(&key_buf, agent_id);
     var resp = try client.command(&.{
-        REDIS_XREADGROUP_COMMAND,           REDIS_GROUP_ARG,
+        REDIS_XREADGROUP_COMMAND,          REDIS_GROUP_ARG,
         queue_consts.agent_consumer_group, consumer_id,
-        S_COUNT,                            queue_consts.agent_xread_count,
-        REDIS_STREAMS_ARG,                  stream_key,
+        S_COUNT,                           queue_consts.agent_xread_count,
+        REDIS_STREAMS_ARG,                 stream_key,
         PEL_READ_ID,
     });
     defer resp.deinit(client.alloc);
@@ -114,10 +116,10 @@ pub fn xreadgroupAgentOnce(
     var key_buf: [128]u8 = undefined;
     const stream_key = try agentStreamKey(&key_buf, agent_id);
     var resp = try client.command(&.{
-        REDIS_XREADGROUP_COMMAND,           REDIS_GROUP_ARG,
+        REDIS_XREADGROUP_COMMAND,          REDIS_GROUP_ARG,
         queue_consts.agent_consumer_group, consumer_id,
-        S_COUNT,                            queue_consts.agent_xread_count,
-        REDIS_STREAMS_ARG,                  stream_key,
+        S_COUNT,                           queue_consts.agent_xread_count,
+        REDIS_STREAMS_ARG,                 stream_key,
         ">",
     });
     defer resp.deinit(client.alloc);
@@ -137,10 +139,10 @@ pub fn xautoclaimAgent(
     var key_buf: [128]u8 = undefined;
     const stream_key = try agentStreamKey(&key_buf, agent_id);
     var resp = try client.command(&.{
-        "XAUTOCLAIM",                               stream_key,
+        "XAUTOCLAIM",                              stream_key,
         queue_consts.agent_consumer_group,         consumer_id,
         queue_consts.agent_xautoclaim_min_idle_ms, queue_consts.xautoclaim_start,
-        S_COUNT,                                    queue_consts.xautoclaim_count,
+        S_COUNT,                                   queue_consts.xautoclaim_count,
     });
     defer resp.deinit(client.alloc);
     return decodeAutoClaimAgentEvent(client.alloc, resp);
@@ -151,7 +153,7 @@ pub fn xackAgent(client: *redis_client.Client, agent_id: []const u8, event_id: [
     var key_buf: [128]u8 = undefined;
     const stream_key = try agentStreamKey(&key_buf, agent_id);
     var resp = try client.command(&.{
-        "XACK",                             stream_key,
+        "XACK",                            stream_key,
         queue_consts.agent_consumer_group, event_id,
     });
     defer resp.deinit(client.alloc);
@@ -216,13 +218,15 @@ fn decodeAgentEventTuple(alloc: std.mem.Allocator, item: redis_protocol.RespValu
 /// required-field check promotes them into a fully-owned `AgentEvent`. Each
 /// non-null slice is caller-owned; `freeOwned` releases whatever is present.
 const ParsedFields = struct {
+    const Self = @This();
+
     event_type: ?[]u8 = null,
     actor: ?[]u8 = null,
     workspace_id: ?[]u8 = null,
     request_json: ?[]u8 = null,
     created_at_ms: i64 = 0,
 
-    fn freeOwned(self: ParsedFields, alloc: std.mem.Allocator) void {
+    fn freeOwned(self: Self, alloc: std.mem.Allocator) void {
         if (self.event_type) |e| alloc.free(e);
         if (self.actor) |a| alloc.free(a);
         if (self.workspace_id) |w| alloc.free(w);
@@ -232,7 +236,7 @@ const ParsedFields = struct {
     /// Promote to a fully-owned `AgentEvent`. Each dupe lands in a local with
     /// its own `errdefer` so a late OOM frees every already-owned slice — Zig
     /// does not unwind earlier struct-literal fields when a later one errors.
-    fn intoOwned(self: ParsedFields, alloc: std.mem.Allocator, event_id_raw: []const u8) !AgentEvent {
+    fn intoOwned(self: Self, alloc: std.mem.Allocator, event_id_raw: []const u8) !AgentEvent {
         const event_type = self.event_type.?;
         errdefer alloc.free(event_type);
         const actor = self.actor.?;

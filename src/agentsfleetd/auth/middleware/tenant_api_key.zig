@@ -58,10 +58,12 @@ pub const LookupFn = *const fn (
 ) anyerror!?LookupResult;
 
 pub const TenantApiKey = struct {
+    const Self = @This();
+
     host: *anyopaque,
     lookup: LookupFn,
 
-    pub fn middleware(self: *TenantApiKey) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -70,7 +72,7 @@ pub const TenantApiKey = struct {
         return execute(self, ctx, req);
     }
 
-    pub fn execute(self: *TenantApiKey, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;

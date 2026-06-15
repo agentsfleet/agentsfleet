@@ -36,6 +36,8 @@ const EVENTS_SELECT =
 ;
 
 pub const EventRow = struct {
+    const Self = @This();
+
     agent_id: []u8,
     event_id: []u8,
     workspace_id: []u8,
@@ -52,7 +54,7 @@ pub const EventRow = struct {
     created_at: i64,
     updated_at: i64,
 
-    pub fn deinit(self: *EventRow, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.agent_id);
         alloc.free(self.event_id);
         alloc.free(self.workspace_id);

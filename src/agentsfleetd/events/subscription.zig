@@ -17,7 +17,7 @@
 //! `SubscriptionHub.unsubscribe`; the stream thread only borrows it between
 //! those two calls.
 
-const Subscription = @This();
+const Self = @This();
 
 alloc: std.mem.Allocator,
 io: std.Io,
@@ -50,8 +50,8 @@ pub const PopResult = union(enum) {
     closed,
 };
 
-pub fn create(alloc: std.mem.Allocator, io: std.Io, channel_name: []const u8) error{OutOfMemory}!*Subscription {
-    const self = try alloc.create(Subscription);
+pub fn create(alloc: std.mem.Allocator, io: std.Io, channel_name: []const u8) error{OutOfMemory}!*Self {
+    const self = try alloc.create(Self);
     errdefer alloc.destroy(self);
     const name = try alloc.dupe(u8, channel_name);
     self.* = .{ .alloc = alloc, .io = io, .channel_name = name };
@@ -62,7 +62,7 @@ pub fn create(alloc: std.mem.Allocator, io: std.Io, channel_name: []const u8) er
 /// from its map, so no producer can race the teardown; the consumer's part
 /// of the deal is that the stream thread never touches the handle after
 /// unsubscribe.
-pub fn destroy(self: *Subscription) void {
+pub fn destroy(self: *Self) void {
     while (self.count > 0) : (self.count -= 1) {
         self.alloc.free(self.ring[self.tail]);
         self.tail = (self.tail + 1) % QUEUE_CAPACITY;
@@ -75,7 +75,7 @@ pub fn destroy(self: *Subscription) void {
 /// Producer side (hub reader thread). Copies `payload` in; a full ring
 /// evicts the oldest frame and a failed copy drops the new one — both
 /// counted, neither blocking.
-pub fn push(self: *Subscription, payload: []const u8) void {
+pub fn push(self: *Self, payload: []const u8) void {
     const copy = self.alloc.dupe(u8, payload) catch {
         self.noteDrop();
         return;
@@ -102,14 +102,14 @@ pub fn push(self: *Subscription, payload: []const u8) void {
     if (evicted) |old| self.alloc.free(old);
 }
 
-fn noteDrop(self: *Subscription) void {
+fn noteDrop(self: *Self) void {
     self.mutex.lockUncancelable(self.io);
     self.drops += 1;
     self.mutex.unlock(self.io);
     metrics.incSseDroppedFrames();
 }
 
-fn wake(self: *Subscription) void {
+fn wake(self: *Self) void {
     // safe because: the release bump pairs with pop's read of the epoch
     // under the mutex; bump-then-wake means a consumer that saw the old
     // epoch either gets this wake or observes the new value before sleeping.
@@ -120,7 +120,7 @@ fn wake(self: *Subscription) void {
 /// Consumer side (stream thread). Waits up to `timeout_ms` for the next
 /// frame. Remaining frames are delivered before `closed` is reported, so a
 /// closing hub still drains what was queued.
-pub fn pop(self: *Subscription, timeout_ms: u64) PopResult {
+pub fn pop(self: *Self, timeout_ms: u64) PopResult {
     const io = self.io;
     const deadline_ms = clock.nowMillis() + @as(i64, @intCast(timeout_ms));
     while (true) {
@@ -155,7 +155,7 @@ pub fn pop(self: *Subscription, timeout_ms: u64) PopResult {
 }
 
 /// Hub stop/drain path: wake the consumer permanently.
-pub fn close(self: *Subscription) void {
+pub fn close(self: *Self) void {
     {
         self.mutex.lockUncancelable(self.io);
         defer self.mutex.unlock(self.io);
@@ -165,7 +165,7 @@ pub fn close(self: *Subscription) void {
 }
 
 /// Snapshot of the drop counter (admin/diagnostic surface).
-pub fn dropCount(self: *Subscription) u64 {
+pub fn dropCount(self: *Self) u64 {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     return self.drops;

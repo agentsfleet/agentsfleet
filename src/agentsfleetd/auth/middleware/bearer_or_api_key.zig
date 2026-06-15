@@ -40,13 +40,15 @@ fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
 }
 
 pub const BearerOrApiKey = struct {
+    const Self = @This();
+
     verifier: ?*oidc.Verifier,
     /// Populated by MiddlewareRegistry.initChains() when a tenant API-key
     /// lookup is wired. When set, any `agt_t`-prefixed Bearer token is
     /// routed to the tenant-key path (DB-backed lookup via host callback).
     tenant_api_key: ?*TenantApiKey = null,
 
-    pub fn middleware(self: *BearerOrApiKey) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -55,7 +57,7 @@ pub const BearerOrApiKey = struct {
         return execute(self, ctx, req);
     }
 
-    pub fn execute(self: *BearerOrApiKey, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;

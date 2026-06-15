@@ -27,11 +27,13 @@ const S_SESSION = "Session ";
 const S_REVOKED = "revoked";
 
 pub const GrantStatus = enum {
+    const Self = @This();
+
     pending,
     approved,
     revoked,
 
-    pub fn toSlice(self: GrantStatus) []const u8 {
+    pub fn toSlice(self: Self) []const u8 {
         return switch (self) {
             .pending => S_PENDING,
             .approved => "approved",

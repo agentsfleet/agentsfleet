@@ -98,6 +98,8 @@ const TimeoutReader = struct {
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PlainTransport = struct {
+    const Self = @This();
+
     stream: net.Stream,
     stream_reader: TimeoutReader,
     stream_writer: net.Stream.Writer,
@@ -125,22 +127,24 @@ pub const PlainTransport = struct {
         };
     }
 
-    pub fn deinit(self: *PlainTransport, io: std.Io, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, io: std.Io, alloc: std.mem.Allocator) void {
         self.stream.close(io);
         alloc.free(self.read_buffer);
         alloc.free(self.write_buffer);
     }
 
-    pub fn reader(self: *PlainTransport) *std.Io.Reader {
+    pub fn reader(self: *Self) *std.Io.Reader {
         return &self.stream_reader.interface;
     }
 
-    pub fn writer(self: *PlainTransport) *std.Io.Writer {
+    pub fn writer(self: *Self) *std.Io.Writer {
         return &self.stream_writer.interface;
     }
 };
 
 const TlsTransport = struct {
+    const Self = @This();
+
     stream: net.Stream,
     stream_reader: *TimeoutReader,
     stream_writer: *net.Stream.Writer,
@@ -151,7 +155,7 @@ const TlsTransport = struct {
     tls_write_buffer: []u8,
     ca_bundle: std.crypto.Certificate.Bundle,
 
-    pub fn initInPlace(self: *TlsTransport, io: std.Io, alloc: std.mem.Allocator, stream: net.Stream, host: []const u8, ca_file_path: ?[]const u8) !void {
+    pub fn initInPlace(self: *Self, io: std.Io, alloc: std.mem.Allocator, stream: net.Stream, host: []const u8, ca_file_path: ?[]const u8) !void {
         // Own the stream on entry — any subsequent failure (CA load, buffer
         // alloc, TLS handshake) must close it so callers (incl. dialAndAuth
         // on every reconnect) cannot leak fds.
@@ -222,7 +226,7 @@ const TlsTransport = struct {
         log.debug(S_TRANSPORT_CONNECTED, .{ .mode = "tls", .host = host });
     }
 
-    pub fn deinit(self: *TlsTransport, io: std.Io, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, io: std.Io, alloc: std.mem.Allocator) void {
         self.stream.close(io);
         self.ca_bundle.deinit(alloc);
         alloc.destroy(self.stream_reader);
@@ -233,34 +237,36 @@ const TlsTransport = struct {
         alloc.free(self.tls_write_buffer);
     }
 
-    pub fn reader(self: *TlsTransport) *std.Io.Reader {
+    pub fn reader(self: *Self) *std.Io.Reader {
         return &self.tls_client.reader;
     }
 
-    pub fn writer(self: *TlsTransport) *std.Io.Writer {
+    pub fn writer(self: *Self) *std.Io.Writer {
         return &self.tls_client.writer;
     }
 };
 
 pub const Transport = union(enum) {
+    const Self = @This();
+
     plain: PlainTransport,
     tls: TlsTransport,
 
-    pub fn deinit(self: *Transport, io: std.Io, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, io: std.Io, alloc: std.mem.Allocator) void {
         switch (self.*) {
             .plain => |*p| p.deinit(io, alloc),
             .tls => |*t| t.deinit(io, alloc),
         }
     }
 
-    pub fn reader(self: *Transport) *std.Io.Reader {
+    pub fn reader(self: *Self) *std.Io.Reader {
         return switch (self.*) {
             .plain => |*p| p.reader(),
             .tls => |*t| t.reader(),
         };
     }
 
-    pub fn writer(self: *Transport) *std.Io.Writer {
+    pub fn writer(self: *Self) *std.Io.Writer {
         return switch (self.*) {
             .plain => |*p| p.writer(),
             .tls => |*t| t.writer(),
@@ -272,7 +278,7 @@ pub const Transport = union(enum) {
     /// read fails and `readTimedOut()` returns true so the Connection surfaces
     /// a distinct `RedisRequestTimeout`. Null blocks until data or peer close.
     /// Replaces `SO_RCVTIMEO`, which panics under 0.16's threaded reader.
-    pub fn setReadTimeout(self: *Transport, ms: ?u32) void {
+    pub fn setReadTimeout(self: *Self, ms: ?u32) void {
         switch (self.*) {
             .plain => |*p| p.stream_reader.timeout_ms = ms,
             .tls => |*t| t.stream_reader.timeout_ms = ms,
@@ -282,7 +288,7 @@ pub const Transport = union(enum) {
     /// True if the most recent read on this transport hit its timeout deadline
     /// (vs a peer drop or other read failure). Lets the Connection map an
     /// otherwise-opaque `ReadFailed` to a distinct `RedisRequestTimeout`.
-    pub fn readTimedOut(self: *Transport) bool {
+    pub fn readTimedOut(self: *Self) bool {
         return switch (self.*) {
             .plain => |*p| p.stream_reader.timed_out,
             .tls => |*t| t.stream_reader.timed_out,

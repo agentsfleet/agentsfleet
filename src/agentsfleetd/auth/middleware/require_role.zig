@@ -19,9 +19,11 @@ const rbac = @import("../rbac.zig");
 pub const AuthCtx = auth_ctx.AuthCtx;
 
 pub const RequireRole = struct {
+    const Self = @This();
+
     required: rbac.AuthRole,
 
-    pub fn middleware(self: *RequireRole) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -30,7 +32,7 @@ pub const RequireRole = struct {
         return execute(self, ctx);
     }
 
-    pub fn execute(self: *RequireRole, ctx: *AuthCtx) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx) !chain.Outcome {
         const principal = ctx.principal orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
             return .short_circuit;

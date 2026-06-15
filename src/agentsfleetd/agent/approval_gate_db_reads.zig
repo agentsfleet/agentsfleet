@@ -14,6 +14,8 @@ const GateStatus = @import("approval_gate.zig").GateStatus;
 const PENDING_STATUS = GateStatus.pending.toSlice();
 
 pub const PendingRow = struct {
+    const Self = @This();
+
     gate_id: []const u8,
     agent_id: []const u8,
     agent_name: []const u8,
@@ -32,7 +34,7 @@ pub const PendingRow = struct {
     updated_at: ?i64,
     resolved_by: []const u8,
 
-    pub fn deinit(self: *PendingRow, alloc: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.gate_id);
         alloc.free(self.agent_id);
         alloc.free(self.agent_name);
@@ -58,9 +60,11 @@ pub const ListFilter = struct {
 };
 
 pub const ListResult = struct {
+    const Self = @This();
+
     items: []PendingRow,
 
-    pub fn deinit(self: *ListResult, alloc: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.items) |*r| r.deinit(alloc);
         alloc.free(self.items);
     }
@@ -100,7 +104,7 @@ pub fn listPending(
         \\LIMIT $8
     , .{
         filter.workspace_id, status_param, agent_param, kind_param,
-        has_cursor,          cursor_ts,    cursor_id,    @as(i64, @intCast(limit)),
+        has_cursor,          cursor_ts,    cursor_id,   @as(i64, @intCast(limit)),
     }));
     defer q.deinit();
 

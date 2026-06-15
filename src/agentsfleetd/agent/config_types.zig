@@ -38,12 +38,14 @@ pub const AgentConfigError = error{
 };
 
 pub const AgentStatus = enum {
+    const Self = @This();
+
     active,
     paused,
     stopped,
     killed,
 
-    pub fn toSlice(self: AgentStatus) []const u8 {
+    pub fn toSlice(self: Self) []const u8 {
         return switch (self) {
             .active => S_ACTIVE,
             .paused => S_PAUSED,
@@ -60,11 +62,11 @@ pub const AgentStatus = enum {
         return null;
     }
 
-    pub fn isTerminal(self: AgentStatus) bool {
+    pub fn isTerminal(self: Self) bool {
         return self == .killed;
     }
 
-    pub fn isRunnable(self: AgentStatus) bool {
+    pub fn isRunnable(self: Self) bool {
         return self == .active;
     }
 };
@@ -124,6 +126,8 @@ pub const AgentContextBudget = struct {
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const AgentConfig = struct {
+    const Self = @This();
+
     name: []const u8,
     triggers: []const AgentTrigger,
     tools: []const []const u8,
@@ -142,7 +146,7 @@ pub const AgentConfig = struct {
     // "no `x-agentsfleet.context:` block authored — every knob is auto."
     context: ?AgentContextBudget,
 
-    pub fn deinit(self: *const AgentConfig, alloc: Allocator) void {
+    pub fn deinit(self: *const Self, alloc: Allocator) void {
         alloc.free(self.name);
         for (self.triggers) |t| freeAgentTrigger(alloc, t);
         alloc.free(self.triggers);
@@ -174,6 +178,8 @@ comptime {
 /// see `validRequiredTags` + `fleet.assign.listCandidates`). Cross-file
 /// invariant enforced upstream: `SkillMetadata.name == AgentConfig.name`.
 pub const SkillMetadata = struct {
+    const Self = @This();
+
     name: []const u8,
     description: []const u8,
     version: []const u8,
@@ -182,7 +188,7 @@ pub const SkillMetadata = struct {
     author: ?[]const u8 = null,
     model: ?[]const u8 = null,
 
-    pub fn deinit(self: *const SkillMetadata, alloc: Allocator) void {
+    pub fn deinit(self: *const Self, alloc: Allocator) void {
         alloc.free(self.name);
         alloc.free(self.description);
         alloc.free(self.version);

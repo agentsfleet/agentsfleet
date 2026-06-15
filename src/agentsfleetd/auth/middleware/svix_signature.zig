@@ -37,9 +37,11 @@ const log = logging.scoped(.svix);
 /// vault for the target agent — the verifier handles prefix stripping and
 /// base64 decoding internally.
 pub const SvixLookupResult = struct {
+    const Self = @This();
+
     secret: ?[]const u8,
 
-    pub fn deinit(self: SvixLookupResult, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         if (self.secret) |s| alloc.free(s);
     }
 };

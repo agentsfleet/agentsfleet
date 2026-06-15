@@ -162,6 +162,8 @@ fn streamThreadMain(job: *StreamJob, stream: std.Io.net.Stream) void {
 /// owner: created on the request thread, destroyed by the stream thread (or
 /// by startStreamThread when the spawn fails).
 const StreamJob = struct {
+    const Self = @This();
+
     ctx: *common.Context,
     sub: *subscription_hub.Subscription,
     reg_id: u64,
@@ -183,7 +185,7 @@ const StreamJob = struct {
         return job;
     }
 
-    fn destroy(self: *StreamJob) void {
+    fn destroy(self: *Self) void {
         const alloc = self.ctx.alloc;
         // unsubscribe consumes the handle: refcount drop, wire UNSUBSCRIBE
         // on the channel's last viewer, subscription freed.

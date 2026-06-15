@@ -14,7 +14,7 @@
 //! detached thread attaches one; a drain in that window skips them (they
 //! exit through the hub's close path instead).
 
-const StreamRegistry = @This();
+const Self = @This();
 
 alloc: std.mem.Allocator,
 io: std.Io,
@@ -44,14 +44,14 @@ pub const ListedStream = struct {
     started_ms: i64,
 };
 
-pub fn init(alloc: std.mem.Allocator, io: std.Io) StreamRegistry {
+pub fn init(alloc: std.mem.Allocator, io: std.Io) Self {
     return .{ .alloc = alloc, .io = io };
 }
 
 /// Frees remaining entries. Call after `drain()` (or after every stream is
 /// known to have deregistered) — a live stream thread still holding its id
 /// must never race this.
-pub fn deinit(self: *StreamRegistry) void {
+pub fn deinit(self: *Self) void {
     var it = self.entries.valueIterator();
     while (it.next()) |entry| self.freeEntry(entry.*);
     self.entries.deinit(self.alloc);
@@ -59,7 +59,7 @@ pub fn deinit(self: *StreamRegistry) void {
 
 /// Claim a stream slot: check-and-insert under one lock (no over-claim
 /// wobble). Null = at capacity or draining → the caller sheds.
-pub fn tryRegister(self: *StreamRegistry, workspace_id: []const u8, agent_id: []const u8, started_ms: i64, max: u32) error{OutOfMemory}!?u64 {
+pub fn tryRegister(self: *Self, workspace_id: []const u8, agent_id: []const u8, started_ms: i64, max: u32) error{OutOfMemory}!?u64 {
     const ws = try self.alloc.dupe(u8, workspace_id);
     errdefer self.alloc.free(ws);
     const zid = try self.alloc.dupe(u8, agent_id);
@@ -84,7 +84,7 @@ pub fn tryRegister(self: *StreamRegistry, workspace_id: []const u8, agent_id: []
 }
 
 /// The detached stream thread attaches its client socket once it owns it.
-pub fn attachFd(self: *StreamRegistry, id: u64, fd: std.posix.fd_t) void {
+pub fn attachFd(self: *Self, id: u64, fd: std.posix.fd_t) void {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     if (self.entries.getPtr(id)) |entry| entry.fd = fd;
@@ -92,7 +92,7 @@ pub fn attachFd(self: *StreamRegistry, id: u64, fd: std.posix.fd_t) void {
 
 /// Release a slot. Idempotent — a double release is a no-op, never an
 /// underflow. The caller must deregister BEFORE closing the entry's fd.
-pub fn deregister(self: *StreamRegistry, id: u64) void {
+pub fn deregister(self: *Self, id: u64) void {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     const kv = self.entries.fetchRemove(id) orelse return;
@@ -100,7 +100,7 @@ pub fn deregister(self: *StreamRegistry, id: u64) void {
     metrics.setSseInFlightStreams(@intCast(self.entries.count()));
 }
 
-pub fn count(self: *StreamRegistry) usize {
+pub fn count(self: *Self) usize {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     return self.entries.count();
@@ -111,7 +111,7 @@ pub fn count(self: *StreamRegistry) usize {
 /// a WRITE fails fast. A stream parked in its subscription pop (a futex
 /// wait, not a socket read) is NOT woken by this — that wake is the hub's
 /// close broadcast; callers run drain() → hub.stop() → awaitEmpty().
-pub fn drain(self: *StreamRegistry) void {
+pub fn drain(self: *Self) void {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     self.draining = true;
@@ -129,7 +129,7 @@ pub fn drain(self: *StreamRegistry) void {
 
 /// Step three: wait (bounded) for the woken stream threads to deregister,
 /// so callers can tear down whatever the streams borrow (hub, registry).
-pub fn awaitEmpty(self: *StreamRegistry) void {
+pub fn awaitEmpty(self: *Self) void {
     var waited_ms: u64 = 0;
     while (self.count() > 0 and waited_ms < AWAIT_EMPTY_MAX_MS) : (waited_ms += AWAIT_EMPTY_POLL_MS) {
         common.sleepNanos(AWAIT_EMPTY_POLL_MS * std.time.ns_per_ms);
@@ -142,7 +142,7 @@ pub fn awaitEmpty(self: *StreamRegistry) void {
 /// Listing rows duped into `alloc`. Callers today pass a request arena (free
 /// with the arena, or not at all), but OOM unwinds the partial rows either
 /// way — a future general-purpose-allocator caller inherits no leak.
-pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMemory}![]ListedStream {
+pub fn listAlloc(self: *Self, alloc: std.mem.Allocator) error{OutOfMemory}![]ListedStream {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     var rows = try alloc.alloc(ListedStream, self.entries.count());
@@ -165,7 +165,7 @@ pub fn listAlloc(self: *StreamRegistry, alloc: std.mem.Allocator) error{OutOfMem
     return rows;
 }
 
-fn freeEntry(self: *StreamRegistry, entry: Entry) void {
+fn freeEntry(self: *Self, entry: Entry) void {
     self.alloc.free(entry.workspace_id);
     self.alloc.free(entry.agent_id);
 }

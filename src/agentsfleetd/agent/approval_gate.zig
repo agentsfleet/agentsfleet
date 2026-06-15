@@ -33,13 +33,15 @@ pub const GateDecision = enum { auto_approve, requires_approval, auto_kill };
 const S_S_S = "{s}{s}";
 
 pub const GateStatus = enum {
+    const Self = @This();
+
     pending,
     approved,
     denied,
     timed_out,
     auto_killed,
 
-    pub fn toSlice(self: GateStatus) []const u8 {
+    pub fn toSlice(self: Self) []const u8 {
         return switch (self) {
             .pending => "pending",
             .approved => "approved",
@@ -49,7 +51,7 @@ pub const GateStatus = enum {
         };
     }
 
-    pub fn isTerminal(self: GateStatus) bool {
+    pub fn isTerminal(self: Self) bool {
         return self != .pending;
     }
 };

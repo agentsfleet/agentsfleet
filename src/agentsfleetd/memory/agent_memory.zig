@@ -71,13 +71,15 @@ pub fn tierOf(category: []const u8) Tier {
 /// `passthrough` returns everything (the tenant read). Deterministic, no
 /// allocation, no LLM: summarisation belongs on the executor plane.
 pub const Compactor = union(enum) {
+    const Self = @This();
+
     /// Hand the rows over unchanged — the seam's identity arm (no production
     /// caller today; retained per spec as the no-compaction option).
     passthrough,
     /// Category-pinned byte window: `core` first, then newest non-core.
     selective: usize,
 
-    pub fn compact(self: Compactor, rows: []MemoryDelta) []const MemoryDelta {
+    pub fn compact(self: Self, rows: []MemoryDelta) []const MemoryDelta {
         return switch (self) {
             .passthrough => rows,
             .selective => |budget| selectByTier(rows, budget),
@@ -107,11 +109,13 @@ pub fn sumBytes(rows: []const MemoryDelta) usize {
 /// the pre-tier window's cut). The tier's head bypasses the budget once when
 /// `head_taken` starts false (the never-empty rule).
 const TierRun = struct {
+    const Self = @This();
+
     used: usize = 0,
     head_taken: bool = false,
     closed: bool = false,
 
-    fn admit(self: *TierRun, sz: usize, budget: usize) bool {
+    fn admit(self: *Self, sz: usize, budget: usize) bool {
         if (!self.head_taken) {
             self.head_taken = true;
             self.used = sz;

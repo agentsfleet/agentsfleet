@@ -24,13 +24,15 @@ const REF_TTL_GRACE_SECONDS: i64 = 600;
 pub const StoredDecision = enum { approved, denied };
 
 pub const EventGateRef = struct {
+    const Self = @This();
+
     // SAFETY: parseRef fills the prefix it reports via action_id_len before
     // the struct is returned; readers go through actionId().
     action_id_buf: [ACTION_ID_LEN]u8 = undefined,
     action_id_len: u8 = 0,
     deadline_ms: i64 = 0,
 
-    pub fn actionId(self: *const EventGateRef) []const u8 {
+    pub fn actionId(self: *const Self) []const u8 {
         return self.action_id_buf[0..self.action_id_len];
     }
 };

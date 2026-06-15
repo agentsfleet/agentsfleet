@@ -15,6 +15,8 @@ const httpz = @import("httpz");
 const common = @import("common.zig");
 
 pub const Hx = struct {
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     /// Populated by bearer/admin middleware for authenticated routes.
     /// Zero-value (.mode = .api_key) for none-policy routes — those
@@ -25,12 +27,12 @@ pub const Hx = struct {
     res: *httpz.Response,
 
     /// Write a successful JSON response.
-    pub fn ok(self: Hx, status: std.http.Status, body: anytype) void {
+    pub fn ok(self: Self, status: std.http.Status, body: anytype) void {
         common.writeJson(self.res, status, body);
     }
 
     /// Write an RFC 7807 error response. HTTP status is owned by the error code table.
-    pub fn fail(self: Hx, code: []const u8, detail: []const u8) void {
+    pub fn fail(self: Self, code: []const u8, detail: []const u8) void {
         common.errorResponse(self.res, code, detail, self.req_id);
     }
 
@@ -39,7 +41,7 @@ pub const Hx = struct {
     /// would emit a 2-byte `{}` body via res.json, which some CDNs and HTTP/2
     /// stacks reject or normalize. Use this helper for DELETE/revoke/forget
     /// endpoints where the response carries no payload.
-    pub fn noContent(self: Hx) void {
+    pub fn noContent(self: Self) void {
         self.res.status = 204;
         self.res.body = "";
     }

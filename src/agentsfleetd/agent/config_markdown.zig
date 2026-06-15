@@ -73,10 +73,12 @@ pub fn extractAgentInstructions(source_markdown: []const u8) []const u8 {
 /// what the install handler persists into core.agents. Owning both lets
 /// callers store the JSON without re-serializing the config.
 pub const ParsedTrigger = struct {
+    const Self = @This();
+
     config: AgentConfig,
     config_json: []u8,
 
-    pub fn deinit(self: *ParsedTrigger, alloc: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
         self.config.deinit(alloc);
         alloc.free(self.config_json);
     }
