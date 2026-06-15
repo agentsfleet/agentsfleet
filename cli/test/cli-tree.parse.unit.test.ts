@@ -89,34 +89,34 @@ test("workspace delete <id> captures required positional", async () => {
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
 
-// ── Agent tree ──────────────────────────────────────────────────────────
+// ── Agent-key tree ────────────────────────────────────────────────────────
 
-test("agent add accepts --workspace / --agent / --name / --description", async () => {
+test("agent-key add accepts --workspace / --agent / --name / --description", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "agent", "add",
+    "agent-key", "add",
     "--workspace", VALID_ID,
     "--agent",    VALID_ID,
     "--name",      "scout",
     "--description", "for scouting",
   ], handlers);
-  expect(calls[0]?.name).toBe("agent.add");
+  expect(calls[0]?.name).toBe("agent-key.add");
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.agent).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.name).toBe("scout");
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
 });
 
-test("agent list with --workspace dispatches", async () => {
+test("agent-key list with --workspace dispatches", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["agent", "list", "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("agent.list");
+  await dispatch(["agent-key", "list", "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("agent-key.list");
 });
 
-test("agent delete <id> with --workspace captures both", async () => {
+test("agent-key delete <id> with --workspace captures both", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["agent", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("agent.delete");
+  await dispatch(["agent-key", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("agent-key.delete");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
 });

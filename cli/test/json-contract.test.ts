@@ -63,7 +63,7 @@ describe("CLI tree — every documented route is reachable through commander", (
     ["login"], ["logout"], ["doctor"],
     ["workspace", "add"], ["workspace", "list"], ["workspace", "use"],
     ["workspace", "show"], ["workspace", "credentials"], ["workspace", "delete"],
-    ["agent", "add"], ["agent", "list"], ["agent", "delete"],
+    ["agent-key", "add"], ["agent-key", "list"], ["agent-key", "delete"],
     ["grant", "list"], ["grant", "delete"],
     ["tenant", "provider", "show"], ["tenant", "provider", "add"], ["tenant", "provider", "delete"],
     ["billing", "show"],

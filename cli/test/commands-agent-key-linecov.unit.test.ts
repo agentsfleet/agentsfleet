@@ -23,7 +23,7 @@ import { ValidationError } from "../src/errors/index.ts";
 
 const WS_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
 const NOT_A_UUID = "not-a-uuid";
-const NO_AGENTS_MSG = "no external agents found";
+const NO_AGENTS_MSG = "no agent keys found";
 
 // Captures every Output emit so a test can assert what reached the user.
 interface Capture {

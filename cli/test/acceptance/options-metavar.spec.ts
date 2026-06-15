@@ -119,7 +119,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["agentsfleet install --help",              ["install", "--help"],              ["--from <path>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
-    ["agentsfleet agent add --help",            ["agent", "add", "--help"],         ["--workspace <id>", "--agent <id>", "--name <name>"]],
+    ["agentsfleet agent-key add --help",        ["agent-key", "add", "--help"],     ["--workspace <id>", "--agent <id>", "--name <name>"]],
     ["agentsfleet tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--credential <name>", "--model <name>"]],
   ];
 
@@ -154,8 +154,8 @@ describe("validators reject invalid values with clear error stem", () => {
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // parseIdOption rejections (uuidv7 enforced)
-    ["agent add --workspace not-a-uuid", ["agent", "add", "--workspace", "not-a-uuid", "--agent", FIXTURE_UUIDV7], /uuidv7 format/],
-    ["agent add --agent not-a-uuid",    ["agent", "add", "--workspace", FIXTURE_UUIDV7, "--agent", "not-a-uuid"], /uuidv7 format/],
+    ["agent-key add --workspace not-a-uuid", ["agent-key", "add", "--workspace", "not-a-uuid", "--agent", FIXTURE_UUIDV7], /uuidv7 format/],
+    ["agent-key add --agent not-a-uuid",    ["agent-key", "add", "--workspace", FIXTURE_UUIDV7, "--agent", "not-a-uuid"], /uuidv7 format/],
     ["list --workspace-id not-a-uuid",   ["list", "--workspace-id", "not-a-uuid"], /uuidv7 format/],
   ];
 
@@ -231,10 +231,10 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
   });
 
-  it("agent add --workspace <uuid7> --agent <uuid7> --name fred → POST body has name=fred", async () => {
+  it("agent-key add --workspace <uuid7> --agent <uuid7> --name fred → POST body has name=fred", async () => {
     clear();
     const result = await runAgentctl(
-      ["agent", "add", "--workspace", workspaceUuid, "--agent", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
+      ["agent-key", "add", "--workspace", workspaceUuid, "--agent", FIXTURE_UUIDV7_B, "--name", "fred", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);

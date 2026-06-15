@@ -10,7 +10,7 @@ const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
 describe("agent (external API key) commands", () => {
-  test("`agent add` POSTs the new key and prints the raw value exactly once (shown-once contract)", async () => {
+  test("`agent-key add` POSTs the new key and prints the raw value exactly once (shown-once contract)", async () => {
     await authedScope(async () => {
       let postBody: string | null = null;
       const routes: MockRoutes = {
@@ -28,7 +28,7 @@ describe("agent (external API key) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "agent", "add",
+            "agent-key", "add",
             "--workspace", WS_ID,
             "--agent", AGENTSFLEET_ID,
             "--name", "langgraph-bot",
@@ -58,7 +58,7 @@ describe("agent (external API key) commands", () => {
     });
   });
 
-  test("`agent list` GETs the workspace's external agent keys and prints a table", async () => {
+  test("`agent-key list` GETs the workspace's external agent keys and prints a table", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/agent-keys`]: () => jsonResponse(200, {
@@ -72,7 +72,7 @@ describe("agent (external API key) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["agent", "list", "--workspace", WS_ID],
+          ["agent-key", "list", "--workspace", WS_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
@@ -89,7 +89,7 @@ describe("agent (external API key) commands", () => {
     });
   });
 
-  test("`agent delete <id>` DELETEs the key and prints invalidation confirmation", async () => {
+  test("`agent-key delete <id>` DELETEs the key and prints invalidation confirmation", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`DELETE /v1/workspaces/${WS_ID}/agent-keys/01900000-0000-7000-8000-0000a6e7de7e`]:
@@ -99,7 +99,7 @@ describe("agent (external API key) commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["agent", "delete", "--workspace", WS_ID, "01900000-0000-7000-8000-0000a6e7de7e"],
+          ["agent-key", "delete", "--workspace", WS_ID, "01900000-0000-7000-8000-0000a6e7de7e"],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
