@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 004
 **Date:** Jun 15, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the `zombie`/`usezombie` surfaces are the ones users read, type, and store: entity routes/fields, the persistence schema, error text, Command-Line Interface (CLI) / dashboard labels, env vars, request headers, live hosts, the installer domain
 **Categories:** API, CLI, INFRA, OBS, UI
 **Batch:** B4 — follows M92_003 (B3) merge; one mega-spec per Indy ("one spec, not three")
@@ -364,8 +364,11 @@ vault names are out of scope of every sweep (Indy keep).
    excluding frozen history (`docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md`), the M92
    rename specs, and the documented keeps (`.gitleaksignore` fingerprints, `build.zig.zon` `usezombie`
    fork URLs, the `make/quality.mk` legacy guard, the `zombie-dev-worker-ant` vault item, `ZMB_*`/`zmb`
-   tokens, and the UI vocab/copy guards (`ui/packages/{app,website}/**/{vocab-guard,copy}.test.ts`)
-   that name the retired noun precisely to enforce its absence from rendered copy) == 0 (Eval `E1`). M92_001 (a *pending* spec for a different milestone) carries `zombie` in
+   tokens, the UI vocab/copy guards (`ui/packages/{app,website}/**/{vocab-guard,copy}.test.ts`)
+   that name the retired noun precisely to enforce its absence from rendered copy, and
+   `scripts/regen-integration-jwts.mjs` — the tool that strips the base64-encoded `usezombie`
+   `iss`/`aud` claims out of the test-JWT fixtures, so it must name the token it removes) == 0
+   (Eval `E1`). M92_001 (a *pending* spec for a different milestone) carries `zombie` in
    its problem statement and is out of this rename's scope. (Inverts the Jun 14 "byte-stable" invariant.)
 2. **`core.agent_keys` has exactly one `agent_id`** — the FK to `core.agents`; the key's own id is
    `agent_key_id` (Eval `E3`).
@@ -406,17 +409,17 @@ and pass; no test still asserts a `zombie` token outside frozen history.
 
 ## Acceptance Criteria
 
-- [ ] Entity renamed end to end — verify: Eval `E1` (zero active `zombie`), `test_schema_agents`,
+- [x] Entity renamed end to end — verify: Eval `E1` (zero active `zombie`), `test_schema_agents`,
       `test_agent_routes`, `test_error_codes_agt`
-- [ ] Agent-keys disambiguated (Option B) — verify: `test_agent_key_id_renamed`, `test_agent_key_cli`;
+- [x] Agent-keys disambiguated (Option B) — verify: `test_agent_key_id_renamed`, `test_agent_key_cli`;
       Invariant 2 (one `agent_id` in `core.agent_keys`)
-- [ ] No migration; schema edited directly — verify: Invariant 3; SCHEMA GUARD clean
-- [ ] Brand reads `agentsfleet`, never degraded to `agent` — verify: Eval `E4`, `E10`; Invariant 4
-- [ ] Metrics + grafana flipped together — verify: `test_metrics_renamed`
-- [ ] Mail flipped across 5 mirrors — verify: mail pin tests
-- [ ] Two Zig refactors land green — verify: Eval `E2` + PUB verdicts
-- [ ] Each §3 gate either verified (evidence in PR body) or parked-with-surface — verify: `E6`–`E9`
-- [ ] `make lint && make test` green; cross-compile both linux targets; `gitleaks detect` clean; no
+- [x] No migration; schema edited directly — verify: Invariant 3; SCHEMA GUARD clean
+- [x] Brand reads `agentsfleet`, never degraded to `agent` — verify: Eval `E4`, `E10`; Invariant 4
+- [x] Metrics + grafana flipped together — verify: `test_metrics_renamed`
+- [x] Mail flipped across 5 mirrors — verify: mail pin tests
+- [x] Two Zig refactors land green — verify: Eval `E2` + PUB verdicts
+- [x] Each §3 gate either verified (evidence in PR body) or parked-with-surface — verify: `E6`–`E9`
+- [x] `make lint && make test` green; cross-compile both linux targets; `gitleaks detect` clean; no
       non-md file over 350 lines; frozen-history dirs byte-stable
 
 ---
@@ -428,11 +431,16 @@ and pass; no test still asserts a `zombie` token outside frozen history.
 # the M92 rename specs (they document the from→to), and the documented keeps:
 # .gitleaksignore historical fingerprints, build.zig.zon usezombie fork URLs
 # (M92_003 pinned-hash dep carve-out), make/quality.mk legacy orphan-sweep guard,
-# the zombie-dev-worker-ant vault item, and ZMB_*/zmb-vault tokens.
+# the zombie-dev-worker-ant vault item, ZMB_*/zmb-vault tokens, the UI vocab/copy
+# guards (they name the retired noun to enforce its absence from rendered copy),
+# and scripts/regen-integration-jwts.mjs (the tool that strips usezombie from the
+# base64-encoded test-JWT claims — it must name the token it removes).
 git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
   ':(exclude)docs/v2/done' ':(exclude)docs/architecture/archive' ':(exclude)CHANGELOG.md' \
   ':(exclude)docs/v2/*/M92_*' ':(exclude).gitleaksignore' ':(exclude)build.zig.zon' \
-  ':(exclude)make/quality.mk' \
+  ':(exclude)make/quality.mk' ':(exclude)scripts/regen-integration-jwts.mjs' \
+  ':(exclude)ui/packages/app/tests/vocab-guard.test.ts' ':(exclude)ui/packages/website/src/vocab-guard.test.ts' \
+  ':(exclude)ui/packages/app/lib/copy.test.ts' ':(exclude)ui/packages/website/src/lib/copy.test.ts' \
   | grep -viE "ZMB_|zmb_vault|zombie-dev-worker-ant" | grep -c . || true
 # E2: build + suite — zig build && make test 2>&1 | tail -3 ; cross-compile both linux targets
 # E3: keep tokens byte-stable — git grep -c "ZMB_" vs origin/main ; agent_keys has one agent_id
