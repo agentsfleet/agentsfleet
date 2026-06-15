@@ -1,6 +1,6 @@
 //! `runnerBearer` middleware — the machine-principal auth plane.
 //!
-//! Validates `Authorization: Bearer zrn_{hex}` runner tokens via a
+//! Validates `Authorization: Bearer agt_r{hex}` runner tokens via a
 //! host-supplied `LookupFn` that hashes the token and resolves it against
 //! `fleet.runners`. On an active match, populates `ctx.principal` with
 //! `.mode = .runner`, `.runner_id`, and `.tenant_id = null` — a runner holds
@@ -173,11 +173,11 @@ test "runner_bearer rejects missing Authorization header with UZ-RUN-001 without
     try testing.expect(ctx.principal == null);
 }
 
-test "runner_bearer rejects Bearer token without zrn_ prefix without calling lookup" {
+test "runner_bearer rejects Bearer token without agt_r prefix without calling lookup" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_t_notarunner");
+    ht.header("authorization", "Bearer agt_tnotarunner");
 
     var mock = MockLookup{};
     var mw = RunnerBearer{ .host = &mock, .lookup = MockLookup.fn_ };
@@ -194,7 +194,7 @@ test "runner_bearer rejects unknown token with UZ-RUN-001" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zrn_" ++ "0" ** 64);
+    ht.header("authorization", "Bearer agt_r" ++ "0" ** 64);
 
     var mock = MockLookup{ .return_row = null };
     var mw = RunnerBearer{ .host = &mock, .lookup = MockLookup.fn_ };
@@ -211,7 +211,7 @@ test "runner_bearer rejects revoked runner with UZ-RUN-009 and frees the row" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zrn_" ++ "a" ** 64);
+    ht.header("authorization", "Bearer agt_r" ++ "a" ** 64);
 
     var mock = MockLookup{
         .return_row = .{ .runner_id = "11111111-1111-7111-8111-111111111111", .active = false },
@@ -229,7 +229,7 @@ test "runner_bearer populates a runner principal on active match" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zrn_" ++ "b" ** 64);
+    ht.header("authorization", "Bearer agt_r" ++ "b" ** 64);
 
     var mock = MockLookup{
         .return_row = .{ .runner_id = "22222222-2222-7222-8222-222222222222", .active = true },
@@ -249,6 +249,6 @@ test "runner_bearer populates a runner principal on active match" {
     try testing.expect(ctx.principal.?.tenant_id == null);
 }
 
-test "RUNNER_TOKEN_PREFIX is the documented zrn_ literal" {
-    try testing.expectEqualStrings("zrn_", RUNNER_TOKEN_PREFIX);
+test "RUNNER_TOKEN_PREFIX is the documented agt_r literal" {
+    try testing.expectEqualStrings("agt_r", RUNNER_TOKEN_PREFIX);
 }

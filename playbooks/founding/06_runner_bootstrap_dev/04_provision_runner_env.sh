@@ -3,21 +3,21 @@
 # Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the three
 # vars the runner daemon requires (see deploy/baremetal/agentsfleet-runner.service):
 #   AGENTSFLEET_API_URL       — control-plane base URL (literal for dev)
-#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted zrn_ token (Option B; vault: runner-token)
+#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (Option B; vault: runner-token)
 #   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
 #                          (vault: tailscale-hostname = agent-…-worker-ant)
 #
-# Pre-Option-B, the daemon self-registered with a zmb_t_ API key and minted
-# its own zrn_. Post-Option-B (commit c1ac7343), the platform admin pre-mints
-# the zrn_ via POST /v1/runners and stores it under runner-token; the daemon
+# Pre-Option-B, the daemon self-registered with a agt_t API key and minted
+# its own agt_r. Post-Option-B (commit c1ac7343), the platform admin pre-mints
+# the agt_r via POST /v1/runners and stores it under runner-token; the daemon
 # authenticates with it directly and never self-registers.
 #
-# A real zrn_ is minted by a platform admin from the dashboard ("Add runner",
+# A real agt_r is minted by a platform admin from the dashboard ("Add runner",
 # POST /v1/runners) on the live dev control plane and stored under runner-token.
 # This script requires that real token: it seeds both the source /opt/agentsfleet/.env
 # (which deploy.sh copies on every CI run) and the unit's EnvironmentFile
 # /etc/default/agentsfleet-runner, then restarts and verifies the daemon is active.
-# A zrn_FAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
+# A agt_rFAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
 # until a real token brings the runner up green.
 set -euo pipefail
 
@@ -87,7 +87,7 @@ if [ "$missing" -gt 0 ]; then
   echo ""
   echo "❌ section 4 failed: $missing missing vault ref(s)"
   echo "  add the missing fields to 1Password before retrying."
-  echo "  runner-token may be a placeholder zrn_ until the platform-admin"
+  echo "  runner-token may be a placeholder agt_r until the platform-admin"
   echo "  enrollment gate is live; the structure must exist either way."
   exit 1
 fi
@@ -105,17 +105,17 @@ runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner
 
 # Fail loud on a stale pre-Option-B token so a wrong shape is caught here, not
 # at runtime as a confusing 401 loop on the dev host.
-if [[ "$runner_token" != zrn_* ]]; then
-  echo "  ✗ runner-token does not start with zrn_ (Option B contract)"
+if [[ "$runner_token" != agt_r* ]]; then
+  echo "  ✗ runner-token does not start with agt_r (Option B contract)"
   echo "    got: $(printf '%s' "$runner_token" | head -c 5)... (truncated)"
   exit 1
 fi
 
-# Reject the placeholder: it satisfies the zrn_ prefix but the daemon would loop
+# Reject the placeholder: it satisfies the agt_r prefix but the daemon would loop
 # on 401s. Mirror deploy.sh sync_env's hardened exit so the cause is named here,
 # not surfaced as a confusing is-active failure after the restart below.
-if [[ "$runner_token" == zrn_FAKE* ]]; then
-  echo "  ✗ runner-token is the placeholder (zrn_FAKE…) — not a real token"
+if [[ "$runner_token" == agt_rFAKE* ]]; then
+  echo "  ✗ runner-token is the placeholder (agt_rFAKE…) — not a real token"
   echo "    mint one via the dashboard (POST /v1/runners) and update"
   echo "    op://$vault_dev/zombie-dev-worker-ant/runner-token before re-running."
   exit 1

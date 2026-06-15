@@ -32,7 +32,7 @@ fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
     const api_ok = api != null;
     const token_ok = token != null and std.mem.startsWith(u8, token.?, protocol.RUNNER_TOKEN_PREFIX);
     const api_detail: []const u8 = if (api_ok) "set" else "missing — pass --api or set AGENTSFLEET_API_URL";
-    const token_detail: []const u8 = if (token_ok) "present (zrn_)" else "missing or not a zrn_ token";
+    const token_detail: []const u8 = if (token_ok) "present (agt_r)" else "missing or not a agt_r token";
     return .{
         .{ .name = "api_url", .ok = api_ok, .detail = api_detail },
         .{ .name = "runner_token", .ok = token_ok, .detail = token_detail },
@@ -80,9 +80,9 @@ fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 
 test "envChecks flags missing api + token, passes a valid pair" {
     const missing = envChecks(null, null);
     try std.testing.expect(!missing[0].ok and !missing[1].ok);
-    const bad_token = envChecks("http://x", "zmb_t_deadbeef");
+    const bad_token = envChecks("http://x", "agt_tdeadbeef");
     try std.testing.expect(bad_token[0].ok and !bad_token[1].ok); // wrong prefix
-    const good = envChecks("http://x", "zrn_" ++ "a" ** 64);
+    const good = envChecks("http://x", protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64);
     try std.testing.expect(good[0].ok and good[1].ok);
 }
 

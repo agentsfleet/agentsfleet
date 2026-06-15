@@ -189,7 +189,7 @@ describe("RunnerList component", () => {
     render(React.createElement(RunnersView, { initial: listResponse([REGISTERED]) } as never));
     createRunnerActionMock.mockResolvedValue({
       ok: true,
-      data: { runner_id: "r2", runner_token: "zrn_new" },
+      data: { runner_id: "r2", runner_token: "agt_rnew" },
     });
     await user.click(screen.getByRole("button", { name: /add runner/i }));
     await user.type(screen.getByLabelText(/host id/i), "web-prod-9");

@@ -118,7 +118,7 @@ const baseAddArgs: AgentAddArgs = {
 describe("agent add JSON mode", () => {
   test("prints the raw key response as JSON and skips the human table", async () => {
     const cap = newCapture();
-    const response = { agent_key_id: "agent_key_001", key: "zmb_raw", created_at: null };
+    const response = { agent_key_id: "agent_key_001", key: "agt_raw", created_at: null };
     const exit = await Effect.runPromiseExit(
       provideAll(agentAddEffectFromArgs(baseAddArgs), cap, {
         jsonMode: true,

@@ -45,9 +45,9 @@ const AGENT2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0f01";
 const SESSION2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1001";
 const ARM_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e1101";
 
-const GPU_TOKEN = "zrn_" ++ "a" ** 64;
-const PLAIN_TOKEN = "zrn_" ++ "b" ** 64;
-const ARM_TOKEN = "zrn_" ++ "c" ** 64;
+const GPU_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "a" ** 64;
+const PLAIN_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "b" ** 64;
+const ARM_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 
 // Concurrent racers are generated at runtime with this host prefix so cleanup
 // can delete them by LIKE without tracking each id.
@@ -165,7 +165,7 @@ fn seedConcurrentRunner(conn: *pg.Conn, idx: usize, gpu: bool) ![]const u8 {
     defer ALLOC.free(rid);
     const host = try std.fmt.allocPrint(ALLOC, CONC_HOST_PREFIX ++ "{d}", .{idx});
     defer ALLOC.free(host);
-    const token = try std.fmt.allocPrint(ALLOC, "zrn_{s}{d:0>60}", .{ if (gpu) "gpu" else "pln", idx });
+    const token = try std.fmt.allocPrint(ALLOC, "agt_r{s}{d:0>60}", .{ if (gpu) "gpu" else "pln", idx });
     errdefer ALLOC.free(token);
     try seedRunnerWithLabels(conn, rid, host, token, if (gpu) "[\"gpu\"]" else "[]");
     return token;

@@ -61,7 +61,7 @@ tags:
   x-mintlify:
     navigation: Agent Keys
 - name: API Keys
-  description: Tenant-level admin API keys (`zmb_t_` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
+  description: Tenant-level admin API keys (`agt_t` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
     for admin auth.
   x-mintlify:
     navigation: API Keys

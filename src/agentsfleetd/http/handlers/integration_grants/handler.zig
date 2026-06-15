@@ -104,7 +104,7 @@ fn authenticateAgent(alloc: std.mem.Allocator, conn: *pg.Conn, req: *httpz.Reque
     const bearer_prefix = "Bearer ";
     if (std.mem.startsWith(u8, auth_header, bearer_prefix)) {
         const token = auth_header[bearer_prefix.len..];
-        if (std.mem.startsWith(u8, token, "zmb_"))
+        if (std.mem.startsWith(u8, token, api_key.KEY_PREFIX))
             return agentFromApiKey(alloc, conn, token);
     }
     return null;
@@ -147,7 +147,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     defer hx.ctx.pool.release(conn);
 
     const caller = authenticateAgent(hx.alloc, conn, req) orelse {
-        hx.fail(ec.ERR_APIKEY_INVALID, "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx");
+        hx.fail(ec.ERR_APIKEY_INVALID, "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer agt_axxx");
         return;
     };
 

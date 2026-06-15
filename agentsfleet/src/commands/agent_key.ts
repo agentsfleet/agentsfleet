@@ -1,6 +1,6 @@
 // External Agent Key CLI commands — Effect-shaped.
 //
-// Manages zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
+// Manages agt_a API keys issued to LangGraph/CrewAI/Composio agents.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
 // agentsfleet agent-key add    --workspace <ws> --agent <id> --name <name> [--description <desc>]

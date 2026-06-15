@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDER_GUIDANCE, guidanceFor } from "./provider-guidance";
 
-const WEBHOOK = "https://api-dev.agentsfleet.net/v1/webhooks/zmb_test";
+const WEBHOOK = "https://api-dev.agentsfleet.net/v1/webhooks/agt_test";
 
 describe("PROVIDER_GUIDANCE", () => {
   describe("github", () => {
@@ -16,7 +16,7 @@ describe("PROVIDER_GUIDANCE", () => {
           `gh api -X POST repos/acme/platform/hooks`,
           `  -F "name=web"`,
           `  -F "events[]=workflow_run" -F "events[]=push"`,
-          `  -F "config[url]=https://api-dev.agentsfleet.net/v1/webhooks/zmb_test/github"`,
+          `  -F "config[url]=https://api-dev.agentsfleet.net/v1/webhooks/agt_test/github"`,
           `  -F "config[content_type]=json"`,
         ].join(" \\\n"),
       );

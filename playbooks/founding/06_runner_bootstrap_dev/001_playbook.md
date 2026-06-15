@@ -231,12 +231,12 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/deploy/
 ```bash
 # The runner daemon needs exactly three env vars (Option B contract):
 #   - AGENTSFLEET_API_URL       — control-plane base, dev: https://api-dev.agentsfleet.net
-#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
+#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token)
 #   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname)
 #
-# A real zrn_ requires the platform-admin enrollment gate (M80_005) served by
+# A real agt_r requires the platform-admin enrollment gate (M80_005) served by
 # a live dev control plane. Until that's wired, store a placeholder
-# (`zrn_FAKE_REPLACE_BEFORE_DEV_WORKER_READY_TRUE`) in the vault field so the
+# (`agt_rFAKE_REPLACE_BEFORE_DEV_WORKER_READY_TRUE`) in the vault field so the
 # bootstrap structure verifies end-to-end — DEV_WORKER_READY must stay `false`
 # until the placeholder is swapped for a real admin-minted token.
 
@@ -318,8 +318,8 @@ journalctl -u agentsfleet-runner.service --no-pager -n 10
 REMOTE
 
 # Activate CI — flip the gate ONLY after the runner is verified active with a
-# real (non-placeholder) zrn_ runner-token in the vault. The placeholder shape
-# (zrn_FAKE_…) is rejected by deploy.sh and by the daemon's startup prefix check;
+# real (non-placeholder) agt_r runner-token in the vault. The placeholder shape
+# (agt_rFAKE_…) is rejected by deploy.sh and by the daemon's startup prefix check;
 # leaving the gate true with a placeholder would just produce a red deploy.
 gh variable set DEV_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
 echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
@@ -360,7 +360,7 @@ No manual steps after bootstrap — the server is fully CI-managed. The env file
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
 4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
-5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real zrn_ in vault)
+5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real agt_r in vault)
 --- CI-automated after this point ---
 ```
 

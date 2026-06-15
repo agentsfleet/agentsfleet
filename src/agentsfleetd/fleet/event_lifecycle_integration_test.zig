@@ -48,7 +48,7 @@ const AGENTSFLEET_REACK = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c07";
 const AGENTSFLEET_GATED_EXP = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7c08";
 const SESSION_BASE = "0195c9da-1e2a-7f13-8abc-2b3e1e0d7d0";
 
-const RUNNER_TOKEN = "zrn_" ++ "e" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "e" ** 64;
 const DEAD_CONSUMER = "worker-retired-host-1700000000000";
 /// Idle injected onto a stranded entry — must exceed the reclaim min-idle.
 const FORCED_IDLE_MS = queue_consts.agent_xautoclaim_min_idle_ms_int * 2;

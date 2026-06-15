@@ -107,7 +107,7 @@
     },
     {
       "name": "API Keys",
-      "description": "Tenant-level admin API keys (`zmb_t_` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var for admin auth.",
+      "description": "Tenant-level admin API keys (`agt_t` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var for admin auth.",
       "x-mintlify": {
         "navigation": "API Keys"
       }
@@ -2231,7 +2231,7 @@
       "post": {
         "operationId": "create_api_key",
         "summary": "Mint a tenant API key",
-        "description": "Creates a new `zmb_t_`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again. Requires operator (or admin) role.",
+        "description": "Creates a new `agt_t`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again. Requires operator (or admin) role.",
         "tags": [
           "API Keys"
         ],
@@ -2283,7 +2283,7 @@
                     },
                     "key": {
                       "type": "string",
-                      "description": "Raw `zmb_t_` tenant key (70 chars). Shown once — store securely."
+                      "description": "Raw `agt_t` tenant key (70 chars). Shown once — store securely."
                     },
                     "created_at": {
                       "type": "integer",
@@ -2598,7 +2598,7 @@
       "post": {
         "operationId": "create_agent_key",
         "summary": "Issue an agent key for a agent",
-        "description": "Creates a new `zmb_` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
+        "description": "Creates a new `agt_a` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
         "tags": [
           "Agent Keys"
         ],
@@ -2670,7 +2670,7 @@
                     },
                     "key": {
                       "type": "string",
-                      "description": "Raw `zmb_` API key. Shown once — store securely."
+                      "description": "Raw `agt_a` API key. Shown once — store securely."
                     },
                     "created_at": {
                       "type": "integer",

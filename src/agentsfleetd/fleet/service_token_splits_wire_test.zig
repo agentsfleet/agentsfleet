@@ -40,7 +40,7 @@ const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const EVENT_ID = "evt-wire-splits-1";
-const RUNNER_TOKEN = "zrn_" ++ "d" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "d" ** 64;
 // Suite-private (provider, model) pair with its own seeded core.model_caps
 // row, so post-trial the registry resolves REAL non-zero rates for this lease
 // (the global test-provider pair has no catalogue row — resolution would fall

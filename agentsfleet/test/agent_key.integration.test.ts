@@ -18,7 +18,7 @@ describe("agent (external API key) commands", () => {
           postBody = body;
           return jsonResponse(201, {
             agent_key_id: "agent_key_001",
-            key: "zmb_test_raw_key_value_only_shown_once",
+            key: "agt_test_raw_key_value_only_shown_once",
             created_at: Date.now(),
           });
         },
@@ -39,7 +39,7 @@ describe("agent (external API key) commands", () => {
         expect(code).toBe(0);
         const text = out.read();
         expect(text).toContain("agent_key_001");
-        expect(text).toContain("zmb_test_raw_key_value_only_shown_once");
+        expect(text).toContain("agt_test_raw_key_value_only_shown_once");
         // The shown-once warning must be present in non-JSON mode.
         expect(text).toMatch(/shown once/i);
 

@@ -6,7 +6,7 @@
 //! runner token (`POST /v1/runners`).
 //!
 //! Fail-closed twice over: the api_key path never sets `platform_admin` (so a
-//! `zmb_t_` admin key is rejected), and a missing JWT claim parses to false.
+//! `agt_t` admin key is rejected), and a missing JWT claim parses to false.
 //! If `ctx.principal == null` (composition bug — no auth middleware ran
 //! earlier in the chain) we short-circuit 401 rather than grant access.
 
@@ -113,7 +113,7 @@ test "platform_admin short-circuits 403 for an api_key principal" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    // A `zmb_t_` api_key authenticates as .role=.admin but never carries
+    // A `agt_t` api_key authenticates as .role=.admin but never carries
     // platform_admin — it must not be able to enroll a runner.
     var mw = PlatformAdmin{};
     var ctx = makeCtx(ht.res, .{ .mode = .api_key, .role = .admin });

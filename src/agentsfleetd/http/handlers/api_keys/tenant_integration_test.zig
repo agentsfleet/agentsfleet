@@ -1,9 +1,9 @@
 // Integration tests for /v1/api-keys (M28_002 §3, §4).
 //
 // Covers:
-//   - POST creates: 201, zmb_t_ prefix, SHA-256 hex persisted in core.api_keys.
+//   - POST creates: 201, agt_t prefix, SHA-256 hex persisted in core.api_keys.
 //   - Duplicate key_name within a tenant: 409 UZ-APIKEY-005.
-//   - Round-trip auth: a minted zmb_t_ key authenticates a subsequent GET.
+//   - Round-trip auth: a minted agt_t key authenticates a subsequent GET.
 //   - PATCH {active:false} revokes; the same key can no longer authenticate.
 //   - Re-revoke is 409; DELETE on active/revoked/missing keys is 409/204/404.
 //   - Tenant isolation: GET as tenant A does not return tenant B's rows.
@@ -107,7 +107,7 @@ fn parseJsonString(alloc: std.mem.Allocator, body: []const u8, field: []const u8
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
-test "integration: POST /v1/api-keys returns 201 with zmb_t_ key and persists SHA-256 hash" {
+test "integration: POST /v1/api-keys returns 201 with agt_t key and persists SHA-256 hash" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -121,8 +121,8 @@ test "integration: POST /v1/api-keys returns 201 with zmb_t_ key and persists SH
 
     const raw_key = (try parseJsonString(ALLOC, resp.body, "key")) orelse return error.TestExpectedEqual;
     defer ALLOC.free(raw_key);
-    try std.testing.expect(std.mem.startsWith(u8, raw_key, "zmb_t_"));
-    try std.testing.expectEqual(@as(usize, 70), raw_key.len);
+    try std.testing.expect(std.mem.startsWith(u8, raw_key, auth_mw.tenant_api_key.TENANT_KEY_PREFIX));
+    try std.testing.expectEqual(@as(usize, auth_mw.tenant_api_key.TENANT_KEY_PREFIX.len + 64), raw_key.len);
 
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(raw_key, &digest, .{});
@@ -160,7 +160,7 @@ test "integration: POST /v1/api-keys duplicate key_name returns 409 UZ-APIKEY-00
     finalCleanup(h);
 }
 
-test "integration: minted zmb_t_ key authenticates GET, revoked by PATCH {active:false}" {
+test "integration: minted agt_t key authenticates GET, revoked by PATCH {active:false}" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -176,7 +176,7 @@ test "integration: minted zmb_t_ key authenticates GET, revoked by PATCH {active
     const id = (try parseJsonString(ALLOC, create_resp.body, "id")) orelse return error.TestExpectedEqual;
     defer ALLOC.free(id);
 
-    // Authenticate GET using the minted raw key (Bearer <zmb_t_...>).
+    // Authenticate GET using the minted raw key (Bearer <agt_t...>).
     const list_before = try (try h.get("/v1/api-keys").bearer(raw_key)).send();
     defer list_before.deinit();
     try list_before.expectStatus(.ok);

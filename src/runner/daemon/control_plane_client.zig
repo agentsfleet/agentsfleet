@@ -2,7 +2,7 @@
 //! plane. It POSTs lease/heartbeat/report/activity to a `agentsfleetd` instance
 //! using the same frozen `protocol` shapes the server speaks, so server and
 //! client cannot drift. Enrollment is not a daemon concern (Option B): the
-//! operator pre-mints the `zrn_` and the daemon authenticates with it directly.
+//! operator pre-mints the `agt_r` and the daemon authenticates with it directly.
 //!
 //! Uses the high-level `std.http.Client.fetch` (cross-platform; the manual
 //! `open()`/`readVec()` path is Linux-broken under Zig 0.15) over ONE

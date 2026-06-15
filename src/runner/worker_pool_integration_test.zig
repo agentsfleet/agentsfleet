@@ -229,7 +229,7 @@ test "concurrent forked children spawn and reap from many threads without deadlo
 fn stubCfg(url: []const u8) Config {
     return .{
         .control_plane_url = url,
-        .runner_token = "zrn_" ++ "a" ** 8,
+        .runner_token = contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 8,
         .host_id = "pool-integ-host",
         .sandbox_tier = "dev_none",
         .workspace_base = "/tmp/agentsfleet-runner-pool-integ",

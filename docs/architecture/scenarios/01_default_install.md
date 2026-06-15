@@ -222,25 +222,25 @@ $ /agentsfleet-install-platform-ops
    context_cap_tokens: 256000     ← from doctor's tenant_provider block
 
 ▸ Installing …
-  agent_id   = zmb_01HX9N3K…
-  webhook_urls = { github: https://api.agentsfleet.net/v1/webhooks/zmb_01HX9N3K…/github }
+  agent_id   = agt_a01HX9N3K…
+  webhook_urls = { github: https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github }
 
 ▸ Registering webhook on john-doe/widgetly via gh api …
   POST repos/john-doe/widgetly/hooks
        events=[workflow_run]
-       config.url=https://api.agentsfleet.net/v1/webhooks/zmb_01HX9N3K…/github
+       config.url=https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github
        config.secret=$WEBHOOK_SECRET
   ✓ hook 482389123 registered, active=true
 
 ▸ Self-verifying webhook (HMAC-SHA256 + curl) …
-  POST .../v1/webhooks/zmb_01HX9N3K…/github → 202
+  POST .../v1/webhooks/agt_a01HX9N3K…/github → 202
 
 ▸ Running first steer ("morning health check") …
   GH Actions runs on main: 12 in last 24h, all green
   Fly app widgetly-prod: healthy, last deploy 6h ago, 2 instances
   Posted to #platform-ops at 09:14 UTC.
 
-✓ Setup complete. To steer manually:  agentsfleet steer zmb_01HX9N3K… "<msg>"
+✓ Setup complete. To steer manually:  agentsfleet steer agt_a01HX9N3K… "<msg>"
   Webhook ready. Next failed workflow_run on john-doe/widgetly will
   wake the agent automatically.
 ```
@@ -248,7 +248,7 @@ $ /agentsfleet-install-platform-ops
 ### 3.2 First production webhook fires (a few hours later)
 
 ```text
-$ agentsfleet events zmb_01HX9N3K…
+$ agentsfleet events agt_a01HX9N3K…
 EVENT_ID                 ACTOR             STATUS     STARTED              TOKENS  CREDIT
 evt_01HX9P7M…           webhook:github    processed  2026-05-01T13:42:01  1840    4¢
 evt_01HX9N4P…           steer:john        processed  2026-05-01T09:14:22  1610    4¢

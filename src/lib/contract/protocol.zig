@@ -6,7 +6,7 @@
 //! hold throughout:
 //!   * Identity comes from the Bearer token, never the URL or body. register is
 //!     authed by an existing operator/provisioner credential — a Clerk JWT or a
-//!     `zmb_t_` api_key, via bearer_or_api_key — and mints the runner_token;
+//!     `agt_t` api_key, via bearer_or_api_key — and mints the runner_token;
 //!     every later call carries that minted runner_token (`/v1/runners/me/...`,
 //!     where `me` resolves from the token). No request carries a runner_id —
 //!     there is nothing to reconcile.
@@ -33,8 +33,8 @@ pub const PATH_RUNNERS = "/v1/runners";
 /// sourced here (RULE UFS) because BOTH build graphs reference it: agentsfleetd mints
 /// + validates it (`runner_bearer.zig`, `register.zig`) and the host daemon
 /// validates the env-supplied token's prefix before the lease loop. The literal
-/// must stay `zrn_` verbatim — runner_bearer carries the pin test.
-pub const RUNNER_TOKEN_PREFIX = "zrn_";
+/// must stay `agt_r` verbatim — runner_bearer carries the pin test.
+pub const RUNNER_TOKEN_PREFIX = "agt_r";
 
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
@@ -168,7 +168,7 @@ pub const RUNNER_LEASE_STATUS_REPORTED = "reported";
 pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 
 /// POST /v1/runners — register. Auth: an existing credential —
-/// `Bearer <Clerk JWT | zmb_t_ api_key>` (via bearer_or_api_key), not an
+/// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an
 /// enrollment token. The response's runner_token identifies the runner on
 /// every later call.
 pub const RegisterRequest = struct {
@@ -340,7 +340,7 @@ pub const MemoryHydrateResponse = struct {
 /// plus the agent's prior memory the parent already hydrated over the trusted
 /// plane (`GET /v1/runners/me/memory/{agent_id}`). The child seeds its
 /// non-durable in-run store from `hydrated_memory` and never makes a network
-/// call of its own — hydration rides the parent (which holds the `zrn_` token),
+/// call of its own — hydration rides the parent (which holds the `agt_r` token),
 /// so no credential, URL, or DSN reaches the sandboxed agent. The wrapper keeps
 /// the lease shape unchanged while letting capture/hydrate flow parent-only.
 pub const RunnerChildInput = struct {

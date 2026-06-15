@@ -18,8 +18,8 @@ const readVia = (stream: Readable): Promise<string> =>
 
 describe("Stdin.readToEnd (makeLive)", () => {
   test("drains buffered chunks to the full utf8 text", async () => {
-    const stream = Readable.from([Buffer.from("zmb_t_"), Buffer.from("abc\n")]);
-    expect(await readVia(stream)).toBe("zmb_t_abc\n");
+    const stream = Readable.from([Buffer.from("agt_t"), Buffer.from("abc\n")]);
+    expect(await readVia(stream)).toBe("agt_tabc\n");
   });
 
   test("coerces string chunks to utf8 (mixed string/Buffer input)", async () => {
@@ -67,7 +67,7 @@ describe("Stdin.readToEnd (makeLive)", () => {
 // the layer-construction closures are counted.
 describe("Stdin layer factories", () => {
   test("stdinFromStreamLayer threads a custom stream's drain + isTTY", async () => {
-    const stream = Readable.from([Buffer.from("zmb_t_piped\n")]);
+    const stream = Readable.from([Buffer.from("agt_tpiped\n")]);
     const result = await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {
@@ -78,7 +78,7 @@ describe("Stdin layer factories", () => {
         stdinFromStreamLayer(stream),
       ),
     );
-    expect(result.text).toBe("zmb_t_piped\n");
+    expect(result.text).toBe("agt_tpiped\n");
     expect(result.isTTY).toBe(false);
   });
 

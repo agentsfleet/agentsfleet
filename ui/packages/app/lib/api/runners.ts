@@ -85,7 +85,7 @@ export interface RunnerListResponse {
   page_size: number;
 }
 
-/** The mint response — `runner_token` is the raw `zrn_`, returned exactly once. */
+/** The mint response — `runner_token` is the raw `agt_r`, returned exactly once. */
 export interface CreatedRunner {
   runner_id: string;
   runner_token: string;

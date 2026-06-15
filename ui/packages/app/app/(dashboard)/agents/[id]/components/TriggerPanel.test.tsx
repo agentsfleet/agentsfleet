@@ -16,17 +16,17 @@ const triggers: AgentTrigger[] = [githubTrigger, cronTrigger, weirdcoTrigger];
 
 describe("TriggerPanel", () => {
   it("renders the empty-state when no triggers are declared", () => {
-    render(<TriggerPanel agentId="zmb_x" />);
+    render(<TriggerPanel agentId="agt_ax" />);
     expect(screen.getByTestId("trigger-panel-empty")).toBeTruthy();
     expect(screen.getByText(/No triggers declared/i)).toBeTruthy();
     // The legacy bare webhook URL is still surfaced as a fallback ingress.
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x",
+      "https://api-dev.agentsfleet.net/v1/webhooks/agt_ax",
     );
   });
 
   it("renders one accordion item per trigger in declared order", () => {
-    render(<TriggerPanel agentId="zmb_x" triggers={triggers} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={triggers} />);
     expect(screen.getByTestId("trigger-label-webhook:github").textContent).toMatch(
       /Webhook · github/,
     );
@@ -39,7 +39,7 @@ describe("TriggerPanel", () => {
   });
 
   it("falls back to the copy-URL card when the source has no provider-guidance", async () => {
-    render(<TriggerPanel agentId="zmb_x" triggers={triggers} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={triggers} />);
     // Expand the weirdco accordion item.
     fireEvent.click(screen.getByText(/Webhook · weirdco/i));
     await waitFor(() =>
@@ -49,7 +49,7 @@ describe("TriggerPanel", () => {
       /Unknown provider — paste this URL into any webhook-capable service\./,
     );
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x/weirdco",
+      "https://api-dev.agentsfleet.net/v1/webhooks/agt_ax/weirdco",
     );
   });
 
@@ -57,7 +57,7 @@ describe("TriggerPanel", () => {
     // `api` keys are deliberately absent from lastDeliveryByKey per
     // last-delivery.ts's contract, so auto-expand never fires for api
     // triggers. Click the trigger header to expand the card explicitly.
-    render(<TriggerPanel agentId="zmb_x" triggers={[{ type: "api" }]} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={[{ type: "api" }]} />);
     fireEvent.click(screen.getByText(/API ingress/i));
     await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
     const card = screen.getByTestId("copy-url-fallback-api");
@@ -66,7 +66,7 @@ describe("TriggerPanel", () => {
   });
 
   it("renders the bare-webhook helper line on the empty-triggers fallback (no source)", async () => {
-    render(<TriggerPanel agentId="zmb_x" />);
+    render(<TriggerPanel agentId="agt_ax" />);
     const card = screen.getByTestId("copy-url-fallback-none");
     expect(card.textContent).toMatch(/Bare webhook URL — POST events here from any service\./);
     expect(card.textContent).not.toMatch(/Unknown provider/);
@@ -79,7 +79,7 @@ describe("TriggerPanel", () => {
     // { [native code] }` as helper text instead of the fallback line.
     render(
       <TriggerPanel
-        agentId="zmb_x"
+        agentId="agt_ax"
         triggers={[{ type: "webhook", source: "constructor" } as never]}
       />,
     );
@@ -100,7 +100,7 @@ describe("TriggerPanel", () => {
     // `undefined`. Auto-expand paths only exercise the expand half.
     render(
       <TriggerPanel
-        agentId="zmb_x"
+        agentId="agt_ax"
         triggers={[githubTrigger]}
         lastDeliveryByKey={{ "webhook:github": null }}
       />,
@@ -117,14 +117,14 @@ describe("TriggerPanel", () => {
       "cron:*/15 * * * *": null,
       "webhook:weirdco": null,
     };
-    render(<TriggerPanel agentId="zmb_x" triggers={triggers} lastDeliveryByKey={map} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={triggers} lastDeliveryByKey={map} />);
     const badges = screen.getAllByTestId("last-delivery-badge");
     expect(badges.every((b) => b.textContent === "never")).toBe(true);
   });
 
   it("renders a <time> relative-delivery badge when lastDeliveryByKey reports an epoch", () => {
     const map = { "webhook:github": Date.now() - 60_000 };
-    render(<TriggerPanel agentId="zmb_x" triggers={[githubTrigger]} lastDeliveryByKey={map} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={[githubTrigger]} lastDeliveryByKey={map} />);
     const badge = screen.getByTestId("last-delivery-badge");
     expect(badge.querySelector("time")).not.toBeNull();
   });
@@ -135,11 +135,11 @@ describe("TriggerPanel", () => {
       configurable: true,
       value: { writeText },
     });
-    render(<TriggerPanel agentId="zmb_x" />);
+    render(<TriggerPanel agentId="agt_ax" />);
     fireEvent.click(screen.getByLabelText("Copy webhook URL"));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const arg = writeText.mock.calls[0]?.[0] ?? "";
-    expect(arg).toBe("https://api-dev.agentsfleet.net/v1/webhooks/zmb_x");
+    expect(arg).toBe("https://api-dev.agentsfleet.net/v1/webhooks/agt_ax");
   });
 
   it("reverts the fallback copy button from Copied back to Copy after the reset delay", async () => {
@@ -151,7 +151,7 @@ describe("TriggerPanel", () => {
       configurable: true,
       value: { writeText },
     });
-    render(<TriggerPanel agentId="zmb_x" />);
+    render(<TriggerPanel agentId="agt_ax" />);
     fireEvent.click(screen.getByLabelText("Copy webhook URL"));
     // Flush the clipboard write + the setCopied(true) state update.
     await act(async () => {
@@ -177,7 +177,7 @@ describe("TriggerPanel", () => {
   it("labels the api accordion row 'API ingress'", () => {
     render(
       <TriggerPanel
-        agentId="zmb_x"
+        agentId="agt_ax"
         triggers={[{ type: "api" }]}
       />,
     );
@@ -185,14 +185,14 @@ describe("TriggerPanel", () => {
   });
 
   it("omits the last-delivery badge when the parent passes no map entry for a trigger", () => {
-    render(<TriggerPanel agentId="zmb_x" triggers={[githubTrigger]} lastDeliveryByKey={{}} />);
+    render(<TriggerPanel agentId="agt_ax" triggers={[githubTrigger]} lastDeliveryByKey={{}} />);
     expect(screen.queryByTestId("last-delivery-badge")).toBeNull();
   });
 
   it("auto-expands a cron trigger that has no recorded delivery and renders the CronCard", async () => {
     render(
       <TriggerPanel
-        agentId="zmb_x"
+        agentId="agt_ax"
         triggers={[cronTrigger]}
         lastDeliveryByKey={{ "cron:*/15 * * * *": null }}
       />,
@@ -208,7 +208,7 @@ describe("TriggerPanel", () => {
       value: { writeText },
     });
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { unmount } = render(<TriggerPanel agentId="zmb_x" />);
+    const { unmount } = render(<TriggerPanel agentId="agt_ax" />);
     fireEvent.click(screen.getByLabelText("Copy webhook URL"));
     await act(async () => {
       await Promise.resolve();
@@ -225,14 +225,14 @@ describe("TriggerPanel", () => {
   it("auto-expands an api trigger that has no recorded delivery and renders the copy-URL fallback", async () => {
     render(
       <TriggerPanel
-        agentId="zmb_x"
+        agentId="agt_ax"
         triggers={[{ type: "api" }]}
         lastDeliveryByKey={{ api: null }}
       />,
     );
     await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
     expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.agentsfleet.net/v1/webhooks/zmb_x",
+      "https://api-dev.agentsfleet.net/v1/webhooks/agt_ax",
     );
   });
 });

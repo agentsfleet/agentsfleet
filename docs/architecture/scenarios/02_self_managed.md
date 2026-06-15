@@ -251,7 +251,7 @@ $ agentsfleet credential delete account-fireworks-key
 
 # (a webhook fires later that day)
 
-$ agentsfleet events zmb_01HX9N3K…
+$ agentsfleet events agt_a01HX9N3K…
 EVENT_ID                 ACTOR             STATUS               STARTED              FAILURE_LABEL
 evt_01HXC7P2…           webhook:github    dead_lettered        2026-06-03T11:08:42  provider_credential_missing
 

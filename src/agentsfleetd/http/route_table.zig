@@ -186,17 +186,17 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
 
-        // Runner control plane. Enrollment mints a `zrn_` that joins the shared
+        // Runner control plane. Enrollment mints a `agt_r` that joins the shared
         // fleet receiving every tenant's inline secrets, so it is gated on the
         // platform-admin claim (platformAdmin), not per-tenant admin — a tenant
-        // admin or any `zmb_t_` api_key is rejected 403. The self-plane verbs are
-        // authed by the minted runner_token via runnerBearer (zrn_ only, no
+        // admin or any `agt_t` api_key is rejected 403. The self-plane verbs are
+        // authed by the minted runner_token via runnerBearer (agt_r only, no
         // JWKS/tenant fall-through) — a runner token can't satisfy a tenant
         // route and a tenant/user token can't satisfy a runner route, enforced
         // by which middleware guards the route.
         .register_runner => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeRegisterRunner },
         // Operator-plane read — same platform-admin gate as enrollment (a tenant
-        // admin / `zmb_t_` is rejected 403); never the runnerBearer plane.
+        // admin / `agt_t` is rejected 403); never the runnerBearer plane.
         .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
         .fleet_runner_patch => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerPatch },
         .fleet_runner_events => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerEvents },

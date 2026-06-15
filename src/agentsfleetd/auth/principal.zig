@@ -12,7 +12,7 @@ pub const AuthRole = rbac.AuthRole;
 pub const AuthMode = enum {
     api_key,
     jwt_oidc,
-    /// Host-resident `agentsfleet-runner`, authed by a `zrn_` runner token via
+    /// Host-resident `agentsfleet-runner`, authed by a `agt_r` runner token via
     /// `runnerBearer`. Carries no tenant identity (`tenant_id == null`).
     runner,
 };
@@ -29,7 +29,7 @@ pub const AuthPrincipal = struct {
     /// agentsfleet platform operator, granted by a manual Clerk `publicMetadata`
     /// flip surfaced as the `platform_admin` JWT claim. Distinct from the
     /// per-tenant `role`: the only principal allowed to mint a runner token.
-    /// Fail-closed — the `api_key` path never sets it, so a `zmb_t_` key (which
+    /// Fail-closed — the `api_key` path never sets it, so a `agt_t` key (which
     /// is `.role=.admin`) can never enroll a runner. A plain bool: as tamper-
     /// proof as `role`/`tenant_id` (same signed JWT, same verifier).
     platform_admin: bool = false,

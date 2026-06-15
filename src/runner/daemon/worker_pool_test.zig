@@ -17,7 +17,7 @@ const worker_pool = @import("worker_pool.zig");
 fn staticCfg(worker_count: u32) Config {
     return .{
         .control_plane_url = "http://127.0.0.1:0",
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .host_id = "pool-test-host",
         .sandbox_tier = "dev_none",
         .workspace_base = "/tmp/agentsfleet-runner-pool-test",

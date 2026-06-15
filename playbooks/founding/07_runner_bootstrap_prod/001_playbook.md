@@ -2,7 +2,7 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `agent-prod-worker-ant` is provisioned; `agent-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `zrn_` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/agent-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `zrn_FAKE_…` placeholder until then.
+**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `agent-prod-worker-ant` is provisioned; `agent-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `agt_r` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/agent-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `agt_rFAKE_…` placeholder until then.
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
@@ -234,12 +234,12 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 ```bash
 # The runner daemon needs exactly three env vars (Option B contract):
 #   - AGENTSFLEET_API_URL       — control-plane base, prod: https://api.agentsfleet.net
-#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
+#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token)
 #   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname or
 #                            ${WORKER_NAME} if no hostname field exists yet)
 #
-# A real prod `zrn_` requires the platform-admin enrollment gate on the live
-# prod control plane. Store a placeholder (`zrn_FAKE_…`) until that's ready;
+# A real prod `agt_r` requires the platform-admin enrollment gate on the live
+# prod control plane. Store a placeholder (`agt_rFAKE_…`) until that's ready;
 # PROD_WORKER_READY must stay `false` until every node in PROD_WORKER_HOSTS
 # has a real admin-minted token in vault and the runner is verified active.
 
@@ -294,7 +294,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 
 ## 5.0 Agent: First Deploy + Activate CI
 
-**Goal:** First deploy runs end-to-end on every prod node. After all nodes pass with a real (non-placeholder) `zrn_` runner-token in vault, CI gate is lifted.
+**Goal:** First deploy runs end-to-end on every prod node. After all nodes pass with a real (non-placeholder) `agt_r` runner-token in vault, CI gate is lifted.
 
 ```bash
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
@@ -325,7 +325,7 @@ REMOTE
 
 ### Activate CI (after ALL nodes are bootstrapped)
 
-Only set `PROD_WORKER_READY=true` once **every node** in `PROD_WORKER_HOSTS` has passed step 5 with a real admin-minted `zrn_` runner-token in vault (placeholder `zrn_FAKE_…` values are rejected by `deploy.sh` and by the daemon's startup prefix check).
+Only set `PROD_WORKER_READY=true` once **every node** in `PROD_WORKER_HOSTS` has passed step 5 with a real admin-minted `agt_r` runner-token in vault (placeholder `agt_rFAKE_…` values are rejected by `deploy.sh` and by the daemon's startup prefix check).
 
 ```bash
 gh variable set PROD_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
@@ -379,7 +379,7 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
 4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
 5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, verify agentsfleet-runner.service is active
---- After ALL nodes pass step 5 with a real admin-minted zrn_ in vault ---
+--- After ALL nodes pass step 5 with a real admin-minted agt_r in vault ---
 5.1  Agent: gh variable set PROD_WORKER_READY=true
 --- CI-automated after this point ---
 ```

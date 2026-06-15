@@ -83,7 +83,7 @@ pub const MiddlewareRegistry = struct {
     /// Build the policy chain arrays. Must be called once after the registry
     /// struct is placed in its final memory location.
     pub fn initChains(self: *MiddlewareRegistry) void {
-        // Wire the tenant-key pointer into bearer_or_api_key so `zmb_t_`-
+        // Wire the tenant-key pointer into bearer_or_api_key so `agt_t`-
         // prefixed tokens delegate to the DB-backed lookup path.
         self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
         self._bearer_chain = .{self.bearer_or_api_key.middleware()};
@@ -131,7 +131,7 @@ pub const MiddlewareRegistry = struct {
         return &self._admin_chain;
     }
 
-    /// Runner-token (`zrn_`) machine principal — wired only onto
+    /// Runner-token (`agt_r`) machine principal — wired only onto
     /// `/v1/runners/me/*`. No JWKS/tenant fall-through.
     pub fn runnerBearer(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._runner_chain;
@@ -145,7 +145,7 @@ pub const MiddlewareRegistry = struct {
     /// Bearer token or admin API key, plus the verified `platform_admin`
     /// claim. The one policy that gates runner enrollment (`POST /v1/runners`):
     /// only agentsfleet's platform operator passes; a tenant admin or any
-    /// `zmb_t_` api_key is rejected 403.
+    /// `agt_t` api_key is rejected 403.
     pub fn platformAdmin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._platform_admin_chain;
     }

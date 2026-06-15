@@ -24,7 +24,7 @@ Authorization: Bearer <…>
             │   │             │    │             │    │             │    │
             │   │ agentsfleet   │    │ Dashboard   │    │ Tenant API  │    │
             │   │ login       │    │ sign-in     │    │ key         │    │
-            │   │             │    │             │    │ zmb_t_…     │    │
+            │   │             │    │             │    │ agt_t…     │    │
             │   │ verification│    │ Clerk       │    │ static hash │    │
             │   │ code + ECDH │    │ __session   │    │ in DB       │    │
             │   │ + 5-min TTL │    │ cookie →    │    │ long-lived  │    │
@@ -39,7 +39,7 @@ Authorization: Bearer <…>
             │                             │                                │
             │                             ▼                                │
             │              bearer_or_api_key middleware                    │
-            │              (zmb_t_*  → DB hash lookup)                     │
+            │              (agt_t*  → DB hash lookup)                     │
             │              (anything → JWKS verify)                        │
             │                                                              │
             └──────────────────────────────────────────────────────────────┘
@@ -51,19 +51,19 @@ Authorization: Bearer <…>
 | Long-lived credential? | ❌ JWT expires ~15 min; CLI re-runs `login` on 401 | ❌ minted per request | ✅ until explicitly revoked |
 | Provisioned via | `agentsfleet login` | Clerk sign-in form | dashboard "Create API Key" surface |
 | Right answer for | a developer on a workstation; Cursor/Claude Code running locally with the developer present | someone using `app.agentsfleet.net` in a browser | n8n / Zapier / cron jobs / CI runners / Kubernetes / scheduled background work |
-| Wrong answer for | unattended CI / cron / K8s / hosted-agent platforms — see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Human-led-only invariant* | none — this is the only browser path | interactive humans (`zmb_t_` long-lived keys carry too much standing privilege for a workstation) |
+| Wrong answer for | unattended CI / cron / K8s / hosted-agent platforms — see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Human-led-only invariant* | none — this is the only browser path | interactive humans (`agt_t` long-lived keys carry too much standing privilege for a workstation) |
 
-There is also a fourth surface — **agent keys** (`zmb_*` bound to a single agent) — for narrowly-scoped webhook-driven inbound calls. It's a Flow 3 subtype: same DB-hash-lookup shape, narrower scope. See *Agent keys* below.
+There is also a fourth surface — **agent keys** (`agt_a*` bound to a single agent) — for narrowly-scoped webhook-driven inbound calls. It's a Flow 3 subtype: same DB-hash-lookup shape, narrower scope. See *Agent keys* below.
 
 A fifth surface — **inbound webhooks** — does not use Bearer at all (HMAC-signed by the provider). See *Webhook auth*.
 
-A sixth surface — the **runner token** (`zrn_`) — is the first *machine* principal: a host-resident `agentsfleet-runner` that holds no tenant identity at all. Same Bearer wire shape and DB-hash lookup, but a separate middleware and trust plane. See *Runner token* below.
+A sixth surface — the **runner token** (`agt_r`) — is the first *machine* principal: a host-resident `agentsfleet-runner` that holds no tenant identity at all. Same Bearer wire shape and DB-hash lookup, but a separate middleware and trust plane. See *Runner token* below.
 
 Cookies **never reach the Zig backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.agentsfleet.net`) — written by the Clerk SDK on the page after sign-in. Same-origin policy means it only attaches on requests back to the dashboard, never to `api-dev.agentsfleet.net`. See *Flow 2 — UI* below for the cookie-vs-Bearer picture.
 
 The middleware that gates almost every route is `bearer_or_api_key` (`src/agentsfleetd/auth/middleware/bearer_or_api_key.zig`). It parses the `Bearer …` prefix, then routes by sub-prefix:
 
-- `Bearer zmb_t_*` → `tenant_api_key.zig` (DB lookup, hash compare).
+- `Bearer agt_t*` → `tenant_api_key.zig` (DB lookup, hash compare).
 - `Bearer <anything else>` → `oidc.Verifier.verifyAuthorization` (cached JWKS, RS256 signature check, `iss` + `aud` + `exp` claims, role mapping).
 
 Both paths resolve to the same `AuthPrincipal` struct (`src/agentsfleetd/auth/principal.zig`). Handlers downstream never know which credential shape was used.
@@ -78,16 +78,16 @@ Six principal surfaces, one wire shape (`Authorization: Bearer …`), and a pref
 |---|---|---|---|---|
 | Human at a terminal (CLI) | Clerk JWT (`api` template) | Clerk | JWKS verify + `aud`/`iss`/`exp` | `bearer_or_api_key` → OIDC |
 | Human in a browser (dashboard) | Clerk session JWT | Clerk | JWKS verify + `aud` | `bearer_or_api_key` → OIDC |
-| Service / automation | `zmb_t_<hex>` tenant api key | backend | SHA-256 hash lookup | `bearer_or_api_key` → `tenant_api_key` |
-| One-agent webhook caller | `zmb_<hex>` agent key | backend | SHA-256 hash lookup | bespoke, handler-local today — see *Agent keys* |
-| Host runner (machine) | `zrn_<hex>` runner token | backend (via `register`) | SHA-256 hash lookup in `fleet.runners` | `runnerBearer` on `/v1/runners/me/*` |
+| Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup | `bearer_or_api_key` → `tenant_api_key` |
+| One-agent webhook caller | `agt_a<hex>` agent key | backend | SHA-256 hash lookup | bespoke, handler-local today — see *Agent keys* |
+| Host runner (machine) | `agt_r<hex>` runner token | backend (via `register`) | SHA-256 hash lookup in `fleet.runners` | `runnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `webhook_sig` |
 
-Routing in `bearer_or_api_key.zig`: `zmb_t_` → tenant-key DB lookup; anything else → OIDC/JWKS verify; no token → 401. The runner plane is deliberately a separate middleware (`runnerBearer`, `zrn_` only) so a runner token cannot satisfy a tenant route and vice versa.
+Routing in `bearer_or_api_key.zig`: `agt_t` → tenant-key DB lookup; anything else → OIDC/JWKS verify; no token → 401. The runner plane is deliberately a separate middleware (`runnerBearer`, `agt_r` only) so a runner token cannot satisfy a tenant route and vice versa.
 
 Authorization is **role-based** today: `AuthRole = user < operator < admin` (`src/agentsfleetd/auth/rbac.zig`), enforced by `RequireRole`. Scope-based authz (`fleet:write`, finer tenant scopes) is a v2.1 item — see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
-One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on agentsfleet's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is agentsfleet-the-operator authority. It gates runner enrollment (`POST /v1/runners`) and the fleet operator plane (`GET /v1/fleet/runners`, `PATCH /v1/fleet/runners/{id}`, `GET /v1/fleet/runners/{id}/events`); those routes fail closed when the claim is absent, and the `zmb_t_` api_key path never sets it (so no tenant key can enroll, mutate, or audit hosts). See *Runner token → Provisioning* below.
+One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on agentsfleet's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is agentsfleet-the-operator authority. It gates runner enrollment (`POST /v1/runners`) and the fleet operator plane (`GET /v1/fleet/runners`, `PATCH /v1/fleet/runners/{id}`, `GET /v1/fleet/runners/{id}/events`); those routes fail closed when the claim is absent, and the `agt_t` api_key path never sets it (so no tenant key can enroll, mutate, or audit hosts). See *Runner token → Provisioning* below.
 
 Everything below is per-surface detail. For the CLI device-flow threat model + crypto, see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md).
 
@@ -210,12 +210,12 @@ Provisioning (one-time, via dashboard)            Usage (every subsequent call)
 ──────────────────────────────────────            ─────────────────────────────
 Operator                                          External service (n8n/Zapier/…)
    │                                                │
-   │ click "Create API key"                         │ Authorization: Bearer zmb_t_<hex>
+   │ click "Create API key"                         │ Authorization: Bearer agt_t<hex>
    ▼                                                ▼
 Dashboard ─► POST /v1/api-keys ─► Zig backend     Zig backend
               Authorization:        │                 │
               Bearer <user-jwt>     │                 │ bearer_or_api_key middleware:
-              (Flow 2 mint)         │                 │ detects "zmb_t_" prefix
+              (Flow 2 mint)         │                 │ detects "agt_t" prefix
                                     │                 │ → tenant_api_key.zig
                                     │                 │ → SHA-256 hash compare in DB
                                     │                 ▼
@@ -223,13 +223,13 @@ Dashboard ─► POST /v1/api-keys ─► Zig backend     Zig backend
                                     │                            tenant_id, … }
                                     ▼
                             core.api_keys row
-                            { hash: sha256(zmb_t_<hex>),
+                            { hash: sha256(agt_t<hex>),
                               tenant_id, label, … }
-                            (raw zmb_t_<hex> shown to
+                            (raw agt_t<hex> shown to
                              operator ONCE — never stored)
 ```
 
-A tenant API key carries the same standing privilege as a long-lived JWT for the tenant — anyone who holds the raw `zmb_t_<hex>` value can act for that tenant until the key is revoked. Treat as a credential equivalent to a database password: rotate on suspected exposure, scope by workspace where the dashboard's "Create API Key" surface supports it, prefer short-lived JWTs (Flow 1 or Flow 2) for interactive use.
+A tenant API key carries the same standing privilege as a long-lived JWT for the tenant — anyone who holds the raw `agt_t<hex>` value can act for that tenant until the key is revoked. Treat as a credential equivalent to a database password: rotate on suspected exposure, scope by workspace where the dashboard's "Create API Key" surface supports it, prefer short-lived JWTs (Flow 1 or Flow 2) for interactive use.
 
 ### Provisioning
 
@@ -241,8 +241,8 @@ sequenceDiagram
 
     Operator->>Browser: dashboard → "Create API key"
     Browser->>API: POST /v1/workspaces/{ws}/api-keys<br/>Authorization: Bearer <user-jwt>
-    Note over API: bearer_or_api_key validates user-jwt,<br/>handler mints zmb_t_<random>,<br/>stores SHA-256 hash in DB,<br/>returns plaintext ONCE
-    API-->>Browser: 201 { key: "zmb_t_..." }
+    Note over API: bearer_or_api_key validates user-jwt,<br/>handler mints agt_t<random>,<br/>stores SHA-256 hash in DB,<br/>returns plaintext ONCE
+    API-->>Browser: 201 { key: "agt_t..." }
     Browser-->>Operator: shown once (copy now)
 ```
 
@@ -253,40 +253,40 @@ sequenceDiagram
     participant Service as External service<br/>(n8n / customer script / agent)
     participant API as Zig backend
 
-    Service->>API: POST /v1/agents/{id}/trigger<br/>Authorization: Bearer zmb_t_<key>
-    Note over API: bearer_or_api_key:<br/>parses Bearer → detects zmb_t_ prefix<br/>→ delegates to tenant_api_key.zig<br/>→ DB hash compare<br/>→ AuthPrincipal{ mode=api_key, tenant_id, workspace_id }
+    Service->>API: POST /v1/agents/{id}/trigger<br/>Authorization: Bearer agt_t<key>
+    Note over API: bearer_or_api_key:<br/>parses Bearer → detects agt_t prefix<br/>→ delegates to tenant_api_key.zig<br/>→ DB hash compare<br/>→ AuthPrincipal{ mode=api_key, tenant_id, workspace_id }
     API-->>Service: 200 OK
 ```
 
-API keys never touch Clerk. They live only in the backend DB, hashed at rest, and authenticate via the same `Authorization: Bearer …` header that JWTs use — the `zmb_t_` prefix tells the middleware to take the DB lookup branch instead of the JWKS verify branch.
+API keys never touch Clerk. They live only in the backend DB, hashed at rest, and authenticate via the same `Authorization: Bearer …` header that JWTs use — the `agt_t` prefix tells the middleware to take the DB lookup branch instead of the JWKS verify branch.
 
 ---
 
-## Agent keys (`zmb_*`, bound to a single agent)
+## Agent keys (`agt_a*`, bound to a single agent)
 
 A narrower subtype of Flow 3. Same DB-hash-lookup shape; same `Authorization: Bearer …` wire format; the only differences are scope (one agent vs. one tenant) and provisioning surface (`POST /v1/workspaces/{ws}/agent-keys` vs. `POST /v1/api-keys`).
 
 ```
 core.agent_keys row
-{ hash: sha256(zmb_<hex>),
+{ hash: sha256(agt_a<hex>),
   workspace_id, agent_id, label, … }
 ```
 
-Used by webhook-driven external integrations that post events to a single agent (one customer's GitHub Actions emitting to a specific automation, etc.). The narrow scope makes the blast radius of a leaked agent key bounded to one agent's event stream — preferred over `zmb_t_` for any caller that only needs to act on one agent.
+Used by webhook-driven external integrations that post events to a single agent (one customer's GitHub Actions emitting to a specific automation, etc.). The narrow scope makes the blast radius of a leaked agent key bounded to one agent's event stream — preferred over `agt_t` for any caller that only needs to act on one agent.
 
 **Today this is a side door.** Agent keys authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateAgent`), not `bearer_or_api_key`, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). The v2.1 revamp makes them a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` — aligning with the reference design at `~/Projects/oss/auth.md`. See [`architecture/roadmap.md`](./architecture/roadmap.md).
 
 ---
 
-## Runner token (`zrn_`) — the machine principal
+## Runner token (`agt_r`) — the machine principal
 
 Flows 1–3 and agent keys all act *on behalf of* a human or a tenant. The **runner token** is the first principal that represents infrastructure the platform runs — a host-resident `agentsfleet-runner` (see [`architecture/runner_fleet.md`](./architecture/runner_fleet.md)) — and carries **no tenant identity of its own**.
 
 ### Provisioning (register)
 
-A runner has no credential until **agentsfleet's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleet/runners` (M84_001), the operator-plane mutation `PATCH /v1/fleet/runners/{id}`, and the runner event history `GET /v1/fleet/runners/{id}/events` (M84_002).
+A runner has no credential until **agentsfleet's platform admin** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `agt_r` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `agt_t` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token. The same `platformAdmin()` gate also fronts the read-only fleet list `GET /v1/fleet/runners` (M84_001), the operator-plane mutation `PATCH /v1/fleet/runners/{id}`, and the runner event history `GET /v1/fleet/runners/{id}/events` (M84_002).
 
-The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `zrn_` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; the daemon validates the `zrn_` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
+The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; the daemon validates the `agt_r` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
 ```
 Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  agentsfleetd
@@ -295,28 +295,28 @@ Platform admin — dashboard "Add runner" (session JWT, platform_admin=true)  ag
    │   { host_id, sandbox_tier, labels[] }
    ▼
    platformAdmin() chain [bearer_or_api_key, PlatformAdmin] gates the route;
-   the handler mints zrn_<random>, stores ONLY sha256(zrn_) in fleet.runners,
+   the handler mints agt_r<random>, stores ONLY sha256(agt_r) in fleet.runners,
    returns the raw token ONCE
    │
-   ◄── 201 { runner_id, runner_token: "zrn_…" }   (tenant admin / zmb_t_ → 403)
-   the operator installs zrn_ on the host (env AGENTSFLEET_RUNNER_TOKEN); the host
-   does NOT call register — it authenticates every later call with that zrn_
+   ◄── 201 { runner_id, runner_token: "agt_r…" }   (tenant admin / agt_t → 403)
+   the operator installs agt_r on the host (env AGENTSFLEET_RUNNER_TOKEN); the host
+   does NOT call register — it authenticates every later call with that agt_r
 ```
 
 `fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
 ### Validation — a separate middleware, on purpose
 
-Every later call carries `Bearer zrn_` and hits a dedicated `runnerBearer` middleware wired **only** onto `/v1/runners/me/*`:
+Every later call carries `Bearer agt_r` and hits a dedicated `runnerBearer` middleware wired **only** onto `/v1/runners/me/*`:
 
 ```
-parse Bearer → require "zrn_" prefix          (else 401 — no JWKS fall-through)
+parse Bearer → require "agt_r" prefix          (else 401 — no JWKS fall-through)
 SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
   admin_state='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
   miss / non-active    → 401 UZ-RUN-009
 ```
 
-This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `zrn_` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
+This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `agt_r` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
 
 ### Least privilege
 
@@ -330,7 +330,7 @@ The same placement model carries the resolved **LLM provider key** (M80_009): `a
 
 ### What ships when
 
-M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 adds the `platform_admin` principal and re-gates `POST /v1/runners` from per-tenant `admin` to `platformAdmin()`, and flips the host to Option B (pre-minted `zrn_`, no self-register). Operator-assigned-trust placement fields (`trust_class`, `allowed_workspace_ids`) are deferred to M80_007 (scheduler), where a "required trust" data source lands; runner revocation/rotation and the fleet operator plane are M80_006.
+M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 adds the `platform_admin` principal and re-gates `POST /v1/runners` from per-tenant `admin` to `platformAdmin()`, and flips the host to Option B (pre-minted `agt_r`, no self-register). Operator-assigned-trust placement fields (`trust_class`, `allowed_workspace_ids`) are deferred to M80_007 (scheduler), where a "required trust" data source lands; runner revocation/rotation and the fleet operator plane are M80_006.
 
 ---
 
@@ -341,7 +341,7 @@ flowchart TD
     Req["HTTP request"] --> Mw{"bearer_or_api_key<br/>middleware"}
     Mw --> H{"parse<br/>Authorization: Bearer X"}
     H -- "missing or malformed" --> R401["401 Unauthorized"]
-    H -- "X starts with zmb_t_" --> KP["tenant_api_key path"]
+    H -- "X starts with agt_t" --> KP["tenant_api_key path"]
     H -- "X is a JWT" --> JP["oidc.Verifier path"]
 
     KP --> KDB["DB lookup<br/>(SHA-256 hash compare)"]
@@ -441,8 +441,8 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 |---|---|---|---|---|
 | `__session` cookie (Token A) | secret | session-bound (Clerk-managed) | dashboard origin (`app.agentsfleet.net`) only | any other origin · server logs · client logs · URLs |
 | Clerk-signed JWT (Token B, `api` template) | secret | ~15 min | `Authorization: Bearer …` header on `/v1/*` calls | logs · query strings · client-side storage beyond the React closure that minted it · disk (the CLI's `credentials.json` is the one exception, mode 0o600) |
-| `zmb_t_*` tenant API key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls; vault items; operator's password manager | logs · process lists · shell history · client-side storage · disk except a secrets manager · screenshots |
-| `zmb_*` agent key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls (specifically to the bound agent's surface) | same as `zmb_t_*` |
+| `agt_t*` tenant API key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls; vault items; operator's password manager | logs · process lists · shell history · client-side storage · disk except a secrets manager · screenshots |
+| `agt_a*` agent key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls (specifically to the bound agent's surface) | same as `agt_t*` |
 | `CLERK_SECRET_KEY` | secret (catastrophic) | until rotated | Vercel runtime env · Fly runtime env · `~/Projects/agentsfleet/.env` (gitignored, operator laptop only) · CI runners (GitHub Actions secret) · 1Password vaults | client bundle (a rename to `NEXT_PUBLIC_*` would be a P0 incident) · logs · error bodies |
 | `session_id` (M74_002 device-flow session ID) | sensitive ephemeral capability — treat as password-reset token | 5 min (or terminal state) | the primary CLI-generated verification URL (`https://app.agentsfleet.net/cli-auth/{session_id}`) · API route paths that consume it (`/v1/auth/sessions/{id}{,/approve,/verify}`) | `.auth` log scope at info/warn/error (use `redactSessionId()` to 8-hex-prefix) · analytics · telemetry · metrics labels · secondary URLs (deep links, redirect targets, "share this page") · error response bodies routed to non-trusted surfaces · copied diagnostic bundles · support tickets |
 | `verification_code` (6 digits, M74_002) | secret ephemeral capability | 5 min (or terminal state) | dashboard JS process (display) · CLI process (prompt) · TLS-encrypted POST /approve and POST /verify bodies | server-side persistence in any form · `.auth` log scope · `.auth_audit` log scope (audit events MUST NOT carry the plaintext code, nor the `verification_code_hmac`) · metrics · error bodies |
@@ -625,7 +625,7 @@ After Stage 1 (single-token collapse) + Stage 2 (BFF), the dashboard carries one
 |---|---|---|---|---|
 | **Customized session JWT** (dashboard) | `__session` cookie on `app.agentsfleet.net`; transient JS-heap copy via `auth().getToken()` inside a route handler / Server Action for ~5ms | ~60s (Clerk default) | Clerk SDK auto-refreshes via the cookie on every `getToken()` call | browser ↔ cookie ↔ Clerk FAPI ↔ Next.js server runtime; **never crosses into client-rendered React** |
 | **Api-template JWT** (CLI carve-out) | `~/.config/agentsfleet/credentials.json` on the operator's workstation | ~15 min (Clerk api template default) | None — CLI re-runs `agentsfleet login` on 401 | dashboard JS process (mint) → ECDH-encrypted → CLI process (post-decrypt persistence) |
-| **Tenant API key** `zmb_t_*` (Flow 3) | Operator's external-service config (n8n, Zapier, scheduled jobs) | Until explicit revoke | None | DB-hash-compare; never re-issued |
+| **Tenant API key** `agt_t*` (Flow 3) | Operator's external-service config (n8n, Zapier, scheduled jobs) | Until explicit revoke | None | DB-hash-compare; never re-issued |
 
 **"What happens if the dashboard's session JWT expires mid-request?"** Doesn't happen the way the question implies — Clerk SDK refreshes the cookie token on each `getToken()` call, and Stage 2's route handler mints fresh on every request. There is no long-lived in-memory copy of the JWT to expire.
 
@@ -664,7 +664,7 @@ Concrete invariants the M74_002 work continues to satisfy through both stages:
 3. **`credentials.json` shape stored by agentsfleet is unchanged** — still `{ token, token_name, saved_at, session_id, api_url }` with `token` a Clerk-signed api-template JWT. *(The `token_name` field lands in Slice 5.C of M74_002 itself; readers on intermediate commits during PR #331's review window see four fields, not five. By the time PR #331 merges, the shape matches.)*
 4. **`bearer_or_api_key.zig` validates the CLI's Bearer identically.** OIDC verifier path, JWKS caching, `aud=https://api.agentsfleet.net` check — all unchanged.
 
-If a future milestone decides to move the CLI off the Clerk JWT to a server-mintable `zmb_t_*`-style token (the direction sketched at *What's not in this doc — item 6*), it ships as its own milestone — **never bundled with the Flow 2 cleanup**.
+If a future milestone decides to move the CLI off the Clerk JWT to a server-mintable `agt_t*`-style token (the direction sketched at *What's not in this doc — item 6*), it ships as its own milestone — **never bundled with the Flow 2 cleanup**.
 
 ### Beyond Stage 2 — what this roadmap does NOT solve
 

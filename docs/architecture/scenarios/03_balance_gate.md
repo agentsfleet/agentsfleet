@@ -222,7 +222,7 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 ### 6.1 At the gate trip
 
 ```text
-$ agentsfleet events zmb_01HX9N3K… --since 24h | head -3
+$ agentsfleet events agt_a01HX9N3K… --since 24h | head -3
 EVENT_ID                 ACTOR             STATUS         FAILURE_LABEL
 evt_01HXG2K4…           webhook:github    gate_blocked   balance_exhausted
 evt_01HXG2K3…           webhook:github    gate_blocked   balance_exhausted

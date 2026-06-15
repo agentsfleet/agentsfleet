@@ -8,12 +8,12 @@ target environment — the operator (`nkishore@megam.io`) is a Clerk user with
 `publicMetadata.platform_admin = true`. `op` is authenticated.
 
 Onboard a `agentsfleet-runner` end to end: stand up the dashboard (locally or via the
-deployed dev app), mint a dedicated `zrn_` token from the platform-admin
+deployed dev app), mint a dedicated `agt_r` token from the platform-admin
 "Add runner" surface, store it in 1Password, and provision it onto a host. The
 host-bootstrap playbooks (`founding/06_runner_bootstrap_dev`,
-`founding/07_runner_bootstrap_prod`) only *install* a `zrn_`; **this** playbook is
+`founding/07_runner_bootstrap_prod`) only *install* a `agt_r`; **this** playbook is
 where one is *minted*. The mint requires a platform-admin Clerk **session** — a
-tenant `zmb_t_` key is rejected (`403 UZ-AUTH-021`).
+tenant `agt_t` key is rejected (`403 UZ-AUTH-021`).
 
 ---
 
@@ -51,7 +51,7 @@ cd ui/packages/app
 
 ```
 AGENTSFLEET_API_URL=http://agentsfleetd:3000        # compose service name; http://localhost:3000 if on host
-AGENTSFLEET_RUNNER_TOKEN=zrn_…                  # mint via §3 below; a fake zrn_ verifies structure only
+AGENTSFLEET_RUNNER_TOKEN=agt_r…                  # mint via §3 below; a fake agt_r verifies structure only
 RUNNER_HOST_ID=local-dev-runner
 RUNNER_SANDBOX_TIER=dev_none               # local default; landlock_full needs a hardened Linux container
 ```
@@ -69,8 +69,8 @@ service-name endpoint.
 | 0.0 | — | Prereq: admin_bootstrap ran; operator has `platform_admin=true` |
 | 1.0 | Human | Set up `ui/packages/app/.env.local` (API base + dev Clerk keys) |
 | 2.0 | Human | Run the dashboard (or use the deployed one) and sign in as the platform admin |
-| 3.0 | Human | Mint a `zrn_` at `/admin/runners` → revealed once → copy |
-| 4.0 | Agent | Store the `zrn_` in vault and provision the target host |
+| 3.0 | Human | Mint a `agt_r` at `/admin/runners` → revealed once → copy |
+| 4.0 | Agent | Store the `agt_r` in vault and provision the target host |
 
 ---
 
@@ -105,7 +105,7 @@ Sign in as `nkishore@megam.io`. If **Configuration → Runners** is **absent**, 
 | `labels` | `dev` |
 
 `host_id` must equal the `RUNNER_HOST_ID` the daemon will report (keeps the host
-logs and the fleet list in agreement). The `zrn_` is revealed **once** — copy it
+logs and the fleet list in agreement). The `agt_r` is revealed **once** — copy it
 immediately (dismissal locked during reveal; the raw value is dropped on close).
 
 ### Acceptance
@@ -119,14 +119,14 @@ runner is never a fake `online`).
 
 ```bash
 # Bare-metal dev host:
-op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV "runner-token=<zrn_…>"
+op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV "runner-token=<agt_r…>"
 ```
 
 Then hand off:
 
 - **Bare-metal host** → `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh`
   (writes `/opt/agentsfleet/.env`, syncs `/etc/default/agentsfleet-runner`, restarts, verifies active).
-- **Local container** → drop the `zrn_` into `.env.runner.local`, restart the runner.
+- **Local container** → drop the `agt_r` into `.env.runner.local`, restart the runner.
 
 ### Acceptance
 
@@ -135,5 +135,5 @@ Then hand off:
 GET /v1/fleet/runners   # the runner is listed; liveness registered → online after first heartbeat
 ```
 
-A tenant `zmb_t_` key or a non-platform-admin JSON Web Token returns
+A tenant `agt_t` key or a non-platform-admin JSON Web Token returns
 `403 UZ-AUTH-021`.

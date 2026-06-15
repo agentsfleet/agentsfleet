@@ -80,7 +80,7 @@ pub const ActivityForwarder = struct {
 };
 
 /// POSTs each `.memory` capture frame the child writes to the control plane —
-/// the daemon (not the child) holds the `zrn_` token, so capture rides the
+/// the daemon (not the child) holds the `agt_r` token, so capture rides the
 /// trusted plane. The frame is a JSON array of deltas; the daemon wraps it with
 /// the held lease's `lease_id` + `fencing_token` so the write is fenced. A blip
 /// is logged and swallowed — the next capture re-sends the full set.
