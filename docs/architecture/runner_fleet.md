@@ -307,10 +307,10 @@ RUN 1  (first ever for agent A)
   agent:  memory_store("todo", "step 3 of 5"),  memory_store("prefs", …)
   run-end  +  every memory_checkpoint_every:
      runner lists its :memory: store → deltas ─pipe─► parent
-     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (instance_id = "zmb:A")
+     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (instance_id = A (the agent_id))
   child exits → :memory: store vanishes (no disk artifact)
 
-  Postgres now holds:   zmb:A · todo · "step 3 of 5"    |    zmb:A · prefs · …
+  Postgres now holds:   A · todo · "step 3 of 5"    |    A · prefs · …
 
 RUN 2  (next run, same agent A)                          ◄── THE CARRY-OVER
   lease{ agent=A, fence=8 } → runner parent
@@ -318,10 +318,10 @@ RUN 2  (next run, same agent A)                          ◄── THE CARRY-OVE
   parent ─pipe─►  child seeds :memory: WITH those entries
   agent:  memory_recall("todo") → "step 3 of 5"   → continues from step 3
           memory_store("todo", "step 5 of 5")     (same key → UPDATE)
-  push → agentsfleetd UPDATEs (todo, zmb:A) + INSERTs any new keys (idempotent)
+  push → agentsfleetd UPDATEs (todo, A) + INSERTs any new keys (idempotent)
 ```
 
-**Data model.** Scope is the **agent**, not the workspace: `instance_id = "zmb:" + agent_id`, derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a agent each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the agent to read its memory via the tenant `GET`); two agents never share a memory namespace.
+**Data model.** Scope is the **agent**, not the workspace: `instance_id = agent_id`, derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a agent each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the agent to read its memory via the tenant `GET`); two agents never share a memory namespace.
 
 **Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-agent **affinity slot admitting a single live holder** — `uq_runner_affinity_agent UNIQUE(agent_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`; multiple lease rows per agent are normal, and a slow old holder can transiently coexist with a reclaimer — which is *why* fencing exists: only one writer durably persists into a agent's namespace.) So a runner's N concurrent leases are always N *distinct* agents = N distinct namespaces. Isolation does **not** rest on `agent_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing.
 

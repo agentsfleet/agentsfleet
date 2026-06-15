@@ -100,7 +100,7 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("SET ROLE memory_runtime", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    // Memory is scoped by the raw agent_id (UUID) after schema/013 — no zmb: form.
+    // Memory is scoped by the raw agent_id (UUID) after schema/013 — no legacy instance_id prefix.
     _ = conn.exec(
         "DELETE FROM memory.memory_entries WHERE agent_id IN ($1::uuid, $2::uuid)",
         .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS },

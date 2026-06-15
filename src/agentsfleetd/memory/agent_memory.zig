@@ -6,7 +6,7 @@
 //! This module owns the ONLY `INSERT INTO memory.memory_entries` in the system
 //! (RULE: single write path). The tenant memory API is read-only; every durable
 //! write flows through `storeEntry`. Memory is scoped by `agent_id` (UUID) —
-//! our identifier end to end; the legacy NullClaw `instance_id`/`"zmb:"` form is
+//! our identifier end to end; the legacy NullClaw `instance_id` prefix form is
 //! gone with the in-child Postgres path.
 //!
 //! RULE NSQ: schema-qualified SQL. Allocator: caller-provided (the handler's

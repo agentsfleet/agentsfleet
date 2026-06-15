@@ -352,8 +352,11 @@ vault names are out of scope of every sweep (Indy keep).
 ## Invariants
 
 1. **Zero `zombie` in the active tree.** `git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie"`
-   excluding `docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md`, and `ZMB_*`/`zmb`-vault
-   lines == 0 (Eval `E1`). (Inverts the Jun 14 "byte-stable zombie surface" invariant.)
+   excluding frozen history (`docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md`), the M92
+   rename specs, and the documented keeps (`.gitleaksignore` fingerprints, `build.zig.zon` `usezombie`
+   fork URLs, the `make/quality.mk` legacy guard, the `zombie-dev-worker-ant` vault item, `ZMB_*`/`zmb`
+   tokens) == 0 (Eval `E1`). M92_001 (a *pending* spec for a different milestone) carries `zombie` in
+   its problem statement and is out of this rename's scope. (Inverts the Jun 14 "byte-stable" invariant.)
 2. **`core.agent_keys` has exactly one `agent_id`** — the FK to `core.agents`; the key's own id is
    `agent_key_id` (Eval `E3`).
 3. **No migration ships** — `schema/*.sql` is edited in place (full-file replace), no `ALTER`, no
@@ -411,10 +414,16 @@ and pass; no test still asserts a `zombie` token outside frozen history.
 ## Eval Commands (post-implementation)
 
 ```bash
-# E1: entity zombie residue (expect 0 over active tree)
+# E1: entity zombie residue (expect 0 over active tree). Excludes frozen history,
+# the M92 rename specs (they document the from→to), and the documented keeps:
+# .gitleaksignore historical fingerprints, build.zig.zon usezombie fork URLs
+# (M92_003 pinned-hash dep carve-out), make/quality.mk legacy orphan-sweep guard,
+# the zombie-dev-worker-ant vault item, and ZMB_*/zmb-vault tokens.
 git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
   ':(exclude)docs/v2/done' ':(exclude)docs/architecture/archive' ':(exclude)CHANGELOG.md' \
-  | grep -viE "ZMB_|zmb_vault" | grep -c . || true
+  ':(exclude)docs/v2/*/M92_*' ':(exclude).gitleaksignore' ':(exclude)build.zig.zon' \
+  ':(exclude)make/quality.mk' \
+  | grep -viE "ZMB_|zmb_vault|zombie-dev-worker-ant" | grep -c . || true
 # E2: build + suite — zig build && make test 2>&1 | tail -3 ; cross-compile both linux targets
 # E3: keep tokens byte-stable — git grep -c "ZMB_" vs origin/main ; agent_keys has one agent_id
 # E4: brand — git grep -nE "usezombie|useagent|agentctl\b|agentd\b" -- src/ cli/src ui/packages
