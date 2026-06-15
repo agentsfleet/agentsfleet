@@ -45,7 +45,7 @@ cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 
 5. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (M2_002 §4.7). **Do not cut a release tag before this is verified.** If not done:
 ```bash
-for node in agent-prod-worker-ant agent-prod-worker-bird; do
+for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
   ssh -i <(echo "$KEY") "$node" "ls -la /opt/agentsfleet/deploy.sh"
 done
@@ -128,8 +128,8 @@ Set in GitHub → Settings → Variables → `PROD_WORKER_HOSTS`:
 
 ```json
 [
-  {"name":"ant","host":"agent-prod-worker-ant","vault_key":"agent-prod-worker-ant"},
-  {"name":"bird","host":"agent-prod-worker-bird","vault_key":"agent-prod-worker-bird"}
+  {"name":"ant","host":"zombie-prod-worker-ant","vault_key":"zombie-prod-worker-ant"},
+  {"name":"bird","host":"zombie-prod-worker-bird","vault_key":"zombie-prod-worker-bird"}
 ]
 ```
 
