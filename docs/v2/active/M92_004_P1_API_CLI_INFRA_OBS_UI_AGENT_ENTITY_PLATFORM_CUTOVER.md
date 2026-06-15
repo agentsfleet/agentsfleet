@@ -364,7 +364,8 @@ vault names are out of scope of every sweep (Indy keep).
    excluding frozen history (`docs/v2/done`, `docs/architecture/archive`, `CHANGELOG.md`), the M92
    rename specs, and the documented keeps (`.gitleaksignore` fingerprints, `build.zig.zon` `usezombie`
    fork URLs, the `make/quality.mk` legacy guard, the `zombie-dev-worker-ant` vault item, `ZMB_*`/`zmb`
-   tokens) == 0 (Eval `E1`). M92_001 (a *pending* spec for a different milestone) carries `zombie` in
+   tokens, and the UI vocab/copy guards (`ui/packages/{app,website}/**/{vocab-guard,copy}.test.ts`)
+   that name the retired noun precisely to enforce its absence from rendered copy) == 0 (Eval `E1`). M92_001 (a *pending* spec for a different milestone) carries `zombie` in
    its problem statement and is out of this rename's scope. (Inverts the Jun 14 "byte-stable" invariant.)
 2. **`core.agent_keys` has exactly one `agent_id`** — the FK to `core.agents`; the key's own id is
    `agent_key_id` (Eval `E3`).
