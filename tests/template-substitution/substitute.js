@@ -1,6 +1,6 @@
 // Codified version of the install-skill's step-8 placeholder substitution.
 // The agent following SKILL.md does this textually before writing the
-// generated `.usezombie/platform-ops/{SKILL,TRIGGER}.md` files. Tests use
+// generated `.agentsfleet/platform-ops/{SKILL,TRIGGER}.md` files. Tests use
 // this helper to assert the substitution is total and correct.
 
 import { readFileSync } from "node:fs";

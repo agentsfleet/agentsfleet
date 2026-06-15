@@ -1,4 +1,4 @@
-# usezombie — Agent Delivery Control Plane
+# agentsfleet — Agent Delivery Control Plane
 
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json
@@ -8,7 +8,7 @@
 - Documentation: /docs
 
 ## API base
-https://usezombie.com/v1
+https://agentsfleet.net/v1
 
 ## Operations (operationId: method path)
 Status transitions ride PATCH on the agent resource — body {status: "active"|"stopped"|"killed"}.

@@ -33,15 +33,15 @@ pub const MAX_SLOTS: usize = 4096;
 const ID_LEN: usize = 48;
 const MS_PER_S: i64 = 1000;
 
-const FAILURES_NAME = "agent_runner_failures_total";
+const FAILURES_NAME = "agentsfleet_runner_failures_total";
 const FAILURES_HELP = "Runner-executed runs that failed, labelled by runner and failure reason.";
-const FAILURES_OVERFLOW_NAME = "agent_runner_failures_overflow_total";
+const FAILURES_OVERFLOW_NAME = "agentsfleet_runner_failures_overflow_total";
 const FAILURES_OVERFLOW_HELP = "Failure increments routed to _other due to runner_id cardinality overflow.";
-const EXECUTIONS_NAME = "agent_runner_executions_total";
+const EXECUTIONS_NAME = "agentsfleet_runner_executions_total";
 const EXECUTIONS_HELP = "Runs a runner reported, labelled by runner and outcome.";
-const LAST_SEEN_NAME = "agent_runner_last_seen_seconds";
+const LAST_SEEN_NAME = "agentsfleet_runner_last_seen_seconds";
 const LAST_SEEN_HELP = "Seconds since a runner was last seen (report or heartbeat); computed at render.";
-const ACTIVE_LEASES_NAME = "agent_runner_active_leases";
+const ACTIVE_LEASES_NAME = "agentsfleet_runner_active_leases";
 const ACTIVE_LEASES_HELP = "Leases a runner currently holds (best-effort; abandoned leases self-heal on restart).";
 // The agent_memory_* families (GLOBAL, unlabelled — per-agent labels would
 // explode cardinality) live in metrics_memory.zig; renderPrometheus appends them.

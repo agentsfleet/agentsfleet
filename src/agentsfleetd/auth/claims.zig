@@ -19,7 +19,7 @@ pub const IdentityClaims = struct {
     role: ?[]u8,
     audience: ?[]u8,
     scopes: ?[]u8,
-    /// usezombie platform-operator flag. Read from the `platform_admin` boolean
+    /// agentsfleet platform-operator flag. Read from the `platform_admin` boolean
     /// claim (top-level or nested under metadata/custom_claims). Fail-closed:
     /// absent or non-bool ⇒ false. A bool, so it carries no allocation.
     platform_admin: bool,
@@ -42,7 +42,7 @@ const CLAIM_PLATFORM_ADMIN = "platform_admin";
 
 // JWT claim namespace prefixes — these must match the identity provider's
 // custom claim configuration (Clerk/Auth0). Not user-configurable.
-const NAMESPACE_DEV = "https://usezombie.dev/";
+const NAMESPACE_DEV = "https://agentsfleet.net/";
 const NAMESPACE_PROD = "https://agentsfleet.net/";
 
 /// Validate and normalize a role string using the canonical RBAC enum.

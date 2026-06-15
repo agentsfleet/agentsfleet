@@ -1,7 +1,7 @@
 -- fleet.runner_affinity — the per-agent lease SLOT. One row per agent that
 -- carries, on a single row, the three things that make multi-runner assignment
 -- correct: the atomic claim, the monotonic fencing source, and the sticky hint.
--- The runner never sees this table; zombied owns it.
+-- The runner never sees this table; agentsfleetd owns it.
 --
 --   * leased_until — the claim. A lease is acquired by a conditional UPSERT
 --     that wins iff leased_until < now (slot free or its prior claim expired),

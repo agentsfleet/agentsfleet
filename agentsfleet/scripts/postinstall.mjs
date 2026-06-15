@@ -28,7 +28,7 @@ import { homedir } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, "..");
 const src = resolve(pkgRoot, "samples");
-const dstParent = resolve(homedir(), ".config", "usezombie");
+const dstParent = resolve(homedir(), ".config", "agentsfleet");
 const dst = resolve(dstParent, "samples");
 const manifestPath = resolve(dstParent, ".samples-manifest");
 

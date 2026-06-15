@@ -1,5 +1,5 @@
 // analyticsLayer + analyticsInternals coverage. No Supabase counterpart
-// — usezombie's analytics layer wraps posthog-node directly. Mocks the
+// — agentsfleet's analytics layer wraps posthog-node directly. Mocks the
 // PostHog constructor via bun:test mock.module so capture / identify /
 // alias / groupIdentify / shutdown are observed in-process without
 // touching the network.

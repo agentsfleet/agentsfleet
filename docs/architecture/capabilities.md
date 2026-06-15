@@ -24,11 +24,11 @@ These are two different fields on two different tables. Mixing them up is the mo
 | Field | Where it lives | Values | What it tags |
 |---|---|---|---|
 | `trigger.type` | `TRIGGER.md` frontmatter (static config) | `webhook` / `api` / `cron` / `chain` | **How an agent gets triggered** — the wiring at install time. |
-| `event_type` | `core.zombie_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
+| `event_type` | `core.agent_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
 
 A `trigger.type: api` agent typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` agent receives `event_type: webhook`. A continuation `agentsfleetd` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
-Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/lib/contract/event_envelope.zig` (`EventType`) for `event_type`.
+Source of truth: `src/agent/config_helpers.zig` (`parseAgentTrigger`) for `trigger.type`; `src/lib/contract/event_envelope.zig` (`EventType`) for `event_type`.
 
 ---
 
@@ -51,7 +51,7 @@ These are the tool primitives NullClaw exposes. The agent's `tools:` allowlist g
 |---|---|---|
 | Work assignment + kill | `agentsfleetd` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease), and propagates kill via heartbeat-carried lease revocation. | agentsfleetd control plane |
 | Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` — `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets inside the runner's sandboxed child. `network_policy` is `deny_all` (no egress) or network-enabled, where egress is constrained to an operator-declared host allowlist (see [`runner_fleet.md` §Egress model](./runner_fleet.md)). | Lease ExecutionPolicy |
-| Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` rows are opened at receive and closed at completion. | Event ingest + history path |
+| Event stream + history | Every steer / webhook / cron event lands on `agent:{id}:events` with actor provenance. `core.agent_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook receiver |
 | Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
 | Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → lease `ExecutionPolicy` → runner's sandboxed child → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
@@ -68,8 +68,8 @@ Every agent reasoning loop lives inside a single `runner.execute` call. As the a
 ### The three knobs
 
 ```yaml
-# In the agent's TRIGGER.md frontmatter under x-usezombie:
-x-usezombie:
+# In the agent's TRIGGER.md frontmatter under x-agentsfleet:
+x-agentsfleet:
   model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the control
                                                 # plane forwards it into the lease
                                                 # ExecutionPolicy (the engine's
@@ -93,8 +93,8 @@ x-usezombie:
                                     # the empty `model` value above.
 ```
 
-**Wire-shape parser status.** Both `x-usezombie.model` and the four
-`x-usezombie.context.*` knobs are parsed into `ZombieConfig`, carried in the
+**Wire-shape parser status.** Both `x-agentsfleet.model` and the four
+`x-agentsfleet.context.*` knobs are parsed into `AgentConfig`, carried in the
 lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
 run. Operator overrides take effect; absent or zero fields fall through to
 the runtime defaults below via `applyContextDefaults`.
@@ -124,14 +124,14 @@ flowchart TD
 ### What each layer catches
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
-- **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `agentsfleetd` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that zombie's prior memory into the run over the `zrn_` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
+- **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.agent_events`; they just leave the active language-model context.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `agentsfleetd` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that agent's prior memory into the run over the `zrn_` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
 ### The chain-cap escape hatch — `chunk_chain_escalate_human`
 
-A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `agentsfleetd` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `agentsfleet events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the agent itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
+A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `agentsfleetd` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `agentsfleet events <agent_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the agent itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
 
 Notification today is silent — observability only. Resume by steering a fresh message that calls `memory_recall` against whatever snapshot key the agent's own SKILL.md prose chose (the runtime never invents the key shape).
 
@@ -161,12 +161,12 @@ Eighty percent of users use the defaults forever and never see context errors. T
 
 Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [*Memory continuity*](./runner_fleet.md) §Selection policy). Four habits make that selection work for the agent instead of against it:
 
-- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the agent must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the zombie's next capture push (only `daily` — every other category persists until cap eviction or an explicit `memory_forget`).
+- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the agent must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the agent's next capture push (only `daily` — every other category persists until cap eviction or an explicit `memory_forget`).
 - **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
 - **Forget what's stale.** `memory_forget` is cheaper than letting cap eviction pick the victim. An agent that hoards everything as `core` defeats the pinning: an all-`core` set over the entry cap evicts the coldest `core` as last resort.
 - **Keep entries small.** The hydration budget is bytes, not entries — one bloated entry crowds out many small ones. Snapshot conclusions, not transcripts.
 
-The selection is deterministic and documented so a confused "why does my zombie remember X but not Y?" has a checkable answer: Y was windowed (or oversized), X was `core`.
+The selection is deterministic and documented so a confused "why does my agent remember X but not Y?" has a checkable answer: Y was windowed (or oversized), X was `core`.
 
 ---
 
@@ -174,6 +174,6 @@ The selection is deterministic and documented so a confused "why does my zombie 
 
 - Never logs raw secret bytes
 - Never echoes secrets in the agent's context
-- Never persists secrets in `core.zombie_events`
+- Never persists secrets in `core.agent_events`
 - Never lets the agent reach a host outside its `network.allow` list
 - Never lets the agent exceed its `budget` caps without trip-blocking

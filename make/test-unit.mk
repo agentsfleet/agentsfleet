@@ -86,6 +86,6 @@ _test-coverage-agentsfleetd:
 	@line_rate=$$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' coverage/agentsfleetd/cobertura.xml | head -n 1); \
 	 if [ -z "$$line_rate" ]; then echo "✗ failed to parse backend line-rate from coverage/agentsfleetd/cobertura.xml"; exit 1; fi; \
 	 line_pct=$$(awk -v r="$$line_rate" 'BEGIN { printf "%.2f", r * 100 }'); \
-	 printf 'zombied_line_coverage_pct=%s\nzombied_line_coverage_min_pct=%s\n' "$$line_pct" "$(ZOMBIED_COVERAGE_MIN_LINES)" | tee .tmp/agentsfleetd-coverage.txt >/dev/null; \
-	 awk -v got="$$line_pct" -v min="$(ZOMBIED_COVERAGE_MIN_LINES)" 'BEGIN { if ((got + 0) < (min + 0)) { printf "✗ backend line coverage %.2f%% is below threshold %.2f%%\n", got, min; exit 1 } }'; \
-	 echo "✓ [agentsfleetd] backend line coverage gate passed ($$line_pct% >= $(ZOMBIED_COVERAGE_MIN_LINES)%)"
+	 printf 'agentsfleetd_line_coverage_pct=%s\nagentsfleetd_line_coverage_min_pct=%s\n' "$$line_pct" "$(AGENTD_COVERAGE_MIN_LINES)" | tee .tmp/agentsfleetd-coverage.txt >/dev/null; \
+	 awk -v got="$$line_pct" -v min="$(AGENTD_COVERAGE_MIN_LINES)" 'BEGIN { if ((got + 0) < (min + 0)) { printf "✗ backend line coverage %.2f%% is below threshold %.2f%%\n", got, min; exit 1 } }'; \
+	 echo "✓ [agentsfleetd] backend line coverage gate passed ($$line_pct% >= $(AGENTD_COVERAGE_MIN_LINES)%)"

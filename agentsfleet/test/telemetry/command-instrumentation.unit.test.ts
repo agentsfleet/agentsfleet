@@ -1,5 +1,5 @@
 // withCommandInstrumentation coverage. Adapted from Supabase's
-// command-instrumentation.unit.test.ts — usezombie reads argv from
+// command-instrumentation.unit.test.ts — agentsfleet reads argv from
 // process.argv.slice(2) instead of a Stdio service, so the tests stub
 // process.argv in beforeEach. CommandRuntime is provided via the
 // dedicated fixture layer (commandRuntimeFromValuesLayer).

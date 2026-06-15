@@ -33,7 +33,7 @@ contract.
 ### `ui/packages/app/.env.local`
 
 ```
-NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com
+NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<op://ZMB_CD_DEV/clerk-dev/publishable-key>
 CLERK_SECRET_KEY=<op://ZMB_CD_DEV/clerk-dev/secret-key>
 ```
@@ -50,8 +50,8 @@ cd ui/packages/app
 ### `.env.runner.local` (only when running a runner locally)
 
 ```
-ZOMBIE_API_URL=http://agentsfleetd:3000        # compose service name; http://localhost:3000 if on host
-ZOMBIE_RUNNER_TOKEN=zrn_…                  # mint via §3 below; a fake zrn_ verifies structure only
+AGENTSFLEET_API_URL=http://agentsfleetd:3000        # compose service name; http://localhost:3000 if on host
+AGENTSFLEET_RUNNER_TOKEN=zrn_…                  # mint via §3 below; a fake zrn_ verifies structure only
 RUNNER_HOST_ID=local-dev-runner
 RUNNER_SANDBOX_TIER=dev_none               # local default; landlock_full needs a hardened Linux container
 ```
@@ -85,7 +85,7 @@ surface.
 ## 2.0 Human: run the dashboard + sign in
 
 - **Local:** `cd ui/packages/app && bun run dev` → http://localhost:3000
-- **Deployed (zero local setup):** `https://usezombie-app.vercel.app` — already
+- **Deployed (zero local setup):** `https://agentsfleet-app.vercel.app` — already
   built against `api-dev` (may sit behind a Vercel bypass).
 
 Sign in as `nkishore@megam.io`. If **Configuration → Runners** is **absent**, the
@@ -125,7 +125,7 @@ op item edit "zombie-dev-worker-ant" --vault ZMB_CD_DEV "runner-token=<zrn_…>"
 Then hand off:
 
 - **Bare-metal host** → `playbooks/founding/06_runner_bootstrap_dev/04_provision_runner_env.sh`
-  (writes `/opt/zombie/.env`, syncs `/etc/default/agentsfleet-runner`, restarts, verifies active).
+  (writes `/opt/agentsfleet/.env`, syncs `/etc/default/agentsfleet-runner`, restarts, verifies active).
 - **Local container** → drop the `zrn_` into `.env.runner.local`, restart the runner.
 
 ### Acceptance

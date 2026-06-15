@@ -5,5 +5,5 @@
     <path d="M24.5 7.5 L20.8 10.2" stroke="#c45a1f" stroke-width="2.4" stroke-linecap="round"/>
     <circle cx="10.5" cy="6.2" r="2.4" fill="#b85220"/>
   </g>
-  <text x="40" y="22" font-family="'SF Mono','Fira Code','Cascadia Code',monospace" font-size="16" font-weight="500" letter-spacing="-0.3" fill="#1a1a18">usezombie</text>
+  <text x="40" y="22" font-family="'SF Mono','Fira Code','Cascadia Code',monospace" font-size="16" font-weight="500" letter-spacing="-0.3" fill="#1a1a18">agentsfleet</text>
 </svg>

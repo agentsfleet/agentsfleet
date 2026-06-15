@@ -71,7 +71,7 @@ const toCliError = (
   }
   if (isFetchFailed(cause)) {
     return new NetworkError({
-      detail: `cannot reach usezombie API at ${url}`,
+      detail: `cannot reach agentsfleet API at ${url}`,
       suggestion: "check network connectivity, AGENTSFLEET_API_URL, and any proxy/VPN settings",
       url,
     });

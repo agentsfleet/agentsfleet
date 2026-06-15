@@ -88,6 +88,6 @@ RUN set -eux; \
 
 ENV PATH=/opt/zig:$PATH
 
-LABEL org.opencontainers.image.title="usezombie ci-zig-alpine" \
-      org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL ready for usezombie CI cross-compile lanes" \
+LABEL org.opencontainers.image.title="agentsfleet ci-zig-alpine" \
+      org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL ready for agentsfleet CI cross-compile lanes" \
       org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

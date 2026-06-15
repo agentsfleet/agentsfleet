@@ -1,4 +1,4 @@
-// telemetryRuntimeLayer coverage. usezombie's runtime layer reads
+// telemetryRuntimeLayer coverage. agentsfleet's runtime layer reads
 // process.env / process.stdout.isTTY / os directly — there is no
 // CliConfig service to mock. Tests stub env (AGENTSFLEET_TELEMETRY_DISABLED,
 // DO_NOT_TRACK, AGENTSFLEET_TELEMETRY_DEBUG, CI, AGENTSFLEET_STATE_DIR) plus
@@ -137,7 +137,7 @@ describe("telemetryRuntimeLayer", () => {
     try {
       const rt = await buildRuntime();
       expect(rt.isTty).toBe(true);
-      expect(chunks.join("")).toContain("usezombie");
+      expect(chunks.join("")).toContain("agentsfleet");
     } finally {
       process.stderr.write = original;
       rmSync(dir, { recursive: true, force: true });

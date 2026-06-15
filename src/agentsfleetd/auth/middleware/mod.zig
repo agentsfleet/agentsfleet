@@ -144,7 +144,7 @@ pub const MiddlewareRegistry = struct {
 
     /// Bearer token or admin API key, plus the verified `platform_admin`
     /// claim. The one policy that gates runner enrollment (`POST /v1/runners`):
-    /// only usezombie's platform operator passes; a tenant admin or any
+    /// only agentsfleet's platform operator passes; a tenant admin or any
     /// `zmb_t_` api_key is rejected 403.
     pub fn platformAdmin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._platform_admin_chain;

@@ -1,6 +1,6 @@
 # Tunnel-First Deployment Architecture
 
-**Status:** Architecture reference for usezombie's deployment topology.
+**Status:** Architecture reference for agentsfleet's deployment topology.
 **Scope:** Why every public-facing service in this project sits behind a Cloudflare Tunnel, what that buys, and what it costs.
 
 ---
@@ -25,15 +25,15 @@ That's the status quo. Most teams work around it; some don't.
 
 ---
 
-## 2. What usezombie does instead
+## 2. What agentsfleet does instead
 
-For usezombie's API deployment, every public service uses tunnel-first architecture:
+For agentsfleet's API deployment, every public service uses tunnel-first architecture:
 
 ```
 client
   │
   ▼
-Cloudflare Edge  (api-dev.usezombie.com / api.usezombie.com)
+Cloudflare Edge  (api-dev.agentsfleet.net / api.agentsfleet.net)
   │
   │  Cloudflare Tunnel
   │  — encrypted, persistent, outbound-initiated
@@ -138,7 +138,7 @@ Only public ingress goes through the tunnel. The host-resident `agentsfleet-runn
 
 ## 8. Reference implementation
 
-The architecture above is what usezombie's DEV + PROD deployments actually run.
+The architecture above is what agentsfleet's DEV + PROD deployments actually run.
 
 | Component | Implementation |
 |---|---|
@@ -148,5 +148,5 @@ The architecture above is what usezombie's DEV + PROD deployments actually run.
 | Edge | Cloudflare Tunnel (`agentsfleetd-dev` and `agentsfleetd-prod` tunnels) |
 | Private network | Fly 6PN (WireGuard mesh) |
 | DNS | `agentsfleetd-dev.internal`, `agentsfleetd-prod.internal` → all API machines |
-| Public hostname | `api-dev.usezombie.com`, `api.usezombie.com` → tunnel CNAME |
+| Public hostname | `api-dev.agentsfleet.net`, `api.agentsfleet.net` → tunnel CNAME |
 | Public port on origin | None |

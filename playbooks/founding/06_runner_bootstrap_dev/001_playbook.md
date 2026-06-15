@@ -23,7 +23,7 @@ export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 | 1.0 | Agent | Verify deploy SSH key from vault works |
 | 2.0 | Agent | Install Tailscale + join tailnet |
 | 3.0 | Agent | Install runtime dependencies (bubblewrap, git, openssl, ca-certificates) |
-| 4.0 | Agent | Bootstrap `/opt/zombie/` (deploy.sh + .env from vault) |
+| 4.0 | Agent | Bootstrap `/opt/agentsfleet/` (deploy.sh + .env from vault) |
 | 5.0 | Agent | First deploy + activate CI |
 
 After step 0 the agent runs steps 1–5 in sequence without human intervention.
@@ -204,9 +204,9 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 
 ---
 
-## 4.0 Agent: Bootstrap `/opt/zombie/`
+## 4.0 Agent: Bootstrap `/opt/agentsfleet/`
 
-**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
+**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated from vault with the three runner env vars the Option B daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -218,20 +218,20 @@ SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 
 # Create directory structure on server
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "sudo mkdir -p /opt/zombie/{bin,deploy} && sudo chown -R ${USER}:${USER} /opt/zombie"
+  "sudo mkdir -p /opt/agentsfleet/{bin,deploy} && sudo chown -R ${USER}:${USER} /opt/agentsfleet"
 
 # Copy deploy script + the single runner systemd unit from repo
-scp $SSH_OPTS deploy/baremetal/deploy.sh             "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/deploy.sh"
-scp $SSH_OPTS deploy/baremetal/agentsfleet-runner.service "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/deploy/deploy.sh"
+scp $SSH_OPTS deploy/baremetal/deploy.sh             "${USER}@zombie-dev-worker-ant:/opt/agentsfleet/deploy/deploy.sh"
+scp $SSH_OPTS deploy/baremetal/agentsfleet-runner.service "${USER}@zombie-dev-worker-ant:/opt/agentsfleet/deploy/"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/deploy/deploy.sh"
 ```
 
-### 4.2 Populate `/opt/zombie/.env` from vault
+### 4.2 Populate `/opt/agentsfleet/.env` from vault
 
 ```bash
 # The runner daemon needs exactly three env vars (Option B contract):
-#   - ZOMBIE_API_URL       — control-plane base, dev: https://api-dev.usezombie.com
-#   - ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
+#   - AGENTSFLEET_API_URL       — control-plane base, dev: https://api-dev.agentsfleet.net
+#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
 #   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname)
 #
 # A real zrn_ requires the platform-admin enrollment gate (M80_005) served by
@@ -242,15 +242,15 @@ ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/deploy/deplo
 
 RUNNER_TOKEN=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/runner-token")
 HOST_ID=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/hostname")
-API_URL="https://api-dev.usezombie.com"
+API_URL="https://api-dev.agentsfleet.net"
 
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << EOF
-cat > /opt/zombie/.env << 'ENVFILE'
-ZOMBIE_API_URL=${API_URL}
-ZOMBIE_RUNNER_TOKEN=${RUNNER_TOKEN}
+cat > /opt/agentsfleet/.env << 'ENVFILE'
+AGENTSFLEET_API_URL=${API_URL}
+AGENTSFLEET_RUNNER_TOKEN=${RUNNER_TOKEN}
 RUNNER_HOST_ID=${HOST_ID}
 ENVFILE
-chmod 600 /opt/zombie/.env
+chmod 600 /opt/agentsfleet/.env
 EOF
 ```
 
@@ -263,7 +263,7 @@ it stays active).
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
-sudo cp /opt/zombie/deploy/agentsfleet-runner.service /etc/systemd/system/
+sudo cp /opt/agentsfleet/deploy/agentsfleet-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 REMOTE
 ```
@@ -272,11 +272,11 @@ REMOTE
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/agentsfleet-runner.service"
+  "stat -c '%a %n' /opt/agentsfleet/deploy/deploy.sh /opt/agentsfleet/.env /opt/agentsfleet/deploy/agentsfleet-runner.service"
 # Expected:
-#   755 /opt/zombie/deploy/deploy.sh
-#   600 /opt/zombie/.env
-#   644 /opt/zombie/deploy/agentsfleet-runner.service
+#   755 /opt/agentsfleet/deploy/deploy.sh
+#   600 /opt/agentsfleet/.env
+#   644 /opt/agentsfleet/deploy/agentsfleet-runner.service
 
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/agentsfleet-runner.service"
 # Expected:
@@ -302,13 +302,13 @@ SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
 # scp binary to server
-scp $SSH_OPTS zig-out/bin/agentsfleet-runner "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/agentsfleet-runner"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/bin/agentsfleet-runner"
+scp $SSH_OPTS zig-out/bin/agentsfleet-runner "${USER}@zombie-dev-worker-ant:/opt/agentsfleet/bin/agentsfleet-runner"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/agentsfleet/bin/agentsfleet-runner"
 
 # Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "sudo /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner"
+  "sudo /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
 
 # Verify
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
@@ -345,10 +345,10 @@ Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-w
 2. Joins the Tailscale network
 3. Verifies worker host readiness (`03_deploy_readiness.sh`)
 4. scp's the binary + `deploy/baremetal/deploy.sh` + `agentsfleet-runner.service` to the server
-5. Calls `sudo deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner` with the local binary path
+5. Calls `sudo deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner` with the local binary path
 6. Sends Discord notification on success/failure
 
-No manual steps after bootstrap — the server is fully CI-managed. The env file (`/opt/zombie/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
+No manual steps after bootstrap — the server is fully CI-managed. The env file (`/opt/agentsfleet/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
 
 ---
 
@@ -359,7 +359,7 @@ No manual steps after bootstrap — the server is fully CI-managed. The env file
 1.0  Agent: Verify SSH key from vault reaches server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
 5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real zrn_ in vault)
 --- CI-automated after this point ---
 ```

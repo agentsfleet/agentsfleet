@@ -122,7 +122,7 @@ comptime {
 // safe because: every load below is .monotonic — these are independent
 // monotonic counters with no cross-variable ordering requirement; a snapshot
 // is a per-counter point-in-time read, not a consistent cut (same guarantee
-// as the existing agent_runner_* families under concurrent scrapes).
+// as the existing agentsfleet_runner_* families under concurrent scrapes).
 pub fn snapshot() Snapshot {
     return .{
         .captured_total = g_captured_total.load(.monotonic),

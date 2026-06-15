@@ -27,7 +27,7 @@ describe("App", () => {
 
   it("renders the brand name in topbar and footer", () => {
     renderApp();
-    const brands = screen.getAllByText(/usezombie/i);
+    const brands = screen.getAllByText(/agentsfleet/i);
     expect(brands.length).toBeGreaterThanOrEqual(2);
   });
 

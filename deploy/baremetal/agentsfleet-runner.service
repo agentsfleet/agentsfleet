@@ -1,4 +1,4 @@
-# usezombie Runner — host-resident execution-plane daemon.
+# agentsfleet Runner — host-resident execution-plane daemon.
 # Leases work from the agentsfleetd control plane over HTTPS, runs each event in a
 # forked sandboxed child, and reports back. Holds zero datastore credentials.
 #
@@ -8,8 +8,8 @@
 #   sudo systemctl enable --now agentsfleet-runner
 
 [Unit]
-Description=usezombie Runner
-Documentation=https://docs.usezombie.com
+Description=agentsfleet Runner
+Documentation=https://docs.agentsfleet.net
 After=network.target
 
 [Service]
@@ -25,11 +25,11 @@ KillMode=mixed
 
 # Required runner config — provisioned per host into the env file below by the
 # runner bootstrap playbook (never committed; the runner-token is a secret):
-#   ZOMBIE_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.usezombie.com
-#   ZOMBIE_RUNNER_TOKEN  — pre-minted `zrn_…` token (Option B): the platform
+#   AGENTSFLEET_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.agentsfleet.net
+#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted `zrn_…` token (Option B): the platform
 #                          admin mints it via `POST /v1/runners` on the live
 #                          control plane and stores it in 1Password under
-#                          `…/zombie-…-worker-ant/runner-token`; the daemon
+#                          `…/agent-…-worker-ant/runner-token`; the daemon
 #                          authenticates with it directly and NEVER self-registers
 #   RUNNER_HOST_ID       — stable machine identifier (reuse the host's vault
 #                          `hostname` field for consistency)
@@ -51,7 +51,7 @@ KillMode=mixed
 EnvironmentFile=-/etc/default/agentsfleet-runner
 
 # Ensure the sandbox runtime directory exists.
-RuntimeDirectory=zombie
+RuntimeDirectory=agent
 RuntimeDirectoryMode=0755
 
 # Security hardening — the runner forks bwrap user-namespace sandboxes per lease
@@ -59,7 +59,7 @@ RuntimeDirectoryMode=0755
 # the engine folded into the runner.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/zombie /sys/fs/cgroup /tmp
+ReadWritePaths=/run/agent /sys/fs/cgroup /tmp
 ProtectHome=yes
 
 [Install]

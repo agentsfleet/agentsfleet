@@ -5,9 +5,9 @@
 -- deliberately carries NO foreign key to core.agents — the role isolation is the
 -- boundary, and a cross-schema FK would couple memory to core.
 --
--- Scope: every row belongs to one agent (agent_id). zombied's runner-memory
+-- Scope: every row belongs to one agent (agent_id). agentsfleetd's runner-memory
 -- adapter derives agent_id from the lease it issued and scopes every query
--- WHERE agent_id = $1 (never a fetch-all + in-memory filter). zombied fully owns
+-- WHERE agent_id = $1 (never a fetch-all + in-memory filter). agentsfleetd fully owns
 -- this table — the in-child NullClaw Postgres memory path is retired, so the
 -- column layout no longer has to mirror NullClaw's PostgresMemory schema.
 --
@@ -17,7 +17,7 @@
 -- ALTER. The schema-gate enforces this teardown posture while VERSION < 2.0.0.
 
 -- memory_runtime role is created in the vault schema (002_vault_schema.sql).
--- This migration scopes it to the memory schema. USAGE only: zombied owns the
+-- This migration scopes it to the memory schema. USAGE only: agentsfleetd owns the
 -- table DDL, so the role no longer needs CREATE (the in-child NullClaw self-DDL
 -- on first runner connect is gone).
 GRANT USAGE ON SCHEMA memory TO memory_runtime;

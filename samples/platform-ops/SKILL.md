@@ -7,7 +7,7 @@ tags:
   - fly-io
   - upstash
   - slack
-author: usezombie
+author: agentsfleet
 version: 0.1.0
 model: claude-sonnet-4-6
 ---

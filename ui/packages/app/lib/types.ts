@@ -1,4 +1,4 @@
-/** Domain types — mirrors zombied API contracts */
+/** Domain types — mirrors agentsfleetd API contracts */
 
 export type CommandClass = "safe" | "sensitive" | "critical";
 

@@ -4,7 +4,7 @@
     { "name": "DS_POSTGRES", "label": "agentsfleet-postgres", "type": "datasource", "pluginId": "postgres" }
   ],
   "title": "Agent Run Breakdown",
-  "uid": "zombie-run-breakdown",
+  "uid": "agent-run-breakdown",
   "version": 2,
   "time": { "from": "now-24h", "to": "now" },
   "templating": {
@@ -13,7 +13,7 @@
         "name": "workspace_id",
         "type": "query",
         "datasource": "${DS_PROMETHEUS}",
-        "query": "label_values(zombie_agent_tokens_by_workspace_total, workspace_id)",
+        "query": "label_values(agent_agent_tokens_by_workspace_total, workspace_id)",
         "refresh": 2,
         "includeAll": true,
         "current": { "text": "All", "value": "$__all" }
@@ -29,7 +29,7 @@
       "datasource": "${DS_PROMETHEUS}",
       "targets": [
         {
-          "expr": "rate(zombie_agent_tokens_by_workspace_total{workspace_id=~\"$workspace_id\"}[5m])",
+          "expr": "rate(agent_agent_tokens_by_workspace_total{workspace_id=~\"$workspace_id\"}[5m])",
           "legendFormat": "{{workspace_id}}"
         }
       ]
@@ -42,11 +42,11 @@
       "datasource": "${DS_PROMETHEUS}",
       "targets": [
         {
-          "expr": "increase(zombie_runs_completed_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
+          "expr": "increase(agent_runs_completed_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
           "legendFormat": "completed {{workspace_id}}"
         },
         {
-          "expr": "increase(zombie_runs_blocked_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
+          "expr": "increase(agent_runs_blocked_by_workspace_total{workspace_id=~\"$workspace_id\"}[1h])",
           "legendFormat": "blocked {{workspace_id}}"
         }
       ]
@@ -98,7 +98,7 @@
       "datasource": "${DS_PROMETHEUS}",
       "targets": [
         {
-          "expr": "zombie_workspace_metrics_overflow_total",
+          "expr": "agent_workspace_metrics_overflow_total",
           "legendFormat": "overflow"
         }
       ],

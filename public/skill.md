@@ -1,6 +1,6 @@
-# usezombie — Agent Delivery Control Plane
+# agentsfleet — Agent Delivery Control Plane
 
-## What usezombie does
+## What agentsfleet does
 Hosts long-lived, event-driven autonomous workers (Agents) scoped to a
 workspace. Inbound events arrive via webhooks (or other configured triggers)
 and are appended to each Agent's event stream; the control plane assigns
@@ -46,4 +46,4 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 
 ## Revenue model
 self-managed (bring your own Large Language Model (LLM) API key) + credit-pool metering: event receipts are free; active runtime is $0.0001/sec under both postures; platform-managed also adds provider token costs. New tenants get a $5 starter credit that never expires.
-usezombie never stores or marks up LLM provider costs.
+agentsfleet never stores or marks up LLM provider costs.

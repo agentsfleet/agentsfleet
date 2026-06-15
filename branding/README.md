@@ -25,7 +25,7 @@ the standard sizes; the rounded-square cropping inside GitHub's
 avatar circle preserves the disc-on-dark composition.
 
 Upload via Settings → Profile → Profile picture (org and user
-profiles take the same asset). The org slug stays `usezombie`
+profiles take the same asset). The org slug stays `agentsfleet`
 until the org-rename cutover spec lands.
 
 ### `~/Projects/.github/profile/README.md` (org profile)
@@ -44,7 +44,7 @@ one of GitHub's two themes — always embed the theme-paired form:
 ```
 
 (The live org profile currently sources the docs-repo mirrors —
-`usezombie/docs` `logo/{dark,light}.svg`; same bytes once the
+`agentsfleet/docs` `logo/{dark,light}.svg`; same bytes once the
 propagation PR lands, so either source renders identically.)
 
 ### `~/Projects/docs/` (Mintlify docs site)

@@ -71,7 +71,7 @@ test "extractClerkClaims with no tenant or org" {
 
 test "extractCustomClaims normalizes namespaced claims and aud array" {
     const json =
-        \\{"sub":"user_2","iss":"https://idp.example.com/","aud":["https://api.agentsfleet.net","https://userinfo.example.com"],"scp":["runs:read","runs:write"],"organization_id":"org_custom_ns","https://usezombie.dev/tenant_id":"tenant_custom_ns","https://usezombie.dev/workspace_id":"ws_custom_ns"}
+        \\{"sub":"user_2","iss":"https://idp.example.com/","aud":["https://api.agentsfleet.net","https://userinfo.example.com"],"scp":["runs:read","runs:write"],"organization_id":"org_custom_ns","https://agentsfleet.net/tenant_id":"tenant_custom_ns","https://agentsfleet.net/workspace_id":"ws_custom_ns"}
     ;
     const result = try extractCustomClaims(std.testing.allocator, json);
     defer {
@@ -162,7 +162,7 @@ test "extractClerkClaims reads top-level role and camel workspace key" {
 
 test "extractCustomClaims joins only string scopes from mixed arrays" {
     const json =
-        \\{"sub":"user_7","iss":"https://idp.example.com","scp":["runs:read",3,"workspace:pause",true],"metadata":{"https://usezombie.dev/role":"operator"}}
+        \\{"sub":"user_7","iss":"https://idp.example.com","scp":["runs:read",3,"workspace:pause",true],"metadata":{"https://agentsfleet.net/role":"operator"}}
     ;
     const result = try extractCustomClaims(std.testing.allocator, json);
     defer {
@@ -179,7 +179,7 @@ test "extractCustomClaims joins only string scopes from mixed arrays" {
 
 test "extractClerkClaims reads namespaced role claim (dev namespace)" {
     const json =
-        \\{"sub":"user_ns1","iss":"https://clerk.example.com","exp":9999999999,"https://usezombie.dev/role":"operator","metadata":{"tenant_id":"tenant_ns"}}
+        \\{"sub":"user_ns1","iss":"https://clerk.example.com","exp":9999999999,"https://agentsfleet.net/role":"operator","metadata":{"tenant_id":"tenant_ns"}}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer {
@@ -212,7 +212,7 @@ test "extractClerkClaims reads namespaced role claim (prod namespace)" {
 
 test "extractClerkClaims reads namespaced role from metadata object" {
     const json =
-        \\{"sub":"user_ns3","iss":"https://clerk.example.com","exp":9999999999,"metadata":{"https://usezombie.dev/role":"admin"}}
+        \\{"sub":"user_ns3","iss":"https://clerk.example.com","exp":9999999999,"metadata":{"https://agentsfleet.net/role":"admin"}}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer {
@@ -244,7 +244,7 @@ test "extractClerkClaims skips unsupported top-level role when metadata has supp
 
 test "extractCustomClaims skips unsupported namespaced role when nested fallback is supported" {
     const json =
-        \\{"sub":"user_9","iss":"https://idp.example.com","https://usezombie.dev/role":"member","custom_claims":{"role":"admin"}}
+        \\{"sub":"user_9","iss":"https://idp.example.com","https://agentsfleet.net/role":"member","custom_claims":{"role":"admin"}}
     ;
     const result = try extractCustomClaims(std.testing.allocator, json);
     defer {

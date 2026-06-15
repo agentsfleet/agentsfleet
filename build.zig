@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
-    // need chat channels — usezombie runs agents programmatically).
+    // need chat channels — agentsfleet runs agents programmatically).
     const nullclaw_dep = b.dependency(S_NULLCLAW, .{
         .target = target,
         .optimize = optimize,
@@ -130,7 +130,7 @@ pub fn build(b: *std.Build) void {
     // no domain coupling, no cycle (common never imports hmac_sig).
     hmac_sig_mod.addImport(S_COMMON, common_mod);
 
-    // ── usezombie executable ───────────────────────────────────────────────────
+    // ── agentsfleet executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "agentsfleetd",
         .root_module = b.createModule(.{

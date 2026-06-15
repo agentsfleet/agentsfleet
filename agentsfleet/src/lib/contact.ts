@@ -5,4 +5,4 @@
 // so a future address rotation lands as a coordinated bump in all five
 // places. Surfaces: error help text, CLI doctor command, install skill
 // fallback messaging.
-export const SUPPORT_EMAIL = "usezombie@agentmail.to";
+export const SUPPORT_EMAIL = "agentsfleet@agentmail.to";

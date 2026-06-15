@@ -31,10 +31,10 @@ One key per service:
 
 | Service | What to generate | Where |
 |---|---|---|
-| 1Password | Service account token for `usezombie-ci` | 1Password → Service Accounts |
+| 1Password | Service account token for `agentsfleet-ci` | 1Password → Service Accounts |
 | Vercel | Account API token (Full Account scope) | Vercel → Account Settings → Tokens |
 | Vercel (`agentsfleet-website`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
-| Vercel (`usezombie-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
+| Vercel (`agentsfleet-agents-sh`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`agentsfleet-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
 | Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o <org>` → copy output |
@@ -87,8 +87,8 @@ The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acc
 
 ```bash
 # 1. In the Clerk DEV dashboard, create two test users:
-#    - regular@usezombie.dev (regular tenant member role)
-#    - admin@usezombie.dev   (tenant admin role)
+#    - regular@agentsfleet.dev (regular tenant member role)
+#    - admin@agentsfleet.dev   (tenant admin role)
 # 2. Generate a strong password for each: `openssl rand -base64 24` (or similar).
 # 3. Store both as separate 1Password items in the DEV vault:
 #    op://$VAULT_DEV/e2e-fixture-email/regular  → fields: email, password
@@ -174,7 +174,7 @@ This is a one-time human step. GitHub has no API endpoint to change org package 
 
 **Architecture:**
 ```
-Cloudflare Edge (api-dev.usezombie.com)
+Cloudflare Edge (api-dev.agentsfleet.net)
     │ Cloudflare Tunnel — encrypted, origin-shielded
     ▼
 cloudflared-dev (Fly app, 2 machines for HA)
@@ -232,7 +232,7 @@ CI triggers redeployments via `fly deploy --image` using the deploy token. Store
 
 ### 2.3b Cloudflare Tunnel — Origin Shield (Agent-executed)
 
-Cloudflare Tunnel routes all traffic from `api-dev.usezombie.com` → Fly private network. No public port on Fly. No bypass possible.
+Cloudflare Tunnel routes all traffic from `api-dev.agentsfleet.net` → Fly private network. No public port on Fly. No bypass possible.
 
 ```bash
 # Create tunnel (stores credentials locally; agent saves to vault)
@@ -245,7 +245,7 @@ op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
 
 # Create DNS CNAME → tunnel (origin-shielded, no public Fly endpoint)
-cloudflared tunnel route dns agentsfleetd-dev api-dev.usezombie.com
+cloudflared tunnel route dns agentsfleetd-dev api-dev.agentsfleet.net
 ```
 
 `cloudflared` config deployed as a Fly app connects to `agentsfleetd-dev.internal:3000` via Fly's private 6PN network. The Fly app has no `[http_service]` — no public endpoint is created.
@@ -292,17 +292,17 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 
 | Variable | Preview | Production |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://api-dev.usezombie.com` | `https://api.usezombie.com` |
+| `NEXT_PUBLIC_API_URL` | `https://api-dev.agentsfleet.net` | `https://api.agentsfleet.net` |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 | `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `NEXT_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
-**`usezombie-agents-sh`** and **`agentsfleet-website`:**
+**`agentsfleet-agents-sh`** and **`agentsfleet-website`:**
 
 | Variable | Preview | Production |
 |---|---|---|
-| `VITE_APP_BASE_URL` | `https://app.dev.usezombie.com` | `https://app.usezombie.com` |
+| `VITE_APP_BASE_URL` | `https://app.dev.agentsfleet.net` | `https://app.agentsfleet.net` |
 | `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
@@ -311,7 +311,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 | Variable | Preview | Production |
 |---|---|---|
 | `POSTHOG_API_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
-| `ZOMBIE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+| `AGENTSFLEET_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 
 > Code defaults `*_POSTHOG_HOST` to `https://us.i.posthog.com` when unset, so the explicit row is documentation, not strictly required on US cloud. If you ever migrate PostHog to EU or self-host, the `*_HOST` row becomes load-bearing — update it here and re-run the script.
 

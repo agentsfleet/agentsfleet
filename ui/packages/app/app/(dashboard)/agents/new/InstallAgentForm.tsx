@@ -31,7 +31,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-// Mirrors `agentsfleet install --from`: paste TRIGGER.md + SKILL.md, zombied
+// Mirrors `agentsfleet install --from`: paste TRIGGER.md + SKILL.md, agentsfleetd
 // parses the YAML frontmatter and derives name + config from it. Same wire
 // contract as the CLI — no client-side compile, no hand-crafted JSON.
 export default function InstallAgentForm({ workspaceId }: Props) {

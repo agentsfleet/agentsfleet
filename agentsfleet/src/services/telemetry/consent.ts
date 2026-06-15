@@ -1,5 +1,5 @@
 // Consent resolution. Reads process.env directly (no CliConfig
-// service field in usezombie yet — see M75 follow-up).
+// service field in agentsfleet yet — see M75 follow-up).
 //
 // Order of precedence (first match wins), mirrors supabase
 // getEffectiveConsent in apps/cli/src/shared/telemetry/consent.ts:

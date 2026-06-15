@@ -4,10 +4,10 @@ import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "usezombie",
+  name: "agentsfleet",
   applicationCategory: "DeveloperApplication",
-  url: "https://usezombie.sh/agents",
-  sameAs: ["https://usezombie.sh/openapi.json"],
+  url: "https://agentsfleet.dev/agents",
+  sameAs: ["https://agentsfleet.dev/openapi.json"],
 };
 
 const apiOps = [

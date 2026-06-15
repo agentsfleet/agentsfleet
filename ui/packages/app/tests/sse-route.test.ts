@@ -56,7 +56,7 @@ describe("SSE route handler — auth", () => {
   it("requests the customized default session token (no template arg)", async () => {
     // Post-Stage-1: the customized default session token carries
     // `aud=https://api.agentsfleet.net` + `metadata.tenant_id`, satisfying
-    // zombied's OIDC verifier without the api-template indirection.
+    // agentsfleetd's OIDC verifier without the api-template indirection.
     getTokenFn.mockResolvedValueOnce("session_jwt_token");
     fetchSpy.mockResolvedValueOnce(
       new Response("data: hi\n\n", {

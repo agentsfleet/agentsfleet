@@ -103,7 +103,7 @@ describe("Agents", () => {
     expect(script).not.toBeNull();
     const data = JSON.parse(script!.textContent!);
     expect(data["@type"]).toBe("SoftwareApplication");
-    expect(data.name).toBe("usezombie");
+    expect(data.name).toBe("agentsfleet");
   });
 
   it("does not render orange-era decorative chrome", () => {

@@ -1,6 +1,6 @@
 # Contributing to `agentsfleet`
 
-`agentsfleet` is the usezombie command-line interface, written in TypeScript and structured around [Effect-TS](https://effect.website/) 4.x as the runtime model. The shape mirrors Supabase's `apps/cli/src/next/` reference (visible at `~/Projects/oss/cli` when working in this repo). Read the reference once before adding a new command — most patterns there transfer directly.
+`agentsfleet` is the agentsfleet command-line interface, written in TypeScript and structured around [Effect-TS](https://effect.website/) 4.x as the runtime model. The shape mirrors Supabase's `apps/cli/src/next/` reference (visible at `~/Projects/oss/cli` when working in this repo). Read the reference once before adding a new command — most patterns there transfer directly.
 
 ## Runtime model — at a glance
 
@@ -57,7 +57,7 @@ Unit tests use `bun:test`. Two patterns:
 
 Acceptance tests in `test/acceptance/` spawn the built binary and assert on stdout/exit code. They run against `AGENTSFLEET_ACCEPTANCE_TARGET` when set to an https URL; otherwise the live-API cases register as skip-only placeholders.
 
-Coverage floor is enforced by `scripts/enforce-coverage.mjs` (currently `function ≥96 / line ≥97`); see `bunfig.toml` for the per-file ignore list (Context.Tag-only shapes + pre-existing zombie/* command surface deferred to a follow-up coverage spec).
+Coverage floor is enforced by `scripts/enforce-coverage.mjs` (currently `function ≥96 / line ≥97`); see `bunfig.toml` for the per-file ignore list (Context.Tag-only shapes + pre-existing agent/* command surface deferred to a follow-up coverage spec).
 
 ## Effect-TS conventions
 

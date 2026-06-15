@@ -45,9 +45,9 @@ cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 
 5. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (M2_002 §4.7). **Do not cut a release tag before this is verified.** If not done:
 ```bash
-for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
+for node in agent-prod-worker-ant agent-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
-  ssh -i <(echo "$KEY") "$node" "ls -la /opt/zombie/deploy.sh"
+  ssh -i <(echo "$KEY") "$node" "ls -la /opt/agentsfleet/deploy.sh"
 done
 ```
 
@@ -92,7 +92,7 @@ The release pipeline deploys in three stages:
 4. Ensure `cloudflared-prod` tunnel is running (restart or deploy from scratch)
 5. Verify `/healthz` + `/readyz`
 
-> **HTTP concurrency knobs** live in `deploy/fly/zombied-prod/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-prod/fly.toml` under
 > `[env]`, not in vault — they are tuning, not secrets. The handler pool is
 > **per worker**, so total concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`.
 > Prod runs `2 × 32 = 64` handler threads per machine (~192 across 3 machines)
@@ -128,8 +128,8 @@ Set in GitHub → Settings → Variables → `PROD_WORKER_HOSTS`:
 
 ```json
 [
-  {"name":"ant","host":"zombie-prod-worker-ant","vault_key":"zombie-prod-worker-ant"},
-  {"name":"bird","host":"zombie-prod-worker-bird","vault_key":"zombie-prod-worker-bird"}
+  {"name":"ant","host":"agent-prod-worker-ant","vault_key":"agent-prod-worker-ant"},
+  {"name":"bird","host":"agent-prod-worker-bird","vault_key":"agent-prod-worker-bird"}
 ]
 ```
 
@@ -145,8 +145,8 @@ Set in GitHub → Settings → Variables → `PROD_WORKER_HOSTS`:
 Run operator checks:
 
 ```bash
-curl -sS https://api.usezombie.com/healthz
-curl -sS https://api.usezombie.com/readyz | jq '.queue,.ready'
+curl -sS https://api.agentsfleet.net/healthz
+curl -sS https://api.agentsfleet.net/readyz | jq '.queue,.ready'
 npx agentsfleet login && npx agentsfleet doctor
 agentsfleetd doctor --format=json
 ```
@@ -174,7 +174,7 @@ Recommended evidence location:
 Run the CLI smoke against PROD after `/healthz` and `/readyz` are green:
 
 ```bash
-export ZOMBIE_API_URL=https://api.<domain>
+export AGENTSFLEET_API_URL=https://api.<domain>
 
 npx agentsfleet login
 npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>

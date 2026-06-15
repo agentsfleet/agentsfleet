@@ -57,7 +57,7 @@ test.describe("Auth theming", () => {
     );
 
     const body = page.locator("body");
-    await expect(body).toContainText(/usezombie|Agents|Dashboard/);
+    await expect(body).toContainText(/agentsfleet|Agents|Dashboard/);
     // --bg #0a0d0e (Operational Restraint) → rgb(10, 13, 14)
     expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
   });

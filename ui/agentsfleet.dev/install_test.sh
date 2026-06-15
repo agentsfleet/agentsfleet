@@ -136,7 +136,7 @@ test_npm_install_failed() {
 
 test_install_dir_not_writable() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  UZ_INSTALL_ENV="/proc/forbidden-usezombie"
+  UZ_INSTALL_ENV="/proc/forbidden-agentsfleet"
   run_install
   assert_rc "install_dir_not_writable: exit 3" 3
   assert_log_empty "$NPM_LOG" "install_dir_not_writable: npm not called"

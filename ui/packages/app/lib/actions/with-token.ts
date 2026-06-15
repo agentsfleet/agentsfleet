@@ -6,7 +6,7 @@ import { ERROR_CODE } from "@/lib/errors";
 // throw across the RSC boundary with custom fields intact (`.status`,
 // `.code` from ApiError don't survive serialisation), so every consumer
 // branches on `ok`. `errorCode` carries the `UZ-XXX-NNN` code emitted
-// by zombied — surfaced for friendly error rendering (see lib/errors.ts).
+// by agentsfleetd — surfaced for friendly error rendering (see lib/errors.ts).
 export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; status?: number; errorCode?: string };

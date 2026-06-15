@@ -23,7 +23,7 @@ quick-start.
 
 ## Quick start
 
-Prereqs: `agentsfleet` installed (`npm install -g @usezombie/zombiectl`),
+Prereqs: `agentsfleet` installed (`npm install -g @agentsfleet/agentctl`),
 a signed-in Clerk tenant, a fly.io PAT with read scope, an
 upstash account-management API token, and a Slack bot (`chat:write`)
 already invited to the channel you want posts in.
@@ -58,7 +58,7 @@ agentsfleet credential add github --data='{"webhook_secret":"<above>","api_token
 ```
 
 In the repo's *Settings → Webhooks*: payload URL
-`https://api.usezombie.com/v1/webhooks/<agent_id>/github`, content
+`https://api.agentsfleet.net/v1/webhooks/<agent_id>/github`, content
 type `application/json`, events *Workflow runs*. The next failed
 `workflow_run` lands within ~100 ms; the agent reads run logs,
 cross-references recent commits, posts to Slack. Successes and other
@@ -67,7 +67,7 @@ on the same delivery UUID) are deduped server-side. The agent's
 prose for this path lives in `SKILL.md` under "When the trigger is a
 GitHub Actions failure."
 
-A one-command install skill (`/usezombie-install-platform-ops`) is
+A one-command install skill (`/agentsfleet-install-platform-ops`) is
 in design — it will generate the secret, store both creds, and print
 the GitHub config for you in one go.
 

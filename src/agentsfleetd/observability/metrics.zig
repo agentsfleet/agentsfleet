@@ -65,7 +65,7 @@ test "prometheus render does not emit purged flatlined series" {
     defer alloc.free(body);
     try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_external_retries_total"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_external_failures_total"));
-    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "zombied_run_limit_exceeded_total"));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agentsfleetd_run_limit_exceeded_total"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_agent_duration_seconds"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_completed_total"));
     try std.testing.expect(!std.mem.containsAtLeast(u8, body, 1, "agent_tokens_total"));

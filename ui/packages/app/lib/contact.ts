@@ -5,4 +5,4 @@
 // so a future address rotation lands as a coordinated bump in all five
 // places. Surfaces: BillingBalanceCard exhausted-state mailto, ExhaustionBanner
 // support mailto, settings pages with contact CTAs.
-export const SUPPORT_EMAIL = "usezombie@agentmail.to";
+export const SUPPORT_EMAIL = "agentsfleet@agentmail.to";

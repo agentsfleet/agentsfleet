@@ -10,7 +10,7 @@
 //   - process.stdout.isTTY for TTY detection
 //
 // On first run with consent granted and a TTY, prints a one-time
-// notice (matching Supabase's @clack/prompts note). usezombie writes
+// notice (matching Supabase's @clack/prompts note). agentsfleet writes
 // to stderr directly via process.stderr.write — the Output service
 // isn't available yet at this point (it's a co-dependent layer).
 
@@ -53,7 +53,7 @@ const CI_ENV_VARS = [
 
 const FIRST_RUN_NOTICE = [
   "",
-  "  usezombie collects anonymous usage data to improve the CLI.",
+  "  agentsfleet collects anonymous usage data to improve the CLI.",
   "  Opt out by setting AGENTSFLEET_TELEMETRY_DISABLED=1 (or DO_NOT_TRACK=1).",
   "  Learn more: https://docs.agentsfleet.net/cli/telemetry",
   "",

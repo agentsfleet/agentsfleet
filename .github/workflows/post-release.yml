@@ -54,7 +54,7 @@ jobs:
           echo "| ${{ matrix.name }} | npm | $ICON |" >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
-  # CLI acceptance against api.usezombie.com using the just-published
+  # CLI acceptance against api.agentsfleet.net using the just-published
   # @agentsfleet/cli@latest. WS-E #C2: secret-load comes AFTER `bun
   # install` AND `npm i -g` so a hostile postinstall sees no Clerk admin
   # key. lifecycle-after-login is skipped on PROD (no dashboard URL is
@@ -63,7 +63,7 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     needs: verify-npm
     runs-on: ubuntu-latest
-    name: CLI acceptance — api.usezombie.com
+    name: CLI acceptance — api.agentsfleet.net
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
@@ -97,13 +97,13 @@ jobs:
           AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/regular
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/admin
 
-      - name: Run CLI acceptance against api.usezombie.com
+      - name: Run CLI acceptance against api.agentsfleet.net
         run: bun run test:acceptance
         working-directory: agentsfleet
         env:
-          ZOMBIE_ACCEPTANCE_TARGET: https://api.usezombie.com
-          ZOMBIE_ACCEPTANCE_BINARY: global
-          # ZOMBIE_ACCEPTANCE_DASHBOARD_URL intentionally unset — the
+          AGENTSFLEET_ACCEPTANCE_TARGET: https://api.agentsfleet.net
+          AGENTSFLEET_ACCEPTANCE_BINARY: global
+          # AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL intentionally unset — the
           # lifecycle-after-login spec skips on PROD per spec §5.
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
@@ -117,7 +117,7 @@ jobs:
           else
             ICON="❌"
           fi
-          echo "| CLI acceptance (api.usezombie.com) | npm @latest | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CLI acceptance (api.agentsfleet.net) | npm @latest | $ICON |" >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
   summary:

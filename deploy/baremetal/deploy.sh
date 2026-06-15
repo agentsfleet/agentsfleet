@@ -14,7 +14,7 @@
 #   DRAIN_TIMEOUT       — seconds to wait for a graceful stop (default: 120)
 #
 # Examples:
-#   deploy.sh runner v0.1.0 /opt/zombie/bin/agentsfleet-runner
+#   deploy.sh runner v0.1.0 /opt/agentsfleet/bin/agentsfleet-runner
 #   deploy.sh runner v0.2.0                              # downloads from GH release
 #
 # The runner holds zero datastore credentials: if it stops abruptly the control
@@ -32,7 +32,7 @@ fi
 # Load Discord webhook from the env file when not already in the environment.
 # Reading the file here keeps the value out of sudo's argument list and therefore
 # out of ps/cmdline output.
-readonly _DISCORD_ENV_FILE="/opt/zombie/.discord-env"
+readonly _DISCORD_ENV_FILE="/opt/agentsfleet/.discord-env"
 if [[ -z "${DISCORD_WEBHOOK_URL:-}" && -r "${_DISCORD_ENV_FILE}" ]]; then
   # shellcheck source=/dev/null
   source "${_DISCORD_ENV_FILE}"
@@ -41,8 +41,8 @@ fi
 readonly REPO="agentsfleet/agentsfleet"
 readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
-readonly DEPLOY_DIR="/opt/zombie/deploy"
-readonly ENV_FILE="/opt/zombie/.env"
+readonly DEPLOY_DIR="/opt/agentsfleet/deploy"
+readonly ENV_FILE="/opt/agentsfleet/.env"
 readonly ENV_DEST="/etc/default/agentsfleet-runner"
 readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
@@ -124,7 +124,7 @@ sync_env() {
   # startup check (getRequired in src/runner/daemon/config.zig) would catch
   # this too, but a 1/FAILURE systemd loop with `MissingEnvVar` is a confusing
   # surface for an operator — die here with the specific missing keys instead.
-  local required=(ZOMBIE_API_URL ZOMBIE_RUNNER_TOKEN RUNNER_HOST_ID)
+  local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN RUNNER_HOST_ID)
   local missing=()
   local k
   for k in "${required[@]}"; do
@@ -137,8 +137,8 @@ sync_env() {
   # Reject the documented placeholder shape (`zrn_FAKE_…`). The daemon's prefix
   # check only enforces `zrn_*`, which a placeholder satisfies — that would
   # loop on 401s. Better to fail at deploy time with a clear cause.
-  if grep -qE '^ZOMBIE_RUNNER_TOKEN=zrn_FAKE' "$ENV_DEST"; then
-    die "ZOMBIE_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real zrn_ via POST /v1/runners and update 1Password before re-running"
+  if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=zrn_FAKE' "$ENV_DEST"; then
+    die "AGENTSFLEET_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real zrn_ via POST /v1/runners and update 1Password before re-running"
   fi
 }
 
@@ -166,11 +166,11 @@ restart_services() {
   drain_runner
   log "Restarting runner ..."
   # One-time transition off the pre-rename unit: a host still
-  # running zombie-runner.service gets it stopped and disabled before the
+  # running agent-runner.service gets it stopped and disabled before the
   # renamed unit takes over; harmless no-op everywhere else.
-  if systemctl cat zombie-runner.service >/dev/null 2>&1; then
-    systemctl stop zombie-runner.service 2>/dev/null || true
-    systemctl disable zombie-runner.service 2>/dev/null || true
+  if systemctl cat agent-runner.service >/dev/null 2>&1; then
+    systemctl stop agent-runner.service 2>/dev/null || true
+    systemctl disable agent-runner.service 2>/dev/null || true
   fi
   systemctl restart "$SERVICE_NAME"
 }

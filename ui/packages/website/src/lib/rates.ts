@@ -1,5 +1,5 @@
 /*
- * Single source of truth for usezombie rates on the marketing site.
+ * Single source of truth for agentsfleet rates on the marketing site.
  *
  * Server-side authority lives in src/state/tenant_billing.zig (Zig
  * constants NANOS_PER_USD, STARTER_CREDIT_NANOS, EVENT_NANOS,

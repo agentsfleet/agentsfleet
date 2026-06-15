@@ -120,7 +120,7 @@ test "parseSkillMetadata: full optional fields parsed" {
         \\version: 1.2.3
         \\when_to_use: When you need everything
         \\tags: [a, b, c]
-        \\author: usezombie
+        \\author: agentsfleet
         \\model: claude-sonnet-4-6
         \\---
         \\
@@ -131,7 +131,7 @@ test "parseSkillMetadata: full optional fields parsed" {
     try std.testing.expectEqualStrings("When you need everything", meta.when_to_use.?);
     try std.testing.expectEqual(@as(usize, 3), meta.tags.len);
     try std.testing.expectEqualStrings("a", meta.tags[0]);
-    try std.testing.expectEqualStrings("usezombie", meta.author.?);
+    try std.testing.expectEqualStrings("agentsfleet", meta.author.?);
     try std.testing.expectEqualStrings("claude-sonnet-4-6", meta.model.?);
 }
 

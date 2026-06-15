@@ -25,7 +25,7 @@ components:
           type: string
           format: uri
           description: Stable link to documentation for this error code
-          example: https://docs.usezombie.com/error-codes#UZ-AGT-009
+          example: https://docs.agentsfleet.net/error-codes#UZ-AGT-009
         title:
           type: string
           description: Short human-readable label, same for every occurrence of this code

@@ -17,14 +17,14 @@ Until v2.1, runner registration is gated by `RequireRole{.admin}` (see [`../AUTH
 
 ### Agent keys → first-class principal
 
-Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateZombie`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `zombie_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` agent-identity path that the same handler accepts today.
+Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateAgent`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `agent_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` agent-identity path that the same handler accepts today.
 
 ## v2.1+ — other deferred items
 
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
 - **Dashboard token model** — the Backend-For-Frontend (BFF) direction. Deferred; detail currently lives in `AUTH.md` and should move here or into its own spec when revisited.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
-- **Trust-scoped sticky affinity** — once runners can be local / low-trust (laptops, untrusted hosts), the sticky-routing affinity (`fleet.runner_affinity.last_runner_id`) must stop being a pure performance hint. Affinity selection has to filter on the runner's **trust class + scope** (allowed tenants/workspaces) *before* applying the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility — so a host that shouldn't see sensitive work never receives it just because it ran the zombie before. Not urgent (the S0 trusted-fleet model treats every runner as equally eligible, so affinity carries no safety dimension yet); design it alongside the M85_001 scheduler and the untrusted-runner trust gating. Cross-referenced from the Fleet operator plane section below.
+- **Trust-scoped sticky affinity** — once runners can be local / low-trust (laptops, untrusted hosts), the sticky-routing affinity (`fleet.runner_affinity.last_runner_id`) must stop being a pure performance hint. Affinity selection has to filter on the runner's **trust class + scope** (allowed tenants/workspaces) *before* applying the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility — so a host that shouldn't see sensitive work never receives it just because it ran the agent before. Not urgent (the S0 trusted-fleet model treats every runner as equally eligible, so affinity carries no safety dimension yet); design it alongside the M85_001 scheduler and the untrusted-runner trust gating. Cross-referenced from the Fleet operator plane section below.
 
 ## Runner resilience — deferred to the Zig 0.16 toolchain bump
 
@@ -49,10 +49,10 @@ The MVP ships an internal-only diagnosis posted to the operator's Slack. The lon
 
 Structural changes from MVP to bastion:
 
-1. **Per-agent audience routing** — `TRIGGER.md` / `x-usezombie:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
+1. **Per-agent audience routing** — `TRIGGER.md` / `x-agentsfleet:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
 2. **Status-page rendering surface** — a hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
 3. **Broadcast channels** — the agent's `tools:` grows `email_send`, `sms_send` (approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
 4. **Approval gating per audience** — `SKILL.md` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
-5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.zombie_events` retention becomes per-actor configurable.
+5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.agent_events` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the credential vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is a `SKILL.md` authoring pattern plus a few tool primitives plus a rendering surface — not a different product.

@@ -12,4 +12,4 @@ primary_region = "iad"
 # min_machines_running is enforced via CI (deploy-prod-api job restarts/deploys if down).
 # TUNNEL_TOKEN secret set via: fly secrets set TUNNEL_TOKEN=... --app cloudflared-prod
 # Token encodes tunnel ID + credentials — no credentials file needed.
-# Ingress: api.usezombie.com → zombied-prod.internal:3000 (Fly 6PN)
+# Ingress: api.agentsfleet.net → agentsfleetd-prod.internal:3000 (Fly 6PN)

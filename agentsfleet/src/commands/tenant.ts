@@ -220,7 +220,7 @@ export const tenantProviderDeleteEffect: Effect.Effect<
     return;
   }
   yield* output.success(
-    "Custom LLM provider removed — events will now run on usezombie's platform default.",
+    "Custom LLM provider removed — events will now run on agentsfleet's platform default.",
   );
   yield* output.info("");
   yield* renderProviderTable(res);

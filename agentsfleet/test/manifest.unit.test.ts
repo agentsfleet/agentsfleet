@@ -7,7 +7,7 @@
 //   2. The package NAME is @agentsfleet/cli — the E9 cutover (first publish
 //      under the @agentsfleet npm org, spec Dimension 4.5) landed via Indy's
 //      offline publish. This assertion now guards against a regression back to
-//      the retired @usezombie/zombiectl name.
+//      the retired @agentsfleet/agentctl name.
 
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";

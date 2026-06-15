@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M28_001 §1: Verify Prometheus scrapes zombie_* metrics.
+# Verify Prometheus scrapes agent_* metrics.
 set -euo pipefail
 
 VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
@@ -20,11 +20,11 @@ echo "  Prometheus datasource ID: $PROM_ID"
 
 # Query a known metric
 RESULT=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/datasources/proxy/$PROM_ID/api/v1/query?query=zombie_runs_created_total" 2>/dev/null || echo "")
+  "$GRAFANA_URL/api/datasources/proxy/$PROM_ID/api/v1/query?query=agent_runs_created_total" 2>/dev/null || echo "")
 
 if echo "$RESULT" | jq -e '.data.result | length > 0' >/dev/null 2>&1; then
-  echo "PASS: zombie_runs_created_total is being scraped"
+  echo "PASS: agent_runs_created_total is being scraped"
 else
-  echo "WARN: zombie_runs_created_total returned no results (may be OK if no runs yet)"
+  echo "WARN: agent_runs_created_total returned no results (may be OK if no runs yet)"
   echo "  Verify Prometheus scrape config includes agentsfleetd /metrics endpoint"
 fi
