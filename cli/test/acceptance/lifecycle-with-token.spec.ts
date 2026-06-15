@@ -62,7 +62,7 @@ import {
 } from "./fixtures/lifecycle.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
+const CLI_ROOT = path.resolve(HERE, "..", "..");
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
@@ -136,7 +136,7 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts")) as ValidateModule;
+      validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
     });
 
     afterAll(async () => {

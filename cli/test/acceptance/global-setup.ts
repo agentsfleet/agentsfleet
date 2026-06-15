@@ -27,8 +27,8 @@ import {
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
-const JWT_PATH = path.join(ZOMBIECTL_ROOT, FIXTURE_JWT_FILE);
+const CLI_ROOT = path.resolve(HERE, "..", "..");
+const JWT_PATH = path.join(CLI_ROOT, FIXTURE_JWT_FILE);
 
 const JWT_TTL_SECONDS = 800;
 
