@@ -14,7 +14,7 @@ const TEST_RUN_MS: i64 = 1_000;
 
 test "parseUrl parses host, port, db, credentials" {
     const alloc = std.testing.allocator;
-    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/useagentsfleetdb");
+    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/agentsfleetdb");
     defer alloc.free(opts.connect.host.?);
     defer alloc.free(opts.auth.username);
     const password = opts.auth.password.?;
@@ -26,7 +26,7 @@ test "parseUrl parses host, port, db, credentials" {
     try std.testing.expectEqual(@as(u16, 5433), opts.connect.port.?);
     try std.testing.expectEqualStrings("alice", opts.auth.username);
     try std.testing.expectEqualStrings("secret", password);
-    try std.testing.expectEqualStrings("useagentsfleetdb", database);
+    try std.testing.expectEqualStrings("agentsfleetdb", database);
 }
 
 test "parseUrl sets tls=require on standard URL" {
