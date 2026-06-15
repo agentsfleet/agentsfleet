@@ -52,7 +52,7 @@ export type AgentListResponse = {
 // Canonical billing unit: 1 USD = 1_000_000_000 nanos. JS Number holds the
 // full range (≤ 2^53 ≈ 9e15 nanos / ~$9M tenant balance) without precision
 // loss. Mirrors `NANOS_PER_USD` in src/state/tenant_billing.zig and
-// agentsfleet/src/constants/billing.js — keep all three in lockstep.
+// cli/src/constants/billing.js — keep all three in lockstep.
 export const NANOS_PER_USD = 1_000_000_000;
 
 // Rate constants — mirror src/state/tenant_billing.zig identifier-for-identifier

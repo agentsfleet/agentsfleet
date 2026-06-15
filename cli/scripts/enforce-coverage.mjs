@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Enforce the coverage floor declared in agentsfleet/bunfig.toml. Bun 1.3.x
+// Enforce the coverage floor declared in cli/bunfig.toml. Bun 1.3.x
 // parses `coverageThreshold` but does NOT fail the test run when the
 // floor is missed; this script runs `bun test --coverage`, parses the
 // "All files" summary, and exits non-zero if either function% or line%

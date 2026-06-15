@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-agentsfleet test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
+.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-cli test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
 
 test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
 	@echo "→ [agentsfleetd] Running Zig unit tests..."
@@ -36,11 +36,11 @@ test-unit-agentsfleet-lib:  ## Run shared src/lib module unit tests (Zig; named 
 	 zig build test-lib --summary all
 	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by agentsfleetd + agentsfleet-runner)"
 
-test-unit-agentsfleet:  ## Run agentsfleet CLI unit tests (bun)
+test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
-	@cd agentsfleet && bun run build >/dev/null
+	@cd cli && bun run build >/dev/null
 	@echo "→ [agentsfleet] Running Bun unit tests..."
-	@cd agentsfleet && bun test
+	@cd cli && bun test
 	@echo "✓ [agentsfleet] Unit tests passed"
 
 test-unit-website:  ## Run website unit tests (vitest)
@@ -69,7 +69,7 @@ test-coverage-all:  ## Run coverage gates across app + website + agentsfleet + d
 	@echo "→ [website] Running Vitest with --coverage..."
 	@cd ui/packages/website && bun run test:coverage
 	@echo "→ [agentsfleet] Running Bun test --coverage..."
-	@cd agentsfleet && bun run test:coverage
+	@cd cli && bun run test:coverage
 	@echo "→ [design-system] Running Vitest with --coverage..."
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"

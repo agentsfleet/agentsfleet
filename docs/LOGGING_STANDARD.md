@@ -27,7 +27,7 @@ Documented honestly, not aspirationally. Pre-M62 baseline (the fix-pass converge
 - Zig calls are mostly `std.log.scoped(.tag).info(comptime fmt, args)` with positional `{s} {d}` placeholders. Severity choice is inconsistent: successful happy-path events sometimes log at `info`, sometimes are silent. Per-call migration to the structured `log.<level>("event", .{ .field = val })` form is in flight.
 - A small number of Zig sites use `std.debug.print` directly — bypasses the scope/level system entirely. Always a violation.
 - The named module `log` (source: `src/lib/logging/mod.zig`) exposes `scoped(.tag)` returning a logger struct with `.err` / `.warn` / `.info` / `.debug` methods. M62 removed the older free-function helpers (`logErr` / `logErrWithHint` / `logWarnErr`) — there is no compat shim.
-- TypeScript (`agentsfleet/src/**`) calls `console.log`/`console.error` directly. No structure. No scope. No severity beyond err vs out.
+- TypeScript (`cli/src/**`) calls `console.log`/`console.error` directly. No structure. No scope. No severity beyond err vs out.
 - Error-code embedding (`UZ-XXX-NNN`) appears on some `err` lines but not others. The registry (`src/agentsfleetd/errors/error_registry.zig`) is the source of truth, but enforcement is voluntary.
 - No collector-friendly format. Logs are a mix of free-form English and ad-hoc `key={value}` fragments.
 
@@ -190,7 +190,7 @@ Colors: red `error`, dim parens. Rendering inspired by Bun's `SystemError.format
 
 Schema mirrors Bun's `SystemError` extern struct (`bun:src/bun.js/bindings/SystemError.zig:1`) — `{ code, message, ...context, hint?, docs? }`. Our `code` is `UZ-XXX-NNN` (registry-defined) rather than errno; the *shape* is what we mirror.
 
-**Logging emit sites** in `agentsfleet/src/**` use a thin Bun-runtime logger that produces logfmt records to `stderr`. `console.log` / `console.error` are forbidden in source per `dispatch/write_ts_adhere_bun.md` §10 — `logging.sh` enforces this for TS/JS.
+**Logging emit sites** in `cli/src/**` use a thin Bun-runtime logger that produces logfmt records to `stderr`. `console.log` / `console.error` are forbidden in source per `dispatch/write_ts_adhere_bun.md` §10 — `logging.sh` enforces this for TS/JS.
 
 **Module-level error style** is governed by `dispatch/write_ts_adhere_bun.md` §9 (one style per module — throw OR Result, never both). The error type itself is the same:
 
