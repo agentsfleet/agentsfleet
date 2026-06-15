@@ -46,6 +46,8 @@ const WebhookHmac = webhook_hmac.WebhookHmac;
 /// registry struct after `initChains()` — the chain arrays store pointers
 /// into fields of this struct.
 pub const MiddlewareRegistry = struct {
+    const Self = @This();
+
     // ── Concrete middleware instances ─────────────────────────────────────
     bearer_or_api_key: BearerOrApiKey,
     tenant_api_key_mw: TenantApiKey,
@@ -82,7 +84,7 @@ pub const MiddlewareRegistry = struct {
 
     /// Build the policy chain arrays. Must be called once after the registry
     /// struct is placed in its final memory location.
-    pub fn initChains(self: *MiddlewareRegistry) void {
+    pub fn initChains(self: *Self) void {
         // Wire the tenant-key pointer into bearer_or_api_key so `agt_t`-
         // prefixed tokens delegate to the DB-backed lookup path.
         self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
@@ -106,13 +108,13 @@ pub const MiddlewareRegistry = struct {
 
     /// Host sets the webhook sig middleware after constructing the
     /// generic WebhookSig(LookupCtx) instance with the concrete type.
-    pub fn setWebhookSig(self: *MiddlewareRegistry, mw: Middleware(AuthCtx)) void {
+    pub fn setWebhookSig(self: *Self, mw: Middleware(AuthCtx)) void {
         self._webhook_sig_chain = .{mw};
     }
 
     /// Host sets the Svix middleware after constructing the generic
     /// SvixSignature(LookupCtx) instance with the concrete type.
-    pub fn setSvixSig(self: *MiddlewareRegistry, mw: Middleware(AuthCtx)) void {
+    pub fn setSvixSig(self: *Self, mw: Middleware(AuthCtx)) void {
         self._svix_chain = .{mw};
     }
 
@@ -122,23 +124,23 @@ pub const MiddlewareRegistry = struct {
     pub const none: []const Middleware(AuthCtx) = &.{};
 
     /// Bearer token or admin API key, any role.
-    pub fn bearer(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn bearer(self: *Self) []const Middleware(AuthCtx) {
         return &self._bearer_chain;
     }
 
     /// Bearer token or admin API key, admin role required.
-    pub fn admin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn admin(self: *Self) []const Middleware(AuthCtx) {
         return &self._admin_chain;
     }
 
     /// Runner-token (`agt_r`) machine principal — wired only onto
     /// `/v1/runners/me/*`. No JWKS/tenant fall-through.
-    pub fn runnerBearer(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn runnerBearer(self: *Self) []const Middleware(AuthCtx) {
         return &self._runner_chain;
     }
 
     /// Bearer token or admin API key, operator role required.
-    pub fn operator(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn operator(self: *Self) []const Middleware(AuthCtx) {
         return &self._operator_chain;
     }
 
@@ -146,12 +148,12 @@ pub const MiddlewareRegistry = struct {
     /// claim. The one policy that gates runner enrollment (`POST /v1/runners`):
     /// only agentsfleet's platform operator passes; a tenant admin or any
     /// `agt_t` api_key is rejected 403.
-    pub fn platformAdmin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn platformAdmin(self: *Self) []const Middleware(AuthCtx) {
         return &self._platform_admin_chain;
     }
 
     /// HMAC-SHA256 body signature (approval/generic webhooks).
-    pub fn webhookHmac(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn webhookHmac(self: *Self) []const Middleware(AuthCtx) {
         return &self._webhook_hmac_chain;
     }
 
@@ -160,12 +162,12 @@ pub const MiddlewareRegistry = struct {
     /// secret resolved from the workspace credential identified by the
     /// matching `triggers[].source` entry (or an explicit
     /// `triggers[].credential_name` override).
-    pub fn webhookSig(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn webhookSig(self: *Self) []const Middleware(AuthCtx) {
         return &self._webhook_sig_chain;
     }
 
     /// Svix v1 multi-sig HMAC (Clerk) — M28_001 §5.
-    pub fn svix(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+    pub fn svix(self: *Self) []const Middleware(AuthCtx) {
         return &self._svix_chain;
     }
 };

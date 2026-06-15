@@ -57,10 +57,12 @@ pub const LookupFn = *const fn (
 ) anyerror!?LookupResult;
 
 pub const RunnerBearer = struct {
+    const Self = @This();
+
     host: *anyopaque,
     lookup: LookupFn,
 
-    pub fn middleware(self: *RunnerBearer) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -69,7 +71,7 @@ pub const RunnerBearer = struct {
         return execute(self, ctx, req);
     }
 
-    pub fn execute(self: *RunnerBearer, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
             ctx.fail(errors.ERR_RUN_INVALID_RUNNER_TOKEN, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;

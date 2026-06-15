@@ -15,10 +15,12 @@ const tenant_provider = @import("tenant_provider.zig");
 const cursor_mod = @import("agent_telemetry_cursor.zig");
 
 pub const ChargeType = enum {
+    const Self = @This();
+
     receive,
     stage,
 
-    pub fn label(self: ChargeType) []const u8 {
+    pub fn label(self: Self) []const u8 {
         return switch (self) {
             .receive => "receive",
             .stage => "stage",
@@ -41,6 +43,8 @@ const TELEMETRY_SELECT =
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const TelemetryRow = struct {
+    const Self = @This();
+
     id: []u8,
     tenant_id: []u8,
     workspace_id: []u8,
@@ -55,7 +59,7 @@ pub const TelemetryRow = struct {
     wall_ms: ?i64,
     recorded_at: i64,
 
-    pub fn deinit(self: *TelemetryRow, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.id);
         alloc.free(self.tenant_id);
         alloc.free(self.workspace_id);

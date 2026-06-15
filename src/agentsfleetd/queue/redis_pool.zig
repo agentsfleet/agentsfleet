@@ -12,7 +12,7 @@
 //! Slice 1 lays the shape down. The Client façade rewire + retry loop land
 //! in slice 3; `/metrics` export of `PoolStats` lands in slice 7.
 
-const Pool = @This();
+const Self = @This();
 
 /// Sentinel for `max_active`: zero disables the hard ceiling, restoring the
 /// metric-only overflow behavior (active count may grow unbounded; the cap
@@ -106,8 +106,8 @@ acquire_timeouts_total: u64 = 0,
 
 /// Pool takes ownership of `cfg` and frees it in `deinit`. `io` backs the
 /// bounded-poll acquire wait.
-pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Pool {
-    var pool: Pool = .{
+pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Self {
+    var pool: Self = .{
         .alloc = alloc,
         .io = io,
         .cfg = cfg,
@@ -140,7 +140,7 @@ pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, opti
     return pool;
 }
 
-pub fn deinit(self: *Pool) void {
+pub fn deinit(self: *Self) void {
     while (self.idle.popFirst()) |node| {
         const conn: *Connection = @fieldParentPtr(POOL_NODE_FIELD, node);
         conn.deinit();
@@ -166,7 +166,7 @@ const SlotReservation = struct {
 /// `max_active` ceiling is set and the pool is saturated, the call blocks
 /// on `not_full` up to `acquire_timeout_ms`, then returns
 /// `error.AcquireTimeout`.
-pub fn acquire(self: *Pool) !*Connection {
+pub fn acquire(self: *Self) !*Connection {
     self.mutex.lock();
     const slot = self.reserveActiveSlot() catch |err| {
         self.mutex.unlock();
@@ -205,7 +205,7 @@ pub fn acquire(self: *Pool) !*Connection {
 /// connection when one exists; otherwise reserves an active slot, blocking
 /// on a hard `max_active` ceiling. Increments `active_count` for the slot it
 /// hands out (idle or fresh-dial) so the count reflects the in-flight conn.
-fn reserveActiveSlot(self: *Pool) error{AcquireTimeout}!SlotReservation {
+fn reserveActiveSlot(self: *Self) error{AcquireTimeout}!SlotReservation {
     if (self.idle.popFirst()) |node| {
         self.idle_count -= 1;
         self.active_count += 1;
@@ -226,7 +226,7 @@ fn reserveActiveSlot(self: *Pool) error{AcquireTimeout}!SlotReservation {
 /// with it held. A non-null result is a reused idle conn whose `active_count`
 /// is already incremented; null means a fresh dial is owed. The deadline is
 /// fixed up front so spurious wakes can't extend the budget.
-fn waitForActiveSlot(self: *Pool) error{AcquireTimeout}!?*Connection {
+fn waitForActiveSlot(self: *Self) error{AcquireTimeout}!?*Connection {
     const budget_ns = @as(u64, self.acquire_timeout_ms) * std.time.ns_per_ms;
     const deadline_ns = clock.nowNanos() + @as(i128, budget_ns);
     while (self.active_count >= self.max_active and self.idle_count == 0) {
@@ -262,7 +262,7 @@ fn waitForActiveSlot(self: *Pool) error{AcquireTimeout}!?*Connection {
 /// Return a Connection to the pool. `ok=false` closes the connection
 /// (transport error or poisoned state). `ok=true` returns it to idle iff
 /// `idle_count < max_idle`; otherwise closes (over-cap overflow).
-pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
+pub fn release(self: *Self, conn: *Connection, ok: bool) void {
     std.debug.assert(conn.role == .pooled);
 
     if (!ok or conn.state != .active) {
@@ -303,13 +303,13 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
 /// Record a fresh dial performed by the Client retry layer after a
 /// transport-level (non-resumable) failure. Pool exports the counter
 /// via `stats()`; the Client retry loop is the only producer.
-pub fn recordReconnect(self: *Pool) void {
+pub fn recordReconnect(self: *Self) void {
     self.mutex.lock();
     defer self.mutex.unlock();
     self.reconnects_total += 1;
 }
 
-pub fn stats(self: *Pool) PoolStats {
+pub fn stats(self: *Self) PoolStats {
     self.mutex.lock();
     defer self.mutex.unlock();
     return .{

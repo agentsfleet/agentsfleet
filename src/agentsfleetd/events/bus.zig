@@ -14,6 +14,8 @@ const RUN_ID_MAX: usize = 64;
 const DETAIL_MAX: usize = 256;
 
 const BusEvent = struct {
+    const Self = @This();
+
     ts_ms: i64 = 0,
     // SAFETY: populated by the owning init/builder before any consumer reads this field.
     kind: [KIND_MAX]u8 = undefined,
@@ -35,20 +37,22 @@ const BusEvent = struct {
         return out;
     }
 
-    fn kindSlice(self: *const BusEvent) []const u8 {
+    fn kindSlice(self: *const Self) []const u8 {
         return self.kind[0..@as(usize, self.kind_len)];
     }
 
-    fn runIdSlice(self: *const BusEvent) []const u8 {
+    fn runIdSlice(self: *const Self) []const u8 {
         return self.run_id[0..@as(usize, self.run_id_len)];
     }
 
-    fn detailSlice(self: *const BusEvent) []const u8 {
+    fn detailSlice(self: *const Self) []const u8 {
         return self.detail[0..@as(usize, self.detail_len)];
     }
 };
 
 pub const Bus = struct {
+    const Self = @This();
+
     mutex: common.Mutex = .{},
     cond: common.Condition = .{},
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
@@ -63,7 +67,7 @@ pub const Bus = struct {
         return .{};
     }
 
-    pub fn stop(self: *Bus) void {
+    pub fn stop(self: *Self) void {
         self.mutex.lock();
         // safe because: the .release store pairs with waitNext's .acquire loads; holding
         // the mutex orders it against the consumer's predicate check — the consumer is
@@ -75,19 +79,19 @@ pub const Bus = struct {
         self.cond.broadcast();
     }
 
-    pub fn pendingCount(self: *Bus) usize {
+    pub fn pendingCount(self: *Self) usize {
         self.mutex.lock();
         defer self.mutex.unlock();
         return self.len;
     }
 
-    fn droppedCount(self: *Bus) u64 {
+    fn droppedCount(self: *Self) u64 {
         self.mutex.lock();
         defer self.mutex.unlock();
         return self.dropped;
     }
 
-    pub fn publish(self: *Bus, event: BusEvent) void {
+    pub fn publish(self: *Self, event: BusEvent) void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -102,7 +106,7 @@ pub const Bus = struct {
         self.cond.signal();
     }
 
-    fn popLocked(self: *Bus) BusEvent {
+    fn popLocked(self: *Self) BusEvent {
         const event = self.queue[self.head];
         self.head = (self.head + 1) % CAPACITY;
         self.len -= 1;
@@ -114,7 +118,7 @@ pub const Bus = struct {
         dropped: u64,
     };
 
-    fn waitNext(self: *Bus) ?NextEvent {
+    fn waitNext(self: *Self) ?NextEvent {
         self.mutex.lock();
         defer self.mutex.unlock();
         // safe because: both .acquire loads here pair with stop()'s mutex-ordered .release store.
@@ -128,7 +132,7 @@ pub const Bus = struct {
         return .{ .event = event, .dropped = dropped };
     }
 
-    pub fn run(self: *Bus) void {
+    pub fn run(self: *Self) void {
         while (self.waitNext()) |next| {
             if (next.dropped > 0) {
                 log.warn("dropped", .{ .count = next.dropped });

@@ -15,6 +15,8 @@ const std = @import("std");
 const S_T_R_N = " \t\r\n";
 
 pub const SqlStatementSplitter = struct {
+    const Self = @This();
+
     sql: []const u8,
     pos: usize,
     in_single_quote: bool,
@@ -31,7 +33,7 @@ pub const SqlStatementSplitter = struct {
 
     /// Advance past whitespace and line comments. Returns the position of
     /// the first non-comment, non-whitespace character (or end of input).
-    fn skipWhitespaceAndComments(self: *SqlStatementSplitter) void {
+    fn skipWhitespaceAndComments(self: *Self) void {
         while (self.pos < self.sql.len) {
             const ch = self.sql[self.pos];
             if (ch == ' ' or ch == '\t' or ch == '\r' or ch == '\n') {
@@ -47,7 +49,7 @@ pub const SqlStatementSplitter = struct {
     }
 
     /// Returns the next non-empty, trimmed SQL statement, or null when exhausted.
-    pub fn next(self: *SqlStatementSplitter) ?[]const u8 {
+    pub fn next(self: *Self) ?[]const u8 {
         self.skipWhitespaceAndComments();
         if (self.pos >= self.sql.len) return null;
 

@@ -226,6 +226,8 @@ fn parseLabels(alloc: std.mem.Allocator, text: []const u8) []const []const u8 {
 }
 
 const FakeRow = struct {
+    const Self = @This();
+
     id: []const u8 = "r1",
     host_id: []const u8 = "h1",
     sandbox_tier: []const u8 = "landlock_full",
@@ -238,7 +240,7 @@ const FakeRow = struct {
     count_only: bool = false,
     fail_at: ?usize = null, // inject a decode error at this column index
 
-    fn get(self: *const FakeRow, comptime T: type, col: usize) !T {
+    fn get(self: *const Self, comptime T: type, col: usize) !T {
         if (self.fail_at) |fc| {
             if (fc == col) return error.TestDecode;
         }
@@ -266,11 +268,13 @@ const FakeRow = struct {
 };
 
 const FakeRows = struct {
+    const Self = @This();
+
     rows: []const FakeRow,
     idx: usize = 0,
     fail_after: ?usize = null, // transport error once this many rows are yielded
 
-    fn next(self: *FakeRows) !?FakeRow {
+    fn next(self: *Self) !?FakeRow {
         if (self.fail_after) |n| {
             if (self.idx == n) return error.TestTransport;
         }

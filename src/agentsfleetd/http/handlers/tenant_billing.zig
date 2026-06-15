@@ -160,8 +160,10 @@ fn parseLimit(qs: anytype) ParseLimitError!u32 {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 const FakeQuery = struct {
+    const Self = @This();
+
     value: ?[]const u8,
-    pub fn get(self: FakeQuery, key: []const u8) ?[]const u8 {
+    pub fn get(self: Self, key: []const u8) ?[]const u8 {
         _ = key;
         return self.value;
     }

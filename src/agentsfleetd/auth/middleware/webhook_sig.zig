@@ -59,10 +59,12 @@ pub const SignatureScheme = struct {
 ///
 /// Caller frees owned slices via `alloc`.
 pub const LookupResult = struct {
+    const Self = @This();
+
     signature_scheme: ?SignatureScheme = null,
     signature_secret: ?[]const u8 = null,
 
-    pub fn deinit(self: LookupResult, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         if (self.signature_scheme) |s| {
             alloc.free(s.sig_header);
             alloc.free(s.prefix);

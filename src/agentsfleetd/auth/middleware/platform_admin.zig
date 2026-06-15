@@ -26,7 +26,9 @@ const DETAIL_REQUIRED = "Platform-admin privileges are required to perform this 
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
 
 pub const PlatformAdmin = struct {
-    pub fn middleware(self: *PlatformAdmin) chain.Middleware(AuthCtx) {
+    const Self = @This();
+
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -35,7 +37,7 @@ pub const PlatformAdmin = struct {
         return execute(self, ctx);
     }
 
-    pub fn execute(_: *PlatformAdmin, ctx: *AuthCtx) !chain.Outcome {
+    pub fn execute(_: *Self, ctx: *AuthCtx) !chain.Outcome {
         const principal = ctx.principal orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;

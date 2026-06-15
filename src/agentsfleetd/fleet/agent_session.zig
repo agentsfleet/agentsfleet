@@ -10,7 +10,7 @@
 //! Caller-owned allocator: methods that allocate (incl. deinit) take the
 //! allocator as a parameter.
 
-const AgentSession = @This();
+const Self = @This();
 
 agent_id: []const u8,
 workspace_id: []const u8,
@@ -29,11 +29,11 @@ execution_id: ?[]const u8 = null,
 execution_started_at: i64 = 0,
 
 comptime {
-    const actual = @sizeOf(AgentSession);
+    const actual = @sizeOf(Self);
     if (actual != 320) @compileError(std.fmt.comptimePrint("AgentSession size changed: {d}, expected 320", .{actual}));
 }
 
-pub fn deinit(self: *AgentSession, alloc: Allocator) void {
+pub fn deinit(self: *Self, alloc: Allocator) void {
     alloc.free(self.agent_id);
     alloc.free(self.workspace_id);
     self.config.deinit(alloc);
@@ -48,7 +48,7 @@ pub fn claimAgent(
     alloc: Allocator,
     agent_id_input: []const u8,
     pool: *pg.Pool,
-) !AgentSession {
+) !Self {
     // 1. Load agent row from core.agents
     const conn = try pool.acquire();
     defer pool.release(conn);
@@ -104,7 +104,7 @@ pub fn claimAgent(
         .has_checkpoint = context_json.len > 2,
     });
 
-    var session = AgentSession{
+    var session = Self{
         .agent_id = agent_id,
         .workspace_id = workspace_id,
         .config = config,
@@ -137,7 +137,7 @@ pub fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, agent_id: []const
 
 /// Clear active execution in session and DB. Non-fatal — tracking is
 /// observability only. Called at claimAgent startup (crash recovery).
-pub fn clearExecutionActive(alloc: Allocator, session: *AgentSession, pool: *pg.Pool) void {
+pub fn clearExecutionActive(alloc: Allocator, session: *Self, pool: *pg.Pool) void {
     if (session.execution_id) |old| {
         alloc.free(old);
         session.execution_id = null;

@@ -54,6 +54,8 @@ pub const Config = struct {
 };
 
 pub const Verifier = struct {
+    const Self = @This();
+
     provider: Provider,
     inner: jwks.Verifier,
 
@@ -70,11 +72,11 @@ pub const Verifier = struct {
         };
     }
 
-    pub fn deinit(self: *Verifier) void {
+    pub fn deinit(self: *Self) void {
         self.inner.deinit();
     }
 
-    pub fn verifyAuthorization(self: *Verifier, alloc: std.mem.Allocator, authorization: []const u8) !Principal {
+    pub fn verifyAuthorization(self: *Self, alloc: std.mem.Allocator, authorization: []const u8) !Principal {
         log.debug("provider_selected", .{ .provider = @tagName(self.provider) });
 
         const verified = self.inner.verifyAndDecode(alloc, authorization) catch |err| {
@@ -107,7 +109,7 @@ pub const Verifier = struct {
         };
     }
 
-    pub fn checkJwksConnectivity(self: *Verifier) !void {
+    pub fn checkJwksConnectivity(self: *Self) !void {
         try self.inner.checkJwksConnectivity();
     }
 };

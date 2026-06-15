@@ -71,6 +71,8 @@ pub const DELETE_OWNER_LUA: []const u8 =
 ;
 
 pub const VerifyOutcome = union(enum) {
+    const Self = @This();
+
     success: VerifyPayload,
     replay: VerifyPayload,
     invalid_code: u8,
@@ -89,7 +91,7 @@ pub const VerifyOutcome = union(enum) {
     /// (returned by `parseVerifyOutcome`) is unsafe to retain after
     /// `resp.deinit` — every production caller MUST `dupe` first and
     /// `deinit` the result.
-    pub fn dupe(self: VerifyOutcome, alloc: std.mem.Allocator) error{OutOfMemory}!VerifyOutcome {
+    pub fn dupe(self: Self, alloc: std.mem.Allocator) error{OutOfMemory}!VerifyOutcome {
         return switch (self) {
             .success => |p| .{ .success = try dupePayload(alloc, p) },
             .replay => |p| .{ .replay = try dupePayload(alloc, p) },
@@ -99,7 +101,7 @@ pub const VerifyOutcome = union(enum) {
         };
     }
 
-    pub fn deinit(self: *VerifyOutcome, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         switch (self.*) {
             .success => |p| deinitPayload(alloc, p),
             .replay => |p| deinitPayload(alloc, p),

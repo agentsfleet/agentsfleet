@@ -30,10 +30,12 @@ const S_INVALID_SIGNATURE = "Invalid signature";
 const S_RESOLVED = "resolved";
 
 const ApprovalDecision = enum {
+    const Self = @This();
+
     approve,
     deny,
 
-    fn toConstString(self: ApprovalDecision) []const u8 {
+    fn toConstString(self: Self) []const u8 {
         return switch (self) {
             .approve => ec.GATE_DECISION_APPROVE,
             .deny => ec.GATE_DECISION_DENY,

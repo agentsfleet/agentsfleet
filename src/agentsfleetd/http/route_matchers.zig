@@ -45,6 +45,8 @@ const APPROVAL_ACTION_DENY = ":deny";
 /// (e.g. `v1`) once via `tail(1)` and hands the rest to matchers. No "v1"
 /// literal lives in any matcher body.
 pub const Path = struct {
+    const Self = @This();
+
     segs: []const []const u8,
 
     pub fn parse(path: []const u8, buf: *[PATH_MAX_SEGMENTS][]const u8) Path {
@@ -70,14 +72,14 @@ pub const Path = struct {
         return .{ .segs = buf[0..n] };
     }
 
-    pub fn eq(self: Path, idx: usize, literal: []const u8) bool {
+    pub fn eq(self: Self, idx: usize, literal: []const u8) bool {
         return idx < self.segs.len and std.mem.eql(u8, self.segs[idx], literal);
     }
 
     /// Return the segment at `idx` if present and non-empty. Use this for
     /// path-parameter slots (workspace_id, agent_id, etc.) — empty segments
     /// from `//` or trailing slashes get rejected at the matcher.
-    pub fn param(self: Path, idx: usize) ?[]const u8 {
+    pub fn param(self: Self, idx: usize) ?[]const u8 {
         if (idx >= self.segs.len) return null;
         if (self.segs[idx].len == 0) return null;
         return self.segs[idx];
@@ -85,7 +87,7 @@ pub const Path = struct {
 
     /// Drop the first `n` segments. Used by the dispatcher to strip the
     /// API-version prefix before handing the path to matchers.
-    pub fn tail(self: Path, n: usize) Path {
+    pub fn tail(self: Self, n: usize) Path {
         if (n >= self.segs.len) return .{ .segs = &.{} };
         return .{ .segs = self.segs[n..] };
     }

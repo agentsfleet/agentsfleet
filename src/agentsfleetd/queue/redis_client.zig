@@ -14,6 +14,7 @@
 //! fresh.
 
 pub const Client = @This();
+const Self = @This();
 
 const S_PONG = "PONG";
 const S_SET = "SET";
@@ -65,11 +66,11 @@ pub const InitOptions = struct {
 alloc: std.mem.Allocator,
 pool: Pool,
 
-pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
+pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole) !Self {
     return connectFromEnvWithOptions(io, env_map, alloc, role, .{});
 }
 
-pub fn connectFromEnvWithOptions(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Client {
+pub fn connectFromEnvWithOptions(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Self {
     const url_owned = try redis_config.resolveRedisUrl(env_map, alloc, role);
     defer alloc.free(url_owned);
     var cfg = try redis_config.parseRedisUrl(alloc, url_owned);
@@ -83,11 +84,11 @@ pub fn connectFromEnvWithOptions(io: std.Io, env_map: *const EnvMap, alloc: std.
     return finishFromConfig(io, alloc, cfg, options);
 }
 
-pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8) !Client {
+pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8) !Self {
     return connectFromUrlWithOptions(io, alloc, url, .{});
 }
 
-pub fn connectFromUrlWithOptions(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
+pub fn connectFromUrlWithOptions(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Self {
     var cfg = try redis_config.parseRedisUrl(alloc, url);
     {
         // Own the optional CA path on cfg; scoped errdefer covers only the dup
@@ -104,7 +105,7 @@ pub fn connectFromUrlWithOptions(io: std.Io, alloc: std.mem.Allocator, url: []co
 /// `errdefer redis_config.deinitConfig(alloc, pool.cfg)` that fires on init
 /// failure, AND owns the cfg in `pool.deinit()` on success. A second errdefer
 /// at this layer double-frees cfg.host on Pool.init failure.
-fn finishFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Client {
+fn finishFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Self {
     var pool = try Pool.init(io, alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
     errdefer pool.deinit();
 
@@ -112,11 +113,11 @@ fn finishFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Conf
     return .{ .alloc = alloc, .pool = pool };
 }
 
-pub fn deinit(self: *Client) void {
+pub fn deinit(self: *Self) void {
     self.pool.deinit();
 }
 
-pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
+pub fn publish(self: *Self, channel: []const u8, data: []const u8) !void {
     var resp = try self.command(&.{ "PUBLISH", channel, data });
     defer resp.deinit(self.alloc);
     switch (resp) {
@@ -127,7 +128,7 @@ pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
 }
 
 /// SET key value EX ttl_seconds — used for cancellation signals.
-pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !void {
+pub fn setEx(self: *Self, key: []const u8, value: []const u8, ttl_seconds: u32) !void {
     var ttl_buf: [16]u8 = undefined;
     const ttl_str = try std.fmt.bufPrint(&ttl_buf, S_D, .{ttl_seconds});
     var resp = try self.command(&.{ S_SET, key, value, S_EX, ttl_str });
@@ -138,7 +139,7 @@ pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
     }
 }
 
-pub fn ping(self: *Client) !void {
+pub fn ping(self: *Self) !void {
     var resp = try self.command(&.{S_PING});
     defer resp.deinit(self.alloc);
     switch (resp) {
@@ -150,11 +151,11 @@ pub fn ping(self: *Client) !void {
 /// Liveness probe for `/readyz`. Pool retry handles dead idle conns
 /// transparently — no explicit reconnect plumbing here. PING is
 /// idempotent so the standard 2-attempt retry is safe.
-pub fn readyCheck(self: *Client) !void {
+pub fn readyCheck(self: *Self) !void {
     try self.ping();
 }
 
-pub fn aclWhoAmI(self: *Client) ![]u8 {
+pub fn aclWhoAmI(self: *Self) ![]u8 {
     var resp = try self.command(&.{ "ACL", "WHOAMI" });
     defer resp.deinit(self.alloc);
     const who = redis_protocol.valueAsString(resp) orelse return error.RedisUnexpectedResponse;
@@ -162,7 +163,7 @@ pub fn aclWhoAmI(self: *Client) ![]u8 {
 }
 
 /// DEL one key — releases an idempotency slot whose protected op failed post-claim.
-pub fn del(self: *Client, key: []const u8) !void {
+pub fn del(self: *Self, key: []const u8) !void {
     var resp = try self.command(&.{ "DEL", key });
     defer resp.deinit(self.alloc);
     switch (resp) {
@@ -173,7 +174,7 @@ pub fn del(self: *Client, key: []const u8) !void {
 
 /// setNx sets key=value with ttl only if key does not exist.
 /// Returns true if key was set (new), false if key already existed (duplicate).
-pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !bool {
+pub fn setNx(self: *Self, key: []const u8, value: []const u8, ttl_seconds: u32) !bool {
     var ttl_buf: [12]u8 = undefined;
     const ttl_str = try std.fmt.bufPrint(&ttl_buf, S_D, .{ttl_seconds});
     var resp = try self.commandAllowError(&.{ S_SET, key, value, "NX", S_EX, ttl_str });
@@ -190,7 +191,7 @@ pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
 /// surface it in the response body for SSE correlation.
 ///
 /// Stream is trimmed approximately to MAXLEN 10000 entries.
-pub fn xaddAgentEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
+pub fn xaddAgentEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
     var stream_key_buf: [128]u8 = undefined;
     const stream_key = try std.fmt.bufPrint(&stream_key_buf, "agent:{s}:events", .{envelope.agent_id});
 
@@ -225,7 +226,7 @@ pub fn xaddAgentEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
 /// Pool-backed: acquire → run command → release. Transport errors retry
 /// up to MAX_ATTEMPTS with a fresh dial; server-side `.err` replies are
 /// resumable (no retry) and surface to the caller.
-pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
+pub fn command(self: *Self, argv: []const []const u8) !redis_protocol.RespValue {
     var attempt: u8 = 0;
     while (true) : (attempt += 1) {
         const conn = try self.pool.acquire();
@@ -268,7 +269,7 @@ pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValu
 /// Same as `command` but surfaces `.err` RespValue intact for callers
 /// that need to inspect the server's error message (XGROUP CREATE
 /// returning BUSYGROUP on a known-created group, etc.).
-pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
+pub fn commandAllowError(self: *Self, argv: []const []const u8) !redis_protocol.RespValue {
     var attempt: u8 = 0;
     while (true) : (attempt += 1) {
         const conn = try self.pool.acquire();

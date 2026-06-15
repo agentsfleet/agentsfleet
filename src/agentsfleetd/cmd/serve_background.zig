@@ -9,6 +9,8 @@ const serve_shutdown = @import("serve_shutdown.zig");
 
 /// Background threads owned by `serve.zig`.
 pub const Threads = struct {
+    const Self = @This();
+
     event_bus: events_bus.Bus = events_bus.Bus.init(),
     signal_thread: ?std.Thread = null,
     event_thread: ?std.Thread = null,
@@ -23,7 +25,7 @@ pub const Threads = struct {
     }
 
     pub fn start(
-        self: *Threads,
+        self: *Self,
         pool: *pg.Pool,
         queue: *queue_redis.Client,
         alloc: std.mem.Allocator,
@@ -39,7 +41,7 @@ pub const Threads = struct {
         self.reclaim_sweeper_thread = try std.Thread.spawn(.{}, reclaim_sweeper.run, .{ pool, queue, alloc, serve_shutdown.flag() });
     }
 
-    pub fn stop(self: *Threads) void {
+    pub fn stop(self: *Self) void {
         if (self.stopped) return;
         self.stopped = true;
         serve_shutdown.request();
