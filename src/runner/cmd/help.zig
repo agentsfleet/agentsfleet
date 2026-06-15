@@ -84,7 +84,7 @@ test "help body is ≤80 cols, ANSI-free, and lists every command" {
 }
 
 // Byte-exact drift guard against the checked-in golden (same contract as
-// agentsfleet/test/golden/help-no-color.txt). @embedFile is compile-time and
+// cli/test/golden/help-no-color.txt). @embedFile is compile-time and
 // in-bounds (testdata/ lives under this module's root), so the test needs no
 // cwd. Regenerate on an intentional help change:
 //   NO_COLOR=1 zig-out/bin/agentsfleet-runner --help > src/runner/cmd/testdata/help.txt

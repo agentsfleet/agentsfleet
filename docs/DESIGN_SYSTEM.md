@@ -260,7 +260,7 @@ This document is the spec. Implementation is a separate milestone. Suggested wor
 3. **W3 — `ui/packages/app`:** apply new tokens, audit every page against the dashboard mockup, ensure `<WakePulse />` only fires on actually-live agents (data-driven, not decorative).
 4. **W4 — `docs.agentsfleet.net`:** apply new typography stack, single-column layout, ~68ch measure.
 5. **W5 — `agentsfleet`:** add 256-color terminal mode (detect via `tput colors`), implement status glyphs, audit every output line for the new palette mapping.
-6. **W6 — Wire-up:** add a `docs/DESIGN_SYSTEM.md` row to the EXECUTE doc-reads table in `AGENTS.md` (triggers: `*.tsx`, `*.css`, files under `ui/packages/**`, `agentsfleet/src/**` when touching output formatting). Triggers the Invariance Suite Gate — handle as its own commit.
+6. **W6 — Wire-up:** add a `docs/DESIGN_SYSTEM.md` row to the EXECUTE doc-reads table in `AGENTS.md` (triggers: `*.tsx`, `*.css`, files under `ui/packages/**`, `cli/src/**` when touching output formatting). Triggers the Invariance Suite Gate — handle as its own commit.
 
 Each workstream is its own spec. Use `kishore-spec-new` to create them once you're ready to start implementation.
 

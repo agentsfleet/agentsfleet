@@ -544,7 +544,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-agentsfleet-${{ hashFiles('agentsfleet/bun.lock') }}
+          key: ${{ runner.os }}-playwright-agentsfleet-${{ hashFiles('cli/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-playwright-agentsfleet-
 

@@ -83,7 +83,7 @@ openssl rand -hex 32   # → store in op://$VAULT_PROD/audit-log-pepper/credenti
 
 ### 1.3c Provision E2E Fixture Email Identities
 
-The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `agentsfleet/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
+The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `cli/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
 
 ```bash
 # 1. In the Clerk DEV dashboard, create two test users:

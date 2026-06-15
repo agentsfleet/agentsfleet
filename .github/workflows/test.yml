@@ -39,7 +39,7 @@ jobs:
       - name: Test shared src/lib (Zig units)
         run: make test-unit-agentsfleet-lib
 
-  test-unit-agentsfleet:
+  test-unit-cli:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -58,7 +58,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: agentsfleet/agentsfleet
           flags: agentsfleet
-          files: agentsfleet/coverage/lcov.info
+          files: cli/coverage/lcov.info
           fail_ci_if_error: false
 
   test-unit-website:
@@ -146,7 +146,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [test-unit-agentsfleetd, test-unit-agentsfleet-runner, test-unit-agentsfleet-lib, test-unit-agentsfleet, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website]
+    needs: [test-unit-agentsfleetd, test-unit-agentsfleet-runner, test-unit-agentsfleet-lib, test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website]
     steps:
       - name: Preserve legacy test check name
         run: echo "All test lanes passed"

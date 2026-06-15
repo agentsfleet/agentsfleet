@@ -2,7 +2,7 @@ import { ApiError } from "./errors";
 import { request } from "./client";
 
 /**
- * HTTP retry wrapper mirroring `agentsfleet/src/lib/http-retry.ts`'s
+ * HTTP retry wrapper mirroring `cli/src/lib/http-retry.ts`'s
  * `apiRequestWithRetry`. Same retryable-status set, same backoff
  * math, same Retry-After honoring, same server-5xx idempotency gate,
  * same `onAttempt`/`onRetry` hook surface — so dashboard + CLI

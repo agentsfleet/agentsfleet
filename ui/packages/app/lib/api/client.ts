@@ -12,7 +12,7 @@ export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
  * Parses a `Retry-After` header value into milliseconds. Honors the
  * delta-seconds form (e.g., `Retry-After: 30`); the HTTP-date form is
  * rare for our APIs and is ignored (callers fall back to exponential
- * backoff). Mirrors the CLI parser at `agentsfleet/src/lib/http.js`.
+ * backoff). Mirrors the CLI parser at `cli/src/lib/http.js`.
  */
 const MS_PER_SECOND = 1000;
 

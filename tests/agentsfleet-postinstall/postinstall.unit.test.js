@@ -1,4 +1,4 @@
-// Codified version of the manual smoke test for agentsfleet/scripts/postinstall.mjs.
+// Codified version of the manual smoke test for cli/scripts/postinstall.mjs.
 // Every defensive path the script carries gets exercised against a temp HOME so
 // regressions can't slip through silently. The script's contract is "never crash
 // `npm install`" — these tests assert that and the idempotency invariant.

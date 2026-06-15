@@ -13,7 +13,7 @@
  *   - `AGENTSFLEET_STATE_DIR=<tmpdir>/agentsfleet` points the CLI at that state.
  *   - `AGENTSFLEET_TOKEN=<fixture.sessionJwt>` populates the Bearer header.
  *     (The env var name is `AGENTSFLEET_TOKEN`, not `ZOMBIECTL_TOKEN` — see
- *      `agentsfleet/src/cli.js:65`.)
+ *      `cli/src/cli.js:65`.)
  *   - `AGENTSFLEET_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
  *     workspace-id fetch hit the same agentsfleetd (mismatched URLs land at 404).
  *
@@ -37,7 +37,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 // worktree root is six levels up from its containing directory.
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(THIS_DIR, "../../../../../..");
-const ZOMBIECTL_BIN = path.join(WORKTREE_ROOT, "agentsfleet/dist/bin/agentsfleet.js");
+const CLI_BIN = path.join(WORKTREE_ROOT, "cli/dist/bin/agentsfleet.js");
 
 function loadFixtureCache(): Record<string, { sessionJwt: string }> {
   const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
@@ -85,7 +85,7 @@ interface SpawnResult {
 
 async function spawnAgentctl(args: string[], env: Record<string, string>): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [ZOMBIECTL_BIN, ...args], {
+    const child = spawn(process.execPath, [CLI_BIN, ...args], {
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });

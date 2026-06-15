@@ -5,7 +5,7 @@
  * RULE UFS: every "list of commands" literal lives here once. Specs read
  * from these exports; nothing inlines a command-string list.
  *
- * If a new command surface lands in `agentsfleet/src/program/routes.js`,
+ * If a new command surface lands in `cli/src/program/routes.js`,
  * the implementing agent of THAT change extends the relevant table here
  * and the spec sweeps pick it up automatically.
  */

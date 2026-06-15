@@ -202,11 +202,11 @@ spans hundreds of files.
 | `schema/007_core_zombies.sql`+5 sibling `*zombie*.sql`, `schema/011_core_agent_keys.sql`, `schema/embed.zig` | EDIT/RENAME | `core.zombies`→`core.agents`, `core.zombie_*`→`core.agent_*` (direct, no migration); `agent_keys.agent_id`→`agent_key_id`; file renames + `@embedFile` consts in lockstep |
 | `src/agentsfleetd/http/handlers/api_keys/agent.zig`, `http/route_matchers*.zig`, `route_table*.zig`, `routes.zig` | EDIT | keys disambiguation: `agent_id`→`agent_key_id`, `/agent-keys/{agent_id}`→`{agent_key_id}` |
 | `src/agentsfleetd/**` (daemon: ~bulk) | EDIT | entity rename `zombie`→`agent` (handlers, fleet, errors, types, log scopes); `UZ-ZMB-*`→`UZ-AGT-*` |
-| `agentsfleet/src/**` (CLI), `ui/packages/app/**` (dashboard) | EDIT | entity rename in identifiers + display; CLI group `agent`→`agent-key`; `--zombie`→`--agent` flag |
+| `cli/src/**` (CLI), `ui/packages/app/**` (dashboard) | EDIT | entity rename in identifiers + display; CLI group `agent`→`agent-key`; `--zombie`→`--agent` flag |
 | `public/openapi/{root.yaml,paths/zombies.yaml→agents.yaml,paths/agent-keys.yaml,components/schemas.yaml}` + regen `public/openapi.json` | EDIT/RENAME | routes `/zombies`→`/agents`; `zombie_id`→`agent_id`; agent-keys path-param rename; `x_usezombie`→`x_agentsfleet` |
 | `src/agentsfleetd/observability/metrics_runner.zig` (+`_test.zig`) + `deploy/grafana/runner_fleet.json` | EDIT | `zombie_runner_*`→`agentsfleet_runner_*` (lockstep) |
 | install script, `README*`, website install snippet, config | EDIT | `usezombie.sh`→`agentsfleet.dev`; `usezombie.com`→`agentsfleet.net` |
-| `agentsfleet/src/lib/contact.ts`, `ui/packages/{app,website}/.../contact.ts`, pins (5 mirrored) | EDIT | mail flip everything → `agentsfleet` |
+| `cli/src/lib/contact.ts`, `ui/packages/{app,website}/.../contact.ts`, pins (5 mirrored) | EDIT | mail flip everything → `agentsfleet` |
 | `deploy/fly/**`, cloudflared, `.github/workflows/**` (hosts/env strings) | EDIT | fly app cutover + API host split (gated; Indy CI grant) |
 | `samples/platform-ops/` (delete), `samples/fixtures/`→test dirs | DELETE/EDIT | decommission in-repo samples; repoint 5 consumers |
 | `src/agentsfleetd/http/routes.zig` + struct files across `src/agentsfleetd/**` | EDIT | two pre-approved Zig refactors (own commits) |
@@ -417,7 +417,7 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
   | grep -viE "ZMB_|zmb_vault" | grep -c . || true
 # E2: build + suite — zig build && make test 2>&1 | tail -3 ; cross-compile both linux targets
 # E3: keep tokens byte-stable — git grep -c "ZMB_" vs origin/main ; agent_keys has one agent_id
-# E4: brand — git grep -nE "usezombie|useagent|agentctl\b|agentd\b" -- src/ agentsfleet/src ui/packages
+# E4: brand — git grep -nE "usezombie|useagent|agentctl\b|agentd\b" -- src/ cli/src ui/packages
 #     (expect: usezombie→flagged keeps only; useagent/agentctl/agentd == 0)
 # E5: orphan sweep — grep -rn "samples/platform-ops" src/ (expect 0)
 # E10: installer — git grep -nE "usezombie\.sh" (live refs; expect 0)
@@ -473,6 +473,25 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
   `zmb:` form "is gone with the in-child Postgres path." `protocol.zig` / `runner_fleet.md` still
   describe it as current — **doc drift**, cleaned in the §5.1 residue sweep, not a live namespace
   (no Indy decision required).
+- *Jun 15, 2026 (resume):* make-target naming aligned to the brand/binary names (Indy, *"this must be
+  renamed from test-unit-zigrunner to test-unit-agentsfleet-runner... since you have
+  test-unit-agentsfleetd"*; scope = **full family**): `test-unit-zigrunner`→`test-unit-agentsfleet-runner`,
+  `test-integration-runner`→`test-integration-agentsfleet-runner`, `test-unit-ziglib`→`test-unit-agentsfleet-lib`.
+  CI workflow job names + `needs` lists updated under Indy's explicit CI/CD grant.
+- *Jun 15, 2026 (resume):* CLI package dir renamed `agentsfleet/`→`cli/` (Indy, *"the
+  ~/Projects/agentsfleet/agentsfleet seems saying that is the daemon, can you rename it to
+  ~/Projects/agentsfleet/cli/"*; npm package stays `@agentsfleet/cli`). `git mv` (history preserved) +
+  path refs in make/hooks/CI/.gitignore/docs/ui; matching lanes `test-unit-agentsfleet`→`test-unit-cli`,
+  `lint-agentsfleet`→`lint-cli` (TS-package lanes name-match their dir, like `app`/`website`). The
+  `/opt/agentsfleet/` runtime deploy path is kept (not the source dir). `lint-cli` + CLI build green.
+- *Jun 15, 2026 (resume):* **discovered a pre-existing CLI bun-suite breakage** (the prior session
+  never ran `make test-unit-agentsfleet`). The §0 `agent`→`agent-key` keys-group rename landed in CLI
+  source (`cli-tree.ts` registers `agent-key`; `cli-tree-agent.ts` registers the distinct `agent`
+  **entity** group — install/update/list/status/stop/kill/delete/logs/events/steer, no `add`), but ~24
+  test invocations of `agent add/list/delete/update` across 9 `cli/test/*` files were not reconciled,
+  and `commands-agent-key-linecov` expects `"no external agents found"` while `agent_key.ts` emits
+  `"no agent keys found"`. Not introduced by this session's prefix/dir work. Surfaced to Indy for a
+  reconciliation decision (which invocations are entity vs keys) before fixing.
 
 ---
 

@@ -49,7 +49,7 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
-cd agentsfleet
+cd cli
 
 # Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
 make up           # Postgres + Redis + agentsfleetd (auto-migrates DB)
