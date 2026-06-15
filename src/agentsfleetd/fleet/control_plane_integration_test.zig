@@ -30,8 +30,8 @@ const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6011";
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6a01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6b01";
-const ZOMBIE_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c01";
-const ZOMBIE_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c02";
+const AGENTSFLEET_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c01";
+const AGENTSFLEET_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6c02";
 const SESSION_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6d01";
 const SESSION_2_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6d02";
 const AFFINITY_1_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d6e01";
@@ -42,7 +42,7 @@ const RUNNER_A_TOKEN = "zrn_" ++ "a" ** 64;
 const RUNNER_B_TOKEN = "zrn_" ++ "b" ** 64;
 
 const CONFIG_NO_GATES =
-    \\{"name":"runner-cp-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"runner-cp-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const SOURCE_MD =
     \\---
@@ -243,12 +243,12 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 /// Idempotent teardown of every fixture any test in this file seeds. Deletes are
 /// no-ops when absent, so one routine serves all tests.
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "zombie:" ++ ZOMBIE_1_ID ++ ":events");
-    delStream(h, "zombie:" ++ ZOMBIE_2_ID ++ ":events");
+    delStream(h, "agent:" ++ AGENTSFLEET_1_ID ++ ":events");
+    delStream(h, "agent:" ++ AGENTSFLEET_2_ID ++ ":events");
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE runner_id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_1_ID, ZOMBIE_2_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_1_ID, AGENTSFLEET_2_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_1_ID, ZOMBIE_2_ID });
+    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_1_ID, AGENTSFLEET_2_ID });
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownZombies(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -269,26 +269,26 @@ test "integration: runner control plane — lease assigns across active zombies,
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
-    try seedActiveZombie(conn, ZOMBIE_2_ID, "cp-zombie-2", SESSION_2_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_2_ID, "cp-zombie-2", SESSION_2_ID);
     // Sticky hint: zombie 2 prefers runner A (expired claim → still claimable,
     // sorts to the front of the candidate scan).
-    try seedAffinity(conn, AFFINITY_2_ID, ZOMBIE_2_ID, RUNNER_A_ID, 0, 0);
+    try seedAffinity(conn, AFFINITY_2_ID, AGENTSFLEET_2_ID, RUNNER_A_ID, 0, 0);
 
-    try publishFreshEvent(h, ZOMBIE_1_ID);
-    try publishFreshEvent(h, ZOMBIE_2_ID);
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
+    try publishFreshEvent(h, AGENTSFLEET_2_ID);
 
     // Lease 1 → the sticky-preferred zombie 2.
     const first = try leaseAs(h, RUNNER_A_TOKEN);
     defer if (first.zombie_id) |z| ALLOC.free(z);
     try std.testing.expect(first.present);
-    try std.testing.expectEqualStrings(ZOMBIE_2_ID, first.zombie_id.?);
+    try std.testing.expectEqualStrings(AGENTSFLEET_2_ID, first.zombie_id.?);
 
     // Lease 2 → the other active zombie (sticky one is now claimed).
     const second = try leaseAs(h, RUNNER_A_TOKEN);
     defer if (second.zombie_id) |z| ALLOC.free(z);
     try std.testing.expect(second.present);
-    try std.testing.expectEqualStrings(ZOMBIE_1_ID, second.zombie_id.?);
+    try std.testing.expectEqualStrings(AGENTSFLEET_1_ID, second.zombie_id.?);
 
     // Lease 3 → no work; both zombies are claimed.
     const third = try leaseAs(h, RUNNER_A_TOKEN);
@@ -306,10 +306,10 @@ test "integration: runner control plane — report with a stale fencing token is
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
     // The zombie's live fencing seq has advanced past this lease's token, as a
     // reclaim would leave it.
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, clock.nowMillis() + 60_000);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 2, clock.nowMillis() + 60_000);
 
     const resp = try reportLease(h, RUNNER_A_TOKEN, LEASE_OLD_ID, 1);
     defer resp.deinit();
@@ -330,17 +330,17 @@ test "integration: runner control plane — an expired lease is reclaimed and re
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // reclaimer
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
     // Dead holder A: an expired affinity (claimable) + an active lease that
     // carries the durable event envelope to re-lease.
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
 
     // B leases → reclaims A's event under a strictly higher token.
     const lv = try leaseAs(h, RUNNER_B_TOKEN);
     defer if (lv.zombie_id) |z| ALLOC.free(z);
     try std.testing.expect(lv.present);
-    try std.testing.expectEqualStrings(ZOMBIE_1_ID, lv.zombie_id.?);
+    try std.testing.expectEqualStrings(AGENTSFLEET_1_ID, lv.zombie_id.?);
     try std.testing.expect(lv.fencing_token > 1);
 
     // A's old lease is retired.
@@ -365,8 +365,8 @@ test "integration: runner control plane — a fresh lease carries the resolved p
     try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, KNOWN_KEY);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
-    try publishFreshEvent(h, ZOMBIE_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
 
     // The billed key (resolveActiveProvider) is the key the runner receives.
     try expectLeasePolicyKey(h, RUNNER_A_TOKEN, KNOWN_KEY);
@@ -386,10 +386,10 @@ test "integration: runner control plane — a reclaimed lease re-resolves and ca
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // reclaimer
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
     // Dead holder A: expired affinity (claimable) + active lease carrying the envelope.
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
 
     // Reclaim reuses prior billing, but the key was never persisted — issueLease
     // re-resolves it, so the reclaimed lease still authenticates (the named fix).
@@ -408,8 +408,8 @@ test "integration: runner control plane — a fresh lease carries the installed 
     try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_instr_fresh_key");
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
-    try publishFreshEvent(h, ZOMBIE_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
 
     // The SKILL.md body (extracted from SOURCE_MD by ZombieSession) rides the lease,
     // so the runner delivers the installed behaviour to NullClaw.
@@ -429,9 +429,9 @@ test "integration: runner control plane — a reclaimed lease keeps the installe
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // reclaimer
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
 
     // Reclaim resolves the session through the same ZombieSession path, so the
     // installed instructions still ride the re-issued lease.
@@ -449,18 +449,18 @@ test "integration: runner control plane — sticky routing is a hint, not owners
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // sticky-preferred, unavailable
     try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // any eligible runner
-    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try seedActiveZombie(conn, AGENTSFLEET_1_ID, "cp-zombie-1", SESSION_1_ID);
     // Sticky preference is A, but A's claim has expired → B must still get it.
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
-    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, AGENTSFLEET_1_ID, 1);
 
     const lv = try leaseAs(h, RUNNER_B_TOKEN);
     defer if (lv.zombie_id) |z| ALLOC.free(z);
     try std.testing.expect(lv.present);
-    try std.testing.expectEqualStrings(ZOMBIE_1_ID, lv.zombie_id.?);
+    try std.testing.expectEqualStrings(AGENTSFLEET_1_ID, lv.zombie_id.?);
 
     // The new active lease belongs to B, not the sticky-preferred A.
-    try std.testing.expect(try activeLeaseRunnerIs(conn, ZOMBIE_1_ID, RUNNER_B_ID));
+    try std.testing.expect(try activeLeaseRunnerIs(conn, AGENTSFLEET_1_ID, RUNNER_B_ID));
 }
 
 test "integration: runner control plane — release is token-guarded: a superseded holder cannot free the live slot" {
@@ -475,14 +475,14 @@ test "integration: runner control plane — release is token-guarded: a supersed
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
     // The live holder owns the slot at fencing_seq=2, claim valid into the future.
     const live_until = clock.nowMillis() + 60_000;
-    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, live_until);
+    try seedAffinity(conn, AFFINITY_1_ID, AGENTSFLEET_1_ID, RUNNER_A_ID, 2, live_until);
 
     // A superseded holder (token 1 < seq 2, as a reclaim would leave it) releases
     // → no-op: the slot stays held, leased_until unchanged.
-    try affinity.release(conn, ZOMBIE_1_ID, 1);
-    try std.testing.expectEqual(live_until, try leasedUntilOf(conn, ZOMBIE_1_ID));
+    try affinity.release(conn, AGENTSFLEET_1_ID, 1);
+    try std.testing.expectEqual(live_until, try leasedUntilOf(conn, AGENTSFLEET_1_ID));
 
     // The live holder (token == seq) releases → slot freed (leased_until → ~now).
-    try affinity.release(conn, ZOMBIE_1_ID, 2);
-    try std.testing.expect(try leasedUntilOf(conn, ZOMBIE_1_ID) < live_until);
+    try affinity.release(conn, AGENTSFLEET_1_ID, 2);
+    try std.testing.expect(try leasedUntilOf(conn, AGENTSFLEET_1_ID) < live_until);
 }

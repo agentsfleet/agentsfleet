@@ -122,11 +122,11 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
 
     const revision = switch (outcome) {
         .updated => |r| r,
-        .not_found => return hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND),
-        .invalid_transition => return hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Status transition not allowed from current state"),
-        .invalid_trigger_markdown, .invalid_source_markdown => return hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG),
+        .not_found => return hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND),
+        .invalid_transition => return hx.fail(ec.ERR_AGENTSFLEET_ALREADY_TERMINAL, "Status transition not allowed from current state"),
+        .invalid_trigger_markdown, .invalid_source_markdown => return hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_INVALID_CONFIG),
         .invalid_required_tags => return hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
-        .name_mismatch => return hx.fail(ec.ERR_ZOMBIE_NAME_MISMATCH, ec.MSG_ZOMBIE_NAME_MISMATCH),
+        .name_mismatch => return hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH),
         .lock_timeout => {
             log.warn("patch_lock_timeout", .{ .zombie_id = zombie_id, .req_id = hx.req_id });
             common.internalDbUnavailable(hx.res, hx.req_id);
@@ -165,7 +165,7 @@ fn validateBody(hx: Hx, body: PatchBody) bool {
     }
     if (body.config_json) |cj| {
         if (cj.len == 0) {
-            hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED);
+            hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_CONFIG_REQUIRED);
             return false;
         }
     }

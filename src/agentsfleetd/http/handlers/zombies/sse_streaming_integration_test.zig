@@ -1,7 +1,7 @@
 // SSE streaming integration tests — covers the three live-tail invariants
 // the spec calls out (publish latency, reconnect-backfill, sequence reset).
 // Each test boots an in-process TestHarness, opens a real TCP SSE client
-// against the harness port, PUBLISHes frames to `zombie:{id}:activity`, and
+// against the harness port, PUBLISHes frames to `agent:{id}:activity`, and
 // asserts the operator-visible state.
 //
 // Requires TEST_DATABASE_URL, TEST_REDIS_TLS_URL, and REDIS_URL_API — skipped
@@ -26,16 +26,16 @@ const fixtures = @import("sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const ZOMBIE_LATENCY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
-const ZOMBIE_RECONNECT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd02";
-const ZOMBIE_SEQUENCE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd03";
+const AGENTSFLEET_LATENCY = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
+const AGENTSFLEET_RECONNECT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd02";
+const AGENTSFLEET_SEQUENCE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd03";
 
 fn setupHarness(alloc: std.mem.Allocator) !*TestHarness {
     const h = try fixtures.startHarnessWithWorkspace(alloc);
     errdefer h.deinit();
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    inline for (.{ ZOMBIE_LATENCY, ZOMBIE_RECONNECT, ZOMBIE_SEQUENCE }, .{ "sse-latency", "sse-reconnect", "sse-sequence" }) |zid, name| {
+    inline for (.{ AGENTSFLEET_LATENCY, AGENTSFLEET_RECONNECT, AGENTSFLEET_SEQUENCE }, .{ "sse-latency", "sse-reconnect", "sse-sequence" }) |zid, name| {
         try fixtures.seedZombie(conn, zid, name);
     }
     return h;
@@ -71,10 +71,10 @@ test "integration: SSE publish→receive latency p95 < 200ms over 50 trials" {
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_LATENCY);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_LATENCY);
     defer ALLOC.free(channel);
 
-    var sc = try openAndSettle(ALLOC, h.port, ZOMBIE_LATENCY, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    var sc = try openAndSettle(ALLOC, h.port, AGENTSFLEET_LATENCY, .{ .bearer = fixtures.TOKEN_OPERATOR });
     defer sc.deinit();
 
     // Warmup: 3 round-trips to flush slow-start latency before measuring.
@@ -135,7 +135,7 @@ test "integration: SSE reconnect — durable backfill via /events covers the gap
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_RECONNECT);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_RECONNECT);
     defer ALLOC.free(channel);
 
     // Phase 1: live zombie sees event A while operator is connected.
@@ -143,9 +143,9 @@ test "integration: SSE reconnect — durable backfill via /events covers the gap
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try insertZombieEvent(conn, ZOMBIE_RECONNECT, "1900000001000-0", ts_base);
+        try insertZombieEvent(conn, AGENTSFLEET_RECONNECT, "1900000001000-0", ts_base);
     }
-    var sc1 = try openAndSettle(ALLOC, h.port, ZOMBIE_RECONNECT, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    var sc1 = try openAndSettle(ALLOC, h.port, AGENTSFLEET_RECONNECT, .{ .bearer = fixtures.TOKEN_OPERATOR });
     try pub_client.publish(channel, "{\"kind\":\"event_received\",\"event_id\":\"1900000001000-0\",\"actor\":\"steer:test\"}");
     var live_a = try sc1.nextFrame();
     live_a.deinit(ALLOC);
@@ -158,12 +158,12 @@ test "integration: SSE reconnect — durable backfill via /events covers the gap
     {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
-        try insertZombieEvent(conn, ZOMBIE_RECONNECT, "1900000001001-0", ts_base + 1);
-        try insertZombieEvent(conn, ZOMBIE_RECONNECT, "1900000001002-0", ts_base + 2);
+        try insertZombieEvent(conn, AGENTSFLEET_RECONNECT, "1900000001001-0", ts_base + 1);
+        try insertZombieEvent(conn, AGENTSFLEET_RECONNECT, "1900000001002-0", ts_base + 2);
     }
 
     // Phase 3: operator backfills via /events?since= and observes B + C.
-    const events_path = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=1h", .{ fixtures.TEST_WORKSPACE_ID, ZOMBIE_RECONNECT });
+    const events_path = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/events?since=1h", .{ fixtures.TEST_WORKSPACE_ID, AGENTSFLEET_RECONNECT });
     defer ALLOC.free(events_path);
     const r = try (try h.get(events_path).bearer(fixtures.TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -172,7 +172,7 @@ test "integration: SSE reconnect — durable backfill via /events covers the gap
     try std.testing.expect(r.bodyContains("1900000001002-0"));
 
     // Phase 4: re-open SSE; live frame for D arrives on the new connection.
-    var sc2 = try openAndSettle(ALLOC, h.port, ZOMBIE_RECONNECT, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    var sc2 = try openAndSettle(ALLOC, h.port, AGENTSFLEET_RECONNECT, .{ .bearer = fixtures.TOKEN_OPERATOR });
     defer sc2.deinit();
     try pub_client.publish(channel, "{\"kind\":\"event_received\",\"event_id\":\"1900000001003-0\",\"actor\":\"steer:test\"}");
     var live_d = try sc2.nextFrame();
@@ -196,11 +196,11 @@ test "integration: SSE id resets to 0 on reconnect — Last-Event-ID ignored" {
 
     var pub_client = fixtures.connectPublisher(ALLOC) catch return error.SkipZigTest;
     defer pub_client.deinit();
-    const channel = try fixtures.activityChannel(ALLOC, ZOMBIE_SEQUENCE);
+    const channel = try fixtures.activityChannel(ALLOC, AGENTSFLEET_SEQUENCE);
     defer ALLOC.free(channel);
 
     // First connection: receive frames id=0 and id=1.
-    var sc1 = try openAndSettle(ALLOC, h.port, ZOMBIE_SEQUENCE, .{ .bearer = fixtures.TOKEN_OPERATOR });
+    var sc1 = try openAndSettle(ALLOC, h.port, AGENTSFLEET_SEQUENCE, .{ .bearer = fixtures.TOKEN_OPERATOR });
     try pub_client.publish(channel, "{\"kind\":\"event_received\",\"event_id\":\"e1\",\"actor\":\"steer:test\"}");
     var f0 = try sc1.nextFrame();
     defer f0.deinit(ALLOC);
@@ -215,7 +215,7 @@ test "integration: SSE id resets to 0 on reconnect — Last-Event-ID ignored" {
     sc1.deinit();
 
     // Reconnect with a forged Last-Event-ID; the handler must ignore it.
-    var sc2 = try openAndSettle(ALLOC, h.port, ZOMBIE_SEQUENCE, .{
+    var sc2 = try openAndSettle(ALLOC, h.port, AGENTSFLEET_SEQUENCE, .{
         .bearer = fixtures.TOKEN_OPERATOR,
         .last_event_id = "99",
     });

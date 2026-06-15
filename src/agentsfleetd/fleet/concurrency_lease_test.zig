@@ -34,7 +34,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dc011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dca01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc01";
 
 const N_CLAIMERS = 100;
 
@@ -53,7 +53,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -71,7 +71,7 @@ const Worker = struct {
     fn run(h: *TestHarness, slot: *ClaimSlot) void {
         const conn = h.acquireConn() catch return;
         defer h.releaseConn(conn);
-        const c = affinity.claim(conn, ALLOC, ZOMBIE_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
+        const c = affinity.claim(conn, ALLOC, AGENTSFLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
         switch (c) {
             .won => |w| slot.* = .{ .code = 1, .token = w.token },
             .taken => slot.* = .{ .code = 2 },

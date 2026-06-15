@@ -229,7 +229,7 @@ test "parseTriggerMarkdownWithJson: returns both parsed config and owned JSON" {
     const trigger_md =
         \\---
         \\name: test-zombie
-        \\x-usezombie:
+        \\x-agentsfleet:
         \\  triggers:
         \\    - type: cron
         \\      schedule: "0 0 * * *"
@@ -261,7 +261,7 @@ test "parseTriggerMarkdownWithJson: parse failure inside frontmatter → JSON fr
     // The errdefer must free the JSON. std.testing.allocator panics on leak.
     const trigger_md =
         \\---
-        \\x-usezombie:
+        \\x-agentsfleet:
         \\  triggers:
         \\    - type: cron
         \\      schedule: "0 0 * * *"

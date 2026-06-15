@@ -48,9 +48,9 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
     e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
-    e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets a zombie that belongs to a different workspace. " ++
-        "Each zombie's memory is scoped to its own zombie_id; cross-zombie access is not permitted."),
-    e("UZ-MEM-002", .not_found, "Zombie not found for memory op", "The zombie_id does not exist or does not belong to the requesting workspace. " ++
+    e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets an agent that belongs to a different workspace. " ++
+        "Each agent's memory is scoped to its own zombie_id; cross-agent access is not permitted."),
+    e("UZ-MEM-002", .not_found, "Agent not found for memory op", "The zombie_id does not exist or does not belong to the requesting workspace. " ++
         "Verify the zombie_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
@@ -64,6 +64,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one."),
     e("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
-    e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This zombie has no approved grant for the target service. " ++
+    e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This agent has no approved grant for the target service. " ++
         "Request one with: POST /v1/zombies/{id}/integration-requests"),
 };

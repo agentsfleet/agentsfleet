@@ -62,7 +62,7 @@ pub fn claimZombie(
     const row = try q.next() orelse {
         log.warn("zombie_event_loop.claim_not_found", .{
             .zombie_id = zombie_id_input,
-            .error_code = error_codes.ERR_ZOMBIE_CLAIM_FAILED,
+            .error_code = error_codes.ERR_AGENTSFLEET_CLAIM_FAILED,
             .reason = "not_found",
         });
         return error.ZombieNotFound;

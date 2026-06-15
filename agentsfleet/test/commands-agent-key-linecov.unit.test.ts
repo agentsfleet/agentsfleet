@@ -1,5 +1,5 @@
-// Line-coverage backfill for commands/agent.ts. The integration suite
-// (agent.integration.test.ts) drives the happy non-JSON paths end-to-end
+// Line-coverage backfill for commands/agent_key.ts. The integration suite
+// (agent_key.integration.test.ts) drives the happy non-JSON paths end-to-end
 // through runCli, so the JSON-mode short-circuits, the empty-list branch,
 // the workspace-context resolution (no --workspace flag), and the invalid-id
 // rejection in requireValidId never fire as callable units. These tests
@@ -12,7 +12,7 @@ import {
   agentListEffectFromArgs,
   agentDeleteEffectFromArgs,
   type AgentAddArgs,
-} from "../src/commands/agent.ts";
+} from "../src/commands/agent_key.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -118,7 +118,7 @@ const baseAddArgs: AgentAddArgs = {
 describe("agent add JSON mode", () => {
   test("prints the raw key response as JSON and skips the human table", async () => {
     const cap = newCapture();
-    const response = { agent_id: "agent_key_001", key: "zmb_raw", created_at: null };
+    const response = { agent_key_id: "agent_key_001", key: "zmb_raw", created_at: null };
     const exit = await Effect.runPromiseExit(
       provideAll(agentAddEffectFromArgs(baseAddArgs), cap, {
         jsonMode: true,
@@ -136,7 +136,7 @@ describe("agent add JSON mode", () => {
 describe("agent list JSON mode", () => {
   test("prints the list response as JSON and skips the human table", async () => {
     const cap = newCapture();
-    const response = { items: [{ agent_id: "agent_a", name: "bot" }] };
+    const response = { items: [{ agent_key_id: "agent_a", name: "bot" }] };
     const exit = await Effect.runPromiseExit(
       provideAll(agentListEffectFromArgs(WS_ID), cap, {
         jsonMode: true,

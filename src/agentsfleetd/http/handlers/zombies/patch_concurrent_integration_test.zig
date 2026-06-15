@@ -14,9 +14,9 @@
 //   - Different-fields concurrent PATCH: both land via row-lock merge.
 //   - Same-field concurrent PATCH: collapses to last-write-wins; no
 //     `40P01 deadlock_detected` in either response.
-//   - N concurrent writers on same zombie: all 200; pool returns to
+//   - N concurrent writers on same agent: all 200; pool returns to
 //     baseline (no exhausted connections).
-//   - PATCH + DELETE on same zombie: exactly one final state, no
+//   - PATCH + DELETE on same agent: exactly one final state, no
 //     deadlock_detected in either response/log.
 //   - Different zombies in parallel: wall time stays sub-linear.
 //
@@ -47,10 +47,10 @@ const ALLOC = std.testing.allocator;
 // regenerating via the test-token mint helper or copying canonical tokens.
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f21";
-const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f22";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f21";
+const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f22";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -63,12 +63,12 @@ const TOKEN_OPERATOR =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 
 const BASE_CONFIG_JSON =
-    \\{"name":"conc-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"conc-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
 ;
 const BASE_TRIGGER_MD =
     \\---
     \\name: conc-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: webhook
     \\      source: github
@@ -88,7 +88,7 @@ const BASE_SOURCE_MD =
 const TRIGGER_VARIANT_A =
     \\---
     \\name: conc-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: cron
     \\      schedule: "*/15 * * * *"
@@ -100,7 +100,7 @@ const TRIGGER_VARIANT_A =
 const TRIGGER_VARIANT_B =
     \\---
     \\name: conc-bot
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: cron
     \\      schedule: "0 9 * * *"
@@ -121,16 +121,16 @@ const SOURCE_VARIANT_A =
     \\# variant A
 ;
 
-// ZOMBIE_B mirror of BASE/TRIGGER_VARIANT_A with its own name so the §5
+// AGENTSFLEET_B mirror of BASE/TRIGGER_VARIANT_A with its own name so the §5
 // parallel test can PATCH both rows concurrently without colliding on
 // uq_zombies_workspace_name (workspace_id, name).
 const BASE_CONFIG_JSON_B =
-    \\{"name":"conc-bot-b","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"conc-bot-b","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
 ;
 const BASE_TRIGGER_MD_B =
     \\---
     \\name: conc-bot-b
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: webhook
     \\      source: github
@@ -149,7 +149,7 @@ const BASE_SOURCE_MD_B =
 const TRIGGER_VARIANT_FOR_B =
     \\---
     \\name: conc-bot-b
-    \\x-usezombie:
+    \\x-agentsfleet:
     \\  triggers:
     \\    - type: cron
     \\      schedule: "*/15 * * * *"
@@ -194,7 +194,7 @@ fn seedFixture(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     // uq_zombies_workspace_name forbids two rows sharing (workspace_id, name);
-    // ZOMBIE_A and ZOMBIE_B coexist in TEST_WORKSPACE_ID, so each row needs
+    // AGENTSFLEET_A and AGENTSFLEET_B coexist in TEST_WORKSPACE_ID, so each row needs
     // a distinct (name, config_json.name, trigger_markdown name) triple
     // — the PATCH handler enforces config_json.name ↔ source_markdown.name
     // ↔ row.name parity (see patch.zig name_mismatch + new_name update).
@@ -206,8 +206,8 @@ fn seedFixture(conn: *pg.Conn) !void {
         config: []const u8,
     };
     const rows = [_]Row{
-        .{ .id = ZOMBIE_A, .name = "conc-bot", .source = BASE_SOURCE_MD, .trigger = BASE_TRIGGER_MD, .config = BASE_CONFIG_JSON },
-        .{ .id = ZOMBIE_B, .name = "conc-bot-b", .source = BASE_SOURCE_MD_B, .trigger = BASE_TRIGGER_MD_B, .config = BASE_CONFIG_JSON_B },
+        .{ .id = AGENTSFLEET_A, .name = "conc-bot", .source = BASE_SOURCE_MD, .trigger = BASE_TRIGGER_MD, .config = BASE_CONFIG_JSON },
+        .{ .id = AGENTSFLEET_B, .name = "conc-bot-b", .source = BASE_SOURCE_MD_B, .trigger = BASE_TRIGGER_MD_B, .config = BASE_CONFIG_JSON_B },
     };
     for (rows) |r| {
         _ = try conn.exec(
@@ -340,8 +340,8 @@ test "integration: concurrent PATCH different fields — both halves land, no de
     defer freeOutcomes(&outcomes);
 
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_trig, ZOMBIE_A, &outcomes[0] });
-    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_src, ZOMBIE_A, &outcomes[1] });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_trig, AGENTSFLEET_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_src, AGENTSFLEET_A, &outcomes[1] });
     for (threads) |t| t.join();
 
     try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
@@ -354,7 +354,7 @@ test "integration: concurrent PATCH different fields — both halves land, no de
     defer h.releaseConn(conn);
     var q = PgQuery.from(try conn.query(
         "SELECT config_json::text, source_markdown FROM core.zombies WHERE id = $1::uuid",
-        .{ZOMBIE_A},
+        .{AGENTSFLEET_A},
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowNotFound;
@@ -385,8 +385,8 @@ test "integration: concurrent PATCH same field — last write wins, no deadlock"
     defer freeOutcomes(&outcomes);
 
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, ZOMBIE_A, &outcomes[0] });
-    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, ZOMBIE_A, &outcomes[1] });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, AGENTSFLEET_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, AGENTSFLEET_A, &outcomes[1] });
     for (threads) |t| t.join();
 
     try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
@@ -399,7 +399,7 @@ test "integration: concurrent PATCH same field — last write wins, no deadlock"
     defer h.releaseConn(conn);
     var q = PgQuery.from(try conn.query(
         "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
-        .{ZOMBIE_A},
+        .{AGENTSFLEET_A},
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowNotFound;
@@ -430,7 +430,7 @@ test "integration: 10 concurrent PATCHes on same zombie — all 200, no deadlock
 
     var threads: [N]std.Thread = undefined;
     for (&threads, 0..) |*t, i| {
-        t.* = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[i] });
+        t.* = try std.Thread.spawn(.{}, Worker.run, .{ h, body, AGENTSFLEET_A, &outcomes[i] });
     }
     for (threads) |t| t.join();
 
@@ -460,8 +460,8 @@ test "integration: concurrent PATCH + DELETE same zombie — no deadlock" {
     defer freeOutcomes(&outcomes);
 
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[0] });
-    threads[1] = try std.Thread.spawn(.{}, Worker.runDelete, .{ h, ZOMBIE_A, &outcomes[1] });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, AGENTSFLEET_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.runDelete, .{ h, AGENTSFLEET_A, &outcomes[1] });
     for (threads) |t| t.join();
 
     // Two interleavings are valid:
@@ -500,8 +500,8 @@ test "integration: concurrent PATCH on different zombies — parallel, sub-linea
 
     const t0 = clock.nowMillis();
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, ZOMBIE_A, &outcomes[0] });
-    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, ZOMBIE_B, &outcomes[1] });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, AGENTSFLEET_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, AGENTSFLEET_B, &outcomes[1] });
     for (threads) |t| t.join();
     const parallel_ms = clock.nowMillis() - t0;
 
@@ -542,7 +542,7 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
             defer _ = c.exec("ROLLBACK", .{}) catch {};
             _ = c.exec(
                 "SELECT id FROM core.zombies WHERE id = $1::uuid FOR UPDATE",
-                .{ZOMBIE_A},
+                .{AGENTSFLEET_A},
             ) catch return;
             started.store(true, .release);
             @import("common").sleepNanos(7 * std.time.ns_per_s);
@@ -566,7 +566,7 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     var outcome: Outcome = .{};
     defer if (outcome.body) |b| ALLOC.free(b);
     const t0 = clock.nowMillis();
-    Worker.run(h, body, ZOMBIE_A, &outcome);
+    Worker.run(h, body, AGENTSFLEET_A, &outcome);
     const elapsed = clock.nowMillis() - t0;
 
     // Fail-fast: should return well before holder's 7s sleep completes.
@@ -601,8 +601,8 @@ test "integration: concurrent PATCH + INSERT into zombie_events — both succeed
     defer if (insert_out.body) |b| ALLOC.free(b);
 
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_patch, ZOMBIE_A, &patch_out });
-    threads[1] = try std.Thread.spawn(.{}, Worker.runInsertEvent, .{ h, ZOMBIE_A, evt_id, &insert_out });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_patch, AGENTSFLEET_A, &patch_out });
+    threads[1] = try std.Thread.spawn(.{}, Worker.runInsertEvent, .{ h, AGENTSFLEET_A, evt_id, &insert_out });
     for (threads) |t| t.join();
 
     try std.testing.expectEqual(@as(u16, 200), patch_out.status);
@@ -620,7 +620,7 @@ test "integration: concurrent PATCH + INSERT into zombie_events — both succeed
     {
         var q_evt = PgQuery.from(try conn.query(
             "SELECT COUNT(*)::bigint FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
-            .{ ZOMBIE_A, evt_id },
+            .{ AGENTSFLEET_A, evt_id },
         ));
         defer q_evt.deinit();
         const row_evt = (try q_evt.next()) orelse return error.RowNotFound;
@@ -630,7 +630,7 @@ test "integration: concurrent PATCH + INSERT into zombie_events — both succeed
     {
         var q_cfg = PgQuery.from(try conn.query(
             "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
-            .{ZOMBIE_A},
+            .{AGENTSFLEET_A},
         ));
         defer q_cfg.deinit();
         const row_cfg = (try q_cfg.next()) orelse return error.RowNotFound;

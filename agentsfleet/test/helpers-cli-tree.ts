@@ -47,10 +47,10 @@ export function makeSpyTree(): SpyTree {
       credentials: spy("workspace.credentials"),
       delete: spy("workspace.delete"),
     },
-    agent: {
-      add: spy("agent.add"),
-      list: spy("agent.list"),
-      delete: spy("agent.delete"),
+    agentKey: {
+      add: spy("agent-key.add"),
+      list: spy("agent-key.list"),
+      delete: spy("agent-key.delete"),
     },
     grant: {
       list: spy("grant.list"),

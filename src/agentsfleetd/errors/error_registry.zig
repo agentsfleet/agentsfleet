@@ -104,7 +104,7 @@ pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
 pub const ERR_WEBHOOK_NO_ZOMBIE = "UZ-WH-001";
 pub const ERR_WEBHOOK_MALFORMED = "UZ-WH-002";
 // UZ-WH-003 retired (paused-ingress rework) — paused webhook ingress answers 200-ignored;
-// steer uses ERR_ZOMBIE_PAUSED_INGRESS (UZ-ZMB-012).
+// steer uses ERR_AGENTSFLEET_PAUSED_INGRESS (UZ-ZMB-012).
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE = "UZ-WH-011";
 pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "UZ-WH-020";
@@ -112,15 +112,15 @@ pub const ERR_WEBHOOK_PAYLOAD_TOO_LARGE = "UZ-WH-030";
 // TOOL
 pub const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 // ZOMBIE
-pub const ERR_ZOMBIE_CREDENTIAL_MISSING = "UZ-ZMB-003";
-pub const ERR_ZOMBIE_CLAIM_FAILED = "UZ-ZMB-004";
-pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
+pub const ERR_AGENTSFLEET_CREDENTIAL_MISSING = "UZ-ZMB-003";
+pub const ERR_AGENTSFLEET_CLAIM_FAILED = "UZ-ZMB-004";
+pub const ERR_AGENTSFLEET_NAME_EXISTS = "UZ-ZMB-006";
 // UZ-ZMB-007 retired — superseded by UZ-VAULT-002 (credential data too large).
-pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
-pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
-pub const ERR_ZOMBIE_ALREADY_TERMINAL = "UZ-ZMB-010";
-pub const ERR_ZOMBIE_NAME_MISMATCH = "UZ-ZMB-011";
-pub const ERR_ZOMBIE_PAUSED_INGRESS = "UZ-ZMB-012";
+pub const ERR_AGENTSFLEET_INVALID_CONFIG = "UZ-ZMB-008";
+pub const ERR_AGENTSFLEET_NOT_FOUND = "UZ-ZMB-009";
+pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-ZMB-010";
+pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-ZMB-011";
+pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-ZMB-012";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -131,7 +131,7 @@ pub const ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED = "UZ-PROVIDER-003";
 pub const ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE = "UZ-PROVIDER-004";
 // MEMORY
 pub const ERR_MEM_SCOPE = "UZ-MEM-001";
-pub const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";
+pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 // GATE
 // STARTUP
@@ -189,17 +189,17 @@ pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 pub const MSG_BODY_REQUIRED = "Request body required";
 pub const MSG_MALFORMED_JSON = "Malformed JSON";
 pub const MSG_MISSING_FIELDS = "event_id and type are required";
-pub const MSG_ZOMBIE_NOT_FOUND = "Zombie not found";
-pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
-// Zombie CRUD messages
-pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `agentsfleet kill` first.";
-pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, budget; `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars.";
-pub const MSG_ZOMBIE_NAME_MISMATCH = "SKILL.md `name:` must match TRIGGER.md `name:`.";
-pub const MSG_ZOMBIE_SKILL_INVALID = "SKILL.md frontmatter is invalid. Required: name (kebab, 1-64 chars), description, version (semver MAJOR.MINOR.PATCH).";
-pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
-pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
-pub const MSG_ZOMBIE_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
-pub const MSG_ZOMBIE_CONFIG_REQUIRED = "config_json is required";
+pub const MSG_AGENTSFLEET_NOT_FOUND = "Agent not found";
+pub const MSG_AGENTSFLEET_NOT_ACTIVE = "Agent is not active";
+// Agent CRUD messages
+pub const MSG_AGENTSFLEET_NAME_EXISTS = "Agent already exists in this workspace. Use `agentsfleet kill` first.";
+pub const MSG_AGENTSFLEET_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, budget; `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars.";
+pub const MSG_AGENTSFLEET_NAME_MISMATCH = "SKILL.md `name:` must match TRIGGER.md `name:`.";
+pub const MSG_AGENTSFLEET_SKILL_INVALID = "SKILL.md frontmatter is invalid. Required: name (kebab, 1-64 chars), description, version (semver MAJOR.MINOR.PATCH).";
+pub const MSG_AGENTSFLEET_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
+pub const MSG_AGENTSFLEET_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
+pub const MSG_AGENTSFLEET_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";
+pub const MSG_AGENTSFLEET_CONFIG_REQUIRED = "config_json is required";
 pub const MSG_WORKSPACE_ID_REQUIRED = "workspace_id is required (UUIDv7)";
 pub const MSG_CREDENTIAL_NAME_REQUIRED = "credential name is required (max 64 chars)";
 pub const MSG_CREDENTIAL_DATA_REQUIRED = "credential data must be a non-empty JSON object";
@@ -220,9 +220,9 @@ pub const DEDUP_TTL_SECONDS: u32 = 86400;
 pub const WEBHOOK_DEDUP_KEY_PREFIX = "webhook:dedup:";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
-/// Webhook 200-ignored reason for a paused/non-active zombie:
-/// sender retry queues add no value for an intentionally paused zombie.
-pub const IGNORED_REASON_ZOMBIE_PAUSED = "zombie_paused";
+/// Webhook 200-ignored reason for a paused/non-active agent:
+/// sender retry queues add no value for an intentionally paused agent.
+pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "zombie_paused";
 pub const STATUS_ACCEPTED = "accepted";
 // Slack signature constants
 pub const SLACK_SIG_VERSION = "v0";
@@ -233,11 +233,11 @@ pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
 pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
 /// Upper bound for a configured gate timeout — larger values clamp + warn.
 pub const GATE_TIMEOUT_MS_MAX: u64 = 86_400_000;
-pub const GATE_ANOMALY_KEY_PREFIX = "zombie:anomaly:";
-pub const GATE_PENDING_KEY_PREFIX = "zombie:gate:pending:";
-pub const GATE_RESPONSE_KEY_PREFIX = "zombie:gate:response:";
+pub const GATE_ANOMALY_KEY_PREFIX = "agent:anomaly:";
+pub const GATE_PENDING_KEY_PREFIX = "agent:gate:pending:";
+pub const GATE_RESPONSE_KEY_PREFIX = "agent:gate:response:";
 /// event_id → "action_id|deadline_ms" ref the async lease-path gate check reads.
-pub const GATE_EVENT_REF_KEY_PREFIX = "zombie:gate:byevent:";
+pub const GATE_EVENT_REF_KEY_PREFIX = "agent:gate:byevent:";
 pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
 pub const GATE_DECISION_APPROVE = "approve";
 pub const GATE_DECISION_DENY = "deny";

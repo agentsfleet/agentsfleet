@@ -14,8 +14,8 @@ const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const REGISTER_HOST = "host-event-register-test";
 const REGISTER_BODY =
     \\{"host_id":"host-event-register-test","sandbox_tier":"dev_none","labels":[]}
@@ -24,7 +24,7 @@ const BODY_CORDON = "{\"action\":\"cordon\"}";
 
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6d01";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 64;
 const RUNNER_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "e" ** RUNNER_TOKEN_BODY_HEX_CHARS;
@@ -57,7 +57,7 @@ const SQL_SELECT_RUNNER_LAST_SEEN =
 const CLEANUP_HEARTBEAT_REJECTOR_IGNORED_FMT = "cleanup heartbeat event rejector ignored: {s}";
 
 const CONFIG_NO_GATES =
-    \\{"name":"runner-events-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"runner-events-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const SOURCE_MD =
     \\---
@@ -112,15 +112,15 @@ fn seedFleetWork(conn: anytype) !void {
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
     try seedRunner(conn);
-    try base.seedZombie(conn, ZOMBIE_ID, WORKSPACE_ID, "runner-events-zombie", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, ZOMBIE_ID, "{}");
+    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "runner-events-zombie", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, ZOMBIE_ID);
+    try redis_zombie.ensureZombieConsumerGroup(&h.queue, AGENTSFLEET_ID);
     const id = try h.queue.xaddZombieEvent(.{
         .event_id = "",
-        .zombie_id = ZOMBIE_ID,
+        .zombie_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:runner-events",
         .event_type = .chat,
@@ -206,7 +206,7 @@ fn cleanupRegister(conn: anytype) void {
 }
 
 fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
-    var resp = h.queue.command(&.{ "DEL", "zombie:" ++ ZOMBIE_ID ++ ":events" }) catch null;
+    var resp = h.queue.command(&.{ "DEL", "agent:" ++ AGENTSFLEET_ID ++ ":events" }) catch null;
     if (resp) |*r| r.deinit(h.queue.alloc);
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup runner ignored: {s}", .{@errorName(err)});

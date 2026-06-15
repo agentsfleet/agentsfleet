@@ -50,7 +50,7 @@ pub fn resolveSecretsMap(
             if (err == error.NotFound) {
                 log.warn(
                     "credential_not_found",
-                    .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING },
+                    .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_AGENTSFLEET_CREDENTIAL_MISSING },
                 );
                 return error.CredentialNotFound;
             }

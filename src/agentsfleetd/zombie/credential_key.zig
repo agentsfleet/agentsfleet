@@ -1,6 +1,6 @@
 //! Shared key-name convention for workspace zombie credentials.
 //!
-//! The HTTP handler stores rows under "zombie:<name>"; the worker resolver
+//! The HTTP handler stores rows under "agent:<name>"; the worker resolver
 //! loads them under the same prefix. Owning the constant in one place stops
 //! the two callers from drifting silently — a divergence would make every
 //! worker-side lookup miss its row with `error.NotFound`.
@@ -11,7 +11,7 @@
 
 const std = @import("std");
 
-const PREFIX = "zombie:";
+const PREFIX = "agent:";
 
 /// Compose the storage key for a zombie credential. Caller owns the slice
 /// and must free it with the same allocator.

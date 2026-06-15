@@ -10,7 +10,7 @@ export type ApiError = {
 
 // ── Zombies ──
 
-// Server projects `config_json->'x-usezombie'->'triggers'` into the list-row
+// Server projects `config_json->'x-agentsfleet'->'triggers'` into the list-row
 // response (`src/http/handlers/zombies/list.zig` ZombieListItem). One entry
 // per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
 // carries source + events; cron carries the raw schedule expression.

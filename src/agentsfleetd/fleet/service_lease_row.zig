@@ -87,8 +87,8 @@ pub fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, bille
         event_row_id,
         @tagName(protocol.RunnerEventType.lease_acquired),
         runner_events.META_LEASE_ID,
-        runner_events.META_ZOMBIE_ID,
-        runner_events.META_ZOMBIE_EVENT_ID,
+        runner_events.META_AGENTSFLEET_ID,
+        runner_events.META_AGENTSFLEET_EVENT_ID,
         runner_events.META_KIND,
         @tagName(acq.kind),
     }) catch return error.DbError;

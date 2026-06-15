@@ -71,7 +71,7 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
     return ZombieConfigError.InvalidTriggerType;
 }
 
-/// Parse the `triggers:` array under `x-usezombie:`. Enforces:
+/// Parse the `triggers:` array under `x-agentsfleet:`. Enforces:
 ///   * length in 1..MAX_TRIGGERS_PER_ZOMBIE
 ///   * at most one cron entry
 ///   * unique `(type, source)` tuple across webhook entries

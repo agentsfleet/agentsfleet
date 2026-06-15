@@ -17,9 +17,9 @@ const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator) u8 {
     const a = output.audience(args.has(argv, output.FLAG_JSON));
-    const api = args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
+    const api = args.flagOrEnv(env_map, argv, alloc, "--api", Config.ENV_AGENTSFLEET_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (api) |v| alloc.free(v);
-    const token = args.envOwned(env_map, alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM);
+    const token = args.envOwned(env_map, alloc, Config.ENV_AGENTSFLEET_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (token) |v| alloc.free(v);
 
     const env = envChecks(api, token);
@@ -31,7 +31,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
 fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
     const api_ok = api != null;
     const token_ok = token != null and std.mem.startsWith(u8, token.?, protocol.RUNNER_TOKEN_PREFIX);
-    const api_detail: []const u8 = if (api_ok) "set" else "missing — pass --api or set ZOMBIE_API_URL";
+    const api_detail: []const u8 = if (api_ok) "set" else "missing — pass --api or set AGENTSFLEET_API_URL";
     const token_detail: []const u8 = if (token_ok) "present (zrn_)" else "missing or not a zrn_ token";
     return .{
         .{ .name = "api_url", .ok = api_ok, .detail = api_detail },

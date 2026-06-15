@@ -170,8 +170,8 @@ const MiscConfig = struct {
 };
 
 pub fn loadMisc(env_map: *const EnvMap, alloc: Allocator) !MiscConfig {
-    const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.usezombie.com");
+    const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.agentsfleet.net");
     errdefer alloc.free(app_url);
-    const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.usezombie.com");
+    const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.agentsfleet.net");
     return .{ .app_url = app_url, .api_url = api_url };
 }

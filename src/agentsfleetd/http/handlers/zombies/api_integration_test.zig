@@ -15,8 +15,8 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -165,14 +165,14 @@ test "integration: zombies list — projects triggers array from config_json" {
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
 
-    // Seed one zombie with a `triggers[]` array inside `x-usezombie:` — mirrors
+    // Seed one zombie with a `triggers[]` array inside `x-agentsfleet:` — mirrors
     // what config_parser.zig persists for a real install. Bypasses the HTTP
     // create path (Redis required) but exercises the SELECT projection that
-    // list.zig adds: `config_json->'x-usezombie'->'triggers'`.
+    // list.zig adds: `config_json->'x-agentsfleet'->'triggers'`.
     const zid = try id_format.generateZombieId(alloc);
     defer alloc.free(zid);
     const config_json =
-        \\{"name":"triggers-projection","x-usezombie":{"triggers":[
+        \\{"name":"triggers-projection","x-agentsfleet":{"triggers":[
         \\  {"type":"webhook","source":"github","events":["workflow_run"]},
         \\  {"type":"cron","schedule":"*/30 * * * *"}
         \\]}}
@@ -222,7 +222,7 @@ test "integration: install — 201 returns webhook_urls map keyed by source" {
 
     const body =
         "{\"source_markdown\":\"---\\nname: webhook-install-pin\\ndescription: pins webhook_urls shape\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: webhook-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: github\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: webhook-install-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: webhook\\n      source: github\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
@@ -256,7 +256,7 @@ test "integration: install — cron-only trigger returns empty webhook_urls map"
 
     const body =
         "{\"source_markdown\":\"---\\nname: cron-only-install-pin\\ndescription: pins empty webhook_urls\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: cron-only-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: cron-only-install-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
@@ -288,7 +288,7 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
     // handler, which is what this test pins.
     const body =
         "{\"source_markdown\":\"---\\nname: alpha-zombie\\ndescription: alpha\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: agentmail\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-agentsfleet:\\n  triggers:\\n    - type: webhook\\n      source: agentmail\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
@@ -331,7 +331,7 @@ test "integration: zombie create persists SKILL.md tags into required_tags" {
 
     const body =
         "{\"source_markdown\":\"---\\nname: tag-persist-pin\\ndescription: pins required_tags persistence\\nversion: 0.1.0\\ntags: [gpu, us-east]\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: tag-persist-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: tag-persist-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);
@@ -365,7 +365,7 @@ test "integration: zombie create rejects an over-long required tag with UZ-REQ-0
     const body = try std.fmt.allocPrint(
         alloc,
         "{{\"source_markdown\":\"---\\nname: bad-tag-pin\\ndescription: d\\nversion: 0.1.0\\ntags: [{s}]\\n---\\nBody.\\n\"," ++
-            "\"trigger_markdown\":\"---\\nname: bad-tag-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}}",
+            "\"trigger_markdown\":\"---\\nname: bad-tag-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}}",
         .{long_tag},
     );
     defer alloc.free(body);
@@ -397,7 +397,7 @@ test "integration: zombie patch re-derives required_tags from reparsed source_ma
 
     const create_body =
         "{\"source_markdown\":\"---\\nname: patch-tag-pin\\ndescription: starts untagged\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: patch-tag-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: patch-tag-pin\\nx-agentsfleet:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
     const create_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(create_url);
     const cr = try (try (try h.post(create_url).bearer(TOKEN_USER)).json(create_body)).send();

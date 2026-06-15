@@ -29,7 +29,7 @@ export interface WorkspaceHandlers {
   delete: CommandHandlerFn;
 }
 
-export interface AgentHandlers {
+export interface AgentKeyHandlers {
   add: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
@@ -87,7 +87,7 @@ export interface Handlers {
   auth: AuthHandlers;
   doctor: CommandHandlerFn;
   workspace: WorkspaceHandlers;
-  agent: AgentHandlers;
+  agentKey: AgentKeyHandlers;
   grant: GrantHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;

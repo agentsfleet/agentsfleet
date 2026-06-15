@@ -22,7 +22,7 @@ const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
-const S_ZOMBIE = "zombie:";
+const S_ZOMBIE = "agent:";
 
 const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
@@ -194,10 +194,10 @@ const CredentialListRow = struct {
 };
 
 fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
-    // Query vault.secrets for zombie-prefixed keys (zombie:{name}).
+    // Query vault.secrets for zombie-prefixed keys (agent:{name}).
     var q = PgQuery.from(try conn.query(
         \\SELECT key_name, created_at FROM vault.secrets
-        \\WHERE workspace_id = $1::uuid AND key_name LIKE 'zombie:%'
+        \\WHERE workspace_id = $1::uuid AND key_name LIKE 'agent:%'
         \\ORDER BY key_name ASC
     , .{workspace_id}));
     defer q.deinit();
@@ -209,7 +209,7 @@ fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     }
     while (try q.next()) |row| {
         const raw_name = try row.get([]const u8, 0);
-        // Strip "zombie:" prefix for display
+        // Strip "agent:" prefix for display
         const display_name = if (std.mem.startsWith(u8, raw_name, S_ZOMBIE))
             raw_name[S_ZOMBIE.len..]
         else

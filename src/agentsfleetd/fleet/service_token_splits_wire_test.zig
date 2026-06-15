@@ -35,7 +35,7 @@ const ALLOC = std.testing.allocator;
 // suite so cross-test teardown can never race shared rows.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
@@ -101,7 +101,7 @@ fn seedAffinity(conn: *pg.Conn, m_in: i64, m_cached: i64, m_out: i64, last_meter
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
         \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
@@ -116,7 +116,7 @@ fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform', $7, $8,
         \\        0, 0, 0, $9, 1, $10, 'active', $11, $11)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = 1, status = 'active'
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
 }
 
 fn seedBalance(conn: *pg.Conn) !void {
@@ -155,7 +155,7 @@ fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     // Drop this suite's catalogue row and reseat the process-global cache so
     // later suites in the same run never see the private pair.
@@ -247,7 +247,7 @@ fn readAffinityCursor(conn: *pg.Conn) !Cursor {
     var q = PgQuery.from(try conn.query(
         \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens
         \\FROM fleet.runner_affinity WHERE zombie_id = $1::uuid
-    , .{ZOMBIE_ID}));
+    , .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.AffinityRowMissing;
     return .{ .m_in = try row.get(i64, 0), .m_cached = try row.get(i64, 1), .m_out = try row.get(i64, 2) };

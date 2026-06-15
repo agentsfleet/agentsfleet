@@ -18,8 +18,8 @@ const sse_fixtures = @import("handlers/zombies/sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f02";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003";
 const OP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004";
@@ -223,7 +223,7 @@ test "fleet runner PATCH rejects malformed actions and missing runners" {
 // ── Fleet streams listing (StreamRegistry operator surface) ─────────────────
 
 const STREAMS_PATH = "/v1/fleet/streams";
-const ZOMBIE_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+const AGENTSFLEET_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 
 test "fleet streams: non-GET methods are 405" {
     // router.match resolves /v1/fleet/streams for ANY method; the invoke fn
@@ -251,7 +251,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         try sse_fixtures.seedWorkspace(conn);
-        try sse_fixtures.seedZombie(conn, ZOMBIE_FLEET_STREAM, "fleet-streams");
+        try sse_fixtures.seedZombie(conn, AGENTSFLEET_FLEET_STREAM, "fleet-streams");
     }
 
     // tenant admin (verified JWT, but no platform_admin claim) → 403
@@ -267,7 +267,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
 
     // a live stream appears with its workspace + zombie (the platform-admin
     // token's workspace metadata matches the seeded fixture workspace)
-    const stream_path = try sse_fixtures.streamPath(ALLOC, ZOMBIE_FLEET_STREAM);
+    const stream_path = try sse_fixtures.streamPath(ALLOC, AGENTSFLEET_FLEET_STREAM);
     defer ALLOC.free(stream_path);
     var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = PLATFORM_ADMIN_TOKEN });
     @import("common").sleepNanos(sse_fixtures.SUBSCRIBE_SETTLE_NS);
@@ -275,7 +275,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     const listed = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer listed.deinit();
     try listed.expectStatus(.ok);
-    try std.testing.expect(listed.bodyContains(ZOMBIE_FLEET_STREAM));
+    try std.testing.expect(listed.bodyContains(AGENTSFLEET_FLEET_STREAM));
     try std.testing.expect(listed.bodyContains(sse_fixtures.TEST_WORKSPACE_ID));
     try std.testing.expect(listed.bodyContains("\"total\":1"));
 

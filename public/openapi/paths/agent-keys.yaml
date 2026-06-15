@@ -81,10 +81,10 @@
             schema:
               type: object
               required:
-              - agent_id
+              - agent_key_id
               - key
               properties:
-                agent_id:
+                agent_key_id:
                   type: string
                 workspace_id:
                   type: string
@@ -110,7 +110,7 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/agent-keys/{agent_id}:
+/v1/workspaces/{workspace_id}/agent-keys/{agent_key_id}:
   delete:
     operationId: delete_agent_key
     summary: Revoke an agent key
@@ -125,7 +125,7 @@
       schema:
         type: string
         format: uuid
-    - name: agent_id
+    - name: agent_key_id
       in: path
       required: true
       schema:

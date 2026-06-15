@@ -33,10 +33,10 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 // A second workspace row is inserted under it so the cross-workspace 404
 // test has somewhere to seed a gate that the operator token cannot reach.
 const OTHER_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
-const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
-const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const AGENTSFLEET_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
+const AGENTSFLEET_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa702";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
@@ -80,12 +80,12 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'approvals-a', '---\nname: approvals-a\n---', '{"name":"approvals-a"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_A, TEST_WORKSPACE_ID });
+    , .{ AGENTSFLEET_A, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'approvals-b', '---\nname: approvals-b\n---', '{"name":"approvals-b"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_B, TEST_WORKSPACE_ID });
+    , .{ AGENTSFLEET_B, TEST_WORKSPACE_ID });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
@@ -99,7 +99,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
 const SeedGate = struct {
     gate_id: []const u8,
     action_id: []const u8,
-    zombie_id: []const u8 = ZOMBIE_A,
+    zombie_id: []const u8 = AGENTSFLEET_A,
     workspace_id: []const u8 = TEST_WORKSPACE_ID,
     tool_name: []const u8 = "write_repo",
     action_name: []const u8 = "create_pr",
@@ -211,10 +211,10 @@ test "integration: approvals GET — zombie_id filter scopes results" {
     defer h.releaseConn(conn);
     defer cleanupTestData(conn);
 
-    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000001", .action_id = "act-zf-a", .zombie_id = ZOMBIE_A });
-    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000002", .action_id = "act-zf-b", .zombie_id = ZOMBIE_B });
+    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000001", .action_id = "act-zf-a", .zombie_id = AGENTSFLEET_A });
+    try insertGate(conn, .{ .gate_id = "01999999-2222-7000-8000-000000000002", .action_id = "act-zf-b", .zombie_id = AGENTSFLEET_B });
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals?zombie_id={s}", .{ TEST_WORKSPACE_ID, ZOMBIE_A });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals?zombie_id={s}", .{ TEST_WORKSPACE_ID, AGENTSFLEET_A });
     defer ALLOC.free(url);
     const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -657,12 +657,12 @@ test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending"
     defer cleanupTestData(conn);
 
     const gid = "01999999-cccc-7000-8000-000000000001";
-    // Gate is owned by ZOMBIE_A; attacker presents ZOMBIE_B in the URL.
-    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-cross-1", .zombie_id = ZOMBIE_A });
+    // Gate is owned by AGENTSFLEET_A; attacker presents AGENTSFLEET_B in the URL.
+    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-cross-1", .zombie_id = AGENTSFLEET_A });
 
     var attacker_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
         .action_id = "act-cross-1",
-        .zombie_id_filter = ZOMBIE_B,
+        .zombie_id_filter = AGENTSFLEET_B,
         .outcome = .approved,
         .by = "attacker:slack-webhook",
     });
@@ -680,7 +680,7 @@ test "approval_gate.resolve with mismatched zombie_id_filter leaves row pending"
     // Legitimate caller with the matching zombie_id still resolves cleanly.
     var legit_outcome = try @import("../../../zombie/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
         .action_id = "act-cross-1",
-        .zombie_id_filter = ZOMBIE_A,
+        .zombie_id_filter = AGENTSFLEET_A,
         .outcome = .approved,
         .by = "operator:slack-webhook",
     });

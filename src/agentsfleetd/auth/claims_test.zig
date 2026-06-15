@@ -8,7 +8,7 @@ const extractCustomClaims = claims.extractCustomClaims;
 
 test "extractClerkClaims from metadata.tenant_id" {
     const json =
-        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.usezombie.com","scope":"runs:read runs:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
+        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.agentsfleet.net","scope":"runs:read runs:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer {
@@ -23,7 +23,7 @@ test "extractClerkClaims from metadata.tenant_id" {
     try std.testing.expectEqualStrings("org_1", result.org_id.?);
     try std.testing.expectEqualStrings("ws_a", result.workspace_id.?);
     try std.testing.expect(result.role == null);
-    try std.testing.expectEqualStrings("https://api.usezombie.com", result.audience.?);
+    try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
     try std.testing.expectEqualStrings("runs:read runs:write", result.scopes.?);
 }
 
@@ -71,7 +71,7 @@ test "extractClerkClaims with no tenant or org" {
 
 test "extractCustomClaims normalizes namespaced claims and aud array" {
     const json =
-        \\{"sub":"user_2","iss":"https://idp.example.com/","aud":["https://api.usezombie.com","https://userinfo.example.com"],"scp":["runs:read","runs:write"],"organization_id":"org_custom_ns","https://usezombie.dev/tenant_id":"tenant_custom_ns","https://usezombie.dev/workspace_id":"ws_custom_ns"}
+        \\{"sub":"user_2","iss":"https://idp.example.com/","aud":["https://api.agentsfleet.net","https://userinfo.example.com"],"scp":["runs:read","runs:write"],"organization_id":"org_custom_ns","https://usezombie.dev/tenant_id":"tenant_custom_ns","https://usezombie.dev/workspace_id":"ws_custom_ns"}
     ;
     const result = try extractCustomClaims(std.testing.allocator, json);
     defer {
@@ -86,13 +86,13 @@ test "extractCustomClaims normalizes namespaced claims and aud array" {
     try std.testing.expectEqualStrings("org_custom_ns", result.org_id.?);
     try std.testing.expectEqualStrings("ws_custom_ns", result.workspace_id.?);
     try std.testing.expect(result.role == null);
-    try std.testing.expectEqualStrings("https://api.usezombie.com", result.audience.?);
+    try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
     try std.testing.expectEqualStrings("runs:read runs:write", result.scopes.?);
 }
 
 test "extractCustomClaims normalizes nested custom_claims payload" {
     const json =
-        \\{"sub":"user_3","iss":"https://idp.example.com","aud":"https://api.usezombie.com","custom_claims":{"tenant_id":"tenant_custom","workspaceId":"ws_custom","organization_id":"org_custom"},"scopes":["runs:read","workspace:pause"]}
+        \\{"sub":"user_3","iss":"https://idp.example.com","aud":"https://api.agentsfleet.net","custom_claims":{"tenant_id":"tenant_custom","workspaceId":"ws_custom","organization_id":"org_custom"},"scopes":["runs:read","workspace:pause"]}
     ;
     const result = try extractCustomClaims(std.testing.allocator, json);
     defer {
@@ -107,7 +107,7 @@ test "extractCustomClaims normalizes nested custom_claims payload" {
     try std.testing.expectEqualStrings("org_custom", result.org_id.?);
     try std.testing.expectEqualStrings("ws_custom", result.workspace_id.?);
     try std.testing.expect(result.role == null);
-    try std.testing.expectEqualStrings("https://api.usezombie.com", result.audience.?);
+    try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
     try std.testing.expectEqualStrings("runs:read workspace:pause", result.scopes.?);
 }
 
@@ -196,7 +196,7 @@ test "extractClerkClaims reads namespaced role claim (dev namespace)" {
 
 test "extractClerkClaims reads namespaced role claim (prod namespace)" {
     const json =
-        \\{"sub":"user_ns2","iss":"https://clerk.example.com","exp":9999999999,"https://usezombie.com/role":"admin"}
+        \\{"sub":"user_ns2","iss":"https://clerk.example.com","exp":9999999999,"https://agentsfleet.net/role":"admin"}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer {

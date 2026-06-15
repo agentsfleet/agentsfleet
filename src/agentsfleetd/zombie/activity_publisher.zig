@@ -1,6 +1,6 @@
 //! Best-effort PUBLISH helpers for the live-tail activity channel.
 //!
-//! Channel: `zombie:{id}:activity`. Single publisher (the worker that
+//! Channel: `agent:{id}:activity`. Single publisher (the worker that
 //! owns the zombie's event loop), zero-or-N subscribers (SSE handlers).
 //! Ephemeral — Redis pub/sub has no buffer or replay; if a frame drops
 //! the operator backfills via `GET /events?cursor=...`.
@@ -15,7 +15,7 @@
 //! and PUBLISHes the borrowed slice. After warmup the buffer holds the
 //! peak frame size and the steady-state alloc count is zero.
 
-const channel_prefix = "zombie:";
+const channel_prefix = "agent:";
 const channel_suffix = ":activity";
 
 // Frame kind discriminators carried as the `kind` field on every payload.

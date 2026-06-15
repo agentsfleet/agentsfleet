@@ -37,7 +37,7 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0011";
 const GPU_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0a01";
 const PLAIN_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0b01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0d01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e0e01";
 // Second zombie + an arm runner for the complex two-zombie routing test.
@@ -57,7 +57,7 @@ const CONC_HOST_PREFIX = "plc-conc-";
 const LARGE_BALANCE_NANOS: i64 = 1_000_000_000_000;
 
 const CONFIG_NO_GATES =
-    \\{"name":"placement-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"placement-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const SOURCE_MD =
     \\---
@@ -99,11 +99,11 @@ fn seedRunnerWithLabels(conn: *pg.Conn, runner_id: []const u8, host_id: []const 
 /// required_tags, so it lands as the column DEFAULT '{}' first; this UPDATE sets
 /// the test value.
 fn seedZombieWithTags(conn: *pg.Conn, tags_literal: []const u8) !void {
-    try base.seedZombie(conn, ZOMBIE_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, ZOMBIE_ID, "{}");
+    try base.seedZombie(conn, AGENTSFLEET_ID, WORKSPACE_ID, "placement-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedZombieSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
     _ = try conn.exec(
         "UPDATE core.zombies SET required_tags = $1::text[] WHERE id = $2::uuid",
-        .{ tags_literal, ZOMBIE_ID },
+        .{ tags_literal, AGENTSFLEET_ID },
     );
 }
 
@@ -120,7 +120,7 @@ fn seedExpiredAffinity(conn: *pg.Conn, last_runner_id: []const u8) !void {
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id, fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, ZOMBIE_ID, last_runner_id });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, last_runner_id });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -193,7 +193,7 @@ fn seedBase(h: *TestHarness, conn: *pg.Conn, tags_json: []const u8) !void {
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedZombieWithTags(conn, tags_json);
-    try publishEventFor(h, ZOMBIE_ID);
+    try publishEventFor(h, AGENTSFLEET_ID);
 }
 
 // ── Lease helper ────────────────────────────────────────────────────────────
@@ -221,13 +221,13 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "zombie:" ++ ZOMBIE_ID ++ ":events");
-    delStream(h, "zombie:" ++ ZOMBIE2_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
+    delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
+    delStream(h, "agent:" ++ ZOMBIE2_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid, $3::uuid)", .{ GPU_RUNNER_ID, PLAIN_RUNNER_ID, ARM_RUNNER_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE host_id LIKE 'plc-conc-%'", .{});
-    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ ZOMBIE_ID, ZOMBIE2_ID });
+    execIgnore(conn, "DELETE FROM core.zombie_events WHERE zombie_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ID, ZOMBIE2_ID });
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
     base.teardownZombies(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -439,7 +439,7 @@ test "complex: two tagged zombies route only to their matching runner" {
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    // Z_GPU [gpu] (the default ZOMBIE_ID) + Z_ARM [arm64] (ZOMBIE2_ID), each
+    // Z_GPU [gpu] (the default AGENTSFLEET_ID) + Z_ARM [arm64] (ZOMBIE2_ID), each
     // with its own event; one gpu runner and one arm runner.
     try seedBase(h, conn, "{gpu}");
     try seedSecondZombie(h, conn, "placement-arm-bot", "{arm64}");

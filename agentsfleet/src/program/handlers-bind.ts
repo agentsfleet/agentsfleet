@@ -17,7 +17,7 @@ import {
   agentAddEffectFromArgs,
   agentListEffectFromArgs,
   agentDeleteEffectFromArgs,
-} from "../commands/agent.ts";
+} from "../commands/agent_key.ts";
 import {
   grantListEffectFromArgs,
   grantDeleteEffectFromArgs,
@@ -205,9 +205,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     },
     doctor: wrapE("doctor", doctorEffect),
     workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
-    agent: {
+    agentKey: {
       add: wrapEffectFn(
-        "agent.add",
+        "agent-key.add",
         (frame) => {
           const opts = frame.parsed.options;
           return agentAddEffectFromArgs({
@@ -226,7 +226,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
       list: wrapEffectFn(
-        "agent.list",
+        "agent-key.list",
         (frame) =>
           agentListEffectFromArgs(
             optString(frame.parsed.options, "workspace") ??
@@ -236,15 +236,15 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
       delete: wrapEffectFn(
-        "agent.delete",
+        "agent-key.delete",
         (frame) =>
           agentDeleteEffectFromArgs(
             optString(frame.parsed.options, "workspace") ??
               optString(frame.parsed.options, "workspaceId") ??
               optString(frame.parsed.options, "workspace-id"),
             frame.parsed.positionals[0],
-            optString(frame.parsed.options, "agent-id") ??
-              optString(frame.parsed.options, "agentId"),
+            optString(frame.parsed.options, "agent-key-id") ??
+              optString(frame.parsed.options, "agentKeyId"),
           ),
         lifecycle,
       ),

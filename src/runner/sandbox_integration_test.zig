@@ -70,7 +70,7 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     // allowlisted vars.
     var daemon: std.process.Environ.Map = .init(alloc);
     defer daemon.deinit();
-    try daemon.put("ZOMBIE_RUNNER_TOKEN", PLANTED_TOKEN);
+    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", PLANTED_TOKEN);
     try daemon.put("HOME", "/home/agentsfleet-runner");
     try daemon.put("PATH", "/usr/bin:/bin");
 
@@ -90,9 +90,9 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     _ = child.wait(io) catch {};
 
     // The agent's real read path (cat /proc/self/environ) shows the allowlisted
-    // HOME but never the planted token nor its ZOMBIE_ key.
+    // HOME but never the planted token nor its AGENTSFLEET_ key.
     try std.testing.expect(std.mem.indexOf(u8, dump, PLANTED_TOKEN) == null);
-    try std.testing.expect(std.mem.indexOf(u8, dump, "ZOMBIE_RUNNER_TOKEN") == null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "AGENTSFLEET_RUNNER_TOKEN") == null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=/home/agentsfleet-runner") != null);
 }
 

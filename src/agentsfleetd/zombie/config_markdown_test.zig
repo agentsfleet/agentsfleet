@@ -12,7 +12,7 @@ test "parseTriggerMarkdownWithJson: parses frontmatter into config" {
     const trigger_md =
         \\---
         \\name: platform-ops
-        \\x-usezombie:
+        \\x-agentsfleet:
         \\  triggers:
         \\    - type: webhook
         \\      source: agentmail
@@ -211,17 +211,17 @@ test "parseSkillMetadata: unknown top-level keys pass through silently" {
 }
 
 // Pins the write-path JSON shape: parseTriggerMarkdownWithJson MUST produce
-// JSON with `x-usezombie:` at the top level and runtime keys nested under
+// JSON with `x-agentsfleet:` at the top level and runtime keys nested under
 // it. This is the contract the production read-path SQL queries rely on
-// (`config_json->'x-usezombie'->'triggers'->0->>'source'` etc.). If the
+// (`config_json->'x-agentsfleet'->'triggers'->0->>'source'` etc.). If the
 // parser regresses to top-level runtime keys, those queries return null
 // and the regression is silent in production until a webhook fails.
-test "parseTriggerMarkdownWithJson: JSON shape has x-usezombie at top, runtime keys nested" {
+test "parseTriggerMarkdownWithJson: JSON shape has x-agentsfleet at top, runtime keys nested" {
     const alloc = std.testing.allocator;
     const trigger_md =
         \\---
         \\name: shape-pin
-        \\x-usezombie:
+        \\x-agentsfleet:
         \\  triggers:
         \\    - type: webhook
         \\      source: agentmail
@@ -238,15 +238,15 @@ test "parseTriggerMarkdownWithJson: JSON shape has x-usezombie at top, runtime k
     defer j.deinit();
     const root = j.value.object;
 
-    // x-usezombie block exists at top.
-    const x = root.get("x-usezombie") orelse return error.MissingUsezombieBlock;
+    // x-agentsfleet block exists at top.
+    const x = root.get("x-agentsfleet") orelse return error.MissingUsezombieBlock;
     try std.testing.expect(x == .object);
     try std.testing.expect(x.object.get("triggers") != null);
     try std.testing.expect(x.object.get("tools") != null);
     try std.testing.expect(x.object.get("budget") != null);
 
     // Runtime keys MUST NOT appear at the top level — that would break
-    // config_json->'x-usezombie'->'triggers' lookups in production.
+    // config_json->'x-agentsfleet'->'triggers' lookups in production.
     try std.testing.expect(root.get("triggers") == null);
     try std.testing.expect(root.get("tools") == null);
     try std.testing.expect(root.get("budget") == null);

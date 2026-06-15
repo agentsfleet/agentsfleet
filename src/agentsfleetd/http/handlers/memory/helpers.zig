@@ -16,7 +16,7 @@ const log = logging.scoped(.memory_http_helpers);
 
 pub const Hx = hx_mod.Hx;
 
-const S_ZOMBIE_NOT_FOUND = "zombie not found";
+const S_AGENTSFLEET_NOT_FOUND = "zombie not found";
 const S_COLLECT_TRUNCATED = "collect_truncated";
 
 pub const MAX_KEY_LEN: usize = 255;
@@ -69,7 +69,7 @@ pub fn resolveZombieInWorkspace(
         common.internalDbError(hx.res, hx.req_id);
         return null;
     }) orelse {
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return null;
     };
 
@@ -79,7 +79,7 @@ pub fn resolveZombieInWorkspace(
     };
     if (!std.mem.eql(u8, workspace_id, zombie_ws)) {
         // 404 not 403 — don't leak existence across workspaces.
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+        hx.fail(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return null;
     }
 

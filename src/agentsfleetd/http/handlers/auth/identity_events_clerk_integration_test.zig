@@ -31,7 +31,7 @@ const OIDC_DELETE_ZOMBIES: []const u8 = "oidc-clerk-http-del-zmb-03";
 
 // Valid UUIDv7 (version char '7' at position 15) for the seeded zombie row;
 // satisfies core.zombies' ck_zombies_uid_uuidv7 CHECK.
-const SEED_ZOMBIE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
+const SEED_AGENTSFLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
 
 fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -511,7 +511,7 @@ test "clerk webhook: user.deleted purges an account that still owns zombies" {
         defer h.releaseConn(conn);
         const ws = try fetchWorkspaceId(conn, ALLOC, OIDC_DELETE_ZOMBIES);
         defer ALLOC.free(ws);
-        try insertZombie(conn, ws, SEED_ZOMBIE_ID);
+        try insertZombie(conn, ws, SEED_AGENTSFLEET_ID);
     }
 
     // user.deleted must purge the whole account without an FK violation.

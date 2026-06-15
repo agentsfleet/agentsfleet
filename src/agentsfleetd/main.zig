@@ -151,7 +151,7 @@ pub fn main(init: std.process.Init) void {
     // Borrowed read — initPrettyMode consumes the value during the call only.
     // Zig 0.16 removed std.posix.isatty; probe the TTY via the threaded io.
     const stderr_is_tty = std.Io.File.stderr().isTty(io) catch false;
-    logging.initPrettyMode(eff_env.get("ZOMBIE_LOG_PRETTY"), stderr_is_tty);
+    logging.initPrettyMode(eff_env.get("AGENTSFLEET_LOG_PRETTY"), stderr_is_tty);
     // Production log sinks (stderr + OTLP). Until this call, zombiedLog
     // falls through to direct stderr write so the env-load logs above
     // still reach the operator. After this, every emit fans out through

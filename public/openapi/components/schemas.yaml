@@ -77,12 +77,12 @@ components:
     AgentKey:
       type: object
       required:
-      - agent_id
+      - agent_key_id
       - zombie_id
       - name
       - created_at
       properties:
-        agent_id:
+        agent_key_id:
           type: string
         zombie_id:
           type: string
@@ -223,7 +223,7 @@ components:
         triggers:
           type: array
           nullable: true
-          description: Projected from config_json `x-usezombie.triggers`; null when the row has no triggers entry.
+          description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
             $ref: '#/components/schemas/ZombieTrigger'
     ZombieTrigger:

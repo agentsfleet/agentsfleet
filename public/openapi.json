@@ -1,17 +1,17 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "usezombie Control Plane API",
+    "title": "agentsfleet Control Plane API",
     "version": "1.0.0",
-    "description": "Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
+    "description": "Agent automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
     "contact": {
-      "name": "usezombie",
-      "url": "https://usezombie.com"
+      "name": "agentsfleet",
+      "url": "https://agentsfleet.net"
     }
   },
   "servers": [
     {
-      "url": "https://api.usezombie.com",
+      "url": "https://api.agentsfleet.net",
       "description": "Production"
     }
   ],
@@ -51,21 +51,21 @@
     },
     {
       "name": "auth-identity-events",
-      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer zombies.",
+      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer agents.",
       "x-mintlify": {
         "navigation": "Auth Identity Events"
       }
     },
     {
       "name": "Zombies",
-      "description": "Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies",
+      "description": "Agent management and webhook ingestion — create, configure, and operate event-driven agents",
       "x-mintlify": {
-        "navigation": "Zombies"
+        "navigation": "Agents"
       }
     },
     {
       "name": "Memory",
-      "description": "Persistent zombie memory — list and search key-value entries scoped to a zombie (read-only; entries are written by the runner plane, not this API)",
+      "description": "Persistent agent memory — list and search key-value entries scoped to an agent (read-only; entries are written by the runner plane, not this API)",
       "x-mintlify": {
         "navigation": "Memory"
       }
@@ -93,14 +93,14 @@
     },
     {
       "name": "Integration Grants",
-      "description": "Zombie runtime permission grants for third-party services (Slack, GitHub, etc.)",
+      "description": "Agent runtime permission grants for third-party services (Slack, GitHub, etc.)",
       "x-mintlify": {
         "navigation": "Integration Grants"
       }
     },
     {
       "name": "Agent Keys",
-      "description": "Per-zombie API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.",
+      "description": "Per-agent API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.",
       "x-mintlify": {
         "navigation": "Agent Keys"
       }
@@ -114,7 +114,7 @@
     },
     {
       "name": "Webhooks",
-      "description": "Approval-gate webhooks invoked by humans to unblock a paused zombie",
+      "description": "Approval-gate webhooks invoked by humans to unblock a paused agent",
       "x-mintlify": {
         "navigation": "Webhooks"
       }
@@ -1121,8 +1121,8 @@
     "/v1/webhooks/{zombie_id}": {
       "post": {
         "operationId": "receive_webhook",
-        "summary": "Deliver an inbound webhook event to a Zombie",
-        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the Zombie's `trigger.source` (e.g. vault row `zombie:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A webhook for a paused zombie returns 200 `{ignored: \"zombie_paused\"}` without consuming the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the Zombie's Redis stream and returns 202.",
+        "summary": "Deliver an inbound webhook event to an Agent",
+        "description": "Delivers an inbound event to the agent identified by `zombie_id`. The agent is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the agent's `trigger.source` (e.g. vault row `zombie:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A webhook for a paused agent returns 200 `{ignored: \"zombie_paused\"}` without consuming the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the agent's Redis stream and returns 202.",
         "tags": [
           "Zombies"
         ],
@@ -1131,7 +1131,7 @@
             "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the target Zombie. Obtained from `POST /v1/workspaces/{workspace_id}/zombies` or `agentsfleet install --from <path>`.",
+            "description": "UUIDv7 of the target agent. Obtained from `POST /v1/workspaces/{workspace_id}/zombies` or `agentsfleet install --from <path>`.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1161,7 +1161,7 @@
                   "data": {
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Event payload — any JSON object. Passed as-is into the Zombie event loop."
+                    "description": "Event payload — any JSON object. Passed as-is into the agent event loop."
                   }
                 }
               }
@@ -1170,7 +1170,7 @@
         },
         "responses": {
           "200": {
-            "description": "Not enqueued, intentionally. Two shapes: duplicate event (`{\"status\": \"duplicate\"}` — already processed within the 24-hour dedup window) or event ignored (`{\"ignored\": \"zombie_paused\"}` — zombie is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
+            "description": "Not enqueued, intentionally. Two shapes: duplicate event (`{\"status\": \"duplicate\"}` — already processed within the 24-hour dedup window) or event ignored (`{\"ignored\": \"zombie_paused\"}` — agent is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1190,7 +1190,7 @@
             }
           },
           "202": {
-            "description": "Event accepted and enqueued for the Zombie.",
+            "description": "Event accepted and enqueued for the agent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1233,7 +1233,7 @@
             }
           },
           "404": {
-            "description": "No active Zombie is configured for this source (UZ-WH-001).",
+            "description": "No active agent is configured for this source (UZ-WH-001).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2650,11 +2650,11 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "agent_id",
+                    "agent_key_id",
                     "key"
                   ],
                   "properties": {
-                    "agent_id": {
+                    "agent_key_id": {
                       "type": "string"
                     },
                     "workspace_id": {
@@ -2699,7 +2699,7 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agent-keys/{agent_id}": {
+    "/v1/workspaces/{workspace_id}/agent-keys/{agent_key_id}": {
       "delete": {
         "operationId": "delete_agent_key",
         "summary": "Revoke an agent key",
@@ -2719,7 +2719,7 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "agent_key_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -2749,8 +2749,8 @@
     "/v1/workspaces/{workspace_id}/zombies": {
       "get": {
         "operationId": "list_zombies",
-        "summary": "List zombies in a workspace",
-        "description": "Returns zombies the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
+        "summary": "List agents in a workspace",
+        "description": "Returns agents the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
         "tags": [
           "Zombies"
         ],
@@ -2836,8 +2836,8 @@
       },
       "post": {
         "operationId": "create_zombie",
-        "summary": "Create a zombie",
-        "description": "Creates a new zombie from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived server-side. The CLI (`agentsfleet install --from <path>`) sends the two markdown files as raw bytes; no YAML parsing happens client-side.",
+        "summary": "Create an agent",
+        "description": "Creates a new agent from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived server-side. The CLI (`agentsfleet install --from <path>`) sends the two markdown files as raw bytes; no YAML parsing happens client-side.",
         "tags": [
           "Zombies"
         ],
@@ -2898,7 +2898,7 @@
                     },
                     "name": {
                       "type": "string",
-                      "description": "Zombie name parsed from TRIGGER.md frontmatter — the canonical identifier the user will see in `agentsfleet status` and CLI output."
+                      "description": "Agent name parsed from TRIGGER.md frontmatter — the canonical identifier the user will see in `agentsfleet status` and CLI output."
                     },
                     "status": {
                       "type": "string"
@@ -2929,8 +2929,8 @@
     "/v1/workspaces/{workspace_id}/zombies/{zombie_id}": {
       "patch": {
         "operationId": "patch_zombie",
-        "summary": "Update zombie config or drive its status FSM",
-        "description": "Partial update of a zombie. Body fields are optional and presence-based:\n\n- `config_json` — replace the zombie's config blob whole; publishes\n  `zombie_config_changed`.\n- `trigger_markdown` — replace the zombie's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_usezombie.triggers` half of\n  `config_json`. The zombie's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the zombie's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  zombie's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.zombies`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed zombie returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active zombie).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
+        "summary": "Update agent config or drive its status FSM",
+        "description": "Partial update of an agent. Body fields are optional and presence-based:\n\n- `config_json` — replace the agent's config blob whole; publishes\n  `zombie_config_changed`.\n- `trigger_markdown` — replace the agent's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of\n  `config_json`. The agent's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the agent's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  agent's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.zombies`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed agent returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active agent).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
         "tags": [
           "Zombies"
         ],
@@ -2949,7 +2949,7 @@
             "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the zombie.",
+            "description": "UUIDv7 of the agent.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3061,7 +3061,7 @@
             "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the zombie.",
+            "description": "UUIDv7 of the agent.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3336,7 +3336,7 @@
             "name": "zombie_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the zombie.",
+            "description": "UUIDv7 of the agent.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -4183,13 +4183,13 @@
       "AgentKey": {
         "type": "object",
         "required": [
-          "agent_id",
+          "agent_key_id",
           "zombie_id",
           "name",
           "created_at"
         ],
         "properties": {
-          "agent_id": {
+          "agent_key_id": {
             "type": "string"
           },
           "zombie_id": {
@@ -4313,7 +4313,7 @@
           "triggers": {
             "type": "array",
             "nullable": true,
-            "description": "Projected from config_json `x-usezombie.triggers`; null when the row has no triggers entry.",
+            "description": "Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.",
             "items": {
               "$ref": "#/components/schemas/ZombieTrigger"
             }

@@ -38,7 +38,7 @@ function helpTail(): string {
     "auth status",
     "workspace add", "workspace list", "workspace use", "workspace show",
     "workspace credentials", "workspace delete",
-    "agent add", "agent list", "agent delete",
+    "agent-key add", "agent-key list", "agent-key delete",
     "grant list", "grant delete",
     "tenant provider show", "tenant provider add", "tenant provider delete",
     "billing show",
@@ -124,7 +124,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
 
   program
     .name("agentsfleet")
-    .description(styleTagline("usezombie cli"))
+    .description(styleTagline("agentsfleet cli"))
     .version(version, "-v, --version", "Show version")
     .helpOption("-h, --help", "Show this help")
     .showSuggestionAfterError(true)
@@ -173,7 +173,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .action(actionFor(COMMAND_DOCTOR, (frame) => runHandler(state, frame, handlers.doctor)));
 
   buildWorkspaceTree(program, handlers, state);
-  buildAgentTree(program, handlers, state);
+  buildAgentKeyTree(program, handlers, state);
   buildGrantTree(program, handlers, state);
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
@@ -214,28 +214,28 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
 }
 
-function buildAgentTree(program: Command, handlers: Handlers, state: ProgramState): void {
-  const agent = program
-    .command("agent")
-    .description("Manage external agent API keys");
+function buildAgentKeyTree(program: Command, handlers: Handlers, state: ProgramState): void {
+  const agentKey = program
+    .command("agent-key")
+    .description("Manage agent API keys");
 
-  agent.command(COMMAND_ADD)
+  agentKey.command(COMMAND_ADD)
     .description("Mint an agent API key for the workspace")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .option(FLAG_AGENTSFLEET_ID, "Zombie ID this key is bound to", parseIdOption)
-    .option("--name <name>", "Human-readable agent name")
+    .option(FLAG_AGENTSFLEET_ID, "Agent ID this key is bound to", parseIdOption)
+    .option("--name <name>", "Human-readable agent key name")
     .option("--description <desc>", "Optional description")
-    .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
+    .action(actionFor("agent-key.add", (frame) => runHandler(state, frame, handlers.agentKey.add)));
 
-  agent.command(COMMAND_LIST)
-    .description("List external agent API keys")
+  agentKey.command(COMMAND_LIST)
+    .description("List agent API keys")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("agent.list", (frame) => runHandler(state, frame, handlers.agent.list)));
+    .action(actionFor("agent-key.list", (frame) => runHandler(state, frame, handlers.agentKey.list)));
 
-  agent.command("delete <agent_id>")
-    .description("Revoke an external agent API key")
+  agentKey.command("delete <agent_key_id>")
+    .description("Revoke an agent API key")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
+    .action(actionFor("agent-key.delete", (frame) => runHandler(state, frame, handlers.agentKey.delete)));
 }
 
 function buildGrantTree(program: Command, handlers: Handlers, state: ProgramState): void {
@@ -244,7 +244,7 @@ function buildGrantTree(program: Command, handlers: Handlers, state: ProgramStat
     .description("Manage integration grants");
 
   grant.command(COMMAND_LIST)
-    .description("List integration grants for a zombie")
+    .description("List integration grants for an agent")
     .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
@@ -291,7 +291,7 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
 const FLAG_AGENTSFLEET_ID = "--zombie <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
-const AGENTSFLEET_ID = "Zombie ID" as const;
+const AGENTSFLEET_ID = "Agent ID" as const;
 const COMMAND_ADD = "add" as const;
 const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_LIST = "list" as const;

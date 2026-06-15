@@ -32,7 +32,7 @@ export function buildZombieTree(
 ): void {
   program
     .command("install")
-    .description("Register a zombie from a local skill bundle")
+    .description("Register an agent from a local skill bundle")
     // Path existence is validated by loadSkillFromPath inside the handler
     // so the failure path emits ERR_PATH_NOT_FOUND with the friendly
     // remap message instead of commander's generic "path does not exist".
@@ -41,17 +41,17 @@ export function buildZombieTree(
 
   const zombieGroup = program
     .command("zombie")
-    .description("Zombie management subcommands");
+    .description("Agent management subcommands");
 
   zombieGroup
     .command("update <zombie_id>")
-    .description("Re-parse and PATCH a zombie's TRIGGER.md + SKILL.md from a local bundle")
+    .description("Re-parse and PATCH an agent's TRIGGER.md + SKILL.md from a local bundle")
     .option(FLAG_FROM_PATH, SKILL_BUNDLE_PATH, parsePathOption({ mustExist: false }))
     .action(actionFor("zombie.update", (frame) => runHandler(state, frame, handlers.zombie.update)));
 
   program
     .command(COMMAND_LIST)
-    .description("List zombies in the active workspace (paginated)")
+    .description("List agents in the active workspace (paginated)")
     .option("--workspace-id <id>", "Workspace ID override", parseIdOption)
     .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .option(FLAG_LIMIT_N, PAGE_SIZE, parseIntOption(LIST_LIMIT_BOUNDS))
@@ -59,7 +59,7 @@ export function buildZombieTree(
 
   program
     .command("status [zombie_id]")
-    .description("Show zombie status (workspace-wide if no id)")
+    .description("Show agent status (workspace-wide if no id)")
     .action(actionFor("zombie.status", (frame) => runHandler(state, frame, handlers.zombie.status)));
 
   program
@@ -79,13 +79,13 @@ export function buildZombieTree(
 
   program
     .command("delete <zombie_id>")
-    .description("Hard-delete a killed zombie")
+    .description("Hard-delete a killed agent")
     .action(actionFor("zombie.delete", (frame) => runHandler(state, frame, handlers.zombie.delete)));
 
   program
     .command("logs [zombie_id]")
-    .description("Tail zombie activity")
-    .option("--zombie <id>", "Zombie ID (alternative to positional)", parseIdOption)
+    .description("Tail agent activity")
+    .option("--zombie <id>", "Agent ID (alternative to positional)", parseIdOption)
     .option(FLAG_LIMIT_N, "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
     .option(FLAG_CURSOR_TOKEN, NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .action(actionFor("zombie.logs", (frame) => runHandler(state, frame, handlers.zombie.logs)));

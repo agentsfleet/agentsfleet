@@ -1,6 +1,6 @@
 //! Pretty-printer for log records (LOGGING_STANDARD §9, dev only).
 //!
-//! Detection: `ZOMBIE_LOG_PRETTY=1|true` forces on, `=0|false` forces
+//! Detection: `AGENTSFLEET_LOG_PRETTY=1|true` forces on, `=0|false` forces
 //! off, otherwise auto-detects via `isatty(stderr)`. Result cached in
 //! a module-level `var` at process init; never re-checked per call.
 
@@ -10,7 +10,7 @@ const PrettyMode = enum { off, on };
 
 var pretty_mode: PrettyMode = .off;
 
-/// `pretty_raw` is the resolved `ZOMBIE_LOG_PRETTY` value (or null when unset);
+/// `pretty_raw` is the resolved `AGENTSFLEET_LOG_PRETTY` value (or null when unset);
 /// `stderr_is_tty` is the caller's resolved TTY probe. Zig 0.16 made env a
 /// threaded snapshot and removed `std.posix.isatty`, so the caller (main) reads
 /// both via the threaded `io`/`env_map` and passes them here — keeping the

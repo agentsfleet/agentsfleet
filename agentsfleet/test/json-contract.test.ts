@@ -25,7 +25,7 @@ function makeStubHandlers(): Handlers {
     login: noop, logout: noop, doctor: noop,
     auth:      { status: noop },
     workspace: { add: noop, list: noop, use: noop, show: noop, credentials: noop, delete: noop },
-    agent:     { add: noop, list: noop, delete: noop },
+    agentKey:  { add: noop, list: noop, delete: noop },
     grant:     { list: noop, delete: noop },
     tenant:    { provider: { show: noop, add: noop, delete: noop } },
     billing:   { show: noop },
