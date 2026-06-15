@@ -146,8 +146,8 @@ pub fn innerPatchAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8, ag
 }
 
 fn parsePatchBody(hx: Hx, req: *httpz.Request) ?PatchBody {
-    const body = req.body() orelse return PatchBody{};
-    if (body.len == 0) return PatchBody{};
+    const body = req.body() orelse return .{};
+    if (body.len == 0) return .{};
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
     const parsed = std.json.parseFromSlice(PatchBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
@@ -233,7 +233,7 @@ fn patchAgentInTxn(
         const s = try alloc.dupe(u8, try row.?.get([]const u8, 1));
         break :blk .{ .name = n, .status = s };
     };
-    if (current == null) return TxnOutcome{ .not_found = {} };
+    if (current == null) return .{ .not_found = {} };
     defer alloc.free(current.?.name);
     defer alloc.free(current.?.status);
 
@@ -242,7 +242,7 @@ fn patchAgentInTxn(
     var parsed_trigger: ?agent_config.ParsedTrigger = null;
     defer if (parsed_trigger) |*pt| pt.deinit(alloc);
     if (body.trigger_markdown) |tm| {
-        parsed_trigger = agent_config.parseTriggerMarkdownWithJson(alloc, tm) catch return TxnOutcome{ .invalid_trigger_markdown = {} };
+        parsed_trigger = agent_config.parseTriggerMarkdownWithJson(alloc, tm) catch return .{ .invalid_trigger_markdown = {} };
     }
 
     var skill_meta: ?agent_config.SkillMetadata = null;
@@ -252,10 +252,10 @@ fn patchAgentInTxn(
     // (alive for the txn) and passed straight through as a TEXT[] param.
     var new_required_tags: ?[]const []const u8 = null;
     if (body.source_markdown) |sm| {
-        skill_meta = agent_config.parseSkillMetadata(alloc, sm) catch return TxnOutcome{ .invalid_source_markdown = {} };
+        skill_meta = agent_config.parseSkillMetadata(alloc, sm) catch return .{ .invalid_source_markdown = {} };
         const target_name = if (parsed_trigger) |pt| pt.config.name else current.?.name;
-        if (!std.mem.eql(u8, skill_meta.?.name, target_name)) return TxnOutcome{ .name_mismatch = {} };
-        if (!agent_config.validRequiredTags(skill_meta.?.tags)) return TxnOutcome{ .invalid_required_tags = {} };
+        if (!std.mem.eql(u8, skill_meta.?.name, target_name)) return .{ .name_mismatch = {} };
+        if (!agent_config.validRequiredTags(skill_meta.?.tags)) return .{ .invalid_required_tags = {} };
         new_required_tags = skill_meta.?.tags;
     }
 
@@ -312,13 +312,13 @@ fn patchAgentInTxn(
     if (revision_opt == null) {
         // FSM/terminal guard rejected. Use the snapshot we already hold to
         // distinguish — no extra round-trip needed (we still own the lock).
-        if (std.mem.eql(u8, current.?.status, killed)) return TxnOutcome{ .not_found = {} };
-        return TxnOutcome{ .invalid_transition = {} };
+        if (std.mem.eql(u8, current.?.status, killed)) return .{ .not_found = {} };
+        return .{ .invalid_transition = {} };
     }
 
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;
-    return TxnOutcome{ .updated = revision_opt.? };
+    return .{ .updated = revision_opt.? };
 }
 
 /// Map a pg driver error to a TxnOutcome when the SQLSTATE is one the
@@ -329,7 +329,7 @@ fn patchAgentInTxn(
 fn mapPgErr(conn: *pg.Conn, err: anyerror) anyerror!TxnOutcome {
     if (err == error.PG) {
         if (conn.err) |pg_err| {
-            if (std.mem.eql(u8, pg_err.code, "55P03")) return TxnOutcome{ .lock_timeout = {} };
+            if (std.mem.eql(u8, pg_err.code, "55P03")) return .{ .lock_timeout = {} };
         }
     }
     return err;

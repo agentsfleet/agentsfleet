@@ -59,7 +59,7 @@ pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, agent_id: []
     , .{ agent_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return PriorLease{
+    return .{
         .lease_id = try alloc.dupe(u8, try row.get([]const u8, 0)),
         .event_id = try alloc.dupe(u8, try row.get([]const u8, 1)),
         .actor = try alloc.dupe(u8, try row.get([]const u8, 2)),

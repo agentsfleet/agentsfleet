@@ -167,7 +167,7 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, agent_id: []const u8, won: affinity.Won,
 }
 
 fn fromFresh(alloc: std.mem.Allocator, agent_id: []const u8, won: affinity.Won, event: *const redis_agent.AgentEvent) !Acquired {
-    return Acquired{
+    return .{
         .agent_id = agent_id,
         .fencing_token = won.token,
         .leased_until = won.leased_until,
@@ -183,7 +183,7 @@ fn fromFresh(alloc: std.mem.Allocator, agent_id: []const u8, won: affinity.Won, 
 }
 
 fn fromReclaim(agent_id: []const u8, won: affinity.Won, prior: reclaim.PriorLease) Acquired {
-    return Acquired{
+    return .{
         .agent_id = agent_id,
         .fencing_token = won.token,
         .leased_until = won.leased_until,

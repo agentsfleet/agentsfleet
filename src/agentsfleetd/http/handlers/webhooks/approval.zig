@@ -159,7 +159,7 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION);
         return null;
     };
-    return ApprovalPayload{ .action_id = raw.action_id, .decision = decision };
+    return .{ .action_id = raw.action_id, .decision = decision };
 }
 
 /// Verify the request signature using HMAC-SHA256.
