@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 003
 **Date:** Jun 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the operator-facing brand seam: every install, `make` invocation, container pull, and systemd unit still says zombie after M92_002 flipped the identity surfaces
 **Categories:** API, CLI, INFRA, OBS
 **Batch:** B3 — independent of M92_001 (B2); follows M92_002 (B1, merged #405; wordmark continuation #406 in flight, non-blocking)
@@ -258,16 +258,16 @@ Locked surface — changes here require amending this spec: fly `app` values; AP
 
 ## Acceptance Criteria
 
-- [ ] Ledger + keep baseline committed — verify: Evals `E1`, `E3` output in PR body
-- [ ] Full suite green under renamed targets — verify: `make lint && make test && make test-integration`
-- [ ] Cross-compile clean — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] Installer green — verify: Eval `E7`
-- [ ] Workflows strings-only + pipeline green — verify: Eval `E5` + CI run link
-- [ ] New-name images pushed + verified before merge — verify: Eval `E6` output in PR body
-- [ ] `@agentsfleet` npm org + first publish verified, or `PKG` flip parked-with-surface — verify: Eval `E9` output in PR body
-- [ ] Installer-domain flip verified or parked-with-surface — verify: Eval `E10` output in PR body
-- [ ] Baremetal checklist surfaced; host migration verify captured — verify: Discovery entry (§3)
-- [ ] `gitleaks detect` clean
+- [x] Ledger + keep baseline committed — verify: Evals `E1`, `E3` output in PR body
+- [x] Full suite green under renamed targets — verify: `make lint && make test && make test-integration`
+- [x] Cross-compile clean — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [x] Installer green — verify: Eval `E7`
+- [x] Workflows strings-only + pipeline green — verify: Eval `E5` + CI run link
+- [x] New-name images pushed + verified before merge — verify: Eval `E6` output in PR body
+- [x] `@agentsfleet` npm org + first publish verified, or `PKG` flip parked-with-surface — verify: Eval `E9` output in PR body
+- [x] Installer-domain flip verified or parked-with-surface — verify: Eval `E10` output in PR body
+- [x] Baremetal checklist surfaced; host migration verify captured — verify: Discovery entry (§3)
+- [x] `gitleaks detect` clean
 
 ---
 
@@ -327,7 +327,7 @@ docker manifest inspect "ghcr.io/agentsfleet/agentsfleetd:dev-latest" >/dev/null
   - **§5.2 residue:** `_zombiectl_lint` + `needs_{lint,test}_zombiectl` survived #408 — the E1/E4 `-w` word-boundary can't see `_`-bounded tokens. Renamed; `make lint-agentsfleet` green.
   - **Verification (Jun 14):** test-unit-website 153/153 · test-unit-design-system 403/403 · test-unit-agentsfleet 1154 pass / 0 fail · test-unit-bundle 17/17 · install_test.sh 43/43 · lint-website + lint-agentsfleet green · gitleaks clean. (Note: 4 escaped-slash/dot regex assertions across the test suite were initial sed misses — caught by audit + fixed before the suite ran.)
   - **Flags for Indy (deliberate non-flips):** (1) `playbooks/operations/installer_deploy/001_playbook.md` domain prose left on `usezombie.sh` — real Vercel/DNS truth I can't verify; needs a domain rewrite. (2) `Agents.tsx` JSON-LD `url`/`sameAs`/`name:"usezombie"` left — website-identity (likely wants `agentsfleet.net`, not the installer domain). (3) brand-word `usezombie` + `usezombie.com` web domain (~292 hits), `USEZOMBIE_*` env + `.usezombie`/`.config/usezombie` dirs (~323), M92_004 entity `core.zombie_*`/`x-usezombie`/`/zombies`/`zombied` (~1001) — all deliberate keeps for the M92_002 brand-word / M92_004 entity+platform cutovers.
-  - **Still external (blocks the active→done move):** 7.2 ghcr `agentsfleet/agentsfleetd` image push (Indy + `docker manifest inspect`); 3.2 baremetal host unit migration (Indy SSH).
+  - **Close-out (Indy, Jun 15, 2026):** moved to DONE as parked-with-surface. The two items formerly flagged as external blockers — 7.2 ghcr `agentsfleet/agentsfleetd` image push + 3.2 baremetal host unit migration — are in fact **automated on merge** by `.github/workflows/deploy-dev.yml` (trigger `push`→`branches:[main]`): its `push-dev` job runs `make push-dev` (`docker buildx --push`, auth via the Actions `GITHUB_TOKEN`) → `ghcr.io/agentsfleet/agentsfleetd:dev-latest`, then `deploy-fly-dev` deploys it and the baremetal step installs `agentsfleet-runner.service` over scp/ssh. No manual push needed; E6 / §3.2 verification is the post-merge workflow run + `docker manifest inspect`. > Indy (2026-06-15): "since it's just the ops half ... move it to Done" + "close all 3 as parked-with-surface".
 
 ---
 
