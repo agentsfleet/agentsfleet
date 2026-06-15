@@ -52,7 +52,7 @@ _lint_zig_test_depth:
 	@mkdir -p .tmp
 	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
 	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
-	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
+	 printf 'agentsfleetd_test_cases=%s\nagentsfleetd_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
 	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
 	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
 	 echo "✓ [zig] test depth gate passed (unit=$$unit_count integration=$$integration_count)"

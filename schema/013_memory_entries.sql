@@ -36,7 +36,7 @@ ALTER ROLE memory_runtime SET search_path = memory, public;
 -- created_at / updated_at: BIGINT Unix epoch milliseconds (project clock),
 -- per the platform timestamp convention — set at INSERT, updated_at refreshed
 -- on every upsert. Age arithmetic (the daily retention sweep) rides updated_at.
--- agent_id: the owning agent (UUID) — our identifier end to end, no "zmb:" form.
+-- agent_id: the owning agent (UUID) — our identifier end to end, no legacy instance_id prefix.
 CREATE TABLE IF NOT EXISTS memory.memory_entries (
     uid         UUID PRIMARY KEY,
     CONSTRAINT ck_memory_entries_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),

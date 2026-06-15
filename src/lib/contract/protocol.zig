@@ -44,8 +44,8 @@ pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 /// several concurrent leases; the server authorizes by verifying the runner holds
 /// a live lease for that agent (IDOR-safe — the client never reaches a agent it
 /// does not lease). The POST fences the write via `fencing_token` in the body,
-/// like `/reports`. (`agent_id` is our identifier end to end; its `zmb:`-prefixed
-/// storage form is internal to `agentsfleetd`'s memory adapter.) This is the collection
+/// like `/reports`. (`agent_id` is our identifier end to end — the durable memory
+/// rows key off it directly, with no legacy instance_id prefix.) This is the collection
 /// prefix; the router appends the `{agent_id}` segment. See
 /// `docs/architecture/runner_fleet.md` §Memory continuity.
 pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
