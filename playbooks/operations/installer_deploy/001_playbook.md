@@ -2,7 +2,7 @@
 
 **Updated:** May 22, 2026
 **Owner:** Human (one-time Vercel project + custom domain — already provisioned)
-**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `agentsfleet/agentsfleet` (already used by `agentsfleet-website` and `agentsfleet-agents-sh`).
+**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `agentsfleet/agentsfleet` (already used by `agentsfleet-website` and `agentsfleet-agents-dev`).
 
 ## Why this playbook exists
 
@@ -15,7 +15,7 @@ It deploys the **same way as `agentsfleet-website`**: a **git-connected** Vercel
 ## Sequence
 
 ```
-1. (once, done)  git-connected Vercel project `agentsfleet-agents-sh`, rootDir ui/agentsfleet.dev/dist
+1. (once, done)  git-connected Vercel project `agentsfleet-agents-dev`, rootDir ui/agentsfleet.dev/dist
 2. (once, done)  agentsfleet.dev attached as a custom domain  -> Vercel provisions apex DNS + TLS
 3. (per change)  open a PR -> Vercel auto-deploys a preview; merge to main -> auto prod
 4. (verify)      dig + curl the live domain
@@ -38,7 +38,7 @@ Vercel dashboard → **Add New → Project → Import** `agentsfleet/agentsfleet
 
 | Setting | Value |
 |---------|-------|
-| Project name | `agentsfleet-agents-sh` |
+| Project name | `agentsfleet-agents-dev` |
 | Production branch | `main` |
 | Framework preset | Other / None |
 | Build command | *(empty — no build)* |

@@ -34,7 +34,7 @@ Field: credential → paste new value
 ## 1.5 PostHog Project API Key Rotation
 
 **Who:** Agent
-**Why:** Rotating `posthog-{dev,prod}` in 1Password without re-pushing it to Vercel leaves the website / agents-sh / app projects pointing at a revoked key — analytics goes silent until the next deploy *after* a manual fix. Re-running the bootstrap script after vault update keeps Vercel in lockstep.
+**Why:** Rotating `posthog-{dev,prod}` in 1Password without re-pushing it to Vercel leaves the website / agents-dev / app projects pointing at a revoked key — analytics goes silent until the next deploy *after* a manual fix. Re-running the bootstrap script after vault update keeps Vercel in lockstep.
 
 ### Steps
 
@@ -46,7 +46,7 @@ Field: credential → paste new value
 ./playbooks/founding/01_bootstrap/02_vercel_env.sh           # apply
 ```
 
-3. Trigger one redeploy per affected project (`agentsfleet-website`, `agentsfleet-agents-sh`, `agentsfleet-app`) without build cache so the new bundles inline the rotated key.
+3. Trigger one redeploy per affected project (`agentsfleet-website`, `agentsfleet-agents-dev`, `agentsfleet-app`) without build cache so the new bundles inline the rotated key.
 4. Verify post-deploy: `ENV=prod ./playbooks/founding/02_preflight/02_credentials.sh` reports `✓ vercel:<project>/<key>` for all PostHog rows.
 
 ---

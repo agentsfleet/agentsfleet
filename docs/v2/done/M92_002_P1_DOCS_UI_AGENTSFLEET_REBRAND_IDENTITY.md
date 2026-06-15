@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 002
 **Date:** Jun 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing identity: the product is now `agentsfleet` on `agentsfleet.net`; every README visitor, docs reader, and website tab still sees the retired brand
 **Categories:** DOCS, UI
 **Batch:** B1 — lands before M92_001 (the positioning copy is authored under the new brand)
@@ -166,7 +166,7 @@ Marks rename to agentsfleet-*, the superseded text-bearing wordmark deletes, `br
 
 `config.ts` flips the display/app/docs domains (post-§1); `index.html` gets the agentsfleet title/meta/favicon; the favicon ships in `public/`. `config.test.ts` pins both directions: flipped constants AND the four deliberately-unflipped ones (install command, GitHub URL, team email, dev API fallbacks as applicable) so the follow-up spec must consciously unpin them.
 
-- **Dimension 6.1** — IN_PROGRESS — docs half flipped on `feat/m92-002-docs-domain-flip` (DOCS_URL + every display docs link + test pins; PR merge gated on `docs.agentsfleet.net` answering, per the Indy ack in Discovery). `app.agentsfleet.net` half still PARKED (Clerk origin + hosting attach outstanding); parked value pinned (see 6.2)
+- **Dimension 6.1** — DONE (parked-with-surface) — docs half flipped + **LIVE**: `docs.agentsfleet.net` now answers HTTP 200 (re-probed Jun 15, 2026), so the gated `feat/m92-002-docs-domain-flip` PR is mergeable. The `app.agentsfleet.net` half stays **parked-with-surface** — registrar DNS + Clerk allowed-origin + hosting attach are post-merge console steps in no workflow; parked value pinned (see 6.2)
 - **Dimension 6.2** — DONE — rebrand-pin suite added to `config.test.ts` (install command, GitHub URL, team email, parked docs host)
 - **Dimension 6.3** — DONE — shipped in #405 as the `smoke.spec.ts` brand trio (title regex, favicon wired + resolves 200, meta description names agentsfleet); marker reconciled in the wordmark-refresh follow-up → Test `test_site_identity_meta` (e2e)
 
@@ -232,11 +232,11 @@ No code interface changes. The locked contract is `config.ts`: constant *names* 
 
 ## Acceptance Criteria
 
-- [ ] Cutover hosts verified or parked-with-surface — verify: Eval `E1` output in PR body
-- [ ] Website unit + lint + dry lane green — verify: `make test-unit-website && make lint-website && make dry-smoke`
-- [ ] Brand greps clean (flips done, non-flips intact) — verify: Evals `E2`–`E5`, `E7`
-- [ ] Docs-repo branch pushed with asset swap, PR linked — verify: Eval `E6` + PR URL in Session Notes
-- [ ] `gitleaks detect` clean
+- [x] Cutover hosts verified or parked-with-surface — verify: Eval `E1` output in PR body
+- [x] Website unit + lint + dry lane green — verify: `make test-unit-website && make lint-website && make dry-smoke`
+- [x] Brand greps clean (flips done, non-flips intact) — verify: Evals `E2`–`E5`, `E7`
+- [x] Docs-repo branch pushed with asset swap, PR linked — verify: Eval `E6` + PR URL in Session Notes
+- [x] `gitleaks detect` clean
 
 ---
 
@@ -284,6 +284,7 @@ for t in "usezombie-admin" "zombied" "core\.zombie_" "@usezombie/" "x-usezombie"
 - **Follow-up session (Indy, Jun 12, 2026):** > Indy: "the docs.agentsfleet.net can be edited as well, since you will send a PR which can be merged when things are ready" — context: un-parks Dimension 6.1's docs half on `feat/m92-002-docs-domain-flip`; the merge-when-ready gate replaces Eval `E1` for the docs host. Same session: "usezombie.sh to agentsfleet.dev" — supersedes the authoring-time "stays verbatim" call; the installer flip (INSTALL_COMMAND unpin, `ui/usezombie.sh/` Vercel project, DNS) rides the follow-up cutover spec, NOT this branch. API-emitted docs_uri surfaces (`src/zombied/errors/error_entries.zig` ERROR_DOCS_BASE, generated `openapi.json` examples, payload-mirror fixtures) stay on the old host until the backend cutover. Sister repo rebranded same session: agentsfleet/skills#4 (logos + brand strings + domain badges). Mid-session Indy renamed the GitHub org `usezombie` → `agentsfleet` (verified live via `gh api`); display repo URLs + `GITHUB_URL` (with its pin test) flipped on this branch — old org URLs redirect, so these flips are not merge-gated. ghcr image refs in workflows ride the binary/container rename workstream, alongside Indy's same-session asks: make-target/binary renames (`zombiectl`/`zombied`/`zombie-runner` → agentsfleet names) and npm scope `@usezombie/*` → `@agentsfleet/*`.
 - **Continuation — wordmark refresh (Indy, Jun 12, 2026 evening session):** both lockups drop their baked background rects (transparent — baked backgrounds stay reserved for self-contained renders like social cards/avatars) and tighten the canvas 720×160 → 600×160, same disc/type spec; `branding/README.md` asset map updated to token-named colours (`--bg`/`--text`/`--pulse`/`--pulse-dim`) and the new dims; docs-repo `logo/{dark,light}.svg` re-propagation rides the companion branch `chore/m92-002-wordmark-refresh` per Indy ("docs branding must use the newly updated branding/ logos") — Eval `E6` re-run after the swap; output and cross-links land in both PR bodies. Dimension 6.3 marker reconciled: its assertions shipped in #405 (`smoke.spec.ts` title/favicon/meta trio) but the dimension line was never flipped to DONE.
 - **§1 evening re-probe (Jun 12, 2026):** apex still 301→usezombie.com; `www`/`app`/`app.dev`/`docs` still publish no DNS records → 6.1 stays parked; console checklist re-surfaced to Indy with curl evidence. Old-host baseline: `usezombie.com` 307→`www` (200), `docs.usezombie.com` 200, `app.usezombie.com` resolves nowhere — the app host cutover is greenfield setup, not a migration. Merge-deploy triage (run 27413674218), all non-rebrand: `deploy-worker-dev` red on missing `nftables` at the dev worker host; `cli-acceptance-dev` red on one fixture-bootstrap case (`hydrateWorkspacesForToken: tenant has no workspaces`); the earlier post-deploy smoke failure sits on pre-rebrand main (#403).
+- **Close-out (Indy, Jun 15, 2026):** moved to DONE as parked-with-surface. Jun-15 re-probe: `docs.agentsfleet.net` now answers **200** and `agentsfleet.net` apex **308** (the docs-domain-flip gate is satisfied — that PR is mergeable); `app.agentsfleet.net` still DNS-dead, so Dimension 6.1's app-half stays parked-with-surface (registrar DNS + Clerk allowed-origin + hosting attach — post-merge console steps, no workflow). All other dimensions DONE. > Indy (2026-06-15): "close all 3 as parked-with-surface" + "since it's just the ops half ... move it to Done".
 
 ---
 
