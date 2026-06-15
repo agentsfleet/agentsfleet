@@ -308,14 +308,23 @@ Brand residue (Dockerfile labels, systemd `Description=`, compose headers, `gith
 `docs.usezombie.com`). Orphan sweep per RULE ORP. **`samples/fixtures/platform-ops-sample/` decommission:** delete +
 repoint its 5 consumers (`postinstall.mjs` copier, `error_entries.zig` example pointer,
 `test-unit-bundle` lane, frontmatter/seed fixture readers). `samples/fixtures/` is parser test data —
-relocate into test dirs, never delete. **Two pre-approved Zig refactors** (route-enum/matcher;
-`@This()`/decl-literal struct passes) land here in their own bisectable commits, after the rename is
-green.
+relocate into test dirs, never delete. **Zig refactors (as-built):** of the two pre-approved
+refactors, **Refactor 1 (route-enum/matcher consolidation)** was assessed already-clean — the route
+layer is shape-driven, split only for the 350-line file cap, and carries zero duplication (an
+11-agent survey of every daemon `.zig` file found no consolidatable boilerplate; the spec's "latent
+boilerplate" premise did not hold), so it is **declined** (no commit) per "if already clean, say so
+rather than force it". **Refactor 2 (`@This()`/decl-literal)** landed as two bisectable commits:
+(a) a decl-literal pass converting 21 redundant `return TypeName{…}` to `return .{…}`; (b) a
+`const Self = @This()` standardization across every method-bearing struct (production source). The
+two pub file-level structs (`redis_client.Client`, `redis_subscriber.Subscriber`) keep their public
+`pub const T = @This()` alias — load-bearing external surface (~40 `queue_redis.Client` sites) — and
+gain `const Self` for their receivers; the 5 test-support files and 2 free-function helpers are out
+of scope.
 
 - **Dimension 5.1** — residue grep matches only frozen-history keeps → Eval `E1` final
 - **Dimension 5.2** — orphan sweep + dead-code table complete → Eval `E5`
 - **Dimension 5.3** — `samples/fixtures/platform-ops-sample/` removed + consumers repointed; `test-unit-bundle` green → Test `test_samples_decommissioned`
-- **Dimension 5.4** — two Zig refactors land; cross-compile + full suite green; no pub-surface growth → Eval `E2` + PUB-gate verdicts
+- **Dimension 5.4** — Refactor 1 declined (already-clean); Refactor 2 lands as a decl-literal pass + `const Self = @This()` standardization; cross-compile both linux targets + daemon unit suite green; no pub-surface growth (pub aliases byte-stable) → Eval `E2` + PUB-gate verdicts
 
 ---
 
