@@ -2,7 +2,7 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `agent-prod-worker-ant` is provisioned; `agent-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `agt_r` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/agent-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `agt_rFAKE_…` placeholder until then.
+**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `agt_r` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `agt_rFAKE_…` placeholder until then.
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
@@ -34,7 +34,7 @@ export WORKER_NAME="agent-prod-worker-1"
 |------|-------|------|--------|
 | 0.0 | Human | Buy server(s) from provider, get IP + initial root credentials | ✅ DONE |
 | 1.0 | Agent | Verify deploy SSH key from vault works | ✅ DONE |
-| 2.0 | Agent | Install Tailscale + join tailnet | ✅ DONE — `agent-prod-worker-ant` at `100.127.12.111` |
+| 2.0 | Agent | Install Tailscale + join tailnet | ✅ DONE — `zombie-prod-worker-ant` at `100.127.12.111` |
 | 3.0 | Agent | Install runtime dependencies (bubblewrap, git, openssl, ca-certificates) | ✅ DONE |
 | 4.0 | Agent | Bootstrap `/opt/agentsfleet/` (deploy.sh + .env from vault) | ✅ DONE |
 | 5.0 | Agent | First deploy + activate CI | ⏭ DEFERRED — CI executes first deploy on `v0.3.0` tag; `PROD_WORKER_READY=true` set |
