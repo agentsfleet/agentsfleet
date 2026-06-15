@@ -24,7 +24,7 @@
 //! lands with the rig rather than as a false-confidence assertion here.
 //!
 //! Gated on Linux + root (CAP_NET_ADMIN); SkipZigTest otherwise. Runs on the
-//! `test-integration-runner` lane. Worker index is fixed per test so the
+//! `test-integration-agentsfleet-runner` lane. Worker index is fixed per test so the
 //! veth/table names are deterministic; each test destroys its scope.
 
 const std = @import("std");

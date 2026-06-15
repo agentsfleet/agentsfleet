@@ -71,8 +71,8 @@ jobs:
   # datastore and no docker infra (forks real children, reads /proc, kills by
   # pgroup). Kept a separate job so the env-filter / kill-tree / cgroup-fault
   # proofs actually execute on a Linux host rather than only compiling. Mirrors
-  # the test-unit-zigrunner job: same CI container, same Zig 0.16.0 toolchain.
-  test-integration-runner:
+  # the test-unit-agentsfleet-runner job: same CI container, same Zig 0.16.0 toolchain.
+  test-integration-agentsfleet-runner:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
@@ -80,4 +80,4 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Runner sandbox proofs (env filter + kill-tree + cgroup-fault)
-        run: make test-integration-runner
+        run: make test-integration-agentsfleet-runner

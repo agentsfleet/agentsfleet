@@ -26,7 +26,7 @@ KillMode=mixed
 # Required runner config — provisioned per host into the env file below by the
 # runner bootstrap playbook (never committed; the runner-token is a secret):
 #   AGENTSFLEET_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.agentsfleet.net
-#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted `zrn_…` token (Option B): the platform
+#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted `agt_r…` token (Option B): the platform
 #                          admin mints it via `POST /v1/runners` on the live
 #                          control plane and stores it in 1Password under
 #                          `…/agent-…-worker-ant/runner-token`; the daemon
@@ -47,7 +47,7 @@ KillMode=mixed
 #                                    healthy hosts)
 # Bootstrap order (chicken-and-egg): the updated agentsfleetd (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
-# `zrn_` for this host. Until that's done, DEV_WORKER_READY stays `false`.
+# `agt_r` for this host. Until that's done, DEV_WORKER_READY stays `false`.
 EnvironmentFile=-/etc/default/agentsfleet-runner
 
 # Ensure the sandbox runtime directory exists.

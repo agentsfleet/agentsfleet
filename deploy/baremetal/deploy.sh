@@ -134,11 +134,11 @@ sync_env() {
     die "missing required runner env vars in $ENV_DEST: ${missing[*]}"
   fi
 
-  # Reject the documented placeholder shape (`zrn_FAKE_…`). The daemon's prefix
-  # check only enforces `zrn_*`, which a placeholder satisfies — that would
+  # Reject the documented placeholder shape (`agt_rFAKE_…`). The daemon's prefix
+  # check only enforces `agt_r*`, which a placeholder satisfies — that would
   # loop on 401s. Better to fail at deploy time with a clear cause.
-  if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=zrn_FAKE' "$ENV_DEST"; then
-    die "AGENTSFLEET_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real zrn_ via POST /v1/runners and update 1Password before re-running"
+  if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=agt_rFAKE' "$ENV_DEST"; then
+    die "AGENTSFLEET_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real agt_r via POST /v1/runners and update 1Password before re-running"
   fi
 }
 

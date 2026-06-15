@@ -248,11 +248,11 @@ jobs:
           # Deploy the runner. DRAIN_TIMEOUT=60 keeps drain within CI budget.
           # deploy.sh sources /opt/agentsfleet/.discord-env for DISCORD_WEBHOOK_URL.
           # NOTE: the runner needs three vars in /etc/default/agentsfleet-runner:
-          #   AGENTSFLEET_API_URL, AGENTSFLEET_RUNNER_TOKEN (a pre-minted zrn_; Option B),
+          #   AGENTSFLEET_API_URL, AGENTSFLEET_RUNNER_TOKEN (a pre-minted agt_r; Option B),
           #   RUNNER_HOST_ID
           # — provisioned per host by playbooks/founding/06_runner_bootstrap_dev/
           # 04_provision_runner_env.sh; this job stays gated off
-          # (DEV_WORKER_READY) until the placeholder zrn_ in vault has been
+          # (DEV_WORKER_READY) until the placeholder agt_r in vault has been
           # swapped for a real admin-minted token and the runner is verified
           # active.
           echo ">>> deploying runner..."
