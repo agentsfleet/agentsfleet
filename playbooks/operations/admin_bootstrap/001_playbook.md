@@ -75,7 +75,7 @@ Both variables non-empty. `$API_BASE/healthz` returns 200.
 ```bash
 # Clerk Dashboard: Users list shows $ADMIN_EMAIL with status "active".
 # Optional sanity query (requires CLERK_SECRET_KEY):
-curl -s -H "Authorization: Bearer $(op read op://$VAULT/clerk/secret-key)" \
+curl -s -H "Authorization: Bearer $(op read op://$VAULT/clerk-$ENV/secret-key)" \
   "https://api.clerk.com/v1/users?email_address=$ADMIN_EMAIL" | jq '.[0] | {id,public_metadata}'
 # Expect: public_metadata = { "tenant_id": "...", "role": "operator" }
 ```
@@ -128,7 +128,7 @@ Use Clerk's sign-in API to obtain a session token, then call `/v1/admin/platform
 # Implementation note: session acquisition uses Clerk's /v1/client/sign_ins flow.
 # For playbook simplicity the agent can use a short-lived JWT minted via Clerk's
 # Backend API (create_session_token) instead:
-CLERK_SECRET=$(op read "op://$VAULT/clerk/secret-key")
+CLERK_SECRET=$(op read "op://$VAULT/clerk-$ENV/secret-key")
 USER_ID=$(curl -s -H "Authorization: Bearer $CLERK_SECRET" \
   "https://api.clerk.com/v1/users?email_address=$ADMIN_EMAIL" | jq -r '.[0].id')
 SESSION_ID=$(curl -s -X POST -H "Authorization: Bearer $CLERK_SECRET" \
