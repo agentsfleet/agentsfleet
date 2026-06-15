@@ -281,7 +281,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        working-directory: agentsfleet
+        working-directory: cli
     steps:
       - uses: actions/checkout@v6
 

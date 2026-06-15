@@ -78,14 +78,14 @@ jobs:
 
       - name: Install agentsfleet dev deps (BEFORE secret load — WS-E #C2)
         run: bun install --frozen-lockfile
-        working-directory: agentsfleet
+        working-directory: cli
 
       - name: Install agentsfleet from npm @latest (BEFORE secret load — WS-E #C2)
         run: npm install -g @agentsfleet/cli@latest
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
-        working-directory: agentsfleet
+        working-directory: cli
 
       - name: Load Clerk PROD credentials from 1Password (AFTER install)
         uses: 1password/load-secrets-action@v4
@@ -99,7 +99,7 @@ jobs:
 
       - name: Run CLI acceptance against api.agentsfleet.net
         run: bun run test:acceptance
-        working-directory: agentsfleet
+        working-directory: cli
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: global

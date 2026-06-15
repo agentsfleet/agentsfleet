@@ -56,7 +56,7 @@ jobs:
         working-directory: ui/packages/app
       - name: Install agentsfleet dependencies
         run: bun install --frozen-lockfile
-        working-directory: agentsfleet
+        working-directory: cli
       - name: Run app + design-system + agentsfleet lint gate
         run: make lint-apps-ds-ctl
 
