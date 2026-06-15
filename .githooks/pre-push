@@ -12,7 +12,7 @@
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
-#   - test-unit-bundle         (tests/template-substitution/*, tests/agentsfleet-postinstall/*, samples/platform-ops/*, cli/scripts/postinstall.mjs)
+#   - test-unit-bundle         (tests/template-substitution/*, tests/agentsfleet-postinstall/*, samples/fixtures/platform-ops-sample/*, cli/scripts/postinstall.mjs)
 #
 # Moved to CI (.github/workflows/{test-integration,memleak}.yml):
 #   - test-integration         — worker integration vs real Postgres + Redis
@@ -57,7 +57,7 @@ while IFS= read -r f; do
       # DS is consumed by app — test both when DS changes.
       needs_test_design_system=1
       needs_test_app=1 ;;
-    tests/template-substitution/*|tests/agentsfleet-postinstall/*|samples/platform-ops/*|cli/scripts/postinstall.mjs)
+    tests/template-substitution/*|tests/agentsfleet-postinstall/*|samples/fixtures/platform-ops-sample/*|cli/scripts/postinstall.mjs)
       needs_test_bundle=1 ;;
   esac
 done <<< "$pushed_files"
