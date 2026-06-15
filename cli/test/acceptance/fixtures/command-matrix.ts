@@ -12,7 +12,7 @@
 
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
-  "agent",
+  "agent-key",
   "grant",
   "tenant",
   "billing",
@@ -41,7 +41,7 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["doctor", "--json"], requiredKey: "checks" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
-  { args: ["agent", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["agent-key", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "agent list" },
@@ -103,7 +103,7 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: false, validatesClient: true },
+  { args: ["agent-key", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: false, validatesClient: true },
   // grant delete also requires --agent <id>, so the generic single-ID
   // matrix cannot exercise it without a live agent fixture.
   { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: false },
@@ -126,7 +126,7 @@ export interface RequiresPositionalArgRow {
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
-  { args: ["agent", "delete"], missingArgName: "key_id" },
+  { args: ["agent-key", "delete"], missingArgName: "key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
   { args: ["kill"], missingArgName: "agent_id" },
   { args: ["stop"], missingArgName: "agent_id" },
