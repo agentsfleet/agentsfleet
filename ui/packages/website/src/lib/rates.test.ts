@@ -9,7 +9,7 @@ import {
 
 /*
  * Pin tests — catch drift across the three surfaces that hand-type
- * usezombie rates: src/state/tenant_billing.zig (server authority),
+ * agentsfleet rates: src/state/tenant_billing.zig (server authority),
  * this file (marketing mirror), ~/Projects/docs/snippets/rates.mdx
  * (Mintlify display snippet). Identifier names are identical across
  * Zig/TS/JS per the cross-tier parity rule, so a rename in any tier

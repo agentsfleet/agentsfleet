@@ -1,5 +1,5 @@
 /**
- * logs-detail.spec.ts — zombie detail page renders SSR-authenticated content.
+ * logs-detail.spec.ts — agent detail page renders SSR-authenticated content.
  *
  * Spec called for "event-row click → <Dialog> opens with payload preview".
  * The current EventsList renders event cards with an inline truncated
@@ -8,7 +8,7 @@
  * dashboard polish queue, not on M64_006.
  *
  * Pragmatic asserts (what WS-A actually unblocked):
- *   - SSR loads the detail page for an active zombie.
+ *   - SSR loads the detail page for an active agent.
  *   - The status indicator next to the title pulses (data-state="active",
  *     WakePulse with data-live attribute) — proves the design system primitive
  *     is wired and the SSR rendered the active branch.
@@ -21,24 +21,24 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { getDefaultWorkspaceId, seedZombie } from "./fixtures/seed";
-import { cleanWorkspaceZombies } from "./fixtures/teardown";
+import { getDefaultWorkspaceId, seedAgent } from "./fixtures/seed";
+import { cleanWorkspaceAgents } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const RENDER_TIMEOUT_MS = 15_000;
 
-test.describe("zombie detail logs", () => {
-  test("active zombie detail page renders pulsing status + recent activity", async ({ page }) => {
+test.describe("agent detail logs", () => {
+  test("active agent detail page renders pulsing status + recent activity", async ({ page }) => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
-    const seeded = await seedZombie(FIXTURE_KEY.regular, ws, { name: `logs-${tag}` });
+    const seeded = await seedAgent(FIXTURE_KEY.regular, ws, { name: `logs-${tag}` });
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(`/zombies/${seeded.id}`);
-    await expect(page).toHaveURL(new RegExp(`/zombies/${seeded.id}(\\?|$)`));
+    await page.goto(`/agents/${seeded.id}`);
+    await expect(page).toHaveURL(new RegExp(`/agents/${seeded.id}(\\?|$)`));
 
     // Header status indicator — `data-state="active"` carries the WakePulse
-    // child with `data-live` set when the zombie is live.
+    // child with `data-live` set when the agent is live.
     const statusIndicator = page.locator('[data-state="active"]').first();
     await expect(statusIndicator).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     await expect(statusIndicator.locator("[data-live]")).toBeVisible();
@@ -51,6 +51,6 @@ test.describe("zombie detail logs", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceZombies(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceAgents(FIXTURE_KEY.regular, ws);
   });
 });

@@ -1,11 +1,11 @@
--- Integration grants for zombie-to-service authorization. A zombie must
--- have an approved grant for a service before usezombie will inject
--- credentials for it. Zombie-initiated, human-approved.
+-- Integration grants for agent-to-service authorization. A agent must
+-- have an approved grant for a service before agentsfleet will inject
+-- credentials for it. Agent-initiated, human-approved.
 
 CREATE TABLE IF NOT EXISTS core.integration_grants (
     uid             UUID    PRIMARY KEY,
     grant_id        TEXT    NOT NULL UNIQUE,
-    zombie_id       UUID    NOT NULL REFERENCES core.zombies(id) ON DELETE CASCADE,
+    agent_id       UUID    NOT NULL REFERENCES core.agents(id) ON DELETE CASCADE,
     service         TEXT    NOT NULL,
     status          TEXT    NOT NULL,
     requested_at    BIGINT  NOT NULL,
@@ -16,11 +16,11 @@ CREATE TABLE IF NOT EXISTS core.integration_grants (
     CONSTRAINT ck_integration_grants_grant_id_uuidv7
         CHECK (grant_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
     CONSTRAINT ck_integration_grants_uid_matches_grant_id CHECK (uid::text = grant_id),
-    CONSTRAINT uq_integration_grants_zombie_service
-        UNIQUE (zombie_id, service)
+    CONSTRAINT uq_integration_grants_agent_service
+        UNIQUE (agent_id, service)
 );
 
-CREATE INDEX IF NOT EXISTS idx_integration_grants_zombie_id
-    ON core.integration_grants (zombie_id);
+CREATE INDEX IF NOT EXISTS idx_integration_grants_agent_id
+    ON core.integration_grants (agent_id);
 
 GRANT SELECT, INSERT, UPDATE ON core.integration_grants TO api_runtime;

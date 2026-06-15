@@ -19,6 +19,8 @@ const loader = @import("runtime_loader.zig");
 pub const ValidationError = runtime_types.ValidationError;
 
 pub const ServeConfig = struct {
+    const Self = @This();
+
     /// Static helper preserved here (rather than a free fn on the module)
     /// so existing callers can keep doing `ServeConfig.printValidationError(err)`.
     pub const printValidationError = validate.printValidationError;
@@ -85,7 +87,7 @@ pub const ServeConfig = struct {
         };
     }
 
-    pub fn deinit(self: *ServeConfig) void {
+    pub fn deinit(self: *Self) void {
         self.alloc.free(self.app_url);
         self.alloc.free(self.api_url);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);

@@ -7,7 +7,7 @@
  * The key name is unique per run so the mint/revoke/delete cycle is
  * self-contained and does not race other specs on the shared fixture tenant.
  *
- * Pins the reveal-once invariant: after the dialog closes, the raw zmb_t_
+ * Pins the reveal-once invariant: after the dialog closes, the raw agt_t
  * value is gone from the DOM (CreateApiKeyDialog discards it).
  */
 import { expect, test } from "@playwright/test";
@@ -39,7 +39,7 @@ test.describe("settings api-keys page", () => {
     const field = page.getByLabel(/api key value/i);
     await expect(field).toBeVisible();
     const raw = await field.inputValue();
-    expect(raw.startsWith("zmb_t_")).toBe(true);
+    expect(raw.startsWith("agt_t")).toBe(true);
 
     // Close — the raw value must not survive in the DOM (Invariant 1).
     await page.getByRole("button", { name: /stored it/i }).click();

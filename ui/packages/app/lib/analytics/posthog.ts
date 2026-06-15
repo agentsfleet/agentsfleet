@@ -209,7 +209,7 @@ export function resetAnalyticsIdentity(): void {
 
 // Typed product-event capture. Catalog props deliberately bypass sanitizeProps
 // (its closed ALLOWED_PROP_KEYS allowlist would silently drop event-specific
-// keys like zombie_id); instead the payload is allowlisted against the
+// keys like agent_id); instead the payload is allowlisted against the
 // catalog's own EVENT_PROP_KEYS mirror — compile-time excess-property checks
 // only cover object literals, so a spread or widened argument must not be
 // able to smuggle extra fields (a raw token is one property away at several

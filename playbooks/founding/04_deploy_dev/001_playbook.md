@@ -58,11 +58,11 @@ Expected DEV pipeline order:
 1. `check-credentials`
 2. `build-dev` — cross-compiles and pushes `dev-latest` to GHCR
 3. `deploy-fly-dev` — `flyctl deploy --app agentsfleetd-dev --image ghcr.io/agentsfleet/agentsfleetd:dev-latest`
-4. `verify-dev` — polls `https://api-dev.usezombie.com/healthz` until 200
-5. `qa-dev` — Playwright smoke suite against `https://usezombie-app.vercel.app`
+4. `verify-dev` — polls `https://api-dev.agentsfleet.net/healthz` until 200
+5. `qa-dev` — Playwright smoke suite against `https://agentsfleet-app.vercel.app`
 6. `notify` — Discord
 
-> **HTTP concurrency knobs** live in `deploy/fly/zombied-dev/fly.toml` under
+> **HTTP concurrency knobs** live in `deploy/fly/agentsfleetd-dev/fly.toml` under
 > `[env]` (`API_HTTP_THREADS = "32"` — matched to prod so dev surfaces pool
 > saturation first — and `API_HTTP_WORKERS = "1"` on this 512mb box).
 > `API_HTTP_THREADS` is the per-worker handler-pool size; the one long-lived
@@ -81,8 +81,8 @@ Expected DEV pipeline order:
 Run after workflow is green:
 
 ```bash
-curl -sf https://api-dev.usezombie.com/healthz
-curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+curl -sf https://api-dev.agentsfleet.net/healthz
+curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
 ```
 
 Optional operator checks (requires `agentsfleet` CLI — not yet available):
@@ -134,7 +134,7 @@ Evidence location:
 Run the full CLI acceptance flow against DEV after the pipeline is green:
 
 ```bash
-export ZOMBIE_API_URL=https://api-dev.usezombie.com
+export AGENTSFLEET_API_URL=https://api-dev.agentsfleet.net
 
 npx agentsfleet login
 npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>

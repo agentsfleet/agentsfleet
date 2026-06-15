@@ -6,7 +6,7 @@ pub fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateZombieId(alloc: std.mem.Allocator) ![]const u8 {
+pub fn generateAgentId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 

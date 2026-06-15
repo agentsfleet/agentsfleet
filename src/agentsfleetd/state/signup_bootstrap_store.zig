@@ -32,12 +32,14 @@ pub const WorkspaceRow = struct {
 
 /// Result of the idempotent replay lookup. Owned strings freed via deinit.
 pub const ExistingAccount = struct {
+    const Self = @This();
+
     user_id: []u8,
     tenant_id: []u8,
     workspace_id: []u8,
     workspace_name: []u8,
 
-    pub fn deinit(self: *ExistingAccount, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.user_id);
         alloc.free(self.tenant_id);
         alloc.free(self.workspace_id);

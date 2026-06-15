@@ -239,7 +239,7 @@ test "requireUuidV7Id rejects SQL injection payload" {
     try std.testing.expect(id_format.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11"));
 }
 
-pub const getZombieWorkspaceId = authz.getZombieWorkspaceId;
+pub const getAgentWorkspaceId = authz.getAgentWorkspaceId;
 pub const authorizeWorkspace = authz.authorizeWorkspace;
 pub const setTenantSessionContext = authz.setTenantSessionContext;
 pub const authorizeWorkspaceAndSetTenantContext = authz.authorizeWorkspaceAndSetTenantContext;

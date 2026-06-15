@@ -2,7 +2,7 @@
 # DEV — local development
 # =============================================================================
 
-.PHONY: up down _clean _prepare_local_zombied_binary
+.PHONY: up down _clean _prepare_local_agentsfleetd_binary
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 LOCAL_UNAME_M := $(shell uname -m)
@@ -17,8 +17,8 @@ LOCAL_DOCKER_ARCH := amd64
 LOCAL_ZIG_TARGET := x86_64-linux
 endif
 
-up: _prepare_local_zombied_binary ## Start all services and tail app logs
-	@echo "Starting usezombie..."
+up: _prepare_local_agentsfleetd_binary ## Start all services and tail app logs
+	@echo "Starting agentsfleet..."
 	@TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose up -d --build
 	@echo ""
 	@echo "Services:"
@@ -35,7 +35,7 @@ down:  ## Stop all services, remove volumes, and cleanup
 	@$(MAKE) _clean --no-print-directory
 	@echo "Cleanup complete."
 
-_prepare_local_zombied_binary:
+_prepare_local_agentsfleetd_binary:
 	@mkdir -p dist
 	@echo "Preparing local agentsfleetd binary for linux/$(LOCAL_DOCKER_ARCH) ($(LOCAL_ZIG_TARGET))..."
 	@zig build -Doptimize=ReleaseSafe -Dtarget=$(LOCAL_ZIG_TARGET)

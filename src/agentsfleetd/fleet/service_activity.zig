@@ -3,13 +3,13 @@
 //! `POST /v1/runners/me/leases/{lease_id}/activity` forwards the live-tail
 //! progress frames a runner streams off its sandboxed child. A runner holds no
 //! Redis, so it ships frames here and `agentsfleetd` does the `PUBLISH` to
-//! `zombie:{id}:activity` — downstream Server-Sent-Events (SSE) is unchanged.
+//! `agent:{id}:activity` — downstream Server-Sent-Events (SSE) is unchanged.
 //!
 //! Best-effort + ephemeral by contract: a dropped frame is cosmetic (the durable
 //! record is `report`), so each publish swallows its own failure and the verb
 //! answers 202 with no ack. The only hard checks are authz — the lease must
 //! resolve and belong to the presenting runner, else a runner could publish onto
-//! a zombie it has no lease on. No fencing: a stale holder's cosmetic frames are
+//! a agent it has no lease on. No fencing: a stale holder's cosmetic frames are
 //! harmless, and the live tail is never the source of truth.
 //!
 //! This is the single seam where the runner-wire frame vocabulary
@@ -26,15 +26,15 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const hx_mod = @import("../http/handlers/hx.zig");
 const ec = @import("../errors/error_registry.zig");
 const activity_wire = @import("contract").activity;
-const activity_publisher = @import("../zombie/activity_publisher.zig");
+const activity_publisher = @import("../agent/activity_publisher.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_activity);
 
-/// The lease fields a publish needs: which zombie's channel, and the event the
+/// The lease fields a publish needs: which agent's channel, and the event the
 /// frames belong to. Arena-dup'd off the row.
 const Target = struct {
-    zombie_id: []const u8,
+    agent_id: []const u8,
     event_id: []const u8,
 };
 
@@ -65,7 +65,7 @@ pub fn activity(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
 
 const Ack = struct { ok: bool };
 
-/// Publish every frame to the zombie's activity channel, reusing one Scratch
+/// Publish every frame to the agent's activity channel, reusing one Scratch
 /// across the batch (the publisher's steady-state zero-alloc path).
 fn publishFrames(hx: Hx, target: Target, frames: []const activity_wire.ActivityFrame) void {
     var scratch = activity_publisher.Scratch.init(hx.alloc);
@@ -83,10 +83,10 @@ fn publishOne(
     frame: activity_wire.ActivityFrame,
 ) void {
     switch (frame) {
-        .tool_call_started => |b| activity_publisher.publishToolCallStarted(client, scratch, alloc, target.zombie_id, target.event_id, b.name, b.args_redacted),
-        .agent_response_chunk => |b| activity_publisher.publishChunk(client, scratch, target.zombie_id, target.event_id, b.text),
-        .tool_call_completed => |b| activity_publisher.publishToolCallCompleted(client, scratch, target.zombie_id, target.event_id, b.name, b.ms),
-        .tool_call_progress => |b| activity_publisher.publishToolCallProgress(client, scratch, target.zombie_id, target.event_id, b.name, b.elapsed_ms),
+        .tool_call_started => |b| activity_publisher.publishToolCallStarted(client, scratch, alloc, target.agent_id, target.event_id, b.name, b.args_redacted),
+        .agent_response_chunk => |b| activity_publisher.publishChunk(client, scratch, target.agent_id, target.event_id, b.text),
+        .tool_call_completed => |b| activity_publisher.publishToolCallCompleted(client, scratch, target.agent_id, target.event_id, b.name, b.ms),
+        .tool_call_progress => |b| activity_publisher.publishToolCallProgress(client, scratch, target.agent_id, target.event_id, b.name, b.elapsed_ms),
     }
 }
 
@@ -104,13 +104,13 @@ fn loadTargetInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Target
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT zombie_id::text, event_id
+        \\SELECT agent_id::text, event_id
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return Target{
-        .zombie_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
+    return .{
+        .agent_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
     };
 }

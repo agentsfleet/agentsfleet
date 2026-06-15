@@ -2,7 +2,7 @@
   post:
     operationId: create_api_key
     summary: Mint a tenant API key
-    description: Creates a new `zmb_t_`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash
+    description: Creates a new `agt_t`-prefixed tenant admin key. **The raw key is returned once.** Only the SHA-256 hash
       is persisted — the key cannot be retrieved again. Requires operator (or admin) role.
     tags:
     - API Keys
@@ -43,7 +43,7 @@
                   type: string
                 key:
                   type: string
-                  description: Raw `zmb_t_` tenant key (70 chars). Shown once — store securely.
+                  description: Raw `agt_t` tenant key (70 chars). Shown once — store securely.
                 created_at:
                   type: integer
                   format: int64

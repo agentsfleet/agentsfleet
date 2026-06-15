@@ -1,6 +1,6 @@
 # SKILL.md / TRIGGER.md Frontmatter Schema
 
-Canonical reference for the YAML frontmatter on the two files that make up a zombie bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
+Canonical reference for the YAML frontmatter on the two files that make up a agent bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
 
 > Audience: implementing agents, parser authors, test writers. End-user docs live at `docs.agentsfleet.net/concepts/skill-frontmatter`.
 
@@ -8,10 +8,10 @@ Canonical reference for the YAML frontmatter on the two files that make up a zom
 
 ## The two-file model
 
-A zombie bundle is a directory containing exactly two files:
+A agent bundle is a directory containing exactly two files:
 
 - **`SKILL.md`** — the **SOUL**. Authoring metadata in the frontmatter; prose body that becomes the agent's system prompt at execution time. The runtime never structurally interprets the body.
-- **`TRIGGER.md`** — the **CONTRACT**. Identity at the top level; runtime configuration (security/cost boundaries, tool grants, trigger sources) under an `x-usezombie:` block. The runtime parses this file before any LLM call.
+- **`TRIGGER.md`** — the **CONTRACT**. Identity at the top level; runtime configuration (security/cost boundaries, tool grants, trigger sources) under an `x-agentsfleet:` block. The runtime parses this file before any LLM call.
 
 The split exists because the two files have different audiences and different review bars. SKILL.md is iterated like a prompt — frequent edits, prose review. TRIGGER.md is a security/cost contract — every edit is privileged (network egress, credential scope, budget caps) and benefits from file-level CODEOWNERS, `git log` per concern, and standalone audit.
 
@@ -21,16 +21,16 @@ The split exists because the two files have different audiences and different re
 
 ```yaml
 ---
-name: platform-ops-zombie              # required
+name: platform-ops-agent              # required
 description: Diagnoses platform health from fly.io and upstash...   # required
 version: 0.1.0                         # required, semver
 when_to_use: When operators want a read-only platform sweep    # optional
 tags: [platform-ops, diagnostics]      # optional
-author: usezombie                      # optional
+author: agentsfleet                      # optional
 model: claude-sonnet-4-6               # optional
 ---
 
-You are Platform Ops Zombie. You diagnose problems in a small production
+You are Platform Ops Agent. You diagnose problems in a small production
 platform...
 ```
 
@@ -58,9 +58,9 @@ Plain markdown prose. Goes verbatim into the agent's system prompt. No structura
 
 ```yaml
 ---
-name: platform-ops-zombie
+name: platform-ops-agent
 
-x-usezombie:
+x-agentsfleet:
   trigger:
     type: chat
   tools:
@@ -93,13 +93,13 @@ x-usezombie:
 | Key | Required | Type | Constraint |
 |---|---|---|---|
 | `name` | yes | string | Same constraints as SKILL.md `name:`; must match |
-| `x-usezombie` | yes | object | Runtime config block |
+| `x-agentsfleet` | yes | object | Runtime config block |
 
-**Forbidden at top level** (hard error, `runtime_keys_outside_block`): `tools`, `credentials`, `network`, `budget`, `trigger`. These belong under `x-usezombie:`.
+**Forbidden at top level** (hard error, `runtime_keys_outside_block`): `tools`, `credentials`, `network`, `budget`, `trigger`. These belong under `x-agentsfleet:`.
 
 **Other top-level keys** (e.g. `x-amp:`, unknown vendor extensions): silent pass-through.
 
-### `x-usezombie:` block — required subkeys
+### `x-agentsfleet:` block — required subkeys
 
 **Validation: rigid.** Unknown subkeys are a hard error (`unknown_runtime_key`). Typos must fail loud.
 
@@ -120,7 +120,7 @@ Behavioral schedules (e.g. "every 30 min during incident windows") live in SKILL
 
 #### `credentials`
 
-`string[]`. Each entry is a credential name that must exist in the operator's vault under the same name with the M45 structured `type` discriminator. Empty list is allowed (zombie does no authenticated egress).
+`string[]`. Each entry is a credential name that must exist in the operator's vault under the same name with the M45 structured `type` discriminator. Empty list is allowed (agent does no authenticated egress).
 
 #### `network`
 
@@ -143,7 +143,7 @@ Caps do not compose (`daily * 30 ≠ monthly`). First trip blocks further runs. 
 
 ## Cross-file invariant
 
-`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/.../zombies`). Mismatch → `name_mismatch` error pointing at both values.
+`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/.../agents`). Mismatch → `name_mismatch` error pointing at both values.
 
 The directory basename is **not** the canonical name — it's a fallback hint for human-readable CLI output if the server response omits the name.
 
@@ -155,8 +155,8 @@ The directory basename is **not** the canonical name — it's a fallback hint fo
 |---|---|---|
 | SKILL.md top-level | permissive | silent pass-through |
 | SKILL.md body | unparsed | n/a |
-| TRIGGER.md top-level | mostly permissive | unknown: pass-through; runtime keys (`tools`, etc.): hard error — must move under `x-usezombie:` |
-| TRIGGER.md `x-usezombie:` block | rigid | hard error (`unknown_runtime_key`) |
+| TRIGGER.md top-level | mostly permissive | unknown: pass-through; runtime keys (`tools`, etc.): hard error — must move under `x-agentsfleet:` |
+| TRIGGER.md `x-agentsfleet:` block | rigid | hard error (`unknown_runtime_key`) |
 | TRIGGER.md other `x-*:` blocks | parsed but ignored | pass-through (other vendors) |
 | TRIGGER.md body | unparsed | n/a (operator commentary) |
 
@@ -167,9 +167,9 @@ The directory basename is **not** the canonical name — it's a fallback hint fo
 | Code | Source | Trigger |
 |---|---|---|
 | `missing_required_field` | parser | required field absent in SKILL.md or TRIGGER.md frontmatter |
-| `usezombie_block_required` | parser | `x-usezombie:` missing in TRIGGER.md |
+| `agentsfleet_block_required` | parser | `x-agentsfleet:` missing in TRIGGER.md |
 | `runtime_keys_outside_block` | parser | runtime key (`tools`/`credentials`/`network`/`budget`/`trigger`) at top level of TRIGGER.md |
-| `unknown_runtime_key` | parser | unknown subkey under `x-usezombie:` |
+| `unknown_runtime_key` | parser | unknown subkey under `x-agentsfleet:` |
 | `duplicate_key` | YAML→JSON converter | same key declared twice at any level |
 | `name_mismatch` | install handler | SKILL.md `name:` ≠ TRIGGER.md `name:` |
 | `secret_not_found` | runtime, first event | credential listed but missing in vault |
@@ -184,7 +184,7 @@ The frontmatter exists for the parts of the system that are **not** the LLM. The
 
 2. **Credential scope.** `credentials:` gates which secrets get injected. If the model decided per-run, a prompt-injection attack could expand scope by talking the model into "I need stripe too." Static declaration = static blast radius.
 
-3. **Pre-LLM decisions.** Cron scheduling, budget caps, trigger registration all happen *before* any model call. The HTTP handler that registers a zombie cannot afford a 200ms + $0.001 LLM call to figure out the schedule.
+3. **Pre-LLM decisions.** Cron scheduling, budget caps, trigger registration all happen *before* any model call. The HTTP handler that registers a agent cannot afford a 200ms + $0.001 LLM call to figure out the schedule.
 
 4. **Auditability.** A reviewer scanning a TRIGGER.md sees in 5 seconds: this thing can spend $1/day, hit two domains, and use these two credentials. If those facts were in prose, you would need to re-run the LLM to audit a skill — and trust the audit run matched the runtime run.
 
@@ -196,9 +196,9 @@ The honest critique that informed the M46 trim: most YAML config in skill-style 
 
 ## See also
 
-- `docs/ARCHITECHTURE.md` §8.1 (Authoring), §10 (capabilities)
-- `samples/platform-ops/` — canonical shipped example
+- `docs/ARCHITECTURE.md` §8.1 (Authoring), §10 (capabilities)
+- `samples/fixtures/platform-ops-sample/` — canonical shipped example
 - `samples/fixtures/frontmatter/` — minimal/full/broken parser fixtures
-- `src/zombie/config_parser.zig` — parser implementation
-- `src/zombie/yaml_frontmatter.zig` — YAML→JSON converter
+- `src/agent/config_parser.zig` — parser implementation
+- `src/agent/yaml_frontmatter.zig` — YAML→JSON converter
 - `~/Projects/docs/concepts/skill-frontmatter` — end-user reference (mintlify)

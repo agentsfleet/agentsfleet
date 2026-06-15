@@ -59,8 +59,8 @@ const JsonError = struct { ok: bool, @"error": CliError };
 
 /// CLI errors shared across handlers — single-sourced so the same condition
 /// renders the same code/message/suggestion everywhere (RULE UFS).
-pub const ERR_API_URL_UNSET = CliError{ .code = "API_URL_UNSET", .message = "control-plane URL not set", .suggestion = "pass --api <url> or set ZOMBIE_API_URL" };
-pub const ERR_UNREACHABLE = CliError{ .code = "CONTROL_PLANE_UNREACHABLE", .message = "could not reach the control plane", .suggestion = "verify --api/ZOMBIE_API_URL and that agentsfleetd is up" };
+pub const ERR_API_URL_UNSET = CliError{ .code = "API_URL_UNSET", .message = "control-plane URL not set", .suggestion = "pass --api <url> or set AGENTSFLEET_API_URL" };
+pub const ERR_UNREACHABLE = CliError{ .code = "CONTROL_PLANE_UNREACHABLE", .message = "could not reach the control plane", .suggestion = "verify --api/AGENTSFLEET_API_URL and that agentsfleetd is up" };
 pub const ERR_OOM = CliError{ .code = "OUT_OF_MEMORY", .message = "out of memory reading configuration", .suggestion = "retry" };
 
 // CLI output runs outside the daemon's io-threaded spine; the process-global

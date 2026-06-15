@@ -4,7 +4,7 @@ export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
 export type GroupedEvent = {
   event_id: string;
-  zombie_id: string;
+  agent_id: string;
   posture: ChargeRow["posture"];
   model: string;
   recorded_at: number;
@@ -27,7 +27,7 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
     if (!entry) {
       entry = {
         event_id: r.event_id,
-        zombie_id: r.zombie_id,
+        agent_id: r.agent_id,
         posture: r.posture,
         model: r.model,
         recorded_at: r.recorded_at,

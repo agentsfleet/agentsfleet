@@ -37,10 +37,12 @@ pub const JwkKey = struct {
 };
 
 pub const JwksCache = struct {
+    const Self = @This();
+
     fetched_at_ms: i64,
     keys: []JwkKey,
 
-    pub fn deinit(self: *JwksCache, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         for (self.keys) |key| {
             alloc.free(key.kid);
             alloc.free(key.modulus);

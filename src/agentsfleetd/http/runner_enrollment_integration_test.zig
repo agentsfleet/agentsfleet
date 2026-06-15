@@ -1,6 +1,6 @@
 // Runner-enrollment authz over the live HTTP surface: `POST /v1/runners` mints
-// a `zrn_` only for a verified JWT carrying `metadata.platform_admin == true`;
-// a tenant-admin JWT and a `zmb_t_` api_key are both rejected `403`.
+// a `agt_r` only for a verified JWT carrying `metadata.platform_admin == true`;
+// a tenant-admin JWT and a `agt_t` api_key are both rejected `403`.
 //
 // The DB-backed arms require TEST_DATABASE_URL — skipped gracefully otherwise
 // via `TestHarness.start` returning `error.SkipZigTest`. The first test needs
@@ -28,30 +28,30 @@ const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECK passes.
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7001";
 
-// A valid tenant api_key. The DB stores only its SHA-256 hash; a `zmb_t_`
+// A valid tenant api_key. The DB stores only its SHA-256 hash; a `agt_t`
 // authenticates as `.role=.admin` but never carries `platform_admin`.
-const ZMB_T_KEY = "zmb_t_" ++ "c" ** 48;
+const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "c" ** 48;
 
 const REGISTER_BODY =
     \\{"host_id":"host-enroll-test","sandbox_tier":"dev_none","labels":[]}
 ;
 
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"0Z8ud27-1vd_WsxIcCdMkFeWNiGYpOIKhKAkQruCx6lIzCiDnKyH4I1fL2copGyb5EXdzmqrPvMIKEvoSXGUafrjWp8QneMKdVXoFwRsdrsaEcXg_1npJuiF9smRouTn8pda6m0bwcjn8jBXdBo4q_Eah9O03A8yrC-ZfNqDKjClG0lsYWlJVxpcUIYGQNNVI6LRhYD3tQnzu_4vQdW_FgDrPffwv2uA6YQoMt-Tq93LtDZFE8PlEW43vDcSRw-1gWQazcLw9VPEw6vAywE7PLeQyx3cjIQZxBDo0eDld4J6oprxatCVZ0I-CuBdj07PvGFYmWke5nfV-zsbwwwvhw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB","kid":"test-kid-static","use":"sig","alg":"RS256"}]}
 ;
 // metadata.platform_admin == true → may enroll.
 const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIiwicGxhdGZvcm1fYWRtaW4iOnRydWV9fQ.x6um6bT-VysmVR12tT-NbGQl5m8Q1tQbT0J0tcm2UNOWmJ4-nyIu0q-LYniDxFC8LwovQYdqo4R24PcaBT3JTEtD3Msg9-PlB6C1_hgLiEpFg6oqYqKdy3qW8-p6c8NTguqKWWB8LNXOnoXZTsW6FCBDs3Lb0ucc6wpEXFiT44nPkRyC2uCDEjPwG3iEkBGRA9sZ4s_hMAqLdZLN_kH9LSELoGsZFZZlxiyXCyAnX1UtmhuyGLNo4jwsvx99SU8cKzICQljopjfoxWMcvkZ3bzU8aphsgX1emPwGKRkY-6M1hzec-P2BNcye3jOpPoo8v-WlVsL4LHengyyPzFeYkg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.Jz-CQ6v1iiI5g1neq9zAwuNa99k33WzEJYCrazuizcFXaxGTmcRzb20iWmo2eIPBcwERzrOXmSM1iw5NdlAJSsamtds2WCQntNdpkOG3Xp4_xp0faUZmNUeD4viISG1kfMr2hKKR1XPEbydTdbKEvcQoNVVmGFdDnba9fV-9WiXlSLgHuGOKHWWgZCUV8akZImjNhbGM3l0y-_v3V8skx1BaUxkTg-WInhagaDOXvGOOAEoPThmGj2bhDT4F3ZXlAbEvLyJnoQz7pkWUwv4jTQVE4jqyBs19Fx-pGppDU_1tM8h5GRN0GegzuM98bgWgfBAX2uvrIT_a5XoMRhFxQg";
 // role=admin, NO platform_admin → tenant admin, must be 403.
 const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIn19.xOayzWVqaX6io92p8Q34Oiku4pepbpa1uaRG80na9fg6-dD3NNRGM3BKl6ez-ps6m2WucgWV_MT7NEnolgrMyP7EZgVMSZJzHCV9Rp2Iz0wFn52tHGSEXrNqvW3_Vk0U9dl9CwG_m1HVLuKj8rF6KHCsJTuW5q0uCWVKp_b8ore0N6O6lwaZQRwrGBx8bpgrdvdwIkHNgrn_Fz5d8acrxTliRPLN-jNWQO2jiUGAeCY5EFkcv2-ZE-DmVCqDJoGsbfNk_GLvykdIE2bG12BUGO3j5dDX_jAbpEaJMcKJaNAZjvXU8d0yHjqRwQ96wM9a-336yXE-Q_zfXNiu7qAuPA";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.jBmYsg5xN1HFcENmp24xn3RwWCKkX-jF1uffnnCpot_iYJfNv_yOYzGocigF62rsHlOAqRJF0ZQ-C3te8oOzPAd8yKZcaXJiC9SU_Rj59CpNri5pk3PjdovN9UL-2oPLkOEkoiwG-36ubpBieunFP3VuyfIwWcpXbmXsXVy68WIr9bfCemW1XZa4rCTOcKwg6Q8ccU2McscPhZ_hwgJI2jA8uygL3wgaC2CIMKsH6aUII5IO9zMNKkC_lK_t9OAHNkBCqxXNTQOXXLSyddbvwvmQ2Vjcy_ZftGaYtTZlWurXfY9pOX4tno_WWVvy2R_kOWEaAeSK_dfHOIRvv3YVsw";
 
 // ── Verifier proof (no DB) ───────────────────────────────────────────────────
 // Drives the real oidc.Verifier so the fixture is proven against production
@@ -100,7 +100,7 @@ test "fixture tokens verify through the real oidc verifier; platform_admin parse
 var api_key_ctx: api_key_lookup.Ctx = undefined;
 // SAFETY: populated by configureRegistry (with the harness pool) before the
 // runner-bearer middleware — and thus the lookup — ever reads it. Wired so a
-// minted `zrn_` resolves against `fleet.runners` (the harness default uses a
+// minted `agt_r` resolves against `fleet.runners` (the harness default uses a
 // null stub).
 var runner_lookup_ctx: serve_runner_lookup.Ctx = undefined;
 
@@ -129,7 +129,7 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
         \\VALUES ($1::uuid, 'Runner Enroll Test Tenant', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TENANT_ID, now_ms });
-    const key_hash = api_key.sha256Hex(ZMB_T_KEY);
+    const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'runner-enroll-test-key', '', $3, 'user_enroll_test', TRUE, $4, $4)
@@ -146,7 +146,7 @@ fn cleanup(h: *TestHarness) void {
         std.log.warn("cleanup runners ignored: {s}", .{@errorName(err)});
 }
 
-test "register: a platform_admin JWT mints a zrn_ (201)" {
+test "register: a platform_admin JWT mints a agt_r (201)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
@@ -155,7 +155,7 @@ test "register: a platform_admin JWT mints a zrn_ (201)" {
     const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(PLATFORM_ADMIN_TOKEN)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.created);
-    try std.testing.expect(resp.bodyContains("zrn_"));
+    try std.testing.expect(resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX));
 }
 
 test "register: a tenant-admin JWT without platform_admin is rejected 403" {
@@ -170,13 +170,13 @@ test "register: a tenant-admin JWT without platform_admin is rejected 403" {
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 }
 
-test "register: a zmb_t_ api_key cannot enroll a runner (403)" {
+test "register: a agt_t api_key cannot enroll a runner (403)" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(ZMB_T_KEY)).json(REGISTER_BODY)).send();
+    const resp = try (try (try h.post(protocol.PATH_RUNNERS).bearer(AGT_T_KEY)).json(REGISTER_BODY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
@@ -204,7 +204,7 @@ test "register: the mint records last_seen_at = 0 (never connected → registere
 
 // ── Operator-plane fleet read (GET /v1/fleet/runners) ────────────────────────
 // Same platform-admin gate as enrollment; read-only; derives liveness and never
-// leaks the token hash or the raw zrn_.
+// leaks the token hash or the raw agt_r.
 
 test "fleet list: a platform_admin JWT lists the fleet with derived liveness (200)" {
     const h = try startHarness(ALLOC);
@@ -223,7 +223,7 @@ test "fleet list: a platform_admin JWT lists the fleet with derived liveness (20
     try std.testing.expect(resp.bodyContains("registered")); // never-connected liveness
     try std.testing.expect(resp.bodyContains("\"admin_state\":\"active\""));
     try std.testing.expect(!resp.bodyContains("token_hash")); // invariant: hash never leaves
-    try std.testing.expect(!resp.bodyContains("zrn_")); // the raw token is mint-only
+    try std.testing.expect(!resp.bodyContains(auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX)); // the raw token is mint-only
 }
 
 test "fleet list: a tenant-admin JWT is rejected 403" {
@@ -238,13 +238,13 @@ test "fleet list: a tenant-admin JWT is rejected 403" {
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 }
 
-test "fleet list: a zmb_t_ api_key is rejected 403" {
+test "fleet list: a agt_t api_key is rejected 403" {
     const h = try startHarness(ALLOC);
     defer h.deinit();
     try seedTenantAndApiKey(h);
     defer cleanup(h);
 
-    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(ZMB_T_KEY)).send();
+    const resp = try (try h.get(protocol.PATH_FLEET_RUNNERS).bearer(AGT_T_KEY)).send();
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
@@ -259,7 +259,7 @@ test "fleet list: a zmb_t_ api_key is rejected 403" {
 
 // UUIDv7 (version nibble 7) so the schema id CHECK passes; tenant_id NULL = trusted fleet.
 const GATE_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
-const GATE_RAW_TOKEN = "zrn_" ++ "g" ** 60;
+const GATE_RAW_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "g" ** 60;
 
 fn setGateRunner(h: *TestHarness, admin_state: []const u8) !void {
     const conn = try h.acquireConn();
@@ -305,5 +305,5 @@ test "runner auth admits an active admin_state and rejects a revoked one" {
 
 // Enrollment is mint-by-API only: the `agentsfleet-runner register` CLI was retired,
 // so there is no binary-spawned register arm. The handler authz above is the
-// enrollment contract; the `zrn_` is minted server-side from the dashboard's
+// enrollment contract; the `agt_r` is minted server-side from the dashboard's
 // session-authed POST (proven here directly against the live HTTP surface).

@@ -1,7 +1,7 @@
 //! `svix_signature` middleware (M28_001 §5).
 //!
 //! Verifies Svix v1 multi-sig HMAC-SHA256 for Clerk (and any future Svix-
-//! signed provider) webhooks. Route path `/v1/webhooks/svix/{zombie_id}`
+//! signed provider) webhooks. Route path `/v1/webhooks/svix/{agent_id}`
 //! selects this middleware statically; no per-request provider switch.
 //!
 //! Crypto core lives in the sibling `auth/crypto/svix_verify.zig` and is
@@ -34,12 +34,14 @@ fn defaultNowSeconds() i64 {
 const log = logging.scoped(.svix);
 
 /// Owned lookup result. `secret` is the `whsec_<base64>` string loaded from
-/// vault for the target zombie — the verifier handles prefix stripping and
+/// vault for the target agent — the verifier handles prefix stripping and
 /// base64 decoding internally.
 pub const SvixLookupResult = struct {
+    const Self = @This();
+
     secret: ?[]const u8,
 
-    pub fn deinit(self: SvixLookupResult, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         if (self.secret) |s| alloc.free(s);
     }
 };
@@ -64,10 +66,10 @@ pub fn SvixSignature(comptime LookupCtx: type) type {
         }
 
         pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
-            const zombie_id = ctx.webhook_zombie_id orelse return failSig(ctx);
+            const agent_id = ctx.webhook_agent_id orelse return failSig(ctx);
 
-            const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
-                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .err = @errorName(err) });
+            const result_opt = self.lookup_fn(self.lookup_ctx, agent_id, ctx.alloc) catch |err| {
+                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .agent_id = agent_id, .err = @errorName(err) });
                 return failSig(ctx);
             };
             const result = result_opt orelse return failSig(ctx);

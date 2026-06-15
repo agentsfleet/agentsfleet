@@ -1,5 +1,5 @@
 // GitHub webhook ingest filter — decides whether a parsed `workflow_run`
-// payload should be XADDed to the zombie's event stream. Pure functions
+// payload should be XADDed to the agent's event stream. Pure functions
 // over `std.json.Value`; no I/O, no logging, no allocations beyond what
 // the caller already owns.
 //

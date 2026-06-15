@@ -1,4 +1,4 @@
--- Runner fleet control plane (zombie-runner split). The `fleet` schema holds
+-- Runner fleet control plane (agent-runner split). The `fleet` schema holds
 -- runner identity and — in later migrations — leases, heartbeats, executions,
 -- and fleet-level policy/regions. It is deliberately separate from `core` (the
 -- tenant data plane) so the control plane and data plane do not share a trust
@@ -7,10 +7,10 @@
 -- system boundary; a runner is one instance within it.
 --
 -- A runner enrolls via POST /v1/runners, authed by an existing
--- operator/provisioner credential (a Clerk JWT or a zmb_t_ api_key, via
+-- operator/provisioner credential (a Clerk JWT or a agt_t api_key, via
 -- bearer_or_api_key — there is no enrollment token). register mints a durable
--- per-runner bearer token (zrn_), returned once; this table stores only its
--- hash, and zombied verifies later calls by hashing the presented Bearer
+-- per-runner bearer token (agt_r), returned once; this table stores only its
+-- hash, and agentsfleetd verifies later calls by hashing the presented Bearer
 -- (no plaintext token).
 --
 -- sandbox_tier: isolation strength reported at register

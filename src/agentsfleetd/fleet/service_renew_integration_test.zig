@@ -32,9 +32,9 @@ const ALLOC = std.testing.allocator;
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
-const RUNNER_TOKEN = "zrn_" ++ "c" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "c" ** 64;
 
 // The real DB-backed runner lookup, parked at module scope so the value outlives
 // the middleware chain (tests run sequentially in one process).
@@ -60,7 +60,7 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -68,7 +68,7 @@ fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
 }
 
 // Seed a PRESENT billing row at zero balance: balanceCoversEstimate reads a real

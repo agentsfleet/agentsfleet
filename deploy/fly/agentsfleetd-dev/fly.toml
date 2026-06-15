@@ -1,0 +1,53 @@
+app = "agentsfleetd-dev"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/agentsfleet/agentsfleetd:dev-latest"
+
+[deploy]
+  release_command = "/usr/local/bin/agentsfleetd migrate"
+
+[processes]
+  app = "/usr/local/bin/agentsfleetd serve"
+
+# HTTP concurrency tuning — see deploy/fly/agentsfleetd-prod/fly.toml for the full
+# rationale. API_HTTP_THREADS is the per-worker handler-pool size; pool threads
+# serve short-lived requests only (SSE runs on dedicated detached threads).
+# Pinned to 32 to MATCH prod's ceiling so dev surfaces pool-saturation before
+# prod does (the 512mb box absorbs it — thread stacks are virtual/lazily
+# committed). API_HTTP_WORKERS kept at 1 so there is a single shared handler
+# pool (the pool is per-worker; 2 workers = 2 pools).
+# Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only for
+# api-class routes (/healthz, /readyz, /metrics are ops-class and never shed;
+# SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
+# here) — dormant by default, an incident lever (full rationale in the prod
+# fly.toml block). SSE_MAX_STREAMS (default 64) caps concurrent event streams
+# per instance with 503; streams run on dedicated detached threads, sharing
+# ONE SubscriptionHub Redis connection per instance.
+[env]
+  API_HTTP_THREADS = "32"
+  API_HTTP_WORKERS = "1"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# No public *.fly.dev domain — all inbound traffic enters via Cloudflare Tunnel
+# (cloudflared-dev → agentsfleetd-dev.internal:3000 over Fly 6PN). Note: 6PN
+# traffic bypasses the Fly proxy, so `auto_start_machines = true` does NOT
+# wake stopped machines on inbound requests. CI explicitly pre-warms via
+# `flyctl machine start` in the verify-dev job before polling /healthz.
+# `min_machines_running = 1` keeps at least one machine alive in steady
+# state, but enforcement is eventual; pre-warm is the deterministic gate.
+[http_service]
+  internal_port = 3000
+  force_https = false
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[metrics]]
+  port = 9091
+  path = "/metrics"
+  processes = ["app"]

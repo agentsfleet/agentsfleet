@@ -28,7 +28,7 @@ flowchart LR
         C -->|writes| D[(tenant_providers<br/>mode=self_managed<br/>provider/model<br/>context_cap_tokens<br/>credential_ref)]
     end
     subgraph Trigger["Per event (lease path, agentsfleetd)"]
-        E[XADD zombie:id:events] --> F[lease: gate + billing]
+        E[XADD agent:id:events] --> F[lease: gate + billing]
         F --> G[resolveActiveProvider]
         G --> D
         F --> H{frontmatter<br/>sentinels?}
@@ -61,7 +61,7 @@ What each does:
 - **`tenant provider set --credential <name>`** — flips `core.tenant_providers.mode` to `self_managed` and writes a row keyed on the tenant. As part of the PUT, the API:
   1. Loads the vault row at `(tenant_id, "account-fireworks-key")`.
   2. Validates the JSON has `provider`, `api_key`, `model` (eager structural validation; PUT fails with `400 credential_data_malformed` otherwise).
-  3. GETs `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded-model>` to resolve the cap.
+  3. GETs `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded-model>` to resolve the cap.
   4. Writes the row: `mode=self_managed`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-key`.
 
 If the model isn't in the public catalogue, the API returns `400 model_not_in_caps_catalogue` with a hint on how to add it (PR to the catalogue source, or wait for the admin-agent's next sweep — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9). The PUT does **not** make a synthetic call to Fireworks to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed` (lazy auth validation). The CLI prints a `Tip: run a test event to verify the key works against fireworks.` after success.
@@ -74,12 +74,12 @@ The same setup works through the dashboard at `/settings/models`: a credential d
 
 ## 3. Subsequent install — the skill takes a different fork
 
-When John runs `/usezombie-install-platform-ops` after self-managed is set:
+When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
 
 1. The skill calls `agentsfleet doctor --json`. Doctor's `tenant_provider` block reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — doctor is a readiness surface, not a secret surface.
-2. The skill writes `.usezombie/platform-ops/SKILL.md` with sentinel frontmatter:
+2. The skill writes `.agentsfleet/platform-ops/SKILL.md` with sentinel frontmatter:
    ```yaml
-   x-usezombie:
+   x-agentsfleet:
      model: ""                       # sentinel: control plane overlays from tenant_providers
      context:
        context_cap_tokens: 0         # sentinel: control plane overlays from tenant_providers
@@ -99,7 +99,7 @@ If John later runs `agentsfleet tenant provider set --credential account-firewor
 
 When a webhook arrives or the user steers, `agentsfleetd` builds the lease (the lease path):
 
-1. INSERT `core.zombie_events` (status='received').
+1. INSERT `core.agent_events` (status='received').
 2. Balance gate fires. **Important:** the gate runs for self-managed too — see Scenario 03 for the full billing model. (Earlier drafts said self-managed skips the gate; that's wrong. self-managed skips only the **LLM-token meter**, not the orchestration-fee meter. The gate stays on.)
 3. Approval gate.
 4. Resolve `secrets_map` (tool credentials only — `fly`, `slack`, `github`, etc.).
@@ -132,8 +132,8 @@ The endpoint is the single source of truth for model→cap mapping. Design const
 3. **Cheap to serve** — small static JSON, CDN-cacheable, immutable per release.
 
 ```
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
-GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded>
+GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
+GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded>
 
 200 {
   "version": "2026-04-29",
@@ -190,7 +190,7 @@ $ agentsfleet tenant provider set --credential account-fireworks-key
     Credential ref:     account-fireworks-key
 
 ⓘ Tip: run a test event to verify the key works against fireworks.
-   agentsfleet steer <zombie_id> "ping"
+   agentsfleet steer <agent_id> "ping"
 ```
 
 ### 6.2 Confirmation via doctor and `tenant provider get`
@@ -239,7 +239,7 @@ $ agentsfleet tenant provider set --credential account-fireworks-key
     Credential ref:     account-fireworks-key  (unchanged)
 ```
 
-John's `.usezombie/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the control plane just overlays the new values on the next event's lease. In-flight events claimed under Kimi K2 finish under Kimi K2.
+John's `.agentsfleet/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the control plane just overlays the new values on the next event's lease. In-flight events claimed under Kimi K2 finish under Kimi K2.
 
 ### 6.4 Failure mode — credential deleted while still in self-managed
 
@@ -251,7 +251,7 @@ $ agentsfleet credential delete account-fireworks-key
 
 # (a webhook fires later that day)
 
-$ agentsfleet events zmb_01HX9N3K…
+$ agentsfleet events agt_a01HX9N3K…
 EVENT_ID                 ACTOR             STATUS               STARTED              FAILURE_LABEL
 evt_01HXC7P2…           webhook:github    dead_lettered        2026-06-03T11:08:42  provider_credential_missing
 

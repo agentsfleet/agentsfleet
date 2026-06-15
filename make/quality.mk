@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-agentsfleet lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-cli lint-shell check-openapi check-schema-gate check-gh-actions-valid check-playbooks _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _cli_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -38,9 +38,9 @@ _design_system_lint:
 	@cd ui/packages/design-system && bun run lint
 	@echo "✓ [design-system] Lint passed"
 
-_zombiectl_lint:
+_cli_lint:
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
-	@cd agentsfleet && bun run lint
+	@cd cli && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
 
 _lint_zig_pg_drain:
@@ -52,7 +52,7 @@ _lint_zig_test_depth:
 	@mkdir -p .tmp
 	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
 	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
-	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
+	 printf 'agentsfleetd_test_cases=%s\nagentsfleetd_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/agentsfleetd-test-depth.txt >/dev/null; \
 	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
 	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
 	 echo "✓ [zig] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
@@ -91,8 +91,8 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/state/topology.zig \
 	src/types.zig \
 	src/types/id_format.zig \
-	src/zombie/approval_gate.zig \
-	src/zombie/config.zig
+	src/agent/approval_gate.zig \
+	src/agent/config.zig
 
 ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
 ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
@@ -217,13 +217,13 @@ lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schem
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
-lint-apps-ds-ctl: _app_lint _design_system_lint _zombiectl_lint  ## Lint app + design-system + agentsfleet
+lint-apps-ds-ctl: _app_lint _design_system_lint _cli_lint  ## Lint app + design-system + agentsfleet
 
 lint-app: _app_lint  ## Lint ui/packages/app only (Oxlint + tsc)
 
 lint-design-system: _design_system_lint  ## Lint ui/packages/design-system only (Oxlint + tsc)
 
-lint-agentsfleet: _zombiectl_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits + tsc)
+lint-cli: _cli_lint  ## Lint agentsfleet CLI only (Oxlint + runtime/const audits + tsc)
 
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 

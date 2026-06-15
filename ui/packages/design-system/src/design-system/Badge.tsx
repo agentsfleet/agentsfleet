@@ -33,7 +33,7 @@ export const badgeVariants = cva(
         // ── Filled tier ───────────────────────────────────────────
         // Mirrors `.badge-live` / `.badge-warn` / `.badge-error` /
         // `.badge-ev` in the canonical preview at
-        // `~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html`.
+        // `~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html`.
         // Filled fills carry the colour as currency — use them for
         // genuine status, not chrome decoration. Dark text comes
         // from the theme-fixed `--on-pulse` token (same dark hex

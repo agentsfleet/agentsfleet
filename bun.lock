@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "usezombie",
+      "name": "agentsfleet",
       "devDependencies": {
         "@redocly/cli": "^2.31.6",
       },

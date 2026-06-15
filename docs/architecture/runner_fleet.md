@@ -15,11 +15,11 @@ The runner fleet is an **execution plane**: stateless runners lease work, run it
 
 | Guarantee | What the platform promises | How it holds |
 |---|---|---|
-| **No event loss on runner death** | A runner that crashes, partitions, or is killed mid-event never drops the event. | The lease has a `lease_expires_at`; the reclaim sweep re-leases an expired lease to another runner. Durability is at-least-once via `core.zombie_events` + `INSERT … ON CONFLICT DO NOTHING`. |
+| **No event loss on runner death** | A runner that crashes, partitions, or is killed mid-event never drops the event. | The lease has a `lease_expires_at`; the reclaim sweep re-leases an expired lease to another runner. Durability is at-least-once via `core.agent_events` + `INSERT … ON CONFLICT DO NOTHING`. |
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is used only at the tool bridge inside the sandboxed child, and is never persisted runner-side. |
 | **Execution is always sandboxed** | No leased event ever runs un-isolated. | Each lease forks a child under Landlock + cgroups + a network namespace; a sandbox-setup failure fails **closed** — the child does not start, the runner reports `UZ-RUN-007`, and the lease is redeliverable. |
-| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Redis, or the Vault. | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `zrn_` token. |
+| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Redis, or the Vault. | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
 
@@ -73,7 +73,7 @@ Fail-safe by construction: a transient `/renew` failure retries on the next tick
 
 The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencing, node heartbeats, drain, sticky scheduling, checkpointed workloads — but it is **not** a general orchestrator and must not drift into one. The non-goals are load-bearing; each rejected feature is one we deliberately do not build until a spec changes this direction:
 
-- **Not a general scheduler — *until M85_001*.** Placement is capped at *sticky + any-eligible* today. **Label** placement (a zombie's `required_tags ⊆ runner.labels`, matched before the sticky hint) is built in **M85_001**; capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
+- **Not a general scheduler — *until M85_001*.** Placement is capped at *sticky + any-eligible* today. **Label** placement (a agent's `required_tags ⊆ runner.labels`, matched before the sticky hint) is built in **M85_001**; capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
 - **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
@@ -86,7 +86,7 @@ Without this fence the design rediscovers three control planes at once (Nomad-li
 
 The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) or `worker` (the orchestration loop), plus a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
 
-1. **The worker was welded to the datastores.** Each per-agent worker thread opened its own Postgres pool and Redis connections, ran ~15 write patterns on the per-event hot path, and discovered its own work by `XREADGROUP` on `zombie:{id}:events`. It could not run anywhere it could not reach Postgres and Redis directly.
+1. **The worker was welded to the datastores.** Each per-agent worker thread opened its own Postgres pool and Redis connections, ran ~15 write patterns on the per-event hot path, and discovered its own work by `XREADGROUP` on `agent:{id}:events`. It could not run anywhere it could not reach Postgres and Redis directly.
 2. **The connection budget grew with the fleet.** Every per-agent thread held a dedicated blocking Redis connection; the agent count was capped by the Redis pool ceiling, not by compute.
 
 The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**, reaching the platform only over the authenticated `/v1/runners` protocol.
@@ -102,8 +102,8 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
  │ agentsfleetd serve ─┐  PG, Vault      │    │ agentsfleetd     │      │ agentsfleet-runner  (one binary)     │
  │                ▼                 │    │ control     │◀────▶│  parent loop: heartbeat,        │
  │ PG ◀─ 15 writes ─ agentsfleetd worker │    │ plane:      │HTTPS │  lease, report, activity        │
- │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted zrn_)   │
- │                │ Unix-socket RPC │    │ Redis +     │ zrn_ │    │ fork + sandbox per event    │
+ │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted agt_r)   │
+ │                │ Unix-socket RPC │    │ Redis +     │ agt_r │    │ fork + sandbox per event    │
  │                ▼                 │    │ Vault API + │      │    ▼                            │
  │           sandbox sidecar        │    │ assignment  │      │  sandboxed child: NullClaw      │
  └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
@@ -134,38 +134,38 @@ Five verbs. `agentsfleetd` translates them into the Postgres writes and Redis st
 
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
-| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform admin mints a durable `runner_token` (`zrn_`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `zmb_t_` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `zrn_` (M84_001) |
-| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer zrn_` | `runner/heartbeat.zig` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
-| `lease` | `POST /v1/runners/me/leases` | `Bearer zrn_` | `runner/lease.zig` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
-| `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | `runner/report.zig` | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
-| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer zrn_` | `runner/activity.zig` | write-only progress stream for the live tail; best-effort, no ack |
+| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
+| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `runner/heartbeat.zig` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
+| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `runner/lease.zig` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
+| `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `runner/report.zig` | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
+| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `runner/activity.zig` | write-only progress stream for the live tail; best-effort, no ack |
 
-`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only agentsfleet's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `zmb_t_` api_key is rejected `403`.
+`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only agentsfleet's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `agt_t` api_key is rejected `403`.
 
 ## Registering a runner
 
-A runner needs a `zrn_` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The admin opens **dashboard → Admin → Runners → "Add runner"**; a session-authed server action calls `POST /v1/runners`; `agentsfleetd` mints the `zrn_` and reveals it **once** (copy-to-clipboard, then dropped from the browser), and the admin drops it into the host's vault / `ZOMBIE_RUNNER_TOKEN` env var. No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the daemon validates the `zrn_` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
+A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The admin opens **dashboard → Admin → Runners → "Add runner"**; a session-authed server action calls `POST /v1/runners`; `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser), and the admin drops it into the host's vault / `AGENTSFLEET_RUNNER_TOKEN` env var. No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the daemon validates the `agt_r` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
 
 ```
  platform admin                                          agentsfleetd
  (dashboard session; metadata.platform_admin=true)
    │ "Add runner" server action → POST /v1/runners   🔒 GATE 1 — who may enroll:
    │   Authorization: Bearer <session-JWT>           platform_admin claim required
-   │   { host_id, sandbox_tier, labels[] }           (tenant admin / zmb_t_ → 403)
-   ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
-   │                                                  │ store sha256(zrn_) + last_seen_at=0 in fleet.runners
-   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (revealed once)
-   │ admin installs zrn_ on the host (vault → env ZOMBIE_RUNNER_TOKEN)
+   │   { host_id, sandbox_tier, labels[] }           (tenant admin / agt_t → 403)
+   ├────────────────────────────────────────────────►│ mint agt_r (256-bit random)
+   │                                                  │ store sha256(agt_r) + last_seen_at=0 in fleet.runners
+   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: agt_r }  (revealed once)
+   │ admin installs agt_r on the host (vault → env AGENTSFLEET_RUNNER_TOKEN)
    ▼
  host: agentsfleet-runner
- (env ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN=zrn_…)
-   │ boot: validate zrn_ prefix, NO register call
-   │ steady loop — Authorization: Bearer zrn_         🔒 GATE 2 — per-call auth:
+ (env AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN=agt_r…)
+   │ boot: validate agt_r prefix, NO register call
+   │ steady loop — Authorization: Bearer agt_r         🔒 GATE 2 — per-call auth:
    │      ◀── heartbeat · lease · report · activity ─┤ sha256(Bearer) == token_hash (timing-safe)
    │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `agentsfleetd` / `agentsfleet` convention), and `ZOMBIE_RUNNER_TOKEN` holds the minted `zrn_` directly — there is no bootstrap credential on the host and no datastore secret.
+`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (matching the `agentsfleetd` / `agentsfleet` convention), and `AGENTSFLEET_RUNNER_TOKEN` holds the minted `agt_r` directly — there is no bootstrap credential on the host and no datastore secret.
 
 ## Runner state — three categories, no JSONB status
 
@@ -177,7 +177,7 @@ A runner's "status" is three *separate* concerns; conflating them into one Kuber
 | **Runtime liveness** | **derived** at read from `last_seen_at` + leases | `registered` · `online` · `busy` · `offline` | **no** — a pure function; storing it would drift |
 | **History** | `fleet.runner_events` (append-only) | `runner_registered` · `lease_acquired` · `runner_offline` · `runner_revoked` | **yes** — answers "last busy?", "runs this period", "offline how long?" |
 
-Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel): a freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001). "Auth failed" is *not* a runner state — identity is the token, so a bad `zrn_` matches no row; it surfaces in logs/metrics, never as a row's liveness. The `phase + conditions JSONB` split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security) — not before.
+Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel): a freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001). "Auth failed" is *not* a runner state — identity is the token, so a bad `agt_r` matches no row; it surfaces in logs/metrics, never as a row's liveness. The `phase + conditions JSONB` split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security) — not before.
 
 ### Operator plane + reassignment
 
@@ -193,7 +193,7 @@ Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fle
 | **Datastore identity** | `api_runtime` Postgres role | *Which process identity* writes the rows | Postgres `GRANT` |
 
 ```
-   caller (Clerk JWT, platform_admin=true)            runner (zrn_ token, NO db creds)
+   caller (Clerk JWT, platform_admin=true)            runner (agt_r token, NO db creds)
         │  GET/POST /v1/fleet, /v1/runners                  │  POST /v1/runners/me/leases
         ▼                                                   ▼
    ┌──────────────────────────────────────────────────────────────────┐
@@ -223,7 +223,7 @@ A `lease` reply is the runner's entire input for an event. The runner forks a sa
 lease → { event, ExecutionPolicy(config + secrets_map + network_policy + tool_allowlist),
           instructions, lease_id, fencing_token, checkpoint? }
    (`instructions` = the installed agent's SKILL.md body, extracted server-side by
-    ZombieSession; the runner composes the NullClaw turn from instructions + event so
+    AgentSession; the runner composes the NullClaw turn from instructions + event so
     the installed behaviour runs on every trigger. Soft reasoning input, never a secret
     — provider key + secrets_map stay in ExecutionPolicy / the tool bridge. M84_008.)
    │
@@ -244,7 +244,7 @@ The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check 
 
 bwrap (namespaces) + Landlock (filesystem) + cgroup (kill/limit) are the headline layers, but the **process boundary underneath them** carries its own guarantees — what the child inherits across `fork`/`exec`, and how its tree is reaped. These sit below the namespace/LSM layer and close paths that the isolation layers do not:
 
-- **Filtered environment.** `ZOMBIE_RUNNER_TOKEN` (the daemon's control-plane credential) and every other daemon-only var live in the *parent's* environment. The child is spawned with a **fail-closed allowlist** `environ_map` (`HOME`, `PATH`, the engine's optional knobs, the TLS CA path) — it inherits only what tool execution needs, never the `ZOMBIE_`/`RUNNER_` namespace. A prompt-injected agent reading its own `/proc/self/environ` or calling `getenv` finds the token structurally absent. (The cross-process `/proc/<daemon>/environ` read is already shut by the pid namespace.) Lease secrets still ride **stdin**, never argv/env.
+- **Filtered environment.** `AGENTSFLEET_RUNNER_TOKEN` (the daemon's control-plane credential) and every other daemon-only var live in the *parent's* environment. The child is spawned with a **fail-closed allowlist** `environ_map` (`HOME`, `PATH`, the engine's optional knobs, the TLS CA path) — it inherits only what tool execution needs, never the `AGENTSFLEET_`/`RUNNER_` namespace. A prompt-injected agent reading its own `/proc/self/environ` or calling `getenv` finds the token structurally absent. (The cross-process `/proc/<daemon>/environ` read is already shut by the pid namespace.) Lease secrets still ride **stdin**, never argv/env.
 - **No privilege escalation.** The child sets `PR_SET_NO_NEW_PRIVS` before `landlock_restrict_self`, so a setuid binary in the read-only system mounts can never raise privilege. It is additive — it does not remove the user-namespace `CAP_SYS_ADMIN` that Landlock currently rides.
 - **No controlling terminal.** `--new-session` detaches the child from any tty, closing terminal-input injection (`TIOCSTI`).
 - **Absolute `argv[0]`.** The exec target is asserted absolute before spawn, so a child program is never resolved through the parent's `$PATH`.
@@ -270,12 +270,12 @@ Durable state across runs is the checkpoint in `agentsfleetd`, never runner-loca
 
 Memory is the **second** kind of cross-run state, and it obeys the same law as the checkpoint above: **durable agent memory lives only in `agentsfleetd`'s Postgres, never in the runner and never in the agent.** The checkpoint carries *run-continuity* (where a chunked incident left off); memory carries the *agent's learned knowledge* — the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
 
-The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected agent cannot be talked into "reach your memory endpoint": none exists inside it. The agent's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `zrn_` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
+The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected agent cannot be talked into "reach your memory endpoint": none exists inside it. The agent's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory/{zombie_id}` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's zombie's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The zombie is named by the lease's `zombie_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each zombie independently |
-| `POST` | `/v1/runners/me/memory/{zombie_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `agentsfleetd` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+| `GET`  | `/v1/runners/me/memory/{agent_id}` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's agent's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The agent is named by the lease's `agent_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each agent independently |
+| `POST` | `/v1/runners/me/memory/{agent_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `agentsfleetd` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
         ┌──────────────── CONTROL PLANE (agentsfleetd) ─────────────────┐
@@ -284,10 +284,10 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
         └──────────▲───────────────────────────────▲────────────────┘
           GET /v1/runners/me/memory/{id}   POST /v1/runners/me/memory/{id}
           (hydrate prior memory)         (capture run memory)
-          [zrn_ + fencing]               [zrn_ + fencing]
+          [agt_r + fencing]               [agt_r + fencing]
                    │                             │
         ┌──────────┴─────────────────────────────┴────────────┐
-        │  agentsfleet-runner PARENT (trusted) — holds the zrn_      │
+        │  agentsfleet-runner PARENT (trusted) — holds the agt_r      │
         └──────────┬─────────────────────────────▲────────────┘
             pipe ↓ prior memory (stdin)     pipe ↑ memory frame (stdout)
         ╔══════════▼═════════════════════════════╧════════════╗  ← SANDBOX
@@ -297,33 +297,33 @@ The sandboxed child holds **no** `zrn_` token, **no** control-plane URL, and **n
         ╚══════════════════════════════════════════════════════╝
 ```
 
-**The carry-over — one zombie, two runs:**
+**The carry-over — one agent, two runs:**
 
 ```
-RUN 1  (first ever for zombie A)
-  lease{ zombie=A, fence=7 } → runner parent
+RUN 1  (first ever for agent A)
+  lease{ agent=A, fence=7 } → runner parent
   parent ─GET /me/memory─►  []                 (empty: nothing stored yet)
   parent ─pipe─►  child seeds an EMPTY :memory: store
   agent:  memory_store("todo", "step 3 of 5"),  memory_store("prefs", …)
   run-end  +  every memory_checkpoint_every:
      runner lists its :memory: store → deltas ─pipe─► parent
-     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (instance_id = "zmb:A")
+     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (instance_id = A (the agent_id))
   child exits → :memory: store vanishes (no disk artifact)
 
-  Postgres now holds:   zmb:A · todo · "step 3 of 5"    |    zmb:A · prefs · …
+  Postgres now holds:   A · todo · "step 3 of 5"    |    A · prefs · …
 
-RUN 2  (next run, same zombie A)                          ◄── THE CARRY-OVER
-  lease{ zombie=A, fence=8 } → runner parent
+RUN 2  (next run, same agent A)                          ◄── THE CARRY-OVER
+  lease{ agent=A, fence=8 } → runner parent
   parent ─GET /me/memory─►  [todo, prefs]      (run 1's memory)
   parent ─pipe─►  child seeds :memory: WITH those entries
   agent:  memory_recall("todo") → "step 3 of 5"   → continues from step 3
           memory_store("todo", "step 5 of 5")     (same key → UPDATE)
-  push → agentsfleetd UPDATEs (todo, zmb:A) + INSERTs any new keys (idempotent)
+  push → agentsfleetd UPDATEs (todo, A) + INSERTs any new keys (idempotent)
 ```
 
-**Data model.** Scope is the **zombie**, not the workspace: `instance_id = "zmb:" + zombie_id`, derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a zombie each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the zombie to read its memory via the tenant `GET`); two zombies never share a memory namespace.
+**Data model.** Scope is the **agent**, not the workspace: `instance_id = agent_id`, derived **server-side** from the lease `agentsfleetd` issued — a client-supplied scope is ignored. Within a agent each `key` is one row; re-storing a key is `ON CONFLICT (key, instance_id) DO UPDATE`, so a retried or duplicate push is idempotent. The workspace is the *authorization* boundary above this (a tenant must own the agent to read its memory via the tenant `GET`); two agents never share a memory namespace.
 
-**Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-zombie **affinity slot admitting a single live holder** — `uq_runner_affinity_zombie UNIQUE(zombie_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`; multiple lease rows per zombie are normal, and a slow old holder can transiently coexist with a reclaimer — which is *why* fencing exists: only one writer durably persists into a zombie's namespace.) So a runner's N concurrent leases are always N *distinct* zombies = N distinct namespaces. Isolation does **not** rest on `zombie_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing.
+**Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-agent **affinity slot admitting a single live holder** — `uq_runner_affinity_agent UNIQUE(agent_id)` + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`; multiple lease rows per agent are normal, and a slow old holder can transiently coexist with a reclaimer — which is *why* fencing exists: only one writer durably persists into a agent's namespace.) So a runner's N concurrent leases are always N *distinct* agents = N distinct namespaces. Isolation does **not** rest on `agent_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing.
 
 **Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
 
@@ -331,7 +331,7 @@ RUN 2  (next run, same zombie A)                          ◄── THE CARRY-OV
 
 ## Live activity (the SSE tail)
 
-NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames: `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly); the parent forwards each `A` frame to `agentsfleetd` over the `activity` verb, and `agentsfleetd`'s `fleet/service_activity.zig` translates it to the `PUBLISH` on `zombie:{id}:activity`. Downstream Server-Sent Events (SSE) is unchanged.
+NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames: `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly); the parent forwards each `A` frame to `agentsfleetd` over the `activity` verb, and `agentsfleetd`'s `fleet/service_activity.zig` translates it to the `PUBLISH` on `agent:{id}:activity`. Downstream Server-Sent Events (SSE) is unchanged.
 
 ```
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
@@ -341,7 +341,7 @@ Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a 
 
 ## Steer, kill, pause
 
-All three are decided by `agentsfleetd`, which owns both `core.zombies.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
+All three are decided by `agentsfleetd`, which owns both `core.agents.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
 
 - **Steer** — a human message. `agentsfleetd` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
 - **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the agent. Any in-flight lease runs to completion.
@@ -357,9 +357,9 @@ A later, opt-in **warm** mode keeps the sandbox shell alive across leases for th
 
 ## Config
 
-An agent's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.zombies.config_json`. A `PATCH /v1/workspaces/{ws}/zombies/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
+An agent's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.agents.config_json`. A `PATCH /v1/workspaces/{ws}/agents/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
 
-`agentsfleetd` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `zombie_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
+`agentsfleetd` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `agent_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
 
 ## Money gates
 
@@ -377,10 +377,10 @@ The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting 
 
 | Surface | Before | Now |
 |---|---|---|
-| `zombie:{id}:events` (work stream, group `zombie_workers`) | the per-agent worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
+| `agent:{id}:events` (work stream, group `agent_workers`) | the per-agent worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
 | reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
-| `zombie:control` (control stream) | the watcher consumed `zombie_created` / `zombie_status_changed` / `zombie_config_changed` / `worker_drain_request` to spawn / cancel / reload per-agent threads | **removed.** There are no per-agent threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_zombie.ensureZombieConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
-| `zombie:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
+| `agent:control` (control stream) | the watcher consumed `agent_created` / `agent_status_changed` / `agent_config_changed` / `worker_drain_request` to spawn / cancel / reload per-agent threads | **removed.** There are no per-agent threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_agent.ensureAgentConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
+| `agent:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
 
 The reclaim shift is the load-bearing one: moving the processor off-platform means Redis can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
 
@@ -408,7 +408,7 @@ Two network policies:
 - **`deny_all` (default)** — the child's net namespace is unshared (`--unshare-all`) with **no veth**; it reaches nothing. Correct for non-network agents.
 - **`registry_allowlist` (network-enabled)** — the child keeps its **own** unshared net namespace connected to the host by a single **veth pair** (`uzveth<worker>` ↔ peer, point-to-point `10.69.<worker>.0/30`). The parent installs **default-deny `nftables` rules in the host netns, on the host-side veth** (root-owned — Invariant 6, never inside the child's netns, which the child could `nft flush`): egress is permitted only to the **IP set resolved at lease setup** from the merged allowlist, and everything else — arbitrary exfil targets, raw IPs, link-local, RFC1918 — is dropped at the kernel. The operator's declared `allow_hosts` becomes a real packet-time boundary, not a log line. *(The retired pre-launch model re-shared the host netns via `--share-net` and only logged the allowlist; that is gone.)*
 
-**The merged allowlist (one source for L4 + L7).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the operator-fed registry baseline (`RUNNER_REGISTRY_ALLOWLIST` → config; falls back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-zombie `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
+**The merged allowlist (one source for L4 + L7).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the operator-fed registry baseline (`RUNNER_REGISTRY_ALLOWLIST` → config; falls back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-agent `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
 
 **The inference host is control-plane-authored — no parent-side drift.** The allowlist must permit exactly the host the agent's LLM call dials. The provider→URL map lives in NullClaw's `providers/factory.zig` (`compatibleProviderUrl`); `agentsfleetd` reads **that** table (not a copy) in `fleet/service.resolveExecutionPolicy`, extracts the host (`execution_policy.hostFromUrl`), and carries it on the lease as `ExecutionPolicy.inference_host`. The runner allowlists exactly what the engine reaches.
 
@@ -422,7 +422,7 @@ Two network policies:
 
 ## Scaling
 
-The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## Observability — runner metrics on `agentsfleetd` `/metrics`
 
@@ -446,10 +446,10 @@ The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[met
 ### The four per-runner families
 
 ```
-zombie_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
-zombie_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
-zombie_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
-zombie_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
+agent_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
+agent_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
+agent_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
+agent_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
 ```
 
 All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/agentsfleetd/observability/metrics_runner.zig`, mirroring `metrics_workspace.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
@@ -473,7 +473,7 @@ The exact and restart-resilient form of the two gauges is a read-only background
 ## What does not change
 
 - NullClaw's agent loop, its tool inventory, and secret substitution at the tool bridge. It moved into the runner as a linked engine and a sandboxed child, but its behaviour is identical.
-- Event ingress: steer / webhook / cron / continuation still `XADD zombie:{id}:events`.
+- Event ingress: steer / webhook / cron / continuation still `XADD agent:{id}:events`.
 - The user read path: `GET /events`, the SSE live tail, `agentsfleet status/events`.
 - The three durable stores and their contracts (see `data_flow.md`), including row-for-row equivalence with the deleted direct path (Invariant 2 of the cutover spec).
 
@@ -488,7 +488,7 @@ The exact and restart-resilient form of the two gauges is a read-only background
  ── cutover landed: the runner is the processor; the old direct path is gone ──────────────────
  S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (done)
  S5  M80_005  IDENTITY   DONE — platform_admin gate on enrollment (POST /v1/runners) + Option B host
-                                 (operator pre-mints zrn_, no self-register); trust_class +
+                                 (operator pre-mints agt_r, no self-register); trust_class +
                                  allowed_workspace_ids + trust-gated placement deferred to M85_001
  S5  M80_006  FLEET      DONE — per-lease renewal (live runner keeps its lease); operator plane +
                                  heartbeat-lapse reassignment carved out → M84_002

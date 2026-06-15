@@ -1,13 +1,15 @@
 const std = @import("std");
 
 pub const RespValue = union(enum) {
+    const Self = @This();
+
     simple: []u8,
     err: []u8,
     integer: i64,
     bulk: ?[]u8,
     array: ?[]RespValue,
 
-    pub fn deinit(self: *RespValue, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         switch (self.*) {
             .simple => |v| alloc.free(v),
             .err => |v| alloc.free(v),

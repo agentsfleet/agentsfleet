@@ -16,14 +16,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const StringBuilder = @This();
+const Self = @This();
 
 len: usize = 0,
 cap: usize = 0,
 ptr: ?[*]u8 = null,
 
 /// Single-step alternative to count → allocate when the cap is known up front.
-fn initCapacity(alloc: Allocator, cap: usize) Allocator.Error!StringBuilder {
+fn initCapacity(alloc: Allocator, cap: usize) Allocator.Error!Self {
     return .{
         .cap = cap,
         .len = 0,
@@ -32,25 +32,25 @@ fn initCapacity(alloc: Allocator, cap: usize) Allocator.Error!StringBuilder {
 }
 
 /// Count phase: add `slice.len` to the running cap. Call before `allocate`.
-pub fn count(self: *StringBuilder, slice: []const u8) void {
+pub fn count(self: *Self, slice: []const u8) void {
     self.cap += slice.len;
 }
 
 /// Count phase for null-terminated output: reserves `slice.len + 1`.
-fn countZ(self: *StringBuilder, slice: []const u8) void {
+fn countZ(self: *Self, slice: []const u8) void {
     self.cap += slice.len + 1;
 }
 
 /// Reserves `self.cap` bytes. Call once after all `count` / `countZ` /
 /// `fmtCount` calls, before any `append` / `appendZ` / `fmt`.
-pub fn allocate(self: *StringBuilder, alloc: Allocator) Allocator.Error!void {
+pub fn allocate(self: *Self, alloc: Allocator) Allocator.Error!void {
     const slice = try alloc.alloc(u8, self.cap);
     self.ptr = slice.ptr;
     self.len = 0;
 }
 
 /// Frees the backing buffer. Idempotent on never-allocated builders.
-pub fn deinit(self: *StringBuilder, alloc: Allocator) void {
+pub fn deinit(self: *Self, alloc: Allocator) void {
     if (self.ptr == null or self.cap == 0) return;
     alloc.free(self.ptr.?[0..self.cap]);
     self.ptr = null;
@@ -61,7 +61,7 @@ pub fn deinit(self: *StringBuilder, alloc: Allocator) void {
 /// Append a slice into the buffer. Returns a slice into the builder's storage —
 /// the slice is valid until the builder's `deinit` is called. Asserts
 /// (debug-only) that capacity was correctly counted and `allocate` was called.
-pub fn append(self: *StringBuilder, slice: []const u8) []const u8 {
+pub fn append(self: *Self, slice: []const u8) []const u8 {
     std.debug.assert(self.len + slice.len <= self.cap);
     std.debug.assert(self.ptr != null);
 
@@ -74,7 +74,7 @@ pub fn append(self: *StringBuilder, slice: []const u8) []const u8 {
 }
 
 /// Append a null-terminated slice. Reserves `slice.len + 1` (caller used `countZ`).
-fn appendZ(self: *StringBuilder, slice: []const u8) [:0]const u8 {
+fn appendZ(self: *Self, slice: []const u8) [:0]const u8 {
     std.debug.assert(self.len + slice.len + 1 <= self.cap);
     std.debug.assert(self.ptr != null);
 
@@ -90,7 +90,7 @@ fn appendZ(self: *StringBuilder, slice: []const u8) [:0]const u8 {
 /// Append `std.fmt.bufPrint(comptime_fmt, args)` into the builder. The caller
 /// must have counted the formatted length via `fmtCount` to ensure capacity.
 /// Panics in debug if the formatted output exceeds the remaining capacity.
-pub fn fmt(self: *StringBuilder, comptime comptime_fmt: []const u8, args: anytype) []const u8 {
+pub fn fmt(self: *Self, comptime comptime_fmt: []const u8, args: anytype) []const u8 {
     std.debug.assert(self.len <= self.cap);
     std.debug.assert(self.ptr != null);
 
@@ -103,13 +103,13 @@ pub fn fmt(self: *StringBuilder, comptime comptime_fmt: []const u8, args: anytyp
 }
 
 /// Count phase counterpart of `fmt`. Reserves `std.fmt.count(comptime_fmt, args)` bytes.
-pub fn fmtCount(self: *StringBuilder, comptime comptime_fmt: []const u8, args: anytype) void {
+pub fn fmtCount(self: *Self, comptime comptime_fmt: []const u8, args: anytype) void {
     self.cap += std.fmt.count(comptime_fmt, args);
 }
 
 /// Returns the entire allocated slice (including the unwritten tail). Use
 /// when you need raw access (e.g. to fill via `@memcpy` then advance `len`).
-fn allocatedSlice(self: *StringBuilder) []u8 {
+fn allocatedSlice(self: *Self) []u8 {
     const ptr = self.ptr orelse return &.{};
     std.debug.assert(self.cap > 0);
     return ptr[0..self.cap];
@@ -117,7 +117,7 @@ fn allocatedSlice(self: *StringBuilder) []u8 {
 
 test "count → allocate → append round-trips a concatenation" {
     const alloc = std.testing.allocator;
-    var b: StringBuilder = .{};
+    var b: Self = .{};
     defer b.deinit(alloc);
 
     b.count("hello, ");
@@ -132,7 +132,7 @@ test "count → allocate → append round-trips a concatenation" {
 
 test "appendZ writes a null terminator" {
     const alloc = std.testing.allocator;
-    var b: StringBuilder = .{};
+    var b: Self = .{};
     defer b.deinit(alloc);
 
     b.countZ("name");
@@ -144,7 +144,7 @@ test "appendZ writes a null terminator" {
 
 test "fmt + fmtCount work together" {
     const alloc = std.testing.allocator;
-    var b: StringBuilder = .{};
+    var b: Self = .{};
     defer b.deinit(alloc);
 
     b.fmtCount("user={s} id={d}", .{ "alice", 42 });
@@ -160,7 +160,7 @@ test "append accepts an exact-capacity fit (precondition covers the copy bound)"
     // past the buffer. The over-append half is a Debug panic by design and
     // cannot be expect-tested in-process.
     const alloc = std.testing.allocator;
-    var b: StringBuilder = .{};
+    var b: Self = .{};
     defer b.deinit(alloc);
 
     b.count("12345");
@@ -171,7 +171,7 @@ test "append accepts an exact-capacity fit (precondition covers the copy bound)"
 
 test "initCapacity skips the count phase" {
     const alloc = std.testing.allocator;
-    var b = try StringBuilder.initCapacity(alloc, 32);
+    var b = try Self.initCapacity(alloc, 32);
     defer b.deinit(alloc);
 
     _ = b.append("preallocated");

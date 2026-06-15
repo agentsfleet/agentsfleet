@@ -1,5 +1,5 @@
 # =============================================================================
-# USEZOMBIE MAKEFILE - MODULAR STRUCTURE
+# USEAGENT MAKEFILE - MODULAR STRUCTURE
 # =============================================================================
 
 include make/dev.mk
@@ -10,7 +10,7 @@ include make/build.mk
 .DEFAULT_GOAL := help
 
 help:  ## Show all available Makefile targets
-	@echo "usezombie"
+	@echo "agentsfleet"
 	@echo ""
 	@echo "Development:"
 	@echo "  up                       Build local agentsfleetd binary, docker compose up, tail logs"
@@ -31,10 +31,10 @@ help:  ## Show all available Makefile targets
 	@echo "Tests:"
 	@echo "  test-unit-all            Run all unit lanes (agentsfleetd + zigrunner + ziglib + test-coverage-all + test-unit-bundle)"
 	@echo "  test-unit-agentsfleetd        Run agentsfleetd Zig unit tests"
-	@echo "  test-unit-zigrunner      Run agentsfleet-runner Zig unit tests (own build graph, no datastore)"
-	@echo "  test-unit-ziglib         Run shared src/lib module Zig unit tests (no datastore)"
+	@echo "  test-unit-agentsfleet-runner      Run agentsfleet-runner Zig unit tests (own build graph, no datastore)"
+	@echo "  test-unit-agentsfleet-lib         Run shared src/lib module Zig unit tests (no datastore)"
 	@echo "  test-unit-website        Run website unit tests (vitest, no coverage)"
-	@echo "  test-unit-agentsfleet      Run agentsfleet CLI unit tests (bun, no coverage)"
+	@echo "  test-unit-cli      Run agentsfleet CLI unit tests (bun, no coverage)"
 	@echo "  test-unit-bundle         Run template-substitution + agentsfleet-postinstall unit tests (node --test)"
 	@echo "  test-coverage-all        Coverage gate: app + website + agentsfleet + design-system (vitest/bun --coverage)"
 	@echo "  test-integration         Run full real integration suite (DB + Redis, CI canonical gate)"
@@ -55,7 +55,7 @@ help:  ## Show all available Makefile targets
 	@echo "Verify:"
 	@echo "  harness-verify           Run every deterministic gate audit (full-codebase scope)"
 	@echo "  harness-verify-all       Whole-worktree variant for periodic deep audits"
-	@echo "  check-version            Verify build.zig.zon + agentsfleet/package.json match VERSION"
+	@echo "  check-version            Verify build.zig.zon + cli/package.json match VERSION"
 	@echo ""
 	@echo "Build & Deploy:"
 	@echo "  build                    Build production container (uses prebuilt linux binaries)"
@@ -63,4 +63,4 @@ help:  ## Show all available Makefile targets
 	@echo "  build-linux-alpine       Compile inside Alpine with musl-native OpenSSL"
 	@echo "  push                     Push production image to registry"
 	@echo "  push-dev                 Push development image to registry"
-	@echo "  sync-version             Propagate VERSION → build.zig.zon + agentsfleet/package.json"
+	@echo "  sync-version             Propagate VERSION → build.zig.zon + cli/package.json"

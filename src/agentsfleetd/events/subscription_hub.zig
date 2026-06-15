@@ -21,7 +21,7 @@
 //! as they were when each stream owned the connection that died; clients
 //! backfill through the events cursor.
 
-const SubscriptionHub = @This();
+const Self = @This();
 
 pub const Subscription = @import("subscription.zig");
 
@@ -58,13 +58,13 @@ const RECONNECT_SLICES_PER_ATTEMPT: usize = 4;
 const STOP_DRAIN_MAX_MS: u64 = 5_000;
 const STOP_DRAIN_POLL_MS: u64 = 50;
 
-pub fn init(alloc: std.mem.Allocator, io: std.Io) SubscriptionHub {
+pub fn init(alloc: std.mem.Allocator, io: std.Io) Self {
     return .{ .alloc = alloc, .io = io };
 }
 
 /// Dial the shared connection and start the reader thread. Boot path —
 /// failure here is a startup failure, mirroring the queue client connect.
-pub fn start(self: *SubscriptionHub, cfg: redis_config.Config) !void {
+pub fn start(self: *Self, cfg: redis_config.Config) !void {
     self.cfg = cfg;
     var conn = try redis_subscriber.connectFromConfig(self.io, self.alloc, cfg, .{ .read_timeout_ms = HUB_READ_TIMEOUT_MS });
     errdefer conn.deinit();
@@ -77,7 +77,7 @@ pub fn start(self: *SubscriptionHub, cfg: redis_config.Config) !void {
 
 /// Stop the reader, close every live subscription so stream threads drain,
 /// and drop the connection. Idempotent; safe on a never-started hub.
-pub fn stop(self: *SubscriptionHub) void {
+pub fn stop(self: *Self) void {
     if (self.stopped.swap(true, .acq_rel)) return;
     if (self.reader_thread) |t| {
         t.join();
@@ -108,7 +108,7 @@ pub fn stop(self: *SubscriptionHub) void {
 /// deregistered (registry `awaitEmpty`) — a late `unsubscribe` would touch
 /// freed map storage. serve.zig's defer chain and the harness encode this
 /// ordering.
-pub fn deinit(self: *SubscriptionHub) void {
+pub fn deinit(self: *Self) void {
     var it = self.channels.iterator();
     while (it.next()) |kv| {
         kv.value_ptr.*.subscribers.deinit(self.alloc);
@@ -123,14 +123,14 @@ pub const SubscribeError = error{ OutOfMemory, HubStopped };
 /// Attach a new subscriber to `channel_name`. First subscriber on a channel
 /// sends the wire SUBSCRIBE; during a reconnect gap the wire send is skipped
 /// and the post-redial sweep re-subscribes from the map.
-pub fn subscribe(self: *SubscriptionHub, channel_name: []const u8) SubscribeError!*Subscription {
+pub fn subscribe(self: *Self, channel_name: []const u8) SubscribeError!*Subscription {
     const sub = try Subscription.create(self.alloc, self.io, channel_name);
     errdefer sub.destroy();
     try self.attach(sub);
     return sub;
 }
 
-fn attach(self: *SubscriptionHub, sub: *Subscription) SubscribeError!void {
+fn attach(self: *Self, sub: *Subscription) SubscribeError!void {
     // Everything fallible is allocated before the lock; `consumed` routes the
     // spares to the map or back to the allocator on the way out. The explicit
     // catch covers the window before the consumed-defer is registered.
@@ -173,7 +173,7 @@ fn attach(self: *SubscriptionHub, sub: *Subscription) SubscribeError!void {
 /// Detach and destroy `sub`. Last subscriber off a channel sends the wire
 /// UNSUBSCRIBE (skipped during a reconnect gap — the fresh connection never
 /// re-subscribes a channel that left the map).
-pub fn unsubscribe(self: *SubscriptionHub, sub: *Subscription) void {
+pub fn unsubscribe(self: *Self, sub: *Subscription) void {
     var freed_key: ?[]const u8 = null;
     var freed_entry: ?*ChannelEntry = null;
     {
@@ -206,13 +206,13 @@ pub fn unsubscribe(self: *SubscriptionHub, sub: *Subscription) void {
 }
 
 /// Live channel count (wire SUBSCRIBE cardinality). Test + admin surface.
-pub fn channelCount(self: *SubscriptionHub) usize {
+pub fn channelCount(self: *Self) usize {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     return self.channels.count();
 }
 
-fn readerMain(self: *SubscriptionHub) void {
+fn readerMain(self: *Self) void {
     while (!self.stopped.load(.acquire)) {
         const before_ms = clock.nowMillis();
         // safe because: this thread is the only conn swapper, so reading the
@@ -233,7 +233,7 @@ fn readerMain(self: *SubscriptionHub) void {
     }
 }
 
-fn dispatch(self: *SubscriptionHub, channel: []const u8, payload: []const u8) void {
+fn dispatch(self: *Self, channel: []const u8, payload: []const u8) void {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     // a frame racing the last unsubscribe simply has nobody to deliver to
@@ -243,7 +243,7 @@ fn dispatch(self: *SubscriptionHub, channel: []const u8, payload: []const u8) vo
 
 /// Reader-thread only: drop the dead connection, redial with stop-checked
 /// pacing, then re-subscribe every channel that still has viewers.
-fn reconnect(self: *SubscriptionHub) void {
+fn reconnect(self: *Self) void {
     log.warn("hub_connection_lost", .{ .live_channels = self.channelCount() });
     self.dropConn();
     while (!self.stopped.load(.acquire)) {
@@ -266,7 +266,7 @@ fn reconnect(self: *SubscriptionHub) void {
     }
 }
 
-fn dropConn(self: *SubscriptionHub) void {
+fn dropConn(self: *Self) void {
     self.mutex.lockUncancelable(self.io);
     var dead = self.conn;
     self.conn = null;
@@ -281,7 +281,7 @@ fn dropConn(self: *SubscriptionHub) void {
 /// The install pass re-locks and sends the delta for channels subscribed
 /// during the window (attach skips its wire send while conn is null).
 /// False = send failure or hub stopped; `fresh` is consumed either way.
-fn resubscribeAll(self: *SubscriptionHub, fresh: redis_subscriber) bool {
+fn resubscribeAll(self: *Self, fresh: redis_subscriber) bool {
     var conn = fresh;
     const names = self.snapshotChannelNames() catch {
         conn.deinit();
@@ -317,7 +317,7 @@ fn resubscribeAll(self: *SubscriptionHub, fresh: redis_subscriber) bool {
 }
 
 /// Duped channel names under the mutex; caller owns the slice + strings.
-fn snapshotChannelNames(self: *SubscriptionHub) error{OutOfMemory}![]const []const u8 {
+fn snapshotChannelNames(self: *Self) error{OutOfMemory}![]const []const u8 {
     self.mutex.lockUncancelable(self.io);
     defer self.mutex.unlock(self.io);
     var names = try self.alloc.alloc([]const u8, self.channels.count());

@@ -9,13 +9,13 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const REGISTER_HOST = "host-event-register-test";
 const REGISTER_BODY =
     \\{"host_id":"host-event-register-test","sandbox_tier":"dev_none","labels":[]}
@@ -24,7 +24,7 @@ const BODY_CORDON = "{\"action\":\"cordon\"}";
 
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6d01";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 64;
 const RUNNER_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "e" ** RUNNER_TOKEN_BODY_HEX_CHARS;
@@ -57,7 +57,7 @@ const SQL_SELECT_RUNNER_LAST_SEEN =
 const CLEANUP_HEARTBEAT_REJECTOR_IGNORED_FMT = "cleanup heartbeat event rejector ignored: {s}";
 
 const CONFIG_NO_GATES =
-    \\{"name":"runner-events-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"runner-events-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const SOURCE_MD =
     \\---
@@ -68,10 +68,10 @@ const SOURCE_MD =
 ;
 
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"0Z8ud27-1vd_WsxIcCdMkFeWNiGYpOIKhKAkQruCx6lIzCiDnKyH4I1fL2copGyb5EXdzmqrPvMIKEvoSXGUafrjWp8QneMKdVXoFwRsdrsaEcXg_1npJuiF9smRouTn8pda6m0bwcjn8jBXdBo4q_Eah9O03A8yrC-ZfNqDKjClG0lsYWlJVxpcUIYGQNNVI6LRhYD3tQnzu_4vQdW_FgDrPffwv2uA6YQoMt-Tq93LtDZFE8PlEW43vDcSRw-1gWQazcLw9VPEw6vAywE7PLeQyx3cjIQZxBDo0eDld4J6oprxatCVZ0I-CuBdj07PvGFYmWke5nfV-zsbwwwvhw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"qXJuc_Hncnu-ZAFKPEhb6qeXXSp1GcUidOyyiyFFwi5bmql2NZH4Quv23LhHsAKM8L5950bvTQppdzcJ8zWQKx9F8kViZgaG1Ghagoz2a2BMjeSHLFu_gfsxP6y752WUcZ1uHUGnWm9WsDE7xMfbOOpcUoOc_RxiRhwuXjR3zw6J8Vl4DABKQXq_jb6l5nyDWOsi9FopsaS6FKpQoiWO4DWHEHVVNA7RxoYtb1ew9u4qSq4dyeyb6sOXBWuc9wOjSXcuEm30qYsvZJ8ORSh1hxdDaArUCXQKp_DPVJBO7Mmu_EAnOcSsFeZ-kgLVD7yJp_Yq983-s9odwX0TxlL8Lw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
 ;
 const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIiwicGxhdGZvcm1fYWRtaW4iOnRydWV9fQ.x6um6bT-VysmVR12tT-NbGQl5m8Q1tQbT0J0tcm2UNOWmJ4-nyIu0q-LYniDxFC8LwovQYdqo4R24PcaBT3JTEtD3Msg9-PlB6C1_hgLiEpFg6oqYqKdy3qW8-p6c8NTguqKWWB8LNXOnoXZTsW6FCBDs3Lb0ucc6wpEXFiT44nPkRyC2uCDEjPwG3iEkBGRA9sZ4s_hMAqLdZLN_kH9LSELoGsZFZZlxiyXCyAnX1UtmhuyGLNo4jwsvx99SU8cKzICQljopjfoxWMcvkZ3bzU8aphsgX1emPwGKRkY-6M1hzec-P2BNcye3jOpPoo8v-WlVsL4LHengyyPzFeYkg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.H3gZWcqBWYnREFPQAbnoIzhV33ckaYyo37clfhGekxy4TMM96QuUbeyHJW0CnuMRS6UueCjwiidW3mfkINdfQy6-Y4aERoqPvfYQ7QGiwMSPU63heJKxS4fzHzbdDMfO1XoAEcj333xJ8NyvkdBXEbKS9k0LA2-4mczKXLnWkEHnAfWslsK1hdLdIf4rNYP4KahrV25QU-8RirkUTV5jUUgH3HuPMTF976FZX_Q6pL2vW6i1iS2S4iMVwmBdBPlMCPLfjc3Yi9EIP0eBCkWCwZrp1nD5U74Akb6Yh4LCJw9xbhj4kI4jr9e-zwOh7FH_fzbxgJUxHg2jl9pLSAofGw";
 
 // SAFETY: populated by configureRegistry before runnerBearer reads it.
 var runner_lookup_ctx: serve_runner_lookup.Ctx = undefined;
@@ -112,15 +112,15 @@ fn seedFleetWork(conn: anytype) !void {
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
     try seedRunner(conn);
-    try base.seedZombie(conn, ZOMBIE_ID, WORKSPACE_ID, "runner-events-zombie", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedZombieSession(conn, SESSION_ID, ZOMBIE_ID, "{}");
+    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "runner-events-agent", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_zombie.ensureZombieConsumerGroup(&h.queue, ZOMBIE_ID);
-    const id = try h.queue.xaddZombieEvent(.{
+    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
+    const id = try h.queue.xaddAgentEvent(.{
         .event_id = "",
-        .zombie_id = ZOMBIE_ID,
+        .agent_id = AGENTSFLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:runner-events",
         .event_type = .chat,
@@ -206,12 +206,12 @@ fn cleanupRegister(conn: anytype) void {
 }
 
 fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
-    var resp = h.queue.command(&.{ "DEL", "zombie:" ++ ZOMBIE_ID ++ ":events" }) catch null;
+    var resp = h.queue.command(&.{ "DEL", "agent:" ++ AGENTSFLEET_ID ++ ":events" }) catch null;
     if (resp) |*r| r.deinit(h.queue.alloc);
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup runner ignored: {s}", .{@errorName(err)});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownZombies(conn, WORKSPACE_ID);
+    base.teardownAgents(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }

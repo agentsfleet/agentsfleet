@@ -197,8 +197,8 @@ fn expireActiveLeaseSlots(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i
         \\  SET leased_until = $3, updated_at = $4
         \\  WHERE a.last_runner_id = $1::uuid
         \\    AND a.leased_until > $3
-        \\    AND a.zombie_id IN (
-        \\      SELECT l.zombie_id FROM fleet.runner_leases l
+        \\    AND a.agent_id IN (
+        \\      SELECT l.agent_id FROM fleet.runner_leases l
         \\      WHERE l.runner_id = $1::uuid AND l.status = $2
         \\    )
         \\  RETURNING 1

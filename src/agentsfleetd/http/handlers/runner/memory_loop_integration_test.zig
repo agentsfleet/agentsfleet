@@ -1,8 +1,8 @@
 // Integration tests for the runner-plane memory loop's loss counters — drives
 // the full HTTP verbs through the in-process TestHarness (runner bearer auth,
 // seeded fleet rows, live test DB):
-//   GET  /v1/runners/me/memory/{zombie_id} — hydration-window drop counters
-//   POST /v1/runners/me/memory/{zombie_id} — cap-eviction / truncation / skip
+//   GET  /v1/runners/me/memory/{agent_id} — hydration-window drop counters
+//   POST /v1/runners/me/memory/{agent_id} — cap-eviction / truncation / skip
 //
 // The harness server runs in-process, so the metrics globals asserted here are
 // the same atomics the handlers increment; before/after snapshots give exact
@@ -21,7 +21,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const serve_runner_lookup = @import("../../../cmd/serve_runner_lookup.zig");
 const api_key = @import("../../../auth/api_key.zig");
 const metrics_memory = @import("../../../observability/metrics_memory.zig");
-const memory_adapter = @import("../../../memory/zombie_memory.zig");
+const memory_adapter = @import("../../../memory/agent_memory.zig");
 const protocol = @import("contract").protocol;
 const clock = @import("common").clock;
 
@@ -53,7 +53,7 @@ const NOW_MS: i64 = 1_900_000_000_000;
 /// Seeded lease fencing token; every push fences at exactly this value.
 const FENCE: u64 = 5;
 
-const RUNNER_TOKEN = "zrn_" ++ "f" ** 64;
+const RUNNER_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "f" ** 64;
 
 /// Per-row hydrate fixture sizing: key "hk{n}" (3) + content (60_000) +
 /// category "c" (1). Five rows at 60_004 bytes against the 256 KiB window
@@ -91,11 +91,11 @@ fn seedRunner(conn: *pg.Conn) !void {
     , .{ RUNNER_ID, hash[0..] });
 }
 
-/// Seed an active, unexpired lease binding the runner to `zombie_id` at FENCE.
-fn seedLease(conn: *pg.Conn, lease_id: []const u8, zombie_id: []const u8) !void {
+/// Seed an active, unexpired lease binding the runner to `agent_id` at FENCE.
+fn seedLease(conn: *pg.Conn, lease_id: []const u8, agent_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -103,16 +103,16 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, zombie_id: []const u8) !void 
         \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, RUNNER_ID, zombie_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });
+    , .{ lease_id, RUNNER_ID, agent_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, @as(i64, FENCE), NOW_MS + 30_000 });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
-fn wipeMemory(conn: *pg.Conn, zombie_id: []const u8) void {
+fn wipeMemory(conn: *pg.Conn, agent_id: []const u8) void {
     execIgnore(conn, "SET ROLE memory_runtime", .{});
-    execIgnore(conn, "DELETE FROM memory.memory_entries WHERE zombie_id = $1::uuid", .{zombie_id});
+    execIgnore(conn, "DELETE FROM memory.memory_entries WHERE agent_id = $1::uuid", .{agent_id});
     execIgnore(conn, "RESET ROLE", .{});
 }
 
@@ -137,7 +137,7 @@ const Env = struct {
     }
 };
 
-/// Start the harness, seed tenant/workspace/runner + every per-zombie lease.
+/// Start the harness, seed tenant/workspace/runner + every per-agent lease.
 fn setup() !?Env {
     const h = TestHarness.start(ALLOC, .{ .configureRegistry = configureRegistry }) catch |err| {
         if (err == error.SkipZigTest) return null;
@@ -162,79 +162,79 @@ fn setup() !?Env {
     return .{ .h = h };
 }
 
-fn memoryUrl(zombie_id: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/runners/me/memory/{s}", .{zombie_id});
+fn memoryUrl(agent_id: []const u8) ![]u8 {
+    return std.fmt.allocPrint(ALLOC, "/v1/runners/me/memory/{s}", .{agent_id});
 }
 
-/// Seed `n` durable rows for `zombie_id` directly (memory_runtime INSERT),
+/// Seed `n` durable rows for `agent_id` directly (memory_runtime INSERT),
 /// content `repeat('x', content_len)`, updated_at ascending from a fixed cold
 /// epoch so any subsequently pushed entry is strictly newer.
-fn seedRows(env: Env, zombie_id: []const u8, n: usize, content_len: usize) !void {
+fn seedRows(env: Env, agent_id: []const u8, n: usize, content_len: usize) !void {
     const conn = try env.h.acquireConn();
     defer env.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
     // uid must satisfy the UUIDv7 check (version nibble '7'); compose a
-    // deterministic v7-shaped uid from the zombie's distinguishing tail
+    // deterministic v7-shaped uid from the agent's distinguishing tail
     // (dashless chars 25..32) + n, so uids never collide across the six
-    // fixture zombies. The id column is globally UNIQUE, so it carries the
-    // same tail; the key column stays per-zombie ('hk' || n) because the
+    // fixture agents. The id column is globally UNIQUE, so it carries the
+    // same tail; the key column stays per-agent ('hk' || n) because the
     // hydrate byte arithmetic depends on its exact length.
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, agent_id, created_at, updated_at)
         \\SELECT (('0195e2aa-4c1b-7' || lpad(to_hex(n), 3, '0') || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || lpad(to_hex(n), 4, '0')))::uuid,
         \\       'hk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || n,
         \\       'hk' || n, repeat('x', $2::int), 'c', $1::uuid,
         \\       1700000000000, 1700000000000 + n
         \\FROM generate_series(1, $3::int) n
-        \\ON CONFLICT (key, zombie_id) DO NOTHING
-    , .{ zombie_id, @as(i64, @intCast(content_len)), @as(i64, @intCast(n)) });
+        \\ON CONFLICT (key, agent_id) DO NOTHING
+    , .{ agent_id, @as(i64, @intCast(content_len)), @as(i64, @intCast(n)) });
 }
 
 /// Seed one cold core fact directly (memory_runtime INSERT) — updated_at far
 /// below seedRows' epoch so every windowed row is strictly newer than it.
-fn seedCoreRow(env: Env, zombie_id: []const u8, key: []const u8) !void {
+fn seedCoreRow(env: Env, agent_id: []const u8, key: []const u8) !void {
     const conn = try env.h.acquireConn();
     defer env.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, agent_id, created_at, updated_at)
         \\VALUES (('0195e2aa-4c1b-7fff-8abc-' || substr(replace($1::uuid::text, '-', ''), 25, 8) || 'ffff')::uuid,
         \\        'ck-' || substr(replace($1::uuid::text, '-', ''), 29, 4),
         \\        $2, 'indy', $3, $1::uuid, 1600000000000, 1600000000000)
-        \\ON CONFLICT (key, zombie_id) DO NOTHING
-    , .{ zombie_id, key, memory_adapter.CATEGORY_CORE });
+        \\ON CONFLICT (key, agent_id) DO NOTHING
+    , .{ agent_id, key, memory_adapter.CATEGORY_CORE });
 }
 
 /// Seed one `daily` row at an explicit `updated_at` (epoch ms) — the retention
 /// sweep's age fixture. `n` (1..15) keys the uid lane ('7dd' + hex nibble), so
 /// rows never collide with seedRows ('7' + 3-hex) or seedCoreRow ('7fff').
-fn seedDailyAt(env: Env, zombie_id: []const u8, key: []const u8, n: u8, updated_at_ms: i64) !void {
+fn seedDailyAt(env: Env, agent_id: []const u8, key: []const u8, n: u8, updated_at_ms: i64) !void {
     const conn = try env.h.acquireConn();
     defer env.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
-        \\  (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\  (uid, id, key, content, category, agent_id, created_at, updated_at)
         \\VALUES (('0195e2aa-4c1b-7dd' || to_hex($5::int) || '-8abc-'
         \\         || substr(replace($1::uuid::text, '-', ''), 25, 8) || '0' || to_hex($5::int) || '00')::uuid,
         \\        'sk-' || substr(replace($1::uuid::text, '-', ''), 29, 4) || '-' || $5::int,
         \\        $2, 'scratch', $3, $1::uuid, $4, $4)
-        \\ON CONFLICT (key, zombie_id) DO NOTHING
-    , .{ zombie_id, key, memory_adapter.CATEGORY_DAILY, updated_at_ms, @as(i32, n) });
+        \\ON CONFLICT (key, agent_id) DO NOTHING
+    , .{ agent_id, key, memory_adapter.CATEGORY_DAILY, updated_at_ms, @as(i32, n) });
 }
 
-fn rowCount(env: Env, zombie_id: []const u8) !i64 {
+fn rowCount(env: Env, agent_id: []const u8) !i64 {
     const conn = try env.h.acquireConn();
     defer env.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
     defer execIgnore(conn, "RESET ROLE", .{});
-    var q = PgQuery.from(try conn.query("SELECT COUNT(*) FROM memory.memory_entries WHERE zombie_id = $1::uuid", .{zombie_id}));
+    var q = PgQuery.from(try conn.query("SELECT COUNT(*) FROM memory.memory_entries WHERE agent_id = $1::uuid", .{agent_id}));
     defer q.deinit();
     const row = try q.next() orelse return 0;
     return try row.get(i64, 0);
@@ -324,9 +324,9 @@ test "test_hydrate_pins_core_through_the_endpoint" {
 test "test_cap_eviction_counter_exact" {
     var env = (try setup()) orelse return error.SkipZigTest;
     defer env.deinit();
-    // Fill to exactly the per-zombie cap with cold rows; the two pushed
+    // Fill to exactly the per-agent cap with cold rows; the two pushed
     // entries land newer, so the backstop evicts the two coldest seeds.
-    try seedRows(env, ZID_CAP_OVER, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE, 8);
+    try seedRows(env, ZID_CAP_OVER, protocol.MAX_MEMORY_ENTRIES_PER_AGENT, 8);
 
     const body = try buildPush(LEASE_CAP_OVER, "pk", 2, "fresh");
     defer ALLOC.free(body);
@@ -341,7 +341,7 @@ test "test_cap_eviction_counter_exact" {
     const after = metrics_memory.snapshot();
     try std.testing.expectEqual(before.cap_evictions_total + 2, after.cap_evictions_total);
     // The durable set is back at the cap: evictions removed the overage.
-    try std.testing.expectEqual(@as(i64, @intCast(protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE)), try rowCount(env, ZID_CAP_OVER));
+    try std.testing.expectEqual(@as(i64, @intCast(protocol.MAX_MEMORY_ENTRIES_PER_AGENT)), try rowCount(env, ZID_CAP_OVER));
 }
 
 test "test_under_cap_no_eviction_count" {
@@ -461,11 +461,11 @@ test "test_sweep_frees_cap_slots_before_eviction" {
     var env = (try setup()) orelse return error.SkipZigTest;
     defer env.deinit();
     // At the cap: 999 durable custom rows + 1 aged daily (the NEWEST row of
-    // the set). The push puts the zombie one over; the sweep must clear the
+    // the set). The push puts the agent one over; the sweep must clear the
     // aged daily BEFORE cap eviction runs, or eviction selects the coldest
     // durable row as victim in the doomed row's place — silent durable loss
     // breaching "only daily expires" via the cap side door.
-    try seedRows(env, ZID_SWEEP_CAP, protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE - 1, 8);
+    try seedRows(env, ZID_SWEEP_CAP, protocol.MAX_MEMORY_ENTRIES_PER_AGENT - 1, 8);
     const now = clock.nowMillis();
     try seedDailyAt(env, ZID_SWEEP_CAP, "aged-note", 1, now - memory_adapter.DAILY_RETENTION_MS - 60_000);
 
@@ -484,7 +484,7 @@ test "test_sweep_frees_cap_slots_before_eviction" {
     // The sweep freed the slot first: zero cap evictions, the set sits at the
     // cap, the coldest durable row (hk1) survives, the aged daily is gone.
     try std.testing.expectEqual(before.cap_evictions_total, after.cap_evictions_total);
-    try std.testing.expectEqual(@as(i64, @intCast(protocol.MAX_MEMORY_ENTRIES_PER_ZOMBIE)), try rowCount(env, ZID_SWEEP_CAP));
+    try std.testing.expectEqual(@as(i64, @intCast(protocol.MAX_MEMORY_ENTRIES_PER_AGENT)), try rowCount(env, ZID_SWEEP_CAP));
     const hr = try (try env.h.get(url).bearer(RUNNER_TOKEN)).send();
     defer hr.deinit();
     try hr.expectStatus(.ok);
@@ -509,10 +509,10 @@ test "test_metrics_render_memory_loss_families_http" {
     const scrape = try env.h.get("/metrics").send();
     defer scrape.deinit();
     try scrape.expectStatus(.ok);
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_hydration_dropped_entries_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_hydration_dropped_bytes_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_cap_evictions_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_capture_truncated_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_capture_skipped_total "));
-    try std.testing.expect(scrape.bodyContains("# HELP zombie_memory_search_zero_hits_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_hydration_dropped_entries_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_hydration_dropped_bytes_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_cap_evictions_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_capture_truncated_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_capture_skipped_total "));
+    try std.testing.expect(scrape.bodyContains("# HELP agent_memory_search_zero_hits_total "));
 }

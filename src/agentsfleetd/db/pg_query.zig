@@ -22,6 +22,8 @@ const pg = @import("pg");
 const logging = @import("log");
 const log = logging.scoped(.pg_query);
 pub const PgQuery = struct {
+    const Self = @This();
+
     inner: *pg.Result,
 
     // bvisor pattern: comptime size assertion — single pointer wrapper.
@@ -35,7 +37,7 @@ pub const PgQuery = struct {
     }
 
     /// Returns the next row, or null when the result set is exhausted.
-    pub fn next(self: *PgQuery) !?pg.Row {
+    pub fn next(self: *Self) !?pg.Row {
         return self.inner.next();
     }
 
@@ -54,13 +56,13 @@ pub const PgQuery = struct {
     /// there genuinely IS more to drain) avoids the deadlock without
     /// reaching into pg.zig internals beyond the `_state` field every
     /// caller already touches indirectly.
-    pub fn drain(self: *PgQuery) void {
+    pub fn drain(self: *Self) void {
         if (self.inner._conn._state != .query) return;
         self.inner.drain() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
     }
 
     /// Drain remaining rows then release the result. Always call via defer.
-    pub fn deinit(self: *PgQuery) void {
+    pub fn deinit(self: *Self) void {
         self.drain();
         self.inner.deinit();
     }

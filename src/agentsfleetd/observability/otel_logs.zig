@@ -68,6 +68,8 @@ const LogEntry = struct {
 };
 
 const Ring = struct {
+    const Self = @This();
+
     // SAFETY: each slot is written by exactly one claiming producer before that
     // slot's ready flag is published; pop reads only ready slots.
     buffer: [BUFFER_CAPACITY]LogEntry = undefined,
@@ -76,7 +78,7 @@ const Ring = struct {
     tail: std.atomic.Value(usize) = std.atomic.Value(usize).init(0),
     dropped: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
 
-    pub fn push(self: *Ring, entry: LogEntry) bool {
+    pub fn push(self: *Self, entry: LogEntry) bool {
         while (true) {
             const head = self.head.load(.acquire);
             const tail = self.tail.load(.acquire);
@@ -100,7 +102,7 @@ const Ring = struct {
         }
     }
 
-    pub fn pop(self: *Ring) ?LogEntry {
+    pub fn pop(self: *Self) ?LogEntry {
         // safe because: tail is consumer-owned (single flush thread); head's
         // .acquire pairs with producers' claim cmpxchg.
         const tail = self.tail.load(.acquire);
@@ -119,7 +121,7 @@ const Ring = struct {
         return entry;
     }
 
-    pub fn len(self: *Ring) usize {
+    pub fn len(self: *Self) usize {
         // safe because: monotonic-quality snapshot for batching/drain heuristics
         // only; .acquire keeps it no staler than the callers' own loads.
         const head = self.head.load(.acquire);

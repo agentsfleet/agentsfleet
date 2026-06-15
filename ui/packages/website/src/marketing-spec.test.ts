@@ -39,11 +39,11 @@ describe("marketing hero — W2 architecture pillars present", () => {
 });
 
 describe("marketing install command — npm path present", () => {
-  it("at least one hit on `npm install -g @usezombie/zombiectl` across src/", () => {
+  it("at least one hit on `npm install -g @agentsfleet/cli` across src/", () => {
     const hits: string[] = [];
     for (const [path, body] of Object.entries(allMarketingSources)) {
       body.split("\n").forEach((line, i) => {
-        if (line.includes("npm install -g @usezombie/zombiectl")) {
+        if (line.includes("npm install -g @agentsfleet/cli")) {
           hits.push(`${path}:${i + 1}`);
         }
       });

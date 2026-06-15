@@ -3,17 +3,17 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   listWorkspaceEvents as apiListWorkspaceEvents,
-  listZombieEvents as apiListZombieEvents,
+  listAgentEvents as apiListAgentEvents,
   type EventsPage,
   type EventsQuery,
 } from "@/lib/api/events";
 
-export async function listZombieEventsAction(
+export async function listAgentEventsAction(
   workspaceId: string,
-  zombieId: string,
-  opts?: Omit<EventsQuery, "zombie_id">,
+  agentId: string,
+  opts?: Omit<EventsQuery, "agent_id">,
 ): Promise<ActionResult<EventsPage>> {
-  return withToken((t) => apiListZombieEvents(workspaceId, zombieId, t, opts));
+  return withToken((t) => apiListAgentEvents(workspaceId, agentId, t, opts));
 }
 
 export async function listWorkspaceEventsAction(

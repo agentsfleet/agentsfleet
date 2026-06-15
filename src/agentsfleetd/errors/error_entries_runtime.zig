@@ -48,15 +48,15 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
     e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
-    e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets a zombie that belongs to a different workspace. " ++
-        "Each zombie's memory is scoped to its own zombie_id; cross-zombie access is not permitted."),
-    e("UZ-MEM-002", .not_found, "Zombie not found for memory op", "The zombie_id does not exist or does not belong to the requesting workspace. " ++
-        "Verify the zombie_id and workspace scope."),
+    e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets an agent that belongs to a different workspace. " ++
+        "Each agent's memory is scoped to its own agent_id; cross-agent access is not permitted."),
+    e("UZ-MEM-002", .not_found, "Agent not found for memory op", "The agent_id does not exist or does not belong to the requesting workspace. " ++
+        "Verify the agent_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++
         "The agent falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL."),
-    // ── AGENT KEYS (workspace-scoped, zmb_ prefix) ────────────────────────────
+    // ── AGENT KEYS (workspace-scoped, agt_a prefix) ────────────────────────────
     e("UZ-APIKEY-001", .unauthorized, "Invalid API key", "API key is invalid or revoked. Create one with: agentsfleet agent create --workspace {ws} --name my-agent"),
-    // ── TENANT API KEYS (tenant-scoped, zmb_t_ prefix) ────────────────────────
+    // ── TENANT API KEYS (tenant-scoped, agt_t prefix) ────────────────────────
     e("UZ-APIKEY-003", .not_found, "API key not found", "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys"),
     e("UZ-APIKEY-004", .unauthorized, "API key has been revoked", "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys"),
     e("UZ-APIKEY-005", .conflict, "Key name already exists in this tenant", "key_name must be unique per tenant. Pick a different name or revoke the existing key first."),
@@ -64,6 +64,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APIKEY-007", .conflict, "active cannot be set to true; mint a new key instead", "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one."),
     e("UZ-APIKEY-008", .conflict, "Active API key must be revoked before deletion", "Revoke the key first with PATCH /v1/api-keys/{id} body {\"active\": false}, then retry DELETE."),
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
-    e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This zombie has no approved grant for the target service. " ++
-        "Request one with: POST /v1/zombies/{id}/integration-requests"),
+    e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This agent has no approved grant for the target service. " ++
+        "Request one with: POST /v1/agents/{id}/integration-requests"),
 };

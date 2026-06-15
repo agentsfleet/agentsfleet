@@ -5,7 +5,7 @@
  * Clerk's REST API. Wire shape: GET /v1/users → POST /v1/sessions → POST
  * /v1/sessions/{id}/tokens. Post-the mint uses the bare
  * `/tokens` endpoint (no template suffix) — the customized default
- * session token carries `aud=https://api.usezombie.com` +
+ * session token carries `aud=https://api.agentsfleet.net` +
  * `metadata.tenant_id` + `metadata.role`, which is exactly what agentsfleetd's
  * OIDC verifier and tenant-scope check rely on.
  *
@@ -50,7 +50,7 @@ export interface MintedFixture {
   sessionId: string;
   /**
    * Customized default session JWT — Bearer auth on agentsfleetd. Carries
-   * `aud=https://api.usezombie.com` + `metadata.tenant_id` + `metadata.role`
+   * `aud=https://api.agentsfleet.net` + `metadata.tenant_id` + `metadata.role`
    * via Clerk's Session Token Customization, not via the
    * legacy `api` JWT template.
    */

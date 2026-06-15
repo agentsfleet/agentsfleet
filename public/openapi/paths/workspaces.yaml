@@ -49,9 +49,9 @@
     summary: List a workspace's aggregate event history
     description: >
       Cursor-paginated list of operator-visible events across every
-      zombie in the workspace, newest first. Replaces the deleted
-      activity endpoint. Optional `zombie_id` filter narrows to one
-      zombie. Same query shape as the per-zombie endpoint - `actor`
+      agent in the workspace, newest first. Replaces the deleted
+      activity endpoint. Optional `agent_id` filter narrows to one
+      agent. Same query shape as the per-agent endpoint - `actor`
       glob, `since=` (duration or RFC 3339), and a `cursor` mutually
       exclusive with `since`.
     tags:
@@ -63,10 +63,10 @@
       schema:
         type: string
         format: uuid
-    - name: zombie_id
+    - name: agent_id
       in: query
       required: false
-      description: Drill down to one zombie within the workspace.
+      description: Drill down to one agent within the workspace.
       schema:
         type: string
         format: uuid

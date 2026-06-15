@@ -1,4 +1,4 @@
-// POST /v1/webhooks/{zombie_id}/approval — Slack interactive payload callback.
+// POST /v1/webhooks/{agent_id}/approval — Slack interactive payload callback.
 //
 // Receives Slack button clicks (approve/deny) for the approval gate.
 // Validates the payload, resolves the pending action in Redis, and
@@ -18,8 +18,8 @@ const logging = @import("log");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const approval_gate = @import("../../../zombie/approval_gate.zig");
-const resolver = @import("../../../zombie/approval_gate_resolver.zig");
+const approval_gate = @import("../../../agent/approval_gate.zig");
+const resolver = @import("../../../agent/approval_gate_resolver.zig");
 
 const log = logging.scoped(.http_approval);
 
@@ -30,10 +30,12 @@ const S_INVALID_SIGNATURE = "Invalid signature";
 const S_RESOLVED = "resolved";
 
 const ApprovalDecision = enum {
+    const Self = @This();
+
     approve,
     deny,
 
-    fn toConstString(self: ApprovalDecision) []const u8 {
+    fn toConstString(self: Self) []const u8 {
         return switch (self) {
             .approve => ec.GATE_DECISION_APPROVE,
             .deny => ec.GATE_DECISION_DENY,
@@ -46,7 +48,7 @@ const ApprovalPayload = struct {
     decision: ApprovalDecision,
 };
 
-pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
+pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, agent_id: []const u8) void {
     // Verify request signature (HMAC-SHA256) if signing secret is configured.
     // Without this, any actor who knows the URL can submit approve/deny.
     if (!verifyRequestSignature(hx, req)) return;
@@ -63,18 +65,18 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         .deny => .denied,
     };
 
-    // zombie_id from the URL is bound into the SQL WHERE clause inside
-    // resolve(), so a payload whose action_id belongs to a different zombie
+    // agent_id from the URL is bound into the SQL WHERE clause inside
+    // resolve(), so a payload whose action_id belongs to a different agent
     // returns .not_found without mutating the row.
     var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
         .action_id = payload.action_id,
-        .zombie_id_filter = zombie_id,
+        .agent_id_filter = agent_id,
         .outcome = gate_status,
         .by = resolver.SLACK_WEBHOOK,
     }) catch {
         log.err("resolve_fail", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .action_id = payload.action_id,
         });
         common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
@@ -93,12 +95,12 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
 
     switch (outcome) {
         .resolved => log.info(S_RESOLVED, .{
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .action_id = payload.action_id,
             .decision = decision_str,
         }),
         .already_resolved => |r| log.info("already_resolved", .{
-            .zombie_id = zombie_id,
+            .agent_id = agent_id,
             .action_id = payload.action_id,
             .prior_outcome = r.outcome.toSlice(),
             .prior_by = r.resolved_by,
@@ -159,7 +161,7 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION);
         return null;
     };
-    return ApprovalPayload{ .action_id = raw.action_id, .decision = decision };
+    return .{ .action_id = raw.action_id, .decision = decision };
 }
 
 /// Verify the request signature using HMAC-SHA256.

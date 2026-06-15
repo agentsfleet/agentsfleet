@@ -1,0 +1,75 @@
+Usage: agentsfleet [options] [command]
+
+agentsfleet cli
+
+Options:
+  -v, --version                Show version
+  --api <url>                  API base URL
+  --json                       Machine-readable JSON output (default: false)
+  --no-input                   Disable interactive prompts
+  --no-open                    Skip auto-opening the browser on login
+  -h, --help                   Show this help
+
+Commands:
+  login [options]              Authenticate via browser
+  logout [options]             Sign out — revoke every active session on this
+                               account and clear local credentials
+  auth                         Inspect authentication state
+  doctor                       Diagnose CLI configuration and connectivity
+  workspace                    Manage workspaces
+  agent-key                    Manage agent API keys
+  grant                        Manage integration grants
+  tenant                       Tenant-scoped commands
+  billing                      Tenant billing dashboard
+  install [options]            Register an agent from a local skill bundle
+  agent                        Agent management subcommands
+  list [options]               List agents in the active workspace (paginated)
+  status [agent_id]            Show agent status (workspace-wide if no id)
+  stop <agent_id>              Halt the running session (resumable)
+  resume <agent_id>            Resume from stopped or auto-paused
+  kill <agent_id>              Mark terminal (irreversible)
+  delete <agent_id>            Hard-delete a killed agent
+  logs [options] [agent_id]    Tail agent activity
+  events [options] <agent_id>  Page through historical events
+  steer <agent_id> [message]   Send a message; stream the response
+  credential                   Workspace credential vault
+  memory                       Inspect an agent's durable memory (read-only)
+  help [command]               display help for command
+
+Subcommands:
+  auth status
+  workspace add
+  workspace list
+  workspace use
+  workspace show
+  workspace credentials
+  workspace delete
+  agent-key add
+  agent-key list
+  agent-key delete
+  grant list
+  grant delete
+  tenant provider show
+  tenant provider add
+  tenant provider delete
+  billing show
+  credential add
+  credential show
+  credential list
+  credential delete
+  agent update
+  memory list
+  memory search
+
+Environment variables:
+  AGENTSFLEET_API_URL                  API base URL (overridden by --api)
+  AGENTSFLEET_DASHBOARD_URL            Dashboard base URL (login verify page)
+  AGENTSFLEET_TOKEN                    Auth token (interactive shells use env)
+  AGENTSFLEET_API_KEY                  API key for service auth
+  AGENTSFLEET_STATE_DIR                Directory for local CLI state files
+  NO_COLOR                        Any non-empty value disables color
+  AGENTSFLEET_TELEMETRY_DISABLED       Set to 1 to opt out of analytics+tracing
+  DO_NOT_TRACK                    Set to 1 to opt out (industry-standard signal)
+  AGENTSFLEET_TELEMETRY_POSTHOG_KEY    Override the PostHog project key
+  AGENTSFLEET_TELEMETRY_POSTHOG_HOST   Override the PostHog ingest host
+  AGENTSFLEET_TELEMETRY_DEBUG          Set to 1 to log span summaries to stderr

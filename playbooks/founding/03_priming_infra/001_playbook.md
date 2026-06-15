@@ -141,7 +141,7 @@ fly status --app agentsfleetd-dev
 `fly.toml` for the API app (no public port — tunnel is the only ingress):
 
 ```toml
-app = "zombied-dev"
+app = "agentsfleetd-dev"
 primary_region = "iad"
 
 [build]
@@ -179,11 +179,11 @@ op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   "credentials-json-b64=$TUNNEL_CREDS"
 
 # Route tunnel to domain (creates CNAME <TUNNEL_ID>.cfargotunnel.com automatically)
-cloudflared tunnel route dns agentsfleetd-dev api-dev.usezombie.com
+cloudflared tunnel route dns agentsfleetd-dev api-dev.agentsfleet.net
 
 # Repeat for PROD
 cloudflared tunnel create agentsfleetd-prod
-cloudflared tunnel route dns agentsfleetd-prod api.usezombie.com
+cloudflared tunnel route dns agentsfleetd-prod api.agentsfleet.net
 ```
 
 `cloudflared` config deployed as a Fly app (`cloudflared-dev`):
@@ -194,7 +194,7 @@ tunnel: <TUNNEL_ID>
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
-  - hostname: api-dev.usezombie.com
+  - hostname: api-dev.agentsfleet.net
     service: http://agentsfleetd-dev.internal:3000  # Fly 6PN private DNS
   - service: http_status:404
 ```
@@ -254,8 +254,8 @@ op item create --vault "$VAULT_DEV" --title fly-api-token \
   --category "API Credential" "credential=<token>"
 
 # Set GitHub Actions vars
-gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo usezombie/usezombie
-gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo usezombie/usezombie
+gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo agentsfleet/agentsfleet
+gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo agentsfleet/agentsfleet
 ```
 
 CI deploy step in `deploy-dev.yml`:
@@ -273,8 +273,8 @@ CI deploy step in `deploy-dev.yml`:
 cloudflared tunnel info agentsfleetd-dev
 
 # API reachable via Cloudflare (not direct Fly)
-curl -sf https://api-dev.usezombie.com/healthz
-curl -sf https://api-dev.usezombie.com/readyz | jq '.ready'
+curl -sf https://api-dev.agentsfleet.net/healthz
+curl -sf https://api-dev.agentsfleet.net/readyz | jq '.ready'
 
 # Confirm no direct Fly access (should time out or refuse)
 curl -sf https://agentsfleetd-dev.fly.dev/healthz  # expected: connection refused / 404
@@ -310,15 +310,15 @@ Role contract (`schema/002_vault_schema.sql`):
 
 Redis is hosted on Upstash (DEV and PROD). ACL is managed via the Upstash dashboard — no custom ACL commands needed.
 
-No manual stream bootstrap is required. agentsfleetd creates each zombie's event stream (`zombie:{zombie_id}:events`) and its `zombie_lease` consumer group on demand, synchronously, when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream` in `src/agentsfleetd/http/handlers/zombies/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first zombie created after deploy.
+No manual stream bootstrap is required. agentsfleetd creates each agent's event stream (`agent:{agent_id}:events`) and its `agent_lease` consumer group on demand, synchronously, when a agent is created (`POST /v1/workspaces/{ws}/agents` → `ensureEventStream` in `src/agentsfleetd/http/handlers/agents/create_stream.zig`). The call is idempotent (`XGROUP CREATE … MKSTREAM`, `BUSYGROUP`-tolerant) with a bounded retry, so an empty cache self-heals on the first agent created after deploy.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
 ### 3.3 Clerk — Session Token Customization
 
-Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claims (`metadata.tenant_id` + `metadata.role`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
+Agentd's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claims (`metadata.tenant_id` + `metadata.role`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
 
-**`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.usezombie.com`, `release.yml` sets `https://api.usezombie.com`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
+**`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.agentsfleet.net`, `release.yml` sets `https://api.agentsfleet.net`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
 
 **Per-env audience — three surfaces must agree.** agentsfleetd checks `aud` on every bearer it receives, no matter which Clerk mechanism minted it. Three places carry the per-env audience and MUST hold the same value for that env:
 
@@ -326,7 +326,7 @@ Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/
 2. **Clerk → Sessions → Customize session token** — the `aud` claim on the *default* session token (feeds the new dashboard, D45 `auth().getToken()`).
 3. **Clerk → JWT Templates → `api`** — the `aud` claim on the api-template token (feeds the CLI carve-out D47 + the currently-deployed pre-§9 dashboard).
 
-Current values (confirmed 2026-05-20): DEV all three = `https://api-dev.usezombie.com`; PROD all three = `https://api.usezombie.com`.
+Current values (confirmed 2026-05-20): DEV all three = `https://api-dev.agentsfleet.net`; PROD all three = `https://api.agentsfleet.net`.
 
 Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIENCE` is transition-safe across the old→new dashboard code swap and does not break the CLI. The hazard is editing one surface without the others: any token whose `aud` ≠ `OIDC_AUDIENCE` is fail-closed with a loud 401 `AudienceMismatch` (never silent). When rotating the audience for an env, change all three together; the CI step couples `OIDC_AUDIENCE` + image deploy atomically, so the only human ordering rule is to set the two Clerk `aud` claims before the deploy that ships `OIDC_AUDIENCE`.
 
@@ -348,7 +348,7 @@ Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIEN
 
 **Verification (per env, after save):**
 
-1. Sign out of `app.usezombie.com` (or `app-dev.usezombie.com`) in a clean browser session; sign in again to force a fresh token.
+1. Sign out of `app.agentsfleet.net` (or `app-dev.agentsfleet.net`) in a clean browser session; sign in again to force a fresh token.
 2. Open DevTools → Application → Cookies → `__session`; copy the value.
 3. Decode at `jwt.io` (or `jwt-cli decode`). Confirm the payload carries:
    - `aud` matches the env's `OIDC_AUDIENCE`.
@@ -371,7 +371,7 @@ Clerk dashboard → **Sessions → Customize session token** → **Reset to defa
 | V9.4 — `sid` present | JWT payload has `sid` field | `clerkMiddleware()` continues to validate the cookie |
 | V9.5 — plan gating | Plan tier is Pro+ (Free tier blocks claim customization) | Confirm before scheduling D40 PROD apply |
 
-> **Pre-D40 PROD checklist:** (1) the human-entered PROD Clerk `aud` claim equals `https://api.usezombie.com` (the literal `release.yml` sets as `OIDC_AUDIENCE`); (2) the D40 PROD Clerk customization is applied **before** the prod release that ships `OIDC_AUDIENCE` + the new dashboard code; (3) V9.5 confirmed against the current Clerk plan; (4) nkishore@megam.io DEV cookie measured for the V9.3 baseline. Note `OIDC_AUDIENCE` is no longer a vault/`fly secrets`-list item — it's a CI literal, so verify it in `release.yml`, not `fly secrets list`.
+> **Pre-D40 PROD checklist:** (1) the human-entered PROD Clerk `aud` claim equals `https://api.agentsfleet.net` (the literal `release.yml` sets as `OIDC_AUDIENCE`); (2) the D40 PROD Clerk customization is applied **before** the prod release that ships `OIDC_AUDIENCE` + the new dashboard code; (3) V9.5 confirmed against the current Clerk plan; (4) nkishore@megam.io DEV cookie measured for the V9.3 baseline. Note `OIDC_AUDIENCE` is no longer a vault/`fly secrets`-list item — it's a CI literal, so verify it in `release.yml`, not `fly secrets list`.
 
 ---
 

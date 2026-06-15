@@ -116,10 +116,10 @@ describe("runner server actions — platform-admin gate (defence-in-depth)", () 
 
   it("createRunnerAction forwards the mint body through withToken to the client when admin", async () => {
     readPlatformAdminClaimMock.mockResolvedValueOnce(true);
-    createRunnerMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "zrn_abc" });
+    createRunnerMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
     const body = { host_id: "web-prod-1", sandbox_tier: "container_nested" as const, labels: [] };
     const r = await createRunnerAction(body);
-    expect(r).toEqual({ ok: true, data: { runner_id: "r1", runner_token: "zrn_abc" } });
+    expect(r).toEqual({ ok: true, data: { runner_id: "r1", runner_token: "agt_rabc" } });
     expect(createRunnerMock).toHaveBeenCalledWith("tok", body);
   });
 

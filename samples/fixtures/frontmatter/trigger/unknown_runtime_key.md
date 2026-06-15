@@ -1,9 +1,9 @@
 ---
 # Typo: `contxt` instead of a known runtime key. Rigid validation under
-# x-usezombie: rejects with UnknownRuntimeKey.
+# x-agentsfleet: rejects with UnknownRuntimeKey.
 name: typo-skill
 
-x-usezombie:
+x-agentsfleet:
   triggers:
     - type: cron
       schedule: "0 9 * * *"

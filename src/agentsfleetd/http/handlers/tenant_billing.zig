@@ -14,7 +14,7 @@ const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const tenant_billing = @import("../../state/tenant_billing.zig");
-const telemetry_store = @import("../../state/zombie_telemetry_store.zig");
+const telemetry_store = @import("../../state/agent_telemetry_store.zig");
 const fleet_metering_store = @import("../../state/fleet_metering_store.zig");
 
 const Hx = hx_mod.Hx;
@@ -160,8 +160,10 @@ fn parseLimit(qs: anytype) ParseLimitError!u32 {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 const FakeQuery = struct {
+    const Self = @This();
+
     value: ?[]const u8,
-    pub fn get(self: FakeQuery, key: []const u8) ?[]const u8 {
+    pub fn get(self: Self, key: []const u8) ?[]const u8 {
         _ = key;
         return self.value;
     }

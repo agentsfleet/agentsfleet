@@ -66,7 +66,7 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
         try agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
         try agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
-        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .zombie_id = payload.event.zombie_id });
+        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .agent_id = payload.event.agent_id });
     }
 
     var tools_arr = std.json.Array.init(alloc);

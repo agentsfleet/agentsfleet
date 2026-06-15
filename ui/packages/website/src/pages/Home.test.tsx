@@ -29,7 +29,7 @@ describe("Home", () => {
   it("renders the install command copy-row in the hero", () => {
     renderHome();
     expect(screen.getByTestId("hero-install-command").textContent).toContain(
-      "curl -fsSL https://usezombie.sh | bash",
+      "curl -fsSL https://agentsfleet.dev | bash",
     );
     const cta = screen.getByTestId("hero-cta-primary");
     expect(cta.tagName).toBe("BUTTON");
@@ -43,7 +43,7 @@ describe("Home", () => {
 
   it("renders the hero install Terminal", () => {
     renderHome();
-    expect(screen.getByLabelText(/install via usezombie\.sh/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/install via agentsfleet\.dev/i)).toBeInTheDocument();
   });
 
   it("mounts the OnboardingFlow at the #onboarding-flow anchor with all four steps", () => {

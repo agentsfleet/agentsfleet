@@ -38,11 +38,13 @@ fn defaultNowMs() i64 {
 }
 
 pub const WebhookHmac = struct {
+    const Self = @This();
+
     /// Raw signing secret (not base64-encoded). Host loads from env/vault.
     secret: []const u8,
     now_ms: NowMsFn = defaultNowMs,
 
-    pub fn middleware(self: *WebhookHmac) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -51,7 +53,7 @@ pub const WebhookHmac = struct {
         return execute(self, ctx, req);
     }
 
-    pub fn execute(self: *WebhookHmac, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const timestamp = req.header("x-signature-timestamp") orelse {
             ctx.fail(errors.ERR_APPROVAL_INVALID_SIGNATURE, "Missing signature timestamp");
             return .short_circuit;

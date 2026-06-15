@@ -25,6 +25,8 @@ pub const WriteErrorFn = *const fn (
 ) void;
 
 pub const AuthCtx = struct {
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     res: *httpz.Response,
     req_id: []const u8,
@@ -32,14 +34,14 @@ pub const AuthCtx = struct {
     write_error: WriteErrorFn,
 
     // Per-request slot for webhook routes — the dispatcher populates this from
-    // the matched route's zombie_id before calling chain.run. The webhook_sig
+    // the matched route's agent_id before calling chain.run. The webhook_sig
     // and svix middlewares read it; all others ignore it.
-    webhook_zombie_id: ?[]const u8 = null,
+    webhook_agent_id: ?[]const u8 = null,
 
     /// Write a problem+json error response via the host-supplied writer.
     /// The HTTP status comes from the host's error table (middleware does
     /// not know it).
-    pub fn fail(self: *AuthCtx, code: []const u8, detail: []const u8) void {
+    pub fn fail(self: *Self, code: []const u8, detail: []const u8) void {
         self.write_error(self.res, code, detail, self.req_id);
     }
 };

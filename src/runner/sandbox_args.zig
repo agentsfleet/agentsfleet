@@ -9,7 +9,7 @@
 //!
 //! It also single-sources the child-environment policy (`ENV_PASSTHROUGH_ALLOWLIST`
 //! + `ENV_DENY_PREFIX`) that `child_process.forkExec` applies at the spawn
-//! boundary — the daemon environ (incl. `ZOMBIE_RUNNER_TOKEN`) never reaches the
+//! boundary — the daemon environ (incl. `AGENTSFLEET_RUNNER_TOKEN`) never reaches the
 //! sandboxed child; it inherits only the allowlist.
 
 const std = @import("std");
@@ -40,10 +40,10 @@ const ETC_RESOLV = "/etc/resolv.conf";
 const SHARE_NET = "--share-net";
 
 /// Daemon env-var prefix that must NEVER reach a sandboxed child — the
-/// control-plane credentials live here (incl. `ZOMBIE_RUNNER_TOKEN`). The
+/// control-plane credentials live here (incl. `AGENTSFLEET_RUNNER_TOKEN`). The
 /// allowlist below already excludes it by omission; `forkExec` asserts it absent
 /// from the child's environ regardless of allowlist contents (defense-in-depth).
-pub const ENV_DENY_PREFIX = "ZOMBIE_";
+pub const ENV_DENY_PREFIX = "AGENTSFLEET_";
 
 /// The ONLY environment variables forwarded into a sandboxed child's environ
 /// (RULE UFS — single source, referenced by `child_process.forkExec` + tests).

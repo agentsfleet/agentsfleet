@@ -1,8 +1,8 @@
 // Tests for the same-origin SSE proxy route handler at
-// app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream.
+// app/backend/v1/workspaces/[workspaceId]/agents/[agentId]/events/stream.
 //
 // The handler is the trust boundary between the browser (cookie-authed via
-// Clerk) and the Zig backend (Bearer-only, aud=api.usezombie.com). Coverage
+// Clerk) and the Zig backend (Bearer-only, aud=api.agentsfleet.net). Coverage
 // here pins the auth + error + stream-piping contract documented in
 // docs/AUTH.md "UI · SSE stream".
 
@@ -31,14 +31,14 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route";
+import { GET } from "../app/backend/v1/workspaces/[workspaceId]/agents/[agentId]/events/stream/route";
 
 function makeReq(): Request {
   return new Request("http://localhost/proxy", { method: "GET" });
 }
 
-function paramsOf(workspaceId: string, zombieId: string) {
-  return { params: Promise.resolve({ workspaceId, zombieId }) };
+function paramsOf(workspaceId: string, agentId: string) {
+  return { params: Promise.resolve({ workspaceId, agentId }) };
 }
 
 describe("SSE route handler — auth", () => {
@@ -55,8 +55,8 @@ describe("SSE route handler — auth", () => {
 
   it("requests the customized default session token (no template arg)", async () => {
     // Post-Stage-1: the customized default session token carries
-    // `aud=https://api.usezombie.com` + `metadata.tenant_id`, satisfying
-    // zombied's OIDC verifier without the api-template indirection.
+    // `aud=https://api.agentsfleet.net` + `metadata.tenant_id`, satisfying
+    // agentsfleetd's OIDC verifier without the api-template indirection.
     getTokenFn.mockResolvedValueOnce("session_jwt_token");
     fetchSpy.mockResolvedValueOnce(
       new Response("data: hi\n\n", {
@@ -82,7 +82,7 @@ describe("SSE route handler — upstream call", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
-      "https://api.example.test/v1/workspaces/ws_1/zombies/zomb_1/events/stream",
+      "https://api.example.test/v1/workspaces/ws_1/agents/zomb_1/events/stream",
     );
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer api_jwt_token");
@@ -98,7 +98,7 @@ describe("SSE route handler — upstream call", () => {
     await GET(makeReq(), paramsOf("ws/../admin", "zomb 1"));
     const [url] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
-      "https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/zombies/zomb%201/events/stream",
+      "https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/agents/zomb%201/events/stream",
     );
   });
 

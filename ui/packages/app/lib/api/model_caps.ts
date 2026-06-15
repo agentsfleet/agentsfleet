@@ -8,7 +8,7 @@
 import { BASE } from "./client";
 
 // Public path obfuscator — NOT a secret. Shipped in agentsfleet, the install-skill,
-// and the zombied binary; mirrors MODEL_CAPS_PATH_KEY in model_caps.zig. It only
+// and the agentsfleetd binary; mirrors MODEL_CAPS_PATH_KEY in model_caps.zig. It only
 // deflects opportunistic crawlers — the catalogue itself is public.
 const CAP_JSON_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:allow — public path obfuscator, not a credential
 const CAP_JSON_PATH = `/_um/${CAP_JSON_PATH_KEY}/cap.json`;

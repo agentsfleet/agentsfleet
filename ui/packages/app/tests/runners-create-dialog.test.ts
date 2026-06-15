@@ -33,7 +33,7 @@ function stubClipboardWriteText() {
   return vi.spyOn(navigator.clipboard, "writeText");
 }
 
-const MINTED = { ok: true, data: { runner_id: "r1", runner_token: "zrn_deadbeef" } };
+const MINTED = { ok: true, data: { runner_id: "r1", runner_token: "agt_rdeadbeef" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -88,7 +88,7 @@ describe("AddRunnerDialog component", () => {
     await user.click(screen.getByRole("button", { name: /create runner/i }));
 
     const field = await screen.findByLabelText("Runner token");
-    expect((field as HTMLInputElement).value).toBe("zrn_deadbeef");
+    expect((field as HTMLInputElement).value).toBe("agt_rdeadbeef");
     // host trimmed, labels deduped + parsed, default tier passed through.
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
@@ -97,7 +97,7 @@ describe("AddRunnerDialog component", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /stored it/i }));
-    await waitFor(() => expect(screen.queryByDisplayValue("zrn_deadbeef")).toBeNull());
+    await waitFor(() => expect(screen.queryByDisplayValue("agt_rdeadbeef")).toBeNull());
     expect(onCreated).toHaveBeenCalled();
 
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
@@ -105,8 +105,8 @@ describe("AddRunnerDialog component", () => {
       runner_id: "r1",
       sandbox_tier: "landlock_full",
     });
-    // The one-time zrn_ token must never reach analytics.
-    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("zrn_deadbeef");
+    // The one-time agt_r token must never reach analytics.
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("agt_rdeadbeef");
   });
 
   it("a server 403 keeps the dialog open, reveals no token, and does not signal onCreated", async () => {
@@ -129,7 +129,7 @@ describe("AddRunnerDialog component", () => {
     const { user } = await openDialog();
     await reachReveal(user);
     await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("zrn_deadbeef"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_rdeadbeef"));
     // findByRole (not sync getByRole) — the "Copied" label flips one microtask
     // after writeText resolves; sync querying races the re-render under load.
     expect(await screen.findByRole("button", { name: /^copied$/i })).toBeTruthy();
@@ -142,7 +142,7 @@ describe("AddRunnerDialog component", () => {
     await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
     await waitFor(() => expect(screen.getByText(/copy failed — select the value/i)).toBeTruthy());
     // The reveal stays intact so the operator can still grab the value by hand.
-    expect((screen.getByLabelText("Runner token") as HTMLInputElement).value).toBe("zrn_deadbeef");
+    expect((screen.getByLabelText("Runner token") as HTMLInputElement).value).toBe("agt_rdeadbeef");
   });
 
   it("selects the whole token on focus so it can be copied manually", async () => {

@@ -11,6 +11,8 @@ pub const TRACE_ID_HEX_LEN = 32;
 pub const SPAN_ID_HEX_LEN = 16;
 
 pub const TraceContext = struct {
+    const Self = @This();
+
     trace_id: [TRACE_ID_HEX_LEN]u8,
     span_id: [SPAN_ID_HEX_LEN]u8,
     parent_span_id: ?[SPAN_ID_HEX_LEN]u8 = null,
@@ -24,7 +26,7 @@ pub const TraceContext = struct {
     }
 
     /// Create a child span under the same trace.
-    pub fn child(self: *const TraceContext) TraceContext {
+    pub fn child(self: *const Self) TraceContext {
         return .{
             .trace_id = self.trace_id,
             .span_id = randomHex(SPAN_ID_HEX_LEN),
@@ -32,21 +34,21 @@ pub const TraceContext = struct {
         };
     }
 
-    pub fn traceIdSlice(self: *const TraceContext) []const u8 {
+    pub fn traceIdSlice(self: *const Self) []const u8 {
         return &self.trace_id;
     }
 
-    fn spanIdSlice(self: *const TraceContext) []const u8 {
+    fn spanIdSlice(self: *const Self) []const u8 {
         return &self.span_id;
     }
 
-    fn parentSpanIdSlice(self: *const TraceContext) []const u8 {
+    fn parentSpanIdSlice(self: *const Self) []const u8 {
         if (self.parent_span_id) |*pid| return pid;
         return "";
     }
 
     /// Render as W3C traceparent header value: 00-{trace_id}-{span_id}-01
-    fn toW3CHeader(self: *const TraceContext, buf: *[55]u8) []const u8 {
+    fn toW3CHeader(self: *const Self, buf: *[55]u8) []const u8 {
         @memcpy(buf[0..3], "00-");
         @memcpy(buf[3..35], &self.trace_id);
         buf[35] = '-';

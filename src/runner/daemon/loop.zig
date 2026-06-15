@@ -1,5 +1,5 @@
 //! The host-resident runner's parent event-leasing loop and graceful-drain
-//! signal handling. Boots from the operator-installed `zrn_` (Option B, no
+//! signal handling. Boots from the operator-installed `agt_r` (Option B, no
 //! self-register): `runLoop` goes straight to heartbeat → lease → execute →
 //! report → activity. Transport errors back off without crashing; un-acked
 //! leases re-deliver via reclaim. Each lease runs in a forked, sandboxed child
@@ -21,7 +21,7 @@ const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 /// Backoff (ms) on control-plane transport errors; lease polls use server-supplied retry_after_ms.
 const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
@@ -62,7 +62,7 @@ pub var stop_requested = std.atomic.Value(bool).init(false);
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
 /// signal-set `drain_requested`) onto the shared atomics, and owns the worker
-/// pool's spawn/join. Identity is `cfg.runner_token` (a pre-minted `zrn_`); the
+/// pool's spawn/join. Identity is `cfg.runner_token` (a pre-minted `agt_r`); the
 /// loop never registers — its first contact is a heartbeat (Option B).
 ///
 /// The pool is spawned lazily after the first `.ok` heartbeat, so the host's
@@ -199,11 +199,11 @@ fn executeAndReport(
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
 
-    // Hydrate the zombie's prior memory over the trusted plane BEFORE the fork so
+    // Hydrate the agent's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
     // and holds no token. A hydrate miss degrades to empty memory, never blocks.
-    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.zombie_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
-        log.warn("memory_hydrate_failed", .{ .zombie_id = payload.event.zombie_id, .err = @errorName(err) });
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.agent_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
+        log.warn("memory_hydrate_failed", .{ .agent_id = payload.event.agent_id, .err = @errorName(err) });
         break :blk null;
     };
     defer if (hydrated) |h| h.deinit();
@@ -213,7 +213,7 @@ fn executeAndReport(
         .alloc = alloc,
         .cp = cp,
         .runner_token = runner_token,
-        .zombie_id = payload.event.zombie_id,
+        .agent_id = payload.event.agent_id,
         .lease_id = payload.lease_id,
         .fencing_token = payload.fencing_token,
         .deadline_ms = cfg.cp_deadlines.default_ms,

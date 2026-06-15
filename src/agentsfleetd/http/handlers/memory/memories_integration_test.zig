@@ -2,9 +2,9 @@
 // READ-ONLY tenant surface (the write-verb teardown: the runner plane is
 // the only writer).
 //
-//   GET    /v1/workspaces/{ws}/zombies/{zid}/memories          → list-or-search
-//   POST   /v1/workspaces/{ws}/zombies/{zid}/memories          → retired (404/405)
-//   DELETE /v1/workspaces/{ws}/zombies/{zid}/memories/{key}    → retired (404/405)
+//   GET    /v1/workspaces/{ws}/agents/{zid}/memories          → list-or-search
+//   POST   /v1/workspaces/{ws}/agents/{zid}/memories          → retired (404/405)
+//   DELETE /v1/workspaces/{ws}/agents/{zid}/memories/{key}    → retired (404/405)
 //
 // Entries are seeded directly (memory_runtime INSERT) since POST is gone. Uses
 // the shared TestHarness; DB-required; self-skips when TEST_DATABASE_URL is unset.
@@ -24,15 +24,15 @@ const ALLOC = std.testing.allocator;
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const OTHER_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aff77";
-const ZOMBIE_LOCAL = "0195b4ba-8d3a-7f13-8abc-2b3e1e0acc01";
-const ZOMBIE_OTHER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0acc02";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const AGENTSFLEET_LOCAL = "0195b4ba-8d3a-7f13-8abc-2b3e1e0acc01";
+const AGENTSFLEET_OTHER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0acc02";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -87,26 +87,26 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'mem-local', '---\nname: mem-local\n---\ntest', '{"name":"mem-local"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_LOCAL, TEST_WORKSPACE_ID });
+    , .{ AGENTSFLEET_LOCAL, TEST_WORKSPACE_ID });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'mem-other', '---\nname: mem-other\n---\ntest', '{"name":"mem-other"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ ZOMBIE_OTHER_WS, OTHER_WS_ID });
+    , .{ AGENTSFLEET_OTHER_WS, OTHER_WS_ID });
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("SET ROLE memory_runtime", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    // Memory is scoped by the raw zombie_id (UUID) after schema/013 — no zmb: form.
+    // Memory is scoped by the raw agent_id (UUID) after schema/013 — no legacy instance_id prefix.
     _ = conn.exec(
-        "DELETE FROM memory.memory_entries WHERE zombie_id IN ($1::uuid, $2::uuid)",
-        .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS },
+        "DELETE FROM memory.memory_entries WHERE agent_id IN ($1::uuid, $2::uuid)",
+        .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS },
     ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.zombies WHERE id IN ($1, $2)", .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agents WHERE id IN ($1, $2)", .{ AGENTSFLEET_LOCAL, AGENTSFLEET_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -117,7 +117,7 @@ const SEED_TS_MS: i64 = 1_700_000_000_000;
 /// Seed one memory entry directly (the tenant write verbs are retired —
 /// the runner push is the only writer; here we INSERT under the memory_runtime
 /// role so the surviving GET surface has data to read).
-fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
+fn seedEntry(f: Fixture, agent_id: []const u8, key: []const u8, content: []const u8, category: []const u8) !void {
     const conn = try f.h.acquireConn();
     defer f.h.releaseConn(conn);
     _ = try conn.exec("SET ROLE memory_runtime", .{});
@@ -125,20 +125,20 @@ fn seedEntry(f: Fixture, zombie_id: []const u8, key: []const u8, content: []cons
     var uid_buf: [36]u8 = undefined;
     const uid = try id_format.formatUuidV7(&uid_buf);
     var id_buf: [128]u8 = undefined;
-    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ zombie_id, key });
+    const id = try std.fmt.bufPrint(&id_buf, "{s}:{s}", .{ agent_id, key });
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, zombie_id, created_at, updated_at)
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, agent_id, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7, $7)
-        \\ON CONFLICT (key, zombie_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
-    , .{ uid, id, key, content, category, zombie_id, SEED_TS_MS });
+        \\ON CONFLICT (key, agent_id) DO UPDATE SET content = EXCLUDED.content, category = EXCLUDED.category
+    , .{ uid, id, key, content, category, agent_id, SEED_TS_MS });
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/memories", .{ ws, zid });
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/agents/{s}/memories", .{ ws, zid });
 }
 
 fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
-    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/memories/{s}", .{ ws, zid, key });
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/agents/{s}/memories/{s}", .{ ws, zid, key });
 }
 
 // ── GET surface (the tenant memory API is read-only after the write-verb teardown) ──
@@ -146,9 +146,9 @@ fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
 test "integration: memories GET list returns a seeded entry" {
     const f = try fixture();
     defer f.deinit();
-    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "ship the runner memory loop", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "goal:current", "ship the runner memory loop", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const list_r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer list_r.deinit();
@@ -160,9 +160,9 @@ test "integration: memories GET list returns a seeded entry" {
 test "integration: tenant memory updated_at is a JSON number (epoch millis)" {
     const f = try fixture();
     defer f.deinit();
-    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "numeric wire shape", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "goal:current", "numeric wire shape", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -176,9 +176,9 @@ test "integration: tenant memory updated_at is a JSON number (epoch millis)" {
 test "integration: memories GET ?query= finds an entry by content match" {
     const f = try fixture();
     defer f.deinit();
-    try seedEntry(f, ZOMBIE_LOCAL, "note:deploy", "deploy lands every monday morning", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "note:deploy", "deploy lands every monday morning", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=monday", .{url});
     defer ALLOC.free(search_url);
@@ -195,9 +195,9 @@ test "integration: memories GET ?query= finds an entry by content match" {
 test "test_search_zero_hit_counts" {
     const f = try fixture();
     defer f.deinit();
-    try seedEntry(f, ZOMBIE_LOCAL, "note:topic", "the stored fact mentions kumquats", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "note:topic", "the stored fact mentions kumquats", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=nothing-matches-this", .{url});
     defer ALLOC.free(search_url);
@@ -214,9 +214,9 @@ test "test_search_zero_hit_counts" {
 test "test_search_hit_no_count" {
     const f = try fixture();
     defer f.deinit();
-    try seedEntry(f, ZOMBIE_LOCAL, "note:fruit", "the stored fact mentions kumquats", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "note:fruit", "the stored fact mentions kumquats", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const search_url = try std.fmt.allocPrint(ALLOC, "{s}?query=kumquats", .{url});
     defer ALLOC.free(search_url);
@@ -235,7 +235,7 @@ test "test_list_never_counts_zero_hit" {
     defer f.deinit();
     // No seeded entries: the list path returns an empty set — still no count,
     // because only the ?query= search path is a recall-miss signal.
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
 
     const before = metrics_memory.snapshot();
@@ -252,7 +252,7 @@ test "test_category_filter_never_counts_zero_hit" {
     defer f.deinit();
     // The ?category= arm is a filtered list, not a search — an empty result
     // there must never read as a recall miss.
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const cat_url = try std.fmt.allocPrint(ALLOC, "{s}?category=no-such-category", .{url});
     defer ALLOC.free(cat_url);
@@ -271,9 +271,9 @@ test "test_tenant_list_never_counts_drops" {
     defer f.deinit();
     // The tenant read is the passthrough Compactor arm — no window applies, so
     // the hydration-drop counters must never move on this surface.
-    try seedEntry(f, ZOMBIE_LOCAL, "goal:current", "tenant reads are passthrough", "core");
+    try seedEntry(f, AGENTSFLEET_LOCAL, "goal:current", "tenant reads are passthrough", "core");
 
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
 
     const before = metrics_memory.snapshot();
@@ -288,7 +288,7 @@ test "test_tenant_list_never_counts_drops" {
 test "integration: memories GET without bearer returns 401" {
     const f = try fixture();
     defer f.deinit();
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const r = try f.h.get(url).send();
     defer r.deinit();
@@ -297,22 +297,22 @@ test "integration: memories GET without bearer returns 401" {
 
 // ── Cross-workspace isolation on the surviving GET surface ──
 //   (a) URL workspace = OTHER_WS → auth middleware rejects 403
-//   (b) URL workspace = TEST_WS, zombie lives in OTHER_WS → handler 404 (no leak)
+//   (b) URL workspace = TEST_WS, agent lives in OTHER_WS → handler 404 (no leak)
 
 test "integration: memories GET cross-workspace URL returns 403" {
     const f = try fixture();
     defer f.deinit();
-    const url = try memoriesUrl(OTHER_WS_ID, ZOMBIE_OTHER_WS);
+    const url = try memoriesUrl(OTHER_WS_ID, AGENTSFLEET_OTHER_WS);
     defer ALLOC.free(url);
     const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
     try r.expectStatus(.forbidden);
 }
 
-test "integration: memories GET zombie-in-foreign-ws returns 404" {
+test "integration: memories GET agent-in-foreign-ws returns 404" {
     const f = try fixture();
     defer f.deinit();
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_OTHER_WS);
     defer ALLOC.free(url);
     const r = try (try f.h.get(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();
@@ -326,7 +326,7 @@ test "integration: memories GET zombie-in-foreign-ws returns 404" {
 test "integration: tenant memory POST is retired (404/405, no write surface)" {
     const f = try fixture();
     defer f.deinit();
-    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL);
     defer ALLOC.free(url);
     const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
         "{\"key\":\"k\",\"content\":\"c\",\"category\":\"core\"}",
@@ -338,7 +338,7 @@ test "integration: tenant memory POST is retired (404/405, no write surface)" {
 test "integration: tenant memory DELETE is retired (404/405, no delete surface)" {
     const f = try fixture();
     defer f.deinit();
-    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL, "any");
+    const url = try memoryKeyUrl(TEST_WORKSPACE_ID, AGENTSFLEET_LOCAL, "any");
     defer ALLOC.free(url);
     const r = try (try f.h.delete(url).bearer(TOKEN_OPERATOR)).send();
     defer r.deinit();

@@ -1,4 +1,4 @@
-//! Aggregator root for `zig build test-lib` (the `test-unit-ziglib` make
+//! Aggregator root for `zig build test-lib` (the `test-unit-agentsfleet-lib` make
 //! target): runs the unit tests of every shared module under `src/lib/` in one
 //! pass. Each `src/lib/<name>/` is a named module reused across build graphs;
 //! its own tests run here, in the module's own instance, so they reach the

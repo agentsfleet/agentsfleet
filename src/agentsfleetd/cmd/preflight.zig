@@ -26,10 +26,12 @@ const log = logging.scoped(.preflight);
 const S_STARTUP_MIGRATION_CHECK_FAILED = "startup.migration_check_failed";
 
 pub const PostHogResult = struct {
+    const Self = @This();
+
     client: ?*posthog.PostHogClient,
     api_key_owned: ?[]const u8,
 
-    pub fn deinit(self: PostHogResult, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         if (self.client) |c| c.deinit();
         if (self.api_key_owned) |k| alloc.free(k);
     }
@@ -56,14 +58,16 @@ pub fn initPostHog(env_map: *const EnvMap, alloc: std.mem.Allocator) PostHogResu
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const TelemetryResult = struct {
+    const Self = @This();
+
     telemetry: telemetry_mod.Telemetry,
     ph: PostHogResult,
 
-    pub fn deinit(self: TelemetryResult, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         self.ph.deinit(alloc);
     }
 
-    pub fn ptr(self: *TelemetryResult) *telemetry_mod.Telemetry {
+    pub fn ptr(self: *Self) *telemetry_mod.Telemetry {
         return &self.telemetry;
     }
 };

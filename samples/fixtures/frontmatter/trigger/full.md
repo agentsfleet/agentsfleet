@@ -1,7 +1,7 @@
 ---
 name: full-skill
 
-x-usezombie:
+x-agentsfleet:
   triggers:
     - type: webhook
       source: github

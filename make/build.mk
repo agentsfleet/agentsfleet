@@ -79,21 +79,21 @@ push: _docker_login ## Push production image (expects prebuilt binaries in dist/
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
 
-sync-version: ## Propagate VERSION → build.zig.zon + agentsfleet/package.json (cli.js reads pkg.version at runtime)
+sync-version: ## Propagate VERSION → build.zig.zon + cli/package.json (cli.js reads pkg.version at runtime)
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
-	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' agentsfleet/package.json; \
-	echo "✓ version $$V synced → build.zig.zon, agentsfleet/package.json (cli.js reads it at runtime)"
+	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' cli/package.json; \
+	echo "✓ version $$V synced → build.zig.zon, cli/package.json (cli.js reads it at runtime)"
 
-check-version: ## Verify build.zig.zon and agentsfleet/package.json match VERSION
+check-version: ## Verify build.zig.zon and cli/package.json match VERSION
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	FAIL=0; \
 	grep -q "\.version = \"$$V\"" build.zig.zon \
 		|| { printf 'DRIFT  build.zig.zon: %s\n' "$$(grep '\.version' build.zig.zon | head -1 | xargs)"; FAIL=1; }; \
-	grep -q "\"version\": \"$$V\"" agentsfleet/package.json \
-		|| { printf 'DRIFT  agentsfleet/package.json: %s\n' "$$(grep '"version"' agentsfleet/package.json | head -1 | xargs)"; FAIL=1; }; \
+	grep -q "\"version\": \"$$V\"" cli/package.json \
+		|| { printf 'DRIFT  cli/package.json: %s\n' "$$(grep '"version"' cli/package.json | head -1 | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:

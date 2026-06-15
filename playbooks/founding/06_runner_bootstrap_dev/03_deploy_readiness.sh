@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # M4_001 Section 3: deploy readiness gate
 # Verifies playbook step 6.0:
-#   - /opt/zombie/deploy/deploy.sh exists and is executable
-#   - /opt/zombie/deploy/agentsfleet-runner.service exists
+#   - /opt/agentsfleet/deploy/deploy.sh exists and is executable
+#   - /opt/agentsfleet/deploy/agentsfleet-runner.service exists
 #     (the M80 cutover folded both units into the single
 #      agentsfleet-runner daemon — see runner_fleet.md)
-#   - /opt/zombie/.env exists with correct permissions (600)
+#   - /opt/agentsfleet/.env exists with correct permissions (600)
 #   - Systemd units installed in /etc/systemd/system/
 set -euo pipefail
 
@@ -131,13 +131,13 @@ check_remote_executable() {
 
 # 6.1 Deploy artifacts
 echo "-- checking deploy artifacts (step 6.1)"
-check_remote_file "/opt/zombie/deploy/deploy.sh" "deploy script"
-check_remote_executable "/opt/zombie/deploy/deploy.sh" "deploy script"
-check_remote_file "/opt/zombie/deploy/$RUNNER_UNIT" "runner unit"
+check_remote_file "/opt/agentsfleet/deploy/deploy.sh" "deploy script"
+check_remote_executable "/opt/agentsfleet/deploy/deploy.sh" "deploy script"
+check_remote_file "/opt/agentsfleet/deploy/$RUNNER_UNIT" "runner unit"
 
 # 6.2 Environment file
 echo "-- checking .env (step 6.2)"
-check_remote_file "/opt/zombie/.env" "env file" "600"
+check_remote_file "/opt/agentsfleet/.env" "env file" "600"
 
 # 6.3 Systemd units installed
 echo "-- checking systemd units (step 6.3)"

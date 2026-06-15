@@ -1,9 +1,9 @@
-/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
+/v1/workspaces/{workspace_id}/agents/{agent_id}/memories:
   get:
-    operationId: list_zombie_memories
-    summary: List or search memory entries for a zombie
+    operationId: list_agent_memories
+    summary: List or search memory entries for a agent
     description: >
-      Returns memory entries for the zombie. Without `query` this lists most-recent
+      Returns memory entries for the agent. Without `query` this lists most-recent
       entries (optionally filtered by `category`). With `query`, performs case-insensitive
       LIKE search across both `key` and `content` (LIKE metacharacters in `query` are
       escaped — a query of `%` does NOT return every entry).
@@ -16,7 +16,7 @@
       schema:
         type: string
         format: uuid
-    - name: zombie_id
+    - name: agent_id
       in: path
       required: true
       schema:

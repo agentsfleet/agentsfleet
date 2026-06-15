@@ -7,10 +7,12 @@ const S_PORT = "--port=";
 /// Minimal `.next()`-yielding iterator over the threaded argv. Zig 0.16
 /// removed `std.process.args()`; argv now arrives via `std.process.Init`.
 pub const ArgvIter = struct {
+    const Self = @This();
+
     argv: []const [:0]const u8,
     i: usize = 0,
 
-    pub fn next(self: *ArgvIter) ?[:0]const u8 {
+    pub fn next(self: *Self) ?[:0]const u8 {
         if (self.i >= self.argv.len) return null;
         defer self.i += 1;
         return self.argv[self.i];
