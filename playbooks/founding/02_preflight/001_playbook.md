@@ -66,8 +66,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
 | `auth-session-code-pepper` | `credential` | Fly.io DEV `AUTH_SESSION_CODE_PEPPER` — `agentsfleetd` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
 | `audit-log-pepper` | `credential` | Fly.io DEV `AUDIT_LOG_PEPPER` — `agentsfleetd` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
-| `e2e-fixture-email/regular` | `email`, `password` | Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/` and the CLI acceptance suite `cli/test/acceptance/lifecycle-after-login.spec.ts` — regular-tenant-member Clerk DEV identity. |
-| `e2e-fixture-email/admin` | `email`, `password` | Same suites — tenant-admin-role Clerk DEV identity (used by scenarios that require admin permissions). |
+| `e2e-fixtures-email/regular` | `email`, `password` | Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/` and the CLI acceptance suite `cli/test/acceptance/lifecycle-after-login.spec.ts` — regular-tenant-member Clerk DEV identity. |
+| `e2e-fixtures-email/admin` | `email`, `password` | Same suites — tenant-admin-role Clerk DEV identity (used by scenarios that require admin permissions). |
 | `vercel-api-token` | `credential` | Vercel env var setup |
 | `posthog-dev` | `credential` | Website, app, agentsfleetd, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
