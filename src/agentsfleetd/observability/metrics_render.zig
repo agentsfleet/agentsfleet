@@ -59,20 +59,20 @@ pub fn renderPrometheus(
     errdefer aw.deinit();
     const writer = &aw.writer;
 
-    try appendMetric(writer, "zombie_api_backpressure_rejections_total", S_COUNTER, "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
-    try appendMetric(writer, "zombie_api_in_flight_requests", S_GAUGE, "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
-    try appendMetric(writer, "zombie_sse_backpressure_rejections_total", S_COUNTER, "Total SSE stream requests rejected at the stream cap.", s.sse_backpressure_rejections_total);
-    try appendMetric(writer, "zombie_sse_in_flight_streams", S_GAUGE, "Current live SSE event streams held below the stream cap.", s.sse_in_flight_streams);
-    try appendMetric(writer, "zombie_sse_dropped_frames_total", S_COUNTER, "Total SSE frames dropped against slow consumers (bounded per-stream queues).", s.sse_dropped_frames_total);
-    try appendMetric(writer, "zombie_sse_hub_reconnects_total", S_COUNTER, "Total successful redials of the shared SSE pub/sub connection.", s.sse_hub_reconnects_total);
-    try appendMetric(writer, "zombie_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
+    try appendMetric(writer, "agent_api_backpressure_rejections_total", S_COUNTER, "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
+    try appendMetric(writer, "agent_api_in_flight_requests", S_GAUGE, "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
+    try appendMetric(writer, "agent_sse_backpressure_rejections_total", S_COUNTER, "Total SSE stream requests rejected at the stream cap.", s.sse_backpressure_rejections_total);
+    try appendMetric(writer, "agent_sse_in_flight_streams", S_GAUGE, "Current live SSE event streams held below the stream cap.", s.sse_in_flight_streams);
+    try appendMetric(writer, "agent_sse_dropped_frames_total", S_COUNTER, "Total SSE frames dropped against slow consumers (bounded per-stream queues).", s.sse_dropped_frames_total);
+    try appendMetric(writer, "agent_sse_hub_reconnects_total", S_COUNTER, "Total successful redials of the shared SSE pub/sub connection.", s.sse_hub_reconnects_total);
+    try appendMetric(writer, "agent_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
 
     // Signup funnel counters.
-    try appendMetric(writer, "zombie_signup_bootstrapped_total", S_COUNTER, "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
-    try appendMetric(writer, "zombie_signup_replayed_total", S_COUNTER, "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
+    try appendMetric(writer, "agent_signup_bootstrapped_total", S_COUNTER, "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
+    try appendMetric(writer, "agent_signup_replayed_total", S_COUNTER, "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
     try appendLabeledFamily(
         writer,
-        "zombie_signup_failed_total",
+        "agent_signup_failed_total",
         S_COUNTER,
         "Signup webhooks that were rejected, labelled by rejection reason.",
         S_REASON,
@@ -90,20 +90,20 @@ pub fn renderPrometheus(
     // execution to the runner. The runner exposes its own engine metrics;
     // agentsfleetd no longer renders an execution block.
 
-    try appendMetric(writer, "zombie_triggered_total", S_COUNTER, "Total zombie webhook triggers accepted.", s.zombie_triggered_total);
+    try appendMetric(writer, "agent_triggered_total", S_COUNTER, "Total agent webhook triggers accepted.", s.agent_triggered_total);
 
     // Redis request-path pool — emitted only when a Pool has been registered
     // (early-boot scrapes pre-registration emit no lines; downstream scrapers
     // treat absent series as zero, matching the no-pool-yet reality).
     if (mrp.snapshot()) |rps| {
-        try appendMetric(writer, "zombie_redis_pool_active", S_GAUGE, "Pooled Redis connections currently leased to a caller.", rps.active);
-        try appendMetric(writer, "zombie_redis_pool_idle", S_GAUGE, "Pooled Redis connections sitting idle, ready to lease.", rps.idle);
-        try appendMetric(writer, "zombie_redis_pool_dials_total", S_COUNTER, "Total successful TCP dials performed by the Redis pool.", rps.dials_total);
-        try appendMetric(writer, "zombie_redis_pool_overflow_dials_total", S_COUNTER, "Dials that occurred while active connections were at or over max_idle (transient burst).", rps.overflow_dials_total);
-        try appendMetric(writer, "zombie_redis_pool_poisoned_connections_total", S_COUNTER, "Connections released after entering the .poisoned state (transport error in flight).", rps.poisoned_connections_total);
-        try appendMetric(writer, "zombie_redis_pool_reconnects_total", S_COUNTER, "Fresh dials performed by the Client retry layer after a transport-level failure.", rps.reconnects_total);
-        try appendMetric(writer, "zombie_redis_pool_forced_closes_total", S_COUNTER, "Connections closed by release because the idle list was already at max_idle (over-cap overflow).", rps.forced_closes_total);
-        try appendMetric(writer, "zombie_redis_pool_acquire_timeouts_total", S_COUNTER, "Acquire calls that timed out waiting for a slot (currently always 0 — Pool acquires never block).", rps.acquire_timeouts_total);
+        try appendMetric(writer, "agent_redis_pool_active", S_GAUGE, "Pooled Redis connections currently leased to a caller.", rps.active);
+        try appendMetric(writer, "agent_redis_pool_idle", S_GAUGE, "Pooled Redis connections sitting idle, ready to lease.", rps.idle);
+        try appendMetric(writer, "agent_redis_pool_dials_total", S_COUNTER, "Total successful TCP dials performed by the Redis pool.", rps.dials_total);
+        try appendMetric(writer, "agent_redis_pool_overflow_dials_total", S_COUNTER, "Dials that occurred while active connections were at or over max_idle (transient burst).", rps.overflow_dials_total);
+        try appendMetric(writer, "agent_redis_pool_poisoned_connections_total", S_COUNTER, "Connections released after entering the .poisoned state (transport error in flight).", rps.poisoned_connections_total);
+        try appendMetric(writer, "agent_redis_pool_reconnects_total", S_COUNTER, "Fresh dials performed by the Client retry layer after a transport-level failure.", rps.reconnects_total);
+        try appendMetric(writer, "agent_redis_pool_forced_closes_total", S_COUNTER, "Connections closed by release because the idle list was already at max_idle (over-cap overflow).", rps.forced_closes_total);
+        try appendMetric(writer, "agent_redis_pool_acquire_timeouts_total", S_COUNTER, "Acquire calls that timed out waiting for a slot (currently always 0 — Pool acquires never block).", rps.acquire_timeouts_total);
     }
 
     // Per-runner failure metrics (pushed in on each runner report).

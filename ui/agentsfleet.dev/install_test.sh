@@ -54,15 +54,15 @@ fake_present() {
 }
 
 run_install() {
-  # Only export USEZOMBIE_HOST when the test actually sets one, so "no override"
+  # Only export AGENTSFLEET_HOST when the test actually sets one, so "no override"
   # scenarios leave the var unset (matching the real user environment) rather
   # than passing an empty string. The "${arr[@]+...}" guard keeps the empty-array
   # expansion safe under `set -u` on bash 3.2 (macOS system bash).
   local _host_env=()
-  [[ -n "$UZ_HOST_ENV" ]] && _host_env=("USEZOMBIE_HOST=$UZ_HOST_ENV")
+  [[ -n "$UZ_HOST_ENV" ]] && _host_env=("AGENTSFLEET_HOST=$UZ_HOST_ENV")
   OUT="$(
     env "PATH=$FAKE_BIN" "HOME=$HOME_DIR" "SHELL=/bin/bash" \
-        "USEZOMBIE_INSTALL=$UZ_INSTALL_ENV" "${_host_env[@]+"${_host_env[@]}"}" \
+        "AGENTSFLEET_INSTALL=$UZ_INSTALL_ENV" "${_host_env[@]+"${_host_env[@]}"}" \
         bash "$INSTALL_SH" "$@" </dev/null 2>&1
   )"
   RC=$?
@@ -75,9 +75,9 @@ test_happy_path_posix() {
   run_install
   assert_rc "happy_path: exit 0" 0
   assert_log "happy_path: npm install argv" "install -g" "$NPM_LOG"
-  assert_log "happy_path: npm package" "@usezombie/zombiectl" "$NPM_LOG"
-  assert_log "happy_path: npx skills --host" "skills add usezombie/skills --host=claude" "$NPX_LOG"
-  assert_out "happy_path: next-command hint" "/usezombie-install-platform-ops"
+  assert_log "happy_path: npm package" "@agentsfleet/cli" "$NPM_LOG"
+  assert_log "happy_path: npx skills --host" "skills add agentsfleet/skills --host=claude" "$NPX_LOG"
+  assert_out "happy_path: next-command hint" "/agentsfleet-install-platform-ops"
   cleanup
 }
 
@@ -136,7 +136,7 @@ test_npm_install_failed() {
 
 test_install_dir_not_writable() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  UZ_INSTALL_ENV="/proc/forbidden-usezombie"
+  UZ_INSTALL_ENV="/proc/forbidden-agentsfleet"
   run_install
   assert_rc "install_dir_not_writable: exit 3" 3
   assert_log_empty "$NPM_LOG" "install_dir_not_writable: npm not called"
@@ -147,7 +147,7 @@ test_version_pin() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
   run_install v0.42.0
   assert_rc "version_pin: exit 0" 0
-  assert_log "version_pin: npm targets pinned version" "@usezombie/zombiectl@0.42.0" "$NPM_LOG"
+  assert_log "version_pin: npm targets pinned version" "@agentsfleet/cli@0.42.0" "$NPM_LOG"
   cleanup
 }
 
@@ -167,7 +167,7 @@ test_partial_download_safety() {
 
 test_reinstall_idempotent() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  mkdir -p "$PREFIX_DIR/bin"; printf '#!/bin/sh\nexit 0\n' >"$PREFIX_DIR/bin/zombiectl"; chmod +x "$PREFIX_DIR/bin/zombiectl"
+  mkdir -p "$PREFIX_DIR/bin"; printf '#!/bin/sh\nexit 0\n' >"$PREFIX_DIR/bin/agentsfleet"; chmod +x "$PREFIX_DIR/bin/agentsfleet"
   run_install; assert_rc "reinstall_idempotent: first run exit 0" 0
   assert_out "reinstall_idempotent: first run detects existing" "Existing install detected"
   run_install; assert_rc "reinstall_idempotent: second run exit 0" 0
@@ -204,7 +204,7 @@ test_generic_host_no_flag() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0   # no host binaries
   run_install
   assert_rc "generic_host: exit 0" 0
-  assert_log "generic_host: npx skills add" "skills add usezombie/skills" "$NPX_LOG"
+  assert_log "generic_host: npx skills add" "skills add agentsfleet/skills" "$NPX_LOG"
   if grep -qF -- "--host" "$NPX_LOG"; then
     fail "generic_host: no --host flag" "unexpected --host passed for generic host"
   else

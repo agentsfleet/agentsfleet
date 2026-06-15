@@ -1,6 +1,6 @@
 # Security Model
 
-This is the short policy entrypoint for usezombie.
+This is the short policy entrypoint for agentsfleet.
 
 ## Security Objectives
 

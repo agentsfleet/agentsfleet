@@ -11,8 +11,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 describe("dashboard segment loading states", () => {
   const cases: Array<{ name: string; importer: () => Promise<{ default: React.ComponentType }>; expectsTitle: string | null }> = [
     {
-      name: "zombies/[id]",
-      importer: () => import("../app/(dashboard)/zombies/[id]/loading"),
+      name: "agents/[id]",
+      importer: () => import("../app/(dashboard)/agents/[id]/loading"),
       expectsTitle: null, // skeleton title, no static text
     },
     {

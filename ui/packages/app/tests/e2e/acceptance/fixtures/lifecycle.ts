@@ -9,7 +9,7 @@
  * (button label, copy, dialog role) has to be tracked across four files.
  *
  * State assertions key on the dashboard listing's `data-state` attribute
- * (canonical mapping in app/(dashboard)/zombies/components/ZombiesList.tsx:
+ * (canonical mapping in app/(dashboard)/agents/components/AgentsList.tsx:
  * active → live, paused/stopped → parked, killed/errored → failed).
  */
 import { expect, type Page } from "@playwright/test";
@@ -26,31 +26,31 @@ async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Pro
   await expect(dialog).toBeHidden({ timeout: ROW_STATE_TIMEOUT_MS });
 }
 
-export async function stopZombie(page: Page): Promise<void> {
+export async function stopAgent(page: Page): Promise<void> {
   await confirmAction(page, "Stop");
 }
 
-export async function resumeZombie(page: Page): Promise<void> {
+export async function resumeAgent(page: Page): Promise<void> {
   await confirmAction(page, "Resume");
 }
 
-export async function killZombie(page: Page): Promise<void> {
+export async function killAgent(page: Page): Promise<void> {
   await confirmAction(page, "Kill");
 }
 
 export async function expectRowState(
   page: Page,
-  zombieId: string,
+  agentId: string,
   state: RowState,
 ): Promise<void> {
-  const row = page.locator(`a[href="/zombies/${zombieId}"]`);
+  const row = page.locator(`a[href="/agents/${agentId}"]`);
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute("data-state", state, {
     timeout: ROW_STATE_TIMEOUT_MS,
   });
 }
 
-// Terminal "Killed" indicator on the detail page once the zombie is killed.
+// Terminal "Killed" indicator on the detail page once the agent is killed.
 // The action panel collapses to a disabled button labeled "Killed".
 export async function expectDetailKilled(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "Killed" })).toBeDisabled({

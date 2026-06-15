@@ -64,23 +64,23 @@ describe("CreateApiKeyDialog component", () => {
   it("happy path: reveals the raw key exactly once, then discards it on close", async () => {
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "zmb_t_deadbeef", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: 1 },
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     await user.click(screen.getByRole("button", { name: /create key/i }));
 
     const field = await screen.findByLabelText(/API key value/i);
-    expect((field as HTMLInputElement).value).toBe("zmb_t_deadbeef");
+    expect((field as HTMLInputElement).value).toBe("agt_tdeadbeef");
 
     await user.click(screen.getByRole("button", { name: /stored it/i }));
-    await waitFor(() => expect(screen.queryByDisplayValue("zmb_t_deadbeef")).toBeNull());
+    await waitFor(() => expect(screen.queryByDisplayValue("agt_tdeadbeef")).toBeNull());
     expect(onCreated).toHaveBeenCalled();
 
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.api_key_minted, { api_key_id: "k" });
     // The one-time raw key must never reach analytics.
-    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("zmb_t_deadbeef");
+    expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain("agt_tdeadbeef");
   });
 
   it("name collision keeps the dialog open and reveals no key", async () => {
@@ -97,7 +97,7 @@ describe("CreateApiKeyDialog component", () => {
   async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
     createApiKeyActionMock.mockResolvedValue({
       ok: true,
-      data: { id: "k", key_name: "ci-runner", key: "zmb_t_deadbeef", created_at: 1 },
+      data: { id: "k", key_name: "ci-runner", key: "agt_tdeadbeef", created_at: 1 },
     });
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     await user.click(screen.getByRole("button", { name: /create key/i }));
@@ -109,7 +109,7 @@ describe("CreateApiKeyDialog component", () => {
     const { user } = await openDialog();
     await reachReveal(user);
     await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("zmb_t_deadbeef"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("agt_tdeadbeef"));
     expect(screen.getByRole("button", { name: /^copied$/i })).toBeTruthy();
   });
 
@@ -120,7 +120,7 @@ describe("CreateApiKeyDialog component", () => {
     await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
     await waitFor(() => expect(screen.getByText(/copy failed — select the value/i)).toBeTruthy());
     // The reveal stays intact so the user can still grab the value manually.
-    expect((screen.getByLabelText(/API key value/i) as HTMLInputElement).value).toBe("zmb_t_deadbeef");
+    expect((screen.getByLabelText(/API key value/i) as HTMLInputElement).value).toBe("agt_tdeadbeef");
   });
 
   it("selects the whole key value on focus so it can be copied manually", async () => {

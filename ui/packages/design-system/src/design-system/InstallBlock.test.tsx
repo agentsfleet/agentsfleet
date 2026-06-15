@@ -3,12 +3,12 @@ import { render, screen } from "@testing-library/react";
 import InstallBlock from "./InstallBlock";
 
 const defaultProps = {
-  title: "Install Zombiectl",
-  command: "curl -fsSL https://usezombie.sh | bash",
+  title: "Install Agentctl",
+  command: "curl -fsSL https://agentsfleet.dev | bash",
   actions: [
     { label: "Install now", to: "https://docs.agentsfleet.net/quickstart" },
     { label: "Read the docs", to: "https://docs.agentsfleet.net", variant: "ghost" as const },
-    { label: "Setup dashboard", to: "https://app.usezombie.com", variant: "double-border" as const },
+    { label: "Setup dashboard", to: "https://app.agentsfleet.net", variant: "double-border" as const },
   ],
 };
 
@@ -20,15 +20,15 @@ describe("InstallBlock", () => {
   it("renders the title as an h2", () => {
     renderBlock();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Install Zombiectl" }),
+      screen.getByRole("heading", { level: 2, name: "Install Agentctl" }),
     ).toBeInTheDocument();
   });
 
   it("renders the command in a terminal block", () => {
     renderBlock();
-    const terminal = screen.getByLabelText("Install Zombiectl command");
+    const terminal = screen.getByLabelText("Install Agentctl command");
     expect(terminal).toBeInTheDocument();
-    expect(terminal).toHaveTextContent(/curl -fsSL https:\/\/usezombie\.sh \| bash/);
+    expect(terminal).toHaveTextContent(/curl -fsSL https:\/\/agentsfleet\.dev \| bash/);
   });
 
   it("renders all action links", () => {

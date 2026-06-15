@@ -5,8 +5,8 @@ import { SUPPORT_EMAIL } from "./contact";
 // every runtime (Zig + website TS + app TS + agentsfleet JS + Mintlify
 // snippet). The literal IS the contract here.
 describe("SUPPORT_EMAIL pinned (regression — mirror src/config/contact_test.zig)", () => {
-  it("resolves to usezombie@agentmail.to", () => {
+  it("resolves to agentsfleet@agentmail.to", () => {
     // pin test: literal is the contract
-    expect(SUPPORT_EMAIL).toBe("usezombie@agentmail.to");
+    expect(SUPPORT_EMAIL).toBe("agentsfleet@agentmail.to");
   });
 });

@@ -24,11 +24,13 @@ pub const SecretError = error{
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const EncryptedBlob = struct {
+    const Self = @This();
+
     nonce: [NONCE_LEN]u8,
     ciphertext: []u8,
     tag: [TAG_LEN]u8,
 
-    pub fn deinit(self: EncryptedBlob, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         alloc.free(self.ciphertext);
     }
 };

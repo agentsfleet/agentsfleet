@@ -1,4 +1,4 @@
-# usezombie local dev — Postgres + Redis + agentsfleetd API
+# agentsfleet local dev — Postgres + Redis + agentsfleetd API
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
 services:
@@ -11,9 +11,9 @@ services:
       - |
         exec docker-entrypoint.sh postgres
     environment:
-      POSTGRES_USER: usezombie
-      POSTGRES_PASSWORD: usezombie
-      POSTGRES_DB: usezombiedb
+      POSTGRES_USER: agentsfleet
+      POSTGRES_PASSWORD: agentsfleet
+      POSTGRES_DB: agentsfleetdb
       # Postgres 18+ refuses to run when the data directory equals the mount
       # root. Pointing PGDATA at a subdirectory satisfies the new layout
       # requirement without restructuring the volume.
@@ -23,7 +23,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U usezombie -d usezombiedb"]
+      test: ["CMD-SHELL", "pg_isready -U agentsfleet -d agentsfleetdb"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -40,14 +40,14 @@ services:
         if [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
           openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/server.key -out /tls/server.crt -days 3650 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:redis,IP:127.0.0.1" 2>/dev/null
         fi &&
-        redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass usezombie
+        redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass agentsfleet
     ports:
       - "6379:6379"
     volumes:
       - redis-tls:/tls
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --tls --insecure -a usezombie ping"]
+      test: ["CMD-SHELL", "redis-cli --tls --insecure -a agentsfleet ping"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -74,8 +74,8 @@ services:
       GITHUB_APP_ID: "12345"
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key
       # Override DB/Redis to use compose service names instead of localhost.
-      DATABASE_URL_API: postgresql://usezombie:usezombie@postgres:5432/usezombiedb?application_name=api&sslmode=disable
-      REDIS_URL_API: rediss://:usezombie@redis:6379/api
+      DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
+      REDIS_URL_API: rediss://:agentsfleet@redis:6379/api
       REDIS_TLS_CA_CERT_FILE: /tls/server.crt
       MIGRATE_ON_START: "1"
     depends_on:

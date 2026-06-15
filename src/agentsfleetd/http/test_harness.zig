@@ -222,7 +222,7 @@ pub const TestHarness = struct {
             h.server.stop();
             h.thread.join();
         }
-        // Wire the queue upfront so handlers that publish (PATCH zombie
+        // Wire the queue upfront so handlers that publish (PATCH agent
         // status, webhooks, approvals, etc.) don't dereference undefined
         // memory. Three-way split:
         //   • `error.MissingRedisUrl` (REDIS_URL_API unset)  → SkipZigTest.

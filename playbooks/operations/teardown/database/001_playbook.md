@@ -91,7 +91,7 @@ This ensures consistency between local integration testing and production teardo
 
 The teardown drops these schemas and all their contents:
 
-- `core` - tenants, workspaces, zombies, sessions, activity events
+- `core` - tenants, workspaces, agents, sessions, activity events
 - `billing` - entitlements, billing state, credit state
 - `agent` - agent-related tables
 - `audit` - audit trails, ops access events

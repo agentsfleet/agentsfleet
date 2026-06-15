@@ -9,7 +9,7 @@ const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 // Call-site deadlines. The required parameter on every client verb is the
 // compile-time guarantee that no control-plane call is unbounded; only

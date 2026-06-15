@@ -1,7 +1,7 @@
-//! fleet.runner_affinity — the per-zombie lease SLOT: the atomic claim, the
+//! fleet.runner_affinity — the per-agent lease SLOT: the atomic claim, the
 //! monotonic fencing source, and the sticky-routing hint, all on one row.
 //!
-//! `claim` is a single conditional UPSERT: it wins the zombie iff the slot is
+//! `claim` is a single conditional UPSERT: it wins the agent iff the slot is
 //! free or its prior claim has expired (`leased_until < now`), bumping the
 //! monotonic `fencing_seq` and recording the runner as the sticky hint. Exactly
 //! one of N racing runners wins the row; losers get `.taken` and move on — and
@@ -33,11 +33,11 @@ pub const Won = struct {
 pub const Claim = union(enum) {
     /// The slot was won.
     won: Won,
-    /// A live runner still holds the slot — try another zombie. No event read.
+    /// A live runner still holds the slot — try another agent. No event read.
     taken,
 };
 
-/// Atomically claim the zombie's lease slot for `runner_id`, valid for
+/// Atomically claim the agent's lease slot for `runner_id`, valid for
 /// `ttl_ms`. Wins iff the slot is unclaimed or its prior claim has expired;
 /// bumps the monotonic fencing token and records the sticky hint. Returns
 /// `.taken` when a live runner still holds it.
@@ -49,7 +49,7 @@ pub const Claim = union(enum) {
 pub fn claim(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
-    zombie_id: []const u8,
+    agent_id: []const u8,
     runner_id: []const u8,
     ttl_ms: i64,
 ) !Claim {
@@ -59,24 +59,24 @@ pub fn claim(
     const leased_until = now_ms + ttl_ms;
     var q = PgQuery.from(try conn.query(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
-        \\ON CONFLICT (zombie_id) DO UPDATE
+        \\ON CONFLICT (agent_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
         \\      leased_until   = EXCLUDED.leased_until,
         \\      updated_at     = EXCLUDED.updated_at
         \\  WHERE fleet.runner_affinity.leased_until < $5
         \\RETURNING fencing_seq
-    , .{ affinity_id, zombie_id, runner_id, leased_until, now_ms }));
+    , .{ affinity_id, agent_id, runner_id, leased_until, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return .taken;
     return .{ .won = .{ .token = @intCast(try row.get(i64, 0)), .leased_until = leased_until } };
 }
 
-/// Reset the per-zombie metering cursor to 0/now — called at FRESH lease issue
+/// Reset the per-agent metering cursor to 0/now — called at FRESH lease issue
 /// so a new event meters from zero even when the slot was reused from a prior
 /// (completed) run whose cursor the claim's `ON CONFLICT` preserved. A reclaim
 /// does NOT call this: the slot must keep the dead holder's progress so the
@@ -85,24 +85,24 @@ pub fn claim(
 /// first renewal — hence the reset is fail-closed (a reset error fails lease
 /// issue rather than risk an over-charge). `meter_slice_seq` resets too so the
 /// new event's breakdown numbering restarts at 1.
-pub fn resetCursor(conn: *pg.Conn, zombie_id: []const u8, now_ms: i64) !void {
+pub fn resetCursor(conn: *pg.Conn, agent_id: []const u8, now_ms: i64) !void {
     _ = conn.exec(
         \\UPDATE fleet.runner_affinity
         \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
         \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
         \\    meter_slice_seq = 0
-        \\WHERE zombie_id = $1::uuid
-    , .{ zombie_id, now_ms }) catch return error.AffinityCursorResetFailed;
+        \\WHERE agent_id = $1::uuid
+    , .{ agent_id, now_ms }) catch return error.AffinityCursorResetFailed;
 }
 
-/// Free the slot (report / abandoned no-work claim) so the zombie's next event
+/// Free the slot (report / abandoned no-work claim) so the agent's next event
 /// is claimable — but only when `token` still equals the live `fencing_seq`, so
 /// a holder superseded by a reclaim cannot free the current holder's slot.
 /// Idempotent: a no-op if the row is gone or the token has been bumped.
-pub fn release(conn: *pg.Conn, zombie_id: []const u8, token: u64) !void {
+pub fn release(conn: *pg.Conn, agent_id: []const u8, token: u64) !void {
     const now_ms = clock.nowMillis();
     _ = conn.exec(
         \\UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
-        \\WHERE zombie_id = $1::uuid AND fencing_seq = $3
-    , .{ zombie_id, now_ms, @as(i64, @intCast(token)) }) catch return error.AffinityReleaseFailed;
+        \\WHERE agent_id = $1::uuid AND fencing_seq = $3
+    , .{ agent_id, now_ms, @as(i64, @intCast(token)) }) catch return error.AffinityReleaseFailed;
 }

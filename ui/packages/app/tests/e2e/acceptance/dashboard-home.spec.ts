@@ -2,8 +2,8 @@
  * dashboard-home.spec.ts — `/` renders for the fixture user.
  *
  * Two render modes worth covering, both via the same authed fixture:
- *   - Empty: no zombies → FirstInstallCard renders ("First wake" eyebrow).
- *   - Populated: ≥1 zombie → StatusCard tiles render (Live / Paused /
+ *   - Empty: no agents → FirstInstallCard renders ("First wake" eyebrow).
+ *   - Populated: ≥1 agent → StatusCard tiles render (Live / Paused /
  *     Stopped / Balance).
  *
  * The persistent fixture's state is not deterministic between specs, so

@@ -7,19 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run (see runners.test.ts).
-const { withTokenMock, listZombieEventsMock, listWorkspaceEventsMock } = vi.hoisted(() => ({
+const { withTokenMock, listAgentEventsMock, listWorkspaceEventsMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
-  listZombieEventsMock: vi.fn(),
+  listAgentEventsMock: vi.fn(),
   listWorkspaceEventsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/events", () => ({
-  listZombieEvents: listZombieEventsMock,
+  listAgentEvents: listAgentEventsMock,
   listWorkspaceEvents: listWorkspaceEventsMock,
 }));
 
-import { listZombieEventsAction, listWorkspaceEventsAction } from "@/app/(dashboard)/events/actions";
+import { listAgentEventsAction, listWorkspaceEventsAction } from "@/app/(dashboard)/events/actions";
 
 const PAGE = { items: [], next_cursor: null };
 
@@ -33,19 +33,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.resetAllMocks());
 
-describe("listZombieEventsAction — thin forwarder", () => {
-  it("threads the token between zombieId and opts when opts is provided", async () => {
-    listZombieEventsMock.mockResolvedValueOnce(PAGE);
+describe("listAgentEventsAction — thin forwarder", () => {
+  it("threads the token between agentId and opts when opts is provided", async () => {
+    listAgentEventsMock.mockResolvedValueOnce(PAGE);
     const opts = { cursor: "c1", actor: "alice", since: "2026-06-01", limit: 50 };
-    const r = await listZombieEventsAction("ws1", "z1", opts);
-    expect(listZombieEventsMock).toHaveBeenCalledWith("ws1", "z1", "tok", opts);
+    const r = await listAgentEventsAction("ws1", "z1", opts);
+    expect(listAgentEventsMock).toHaveBeenCalledWith("ws1", "z1", "tok", opts);
     expect(r).toEqual({ ok: true, data: PAGE });
   });
 
   it("forwards undefined opts (omitted) with the token still in position", async () => {
-    listZombieEventsMock.mockResolvedValueOnce(PAGE);
-    const r = await listZombieEventsAction("ws2", "z2");
-    expect(listZombieEventsMock).toHaveBeenCalledWith("ws2", "z2", "tok", undefined);
+    listAgentEventsMock.mockResolvedValueOnce(PAGE);
+    const r = await listAgentEventsAction("ws2", "z2");
+    expect(listAgentEventsMock).toHaveBeenCalledWith("ws2", "z2", "tok", undefined);
     expect(r).toEqual({ ok: true, data: PAGE });
   });
 });

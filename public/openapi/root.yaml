@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
-  title: usezombie Control Plane API
+  title: agentsfleet Control Plane API
   version: 1.0.0
-  description: Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.
+  description: Agent automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.
   contact:
-    name: usezombie
-    url: https://usezombie.com
+    name: agentsfleet
+    url: https://agentsfleet.net
 servers:
-- url: https://api.usezombie.com
+- url: https://api.agentsfleet.net
   description: Production
 security:
 - BearerAuth: []
@@ -29,15 +29,15 @@ tags:
   x-mintlify:
     navigation: Tenant
 - name: auth-identity-events
-  description: Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer zombies.
+  description: Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer agents.
   x-mintlify:
     navigation: Auth Identity Events
-- name: Zombies
-  description: Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies
+- name: Agents
+  description: Agent management and webhook ingestion — create, configure, and operate event-driven agents
   x-mintlify:
-    navigation: Zombies
+    navigation: Agents
 - name: Memory
-  description: Persistent zombie memory — list and search key-value entries scoped to a zombie (read-only; entries are written by the runner plane, not this API)
+  description: Persistent agent memory — list and search key-value entries scoped to an agent (read-only; entries are written by the runner plane, not this API)
   x-mintlify:
     navigation: Memory
 - name: Credentials
@@ -53,20 +53,20 @@ tags:
   x-mintlify:
     navigation: Billing
 - name: Integration Grants
-  description: Zombie runtime permission grants for third-party services (Slack, GitHub, etc.)
+  description: Agent runtime permission grants for third-party services (Slack, GitHub, etc.)
   x-mintlify:
     navigation: Integration Grants
 - name: Agent Keys
-  description: Per-zombie API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.
+  description: Per-agent API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.
   x-mintlify:
     navigation: Agent Keys
 - name: API Keys
-  description: Tenant-level admin API keys (`zmb_t_` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
+  description: Tenant-level admin API keys (`agt_t` prefix). Rotatable, self-service, replace the legacy `API_KEY` env var
     for admin auth.
   x-mintlify:
     navigation: API Keys
 - name: Webhooks
-  description: Approval-gate webhooks invoked by humans to unblock a paused zombie
+  description: Approval-gate webhooks invoked by humans to unblock a paused agent
   x-mintlify:
     navigation: Webhooks
 - name: Approvals
@@ -94,20 +94,20 @@ paths:
     $ref: ./paths/auth-session-exchange.yaml#/~1v1~1auth~1sessions~1{session_id}~1verify
   /v1/auth/sessions/all:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1all
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
-    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/memories:
+    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1memories
   /v1/auth/identity-events/clerk:
     $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
-  /v1/webhooks/svix/{zombie_id}:
-    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{zombie_id}
-  /v1/webhooks/{zombie_id}:
-    $ref: ./paths/zombies.yaml#/~1v1~1webhooks~1{zombie_id}
-  /v1/webhooks/{zombie_id}/approval:
-    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1approval
-  /v1/webhooks/{zombie_id}/grant-approval:
-    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1grant-approval
-  /v1/webhooks/{zombie_id}/github:
-    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1github
+  /v1/webhooks/svix/{agent_id}:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{agent_id}
+  /v1/webhooks/{agent_id}:
+    $ref: ./paths/agents.yaml#/~1v1~1webhooks~1{agent_id}
+  /v1/webhooks/{agent_id}/approval:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{agent_id}~1approval
+  /v1/webhooks/{agent_id}/grant-approval:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{agent_id}~1grant-approval
+  /v1/webhooks/{agent_id}/github:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{agent_id}~1github
   /v1/workspaces:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
   /v1/tenants/me/billing:
@@ -130,24 +130,24 @@ paths:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys~1{id}
   /v1/workspaces/{workspace_id}/agent-keys:
     $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys
-  /v1/workspaces/{workspace_id}/agent-keys/{agent_id}:
-    $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys~1{agent_id}
-  /v1/workspaces/{workspace_id}/zombies:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
-    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:
-    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants~1{grant_id}
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests:
-    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-requests
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1messages
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events~1stream
+  /v1/workspaces/{workspace_id}/agent-keys/{agent_key_id}:
+    $ref: ./paths/agent-keys.yaml#/~1v1~1workspaces~1{workspace_id}~1agent-keys~1{agent_key_id}
+  /v1/workspaces/{workspace_id}/agents:
+    $ref: ./paths/agents.yaml#/~1v1~1workspaces~1{workspace_id}~1agents
+  /v1/workspaces/{workspace_id}/agents/{agent_id}:
+    $ref: ./paths/agents.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/integration-grants:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1integration-grants
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/integration-grants/{grant_id}:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1integration-grants~1{grant_id}
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/integration-requests:
+    $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1integration-requests
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/messages:
+    $ref: ./paths/agents.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1messages
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/events:
+    $ref: ./paths/agents.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1events
+  /v1/workspaces/{workspace_id}/agents/{agent_id}/events/stream:
+    $ref: ./paths/agents.yaml#/~1v1~1workspaces~1{workspace_id}~1agents~1{agent_id}~1events~1stream
   /v1/workspaces/{workspace_id}/events:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1events
   /v1/workspaces/{workspace_id}/approvals:

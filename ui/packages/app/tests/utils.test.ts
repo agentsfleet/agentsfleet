@@ -14,7 +14,7 @@ describe("app utils", () => {
   });
 
   it("truncates only when string exceeds max length", () => {
-    expect(truncate("zombie", 12)).toBe("zombie");
-    expect(truncate("zombie-control-plane", 6)).toBe("zombie…");
+    expect(truncate("agent", 12)).toBe("agent");
+    expect(truncate("agent-control-plane", 5)).toBe("agent…");
   });
 });

@@ -4,7 +4,7 @@
 //! (a batch of `ActivityFrame`s). The runner builds frames from NullClaw observer
 //! events inside the sandboxed child, streams them to its parent over the lease
 //! pipe, and the parent forwards them to `agentsfleetd`, which `PUBLISH`es each to
-//! `zombie:{id}:activity` for the Server-Sent-Events (SSE) live tail.
+//! `agent:{id}:activity` for the Server-Sent-Events (SSE) live tail.
 //!
 //! Two planes, kept apart on purpose: activity is ephemeral + best-effort (a
 //! dropped frame is cosmetic), while `report` is the durable system of record.

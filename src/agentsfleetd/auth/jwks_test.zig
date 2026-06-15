@@ -14,26 +14,26 @@ const parseStandardClaims = jwks.parseStandardClaims;
 // ── Test fixtures ──────────────────────────────────────────────────────
 
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","kid":"test-kid-static","use":"sig","alg":"RS256","n":"kEge9Llezx-onM-jdO1fw85yTFmDDHWaZVdihVqMVAvRDGFvHbyoPrp5F-ZaDTqVEd1_pH12HM3abE6HRyYwSRxPcSKf2GlGWBVPtFbidOezLupgspHs8-yXBFKkGQEGBTWspJ4Obd0g9u1EX-cQqzy-lXiGd8gt1oK8Rxx5YBohNbaQMs5dbJ61J9c0afrG0dx-xOOx2tb95izx_m-sB83-aj7mX_r3ClpbZYcOY8ZKA3QNwR9tattkTiowpgzBZ0PGw5wuzrQayjWQRooolW4kzYMVWOI5K4GVPoabBDZDPs2nfet290iFHkNRu8cc2xPDmty0cDIhbS9Mq33qsQ","e":"AQAB"}]}
+    \\{"keys":[{"kty":"RSA","kid":"test-kid-static","use":"sig","alg":"RS256","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
 ;
 const TEST_HEADER = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9";
-const TEST_PAYLOAD_VALID = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImlhdCI6MTcwNDA2NzIwMCwib3JnX2lkIjoib3JnXzEiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiJ0ZW5hbnRfYSJ9LCJleHAiOjQxMDI0NDQ4MDB9";
-const TEST_PAYLOAD_EXPIRED = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImlhdCI6MTcwNDA2NzIwMCwib3JnX2lkIjoib3JnXzEiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiJ0ZW5hbnRfYSJ9LCJleHAiOjE3MDQwNjczMDB9";
-const TEST_SIG_VALID = "R5EaetratAEMN3VcDRDyR3KM9dKU3FYGEvzajPdmMUB_3T3qE0G0xZ_IoqyNilvjuMcbdSF-YQL1ylcMPTyBeFUWYAUlMjWBju-Bt3FF0Abqdte5-a64oPb_Ev0ogZyJcI8DDt9yT4kUjH7S2jp4fu9hQaEDMW_6tcASagCHTIjw2h0A41_Y8PI4CrgglIFqEKGim5PUEWM_KzZxs9pjv7-_HsZTovfZTcKeiJkGiFQvyR3oKfudvjLNyyGtdYKiSjfOWtLfJkxGt0CKPkbDbrnj_cSmwCt-X_v_OmG5vm07h7iDKrKhXiav0Djn7W3zZ8EcwjhlvMSsKZ3Uy9Nk2g";
-const TEST_SIG_EXPIRED = "CCjR252liw1fHwmo4kBmHH0nw1uPUBtibZx9BSPKPdzU_4oDmSrJyFP4LJtd9THDIVV8JyE5r1I9a8nuyLe66Wfr_N_tiiNAzYQ0voN_B2AQ-iy8DHhVAJibflv5eaGRXxh4pfn7uV3vY1ZGGDxwyjOXWPy_ULwSwtaDGDQNeWWYgVaaKp1B0-l__oIiMmRgsCiMOE6qyU2SFCQKG05vF54fgg7Pp4hpOgR9guE-rYKoLo39qE0RJvnaf5MTz2WbsPRxrvGurJ1lgnPrxGSXDMT2xJATkof6hP3Hv3QuSRlfCQwLEvlHKZG5ANpe7dxQ00KGf3RJiv0ly9mPapsD5g";
+const TEST_PAYLOAD_VALID = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjo0MTAyNDQ0ODAwfQ";
+const TEST_PAYLOAD_EXPIRED = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjoxNzA0MDY3MzAwfQ";
+const TEST_SIG_VALID = "pU5Y3T5yhLjleABex4K0fsyfjrxHDFa-8sjbI5hQhPHVw7P-WF_72VbWoCa9sVPi5cwGU0tbj8rZY2BMhq36_xZxwh7l4Z9SdguVGCiceDuqhhtRxA8vdPIlolrrykxAuEvlyeHRiE1uOzSvSGZZFCHvkgVK06SwC4oK1NlSgFx_cjKYbY0NychCG0XxLrl5XUoR79va4-9HGRMDYaTFRMutwMzFF_4iCbpn3RHl-qu9_RAabJrsQkeCmYYXaQKLt_aVVfrBMQWOwJDvCuTaeJcRGJefKmNdc-aM8mqBjZX9RIocD_hp5ADxY9HZdBFtGz7OAofgM2ZqVeJPkvNKfQ";
+const TEST_SIG_EXPIRED = "Ctiud6VRvF54eited-UOq6HEiKZWNdhPli_w_rsFLmS6bmeDr2xuXlag6HgZLCnOc1mHsoJGGqeojZ8xt2SVt6JHjxXxV6KhP6orw4FPgmPKzyZw2zFWGmi3M0IUSv9CzsaaWnoj5KdLL9DWzF--EpMDddqaEMBLolxuMV_uO0m6Fji6lJikVZaPTFJ0YMzcMdkvh4iZ9_y2fGYvjUSPnbNw-3eq4P4tlUq2n_6ES17zLGIF55cRoUo7v-audITTd9AVwp0Y3-_PXq-yAJEPTBhysG1iYiKMrf9x_r1h6g2rKCFQ_7k48K-o_rUPSFVaU0Q3TXG3CDoMjmAma0LN6A";
 const TEST_VALID_TOKEN = TEST_HEADER ++ "." ++ TEST_PAYLOAD_VALID ++ "." ++ TEST_SIG_VALID;
 const TEST_EXPIRED_TOKEN = TEST_HEADER ++ "." ++ TEST_PAYLOAD_EXPIRED ++ "." ++ TEST_SIG_EXPIRED;
 // Same RSA key as TEST_JWKS but published under a different kid — models the
 // pre-rotation key set that does NOT contain the test token's kid.
 const WRONG_KID_JWKS =
-    \\{"keys":[{"kty":"RSA","kid":"wrong-kid","use":"sig","alg":"RS256","n":"kEge9Llezx-onM-jdO1fw85yTFmDDHWaZVdihVqMVAvRDGFvHbyoPrp5F-ZaDTqVEd1_pH12HM3abE6HRyYwSRxPcSKf2GlGWBVPtFbidOezLupgspHs8-yXBFKkGQEGBTWspJ4Obd0g9u1EX-cQqzy-lXiGd8gt1oK8Rxx5YBohNbaQMs5dbJ61J9c0afrG0dx-xOOx2tb95izx_m-sB83-aj7mX_r3ClpbZYcOY8ZKA3QNwR9tattkTiowpgzBZ0PGw5wuzrQayjWQRooolW4kzYMVWOI5K4GVPoabBDZDPs2nfet290iFHkNRu8cc2xPDmty0cDIhbS9Mq33qsQ","e":"AQAB"}]}
+    \\{"keys":[{"kty":"RSA","kid":"wrong-kid","use":"sig","alg":"RS256","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
 ;
 
 fn makeTestVerifier(inline_jwks: ?[]const u8) Verifier {
     return Verifier.init(std.testing.allocator, .{
-        .jwks_url = "https://clerk.dev.usezombie.com/.well-known/jwks.json",
-        .issuer = "https://clerk.dev.usezombie.com",
-        .audience = "https://api.usezombie.com",
+        .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
+        .issuer = "https://clerk.dev.agentsfleet.net",
+        .audience = "https://api.agentsfleet.net",
         .inline_jwks_json = inline_jwks orelse TEST_JWKS,
     });
 }
@@ -119,13 +119,13 @@ test "parseJwks: key missing n field is skipped" {
 
 test "parseJwks: key missing kid is skipped" {
     try std.testing.expectError(VerifyError.JwksParseFailed, parseJwks(std.testing.allocator,
-        \\{"keys":[{"kty":"RSA","n":"AQAB","e":"AQAB"}]}
+        \\{"keys":[{"kty":"RSA","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
     ));
 }
 
 test "parseJwks: non-RSA key is skipped" {
     try std.testing.expectError(VerifyError.JwksParseFailed, parseJwks(std.testing.allocator,
-        \\{"keys":[{"kty":"EC","kid":"ec1","n":"AQAB","e":"AQAB"}]}
+        \\{"keys":[{"kty":"EC","kid":"ec1","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
     ));
 }
 
@@ -137,7 +137,7 @@ test "verifyAndDecode: valid token" {
     const vc = try v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
     defer freeClaims(vc);
     try std.testing.expectEqualStrings("user_test", vc.subject);
-    try std.testing.expectEqualStrings("https://clerk.dev.usezombie.com", vc.issuer);
+    try std.testing.expectEqualStrings("https://clerk.dev.agentsfleet.net", vc.issuer);
 }
 
 test "verifyAndDecode: expired token" {
@@ -256,8 +256,8 @@ test "concurrent verifies on a cold cache fetch exactly once (single-flight)" {
 
 test "verifyAndDecode: audience mismatch" {
     var v = Verifier.init(std.testing.allocator, .{
-        .jwks_url = "https://clerk.dev.usezombie.com/.well-known/jwks.json",
-        .issuer = "https://clerk.dev.usezombie.com",
+        .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
+        .issuer = "https://clerk.dev.agentsfleet.net",
         .audience = "https://wrong-audience.example.com",
         .inline_jwks_json = TEST_JWKS,
     });
@@ -267,9 +267,9 @@ test "verifyAndDecode: audience mismatch" {
 
 test "verifyAndDecode: issuer mismatch" {
     var v = Verifier.init(std.testing.allocator, .{
-        .jwks_url = "https://clerk.dev.usezombie.com/.well-known/jwks.json",
+        .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
         .issuer = "https://wrong-issuer.example.com",
-        .audience = "https://api.usezombie.com",
+        .audience = "https://api.agentsfleet.net",
         .inline_jwks_json = TEST_JWKS,
     });
     defer v.deinit();
@@ -278,7 +278,7 @@ test "verifyAndDecode: issuer mismatch" {
 
 test "verifyAndDecode: tampered payload (signature invalid)" {
     // Take valid token, modify one char in the payload segment
-    const tampered = TEST_HEADER ++ "." ++ "eXJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImlhdCI6MTcwNDA2NzIwMCwib3JnX2lkIjoib3JnXzEiLCJtZXRhZGF0YSI6eyJ0ZW5hbnRfaWQiOiJ0ZW5hbnRfYSJ9LCJleHAiOjQxMDI0NDQ4MDB9" ++ "." ++ TEST_SIG_VALID;
+    const tampered = TEST_HEADER ++ "." ++ "eXJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjo0MTAyNDQ0ODAwfQ" ++ "." ++ TEST_SIG_VALID;
     var v = makeTestVerifier(null);
     defer v.deinit();
     const result = v.verifyAndDecode(std.testing.allocator, "Bearer " ++ tampered);
@@ -318,7 +318,7 @@ test "verifier uses inline JWKS over URL" {
 test "verifier with empty URL and no inline JWKS fails" {
     var v = Verifier.init(std.testing.allocator, .{
         .jwks_url = "",
-        .issuer = "https://clerk.dev.usezombie.com",
+        .issuer = "https://clerk.dev.agentsfleet.net",
     });
     defer v.deinit();
     try std.testing.expectError(VerifyError.JwksFetchFailed, v.checkJwksConnectivity());
@@ -330,8 +330,8 @@ test "verifier with empty URL and no inline JWKS fails" {
 test "OWASP: alg:none attack rejected" {
     // {"alg":"none","typ":"JWT"} => base64url
     const header_none = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";
-    // {"sub":"admin","iss":"https://clerk.dev.usezombie.com","aud":"https://api.usezombie.com","exp":4102444800}
-    const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LnVzZXpvbWJpZS5jb20iLCJhdWQiOiJodHRwczovL2FwaS51c2V6b21iaWUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwfQ";
+    // {"sub":"admin","iss":"https://clerk.dev.agentsfleet.net","aud":"https://api.agentsfleet.net","exp":4102444800}
+    const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMH0";
     var v = makeTestVerifier(null);
     defer v.deinit();
     // alg:none with empty signature
@@ -345,7 +345,7 @@ test "OWASP: alg:none attack rejected" {
 test "OWASP: alg:HS256 switching attack rejected" {
     // {"alg":"HS256","typ":"JWT","kid":"test-kid-static"}
     const header_hs = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9";
-    const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LnVzZXpvbWJpZS5jb20iLCJhdWQiOiJodHRwczovL2FwaS51c2V6b21iaWUuY29tIiwiZXhwIjo0MTAyNDQ0ODAwfQ";
+    const payload = "eyJzdWIiOiJhZG1pbiIsImlzcyI6Imh0dHBzOi8vY2xlcmsuZGV2LmFnZW50c2ZsZWV0Lm5ldCIsImF1ZCI6Imh0dHBzOi8vYXBpLmFnZW50c2ZsZWV0Lm5ldCIsImV4cCI6NDEwMjQ0NDgwMH0";
     var v = makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.UnsupportedAlgorithm, v.verifyAndDecode(
@@ -359,7 +359,7 @@ test "OWASP: alg:HS256 switching attack rejected" {
 test "OWASP: alg:none with kid still rejected" {
     // {"alg":"none","kid":"test-kid-static"}
     const header = "eyJhbGciOiJub25lIiwia2lkIjoidGVzdC1raWQtc3RhdGljIn0";
-    const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMH0";
+    const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwfQ";
     var v = makeTestVerifier(null);
     defer v.deinit();
     // Empty signature segment "." is rejected by splitJwt before alg check
@@ -597,7 +597,7 @@ test "parseJwks: JWKS missing keys field entirely" {
 
 test "parseJwks: duplicate kids in JWKS (first match wins)" {
     const jwks_dupes =
-        \\{"keys":[{"kty":"RSA","kid":"dup","n":"AQAB","e":"AQAB"},{"kty":"RSA","kid":"dup","n":"Ag","e":"AQAB"}]}
+        \\{"keys":[{"kty":"RSA","kid":"dup","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"},{"kty":"RSA","kid":"dup","n":"7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ","e":"AQAB"}]}
     ;
     var cache = try parseJwks(std.testing.allocator, jwks_dupes);
     defer cache.deinit(std.testing.allocator);
@@ -611,7 +611,7 @@ test "verifyRs256: wrong modulus length rejected" {
     const msg = "test.message";
     const bad_modulus = "short";
     const bad_sig = "short";
-    const exp = "AQAB";
+    const exp = "7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ";
     try std.testing.expectError(VerifyError.SignatureInvalid, verifyRs256(msg, bad_sig, bad_modulus, exp));
 }
 
@@ -664,7 +664,7 @@ test "splitJwt: segments with whitespace" {
 test "verifyAndDecode: header without kid field" {
     // {"alg":"RS256","typ":"JWT"} — no kid
     const header_no_kid = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9";
-    const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMH0";
+    const payload = "eyJzdWIiOiJ1c2VyIiwiaXNzIjoiaHR0cHM6Ly9jbGVyay5kZXYuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwfQ";
     var v = makeTestVerifier(null);
     defer v.deinit();
     try std.testing.expectError(VerifyError.MissingKeyId, v.verifyAndDecode(

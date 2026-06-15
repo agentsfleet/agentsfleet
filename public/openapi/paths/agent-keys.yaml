@@ -41,8 +41,8 @@
         $ref: ../components/responses.yaml#/components/responses/Error
   post:
     operationId: create_agent_key
-    summary: Issue an agent key for a zombie
-    description: Creates a new `zmb_` agent key bound to a specific zombie. **The raw key is returned once.** Only the SHA-256
+    summary: Issue an agent key for a agent
+    description: Creates a new `agt_a` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256
       hash is persisted — the key cannot be retrieved again.
     tags:
     - Agent Keys
@@ -61,10 +61,10 @@
           schema:
             type: object
             required:
-            - zombie_id
+            - agent_id
             - name
             properties:
-              zombie_id:
+              agent_id:
                 type: string
                 format: uuid
               name:
@@ -81,22 +81,22 @@
             schema:
               type: object
               required:
-              - agent_id
+              - agent_key_id
               - key
               properties:
-                agent_id:
+                agent_key_id:
                   type: string
                 workspace_id:
                   type: string
                   format: uuid
-                zombie_id:
+                agent_id:
                   type: string
                   format: uuid
                 name:
                   type: string
                 key:
                   type: string
-                  description: Raw `zmb_` API key. Shown once — store securely.
+                  description: Raw `agt_a` API key. Shown once — store securely.
                 created_at:
                   type: integer
                   format: int64
@@ -110,7 +110,7 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/agent-keys/{agent_id}:
+/v1/workspaces/{workspace_id}/agent-keys/{agent_key_id}:
   delete:
     operationId: delete_agent_key
     summary: Revoke an agent key
@@ -125,7 +125,7 @@
       schema:
         type: string
         format: uuid
-    - name: agent_id
+    - name: agent_key_id
       in: path
       required: true
       schema:

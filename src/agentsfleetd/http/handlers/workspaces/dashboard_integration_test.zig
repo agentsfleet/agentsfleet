@@ -1,5 +1,5 @@
 // HTTP integration tests for M12_001 dashboard endpoints (activity feed,
-// zombie stop, billing summaries — per-zombie and per-workspace).
+// agent stop, billing summaries — per-agent and per-workspace).
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 //
@@ -7,7 +7,7 @@
 // docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness".
 //
 // Workspace and tenant IDs are fixed to match the embedded JWT tokens.
-// Zombie, activity-event, and telemetry IDs are generated per call so
+// Agent, activity-event, and telemetry IDs are generated per call so
 // concurrent or repeated runs never conflict on primary keys. No cleanup
 // function is needed: make down && make up resets the DB between runs, and
 // unique IDs within a run prevent PK collisions.
@@ -26,26 +26,26 @@ const TEST_BALANCE_NANOS: i64 = 1000;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
 const TOKEN_USER =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6InVzZXIifX0.UEZ3huXtn6bXpa3M1EJZ2QmqLtXewLsHYP5ggTeRg-lgX-Vzp2ECvTsGgzhCSxNNPudRXYgdTsPa1ufIKv_5n1SvuoCRw2eRZfTUp5a_68KbScepnLVx5LaRJmoMyPP8Q_DPYwB0vHm1NCPRIfFqzcBOpLw01Ygkse4mTq19JPE4vcINmaVTWMiN02_ScU0DWhzhzx3_B1_vCBC3wxCpVuM_wqOHDUCnBEPkM-YVQcZrtQIdXPfRzZ2XFRVWFn-E7s0EWBpEP1wSCh31ymki_E1vlnrW4q9ZKNBYnZX0ErvJlcqH2U7nIsFlLYULNP_4mdYrDaWvBSSYZROoK1d8WQ";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJ1c2VyIn19.aSqdpbu-D-1NmzJgcw-7LUJYImlFu-gbrO3fBPlMI6DFvgSGJJg3wAYe5DKJXe5ytCActeAHN8LxGyr1emB4ReHk90B7t_DB301cl5fz6H1EIBnUYkuOYIeCQXvqTmEHduR1KPumEYc6Jfw3kv1tY95k-bugObZ4FihLhWXw4ud8fXRl_CTnD3J3FSx-cn4K8mfy8JjTc1RDmEx5_4-TbBhPyTgj5EAXqB1ddUw7k46UAh_-w2G07SrOxsl1b57Etwp0gvuu4tkpXICYmG423n-RjVvtvuxjSzQyhUZ2Lmfbvi1tLlY7_uzTh_BwwWWYLdJtnmKEblmGReoAu_Qs6A";
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
 
 // Per-call unique IDs to prevent PK conflicts across runs.
 const TestFixtures = struct {
-    zombie_active: []const u8,
-    zombie_empty: []const u8,
-    zombie_nonexistent: []const u8,
+    agent_active: []const u8,
+    agent_empty: []const u8,
+    agent_nonexistent: []const u8,
 
     fn deinit(self: TestFixtures, alloc: std.mem.Allocator) void {
-        alloc.free(self.zombie_active);
-        alloc.free(self.zombie_empty);
-        alloc.free(self.zombie_nonexistent);
+        alloc.free(self.agent_active);
+        alloc.free(self.agent_empty);
+        alloc.free(self.agent_nonexistent);
     }
 };
 
@@ -61,12 +61,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn makeFixtures(alloc: std.mem.Allocator) !TestFixtures {
-    const active = try id_format.generateZombieId(alloc);
+    const active = try id_format.generateAgentId(alloc);
     errdefer alloc.free(active);
-    const empty = try id_format.generateZombieId(alloc);
+    const empty = try id_format.generateAgentId(alloc);
     errdefer alloc.free(empty);
-    const nonexistent = try id_format.generateZombieId(alloc);
-    return .{ .zombie_active = active, .zombie_empty = empty, .zombie_nonexistent = nonexistent };
+    const nonexistent = try id_format.generateAgentId(alloc);
+    return .{ .agent_active = active, .agent_empty = empty, .agent_nonexistent = nonexistent };
 }
 
 fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
@@ -86,18 +86,18 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
 }
 
-fn seedZombies(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {
-    const zombies = [_]struct { id: []const u8, suffix: []const u8 }{
-        .{ .id = fx.zombie_active, .suffix = "active" },
-        .{ .id = fx.zombie_empty, .suffix = "empty" },
+fn seedAgents(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {
+    const agents = [_]struct { id: []const u8, suffix: []const u8 }{
+        .{ .id = fx.agent_active, .suffix = "active" },
+        .{ .id = fx.agent_empty, .suffix = "empty" },
     };
-    for (zombies) |z| {
-        // Derive name from the unique zombie id so two test functions in the
+    for (agents) |z| {
+        // Derive name from the unique agent id so two test functions in the
         // same run don't collide on UNIQUE (workspace_id, name).
-        const name = try std.fmt.allocPrint(alloc, "zombie-dash-{s}-{s}", .{ z.suffix, z.id });
+        const name = try std.fmt.allocPrint(alloc, "agent-dash-{s}-{s}", .{ z.suffix, z.id });
         defer alloc.free(name);
         _ = try conn.exec(
-            \\INSERT INTO core.zombies
+            \\INSERT INTO core.agents
             \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
@@ -119,9 +119,9 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
     defer h.releaseConn(conn);
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
-    try seedZombies(conn, alloc, fx, now_ms);
+    try seedAgents(conn, alloc, fx, now_ms);
 
-    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, fx.zombie_active });
+    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents/{s}", .{ TEST_WORKSPACE_ID, fx.agent_active });
     defer alloc.free(stop_url);
     const stop_body = "{\"status\":\"stopped\"}";
 
@@ -142,17 +142,17 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"status\":\"stopped\""));
     }
-    { // T7: re-stopping an already-stopped zombie → 409 UZ-ZMB-010 (no transition)
+    { // re-stopping an already-stopped agent → 409 UZ-AGT-010 (no transition)
         var req = h.request(.PATCH, stop_url);
         req = try req.bearer(TOKEN_OPERATOR);
         req = try req.json(stop_body);
         const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.conflict);
-        try std.testing.expect(r.bodyContains("UZ-ZMB-010"));
+        try std.testing.expect(r.bodyContains("UZ-AGT-010"));
     }
-    { // nonexistent zombie → 404 UZ-ZMB-009
-        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, fx.zombie_nonexistent });
+    { // nonexistent agent → 404 UZ-AGT-009
+        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents/{s}", .{ TEST_WORKSPACE_ID, fx.agent_nonexistent });
         defer alloc.free(missing);
         var req = h.request(.PATCH, missing);
         req = try req.bearer(TOKEN_OPERATOR);
@@ -160,6 +160,6 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
         const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.not_found);
-        try std.testing.expect(r.bodyContains("UZ-ZMB-009"));
+        try std.testing.expect(r.bodyContains("UZ-AGT-009"));
     }
 }

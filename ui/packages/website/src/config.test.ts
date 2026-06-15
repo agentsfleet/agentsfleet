@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * exercise every arm.
  */
 
-const PROD_HOST = "https://app.usezombie.com";
-const DEV_HOST = "https://app.dev.usezombie.com";
+const PROD_HOST = "https://app.agentsfleet.net";
+const DEV_HOST = "https://app.dev.agentsfleet.net";
 
 async function loadAppBaseUrl(): Promise<string> {
   vi.resetModules();
@@ -25,9 +25,9 @@ describe("APP_BASE_URL resolution", () => {
   });
 
   it("prefers a trimmed VITE_APP_BASE_URL override over the build-target hosts", async () => {
-    vi.stubEnv("VITE_APP_BASE_URL", "  https://app.staging.usezombie.com  ");
+    vi.stubEnv("VITE_APP_BASE_URL", "  https://app.staging.agentsfleet.net  ");
     vi.stubEnv("PROD", true);
-    expect(await loadAppBaseUrl()).toBe("https://app.staging.usezombie.com");
+    expect(await loadAppBaseUrl()).toBe("https://app.staging.agentsfleet.net");
   });
 
   it("uses the production host when building for prod with no override", async () => {
@@ -46,28 +46,28 @@ describe("APP_BASE_URL resolution", () => {
 /*
  * agentsfleet rebrand pins. Two directions, both deliberate:
  *  - operational strings that must NOT change until their own cutover
- *    spec lands (installer domain, team mailbox);
- *  - flipped values (docs host, GitHub org) that must not regress to
- *    the retired brand. Unpinning either direction is the conscious
- *    act of a cutover edit, never a side effect.
+ *    spec lands (team mailbox);
+ *  - flipped values (installer domain, docs host, GitHub org) that must
+ *    not regress to the retired brand. Unpinning either direction is the
+ *    conscious act of a cutover edit, never a side effect.
  */
-describe("rebrand pins — operational strings stay until their cutover", () => {
-  it("install command stays on the usezombie.sh installer verbatim", async () => {
+describe("rebrand pins — flipped values must not regress; operational strings stay", () => {
+  it("install command serves on the agentsfleet.dev installer", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.INSTALL_COMMAND).toBe("curl -fsSL https://usezombie.sh | bash");
+    expect(mod.INSTALL_COMMAND).toBe("curl -fsSL https://agentsfleet.dev | bash");
   });
 
-  it("GitHub URL serves on the renamed agentsfleet org", async () => {
+  it("GitHub URL serves on the renamed agentsfleet/agentsfleet repo", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/usezombie");
+    expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/agentsfleet");
   });
 
-  it("team email stays on the routed mailbox", async () => {
+  it("team email serves on the agentsfleet.net mailbox", async () => {
     vi.resetModules();
     const mod = await import("./config");
-    expect(mod.TEAM_EMAIL).toBe("team@usezombie.com");
+    expect(mod.TEAM_EMAIL).toBe("team@agentsfleet.net");
   });
 
   it("docs URL serves on the agentsfleet host", async () => {

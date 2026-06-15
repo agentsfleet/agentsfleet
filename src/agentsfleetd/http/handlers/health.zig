@@ -13,7 +13,7 @@ const Hx = hx_mod.Hx;
 const log = logging.scoped(.http);
 
 // M10_001: QueueHealth struct and queueHealth() removed — they queried the
-// dropped `runs` table for SPEC_QUEUED count. Zombie uses Redis streams,
+// dropped `runs` table for SPEC_QUEUED count. Agent uses Redis streams,
 // not DB-level queue depth. Queue depth/age metrics are no longer emitted.
 
 const ReadyInputs = struct {

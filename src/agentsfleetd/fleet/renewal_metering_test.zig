@@ -36,7 +36,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d8f01";
 const EVENT_ID = "evt-meter-1";
@@ -78,21 +78,21 @@ fn seedRunner(conn: *pg.Conn) !void {
 // Affinity holds the authoritative metering cursor the CTE reads for Δ.
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, m_in: i64, m_cached: i64, m_out: i64, last_metered: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, zombie_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (id, agent_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
         \\   last_metered_at_ms, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, 0, 0)
-        \\ON CONFLICT (zombie_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq,
+        \\ON CONFLICT (agent_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq,
         \\   metered_input_tokens = EXCLUDED.metered_input_tokens,
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
         \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + ONE_MILLION, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_leases (id, runner_id, zombie_id, workspace_id, tenant_id,
+        \\INSERT INTO fleet.runner_leases (id, runner_id, agent_id, workspace_id, tenant_id,
         \\   event_id, actor, event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -100,7 +100,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, status: []const u8) !void {
         \\   '{"message":"hi"}', 0, 'platform', 'test-provider', 'test-model', 0, 0, 0, 0,
         \\   $7, $8, $9, $10, $10)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token, status = EXCLUDED.status
-    , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
+    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + ONE_MILLION, status, ISSUE_MS });
 }
 
 fn seedBalance(conn: *pg.Conn, balance: i64) !void {
@@ -117,9 +117,9 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.agent_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -172,7 +172,7 @@ fn readStage(conn: *pg.Conn) !?StageRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT t.credit_deducted_nanos, t.token_count_input, t.token_count_output, t.wall_ms,
         \\       (SELECT count(*) FROM fleet.metering_periods mp WHERE mp.event_id = t.event_id)::bigint
-        \\FROM core.zombie_execution_telemetry t
+        \\FROM core.agent_execution_telemetry t
         \\WHERE t.event_id = $1 AND t.charge_type = 'stage'
     , .{EVENT_ID}));
     defer q.deinit();
@@ -374,12 +374,12 @@ test "a fresh lease resets the affinity metering cursor to zero / issue-time" {
 
     // A fresh lease issue resets it (insertLeaseRow on .fresh, fail-closed) so the
     // first /renew meters off 0/now, not the prior run — a reused slot can't over-charge.
-    try affinity.resetCursor(s.conn, ZOMBIE_ID, NOW_MS);
+    try affinity.resetCursor(s.conn, AGENTSFLEET_ID, NOW_MS);
 
     var q = PgQuery.from(try s.conn.query(
         \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms
-        \\FROM fleet.runner_affinity WHERE zombie_id = $1::uuid
-    , .{ZOMBIE_ID}));
+        \\FROM fleet.runner_affinity WHERE agent_id = $1::uuid
+    , .{AGENTSFLEET_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
@@ -393,8 +393,8 @@ test "metering-periods read is tenant-scoped: own tenant sees slices, a foreign 
     defer cleanup(s);
     // Stage telemetry carries the tenant; the store's EXISTS guard keys off it. Seed 1 stage + 2 slices.
     _ = try s.conn.exec(
-        \\INSERT INTO core.zombie_execution_telemetry
-        \\  (uid, id, tenant_id, workspace_id, zombie_id, event_id, charge_type, posture,
+        \\INSERT INTO core.agent_execution_telemetry
+        \\  (uid, id, tenant_id, workspace_id, agent_id, event_id, charge_type, posture,
         \\   model, credit_deducted_nanos, recorded_at)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0f4101'::uuid,
         \\        'mtr_' || $2, $1::uuid, 'ws', 'z', $2, 'stage', 'platform', 'm', 225, 0)

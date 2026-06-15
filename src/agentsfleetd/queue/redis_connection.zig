@@ -8,7 +8,7 @@
 //!
 //! Slice 1 lays the shape down; slice 3 wires `redis_client.zig` onto it.
 
-const Connection = @This();
+const Self = @This();
 
 pub const Role = enum { pooled, blocking_consumer, subscriber };
 
@@ -77,7 +77,7 @@ node: std.SinglyLinkedList.Node = .{},
 /// `role` is `const` for the connection's lifetime — boundary code
 /// (`Pool.release`, `Subscriber.connect`) asserts it; nothing in this file
 /// mutates `self.role` after init.
-pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Role) !Connection {
+pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Role) !Self {
     var transport = try dialAndAuth(io, alloc, cfg.*);
     errdefer transport.deinit(io, alloc);
     return .{
@@ -96,11 +96,11 @@ pub fn init(io: std.Io, alloc: std.mem.Allocator, cfg: *const redis_config.Confi
 /// Pool calls this after `init` for pooled connections so every dial picks
 /// up the configured `REDIS_REQUEST_TIMEOUT_MS`. Setting back to `null`
 /// clears the deadline so reads block until data or peer close.
-pub fn applyReadTimeout(self: *Connection, ms: ?u32) void {
+pub fn applyReadTimeout(self: *Self, ms: ?u32) void {
     self.transport.setReadTimeout(ms);
 }
 
-pub fn deinit(self: *Connection) void {
+pub fn deinit(self: *Self) void {
     // .active or .poisoned → .closing → .closed
     // .closing → .closed (already requested teardown)
     // .closed → asserts (Invariant 14: terminal, reachable once)
@@ -114,7 +114,7 @@ pub fn deinit(self: *Connection) void {
     self.transitionTo(.closed);
 }
 
-fn transitionTo(self: *Connection, new_state: ConnectionState) void {
+fn transitionTo(self: *Self, new_state: ConnectionState) void {
     const legal = switch (self.state) {
         .active => new_state == .poisoned or new_state == .closing,
         .poisoned => new_state == .closing,
@@ -136,7 +136,7 @@ fn transitionTo(self: *Connection, new_state: ConnectionState) void {
 /// in, one reply out. Any IO error transitions the connection to
 /// `.poisoned`; the caller (Pool.release / Client retry layer) closes
 /// from there.
-pub fn command(self: *Connection, argv: []const []const u8) Error!redis_protocol.RespValue {
+pub fn command(self: *Self, argv: []const []const u8) Error!redis_protocol.RespValue {
     var value = try self.commandAllowError(argv);
     if (value == .err) {
         // Surface the server-side error string (READONLY after failover,
@@ -158,7 +158,7 @@ pub fn command(self: *Connection, argv: []const []const u8) Error!redis_protocol
 /// (e.g. SET NX returning nil on existing key, XGROUP CREATE returning
 /// BUSYGROUP on already-created group). IO errors still transition the
 /// connection to `.poisoned` and surface as transport-level errors.
-pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redis_protocol.RespValue {
+pub fn commandAllowError(self: *Self, argv: []const []const u8) Error!redis_protocol.RespValue {
     std.debug.assert(self.fd != INVALID_FD);
     std.debug.assert(self.state == .active);
 
@@ -216,7 +216,7 @@ fn mapWriteError(err: anyerror) Error {
 // `RedisRequestTimeout` (honest observability + retry attribution) instead of
 // the opaque single bucket the 0.15 `SO_RCVTIMEO` path was stuck with. Both
 // are non-resumable; the retry layer closes and dials fresh either way.
-fn mapReadError(self: *Connection, err: anyerror) Error {
+fn mapReadError(self: *Self, err: anyerror) Error {
     return switch (err) {
         error.BrokenPipe => error.BrokenPipe,
         error.ConnectionResetByPeer => error.ConnectionResetByPeer,

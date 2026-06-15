@@ -4,7 +4,7 @@ import { cn } from "../utils";
 /*
  * LogLine — content-side coloring for log/event streams rendered
  * inside `<Terminal>`. Mirrors the colored log specimen at
- * `~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html`
+ * `~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html`
  * §03 (CODE / LOGS): each severity gets a distinct token-driven
  * colour without breaking the surrounding monochrome chrome.
  *

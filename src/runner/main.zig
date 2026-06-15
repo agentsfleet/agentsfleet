@@ -1,5 +1,5 @@
 //! `agentsfleet-runner` — host-resident runner daemon entrypoint. Boots from the
-//! operator-installed `zrn_` (env `ZOMBIE_RUNNER_TOKEN`) straight into the
+//! operator-installed `agt_r` (env `AGENTSFLEET_RUNNER_TOKEN`) straight into the
 //! heartbeat/lease/execute/report/activity loop (`daemon/loop.zig`) — the host
 //! never self-registers (Option B). This file owns process startup: arg
 //! dispatch (child-execute mode), config load, the fail-closed `dev_none`
@@ -19,7 +19,7 @@ const registry = @import("cmd/registry.zig");
 
 const protocol = contract.protocol;
 
-const log = logging.scoped(.zombie_runner);
+const log = logging.scoped(.agent_runner);
 
 pub const std_options: std.Options = .{
     .logFn = runnerLog,
@@ -89,7 +89,7 @@ pub fn main(init: std.process.Init) void {
         },
     };
 
-    // Option B: the env-supplied `zrn_` (prefix-validated in Config.load) IS this
+    // Option B: the env-supplied `agt_r` (prefix-validated in Config.load) IS this
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
     loop.runLoop(io, alloc, cfg, env_map);

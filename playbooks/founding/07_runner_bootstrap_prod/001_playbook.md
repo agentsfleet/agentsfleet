@@ -2,7 +2,7 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `zrn_` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `zrn_FAKE_…` placeholder until then.
+**Status:** Worker era retired — each host now runs the single `agentsfleet-runner` daemon (M80 cutover). `agent-prod-worker-ant` is provisioned; `agent-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `agt_r` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/agent-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `agt_rFAKE_…` placeholder until then.
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
@@ -11,8 +11,8 @@ Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-res
 
 ```json
 [
-  { "name": "zombie-prod-worker-1", "host": "zombie-prod-worker-1", "vault_key": "zombie-prod-worker-1" },
-  { "name": "zombie-prod-worker-2", "host": "zombie-prod-worker-2", "vault_key": "zombie-prod-worker-2" }
+  { "name": "agent-prod-worker-1", "host": "agent-prod-worker-1", "vault_key": "agent-prod-worker-1" },
+  { "name": "agent-prod-worker-2", "host": "agent-prod-worker-2", "vault_key": "agent-prod-worker-2" }
 ]
 ```
 
@@ -23,7 +23,7 @@ Environment setup for all commands in this playbook:
 ```bash
 export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 # Replace with the specific worker being bootstrapped
-export WORKER_NAME="zombie-prod-worker-1"
+export WORKER_NAME="agent-prod-worker-1"
 ```
 
 ---
@@ -34,9 +34,9 @@ export WORKER_NAME="zombie-prod-worker-1"
 |------|-------|------|--------|
 | 0.0 | Human | Buy server(s) from provider, get IP + initial root credentials | ✅ DONE |
 | 1.0 | Agent | Verify deploy SSH key from vault works | ✅ DONE |
-| 2.0 | Agent | Install Tailscale + join tailnet | ✅ DONE — `zombie-prod-worker-ant` at `100.127.12.111` |
+| 2.0 | Agent | Install Tailscale + join tailnet | ✅ DONE — `agent-prod-worker-ant` at `100.127.12.111` |
 | 3.0 | Agent | Install runtime dependencies (bubblewrap, git, openssl, ca-certificates) | ✅ DONE |
-| 4.0 | Agent | Bootstrap `/opt/zombie/` (deploy.sh + .env from vault) | ✅ DONE |
+| 4.0 | Agent | Bootstrap `/opt/agentsfleet/` (deploy.sh + .env from vault) | ✅ DONE |
 | 5.0 | Agent | First deploy + activate CI | ⏭ DEFERRED — CI executes first deploy on `v0.3.0` tag; `PROD_WORKER_READY=true` set |
 
 After step 0 the agent runs steps 1–5 in sequence without human intervention.
@@ -74,7 +74,7 @@ rm /tmp/${WORKER_NAME} /tmp/${WORKER_NAME}.pub
 ```
 
 6. Add the worker to the `PROD_WORKER_HOSTS` GitHub variable (JSON array)
-7. Signal agent: "Servers ready: zombie-prod-worker-1, zombie-prod-worker-2"
+7. Signal agent: "Servers ready: agent-prod-worker-1, agent-prod-worker-2"
 
 ### Acceptance
 
@@ -148,7 +148,7 @@ REMOTE
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
   "tailscale status | grep ${WORKER_NAME}"
-# Expected: zombie-prod-worker-N  <tailscale-ip>  ...  active
+# Expected: agent-prod-worker-N  <tailscale-ip>  ...  active
 ```
 
 All remaining steps use the Tailscale hostname `${WORKER_NAME}`.
@@ -207,9 +207,9 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
 
 ---
 
-## 4.0 Agent: Bootstrap `/opt/zombie/`
+## 4.0 Agent: Bootstrap `/opt/agentsfleet/`
 
-**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
+**Goal:** Server directory structure is created, deploy artifacts (`deploy.sh` + `agentsfleet-runner.service`) are copied via scp, and `/opt/agentsfleet/.env` is populated from vault with the three runner env vars the Option B daemon requires (`AGENTSFLEET_API_URL`, `AGENTSFLEET_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -218,28 +218,28 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "sudo mkdir -p /opt/zombie/{bin,deploy} && sudo chown -R ${USER}:${USER} /opt/zombie"
+  "sudo mkdir -p /opt/agentsfleet/{bin,deploy} && sudo chown -R ${USER}:${USER} /opt/agentsfleet"
 
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
-  deploy/baremetal/deploy.sh             "${USER}@${WORKER_NAME}:/opt/zombie/deploy/deploy.sh"
+  deploy/baremetal/deploy.sh             "${USER}@${WORKER_NAME}:/opt/agentsfleet/deploy/deploy.sh"
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
-  deploy/baremetal/agentsfleet-runner.service "${USER}@${WORKER_NAME}:/opt/zombie/deploy/"
+  deploy/baremetal/agentsfleet-runner.service "${USER}@${WORKER_NAME}:/opt/agentsfleet/deploy/"
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "chmod +x /opt/zombie/deploy/deploy.sh"
+  "chmod +x /opt/agentsfleet/deploy/deploy.sh"
 ```
 
-### 4.2 Populate `/opt/zombie/.env` from vault
+### 4.2 Populate `/opt/agentsfleet/.env` from vault
 
 ```bash
 # The runner daemon needs exactly three env vars (Option B contract):
-#   - ZOMBIE_API_URL       — control-plane base, prod: https://api.usezombie.com
-#   - ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
+#   - AGENTSFLEET_API_URL       — control-plane base, prod: https://api.agentsfleet.net
+#   - AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (vault field: runner-token)
 #   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname or
 #                            ${WORKER_NAME} if no hostname field exists yet)
 #
-# A real prod `zrn_` requires the platform-admin enrollment gate on the live
-# prod control plane. Store a placeholder (`zrn_FAKE_…`) until that's ready;
+# A real prod `agt_r` requires the platform-admin enrollment gate on the live
+# prod control plane. Store a placeholder (`agt_rFAKE_…`) until that's ready;
 # PROD_WORKER_READY must stay `false` until every node in PROD_WORKER_HOSTS
 # has a real admin-minted token in vault and the runner is verified active.
 
@@ -247,15 +247,15 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 RUNNER_TOKEN=$(op read "op://$VAULT_PROD/${WORKER_NAME}/runner-token")
 HOST_ID="${WORKER_NAME}"
-API_URL="https://api.usezombie.com"
+API_URL="https://api.agentsfleet.net"
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << EOF
-cat > /opt/zombie/.env << 'ENVFILE'
-ZOMBIE_API_URL=${API_URL}
-ZOMBIE_RUNNER_TOKEN=${RUNNER_TOKEN}
+cat > /opt/agentsfleet/.env << 'ENVFILE'
+AGENTSFLEET_API_URL=${API_URL}
+AGENTSFLEET_RUNNER_TOKEN=${RUNNER_TOKEN}
 RUNNER_HOST_ID=${HOST_ID}
 ENVFILE
-chmod 600 /opt/zombie/.env
+chmod 600 /opt/agentsfleet/.env
 EOF
 ```
 
@@ -266,7 +266,7 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << 'REMOTE'
-sudo cp /opt/zombie/deploy/agentsfleet-runner.service /etc/systemd/system/
+sudo cp /opt/agentsfleet/deploy/agentsfleet-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 REMOTE
 ```
@@ -278,11 +278,11 @@ KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 USER=$(op read "op://$VAULT_PROD/${WORKER_NAME}/deploy-user")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/agentsfleet-runner.service"
+  "stat -c '%a %n' /opt/agentsfleet/deploy/deploy.sh /opt/agentsfleet/.env /opt/agentsfleet/deploy/agentsfleet-runner.service"
 # Expected:
-#   755 /opt/zombie/deploy/deploy.sh
-#   600 /opt/zombie/.env
-#   644 /opt/zombie/deploy/agentsfleet-runner.service
+#   755 /opt/agentsfleet/deploy/deploy.sh
+#   600 /opt/agentsfleet/.env
+#   644 /opt/agentsfleet/deploy/agentsfleet-runner.service
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
   "ls /etc/systemd/system/agentsfleet-runner.service"
@@ -294,7 +294,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAM
 
 ## 5.0 Agent: First Deploy + Activate CI
 
-**Goal:** First deploy runs end-to-end on every prod node. After all nodes pass with a real (non-placeholder) `zrn_` runner-token in vault, CI gate is lifted.
+**Goal:** First deploy runs end-to-end on every prod node. After all nodes pass with a real (non-placeholder) `agt_r` runner-token in vault, CI gate is lifted.
 
 ```bash
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
@@ -306,14 +306,14 @@ zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
 # scp binary to server
 scp -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no \
-  zig-out/bin/agentsfleet-runner "${USER}@${WORKER_NAME}:/opt/zombie/bin/agentsfleet-runner"
+  zig-out/bin/agentsfleet-runner "${USER}@${WORKER_NAME}:/opt/agentsfleet/bin/agentsfleet-runner"
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "chmod +x /opt/zombie/bin/agentsfleet-runner"
+  "chmod +x /opt/agentsfleet/bin/agentsfleet-runner"
 
 # Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" \
-  "sudo DISCORD_WEBHOOK_URL='$DISCORD' /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner"
+  "sudo DISCORD_WEBHOOK_URL='$DISCORD' /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
 
 # Verify
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${WORKER_NAME}" << 'REMOTE'
@@ -325,10 +325,10 @@ REMOTE
 
 ### Activate CI (after ALL nodes are bootstrapped)
 
-Only set `PROD_WORKER_READY=true` once **every node** in `PROD_WORKER_HOSTS` has passed step 5 with a real admin-minted `zrn_` runner-token in vault (placeholder `zrn_FAKE_…` values are rejected by `deploy.sh` and by the daemon's startup prefix check).
+Only set `PROD_WORKER_READY=true` once **every node** in `PROD_WORKER_HOSTS` has passed step 5 with a real admin-minted `agt_r` runner-token in vault (placeholder `agt_rFAKE_…` values are rejected by `deploy.sh` and by the daemon's startup prefix check).
 
 ```bash
-gh variable set PROD_WORKER_READY --body "true" --repo usezombie/usezombie
+gh variable set PROD_WORKER_READY --body "true" --repo agentsfleet/agentsfleet
 echo "CI activated. Next release tag will deploy to all prod workers."
 ```
 
@@ -347,7 +347,7 @@ PROD_WORKER_READY set             <- CI guard lifted
 Set `WORKER_NAME` to each node name and run steps 1–5 again:
 
 ```bash
-export WORKER_NAME="zombie-prod-worker-2"
+export WORKER_NAME="agent-prod-worker-2"
 # repeat steps 1.0 – 5.0 (skip the final gh variable set until all nodes done)
 ```
 
@@ -366,7 +366,7 @@ Once `PROD_WORKER_READY=true` is set, every version tag (`v*`) triggers the `dep
 5. Deploys remaining fleet sequentially
 6. Sends Discord notification on success/failure per node
 
-No manual steps after bootstrap — the fleet is fully CI-managed. The env file (`/opt/zombie/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
+No manual steps after bootstrap — the fleet is fully CI-managed. The env file (`/opt/agentsfleet/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
 
 ---
 
@@ -377,9 +377,9 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 1.0  Agent: Verify SSH key from vault reaches each server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+4.0  Agent: scp deploy/baremetal/{deploy.sh,agentsfleet-runner.service} -> /opt/agentsfleet/deploy/, provision /opt/agentsfleet/.env (AGENTSFLEET_API_URL + AGENTSFLEET_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
 5.0  Agent: Build + scp the agentsfleet-runner binary, run deploy.sh runner, verify agentsfleet-runner.service is active
---- After ALL nodes pass step 5 with a real admin-minted zrn_ in vault ---
+--- After ALL nodes pass step 5 with a real admin-minted agt_r in vault ---
 5.1  Agent: gh variable set PROD_WORKER_READY=true
 --- CI-automated after this point ---
 ```

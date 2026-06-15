@@ -46,6 +46,8 @@ pub const SESSION_KEY_BUF_LEN: usize = SESSION_KEY_PREFIX.len + 36;
 const SCAN_PAGE_BUF: usize = 128;
 
 pub const SessionStore = struct {
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     client: *queue_redis.Client,
     session_code_pepper: []const u8,
@@ -67,7 +69,7 @@ pub const SessionStore = struct {
 
     /// Caller owns the returned session_id slice; pair with `alloc.free`.
     pub fn create(
-        self: *SessionStore,
+        self: *Self,
         cli_public_key: []const u8,
         token_name: []const u8,
     ) ![]const u8 {
@@ -96,7 +98,7 @@ pub const SessionStore = struct {
 
     /// Caller owns the returned `Parsed`. Null = TTL evicted, never created,
     /// or explicit `DEL`. Handler maps to 410 / 404 as appropriate.
-    pub fn get(self: *SessionStore, session_id: []const u8) !?std.json.Parsed(SessionState) {
+    pub fn get(self: *Self, session_id: []const u8) !?std.json.Parsed(SessionState) {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = try formatSessionKey(&key_buf, session_id);
 
@@ -112,7 +114,7 @@ pub const SessionStore = struct {
     /// Single-EVAL atomic approve. Any non-pending state at the moment of
     /// the read returns `Error.AlreadyApproved` / `SessionMissing`.
     pub fn approve(
-        self: *SessionStore,
+        self: *Self,
         session_id: []const u8,
         dashboard_public_key: []const u8,
         ciphertext: []const u8,
@@ -154,7 +156,7 @@ pub const SessionStore = struct {
     /// Single Lua EVAL: read blob, branch on state, HMAC-compare, atomic
     /// transition. Returns the union encoding what happened.
     pub fn verifyAndConsume(
-        self: *SessionStore,
+        self: *Self,
         session_id: []const u8,
         verification_code: []const u8,
         client_fingerprint_hex: []const u8,
@@ -199,7 +201,7 @@ pub const SessionStore = struct {
     /// one. Returns `.aborted` when this call performed the abort,
     /// `.already_aborted` when the session was already terminal (idempotent
     /// re-delete) so the caller can avoid emitting a duplicate audit record.
-    pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8, reason: []const u8) Error!proto.DeleteOutcome {
+    pub fn delete(self: *Self, session_id: []const u8, clerk_user_id: []const u8, reason: []const u8) Error!proto.DeleteOutcome {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = formatSessionKey(&key_buf, session_id) catch return Error.SessionMissing;
         var ttl_buf: [12]u8 = undefined;
@@ -225,7 +227,7 @@ pub const SessionStore = struct {
     /// caller-supplied `reason` (see `delete`). SCAN-based; O(total_sessions)
     /// but capped by the 5-min TTL.
     pub fn deleteAllForUser(
-        self: *SessionStore,
+        self: *Self,
         clerk_user_id: []const u8,
         reason: []const u8,
         observer: ?SessionAbortObserver,
@@ -235,7 +237,7 @@ pub const SessionStore = struct {
 
     /// Defensive scan — finds blobs whose `expires_at_ms` elapsed but whose
     /// Redis TTL was somehow cleared. Should always return 0 in steady state.
-    pub fn runBackgroundSweep(self: *SessionStore, now_ms: i64) !u32 {
+    pub fn runBackgroundSweep(self: *Self, now_ms: i64) !u32 {
         const pruned = try self.scanLoop(.{ .prune = .{ .now_ms = now_ms } });
         if (pruned > 0) log.warn("session_sweep_pruned", .{ .pruned = pruned });
         return pruned;
@@ -250,7 +252,7 @@ pub const SessionStore = struct {
         prune: struct { now_ms: i64 },
     };
 
-    fn scanLoop(self: *SessionStore, op: ScanOp) !u32 {
+    fn scanLoop(self: *Self, op: ScanOp) !u32 {
         var cursor: []const u8 = "0";
         var cursor_owned: ?[]u8 = null;
         defer if (cursor_owned) |c| self.alloc.free(c);
@@ -269,7 +271,7 @@ pub const SessionStore = struct {
         return hits;
     }
 
-    fn applyScanOp(self: *SessionStore, op: ScanOp, key: []const u8) !u32 {
+    fn applyScanOp(self: *Self, op: ScanOp, key: []const u8) !u32 {
         return switch (op) {
             .abort => |a| self.abortIfOwnedBy(key, a.clerk_user_id, a.reason, a.observer),
             .prune => |p| self.pruneIfExpired(key, p.now_ms),
@@ -277,7 +279,7 @@ pub const SessionStore = struct {
     }
 
     fn abortIfOwnedBy(
-        self: *SessionStore,
+        self: *Self,
         key: []const u8,
         clerk_user_id: []const u8,
         reason: []const u8,
@@ -297,7 +299,7 @@ pub const SessionStore = struct {
         return 1;
     }
 
-    fn pruneIfExpired(self: *SessionStore, key: []const u8, now_ms: i64) !u32 {
+    fn pruneIfExpired(self: *Self, key: []const u8, now_ms: i64) !u32 {
         var resp = try self.client.command(&.{ HTTP_METHOD_GET, key });
         defer resp.deinit(self.alloc);
         const blob = switch (resp) {

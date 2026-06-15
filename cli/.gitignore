@@ -1,0 +1,10 @@
+# Mirrored at publish time by scripts/prepublish.mjs from the repo root.
+# Authoritative copy lives at ../samples/. Agent skills moved to
+# github.com/agentsfleet/skills — no longer bundled here.
+# `/skills/` stays as defense-in-depth against stray dev-time dirs.
+/samples/
+/skills/
+
+# Per-suite minted Clerk session JWT (mode 0600). Written by
+# test/acceptance/global-setup.js; never published.
+/test/acceptance/.fixture-jwt

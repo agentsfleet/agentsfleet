@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   // browser-side fetches — no possibility of them routing to different
   // backends in prod.
   async rewrites() {
-    const backend = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.usezombie.com";
+    const backend = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
     return [{ source: "/backend/:path*", destination: `${backend}/:path*` }];
   },
 };

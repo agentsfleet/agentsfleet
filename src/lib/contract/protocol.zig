@@ -6,7 +6,7 @@
 //! hold throughout:
 //!   * Identity comes from the Bearer token, never the URL or body. register is
 //!     authed by an existing operator/provisioner credential — a Clerk JWT or a
-//!     `zmb_t_` api_key, via bearer_or_api_key — and mints the runner_token;
+//!     `agt_t` api_key, via bearer_or_api_key — and mints the runner_token;
 //!     every later call carries that minted runner_token (`/v1/runners/me/...`,
 //!     where `me` resolves from the token). No request carries a runner_id —
 //!     there is nothing to reconcile.
@@ -33,20 +33,20 @@ pub const PATH_RUNNERS = "/v1/runners";
 /// sourced here (RULE UFS) because BOTH build graphs reference it: agentsfleetd mints
 /// + validates it (`runner_bearer.zig`, `register.zig`) and the host daemon
 /// validates the env-supplied token's prefix before the lease loop. The literal
-/// must stay `zrn_` verbatim — runner_bearer carries the pin test.
-pub const RUNNER_TOKEN_PREFIX = "zrn_";
+/// must stay `agt_r` verbatim — runner_bearer carries the pin test.
+pub const RUNNER_TOKEN_PREFIX = "agt_r";
 
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
 pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
-/// GET + POST /v1/runners/me/memory/{zombie_id} — durable agent-memory hydrate +
-/// capture, keyed by the zombie. The runner names the zombie because it may hold
+/// GET + POST /v1/runners/me/memory/{agent_id} — durable agent-memory hydrate +
+/// capture, keyed by the agent. The runner names the agent because it may hold
 /// several concurrent leases; the server authorizes by verifying the runner holds
-/// a live lease for that zombie (IDOR-safe — the client never reaches a zombie it
+/// a live lease for that agent (IDOR-safe — the client never reaches a agent it
 /// does not lease). The POST fences the write via `fencing_token` in the body,
-/// like `/reports`. (`zombie_id` is our identifier end to end; its `zmb:`-prefixed
-/// storage form is internal to `agentsfleetd`'s memory adapter.) This is the collection
-/// prefix; the router appends the `{zombie_id}` segment. See
+/// like `/reports`. (`agent_id` is our identifier end to end — the durable memory
+/// rows key off it directly, with no legacy instance_id prefix.) This is the collection
+/// prefix; the router appends the `{agent_id}` segment. See
 /// `docs/architecture/runner_fleet.md` §Memory continuity.
 pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
 /// GET /v1/runners/me — read-only self status (`me` resolves from the token).
@@ -106,7 +106,7 @@ pub const SandboxTier = enum { landlock_full, container_nested, macos_seatbelt, 
 pub const SecretDelivery = enum { @"inline", scoped, proxy };
 
 /// Terminal execution result the runner reports. Mirrors the
-/// `core.zombie_events.status` values a runner can produce —
+/// `core.agent_events.status` values a runner can produce —
 /// `gate_blocked`/`dead_lettered` are `agentsfleetd`-side and never runner-reported.
 pub const Outcome = enum { processed, agent_error };
 
@@ -168,7 +168,7 @@ pub const RUNNER_LEASE_STATUS_REPORTED = "reported";
 pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 
 /// POST /v1/runners — register. Auth: an existing credential —
-/// `Bearer <Clerk JWT | zmb_t_ api_key>` (via bearer_or_api_key), not an
+/// `Bearer <Clerk JWT | agt_t api_key>` (via bearer_or_api_key), not an
 /// enrollment token. The response's runner_token identifies the runner on
 /// every later call.
 pub const RegisterRequest = struct {
@@ -238,7 +238,7 @@ pub const ReportTelemetry = struct {
     wall_ms: u64,
 };
 
-/// Session resume cursor written to `core.zombie_sessions.context_json`.
+/// Session resume cursor written to `core.agent_sessions.context_json`.
 pub const ReportCheckpoint = struct {
     last_event_id: []const u8,
     last_response: []const u8,
@@ -246,7 +246,7 @@ pub const ReportCheckpoint = struct {
 
 /// POST /v1/runners/me/reports (Bearer runner_token) — one batched write keyed
 /// by `event_id`. `fencing_token` is echoed and recorded, and the control plane
-/// verifies it at report: a reclaimed holder (token below the zombie's live
+/// verifies it at report: a reclaimed holder (token below the agent's live
 /// fencing sequence) is fenced UZ-RUN-005. No runner_id: the token owns the identity.
 pub const ReportRequest = struct {
     lease_id: []const u8,
@@ -260,7 +260,7 @@ pub const ReportRequest = struct {
     /// coarse `outcome` above stays the binary processed/agent_error verdict.
     failure_reason: ?FailureClass = null,
     response_text: []const u8,
-    /// Billing token count → `zombie_execution_telemetry.token_count`.
+    /// Billing token count → `agent_execution_telemetry.token_count`.
     tokens: u64,
     /// The runner's **cumulative** token counts for the whole run (NOT deltas) —
     /// the same three fields `RenewRequest` carries, so the report-settle can
@@ -288,13 +288,13 @@ pub const ReportResponse = struct {
 /// dropped whole. Single-sourced (RULE UFS) — both build graphs key off it.
 pub const MAX_MEMORY_PUSH_BYTES: usize = 256 * 1024; // 256 KiB
 
-/// Hard ceiling on the durable memory entries one zombie may accumulate across all
+/// Hard ceiling on the durable memory entries one agent may accumulate across all
 /// its runs. The per-push cap bounds a single push; this bounds the unbounded
-/// growth a long-lived (or adversarial) zombie would otherwise build up — `enforceCap`
+/// growth a long-lived (or adversarial) agent would otherwise build up — `enforceCap`
 /// evicts beyond it server-side, tier-ordered: coldest non-core rows first, `core`
 /// rows only when no non-core row remains. A backstop, not the primary bound
 /// (stable-key overwrite + `memory_forget` are the agent's own).
-pub const MAX_MEMORY_ENTRIES_PER_ZOMBIE: usize = 1000;
+pub const MAX_MEMORY_ENTRIES_PER_AGENT: usize = 1000;
 
 /// Byte budget for one hydration window. The `GET` Compactor is category-pinned:
 /// every `core` entry that fits hydrates first (newest-first), then the newest
@@ -304,8 +304,8 @@ pub const MAX_MEMORY_ENTRIES_PER_ZOMBIE: usize = 1000;
 pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
 
 /// One durable agent-memory item on the wire — the unit of both capture (POST
-/// body) and hydrate (GET response). Carries no scope: the zombie is the
-/// `{zombie_id}` path segment, server-validated against the runner's live lease.
+/// body) and hydrate (GET response). Carries no scope: the agent is the
+/// `{agent_id}` path segment, server-validated against the runner's live lease.
 /// One shape for a memory item, shared agentsfleetd <-> runner (RULE UFS).
 pub const MemoryDelta = struct {
     key: []const u8,
@@ -313,34 +313,34 @@ pub const MemoryDelta = struct {
     category: []const u8,
 };
 
-/// POST /v1/runners/me/memory/{zombie_id} (Bearer runner_token) — capture the
-/// run's memory for the path's zombie. `lease_id` + `fencing_token` ride the body
+/// POST /v1/runners/me/memory/{agent_id} (Bearer runner_token) — capture the
+/// run's memory for the path's agent. `lease_id` + `fencing_token` ride the body
 /// exactly like `ReportRequest`: the control plane loads that lease, verifies the
-/// runner owns it, cross-checks `lease.zombie_id == {zombie_id}`, and fences the
-/// write — a reclaimed holder (token below the zombie's live fencing seq) is
-/// rejected UZ-RUN-005. The scope (`zombie_id`) is server-derived; each delta is
-/// upserted (`ON CONFLICT (key, zombie_id) DO UPDATE`), so a retried push is idempotent.
+/// runner owns it, cross-checks `lease.agent_id == {agent_id}`, and fences the
+/// write — a reclaimed holder (token below the agent's live fencing seq) is
+/// rejected UZ-RUN-005. The scope (`agent_id`) is server-derived; each delta is
+/// upserted (`ON CONFLICT (key, agent_id) DO UPDATE`), so a retried push is idempotent.
 pub const MemoryPushRequest = struct {
     lease_id: []const u8,
     fencing_token: u64,
     memory: []const MemoryDelta,
 };
 
-/// GET /v1/runners/me/memory/{zombie_id} reply — a compacted hydration window of
-/// the path zombie's durable memory (category-pinned under `HYDRATE_WINDOW_BYTES`:
+/// GET /v1/runners/me/memory/{agent_id} reply — a compacted hydration window of
+/// the path agent's durable memory (category-pinned under `HYDRATE_WINDOW_BYTES`:
 /// `core` entries first, then newest non-core; the dropped entries stay in
 /// Postgres), which the runner parent seeds into the child's in-run store at run
-/// start. The runner names the zombie it holds in its `LeasePayload`; the server
-/// returns memory only for a zombie the runner holds a live lease for.
+/// start. The runner names the agent it holds in its `LeasePayload`; the server
+/// returns memory only for a agent the runner holds a live lease for.
 pub const MemoryHydrateResponse = struct {
     memory: []const MemoryDelta,
 };
 
 /// What the runner parent pipes down the child's stdin: the lease to execute,
-/// plus the zombie's prior memory the parent already hydrated over the trusted
-/// plane (`GET /v1/runners/me/memory/{zombie_id}`). The child seeds its
+/// plus the agent's prior memory the parent already hydrated over the trusted
+/// plane (`GET /v1/runners/me/memory/{agent_id}`). The child seeds its
 /// non-durable in-run store from `hydrated_memory` and never makes a network
-/// call of its own — hydration rides the parent (which holds the `zrn_` token),
+/// call of its own — hydration rides the parent (which holds the `agt_r` token),
 /// so no credential, URL, or DSN reaches the sandboxed agent. The wrapper keeps
 /// the lease shape unchanged while letting capture/hydrate flow parent-only.
 pub const RunnerChildInput = struct {

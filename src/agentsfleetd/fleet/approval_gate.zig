@@ -11,17 +11,17 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
-const zombie_config = @import("../zombie/config.zig");
-const approval_gate = @import("../zombie/approval_gate.zig");
-const approval_gate_async = @import("../zombie/approval_gate_async.zig");
-const resolver = @import("../zombie/approval_gate_resolver.zig");
+const agent_config = @import("../agent/config.zig");
+const approval_gate = @import("../agent/approval_gate.zig");
+const approval_gate_async = @import("../agent/approval_gate_async.zig");
+const resolver = @import("../agent/approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const ZombieSession = @import("zombie_session.zig");
+const AgentSession = @import("agent_session.zig");
 const logging = @import("log");
 
-const log = logging.scoped(.zombie_event_loop_gate);
+const log = logging.scoped(.agent_event_loop_gate);
 
 const BlockReason = enum { approval_denied, timeout, unavailable };
 const AutoKillTrigger = enum { anomaly, policy };
@@ -40,8 +40,8 @@ const GateCheckResult = union(enum) {
 /// decision is outstanding; .blocked or .auto_killed otherwise.
 pub fn checkApprovalGate(
     alloc: Allocator,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
+    session: *AgentSession,
+    event: *const redis_agent.AgentEvent,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
 ) GateCheckResult {
@@ -50,14 +50,14 @@ pub fn checkApprovalGate(
     // 1. Anomaly check (fast path — before approval)
     const anomaly = approval_gate.checkAnomaly(
         redis,
-        session.zombie_id,
+        session.agent_id,
         event.event_type,
         event.actor,
         gates.anomaly_rules,
     );
     if (anomaly == .auto_kill) {
         logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_AUTO_KILL, event.event_id);
-        pauseZombie(pool, session.zombie_id);
+        pauseAgent(pool, session.agent_id);
         return .{ .auto_killed = .anomaly };
     }
 
@@ -78,7 +78,7 @@ pub fn checkApprovalGate(
         },
         .auto_kill => {
             logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_AUTO_KILL, event.event_id);
-            pauseZombie(pool, session.zombie_id);
+            pauseAgent(pool, session.agent_id);
             return .{ .auto_killed = .policy };
         },
         .requires_approval => {
@@ -89,18 +89,18 @@ pub fn checkApprovalGate(
 
 fn handleApprovalFlow(
     alloc: Allocator,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
+    session: *AgentSession,
+    event: *const redis_agent.AgentEvent,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
-    gates: zombie_config.GatePolicy,
+    gates: agent_config.GatePolicy,
 ) GateCheckResult {
     // Re-encounter: this event already has a recorded gate — evaluate it.
-    if (approval_gate_async.lookupEventGateRef(redis, session.zombie_id, event.event_id)) |maybe_ref| {
+    if (approval_gate_async.lookupEventGateRef(redis, session.agent_id, event.event_id)) |maybe_ref| {
         if (maybe_ref) |ref| return evaluatePendingGate(alloc, session, pool, redis, &ref);
     } else |err| {
         // Redis blip: stay pending rather than re-notify or fail the gate.
-        log.warn("gate_ref_lookup_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.warn("gate_ref_lookup_fail", .{ .agent_id = session.agent_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .pending = {} };
     }
     return requestNewGate(alloc, session, event, pool, redis, gates);
@@ -108,11 +108,11 @@ fn handleApprovalFlow(
 
 fn requestNewGate(
     alloc: Allocator,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
+    session: *AgentSession,
+    event: *const redis_agent.AgentEvent,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
-    gates: zombie_config.GatePolicy,
+    gates: agent_config.GatePolicy,
 ) GateCheckResult {
     const detail = approval_gate.ActionDetail{
         .tool = event.event_type,
@@ -128,7 +128,7 @@ fn requestNewGate(
     const action_id = approval_gate.requestApproval(
         alloc,
         redis,
-        session.zombie_id,
+        session.agent_id,
         detail,
     ) catch {
         // Redis unavailable — default-deny.
@@ -151,39 +151,39 @@ fn requestNewGate(
     defer alloc.free(slack_msg);
 
     // Store the notification payload in Redis for the provider to pick up
-    storeNotificationPayload(redis, session.zombie_id, action_id, slack_msg);
+    storeNotificationPayload(redis, session.agent_id, action_id, slack_msg);
 
     approval_gate.recordGatePending(
         pool,
         alloc,
-        session.zombie_id,
+        session.agent_id,
         session.workspace_id,
         action_id,
         detail,
     );
 
     const deadline_ms = clock.nowMillis() + @as(i64, @intCast(gates.timeout_ms));
-    approval_gate_async.recordEventGateRef(redis, session.zombie_id, event.event_id, action_id, deadline_ms) catch |err| {
+    approval_gate_async.recordEventGateRef(redis, session.agent_id, event.event_id, action_id, deadline_ms) catch |err| {
         // Without the ref the lease path could never resolve this gate —
         // fail toward unavailable like the requestApproval failure above.
-        log.warn("gate_ref_record_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.warn("gate_ref_record_fail", .{ .agent_id = session.agent_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .blocked = .unavailable };
     };
 
-    log.info("gate_pending", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .action_id = action_id });
+    log.info("gate_pending", .{ .agent_id = session.agent_id, .event_id = event.event_id, .action_id = action_id });
     return .{ .pending = {} };
 }
 
 fn evaluatePendingGate(
     alloc: Allocator,
-    session: *ZombieSession,
+    session: *AgentSession,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
     ref: *const approval_gate_async.EventGateRef,
 ) GateCheckResult {
     const eval = approval_gate_async.evaluateRef(redis, ref, clock.nowMillis()) catch |err| {
         // Redis blip: a transient read failure must not deny an approved gate.
-        log.warn("gate_decision_read_fail", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
+        log.warn("gate_decision_read_fail", .{ .agent_id = session.agent_id, .err = @errorName(err) });
         return .{ .pending = {} };
     };
     switch (eval) {
@@ -200,7 +200,7 @@ fn evaluatePendingGate(
             // Attribution must be the canonical "system:timeout" string the
             // sweeper also writes (resolve() dedups whichever lands first).
             approval_gate.resolveGateDecision(pool, ref.actionId(), .timed_out, resolver.SYSTEM_TIMEOUT, "");
-            cleanupPendingKey(redis, session.zombie_id, ref.actionId());
+            cleanupPendingKey(redis, session.agent_id, ref.actionId());
             return .{ .blocked = .timeout };
         },
         .pending => return .{ .pending = {} },
@@ -208,35 +208,35 @@ fn evaluatePendingGate(
 }
 
 /// Best-effort gate-event log. Gate transitions currently emit structured
-/// logs; durable terminal state lands in core.zombie_events via the worker's
+/// logs; durable terminal state lands in core.agent_events via the worker's
 /// terminal UPDATE.
-fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event_type: []const u8, detail: []const u8) void {
+fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *AgentSession, event_type: []const u8, detail: []const u8) void {
     _ = pool;
     _ = alloc;
-    log.info("gate_event", .{ .zombie_id = session.zombie_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
+    log.info("gate_event", .{ .agent_id = session.agent_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
-fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
+fn pauseAgent(pool: *pg.Pool, agent_id: []const u8) void {
     const conn = pool.acquire() catch return;
     defer pool.release(conn);
     _ = conn.exec(
-        \\UPDATE core.zombies SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
-    , .{ clock.nowMillis(), zombie_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+        \\UPDATE core.agents SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
+    , .{ clock.nowMillis(), agent_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 }
 
-fn cleanupPendingKey(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8) void {
+fn cleanupPendingKey(redis: *queue_redis.Client, agent_id: []const u8, action_id: []const u8) void {
     var key_buf: [256]u8 = undefined;
     const key = std.fmt.bufPrint(&key_buf, "{s}{s}:{s}", .{
-        error_codes.GATE_PENDING_KEY_PREFIX, zombie_id, action_id,
+        error_codes.GATE_PENDING_KEY_PREFIX, agent_id, action_id,
     }) catch return;
     var resp = redis.commandAllowError(&.{ "DEL", key }) catch return;
     resp.deinit(redis.alloc);
 }
 
-fn storeNotificationPayload(redis: *queue_redis.Client, zombie_id: []const u8, action_id: []const u8, payload: []const u8) void {
+fn storeNotificationPayload(redis: *queue_redis.Client, agent_id: []const u8, action_id: []const u8, payload: []const u8) void {
     var key_buf: [256]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "zombie:gate:notify:{s}:{s}", .{
-        zombie_id, action_id,
+    const key = std.fmt.bufPrint(&key_buf, "agent:gate:notify:{s}:{s}", .{
+        agent_id, action_id,
     }) catch return;
     redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {
         log.warn("notify_store_fail", .{ .err = @errorName(err) });

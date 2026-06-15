@@ -4,7 +4,7 @@ import { cn } from "../utils";
 /*
  * Pagination — two shapes under one component:
  *   • cursor: opaque next-cursor string (activity feed, telemetry).
- *   • page:   numeric pages (zombies list).
+ *   • page:   numeric pages (agents list).
  * Both land on the same UI so pages render identically regardless of the
  * backend contract. RSC-safe — event handlers are passed as props and
  * forwarded to the (RSC-safe) shared Button.

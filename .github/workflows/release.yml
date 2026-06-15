@@ -266,12 +266,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
-  # ── 3. CLI: publish @usezombie/zombiectl to npm ─────────────────────────
+  # ── 3. CLI: publish @agentsfleet/cli to npm ─────────────────────────
   # Tag lifecycle:
   #   - Release publishes to `next` dist-tag (--tag next)
   #   - After acceptance testing, promote manually:
-  #     npm dist-tag add @usezombie/zombiectl@<ver> latest
-  #   - Users installing without a tag pin (`npm install -g @usezombie/zombiectl`)
+  #     npm dist-tag add @agentsfleet/cli@<ver> latest
+  #   - Users installing without a tag pin (`npm install -g @agentsfleet/cli`)
   #     resolve `latest`, not `next`
   npm:
     runs-on: ubuntu-latest
@@ -281,7 +281,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        working-directory: agentsfleet
+        working-directory: cli
     steps:
       - uses: actions/checkout@v6
 
@@ -310,8 +310,8 @@ jobs:
       - name: Publish to npm (skip if version already exists)
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          if npm view "@usezombie/zombiectl@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
-            echo "✓ @usezombie/zombiectl@${VERSION} already published — skipping"
+          if npm view "@agentsfleet/cli@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
+            echo "✓ @agentsfleet/cli@${VERSION} already published — skipping"
           else
             npm publish --provenance --access public --tag next
           fi
@@ -353,8 +353,8 @@ jobs:
       - name: Verify DEV readiness gate
         run: |
           echo "Checking DEV API health before PROD rollout..."
-          curl -sf https://api-dev.usezombie.com/healthz >/dev/null
-          curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true' >/dev/null
+          curl -sf https://api-dev.agentsfleet.net/healthz >/dev/null
+          curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true' >/dev/null
           echo "✓ DEV readiness gate passed"
 
   # ── 6. Deploy: prod API ───────────────────────────────────────────────
@@ -412,7 +412,7 @@ jobs:
             OIDC_JWKS_URL="$OIDC_JWKS_URL" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
-            OIDC_AUDIENCE="https://api.usezombie.com" \
+            OIDC_AUDIENCE="https://api.agentsfleet.net" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
@@ -426,7 +426,7 @@ jobs:
           flyctl deploy \
             --app ${{ vars.FLY_APP_PROD }} \
             --image ghcr.io/agentsfleet/agentsfleetd:latest \
-            --config deploy/fly/zombied-prod/fly.toml \
+            --config deploy/fly/agentsfleetd-prod/fly.toml \
             --wait-timeout 120
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
@@ -482,7 +482,7 @@ jobs:
           STATUS=000
           for i in $(seq 1 24); do
             STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-              https://api.usezombie.com/healthz || echo "000")
+              https://api.agentsfleet.net/healthz || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "✓ /healthz green after $((i * 10))s"
               break
@@ -494,7 +494,7 @@ jobs:
             echo "✗ /healthz did not return 200 after 240s"
             exit 1
           fi
-          curl -sf https://api.usezombie.com/readyz | jq -e '.ready == true'
+          curl -sf https://api.agentsfleet.net/readyz | jq -e '.ready == true'
 
   # ── 7. Deploy: canary worker (first host) ───────────────────────────────
   # Skips until production worker bootstrap is complete (M4_002).
@@ -555,7 +555,7 @@ jobs:
 
           echo "Deploying canary: $NAME ($HOST) ..."
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$WORKER_DEPLOY_USER@$HOST" \
-            "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"
+            "cd /opt/agentsfleet/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"
           rm -f "$KEY_FILE"
           echo "✓ Canary $NAME deployed"
 
@@ -609,7 +609,7 @@ jobs:
             chmod 600 "$KEY_FILE"
 
             if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$DEPLOY_USER@$HOST" \
-              "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"; then
+              "cd /opt/agentsfleet/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"; then
               echo "✓ $NAME deployed"
               SUMMARY="${SUMMARY}✅ ${NAME}\\n"
             else

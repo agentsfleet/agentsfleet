@@ -25,10 +25,12 @@ const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
 
 pub const Mode = enum {
+    const Self = @This();
+
     platform,
     self_managed,
 
-    pub fn label(self: Mode) []const u8 {
+    pub fn label(self: Self) []const u8 {
         return switch (self) {
             .platform => "platform",
             .self_managed => "self_managed",
@@ -49,6 +51,8 @@ pub const PLATFORM_DEFAULT_CAP_TOKENS: u32 = 256_000;
 /// telemetry, or doctor JSON. Callers must `deinit` to zero the api_key
 /// bytes before free.
 pub const ResolvedProvider = struct {
+    const Self = @This();
+
     mode: Mode,
     provider: []u8,
     /// Sensitive — bytes are zeroed by deinit before free.
@@ -56,7 +60,7 @@ pub const ResolvedProvider = struct {
     model: []u8,
     context_cap_tokens: u32,
 
-    pub fn deinit(self: *ResolvedProvider, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         std.crypto.secureZero(u8, self.api_key);
         alloc.free(self.api_key);
         alloc.free(self.provider);

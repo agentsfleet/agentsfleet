@@ -1,7 +1,18 @@
-//! Shared helpers for zmb_ agent-key authentication.
+//! Shared helpers for agent-key authentication.
 //! Used by integration_grants/handler.zig and api_keys/agent.zig.
 
 const std = @import("std");
+
+/// Agent-key raw token prefix — single source (RULE UFS). An agent key is
+/// minted as `KEY_PREFIX ++ {64 lower-hex}` (api_keys/agent.zig) and recognised
+/// by the same prefix on the inbound path (integration_grants/handler.zig).
+/// Flip the wire prefix HERE only; both call sites reference this const, and the
+/// pin test below guards the literal value.
+pub const KEY_PREFIX = "agt_a";
+
+test "KEY_PREFIX is the documented agt_a literal (single-source pin)" {
+    try std.testing.expectEqualStrings("agt_a", KEY_PREFIX);
+}
 
 /// SHA-256 of input, returned as lower-hex [64]u8. Stack-allocated, no alloc.
 pub fn sha256Hex(input: []const u8) [64]u8 {
@@ -42,8 +53,8 @@ test "sha256Hex: empty string produces known hash" {
 }
 
 test "sha256Hex: different inputs produce different hashes" {
-    const h1 = sha256Hex("zmb_aaaa");
-    const h2 = sha256Hex("zmb_bbbb");
+    const h1 = sha256Hex("agt_aaaaa");
+    const h2 = sha256Hex("agt_abbbb");
     // Compare as slices — [64]u8 arrays are always equal length so check content.
     try std.testing.expect(!std.mem.eql(u8, h1[0..], h2[0..]));
 }

@@ -39,9 +39,9 @@ Three structural pillars carry v2:
 - **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's NullClaw child uses it for the inference call only. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
 
-**Self-host is deferred to v3.** v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
+**Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
 
-The `/usezombie-install-platform-ops` skill ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
+The `/agentsfleet-install-platform-ops` skill ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
 
 ### The first problem we solve
 
@@ -163,8 +163,8 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the agent's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
+- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the agent's webhook ingest URL (today `POST /v1/webhooks/{agent_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **Steer.** A direct operator instruction via `agentsfleet steer <zombie_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
+- **Steer.** A direct operator instruction via `agentsfleet steer <agent_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The agent does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.

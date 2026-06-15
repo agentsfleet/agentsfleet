@@ -23,15 +23,15 @@ pub fn setTestEncryptionKey() void {
 pub const Fixture = struct {
     tenant_id: []const u8,
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
 };
 
-/// Insert tenant + workspace + zombie with the given trigger config JSON.
+/// Insert tenant + workspace + agent with the given trigger config JSON.
 /// Caller must call `cleanup()` at end of test before `harness.deinit()`.
 ///
 /// `config_json` is the ENTIRE config — e.g.:
-///   {"name":"x","x-usezombie":{"triggers":[{"type":"webhook","source":"github"}]}}
-pub fn insertZombie(
+///   {"name":"x","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}]}}
+pub fn insertAgent(
     conn: *pg.Conn,
     fx: Fixture,
     config_json: []const u8,
@@ -50,10 +50,10 @@ pub fn insertZombie(
         \\VALUES ($1, $2, $3)
     , .{ fx.workspace_id, fx.tenant_id, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies
+        \\INSERT INTO core.agents
         \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-zombie', '# test', '# test', $3::jsonb, 'active', $4, $4)
-    , .{ fx.zombie_id, fx.workspace_id, config_json, now_ms });
+        \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-agent', '# test', '# test', $3::jsonb, 'active', $4, $4)
+    , .{ fx.agent_id, fx.workspace_id, config_json, now_ms });
 }
 
 /// Insert a vault secret that `crypto_store.load(workspace_id, key_name)` can retrieve.
@@ -68,7 +68,7 @@ pub fn insertVaultSecret(
     try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
 }
 
-/// Insert a workspace credential at `zombie:<credential_name>` containing
+/// Insert a workspace credential at `agent:<credential_name>` containing
 /// `{"webhook_secret": "<plaintext>"}`. Used by webhook integration tests
 /// where the resolver reads the credential via `vault.loadJson`.
 pub fn insertWebhookCredential(
@@ -88,14 +88,14 @@ pub fn insertWebhookCredential(
         .{},
     );
     defer alloc.free(json);
-    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{credential_name});
+    const key_name = try std.fmt.allocPrint(alloc, "agent:{s}", .{credential_name});
     defer alloc.free(key_name);
     try crypto_store.store(alloc, conn, workspace_id, key_name, json);
 }
 
 /// Delete all rows this test created. Idempotent.
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
-    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.agents WHERE id = $1::uuid", .{fx.agent_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
@@ -121,35 +121,35 @@ pub fn buildTriggerConfig(
         type: []const u8 = S_WEBHOOK,
         source: []const u8,
     };
-    const WrapWith = struct { @"x-usezombie": struct { triggers: [1]TriggerWith } };
-    const WrapNoOverride = struct { @"x-usezombie": struct { triggers: [1]TriggerNoOverride } };
+    const WrapWith = struct { @"x-agentsfleet": struct { triggers: [1]TriggerWith } };
+    const WrapNoOverride = struct { @"x-agentsfleet": struct { triggers: [1]TriggerNoOverride } };
     if (credential_name) |name| {
         return std.json.Stringify.valueAlloc(
             alloc,
-            WrapWith{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source, .credential_name = name }} } },
+            WrapWith{ .@"x-agentsfleet" = .{ .triggers = .{.{ .source = source, .credential_name = name }} } },
             .{},
         );
     }
     return std.json.Stringify.valueAlloc(
         alloc,
-        WrapNoOverride{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source }} } },
+        WrapNoOverride{ .@"x-agentsfleet" = .{ .triggers = .{.{ .source = source }} } },
         .{},
     );
 }
 
 /// Valid UUIDv7-shaped strings for fixture IDs. 15th char must be '7' per
 /// schema CHECK constraint. These are test-only; collisions within a single
-/// test are handled by `cleanup()` running at start of insertZombie.
+/// test are handled by `cleanup()` running at start of insertAgent.
 pub const ID_TENANT_A = "0197a4ba-8d3a-7f13-8abc-11111111aa01";
 pub const ID_WS_A = "0197a4ba-8d3a-7f13-8abc-11111111aa11";
-pub const ID_ZOMBIE_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
+pub const ID_AGENTSFLEET_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
 const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
 
 test "buildTriggerConfig with credential_name override produces valid JSON" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", "github-prod");
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}]}}";
+    const want = "{\"x-agentsfleet\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
@@ -157,13 +157,13 @@ test "buildTriggerConfig without override produces source-only config" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", null);
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\"}]}}";
+    const want = "{\"x-agentsfleet\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
 test "fixture IDs match UUIDv7 constraint (15th char is 7)" {
     try std.testing.expectEqual(@as(u8, '7'), ID_TENANT_A[14]);
     try std.testing.expectEqual(@as(u8, '7'), ID_WS_A[14]);
-    try std.testing.expectEqual(@as(u8, '7'), ID_ZOMBIE_A[14]);
+    try std.testing.expectEqual(@as(u8, '7'), ID_AGENTSFLEET_A[14]);
     try std.testing.expectEqual(@as(u8, '7'), ID_TENANT_B[14]);
 }

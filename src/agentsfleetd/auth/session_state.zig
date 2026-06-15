@@ -15,6 +15,8 @@ const std = @import("std");
 /// transitions. Terminal states (`consumed` / `expired` / `aborted`)
 /// reject every subsequent state-mutating call.
 pub const SessionStatus = enum {
+    const Self = @This();
+
     pending,
     verification_pending,
     consumed,
@@ -29,7 +31,7 @@ pub const SessionStatus = enum {
         return null;
     }
 
-    pub fn isTerminal(self: SessionStatus) bool {
+    pub fn isTerminal(self: Self) bool {
         return switch (self) {
             .consumed, .expired, .aborted => true,
             .pending, .verification_pending => false,

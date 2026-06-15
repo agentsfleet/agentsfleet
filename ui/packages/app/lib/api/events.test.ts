@@ -9,7 +9,7 @@ const mockResponse = {
   items: [
     {
       event_id: "1700000000000-0",
-      zombie_id: "z_1",
+      agent_id: "z_1",
       workspace_id: "ws_1",
       actor: "steer:kishore",
       event_type: "chat",
@@ -28,13 +28,13 @@ const mockResponse = {
   next_cursor: null,
 };
 
-describe("listZombieEvents", () => {
-  it("hits the per-zombie events endpoint without a cursor by default", async () => {
+describe("listAgentEvents", () => {
+  it("hits the per-agent events endpoint without a cursor by default", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
-    const { listZombieEvents } = await import("./events");
-    const page = await listZombieEvents("ws_1", "z_1", "tok");
+    const { listAgentEvents } = await import("./events");
+    const page = await listAgentEvents("ws_1", "z_1", "tok");
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/zombies/z_1/events"),
+      expect.stringContaining("/v1/workspaces/ws_1/agents/z_1/events"),
       expect.anything(),
     );
     const url = fetchMock.mock.calls[0]![0] as string;
@@ -44,8 +44,8 @@ describe("listZombieEvents", () => {
 
   it("forwards actor / since / cursor / limit", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listZombieEvents } = await import("./events");
-    await listZombieEvents("ws_1", "z_1", "tok", {
+    const { listAgentEvents } = await import("./events");
+    await listAgentEvents("ws_1", "z_1", "tok", {
       cursor: "abc",
       actor: "webhook:*",
       since: "2h",
@@ -62,8 +62,8 @@ describe("listZombieEvents", () => {
   it("omits since from the query string when opts provides other params but not since", async () => {
     // Exercises the false branch of `if (opts.since)` in buildQuery.
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listZombieEvents } = await import("./events");
-    await listZombieEvents("ws_1", "z_1", "tok", { actor: "cron", limit: 10 });
+    const { listAgentEvents } = await import("./events");
+    await listAgentEvents("ws_1", "z_1", "tok", { actor: "cron", limit: 10 });
     const url = fetchMock.mock.calls[0]![0] as string;
     expect(url).toContain("actor=cron");
     expect(url).not.toContain("since=");
@@ -72,12 +72,12 @@ describe("listZombieEvents", () => {
   it("produces a clean URL (no trailing ?) when opts is an empty object", async () => {
     // Exercises the false branch of `qs.length > 0 ? ... : ""` in buildQuery.
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
-    const { listZombieEvents } = await import("./events");
-    await listZombieEvents("ws_1", "z_1", "tok", {});
+    const { listAgentEvents } = await import("./events");
+    await listAgentEvents("ws_1", "z_1", "tok", {});
     const url = fetchMock.mock.calls[0]![0] as string;
     // With an empty opts object, buildQuery produces "" so the URL must not end in "?".
     expect(url).not.toContain("?");
-    expect(url).toContain("/v1/workspaces/ws_1/zombies/z_1/events");
+    expect(url).toContain("/v1/workspaces/ws_1/agents/z_1/events");
   });
 });
 
@@ -92,12 +92,12 @@ describe("listWorkspaceEvents", () => {
     );
   });
 
-  it("forwards a zombie_id drill-down filter", async () => {
+  it("forwards a agent_id drill-down filter", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
     const { listWorkspaceEvents } = await import("./events");
-    await listWorkspaceEvents("ws_1", "tok", { zombie_id: "z_2" });
+    await listWorkspaceEvents("ws_1", "tok", { agent_id: "z_2" });
     const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("zombie_id=z_2");
+    expect(url).toContain("agent_id=z_2");
   });
 
   it("includes since param when provided alongside other opts", async () => {
@@ -110,18 +110,18 @@ describe("listWorkspaceEvents", () => {
   });
 });
 
-describe("streamZombieEventsUrl", () => {
+describe("streamAgentEventsUrl", () => {
   it("returns a same-origin path the Next Route Handler intercepts", async () => {
-    const { streamZombieEventsUrl } = await import("./events");
-    expect(streamZombieEventsUrl("ws_1", "z_1")).toBe(
-      "/backend/v1/workspaces/ws_1/zombies/z_1/events/stream",
+    const { streamAgentEventsUrl } = await import("./events");
+    expect(streamAgentEventsUrl("ws_1", "z_1")).toBe(
+      "/backend/v1/workspaces/ws_1/agents/z_1/events/stream",
     );
   });
 
   it("encodes path segments so a slashy id can not escape the URL", async () => {
-    const { streamZombieEventsUrl } = await import("./events");
-    expect(streamZombieEventsUrl("ws/1", "z 2")).toBe(
-      "/backend/v1/workspaces/ws%2F1/zombies/z%202/events/stream",
+    const { streamAgentEventsUrl } = await import("./events");
+    expect(streamAgentEventsUrl("ws/1", "z 2")).toBe(
+      "/backend/v1/workspaces/ws%2F1/agents/z%202/events/stream",
     );
   });
 });

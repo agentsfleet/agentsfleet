@@ -18,7 +18,7 @@ pub fn testLease(policy: ExecutionPolicy) LeasePayload {
         .secret_delivery = .@"inline",
         .event = .{
             .event_id = "1700000000000-0",
-            .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+            .agent_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
             .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
             .actor = "steer:test",
             .event_type = .chat,

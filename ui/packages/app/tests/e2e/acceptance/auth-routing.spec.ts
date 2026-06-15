@@ -13,7 +13,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 
 const ROUTING_TIMEOUT_MS = 15_000;
 const PUBLIC_AUTH_ROUTES = ["/sign-in", "/sign-up"] as const;
-const PROTECTED_ROUTES = ["/", "/zombies", "/events", "/settings/billing"] as const;
+const PROTECTED_ROUTES = ["/", "/agents", "/events", "/settings/billing"] as const;
 
 test.describe("auth routing", () => {
   test("signed-in user can visit auth pages without losing dashboard access", async ({ page }) => {

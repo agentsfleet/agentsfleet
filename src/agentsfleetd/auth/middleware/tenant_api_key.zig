@@ -1,6 +1,6 @@
 //! `tenant_api_key` middleware (M28_002 §2).
 //!
-//! Resolves `Authorization: Bearer zmb_t_{hex}` tokens via a host-supplied
+//! Resolves `Authorization: Bearer agt_t{hex}` tokens via a host-supplied
 //! `LookupFn` callback. On match (and row.active = true), populates
 //! `ctx.principal` with `.mode=.api_key`, `.role=.admin`, `.user_id`, and
 //! `.tenant_id`. Rejects unknown keys with 401 ERR_UNAUTHORIZED; rejects
@@ -28,7 +28,7 @@ const logging = @import("log");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
-pub const TENANT_KEY_PREFIX = "zmb_t_";
+pub const TENANT_KEY_PREFIX = "agt_t";
 
 const auth_codes = @import("auth_codes");
 const ERR_APIKEY_REVOKED = auth_codes.ERR_APIKEY_REVOKED;
@@ -58,10 +58,12 @@ pub const LookupFn = *const fn (
 ) anyerror!?LookupResult;
 
 pub const TenantApiKey = struct {
+    const Self = @This();
+
     host: *anyopaque,
     lookup: LookupFn,
 
-    pub fn middleware(self: *TenantApiKey) chain.Middleware(AuthCtx) {
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -70,7 +72,7 @@ pub const TenantApiKey = struct {
         return execute(self, ctx, req);
     }
 
-    pub fn execute(self: *TenantApiKey, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
+    pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
@@ -190,11 +192,11 @@ test "tenant_api_key rejects missing Authorization header with UZ-AUTH-002" {
     try testing.expect(ctx.principal == null);
 }
 
-test "tenant_api_key rejects Bearer token without zmb_t_ prefix without calling lookup" {
+test "tenant_api_key rejects Bearer token without agt_t prefix without calling lookup" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_notatenantkey");
+    ht.header("authorization", "Bearer agt_anotatenantkey");
 
     var mock = MockLookup{};
     var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
@@ -211,7 +213,7 @@ test "tenant_api_key rejects unknown key with UZ-AUTH-002 and emits rejected log
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_t_" ++ "0" ** 64);
+    ht.header("authorization", "Bearer agt_t" ++ "0" ** 64);
 
     var mock = MockLookup{ .return_row = null };
     var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
@@ -228,7 +230,7 @@ test "tenant_api_key rejects revoked key with UZ-APIKEY-004 and frees row slices
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_t_" ++ "a" ** 64);
+    ht.header("authorization", "Bearer agt_t" ++ "a" ** 64);
 
     var mock = MockLookup{
         .return_row = .{
@@ -251,7 +253,7 @@ test "tenant_api_key populates principal on active key match" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_t_" ++ "b" ** 64);
+    ht.header("authorization", "Bearer agt_t" ++ "b" ** 64);
 
     var mock = MockLookup{
         .return_row = .{
@@ -282,7 +284,7 @@ test "tenant_api_key surfaces LookupFn error as UZ-AUTH-004" {
     test_fixtures.reset();
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    ht.header("authorization", "Bearer zmb_t_" ++ "c" ** 64);
+    ht.header("authorization", "Bearer agt_t" ++ "c" ** 64);
 
     var mock = MockLookup{ .return_err = error.Unexpected };
     var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
@@ -294,6 +296,6 @@ test "tenant_api_key surfaces LookupFn error as UZ-AUTH-004" {
     try testing.expect(ctx.principal == null);
 }
 
-test "TENANT_KEY_PREFIX is the documented zmb_t_ literal" {
-    try testing.expectEqualStrings("zmb_t_", TENANT_KEY_PREFIX);
+test "TENANT_KEY_PREFIX is the documented agt_t literal" {
+    try testing.expectEqualStrings("agt_t", TENANT_KEY_PREFIX);
 }

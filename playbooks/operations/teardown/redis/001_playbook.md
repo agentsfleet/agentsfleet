@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Permanently flush all keys from the Upstash Redis cache (DEV and/or PROD). This is a **destructive, irreversible operation** that removes every key, including the per-zombie event streams (`zombie:{zombie_id}:events`) and their `zombie_lease` consumer groups, via `FLUSHALL`.
+Permanently flush all keys from the Upstash Redis cache (DEV and/or PROD). This is a **destructive, irreversible operation** that removes every key, including the per-agent event streams (`agent:{agent_id}:events`) and their `agent_lease` consumer groups, via `FLUSHALL`.
 
 Sibling to the database teardown (`operations/teardown/database`, PlanetScale Postgres). Run both when fully resetting an environment.
 
@@ -86,7 +86,7 @@ ENV=prod ./03_verify.sh
 
 ## Post-Teardown
 
-No manual re-priming is required. `FLUSHALL` removes the per-zombie event streams and their `zombie_lease` consumer groups, but agentsfleetd recreates each one on demand when a zombie is created (`POST /v1/workspaces/{ws}/zombies` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first zombie created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
+No manual re-priming is required. `FLUSHALL` removes the per-agent event streams and their `agent_lease` consumer groups, but agentsfleetd recreates each one on demand when a agent is created (`POST /v1/workspaces/{ws}/agents` → `ensureEventStream`, idempotent `XGROUP CREATE … MKSTREAM`). An empty cache self-heals on the first agent created after the flush — see `playbooks/founding/03_priming_infra/001_playbook.md` §3.2.
 
 ## Troubleshooting
 

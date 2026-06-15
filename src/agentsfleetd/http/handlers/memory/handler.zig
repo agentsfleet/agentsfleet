@@ -1,6 +1,6 @@
 // External-agent memory API — workspace-scoped /memories collection (READ-ONLY).
 //
-//   GET    /v1/workspaces/{ws}/zombies/{zid}/memories          → innerListMemories
+//   GET    /v1/workspaces/{ws}/agents/{zid}/memories          → innerListMemories
 //                                                                query: query?, category?, limit?
 //
 // The write verbs (POST store / DELETE by-key) are retired: durable memory is
@@ -9,11 +9,11 @@
 // (collection POST) / 404 (by-key DELETE) with no compat shim.
 //
 // Auth: bearer (workspace-scoped). The path's workspace_id is the source of
-// truth — `resolveZombieInWorkspace` verifies the principal can access it and
-// the zombie belongs to it before the memory_runtime SET ROLE.
+// truth — `resolveAgentInWorkspace` verifies the principal can access it and
+// the agent belongs to it before the memory_runtime SET ROLE.
 //
 // RULE FLS: all conn.query() calls use PgQuery with defer deinit().
-// RULE NSQ: schema-qualified SQL (memory.memory_entries / core.zombies).
+// RULE NSQ: schema-qualified SQL (memory.memory_entries / core.agents).
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -41,7 +41,7 @@ pub fn innerListMemories(
     hx: Hx,
     req: *httpz.Request,
     workspace_id: []const u8,
-    zombie_id: []const u8,
+    agent_id: []const u8,
 ) void {
     const qs = req.query() catch {
         hx.fail(ec.ERR_INVALID_REQUEST, "malformed query string");
@@ -70,7 +70,7 @@ pub fn innerListMemories(
     };
     defer hx.ctx.pool.release(conn);
 
-    const zombie_scope = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
+    const agent_scope = h.resolveAgentInWorkspace(hx, conn, workspace_id, agent_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
         hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
@@ -93,11 +93,11 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE zombie_id = $1::uuid
+            \\WHERE agent_id = $1::uuid
             \\  AND (key ILIKE $2 ESCAPE '\' OR content ILIKE $2 ESCAPE '\')
             \\ORDER BY updated_at DESC, id DESC
             \\LIMIT $3
-        , .{ zombie_scope, like_pat, limit }) catch {
+        , .{ agent_scope, like_pat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory search failed");
             return;
         });
@@ -112,9 +112,9 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE zombie_id = $1::uuid AND category = $2
+            \\WHERE agent_id = $1::uuid AND category = $2
             \\ORDER BY updated_at DESC, id DESC LIMIT $3
-        , .{ zombie_scope, cat, limit }) catch {
+        , .{ agent_scope, cat, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
@@ -124,9 +124,9 @@ pub fn innerListMemories(
         var q = PgQuery.from(conn.query(
             \\SELECT key, content, category, updated_at
             \\FROM memory.memory_entries
-            \\WHERE zombie_id = $1::uuid
+            \\WHERE agent_id = $1::uuid
             \\ORDER BY updated_at DESC, id DESC LIMIT $2
-        , .{ zombie_scope, limit }) catch {
+        , .{ agent_scope, limit }) catch {
             hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });

@@ -4,7 +4,7 @@ import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { mockAuthOnce as mockAuth, resolveActiveWorkspace as resolveActiveWorkspaceMock } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, listZombiesMock, getTenantBillingMock } from "./helpers/dashboard-app-mocks";
+import { resetDashboardMocks, listAgentsMock, getTenantBillingMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -19,8 +19,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/zombies", async () => (await import("./helpers/dashboard-app-mocks")).zombiesApiMock());
-vi.mock("@/app/(dashboard)/zombies/actions", async () => (await import("./helpers/dashboard-app-mocks")).zombieActionsMock());
+vi.mock("@/lib/api/agents", async () => (await import("./helpers/dashboard-app-mocks")).agentsApiMock());
+vi.mock("@/app/(dashboard)/agents/actions", async () => (await import("./helpers/dashboard-app-mocks")).agentActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
@@ -66,7 +66,7 @@ describe("dashboard overview page", () => {
     expect(m).toContain("Dashboard");
   });
 
-  it("StatusTiles renders Live/Paused/Stopped tiles + balance from the zombie list", async () => {
+  it("StatusTiles renders Live/Paused/Stopped tiles + balance from the agent list", async () => {
     const { StatusTiles } = await import("../app/(dashboard)/page");
     // beforeEach seeds 1 active / 1 paused / 1 stopped; an exhausted balance
     // exercises the `is_exhausted ? "danger"` truthy arm + `active > 0` sublabel.
@@ -81,21 +81,21 @@ describe("dashboard overview page", () => {
     expect(m).toContain("Stopped");
     expect(m).toContain("$5.00"); // billing present → formatted-balance branch
 
-    // No active zombies → the sublabel ternary takes its undefined arm while
+    // No active agents → the sublabel ternary takes its undefined arm while
     // the grid still renders.
-    listZombiesMock.mockResolvedValue({
+    listAgentsMock.mockResolvedValue({
       items: [{ id: "z", name: "n", status: "stopped", created_at: "2026-04-22T00:00:00Z" }],
       total: 1,
       cursor: null,
     });
-    getTenantBillingMock.mockResolvedValue(null); // billing null + zombies present → Balance "—"
+    getTenantBillingMock.mockResolvedValue(null); // billing null + agents present → Balance "—"
     const m2 = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m2).toContain("Stopped");
     expect(m2).toContain("—"); // billing ? ... : "—" false arm
   });
 
-  it("StatusTiles shows the first-install free-credit card when there are no zombies", async () => {
-    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+  it("StatusTiles shows the first-install free-credit card when there are no agents", async () => {
+    listAgentsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 5 * NANOS_PER_USD,
       is_exhausted: false,
@@ -108,7 +108,7 @@ describe("dashboard overview page", () => {
   });
 
   it("StatusTiles first-install copy degrades to the terminal prompt when balance is unknown", async () => {
-    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    listAgentsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue(null); // balance null → credits-null branch
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));

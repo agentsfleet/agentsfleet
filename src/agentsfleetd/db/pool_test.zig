@@ -14,7 +14,7 @@ const TEST_RUN_MS: i64 = 1_000;
 
 test "parseUrl parses host, port, db, credentials" {
     const alloc = std.testing.allocator;
-    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/usezombiedb");
+    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/agentsfleetdb");
     defer alloc.free(opts.connect.host.?);
     defer alloc.free(opts.auth.username);
     const password = opts.auth.password.?;
@@ -26,7 +26,7 @@ test "parseUrl parses host, port, db, credentials" {
     try std.testing.expectEqual(@as(u16, 5433), opts.connect.port.?);
     try std.testing.expectEqualStrings("alice", opts.auth.username);
     try std.testing.expectEqualStrings("secret", password);
-    try std.testing.expectEqualStrings("usezombiedb", database);
+    try std.testing.expectEqualStrings("agentsfleetdb", database);
 }
 
 test "parseUrl sets tls=require on standard URL" {
@@ -43,13 +43,13 @@ test "parseUrl sets tls=require on standard URL" {
 
 test "parseUrl strips query string from dbname" {
     const alloc = std.testing.allocator;
-    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/zombiedb?sslmode=require");
+    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/agentsfleetdb?sslmode=require");
     defer alloc.free(opts.connect.host.?);
     defer alloc.free(opts.auth.username);
     defer alloc.free(opts.auth.password.?);
     defer alloc.free(opts.auth.database.?);
 
-    try std.testing.expectEqualStrings("zombiedb", opts.auth.database.?);
+    try std.testing.expectEqualStrings("agentsfleetdb", opts.auth.database.?);
     try std.testing.expect(opts.connect.tls == .require);
 }
 
@@ -606,7 +606,7 @@ test "integration: readonly roles cannot read vault.secrets" {
 
 // Grant-equivalence regression for the worker-substrate retirement: api_runtime
 // is the sole data-plane role, and the lease/report path INSERTs/UPDATEs these
-// tables through the api pool. INSERT+UPDATE on zombie_sessions and zombie_events
+// tables through the api pool. INSERT+UPDATE on agent_sessions and agent_events
 // formerly lived only on the removed worker role; the collapse must move them
 // onto api_runtime. has_table_privilege evaluates the named role directly, so
 // this proves the grant without a superuser bypass (the real statements are
@@ -619,16 +619,16 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     // The full lease/report write set: the per-event lifecycle tables
-    // (events/sessions/zombies), metering + approval writes, and the billing
-    // ledger the report path debits. zombie_sessions + zombie_events were the
+    // (events/sessions/agents), metering + approval writes, and the billing
+    // ledger the report path debits. agent_sessions + agent_events were the
     // two formerly granted to worker_runtime only — the rest api_runtime always
     // held; covering all of them keeps the guard faithful to the write path.
     const write_set = [_][]const u8{
-        "core.zombies",
-        "core.zombie_events",
-        "core.zombie_sessions",
-        "core.zombie_execution_telemetry",
-        "core.zombie_approval_gates",
+        "core.agents",
+        "core.agent_events",
+        "core.agent_sessions",
+        "core.agent_execution_telemetry",
+        "core.agent_approval_gates",
         "billing.tenant_billing",
     };
     inline for (write_set) |tbl| {

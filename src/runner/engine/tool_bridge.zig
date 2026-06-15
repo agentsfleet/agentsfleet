@@ -14,7 +14,7 @@
 //! skill APIs using injected credentials. No compiled Zig per skill.
 //!
 //! Binary boundary: the runner imports only `nullclaw`. This file must
-//! NOT import anything from src/zombie/, src/pipeline/, or src/main.zig.
+//! NOT import anything from src/agent/, src/pipeline/, or src/main.zig.
 
 const std = @import("std");
 const logging = @import("log");

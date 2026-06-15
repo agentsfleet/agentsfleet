@@ -8,7 +8,7 @@
 /// corresponding ERR_* constant in error_registry.zig.
 const std = @import("std");
 
-pub const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
+pub const ERROR_DOCS_BASE = "https://docs.agentsfleet.net/error-codes#";
 
 const S_UZ_INTERNAL_003 = "UZ-INTERNAL-003";
 
@@ -83,7 +83,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AUTH-018", .bad_request, "Invalid verification code shape", "verification_code must be exactly 6 ASCII digits."),
     e("UZ-AUTH-019", .bad_request, "Invalid ciphertext", "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output."),
     e("UZ-AUTH-020", .bad_request, "Invalid nonce", "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value."),
-    e("UZ-AUTH-021", .forbidden, "Platform-admin privileges required", "This action is restricted to usezombie platform operators. Your account does not carry platform-admin privileges."),
+    e("UZ-AUTH-021", .forbidden, "Platform-admin privileges required", "This action is restricted to agentsfleet platform operators. Your account does not carry platform-admin privileges."),
     // ── API (serving-plane backpressure) ─────────────────────────────────────
     e("UZ-API-001", .too_many_requests, "Too many in-flight requests", "This API instance is at its in-flight request ceiling and is shedding load. " ++
         "Honor the Retry-After header and retry with backoff. Operators: raise API_MAX_IN_FLIGHT_REQUESTS or add replicas."),
@@ -92,36 +92,36 @@ pub const ENTRIES = [_]Entry{
     // ── WORKSPACE ────────────────────────────────────────────────────────────
     // ── BILLING ──────────────────────────────────────────────────────────────
     // ── AGENT ────────────────────────────────────────────────────────────────
-    e("UZ-AGENT-001", .not_found, "Agent not found", "Agent not found. Verify the agent_id."),
+    e("UZ-AGENT-001", .not_found, "Agent key not found", "Agent key not found. Verify the agent_key_id."),
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
-    e("UZ-WH-001", .not_found, "Zombie not found for webhook", "No zombie is registered for this webhook endpoint."),
+    e("UZ-WH-001", .not_found, "Agent not found for webhook", "No agent is registered for this webhook endpoint."),
     e("UZ-WH-002", .bad_request, "Malformed webhook", "Webhook payload could not be parsed. Check Content-Type and body."),
-    // UZ-WH-003 retired (paused-ingress rework): a webhook to a paused zombie answers
-    // 200 {"ignored":"zombie_paused"} — sender retry queues add no value for
-    // an intentionally paused zombie. Steer ingress refuses with UZ-ZMB-012.
+    // UZ-WH-003 retired (paused-ingress rework): a webhook to a paused agent answers
+    // 200 {"ignored":"agent_paused"} — sender retry queues add no value for
+    // an intentionally paused agent. Steer ingress refuses with UZ-AGT-012.
     e("UZ-WH-010", .unauthorized, "Invalid webhook signature", "Webhook signature verification failed. Confirm the signing secret " ++
         "stored for this provider (Slack/Clerk/other) matches the one configured " ++
         "upstream."),
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp", "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
-    e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this zombie's source. Run " ++
+    e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this agent's source. Run " ++
         "`agentsfleet credential add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
-        "in the zombie's workspace, then resend."),
+        "in the agent's workspace, then resend."),
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
-    // ── ZOMBIE ───────────────────────────────────────────────────────────────
-    e("UZ-ZMB-003", .failed_dependency, "Zombie credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
-    e("UZ-ZMB-004", .internal_server_error, "Zombie claim failed", "Zombie could not be claimed from the database. Check that the zombie_id exists and status is 'active'."),
-    e("UZ-ZMB-006", .conflict, "Zombie name already exists", "A Zombie with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
-    // UZ-ZMB-007 retired (single-string credential body) → see UZ-VAULT-002.
-    e("UZ-ZMB-008", .bad_request, "Invalid zombie config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
-        "in your TRIGGER.md frontmatter. See samples/platform-ops/TRIGGER.md for a working example."),
-    e("UZ-ZMB-009", .not_found, "Zombie not found", "Zombie not found. Verify the zombie_id and that it has not been killed."),
-    e("UZ-ZMB-010", .conflict, "Zombie already stopped or killed", "This zombie is already stopped or has been killed. Restart it before issuing another stop."),
-    e("UZ-ZMB-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per zombie bundle."),
-    e("UZ-ZMB-012", .conflict, "Zombie is paused", "This zombie is not active and refuses new work. Resume it with: agentsfleet resume <zombie>, then retry."),
+    // ── AGENT ───────────────────────────────────────────────────────────────
+    e("UZ-AGT-003", .failed_dependency, "Agent credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
+    e("UZ-AGT-004", .internal_server_error, "Agent claim failed", "Agent could not be claimed from the database. Check that the agent_id exists and status is 'active'."),
+    e("UZ-AGT-006", .conflict, "Agent name already exists", "An Agent with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
+    // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
+    e("UZ-AGT-008", .bad_request, "Invalid agent config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
+        "in your TRIGGER.md frontmatter. See samples/fixtures/platform-ops-sample/TRIGGER.md for a working example."),
+    e("UZ-AGT-009", .not_found, "Agent not found", "Agent not found. Verify the agent_id and that it has not been killed."),
+    e("UZ-AGT-010", .conflict, "Agent already stopped or killed", "This agent is already stopped or has been killed. Restart it before issuing another stop."),
+    e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per agent bundle."),
+    e("UZ-AGT-012", .conflict, "Agent is paused", "This agent is not active and refuses new work. Resume it with: agentsfleet resume <agent>, then retry."),
     // ── VAULT ────────────────────────────────────────────────────────────────
     e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
         "Bare strings, arrays, scalars, and {} are rejected."),

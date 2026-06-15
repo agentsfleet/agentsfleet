@@ -1,15 +1,17 @@
 const std = @import("std");
 
 pub const AuthRole = enum(u8) {
+    const Self = @This();
+
     user = 0,
     operator = 1,
     admin = 2,
 
-    pub fn label(self: AuthRole) []const u8 {
+    pub fn label(self: Self) []const u8 {
         return @tagName(self);
     }
 
-    pub fn allows(self: AuthRole, required: AuthRole) bool {
+    pub fn allows(self: Self, required: AuthRole) bool {
         return @intFromEnum(self) >= @intFromEnum(required);
     }
 };

@@ -1,6 +1,6 @@
 //! Integration Grant workspace-owner operations.
-//! GET    /v1/workspaces/{ws}/zombies/{id}/integration-grants        → innerListGrants  (bearer policy)
-//! DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
+//! GET    /v1/workspaces/{ws}/agents/{id}/integration-grants        → innerListGrants  (bearer policy)
+//! DELETE /v1/workspaces/{ws}/agents/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -14,14 +14,14 @@ const log = logging.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
-// Workspace-scoped zombie routes share common.getZombieWorkspaceId.
+// Workspace-scoped agent routes share common.getAgentWorkspaceId.
 
 // ── innerListGrants ────────────────────────────────────────────────────────
-// GET /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants
+// GET /v1/workspaces/{ws}/agents/{agent_id}/integration-grants
 // bearer policy — principal set by middleware.
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
-const S_ZOMBIE_NOT_FOUND = "Zombie not found";
+const S_AGENTSFLEET_NOT_FOUND = "Agent not found";
 const S_PENDING = "pending";
 const S_REVOKED = "revoked";
 
@@ -35,7 +35,7 @@ const GrantRow = struct {
     reason: []const u8,
 };
 
-pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8) void {
+pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, agent_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -46,23 +46,23 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
         hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
-    // Verify zombie belongs to the path workspace (don't leak existence
-    // of zombies in other workspaces — return 404, not 403).
-    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+    // Verify agent belongs to the path workspace (don't leak existence
+    // of agents in other workspaces — return 404, not 403).
+    const agent_ws_id = common.getAgentWorkspaceId(conn, hx.alloc, agent_id) orelse {
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     };
-    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+    if (!std.mem.eql(u8, agent_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     }
 
     var q = PgQuery.from(conn.query(
         \\SELECT grant_id, service, status, requested_at, approved_at, revoked_at, requested_reason
         \\FROM core.integration_grants
-        \\WHERE zombie_id = $1::uuid
+        \\WHERE agent_id = $1::uuid
         \\ORDER BY requested_at DESC
-    , .{zombie_id}) catch {
+    , .{agent_id}) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -92,10 +92,10 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
 }
 
 // ── innerRevokeGrant ───────────────────────────────────────────────────────
-// DELETE /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants/{grant_id}
+// DELETE /v1/workspaces/{ws}/agents/{agent_id}/integration-grants/{grant_id}
 // bearer policy — principal set by middleware.
 
-pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []const u8, grant_id: []const u8) void {
+pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, agent_id: []const u8, grant_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -106,31 +106,31 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
-    // Verify zombie belongs to the path workspace.
-    const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+    // Verify agent belongs to the path workspace.
+    const agent_ws_id = common.getAgentWorkspaceId(conn, hx.alloc, agent_id) orelse {
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     };
-    if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
+    if (!std.mem.eql(u8, agent_ws_id, workspace_id)) {
+        hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, S_AGENTSFLEET_NOT_FOUND);
         return;
     }
 
     const now_ms = clock.nowMillis();
     // Scope UPDATE by workspace_id as defence-in-depth — mirrors the pattern in
-    // killZombieOnConn. Even if the app-level zombie-ws match is ever bypassed by
+    // killAgentOnConn. Even if the app-level agent-ws match is ever bypassed by
     // a future refactor, the SQL still refuses cross-workspace revocation.
     var rev_q = PgQuery.from(conn.query(
         \\UPDATE core.integration_grants g
         \\SET status = $1, revoked_at = $2
-        \\FROM core.zombies z
+        \\FROM core.agents z
         \\WHERE g.grant_id = $3
-        \\  AND g.zombie_id = $4::uuid
-        \\  AND z.id = g.zombie_id
+        \\  AND g.agent_id = $4::uuid
+        \\  AND z.id = g.agent_id
         \\  AND z.workspace_id = $5::uuid
         \\  AND g.status != $1
         \\RETURNING g.grant_id
-    , .{ S_REVOKED, now_ms, grant_id, zombie_id, workspace_id }) catch {
+    , .{ S_REVOKED, now_ms, grant_id, agent_id, workspace_id }) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     });
@@ -142,14 +142,14 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         return;
     }
 
-    log.info("revoked", .{ .zombie_id = zombie_id, .grant_id = grant_id });
+    log.info("revoked", .{ .agent_id = agent_id, .grant_id = grant_id });
     hx.noContent();
 }
 
 // ── Defence-in-depth test for the revoke UPDATE SQL ────────────────────────
 //
-// Even if a future refactor removes the app-layer `zombie_ws_id == workspace_id`
-// check in innerRevokeGrant, the SQL join to core.zombies by workspace_id must still block cross-workspace
+// Even if a future refactor removes the app-layer `agent_ws_id == workspace_id`
+// check in innerRevokeGrant, the SQL join to core.agents by workspace_id must still block cross-workspace
 // revocation. This test executes the exact production SQL with a foreign
 // workspace_id and asserts (a) RETURNING produces zero rows, (b) the grant's
 // status remains 'pending' in the DB. If the SQL scope is ever removed from the
@@ -167,11 +167,11 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     const tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
     const ws_a = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd11";
     const ws_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd12";
-    const zombie_in_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd21";
+    const agent_in_b = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd21";
     const grant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd22";
     const now: i64 = clock.nowMillis();
 
-    // Seed tenant, two workspaces, a zombie in WS_B, and a pending grant.
+    // Seed tenant, two workspaces, a agent in WS_B, and a pending grant.
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1, 'DefIndepTest', $2, $2)
@@ -188,38 +188,38 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ ws_b, tenant_id, now });
     _ = try conn.exec(
-        \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\INSERT INTO core.agents (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, 'defindep-victim', '---\nname: defindep-victim\n---\nx', '{"name":"defindep-victim"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ zombie_in_b, ws_b });
+    , .{ agent_in_b, ws_b });
     _ = try conn.exec(
         \\INSERT INTO core.integration_grants
-        \\  (uid, grant_id, zombie_id, service, status, requested_at, requested_reason)
+        \\  (uid, grant_id, agent_id, service, status, requested_at, requested_reason)
         \\VALUES ($1::uuid, $1, $2::uuid, 'slack', $3, $4, 'test defence-in-depth')
         \\ON CONFLICT (grant_id) DO NOTHING
-    , .{ grant_id, zombie_in_b, S_PENDING, now });
+    , .{ grant_id, agent_in_b, S_PENDING, now });
 
     defer {
         _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
-        _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_in_b}) catch {};
+        _ = conn.exec("DELETE FROM core.agents WHERE id = $1::uuid", .{agent_in_b}) catch {};
         _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_a}) catch {};
         _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_b}) catch {};
         _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1", .{tenant_id}) catch {};
     }
 
     // Execute the exact production UPDATE with a mismatched workspace_id (WS_A,
-    // while the zombie lives in WS_B). It must return zero rows.
+    // while the agent lives in WS_B). It must return zero rows.
     var rev_q = PgQuery.from(try conn.query(
         \\UPDATE core.integration_grants g
         \\SET status = $1, revoked_at = $2
-        \\FROM core.zombies z
+        \\FROM core.agents z
         \\WHERE g.grant_id = $3
-        \\  AND g.zombie_id = $4::uuid
-        \\  AND z.id = g.zombie_id
+        \\  AND g.agent_id = $4::uuid
+        \\  AND z.id = g.agent_id
         \\  AND z.workspace_id = $5::uuid
         \\  AND g.status != $1
         \\RETURNING g.grant_id
-    , .{ S_REVOKED, now, grant_id, zombie_in_b, ws_a }));
+    , .{ S_REVOKED, now, grant_id, agent_in_b, ws_a }));
     defer rev_q.deinit();
     try std.testing.expect((try rev_q.next()) == null);
 

@@ -1,7 +1,7 @@
 import { ApiError } from "./errors";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
-export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.usezombie.com";
+export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
 
 // BASE for fetch calls. On the server we hit the backend directly (no CORS).
 // In the browser we go through the same-origin `/backend` proxy configured in
@@ -12,7 +12,7 @@ export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
  * Parses a `Retry-After` header value into milliseconds. Honors the
  * delta-seconds form (e.g., `Retry-After: 30`); the HTTP-date form is
  * rare for our APIs and is ignored (callers fall back to exponential
- * backoff). Mirrors the CLI parser at `agentsfleet/src/lib/http.js`.
+ * backoff). Mirrors the CLI parser at `cli/src/lib/http.js`.
  */
 const MS_PER_SECOND = 1000;
 

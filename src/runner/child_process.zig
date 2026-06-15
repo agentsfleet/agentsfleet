@@ -28,7 +28,7 @@ const log = logging.scoped(.runner_supervisor);
 /// atomically.
 ///
 /// The child inherits ONLY the allowlisted environment (filtered from `daemon_env`
-/// via `environ_map`), so `ZOMBIE_RUNNER_TOKEN` and every other daemon-only var
+/// via `environ_map`), so `AGENTSFLEET_RUNNER_TOKEN` and every other daemon-only var
 /// never reach a prompt-injectable agent. `argv[0]` is asserted absolute before
 /// spawn so a relative path can never be resolved via the parent `$PATH`.
 pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8, egress: ?sandbox.EgressFiles) !std.process.Child {
@@ -67,7 +67,7 @@ fn requireAbsoluteArgv0(argv: []const []const u8) error{SandboxArgvNotAbsolute}!
 
 /// Build the sandboxed child's environment: ONLY the allowlisted daemon vars
 /// that are actually set (`sandbox.ENV_PASSTHROUGH_ALLOWLIST`, RULE UFS).
-/// Fail-closed — anything off the allowlist (incl. the `ZOMBIE_` control-plane
+/// Fail-closed — anything off the allowlist (incl. the `AGENTSFLEET_` control-plane
 /// credentials) is simply never copied in. Caller owns the map and must `deinit`
 /// it after the spawn consumes it. Pub so the integration lane can spawn a real
 /// child with the filtered map and prove the daemon environ never crosses.
@@ -93,7 +93,7 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
 /// signal is the only thing that actually kills it; it also covers the
 /// enroll-succeeds-then-races path. Safe against pid reuse because this always
 /// runs BEFORE the supervisor's single `wait()` — the target is still an
-/// un-reaped (zombie-at-most) pid. `ESRCH` (group already gone via the cgroup
+/// un-reaped (agent-at-most) pid. `ESRCH` (group already gone via the cgroup
 /// kill) is harmless.
 pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
     if (scope.*) |*s| s.kill() catch |err|
@@ -113,7 +113,7 @@ test "forkExec env filter forwards only the allowlist and drops daemon vars" {
     try daemon.put("HOME", "/home/runner");
     try daemon.put("PATH", "/usr/bin:/bin");
     // … and daemon-only vars that must NEVER reach the child.
-    try daemon.put("ZOMBIE_RUNNER_TOKEN", "zrn_super_secret");
+    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "agt_rsuper_secret");
     try daemon.put("RUNNER_HOST_ID", "host-1");
     try daemon.put("RUNNER_NETWORK_POLICY", "registry_allowlist");
 
@@ -128,13 +128,13 @@ test "forkExec env filter forwards only the allowlist and drops daemon vars" {
     try testing.expect(child.get("SSL_CERT_FILE") == null);
 }
 
-test "forkExec env filter omits every ZOMBIE_ daemon secret from the child environ" {
+test "forkExec env filter omits every AGENTSFLEET_ daemon secret from the child environ" {
     const alloc = testing.allocator;
     var daemon: std.process.Environ.Map = .init(alloc);
     defer daemon.deinit();
     try daemon.put("HOME", "/home/runner");
-    try daemon.put("ZOMBIE_RUNNER_TOKEN", "zrn_super_secret");
-    try daemon.put("ZOMBIE_API_URL", "https://api.usezombie.com");
+    try daemon.put("AGENTSFLEET_RUNNER_TOKEN", "agt_rsuper_secret");
+    try daemon.put("AGENTSFLEET_API_URL", "https://api.agentsfleet.net");
 
     var child = try buildChildEnviron(alloc, &daemon);
     defer child.deinit();
@@ -144,8 +144,8 @@ test "forkExec env filter omits every ZOMBIE_ daemon secret from the child envir
     while (it.next()) |entry| {
         try testing.expect(!std.mem.startsWith(u8, entry.key_ptr.*, sandbox.ENV_DENY_PREFIX));
     }
-    try testing.expect(child.get("ZOMBIE_RUNNER_TOKEN") == null);
-    try testing.expect(child.get("ZOMBIE_API_URL") == null);
+    try testing.expect(child.get("AGENTSFLEET_RUNNER_TOKEN") == null);
+    try testing.expect(child.get("AGENTSFLEET_API_URL") == null);
 }
 
 test "requireAbsoluteArgv0 rejects a relative argv[0] and accepts an absolute one" {

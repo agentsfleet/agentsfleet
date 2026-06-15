@@ -10,9 +10,9 @@ describe("ApiError", () => {
   });
 
   it("carries status, code, and message", () => {
-    const e = new ApiError("conflict", 409, "UZ-ZMB-010");
+    const e = new ApiError("conflict", 409, "UZ-AGT-010");
     expect(e.status).toBe(409);
-    expect(e.code).toBe("UZ-ZMB-010");
+    expect(e.code).toBe("UZ-AGT-010");
     expect(e.message).toBe("conflict");
   });
 

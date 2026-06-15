@@ -88,7 +88,7 @@ describe("app layouts and pages", () => {
 
     expect(rootMarkup).toContain("root child");
     expect(dashboardMarkup).toContain("dash child");
-    expect(authMarkup).toContain("usezombie");
+    expect(authMarkup).toContain("agentsfleet");
     // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
     expect(authMarkup).toContain("data-live");
     // Configuration nav is collapsed to a single combined entry; the standalone

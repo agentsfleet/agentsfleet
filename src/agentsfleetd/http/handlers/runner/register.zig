@@ -1,8 +1,8 @@
 //! POST /v1/runners — register a runner.
 //!
-//! Authed by an existing operator credential (Clerk JWT or `zmb_t_` api_key via
+//! Authed by an existing operator credential (Clerk JWT or `agt_t` api_key via
 //! `bearer_or_api_key` + admin role) — there is no enrollment token. Mints a
-//! durable `zrn_` runner token (256-bit random, returned once), stores only its
+//! durable `agt_r` runner token (256-bit random, returned once), stores only its
 //! SHA-256 hash in `fleet.runners`, and records the self-reported `sandbox_tier`
 //! + `labels`. `tenant_id` is NULL in S0 (trusted fleet); the per-tenant-scoped
 //! mode wires it later. See `docs/AUTH.md` (Runner token).
@@ -32,7 +32,7 @@ const MAX_HOST_ID_LEN: usize = 256;
 
 const RegisterError = error{ DbError, OperationError };
 
-/// Mint a `zrn_<64-hex>` runner token. The prefix is single-sourced in
+/// Mint a `agt_r<64-hex>` runner token. The prefix is single-sourced in
 /// `runner_bearer` (RULE UFS) so the minter and the validator never drift.
 fn mintRunnerToken(alloc: std.mem.Allocator) ![]const u8 {
     var raw: [TOKEN_RANDOM_BYTES]u8 = undefined;

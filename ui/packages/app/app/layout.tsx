@@ -7,7 +7,7 @@ import { THEME_COOKIE, normalizeTheme } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "usezombie — Dashboard",
+  title: "agentsfleet — Dashboard",
   description: "Agent delivery control plane. Manage workspaces, runs, and pipeline visibility.",
 };
 

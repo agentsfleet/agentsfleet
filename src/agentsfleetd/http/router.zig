@@ -60,10 +60,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // the parse; only `…/leases/{lease_id}/activity` needs segment extraction.
     if (matchers.matchRunnerLeaseActivity(p)) |lease_id| return .{ .runner_activity = lease_id };
     if (matchers.matchRunnerLeaseRenew(p)) |lease_id| return .{ .runner_renew = lease_id };
-    // `…/memory/{zombie_id}`: GET hydrates, POST captures (other methods 405 in invoke).
-    if (matchers.matchRunnerMemory(p)) |zombie_id| return switch (method) {
-        .GET => .{ .runner_memory_hydrate = zombie_id },
-        else => .{ .runner_memory_capture = zombie_id },
+    // `…/memory/{agent_id}`: GET hydrates, POST captures (other methods 405 in invoke).
+    if (matchers.matchRunnerMemory(p)) |agent_id| return switch (method) {
+        .GET => .{ .runner_memory_hydrate = agent_id },
+        else => .{ .runner_memory_capture = agent_id },
     };
 
     // ── Tenant billing: per-charge metering-period drill-down ─────────────
@@ -90,29 +90,29 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
 
-    // ── Workspace + zombie + events/stream (deepest shape first) ──────────
-    if (matchers.matchWorkspaceZombieEventsStream(p)) |r| return .{ .workspace_zombie_events_stream = r };
+    // ── Workspace + agent + events/stream (deepest shape first) ──────────
+    if (matchers.matchWorkspaceAgentEventsStream(p)) |r| return .{ .workspace_agent_events_stream = r };
 
-    // ── Workspace + zombie + leaf-id sub-resources ────────────────────────
-    if (matchers.matchWorkspaceZombieGrant(p)) |r| return .{ .revoke_integration_grant = r };
+    // ── Workspace + agent + leaf-id sub-resources ────────────────────────
+    if (matchers.matchWorkspaceAgentGrant(p)) |r| return .{ .revoke_integration_grant = r };
 
-    // ── Workspace + zombie + action ───────────────────────────────────────
-    if (matchers.matchWorkspaceZombieAction(p, S_EVENTS)) |r| return .{ .workspace_zombie_events = r };
-    if (matchers.matchWorkspaceZombieAction(p, "messages")) |r| return .{ .workspace_zombie_messages = r };
-    if (matchers.matchWorkspaceZombieAction(p, "memories")) |r| return .{ .workspace_zombie_memories = r };
-    if (matchers.matchWorkspaceZombieAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
-    if (matchers.matchWorkspaceZombieAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
+    // ── Workspace + agent + action ───────────────────────────────────────
+    if (matchers.matchWorkspaceAgentAction(p, S_EVENTS)) |r| return .{ .workspace_agent_events = r };
+    if (matchers.matchWorkspaceAgentAction(p, "messages")) |r| return .{ .workspace_agent_messages = r };
+    if (matchers.matchWorkspaceAgentAction(p, "memories")) |r| return .{ .workspace_agent_memories = r };
+    if (matchers.matchWorkspaceAgentAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
+    if (matchers.matchWorkspaceAgentAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
-    if (matchers.matchWorkspaceAgentDelete(p)) |r| return .{ .delete_agent_key = r };
-    if (matchers.matchWorkspaceZombie(p)) |r| return .{ .patch_workspace_zombie = r };
+    if (matchers.matchWorkspaceAgentKeyDelete(p)) |r| return .{ .delete_agent_key = r };
+    if (matchers.matchWorkspaceAgent(p)) |r| return .{ .patch_workspace_agent = r };
 
     // ── Approval inbox detail / resolve (colon-noun) ──────────────────────
     if (matchers.matchWorkspaceApprovalResolve(p)) |r| return .{ .workspace_approval_resolve = r };
     if (matchers.matchWorkspaceApprovalGate(p)) |r| return .{ .workspace_approval_detail = r };
 
     // ── Workspace + suffix collections ────────────────────────────────────
-    if (matchers.matchWorkspaceSuffix(p, "zombies")) |ws_id| return .{ .workspace_zombies = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, "agents")) |ws_id| return .{ .workspace_agents = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "credentials")) |ws_id| return .{ .workspace_credentials = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "agent-keys")) |ws_id| return .{ .agent_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
@@ -154,7 +154,7 @@ test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_1/zombies/z_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/agents/z_1/billing/summary", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
 }
 
@@ -212,29 +212,29 @@ test "match resolves admin platform key routes" {
 
 // ── route tests ───────────────────────────────────────────────────────────────
 
-test "match resolves zombie messages route (workspace-scoped)" {
+test "match resolves agent messages route (workspace-scoped)" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
-        .workspace_zombie_messages => |r| {
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
+        .workspace_agent_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.zombie_id);
+            try std.testing.expectEqualStrings(zid, r.agent_id);
         },
         else => return error.TestExpectedEqual,
     }
-    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
-    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b/messages", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
+    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
+    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/a/b/messages", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
 }
 
-test "match resolves zombie memories collection (GET/POST)" {
+test "match resolves agent memories collection (GET/POST)" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    switch (match("/v1/workspaces/ws_abc/zombies/z_xyz/memories", .GET).?) {
-        .workspace_zombie_memories => |r| {
+    switch (match("/v1/workspaces/ws_abc/agents/z_xyz/memories", .GET).?) {
+        .workspace_agent_memories => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.zombie_id);
+            try std.testing.expectEqualStrings(zid, r.agent_id);
         },
         else => return error.TestExpectedEqual,
     }

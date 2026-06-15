@@ -47,7 +47,7 @@ const TOP_NAV: NavEntry[] = [
 
 // The live work — what the agents do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Agents", href: "/zombies", icon: SkullIcon },
+  { label: "Agents", href: "/agents", icon: SkullIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
@@ -124,14 +124,14 @@ export default function Shell({
         <Link
           href="/"
           className="inline-flex items-center gap-2 font-mono text-sm font-medium tracking-tight text-foreground no-underline"
-          aria-label="usezombie home"
+          aria-label="agentsfleet home"
         >
           <WakePulse
             live
             className="inline-block w-3 h-3 rounded-full bg-pulse"
             aria-hidden="true"
           />
-          <span>usezombie</span>
+          <span>agentsfleet</span>
         </Link>
 
         <div className="flex-1" />

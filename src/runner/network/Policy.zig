@@ -13,7 +13,7 @@
 //!                        own netns + veth gated by the default-deny nftables
 //!                        allowlist (`EgressScope`, option D). The allowlist is
 //!                        the FULL per-lease set — operator registry baseline ∪
-//!                        the zombie's `network.allow` ∪ the inference host.
+//!                        the agent's `network.allow` ∪ the inference host.
 //!                        Opt-in; **fails closed (`UZ-RUN-007`)** until that
 //!                        wiring lands — it never silently pretends to enforce.
 //!
