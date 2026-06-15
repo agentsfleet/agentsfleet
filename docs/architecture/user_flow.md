@@ -26,14 +26,14 @@ What the skill does, in order:
 2. **Asks at most three or four gating questions** through the host-neutral `variables:` frontmatter (so the same SKILL.md works on Claude Code, Amp, Codex CLI, and OpenCode without `AskUserQuestion` lock-in). Slack channel, prod branch glob, and cron opt-in.
 3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
 4. **Calls `agentsfleet doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
-5. **Generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
-6. **Drives `agentsfleet install --from .usezombie/platform-ops/`** then runs a batch `agentsfleet steer {id} "morning health check"` smoke test.
+5. **Generates `.agentsfleet/platform-ops/SKILL.md` and `.agentsfleet/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
+6. **Drives `agentsfleet install --from .agentsfleet/platform-ops/`** then runs a batch `agentsfleet steer {id} "morning health check"` smoke test.
 
 This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
-v2 ships **hosted-only** on `api.usezombie.com`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet auth login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
+v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet auth login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
 
 This is a deliberate scope cut, not a gap in the architecture. The runtime is already structured so the auth substrate (Clerk OAuth), KMS adapter (cloud KMS), and process orchestration (Fly.io machines) are the only deployment-specific layers — the worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic. **Validating** that on a clean non-Fly Linux host (Clerk shim or local-token auth, a portable KMS adapter, the runner's Landlock+cgroups+bwrap on a vanilla VM, systemd orchestration) is a v3 workstream once v2 has earned the trust to justify the integration burden.
 
@@ -76,7 +76,7 @@ Or run the chain explicitly (skip any step already in place):
 
 ```bash
 npm install -g @agentsfleet/cli     # CLI binary + bundled samples (postinstall copies to ~/.config/agentsfleet/samples/)
-npx skills add agentsfleet/skills         # symlinks /usezombie-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
+npx skills add agentsfleet/skills         # symlinks /agentsfleet-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
 agentsfleet auth login                     # Clerk OAuth → token in ~/.config/agentsfleet/auth.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
@@ -87,10 +87,10 @@ The install-skill's first action (§8.2.2 step 1) is a `which agentsfleet && whi
 
 1. Claude (or another agent), typically driven by the `/agentsfleet-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, tenant provider readiness, and (M68) free-trial state. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
-3. The user (or skill) installs or updates the agent through `agentsfleet install --from <path>` or the dashboard install form at `/zombies/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/zombies`; the API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
+3. The user (or skill) installs or updates the agent through `agentsfleet install --from <path>` or the dashboard install form at `/agents/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/agents`; the API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
 4. The API stores the agent config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).
-5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/zombies/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
-6. Future triggers are served with no restart and no watcher thread: the install created the agent's events stream + consumer group up front (step 3), so each later trigger `XADD`s to `zombie:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
+5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/agents/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
+6. Future triggers are served with no restart and no watcher thread: the install created the agent's events stream + consumer group up front (step 3), so each later trigger `XADD`s to `agent:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
 After install, the agent is no longer tied to the interactive Claude session that created it.
 
@@ -98,16 +98,16 @@ After install, the agent is no longer tied to the interactive Claude session tha
 
 An agent's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{zombie_id}/{source}`. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:<source>`.
+- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{agent_id}/{source}`. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `agent:{id}:events` with `actor=webhook:<source>`.
 - **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-runner cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per agent.
 
 In addition to the declared triggers, every agent always accepts:
 
-- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/zombies/{id}`, which POSTs to `/v1/workspaces/{ws}/zombies/{id}/messages` and `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/agents/{id}`, which POSTs to `/v1/workspaces/{ws}/agents/{id}/messages` and `XADD`s directly to `agent:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
 
 All actors flow through the same runtime path. The agent's reasoning loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the install-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 
-`type: api` (catch-all JSON ingress at `POST /v1/zombies/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
+`type: api` (catch-all JSON ingress at `POST /v1/agents/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
 
 Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the worker telling the user "what I just had to apply got applied" — see [`data_flow.md` §Synthetic system events](./data_flow.md#synthetic-system-events). They surface in the same activity tail and in `agentsfleet events {id} --actor=system`, so the user sees them alongside the work the agent does.
 
@@ -123,7 +123,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 6. Later, the agent wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
-The dashboard equivalent surface on `/zombies/{id}` matches the CLI path:
+The dashboard equivalent surface on `/agents/{id}` matches the CLI path:
 
 - The **Trigger panel** renders one card per declared trigger. Known providers get a pre-rendered terminal command (e.g. `gh api repos/.../hooks ...` for GitHub, `curl https://api.linear.app/graphql ...` for Linear) the user copies and runs locally. The card shows the registered hook id and last delivery once a real event arrives. The dashboard never holds the user's provider PAT.
 - The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips, agent reasoning as streaming assistant bubbles, and the steer composer at the bottom turns user input into an event on the agent's stream.
@@ -140,11 +140,11 @@ While working in Claude, the user defines a `platform-ops` agent that:
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to the agent's webhook ingest URL `POST /v1/webhooks/{zombie_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the install-skill running `gh api repos/{repo}/hooks` from the user's machine; the platform never held the user's PAT for that step.
-2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every agent in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-usezombie.triggers[].credential_name:` frontmatter override scopes a distinct vault row per agent for the per-agent credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
-3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
+1. GitHub posts to the agent's webhook ingest URL `POST /v1/webhooks/{agent_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the install-skill running `gh api repos/{repo}/hooks` from the user's machine; the platform never held the user's PAT for that step.
+2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every agent in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-agentsfleet.triggers[].credential_name:` frontmatter override scopes a distinct vault row per agent for the per-agent credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
+3. The receiver normalizes the payload into a synthetic event and `XADD`s to `agent:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. A `agentsfleet-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `agentsfleetd`:
-   - INSERTs `core.zombie_events` (status='received')
+   - INSERTs `core.agent_events` (status='received')
    - passes the balance + approval gates
    - resolves credentials from the vault (GitHub PAT, Fly token, Slack bot token)
    - resolves provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
@@ -157,10 +157,10 @@ When a GH Actions deploy fails:
    - calls `http_request GET ${upstash.host}/v2/redis/stats/{db}`
    - correlates: was the failure a migration error vs OOM kill vs network timeout vs deploy-config drift
    - calls `http_request POST ${slack.host}/api/chat.postMessage` with the diagnosis
-6. The agent's response is UPDATEd into `core.zombie_events` (status='processed', response_text, tokens, wall_ms).
+6. The agent's response is UPDATEd into `core.agent_events` (status='processed', response_text, tokens, wall_ms).
 7. If the SKILL.md prose said the agent may schedule a follow-up health check, it calls `cron_add "*/30 * * * *" "post-recovery health check"`.
 
-When the user opens Claude later, they see the outcome trail in `core.zombie_events` keyed by actor — they can filter "show me all webhook:github events from the last 24h" or "show me what kishore steered last Tuesday." They never reconstruct from memory; the durable log is authoritative.
+When the user opens Claude later, they see the outcome trail in `core.agent_events` keyed by actor — they can filter "show me all webhook:github events from the last 24h" or "show me what kishore steered last Tuesday." They never reconstruct from memory; the durable log is authoritative.
 
 The same agent also responds to manual `agentsfleet steer {id} "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
 
@@ -231,6 +231,6 @@ L3 run chunking
 
 **Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this agent inherits from tenant config"; absent-key is the safety net for hand-edits.
 
-The parser-side companion to this rule landed with M49: `x-usezombie.model` and `x-usezombie.context.*` are now first-class fields on `ZombieConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
+The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `AgentConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.
+Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.

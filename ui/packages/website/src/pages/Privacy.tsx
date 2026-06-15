@@ -16,7 +16,7 @@ export default function Privacy() {
       <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: May 5, 2026</p>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">1. Information we collect</h2>
-      <p className="text-text-muted m-0">usezombie collects only the minimum information required to operate the service:</p>
+      <p className="text-text-muted m-0">agentsfleet collects only the minimum information required to operate the service:</p>
       <List className="pl-6 text-text-muted m-0">
         <ListItem><strong className="text-text font-medium">Account information</strong> — email address and authentication credentials managed by our identity provider (Clerk).</ListItem>
         <ListItem><strong className="text-text font-medium">Workspace metadata</strong> — repository URLs, workspace configuration, run history, and transition logs.</ListItem>
@@ -25,8 +25,8 @@ export default function Privacy() {
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">2. Information we do not collect</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem><strong className="text-text font-medium">LLM API keys</strong> — your keys are stored encrypted and never transmitted to usezombie servers in plaintext. We operate on a self-managed model.</ListItem>
-        <ListItem><strong className="text-text font-medium">Source code contents</strong> — usezombie agents operate within your Git repositories via branch-based state. Code is never copied to usezombie infrastructure.</ListItem>
+        <ListItem><strong className="text-text font-medium">LLM API keys</strong> — your keys are stored encrypted and never transmitted to agentsfleet servers in plaintext. We operate on a self-managed model.</ListItem>
+        <ListItem><strong className="text-text font-medium">Source code contents</strong> — agentsfleet agents operate within your Git repositories via branch-based state. Code is never copied to agentsfleet infrastructure.</ListItem>
         <ListItem><strong className="text-text font-medium">Model outputs</strong> — generated patches, plans, and validation results remain in your repository as artifacts.</ListItem>
       </List>
 

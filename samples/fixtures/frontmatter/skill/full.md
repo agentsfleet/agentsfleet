@@ -7,7 +7,7 @@ tags:
   - sample
   - fixture
   - all-fields
-author: usezombie
+author: agentsfleet
 model: claude-sonnet-4-6
 ---
 

@@ -110,7 +110,7 @@ describe("app components", () => {
 
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:
     // no decorative badges, no marketing chrome.
-    expect(container.innerHTML).toContain("usezombie");
+    expect(container.innerHTML).toContain("agentsfleet");
     expect(container.innerHTML).toContain("data-live");
     cleanup();
   });
@@ -242,7 +242,7 @@ describe("app components", () => {
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // Brand-mark always-alive contract.
     expect(markup).toContain("data-live");
-    expect(markup).toContain("usezombie");
+    expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Operations / Configuration / Organization
     // groups, plus the Dashboard overview entry and the Docs footer link.
     expect(markup).toContain("Operations");

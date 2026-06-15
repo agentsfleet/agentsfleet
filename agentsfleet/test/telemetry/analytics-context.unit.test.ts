@@ -21,7 +21,7 @@ describe("withAnalyticsContext", () => {
       }).pipe(
         withAnalyticsContext({
           command_run_id: "run-123",
-          groups: { organization: "usezombie" },
+          groups: { organization: "agentsfleet" },
         }),
         withAnalyticsContext({
           command: "login",
@@ -32,7 +32,7 @@ describe("withAnalyticsContext", () => {
       expect(nested).toEqual({
         command_run_id: "run-123",
         command: "login",
-        groups: { organization: "usezombie", workspace: "ws-abc" },
+        groups: { organization: "agentsfleet", workspace: "ws-abc" },
       });
 
       const after = yield* CurrentAnalyticsContext;

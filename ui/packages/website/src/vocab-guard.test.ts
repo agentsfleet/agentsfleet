@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 // Vocab guard (website twin of ui/packages/app/tests/vocab-guard.test.ts): the
 // user-facing product noun is "agent". The word "agent" may appear in code
-// identifiers, routes, schema names, the brand (usezombie), and CLI/daemon
+// identifiers, routes, schema names, the brand (agentsfleet), and CLI/daemon
 // names — but never as a bare English product noun in *rendered copy*. This
 // scan extracts user-visible text (string literals + JSX text) across the whole
 // website src tree (Hero, FAQ, Pricing, Agents, CTABlock, OnboardingFlow, …)
@@ -18,7 +18,7 @@ import { describe, it, expect } from "vitest";
 //     identifiers / paths / test-ids / class names / enum values, not copy
 //   - comment lines are skipped
 //   - brand/route/schema fragments are allowlisted
-const ALLOW_FRAGMENTS = ["usezombie", "/agents", "agent:", "agent_", "core.agent", "agent-"];
+const ALLOW_FRAGMENTS = ["agentsfleet", "/agents", "agent:", "agent_", "core.agent", "agent-"];
 const WORD = /\bagents?\b/i;
 
 const SEGMENT = /"([^"]*)"|'([^']*)'|`([^`]*)`|>([^<>{}]*)</g;

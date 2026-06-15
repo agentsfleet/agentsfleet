@@ -9,7 +9,7 @@
 // Both exporters are gated by TelemetryRuntime.consent / showDebug
 // before spans start flowing. Debug exporter writes to stderr directly
 // (process.stderr.write) — Supabase routes through a Stdio service;
-// usezombie's writes-to-stderr convention matches the rest of the CLI
+// agentsfleet's writes-to-stderr convention matches the rest of the CLI
 // where output.error → process.stderr.
 
 import { Effect, Layer, Option, Tracer, type Exit, type Context } from "effect";

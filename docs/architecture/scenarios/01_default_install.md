@@ -29,9 +29,9 @@ sequenceDiagram
     Skill->>Op: ask 3 questions (slack, branch, cron)
     Skill->>CLI: credential set (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
-    Skill->>CLI: install --from .usezombie/platform-ops/
-    CLI->>API: POST /zombies<br/>{trigger_markdown, source_markdown}
-    API->>API: XGROUP CREATE zombie:{id}:events (+ consumer group)
+    Skill->>CLI: install --from .agentsfleet/platform-ops/
+    CLI->>API: POST /agents<br/>{trigger_markdown, source_markdown}
+    API->>API: XGROUP CREATE agent:{id}:events (+ consumer group)
     API-->>Skill: { id, webhook_urls: { github: "..." } }
     Skill->>GH: gh api repos/owner/repo/hooks<br/>(events[]=workflow_run, config.url, secret)
     GH-->>Skill: { id, active: true }
@@ -39,12 +39,12 @@ sequenceDiagram
     API-->>Skill: 202
     Skill->>CLI: steer {id} "morning health check"
     CLI->>API: POST /steer
-    API->>API: XADD zombie:{id}:events
+    API->>API: XADD agent:{id}:events
     Runner->>API: lease (POST /v1/runners/me/leases)
     Runner->>Slack: posts first-pass health summary
     Note over Op,Slack: Hours later, real CD failure...
-    GH->>API: POST /v1/webhooks/{zombie_id} (HMAC verified)
-    API->>API: XADD zombie:{id}:events
+    GH->>API: POST /v1/webhooks/{agent_id} (HMAC verified)
+    API->>API: XADD agent:{id}:events
     Runner->>API: lease (POST /v1/runners/me/leases)
     Runner->>Slack: posts evidenced diagnosis
 ```
@@ -68,19 +68,19 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
    - try `op read 'op://Personal/<name>/api-token'`
-   - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
+   - else read env `AGENTSFLEET_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
    then `agentsfleet credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
 
-   For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced zombies share it; rotation rotates everywhere).
+   For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced agents share it; rotation rotates everywhere).
 5. **Model and cap from doctor.** The skill reads `agentsfleet doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
-   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
-6. **File generation.** The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
+   The model-caps endpoint at `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
+6. **File generation.** The skill writes `.agentsfleet/platform-ops/SKILL.md` and `.agentsfleet/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
    name: platform-ops
-   x-usezombie:
+   x-agentsfleet:
      triggers:
        - type: webhook
          source: github
@@ -110,14 +110,14 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `agentsfleet install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `zombie:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `zombie:control` watcher was retired at the cutover): a later trigger `XADD`s to `zombie:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
-8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.usezombie/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
+7. **Install.** `agentsfleet install --from .agentsfleet/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `agent:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `agent:control` watcher was retired at the cutover): a later trigger `XADD`s to `agent:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next. The 201 response carries `{ agent_id, name, status, webhook_urls: { github: "https://api.agentsfleet.net/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
+8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.agentsfleet/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
 9. **Register webhook(s) on the provider via the user's local `gh`.** For each webhook trigger in `triggers[]`, the skill runs:
    ```bash
    gh api -X POST "repos/${GH_REPO}/hooks" \
      --field name=web --field active=true \
      --field 'events[]=workflow_run' \
-     --field "config[url]=https://api.usezombie.com/v1/webhooks/{id}/github" \
+     --field "config[url]=https://api.agentsfleet.net/v1/webhooks/{id}/github" \
      --field 'config[content_type]=json' \
      --field "config[secret]=${WEBHOOK_SECRET}"
    ```
@@ -128,7 +128,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 ### 1.2 What the first steer actually returns
 
-The "morning health check" is **not** a canned ack. It enters the same reasoning loop as any other event — actor `steer:<user>`, type `chat`, into `zombie:{id}:events`. The SKILL.md prose body teaches the agent to handle this input by:
+The "morning health check" is **not** a canned ack. It enters the same reasoning loop as any other event — actor `steer:<user>`, type `chat`, into `agent:{id}:events`. The SKILL.md prose body teaches the agent to handle this input by:
 
 - fetching the latest GH Actions runs on `prod_branch_glob`
 - fetching Fly app status / last deploy
@@ -147,20 +147,20 @@ A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actio
 
 1. Verifies HMAC-SHA256 against the workspace credential `github.webhook_secret` stored during install.
 2. Normalises payload → synthetic event envelope (actor=`webhook:github`, type=`webhook`).
-3. `XADD zombie:{id}:events *` with the envelope.
+3. `XADD agent:{id}:events *` with the envelope.
 4. Returns 202 to GitHub.
 
 A `agentsfleet-runner` leases the event within ≤5s. The lease path (in `agentsfleetd`) walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
 
-1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
-2. PUBLISH `zombie:{id}:activity` (`event_received`).
+1. INSERT `core.agent_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
+2. PUBLISH `agent:{id}:activity` (`event_received`).
 3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
 4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_nanos=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
-5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
+5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
 6. Approval gate (no destructive tools wired in this agent) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map`; `resolveActiveProvider`'s resolved provider+key ride the lease on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` (delivered fresh on every lease, including reclaim), separate from `secrets_map`, and the runner injects them into the NullClaw child for the inference call only.
-8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
-9. `agentsfleetd` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `agentsfleetd`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`. The lease **also carries `instructions`** — the installed agent's stored `SKILL.md` body, extracted server-side by `ZombieSession` — so the runner composes the NullClaw turn from the installed instructions **plus** the event. This is what makes the GitHub deploy-failure path (and the install smoke-test steer below) run the stored playbook on every trigger instead of a generic chat; it is delivered on **each** lease, fresh and reclaim alike (M84_008).
+8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+9. `agentsfleetd` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `agentsfleetd`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`. The lease **also carries `instructions`** — the installed agent's stored `SKILL.md` body, extracted server-side by `AgentSession` — so the runner composes the NullClaw turn from the installed instructions **plus** the event. This is what makes the GitHub deploy-failure path (and the install smoke-test steer below) run the stored playbook on every trigger instead of a generic chat; it is delivered on **each** lease, fresh and reclaim alike (M84_008).
 10. The runner forks a sandboxed NullClaw child and runs the event (the webhook payload as the message).
 
 NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.
@@ -168,9 +168,9 @@ NullClaw runs the SKILL.md prose against the webhook payload. The agent makes it
 `StageResult{content, token_count_input=820, token_count_output=1040, wall_ms=8210, ttft_ms=320, exit_ok=true}` returns over the Unix socket.
 
 Worker:
-- UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
-- UPDATE `zombie_execution_telemetry` run row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The `credit_deducted_nanos` column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
-- UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
+- UPDATE `core.agent_events` (`status='processed'`, `response_text`, `completed_at`).
+- UPDATE `agent_execution_telemetry` run row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The `credit_deducted_nanos` column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
+- UPSERT `core.agent_sessions` (advance bookmark, clear execution handle).
 - PUBLISH `event_complete`.
 - XACK.
 
@@ -211,24 +211,24 @@ $ /agentsfleet-install-platform-ops
 ▸ Resolving tool credentials (op → env → prompt fallback) …
   fly       ✓ via op
   slack     ✓ via op
-  github    ✓ via env (ZOMBIE_CRED_GITHUB_API_TOKEN)
+  github    ✓ via env (AGENTSFLEET_CRED_GITHUB_API_TOKEN)
             ✓ generated webhook_secret locally (32 bytes, base64);
               stored in vault credential `github`, never re-displayed
   upstash   skipped (not detected)
 
-▸ Writing .usezombie/platform-ops/SKILL.md, TRIGGER.md
+▸ Writing .agentsfleet/platform-ops/SKILL.md, TRIGGER.md
    triggers: [ webhook:github events=[workflow_run] ]
    model: accounts/fireworks/models/kimi-k2.6
    context_cap_tokens: 256000     ← from doctor's tenant_provider block
 
 ▸ Installing …
-  zombie_id   = zmb_01HX9N3K…
-  webhook_urls = { github: https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…/github }
+  agent_id   = zmb_01HX9N3K…
+  webhook_urls = { github: https://api.agentsfleet.net/v1/webhooks/zmb_01HX9N3K…/github }
 
 ▸ Registering webhook on john-doe/widgetly via gh api …
   POST repos/john-doe/widgetly/hooks
        events=[workflow_run]
-       config.url=https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…/github
+       config.url=https://api.agentsfleet.net/v1/webhooks/zmb_01HX9N3K…/github
        config.secret=$WEBHOOK_SECRET
   ✓ hook 482389123 registered, active=true
 
@@ -281,7 +281,7 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider get` r
 - The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
 - The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires an agentsfleet release.
 - The first steer and the first production webhook hit the **same reasoning loop**. Asymmetry would mean a code-path the SKILL.md author can't reason about — the architecture forbids it.
-- Credit deduction goes through the same `zombie_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future user on Stripe-purchased credits.
+- Credit deduction goes through the same `agent_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future user on Stripe-purchased credits.
 
 ---
 

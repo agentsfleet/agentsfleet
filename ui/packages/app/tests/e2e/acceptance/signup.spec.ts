@@ -69,6 +69,6 @@ test.describe("signup", () => {
 
     expect(page.url()).not.toContain("/sign-in");
     expect(page.url()).not.toContain("/sign-up");
-    await expect(page.locator("body")).toContainText(/usezombie|Agents|Dashboard/i);
+    await expect(page.locator("body")).toContainText(/agentsfleet|Agents|Dashboard/i);
   });
 });

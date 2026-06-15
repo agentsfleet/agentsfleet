@@ -47,7 +47,7 @@ async function createInstallFixture(runPrefix: string): Promise<string> {
     path.join(targetDir, "SKILL.md"),
     skill
       .replace(`name: ${SAMPLE_NAME}`, `name: ${name}`)
-      .replaceAll("{{slack_channel}}", "#usezombie-acceptance"),
+      .replaceAll("{{slack_channel}}", "#agentsfleet-acceptance"),
   );
   await fs.writeFile(
     path.join(targetDir, "TRIGGER.md"),

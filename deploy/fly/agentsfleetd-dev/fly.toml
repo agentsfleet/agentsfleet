@@ -1,4 +1,4 @@
-app = "zombied-dev"
+app = "agentsfleetd-dev"
 primary_region = "iad"
 
 [build]

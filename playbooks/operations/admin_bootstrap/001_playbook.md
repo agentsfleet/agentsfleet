@@ -1,11 +1,11 @@
-# M11_006: Playbook — `usezombie-admin` User Bootstrap (DEV + PROD)
+# M11_006: Playbook — `agentsfleet-admin` User Bootstrap (DEV + PROD)
 
 **Milestone:** M11
 **Workstream:** 006 (§5 deliverable)
 **Updated:** Apr 21, 2026
-**Prerequisite:** Vault items `ZMB_CD_DEV/usezombie-admin` and `ZMB_CD_PROD/usezombie-admin` exist with fields `username` (email), `credential` (password), and `fireworks_api_key` (platform default Fireworks key). Clerk Dashboard access for both dev and prod. `op` CLI authenticated. Environment `{dev|prod}` selected per run.
+**Prerequisite:** Vault items `ZMB_CD_DEV/agentsfleet-admin` and `ZMB_CD_PROD/agentsfleet-admin` exist with fields `username` (email), `credential` (password), and `fireworks_api_key` (platform default Fireworks key). Clerk Dashboard access for both dev and prod. `op` CLI authenticated. Environment `{dev|prod}` selected per run.
 
-Provisions the one global admin user (`usezombie-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, writes the raw key to the environment's vault item, stores the platform Fireworks key in the admin workspace vault, and registers it as the active platform default via `/v1/admin/platform-keys`. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
+Provisions the one global admin user (`agentsfleet-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, writes the raw key to the environment's vault item, stores the platform Fireworks key in the admin workspace vault, and registers it as the active platform default via `/v1/admin/platform-keys`. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
 
 **This playbook is not run during the M11_006 merge.** Run it manually, per environment, when you are ready to exercise admin-only endpoints.
 
@@ -20,7 +20,7 @@ Provisions the one global admin user (`usezombie-admin`) in Clerk for a given en
 | 2.0 | Human | Set `publicMetadata.role=admin` **and** `platform_admin=true` in Clerk Dashboard |
 | 3.0 | Agent | Verify the admin JWT carries `role=admin` by calling an admin-gated endpoint |
 | 4.0 | Agent | Mint a `zmb_t_` tenant API key via `POST /v1/api-keys` |
-| 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/usezombie-admin` field `api_key` |
+| 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/agentsfleet-admin` field `api_key` |
 | 6.0 | Agent | Verify the stored key authenticates a protected endpoint |
 | 7.0 | Agent | Store the platform Fireworks key in the admin workspace vault |
 | 8.0 | Agent | Register Fireworks as the active platform default |
@@ -38,17 +38,17 @@ Steps 1–2 are the only human-interactive steps. Steps 3–8 run end-to-end wit
 export ENV="dev"   # or: export ENV="prod"
 
 case "$ENV" in
-  dev)  export VAULT="ZMB_CD_DEV";  export API_BASE="https://api-dev.usezombie.com";  export WEB_BASE="https://dev.usezombie.com" ;;
-  prod) export VAULT="ZMB_CD_PROD"; export API_BASE="https://api.usezombie.com";      export WEB_BASE="https://usezombie.com" ;;
+  dev)  export VAULT="ZMB_CD_DEV";  export API_BASE="https://api-dev.agentsfleet.net";  export WEB_BASE="https://dev.agentsfleet.net" ;;
+  prod) export VAULT="ZMB_CD_PROD"; export API_BASE="https://api.agentsfleet.net";      export WEB_BASE="https://agentsfleet.net" ;;
   *)    echo "ENV must be 'dev' or 'prod'"; exit 1 ;;
 esac
 
-export ADMIN_EMAIL=$(op read "op://$VAULT/usezombie-admin/username")
-export ADMIN_PASS=$(op read "op://$VAULT/usezombie-admin/credential")
+export ADMIN_EMAIL=$(op read "op://$VAULT/agentsfleet-admin/username")
+export ADMIN_PASS=$(op read "op://$VAULT/agentsfleet-admin/credential")
 
 test -n "$ADMIN_EMAIL" || { echo "missing admin email"; exit 1; }
 test -n "$ADMIN_PASS"  || { echo "missing admin password"; exit 1; }
-op read "op://$VAULT/usezombie-admin/fireworks_api_key" >/dev/null || { echo "missing Fireworks api key"; exit 1; }
+op read "op://$VAULT/agentsfleet-admin/fireworks_api_key" >/dev/null || { echo "missing Fireworks api key"; exit 1; }
 echo "Resolved admin=$ADMIN_EMAIL against $API_BASE"
 ```
 
@@ -60,7 +60,7 @@ Both variables non-empty. `$API_BASE/healthz` returns 200.
 
 ## 1.0 Human: Sign up via website
 
-**Goal:** `usezombie-admin` has a Clerk user in this environment, with a `core.tenants` row provisioned by the signup webhook, and `publicMetadata` containing `tenant_id=<new uuid>` and `role="operator"`.
+**Goal:** `agentsfleet-admin` has a Clerk user in this environment, with a `core.tenants` row provisioned by the signup webhook, and `publicMetadata` containing `tenant_id=<new uuid>` and `role="operator"`.
 
 1. Open `$WEB_BASE` in a browser.
 2. Click Sign Up.
@@ -178,16 +178,16 @@ echo "Minted key_id=$KEY_ID (raw key held in RAW_KEY)"
 
 ## 5.0 Agent: Write raw key to vault
 
-**Goal:** persist the raw key at `op://$VAULT/usezombie-admin` field `api_key`. This is the only place it will ever exist after this step — the server stores only the SHA-256 hash.
+**Goal:** persist the raw key at `op://$VAULT/agentsfleet-admin` field `api_key`. This is the only place it will ever exist after this step — the server stores only the SHA-256 hash.
 
 ```bash
-op item edit "usezombie-admin" --vault "$VAULT" "api_key=$RAW_KEY"
+op item edit "agentsfleet-admin" --vault "$VAULT" "api_key=$RAW_KEY"
 unset RAW_KEY
 
 # Verify:
-STORED=$(op read "op://$VAULT/usezombie-admin/api_key")
+STORED=$(op read "op://$VAULT/agentsfleet-admin/api_key")
 [[ "$STORED" =~ ^zmb_t_[0-9a-f]{64}$ ]] || { echo "vault write verification failed"; exit 1; }
-echo "api_key stored at op://$VAULT/usezombie-admin/api_key"
+echo "api_key stored at op://$VAULT/agentsfleet-admin/api_key"
 unset STORED
 ```
 
@@ -202,7 +202,7 @@ unset STORED
 **Goal:** a request bearing the vault-stored key hits an admin-gated endpoint and gets 200.
 
 ```bash
-KEY=$(op read "op://$VAULT/usezombie-admin/api_key")
+KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
 curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $KEY" \
   "$API_BASE/v1/admin/platform-keys"
@@ -221,7 +221,7 @@ unset KEY
 **Goal:** write the Fireworks API key into the admin tenant's normal credential vault under the provider name `fireworks`. This is the key platform-managed tenants use through the `core.platform_llm_keys` pointer. The raw key must flow from 1Password to `jq` to `agentsfleet` through stdin; do not pass it as a shell argument.
 
 ```bash
-op read "op://$VAULT/usezombie-admin/fireworks_api_key" |
+op read "op://$VAULT/agentsfleet-admin/fireworks_api_key" |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
   agentsfleet credential set fireworks --data @-
 ```
@@ -237,7 +237,7 @@ op read "op://$VAULT/usezombie-admin/fireworks_api_key" |
 **Goal:** create or update the active `core.platform_llm_keys` pointer so platform-managed users resolve Fireworks from the admin workspace vault at runtime. No key material is stored in `core.platform_llm_keys`.
 
 ```bash
-KEY=$(op read "op://$VAULT/usezombie-admin/api_key")
+KEY=$(op read "op://$VAULT/agentsfleet-admin/api_key")
 curl -s -X PUT \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
@@ -258,6 +258,6 @@ If the admin user was misconfigured mid-playbook:
 
 1. `DELETE /v1/api-keys/{KEY_ID}` (after PATCHing `active:false`) to revoke the minted key.
 2. Clerk Dashboard → user → Metadata → set `"role": "operator"` to demote.
-3. Clear `op://$VAULT/usezombie-admin/api_key`.
+3. Clear `op://$VAULT/agentsfleet-admin/api_key`.
 4. Deactivate the Fireworks platform-default row through `/v1/admin/platform-keys`.
 5. Restart the playbook from step 1.

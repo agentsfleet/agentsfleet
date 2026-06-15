@@ -1,5 +1,5 @@
 /*
- * usezombie design tokens — Layer 0
+ * agentsfleet design tokens — Layer 0
  *
  * Operational Restraint. Source of truth: docs/DESIGN_SYSTEM.md.
  * Dark is the brand's primary surface. Light mode mirrors via
@@ -49,7 +49,7 @@
    * (primary CTAs, the brand-mark). Theme-fixed: stays dark in both
    * dark and light modes so the contrast against the always-mint
    * background never inverts. Per the canonical preview at
-   * ~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html. */
+   * ~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html. */
   --on-pulse: #0a0d0e;
 
   /* ── Status (use sparingly, only for actual status) ── */

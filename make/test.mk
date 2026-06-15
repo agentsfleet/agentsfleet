@@ -10,7 +10,7 @@ include make/bench.mk
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
-ZOMBIED_COVERAGE_MIN_LINES ?= 35
+AGENTD_COVERAGE_MIN_LINES ?= 35
 BENCH_MODE ?= bench
 # Use native target for memleak — avoids cross-compile dynamic linker mismatch
 # when OpenSSL is linked. Valgrind needs the system's ld-linux, not Zig's bundled one.

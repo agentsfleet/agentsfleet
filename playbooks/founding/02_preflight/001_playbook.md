@@ -46,8 +46,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
 | `tailscale` | `authkey` | worker node provision |
-| `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
-| `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
+| `agent-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
+| `agent-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
 | `discord-ci-webhook` | `credential` | `deploy-dev.yml` + `release.yml` notify |
 | `fly-api-token` | `credential` | `release.yml` → `fly deploy --app agentsfleetd-prod` (see M2_002 §2.6) |
 | `cloudflare-tunnel-prod` | `credential` | Cloudflare Tunnel credentials for PROD origin shield (see M2_002 §2.4) |
@@ -180,18 +180,18 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
 | `planetscale-prod` | `migrator-connection-string` | PlanetScale dashboard → create/get `db_migrator` connection string |
-| `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
+| `upstash-prod` | `api-url` | Upstash dashboard → Redis → `agentsfleet-cache` → create/get API role URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
-| `zombie-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
-| `zombie-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
+| `agent-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
+| `agent-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 
 **ZMB_CD_DEV — create these:**
 
 | Item name | Field | How to get the value |
 |---|---|---|
-| `planetscale-dev` | `api-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `api_runtime` connection string |
-| `planetscale-dev` | `migrator-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `db_migrator` connection string |
-| `upstash-dev` | `api-url` | Upstash → Redis → `usezombie-dev` → create/get API role URL (`rediss://...`) |
+| `planetscale-dev` | `api-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `api_runtime` connection string |
+| `planetscale-dev` | `migrator-connection-string` | PlanetScale → `agentsfleet-dev` DB → create/get `db_migrator` connection string |
+| `upstash-dev` | `api-url` | Upstash → Redis → `agentsfleet-dev` → create/get API role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
 | `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create agentsfleetd-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
 | `posthog-dev` | `credential` | PostHog project API key shared by website, app, agentsfleetd, worker, and CLI |

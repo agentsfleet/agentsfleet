@@ -182,7 +182,7 @@ Subsequent pushes inherit visibility; this is one-click per image.
 | `FAIL: zig … download failed from every mirror`                | All three Zig CDNs unreachable from your | Wait + retry; or temporarily build from a region with better routing.   |
 |                                                                | network at build time                    |                                                                         |
 | `denied: installation not allowed to Create organization …`    | Your GitHub user is not a member of the  | Ask an org admin for access, or push to your fork (`--registry`).       |
-|                                                                | `usezombie` org                          |                                                                         |
+|                                                                | `agentsfleet` org                          |                                                                         |
 | `--load is incompatible with multi-platform`                   | You passed `--no-push` to a multi-arch   | The script handles this by narrowing to `linux/amd64`. If you patched   |
 |                                                                | image and bypassed the auto-narrowing    | the script, restore the narrowing branch.                               |
 | `unsupported TARGETARCH=…` during alpine build                 | Docker built for an arch the Dockerfile  | Only `linux/amd64` and `linux/arm64` are supported.                     |

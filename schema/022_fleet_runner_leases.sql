@@ -1,5 +1,5 @@
 -- fleet.runner_leases — one row per issued lease (agent-runner split). The
--- control plane (zombied) records a lease when it hands an event to a runner
+-- control plane (agentsfleetd) records a lease when it hands an event to a runner
 -- via POST /v1/runners/me/leases, and reads it back at
 -- POST /v1/runners/me/reports to reconstruct the write context the direct
 -- worker holds in memory. The runner never sees this table; it only echoes the
@@ -14,7 +14,7 @@
 -- Event envelope (actor, event_type, request_json, event_created_at): the
 -- runner's input event, persisted so an expired lease can be RE-LEASED to
 -- another runner from Postgres alone (the durable reclaim source) without
--- re-reading Redis — durable state lives in zombied, never runner-local. Not
+-- re-reading Redis — durable state lives in agentsfleetd, never runner-local. Not
 -- credentials: secrets are resolved fresh per lease, never stored here (VLT).
 --
 -- fencing_token: monotonic per lease; frozen here for the later fleet reclaim

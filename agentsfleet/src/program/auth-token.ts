@@ -26,7 +26,7 @@ const isString = (value: unknown): value is string => typeof value === TYPE_STRI
 export type RoleClaim = typeof USER | typeof OPERATOR | typeof ADMIN;
 
 // Subset of Clerk-style claims the CLI consumes. Index signature carries
-// namespaced URL keys (`https://usezombie.dev/role` etc.) as `unknown`,
+// namespaced URL keys (`https://agentsfleet.net/role` etc.) as `unknown`,
 // forcing callers to typeof-check before use.
 export interface JwtMetadata {
   readonly tenant_id?: string;
@@ -54,7 +54,7 @@ export interface JwtClaims {
   readonly [key: string]: unknown;
 }
 
-const ROLE_NAMESPACE_DEV = "https://usezombie.dev/role";
+const ROLE_NAMESPACE_DEV = "https://agentsfleet.net/role";
 const ROLE_NAMESPACE_COM = "https://agentsfleet.net/role";
 
 export type AuthTokenSource = "file" | typeof AGENTSFLEET_ENV | typeof NONE;

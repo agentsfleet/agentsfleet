@@ -10,7 +10,7 @@ PlanetScale-dev (`account_teardown`). No manual SQL needed.
 
 1. **Clerk Dashboard → dev instance → Users →** find the email **→ Delete user.**
    Confirm the dev webhook has the **`user.deleted`** event enabled
-   (→ `https://api-dev.usezombie.com/v1/auth/identity-events/clerk`).
+   (→ `https://api-dev.agentsfleet.net/v1/auth/identity-events/clerk`).
 
 2. **Verify** in PlanetScale-dev (empty = purged):
 
@@ -22,5 +22,5 @@ PlanetScale-dev (`account_teardown`). No manual SQL needed.
    message → **Resend**.
 
 The purge is keyed by `oidc_subject` and removes the tenant plus its users,
-workspaces, memberships, zombies, sessions, secrets, billing, and keys in one
+workspaces, memberships, agents, sessions, secrets, billing, and keys in one
 transaction.

@@ -6,7 +6,7 @@
 //!   POSITIVE: memory_runtime can SELECT from memory.memory_entries.
 //!
 //! Requires: LIVE_DB=1 and TEST_DATABASE_URL=postgres://... (set by make test-integration-db).
-//! The test user (usezombie) is a superuser in local dev, so SET ROLE succeeds.
+//! The test user (agentsfleet) is a superuser in local dev, so SET ROLE succeeds.
 
 const std = @import("std");
 const common = @import("common");
@@ -25,7 +25,7 @@ test "integration: memory_runtime has no access to core.agents (RULE CTX)" {
 
     const conn = db_ctx.conn;
 
-    // Switch to memory_runtime. Succeeds because usezombie is a superuser.
+    // Switch to memory_runtime. Succeeds because agentsfleet is a superuser.
     _ = try conn.exec("SET ROLE memory_runtime", .{});
 
     // SELECT on core.agents must be rejected with SQLSTATE 42501 (insufficient_privilege).

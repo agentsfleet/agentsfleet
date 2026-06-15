@@ -1,4 +1,4 @@
-# usezombie — runtime container
+# agentsfleet — runtime container
 # Binary must be pre-built before docker build:
 #   CI:    binaries job produces dist/agentsfleetd-linux-{amd64,arm64}
 #   Local: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSafe
@@ -10,10 +10,10 @@ ARG TARGETARCH=amd64
 # OCI metadata — drives the GitHub Container Registry package page. Points at
 # the user docs (the package README is otherwise unrelated) and links the
 # package to the repo.
-LABEL org.opencontainers.image.title="usezombie agentsfleetd" \
-      org.opencontainers.image.description="usezombie control-plane daemon (agentsfleetd) that runs your agents. Docs: https://docs.usezombie.com" \
-      org.opencontainers.image.url="https://docs.usezombie.com" \
-      org.opencontainers.image.documentation="https://docs.usezombie.com" \
+LABEL org.opencontainers.image.title="agentsfleet agentsfleetd" \
+      org.opencontainers.image.description="agentsfleet control-plane daemon (agentsfleetd) that runs your agents. Docs: https://docs.agentsfleet.net" \
+      org.opencontainers.image.url="https://docs.agentsfleet.net" \
+      org.opencontainers.image.documentation="https://docs.agentsfleet.net" \
       org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \

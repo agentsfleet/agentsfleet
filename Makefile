@@ -1,5 +1,5 @@
 # =============================================================================
-# USEZOMBIE MAKEFILE - MODULAR STRUCTURE
+# USEAGENT MAKEFILE - MODULAR STRUCTURE
 # =============================================================================
 
 include make/dev.mk
@@ -10,7 +10,7 @@ include make/build.mk
 .DEFAULT_GOAL := help
 
 help:  ## Show all available Makefile targets
-	@echo "usezombie"
+	@echo "agentsfleet"
 	@echo ""
 	@echo "Development:"
 	@echo "  up                       Build local agentsfleetd binary, docker compose up, tail logs"

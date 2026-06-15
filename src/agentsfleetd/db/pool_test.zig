@@ -14,7 +14,7 @@ const TEST_RUN_MS: i64 = 1_000;
 
 test "parseUrl parses host, port, db, credentials" {
     const alloc = std.testing.allocator;
-    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/usezombiedb");
+    const opts = try parseUrl(alloc, "postgres://alice:secret@localhost:5433/useagentsfleetdb");
     defer alloc.free(opts.connect.host.?);
     defer alloc.free(opts.auth.username);
     const password = opts.auth.password.?;
@@ -26,7 +26,7 @@ test "parseUrl parses host, port, db, credentials" {
     try std.testing.expectEqual(@as(u16, 5433), opts.connect.port.?);
     try std.testing.expectEqualStrings("alice", opts.auth.username);
     try std.testing.expectEqualStrings("secret", password);
-    try std.testing.expectEqualStrings("usezombiedb", database);
+    try std.testing.expectEqualStrings("useagentsfleetdb", database);
 }
 
 test "parseUrl sets tls=require on standard URL" {
@@ -43,13 +43,13 @@ test "parseUrl sets tls=require on standard URL" {
 
 test "parseUrl strips query string from dbname" {
     const alloc = std.testing.allocator;
-    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/zombiedb?sslmode=require");
+    const opts = try parseUrl(alloc, "postgres://u:p@host:5432/agentsfleetdb?sslmode=require");
     defer alloc.free(opts.connect.host.?);
     defer alloc.free(opts.auth.username);
     defer alloc.free(opts.auth.password.?);
     defer alloc.free(opts.auth.database.?);
 
-    try std.testing.expectEqualStrings("zombiedb", opts.auth.database.?);
+    try std.testing.expectEqualStrings("agentsfleetdb", opts.auth.database.?);
     try std.testing.expect(opts.connect.tls == .require);
 }
 

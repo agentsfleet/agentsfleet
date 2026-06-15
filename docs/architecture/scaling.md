@@ -43,7 +43,7 @@ The cutover added one hop (the runner long-poll) and removed another (the in-pro
 | Step | Typical cost (regional Upstash) |
 |---|---|
 | API handler receives steer / webhook | ~ms |
-| API `XADD zombie:{id}:events` round-trip | ~3–10 ms (Upstash regional RTT) |
+| API `XADD agent:{id}:events` round-trip | ~3–10 ms (Upstash regional RTT) |
 | Runner's next `lease` poll picks it up | **0 – `NO_WORK_RETRY_AFTER_MS` (≤ 1 s)** if the runner is idle-polling; immediate if a runner is already mid-poll |
 | `lease` handler: non-blocking `XREADGROUP` + gates + secret resolve + issue lease | ~ms + PG round-trips |
 | Runner forks the sandboxed child, runs NullClaw | dominated by the agent's own runtime |
@@ -68,7 +68,7 @@ sse tier:      1 SubscriptionHub conn per replica         ≈ R
                                                           ≈ 9·R
 ```
 
-**There is no per-agent term — and no per-viewer term.** Adding agents adds Postgres writes and lease throughput, not Redis connections; a dashboard with 100 open tabs costs the hub one connection and one wire SUBSCRIBE per distinct zombie watched. Viewer count still drives per-replica **threads + memory** (the `SSE_MAX_STREAMS` knob), just not Upstash connections. Runners contribute **zero** Upstash connections.
+**There is no per-agent term — and no per-viewer term.** Adding agents adds Postgres writes and lease throughput, not Redis connections; a dashboard with 100 open tabs costs the hub one connection and one wire SUBSCRIBE per distinct agent watched. Viewer count still drives per-replica **threads + memory** (the `SSE_MAX_STREAMS` knob), just not Upstash connections. Runners contribute **zero** Upstash connections.
 
 ### Per-request volume (the Upstash bill)
 
@@ -94,13 +94,13 @@ For a 20-runner fleet at the 1 s default: ~72,000 idle `lease`-scan requests/hou
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `src/lib/common/constants.zig`. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-agent runtime before reclaim (the renewal gap) | Raise to cover the longest expected agent runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short agents. |
-| `API_HTTP_THREADS` | 1 | Concurrent short-lived handlers **per worker** — the httpz handler-pool size. **No handler parks a pool thread anymore**: SSE streams run on dedicated detached threads (`startEventStream`), capped by `SSE_MAX_STREAMS`, not by this knob; the lease is a non-blocking single poll. | Sustained 429 shed (`zombie_api_backpressure_rejections_total`) with idle CPU. Total request concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`. |
+| `API_HTTP_THREADS` | 1 | Concurrent short-lived handlers **per worker** — the httpz handler-pool size. **No handler parks a pool thread anymore**: SSE streams run on dedicated detached threads (`startEventStream`), capped by `SSE_MAX_STREAMS`, not by this knob; the lease is a non-blocking single poll. | Sustained 429 shed (`agent_api_backpressure_rejections_total`) with idle CPU. Total request concurrency = `API_HTTP_WORKERS × API_HTTP_THREADS`. |
 | `API_HTTP_WORKERS` | 1 | Accept/event-loop threads (epoll/kqueue), each multiplexing up to `API_MAX_CLIENTS` idle connections as fds **and owning its own `API_HTTP_THREADS` handler pool**. | Scale toward core count on a multi-core VM. The accept layer is rarely the wall. |
-| `SSE_MAX_STREAMS` | 64 | Concurrent SSE tails per replica — each is a dedicated detached thread (~0.5 MiB stack; budget math at the const in `runtime_loader.zig`); all tails share the SubscriptionHub's one Redis connection. 0 is rejected at boot. | 503s on `GET /events/stream` (`zombie_sse_backpressure_rejections_total`) while the box has memory headroom; watch `zombie_sse_in_flight_streams`. |
-| `API_MAX_IN_FLIGHT_REQUESTS` | 256 | **api-class** admission ceiling → 429 + Retry-After. Route classes at dispatch: ops (`/healthz`, `/readyz`, `/metrics`) are NEVER shed — an overload must not blind the operators; the SSE tail (stream class) answers to `SSE_MAX_STREAMS` instead; everything else is api. | Incident lever: set below `API_HTTP_WORKERS × API_HTTP_THREADS` and redeploy to shed during an overload (dormant at the default — dispatch concurrency is physically below the ceiling). Watch `zombie_api_backpressure_rejections_total`. |
+| `SSE_MAX_STREAMS` | 64 | Concurrent SSE tails per replica — each is a dedicated detached thread (~0.5 MiB stack; budget math at the const in `runtime_loader.zig`); all tails share the SubscriptionHub's one Redis connection. 0 is rejected at boot. | 503s on `GET /events/stream` (`agent_sse_backpressure_rejections_total`) while the box has memory headroom; watch `agent_sse_in_flight_streams`. |
+| `API_MAX_IN_FLIGHT_REQUESTS` | 256 | **api-class** admission ceiling → 429 + Retry-After. Route classes at dispatch: ops (`/healthz`, `/readyz`, `/metrics`) are NEVER shed — an overload must not blind the operators; the SSE tail (stream class) answers to `SSE_MAX_STREAMS` instead; everything else is api. | Incident lever: set below `API_HTTP_WORKERS × API_HTTP_THREADS` and redeploy to shed during an overload (dormant at the default — dispatch concurrency is physically below the ceiling). Watch `agent_api_backpressure_rejections_total`. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP QPS (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
 | Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Add hosts to add execution capacity — no Redis or coordination cost. Each idle runner adds one poll loop to the Upstash bill (tune via `NO_WORK_RETRY_AFTER_MS`). |
-| `RUNNER_WORKER_COUNT` | 1 | Concurrent leased agents **per host** — the runner worker-pool size (M88_002). N workers each run the lease→execute→report unit; the per-zombie `affinity.claim` keeps two workers off the same zombie. | A host has spare cores/memory while one long agent run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more agents per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. |
+| `RUNNER_WORKER_COUNT` | 1 | Concurrent leased agents **per host** — the runner worker-pool size (M88_002). N workers each run the lease→execute→report unit; the per-agent `affinity.claim` keeps two workers off the same agent. | A host has spare cores/memory while one long agent run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more agents per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. |
 
 **The `XREADGROUP BLOCK` knob is gone.** The lease path uses a non-blocking read; there is no per-stream blocking loop to tune. Its role (idle-cost vs latency trade) moved to `NO_WORK_RETRY_AFTER_MS` on the runner side.
 
@@ -112,17 +112,17 @@ Once Redis connection count and request volume fit the plan, the next bottleneck
 
 ### 1. `agentsfleetd` API replicas + Postgres write throughput (the usual answer now)
 
-The lease/report hot path does the durable writes the worker used to do — `INSERT zombie_events`, the two billing debits, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per agent.
+The lease/report hot path does the durable writes the worker used to do — `INSERT agent_events`, the two billing debits, `UPDATE` terminal, `INSERT telemetry`, checkpoint `UPSERT`, plus the `fleet.runner_leases`/`runner_affinity` bookkeeping. At fleet scale this is the binding axis. Both `agentsfleetd` replicas and Postgres (with a connection pooler) scale horizontally; the hot path is shardable per agent.
 
 Symptom: lease/report p99 climbs; Postgres connection saturation or write-lock contention on the `fleet` tables. Fix: more `agentsfleetd` replicas + Postgres sizing in the deployment runbook.
 
 ### 2. Pub/sub fan-out on activity (unchanged in shape)
 
-`zombie:{id}:activity` PUBLISH is cheap server-side (`agentsfleetd` is the sole publisher); every SSE viewer on a replica shares the SubscriptionHub's ONE `SUBSCRIBE` connection, with one wire subscription per distinct zombie watched. A dashboard with 1000 simultaneous viewers costs Upstash one connection per replica and one delivery per frame per watched channel — the per-viewer fan-out happens in-process (bounded queues, drop-oldest for stalled tabs). Plan API-tier sizing around peak concurrent SSE *threads* (`SSE_MAX_STREAMS`), not connections.
+`agent:{id}:activity` PUBLISH is cheap server-side (`agentsfleetd` is the sole publisher); every SSE viewer on a replica shares the SubscriptionHub's ONE `SUBSCRIBE` connection, with one wire subscription per distinct agent watched. A dashboard with 1000 simultaneous viewers costs Upstash one connection per replica and one delivery per frame per watched channel — the per-viewer fan-out happens in-process (bounded queues, drop-oldest for stalled tabs). Plan API-tier sizing around peak concurrent SSE *threads* (`SSE_MAX_STREAMS`), not connections.
 
 **Each open SSE stream costs one dedicated detached thread** (`startEventStream` — never a handler-pool thread; a parked stream cannot black-hole pool batches). The per-replica SSE ceiling is the `SSE_MAX_STREAMS` env knob (default 64; ~0.25 MiB + 1 client fd per stream — the Redis side is the hub's shared connection, no per-viewer term); at the cap new tails get 503 and the handler pool keeps serving everything else. An event-loop SSE substrate (a stream costs an fd, not a thread) stays a much later, gated lever — it only earns its keep above the thread/memory ceiling, and it must make the SSE *subscriber socket itself* evented, not merely offload the blocking read. See `docs/v2/pending/M88_001_*` for the gated design (its premise is being re-anchored: the measured pain was pool poisoning + per-stream Redis connections, not raw httpz throughput).
 
-Symptom: `zombie_sse_backpressure_rejections_total` climbing (503s) while memory has headroom; Upstash connection count climbing with viewer count. Fix, in order: raise `SSE_MAX_STREAMS`, then a larger VM, then more API replicas.
+Symptom: `agent_sse_backpressure_rejections_total` climbing (503s) while memory has headroom; Upstash connection count climbing with viewer count. Fix, in order: raise `SSE_MAX_STREAMS`, then a larger VM, then more API replicas.
 
 ### 3. Upstash plan ceiling (now rarely first)
 
@@ -174,7 +174,7 @@ Step 4: Emit configuration
   REDIS_REQUEST_TIMEOUT_MS = 5000    (do not raise)
   NO_WORK_RETRY_AFTER_MS   = <step 2 result>
   LEASE_TTL_MS             = <≥ max expected agent runtime until M80_006>
-  zombied_replicas         = <step 3 result>
+  agentsfleetd_replicas         = <step 3 result>
   runner_hosts             = N
 ```
 

@@ -68,11 +68,11 @@ describe("AgentHelp.styleTitle", () => {
 
 describe("styleTagline", () => {
   test("subtle grey 244 under a 256-color TTY", () => {
-    const styled = styleTagline("usezombie cli", {
+    const styled = styleTagline("agentsfleet cli", {
       stream: TTY_STREAM,
       env: XTERM_ENV,
     });
-    expect(styled).toBe(palette.subtle("usezombie cli", {
+    expect(styled).toBe(palette.subtle("agentsfleet cli", {
       stream: TTY_STREAM,
       env: XTERM_ENV,
     }));
@@ -81,7 +81,7 @@ describe("styleTagline", () => {
   });
 
   test("basic16 dim under a non-256 TTY", () => {
-    const styled = styleTagline("usezombie cli", {
+    const styled = styleTagline("agentsfleet cli", {
       stream: TTY_STREAM,
       env: BASIC_ENV,
     });
@@ -90,18 +90,18 @@ describe("styleTagline", () => {
   });
 
   test("plain text under NO_COLOR=1", () => {
-    const styled = styleTagline("usezombie cli", {
+    const styled = styleTagline("agentsfleet cli", {
       stream: TTY_STREAM,
       env: NO_COLOR_ENV,
     });
-    expect(styled).toBe("usezombie cli");
+    expect(styled).toBe("agentsfleet cli");
   });
 
   test("defaults to process.stdout + process.env when opts omitted", () => {
     // No assertion on the styling — runtime-dependent. The contract is
     // "doesn't throw, returns a string containing the input".
-    const styled = styleTagline("usezombie cli");
+    const styled = styleTagline("agentsfleet cli");
     expect(typeof styled).toBe("string");
-    expect(styled).toContain("usezombie cli");
+    expect(styled).toContain("agentsfleet cli");
   });
 });

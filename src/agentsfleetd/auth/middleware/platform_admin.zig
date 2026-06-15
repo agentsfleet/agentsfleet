@@ -2,7 +2,7 @@
 //!
 //! Composes *after* an auth middleware that populated `ctx.principal`.
 //! Rejects with 403 `UZ-AUTH-021` unless the principal carries the verified
-//! `platform_admin` claim — the one principal usezombie allows to mint a
+//! `platform_admin` claim — the one principal agentsfleet allows to mint a
 //! runner token (`POST /v1/runners`).
 //!
 //! Fail-closed twice over: the api_key path never sets `platform_admin` (so a

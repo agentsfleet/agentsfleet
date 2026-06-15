@@ -1,4 +1,4 @@
-app = "zombied-prod"
+app = "agentsfleetd-prod"
 primary_region = "iad"
 
 [build]
@@ -40,7 +40,7 @@ primary_region = "iad"
 #                      the 256 default it is a dormant incident lever by
 #                      deliberate owner choice: drop it below 64 and redeploy
 #                      to shed load fast during an overload event. Watch
-#                      zombie_api_backpressure_rejections_total.
+#                      agent_api_backpressure_rejections_total.
 #   SSE_MAX_STREAMS  — concurrent event streams per instance (default 64,
 #                      runtime_loader.zig); over-cap streams get 503. Streams
 #                      run on DEDICATED detached threads (httpz
@@ -50,8 +50,8 @@ primary_region = "iad"
 #                      vendor/httpz/CHANGES.md). Budget ~0.5 MiB + 1 client fd
 #                      per stream; the Redis side is ONE shared SubscriptionHub
 #                      pub/sub connection per instance regardless of viewers.
-#                      Watch zombie_sse_in_flight_streams +
-#                      zombie_sse_dropped_frames_total.
+#                      Watch agent_sse_in_flight_streams +
+#                      agent_sse_dropped_frames_total.
 [env]
   API_HTTP_THREADS = "32"
   API_HTTP_WORKERS = "2"

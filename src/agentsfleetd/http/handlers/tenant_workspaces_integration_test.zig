@@ -65,7 +65,7 @@ fn seedOverrideWorkspace(conn: *pg.Conn, now_ms: i64) !void {
 fn seedOverrideUser(conn: *pg.Conn, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 'tenant-workspaces-override@test.usezombie', $4, $4)
+        \\VALUES ($1, $2, $3, 'tenant-workspaces-override@test.agentsfleet', $4, $4)
         \\ON CONFLICT (oidc_subject) DO UPDATE SET tenant_id = EXCLUDED.tenant_id, updated_at = EXCLUDED.updated_at
     , .{ OVERRIDE_USER_ID, OVERRIDE_TENANT_ID, TOKEN_SUBJECT, now_ms });
 }

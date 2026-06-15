@@ -1,6 +1,6 @@
 Usage: agentsfleet [options] [command]
 
-usezombie cli
+agentsfleet cli
 
 Options:
   -v, --version                 Show version

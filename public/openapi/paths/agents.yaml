@@ -315,7 +315,7 @@
                 type: string
                 description: |
                   The full TRIGGER.md to persist; the server reparses the
-                  frontmatter and overlays the `x_usezombie.triggers` half of
+                  frontmatter and overlays the `x_agentsfleet.triggers` half of
                   `config_json`. Must be non-empty. Mutually exclusive with
                   `config_json`.
               source_markdown:

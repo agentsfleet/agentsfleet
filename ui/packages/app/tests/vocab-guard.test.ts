@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // Vocab guard: the user-facing product noun is "agent". The word "agent" may
-// appear in code identifiers, routes, schema names, the brand (usezombie), and
+// appear in code identifiers, routes, schema names, the brand (agentsfleet), and
 // CLI/daemon names — but never as a bare English product noun in *rendered
 // copy*. This scan extracts user-visible text (string literals + JSX text) and
 // fails if a multi-word phrase still contains the standalone word "agent", so
@@ -15,7 +15,7 @@ import { join } from "node:path";
 //     identifiers / paths / test-ids / class names / enum values, not copy
 //   - comment lines are skipped
 //   - brand/route/schema fragments are allowlisted
-const ALLOW_FRAGMENTS = ["usezombie", "/agents", "agent:", "agent_", "core.agent", "agent-"];
+const ALLOW_FRAGMENTS = ["agentsfleet", "/agents", "agent:", "agent_", "core.agent", "agent-"];
 const WORD = /\bagents?\b/i;
 
 const SEGMENT = /"([^"]*)"|'([^']*)'|`([^`]*)`|>([^<>{}]*)</g;

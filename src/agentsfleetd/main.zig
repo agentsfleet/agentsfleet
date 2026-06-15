@@ -1,4 +1,4 @@
-//! usezombie — agent delivery control plane.
+//! agentsfleet — agent delivery control plane.
 //! One Zig binary. Takes a spec. Ships a validated PR.
 //!
 //! Subcommands:
@@ -31,7 +31,7 @@ var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode 
 // pub: consumed by std at comptime via @import("root").std_options
 pub const std_options: std.Options = .{
     .log_level = .debug,
-    .logFn = zombiedLog,
+    .logFn = agentsfleetdLog,
 };
 
 fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
@@ -54,7 +54,7 @@ fn shouldLog(level: std.log.Level) bool {
     return @intFromEnum(level) <= @intFromEnum(configured);
 }
 
-fn zombiedLog(
+fn agentsfleetdLog(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime fmt: []const u8,
@@ -152,7 +152,7 @@ pub fn main(init: std.process.Init) void {
     // Zig 0.16 removed std.posix.isatty; probe the TTY via the threaded io.
     const stderr_is_tty = std.Io.File.stderr().isTty(io) catch false;
     logging.initPrettyMode(eff_env.get("AGENTSFLEET_LOG_PRETTY"), stderr_is_tty);
-    // Production log sinks (stderr + OTLP). Until this call, zombiedLog
+    // Production log sinks (stderr + OTLP). Until this call, agentsfleetdLog
     // falls through to direct stderr write so the env-load logs above
     // still reach the operator. After this, every emit fans out through
     // the registry — same observable behavior, plus a hook for tests.

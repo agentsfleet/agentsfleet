@@ -2,7 +2,7 @@
 name: platform-ops-agent
 
 x-agentsfleet:
-  # Both fields are populated by `/usezombie-install-platform-ops` from the
+  # Both fields are populated by `/agentsfleet-install-platform-ops` from the
   # `tenant_provider` block of `agentsfleet doctor --json`. Under the platform
   # default they carry resolved values (e.g. Fireworks Kimi K2.6 + 256K cap);
   # under self-managed they carry the empty-string / zero sentinels and the worker

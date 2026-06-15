@@ -1,9 +1,9 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "usezombie",
+  "name": "agentsfleet",
   "description": "Agent Delivery Control Plane — long-lived, event-driven autonomous workers (Agents) scoped to a workspace.",
-  "url": "https://usezombie.com",
+  "url": "https://agentsfleet.net",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Linux",
   "apiDocumentation": "/openapi.json",
@@ -91,7 +91,7 @@
   },
   "revenue": {
     "model": "self-managed + credit-pool runtime metering",
-    "description": "Users may supply their own Large Language Model (LLM) API keys. usezombie meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
+    "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
     "safe": ["list_agent_events", "stream_agent_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],

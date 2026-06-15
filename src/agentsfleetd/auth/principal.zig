@@ -26,7 +26,7 @@ pub const AuthPrincipal = struct {
     /// Set only when `mode == .runner` — the `fleet.runners` row id resolved
     /// from the presented runner token. Freed with the other principal fields.
     runner_id: ?[]const u8 = null,
-    /// usezombie platform operator, granted by a manual Clerk `publicMetadata`
+    /// agentsfleet platform operator, granted by a manual Clerk `publicMetadata`
     /// flip surfaced as the `platform_admin` JWT claim. Distinct from the
     /// per-tenant `role`: the only principal allowed to mint a runner token.
     /// Fail-closed — the `api_key` path never sets it, so a `zmb_t_` key (which

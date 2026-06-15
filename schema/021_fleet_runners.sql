@@ -10,7 +10,7 @@
 -- operator/provisioner credential (a Clerk JWT or a zmb_t_ api_key, via
 -- bearer_or_api_key — there is no enrollment token). register mints a durable
 -- per-runner bearer token (zrn_), returned once; this table stores only its
--- hash, and zombied verifies later calls by hashing the presented Bearer
+-- hash, and agentsfleetd verifies later calls by hashing the presented Bearer
 -- (no plaintext token).
 --
 -- sandbox_tier: isolation strength reported at register

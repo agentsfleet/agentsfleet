@@ -1,5 +1,5 @@
 // initNdjsonExporter + exportSpanToNdjson coverage. Adapted from
-// Supabase ndjson.unit.test.ts — usezombie's exporter is sync (writes
+// Supabase ndjson.unit.test.ts — agentsfleet's exporter is sync (writes
 // via appendFileSync), so tests are plain bun:test without Effect.
 
 import { describe, expect, it } from "bun:test";

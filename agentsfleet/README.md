@@ -1,15 +1,15 @@
 # agentsfleet
 
-The official Command Line Interface (CLI) for [usezombie](https://agentsfleet.net).
+The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.net).
 
-[![Get early access](https://img.shields.io/badge/usezombie-Get_early_access-5EEAD4?style=for-the-badge)](https://agentsfleet.net)
+[![Get early access](https://img.shields.io/badge/agentsfleet-Get_early_access-5EEAD4?style=for-the-badge)](https://agentsfleet.net)
 [![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.agentsfleet.net)
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-Authenticate, manage workspaces, install agents, tail their events, and operate your usezombie deployment from the terminal.
+Authenticate, manage workspaces, install agents, tail their events, and operate your agentsfleet deployment from the terminal.
 
-> **Pre-release** — usezombie is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
+> **Pre-release** — agentsfleet is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
 
 ## Install
 
@@ -22,7 +22,7 @@ Requires Node.js ≥ 24 (or Bun ≥ 1.3).
 ## Quick start
 
 ```bash
-# Authenticate with your usezombie account (opens browser)
+# Authenticate with your agentsfleet account (opens browser)
 agentsfleet login
 
 # Create a workspace
@@ -77,29 +77,29 @@ agentsfleet doctor
 |---------|-------------|
 | `billing show` | Plan, balance, and usage snapshot |
 
-### Zombies
+### Agents
 
 | Command | Description |
 |---------|-------------|
 | `install --from <path>` | Register an agent from `<path>` |
 | `list [--cursor C] [--limit N]` | List agents (paginated) |
-| `status [<zombie_id>]` | Show agent status |
-| `stop <zombie_id>` | Halt the session (resumable) |
-| `resume <zombie_id>` | Resume from stopped |
-| `kill <zombie_id>` | Mark terminal (irreversible) |
-| `delete <zombie_id>` | Hard-delete (kill first) |
-| `logs <zombie_id>` | Tail agent activity |
-| `events <zombie_id> [opts]` | Page through historical events |
-| `steer <zombie_id> "<msg>"` | Send a message; stream response |
+| `status [<agent_id>]` | Show agent status |
+| `stop <agent_id>` | Halt the session (resumable) |
+| `resume <agent_id>` | Resume from stopped |
+| `kill <agent_id>` | Mark terminal (irreversible) |
+| `delete <agent_id>` | Hard-delete (kill first) |
+| `logs <agent_id>` | Tail agent activity |
+| `events <agent_id> [opts]` | Page through historical events |
+| `steer <agent_id> "<msg>"` | Send a message; stream response |
 
 ### Memory (read-only)
 
-Inspect a zombie's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
+Inspect a agent's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
 
 | Command | Description |
 |---------|-------------|
-| `memory list --zombie <id> [--category <name>] [--limit <n>]` | List entries newest-first |
-| `memory search --zombie <id> <query> [--limit <n>]` | Substring-search keys and content |
+| `memory list --agent <id> [--category <name>] [--limit <n>]` | List entries newest-first |
+| `memory search --agent <id> <query> [--limit <n>]` | Substring-search keys and content |
 
 Both verbs accept `--workspace <id>` to override the active workspace. The server caps `--limit` at 100 (defaults: 100 for list, 20 for search). There are no write verbs — durable memory is written only by the runner plane.
 

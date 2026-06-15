@@ -1,5 +1,5 @@
 {
-  "name": "usezombie",
+  "name": "agentsfleet",
   "private": true,
   "workspaces": [
     "ui/packages/app",

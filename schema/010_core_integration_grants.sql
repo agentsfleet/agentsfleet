@@ -1,5 +1,5 @@
 -- Integration grants for agent-to-service authorization. A agent must
--- have an approved grant for a service before usezombie will inject
+-- have an approved grant for a service before agentsfleet will inject
 -- credentials for it. Agent-initiated, human-approved.
 
 CREATE TABLE IF NOT EXISTS core.integration_grants (

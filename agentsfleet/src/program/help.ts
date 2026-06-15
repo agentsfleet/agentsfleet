@@ -39,7 +39,7 @@ export class AgentHelp extends Help {
   }
 }
 
-// Tagline helper — the dim "usezombie cli" grey under the version
+// Tagline helper — the dim "agentsfleet cli" grey under the version
 // banner. cli-tree.ts passes it to `program.description()` pre-styled,
 // since commander renders the description through styleDescriptionText
 // (default identity) before printing.

@@ -61,7 +61,7 @@ bun install && bun run dev
 
 **Verify:** `make lint-all` · `make test-unit-all` · `make test-integration` (needs `make up` running).
 
-`agentsfleet` defaults to production; point it at local with `--api http://localhost:3000` or `export ZOMBIE_API_URL=http://localhost:3000`.
+`agentsfleet` defaults to production; point it at local with `--api http://localhost:3000` or `export AGENTSFLEET_API_URL=http://localhost:3000`.
 
 ---
 

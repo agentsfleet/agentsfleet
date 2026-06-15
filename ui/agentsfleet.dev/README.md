@@ -52,8 +52,8 @@ network is ever touched.
 
 ## Deploying
 
-The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`usezombie-agents-sh`,
-framework `None`, root directory `ui/agentsfleet.dev/dist`) — the same pattern as `usezombie-website`.
+The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`agentsfleet-agents-sh`,
+framework `None`, root directory `ui/agentsfleet.dev/dist`) — the same pattern as `agentsfleet-website`.
 There is no deploy workflow and no CI credentials; Vercel's GitHub integration handles it:
 
 - Open a PR touching `ui/agentsfleet.dev/**` → Vercel auto-deploys a **preview** and comments the URL.
@@ -61,7 +61,7 @@ There is no deploy workflow and no CI credentials; Vercel's GitHub integration h
 
 `dist/vercel.json` carries the serving config Vercel reads (the `/ → /install.sh` rewrite, the
 `text/x-shellscript` content-type, and the 5-minute cache) — Vercel does **not** read Cloudflare
-`_redirects`/`_headers`. The `lint-usezombie-sh` CI job (shellcheck + `install_test.sh`) gates the
+`_redirects`/`_headers`. The `lint-agentsfleet-sh` CI job (shellcheck + `install_test.sh`) gates the
 merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
 globally within minutes. One-time Vercel provisioning (project + custom domain) lives in
 [`playbooks/operations/installer_deploy/`](../../playbooks/operations/installer_deploy/).

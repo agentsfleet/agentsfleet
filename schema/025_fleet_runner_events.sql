@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS runner_events_runner_idx
     ON fleet.runner_events (runner_id, occurred_at DESC, id DESC);
 
 -- Mechanism X: exactly one runner_offline audit row per stale last_seen_at
--- episode across all zombied replicas. The static value is the enum tag used by
+-- episode across all agentsfleetd replicas. The static value is the enum tag used by
 -- protocol.RunnerEventType.runner_offline; partial indexes need a SQL predicate.
 CREATE UNIQUE INDEX IF NOT EXISTS runner_events_offline_dedup_idx
     ON fleet.runner_events (runner_id, dedup_key)

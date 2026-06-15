@@ -8,7 +8,7 @@
  *      middleware accepts the JWT (a navigation to '/' does NOT redirect to
  *      /sign-in).
  *   4. Post-bootstrap, the dashboard renders authenticated content for the
- *      signed-in fixture user (a marker like usezombie/Agents/Dashboard is
+ *      signed-in fixture user (a marker like agentsfleet/Agents/Dashboard is
  *      visible on body, not just the marketing/sign-in page).
  *
  * Per-spec teardown for fixture rows (agents/credentials/events) lands with

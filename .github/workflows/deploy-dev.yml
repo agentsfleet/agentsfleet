@@ -143,7 +143,7 @@ jobs:
             OIDC_JWKS_URL="$OIDC_JWKS_URL" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
-            OIDC_AUDIENCE="https://api-dev.usezombie.com" \
+            OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \
@@ -154,9 +154,9 @@ jobs:
 
       - name: Deploy agentsfleetd-dev
         run: |
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120 || STATUS=$?
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120 || STATUS=$?
           STATUS=${STATUS:-0}
-          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/zombied-dev/fly.toml --wait-timeout 120
+          flyctl deploy --app "${{ vars.FLY_APP_DEV }}" --image ghcr.io/agentsfleet/agentsfleetd:dev-latest --config deploy/fly/agentsfleetd-dev/fly.toml --wait-timeout 120
           STATUS=$?
           if [ "$STATUS" -ne 0 ]; then
             APP="${{ vars.FLY_APP_DEV }}"
@@ -224,19 +224,19 @@ jobs:
           VERSION="dev-${GITHUB_SHA::7}"
 
           # Stage binaries, deploy script, and systemd units on the server
-          $SSH "$TARGET" "mkdir -p /opt/zombie/bin /opt/zombie/deploy"
-          $SCP dist/agentsfleet-runner-linux-amd64 "$TARGET:/opt/zombie/bin/agentsfleet-runner"
-          $SCP deploy/baremetal/deploy.sh     "$TARGET:/opt/zombie/deploy/deploy.sh"
-          $SCP deploy/baremetal/*.service     "$TARGET:/opt/zombie/deploy/"
-          $SSH "$TARGET" "chmod +x /opt/zombie/deploy/deploy.sh /opt/zombie/bin/*"
+          $SSH "$TARGET" "mkdir -p /opt/agentsfleet/bin /opt/agentsfleet/deploy"
+          $SCP dist/agentsfleet-runner-linux-amd64 "$TARGET:/opt/agentsfleet/bin/agentsfleet-runner"
+          $SCP deploy/baremetal/deploy.sh     "$TARGET:/opt/agentsfleet/deploy/deploy.sh"
+          $SCP deploy/baremetal/*.service     "$TARGET:/opt/agentsfleet/deploy/"
+          $SSH "$TARGET" "chmod +x /opt/agentsfleet/deploy/deploy.sh /opt/agentsfleet/bin/*"
 
           # Log binary type and shared library deps for diagnostics
-          $SSH "$TARGET" "file /opt/zombie/bin/agentsfleet-runner && ldd /opt/zombie/bin/agentsfleet-runner 2>&1 || true"
+          $SSH "$TARGET" "file /opt/agentsfleet/bin/agentsfleet-runner && ldd /opt/agentsfleet/bin/agentsfleet-runner 2>&1 || true"
 
           # Write Discord webhook to server env file. deploy.sh sources this file
           # at startup so the value never appears in sudo's argument list and stays
           # out of ps/cmdline output. Cleanup runs in a separate always step below.
-          $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/zombie/.discord-env && chmod 600 /opt/zombie/.discord-env"
+          $SSH "$TARGET" "printf 'DISCORD_WEBHOOK_URL=%s\n' '$DISCORD_WEBHOOK_URL' > /opt/agentsfleet/.discord-env && chmod 600 /opt/agentsfleet/.discord-env"
 
           # ── Diagnostics: verify sudo works without password prompt ──
           echo "::group::sudo diagnostics"
@@ -246,9 +246,9 @@ jobs:
           echo "::endgroup::"
 
           # Deploy the runner. DRAIN_TIMEOUT=60 keeps drain within CI budget.
-          # deploy.sh sources /opt/zombie/.discord-env for DISCORD_WEBHOOK_URL.
+          # deploy.sh sources /opt/agentsfleet/.discord-env for DISCORD_WEBHOOK_URL.
           # NOTE: the runner needs three vars in /etc/default/agentsfleet-runner:
-          #   ZOMBIE_API_URL, ZOMBIE_RUNNER_TOKEN (a pre-minted zrn_; Option B),
+          #   AGENTSFLEET_API_URL, AGENTSFLEET_RUNNER_TOKEN (a pre-minted zrn_; Option B),
           #   RUNNER_HOST_ID
           # — provisioned per host by playbooks/founding/06_runner_bootstrap_dev/
           # 04_provision_runner_env.sh; this job stays gated off
@@ -257,7 +257,7 @@ jobs:
           # active.
           echo ">>> deploying runner..."
           $SSH "$TARGET" \
-            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/agentsfleet-runner"
+            "sudo DRAIN_TIMEOUT=60 /opt/agentsfleet/deploy/deploy.sh runner $VERSION /opt/agentsfleet/bin/agentsfleet-runner"
 
       - name: Clean up Discord env file on server
         if: always()
@@ -265,7 +265,7 @@ jobs:
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
           if [ -f "$ANT_KEY" ] && [ -n "${WORKER_ANT_USER:-}" ] && [ -n "${WORKER_ANT_HOST:-}" ]; then
             ssh -i "$ANT_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              "${WORKER_ANT_USER}@${WORKER_ANT_HOST}" "rm -f /opt/zombie/.discord-env" || true
+              "${WORKER_ANT_USER}@${WORKER_ANT_HOST}" "rm -f /opt/agentsfleet/.discord-env" || true
           fi
           rm -f "$ANT_KEY"
 
@@ -349,7 +349,7 @@ jobs:
           STATUS="000"
           for i in $(seq 1 18); do
             BODY=$(curl -sf -w "\n%{http_code}" \
-              https://api-dev.usezombie.com/healthz 2>&1 || echo -e "\n000")
+              https://api-dev.agentsfleet.net/healthz 2>&1 || echo -e "\n000")
             STATUS=$(echo "$BODY" | tail -1)
             RESP=$(echo "$BODY" | head -1)
             if [ "$STATUS" = "200" ]; then
@@ -366,7 +366,7 @@ jobs:
 
       - name: Check /readyz
         run: |
-          curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
+          curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
 
       - name: Diagnose tunnel failure
         if: failure()
@@ -376,9 +376,9 @@ jobs:
           echo "=== cloudflared-dev machine status ==="
           flyctl machine list --app cloudflared-dev || true
           echo "=== DNS resolution ==="
-          nslookup api-dev.usezombie.com || true
+          nslookup api-dev.agentsfleet.net || true
           echo "=== curl verbose ==="
-          curl -v --max-time 10 https://api-dev.usezombie.com/healthz 2>&1 || true
+          curl -v --max-time 10 https://api-dev.agentsfleet.net/healthz 2>&1 || true
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
@@ -427,7 +427,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://usezombie-app.vercel.app
+          BASE_URL: https://agentsfleet-app.vercel.app
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
@@ -443,10 +443,10 @@ jobs:
   # the acceptance suite (tests/e2e/acceptance/**). Failures gate the notify
   # step.
   #
-  # `https://usezombie-app.vercel.app` is the dev-facing dashboard — the
-  # `usezombie-app` Vercel project's Production env has
-  # `NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com` baked in (the
-  # production-customer dashboard lives behind the `app.usezombie.com`
+  # `https://agentsfleet-app.vercel.app` is the dev-facing dashboard — the
+  # `agentsfleet-app` Vercel project's Production env has
+  # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
+  # production-customer dashboard lives behind the `app.agentsfleet.net`
   # custom domain via a separate project). Same URL that `qa-dev` above
   # uses for the unauthenticated smoke. The harness-side
   # `NEXT_PUBLIC_API_URL` env below feeds the direct fixture-seeding
@@ -501,8 +501,8 @@ jobs:
         run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://usezombie-app.vercel.app
-          NEXT_PUBLIC_API_URL: https://api-dev.usezombie.com
+          BASE_URL: https://agentsfleet-app.vercel.app
+          NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
@@ -522,7 +522,7 @@ jobs:
   # credentials AFTER `bun install` (WS-E #C2 — postinstall sees no Clerk
   # admin key). The lifecycle-after-login spec uses Playwright Chromium to
   # drive the dashboard's /cli-auth/{session_id} handoff page (lands in
-  # the M65_001 sibling); skips automatically when ZOMBIE_ACCEPTANCE_DASHBOARD_URL
+  # the M65_001 sibling); skips automatically when AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL
   # is unset.
   cli-acceptance-dev:
     runs-on: ubuntu-latest
@@ -571,9 +571,9 @@ jobs:
         run: bun run test:acceptance
         working-directory: agentsfleet
         env:
-          ZOMBIE_ACCEPTANCE_TARGET: https://api-dev.usezombie.com
-          ZOMBIE_ACCEPTANCE_BINARY: worktree
-          ZOMBIE_ACCEPTANCE_DASHBOARD_URL: https://usezombie-app.vercel.app
+          AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
+          AGENTSFLEET_ACCEPTANCE_BINARY: worktree
+          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://agentsfleet-app.vercel.app
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
           AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}

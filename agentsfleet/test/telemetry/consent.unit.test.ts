@@ -1,5 +1,5 @@
 // Consent + telemetry.json read/write coverage. Adapted from the
-// Supabase consent.unit.test.ts — usezombie's getEffectiveConsent is
+// Supabase consent.unit.test.ts — agentsfleet's getEffectiveConsent is
 // a sync function reading process.env directly (no CliConfig service),
 // so the tests stub env via process.env.AGENTSFLEET_TELEMETRY_DISABLED /
 // DO_NOT_TRACK and clean up in afterEach.
