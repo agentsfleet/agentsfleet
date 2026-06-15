@@ -45,7 +45,7 @@ pub const RouteClass = enum { ops, stream, api };
 pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
         .healthz, .readyz, .metrics => .ops,
-        .workspace_zombie_events_stream => .stream,
+        .workspace_agent_events_stream => .stream,
         .model_caps,
         .create_auth_session,
         .poll_auth_session,
@@ -67,17 +67,17 @@ pub fn classFor(route: router.Route) RouteClass {
         .github_webhook,
         .admin_platform_keys,
         .delete_admin_platform_key,
-        .workspace_zombies,
-        .patch_workspace_zombie,
+        .workspace_agents,
+        .patch_workspace_agent,
         .workspace_credentials,
         .delete_workspace_credential,
-        .workspace_zombie_messages,
-        .workspace_zombie_events,
+        .workspace_agent_messages,
+        .workspace_agent_events,
         .workspace_events,
         .workspace_approvals,
         .workspace_approval_detail,
         .workspace_approval_resolve,
-        .workspace_zombie_memories,
+        .workspace_agent_memories,
         .request_integration_grant,
         .list_integration_grants,
         .revoke_integration_grant,
@@ -136,13 +136,13 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .delete_admin_platform_key => .{ .middlewares = registry.admin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
-        // scheme + secret resolved per-zombie from the workspace credential
+        // scheme + secret resolved per-agent from the workspace credential
         // keyed by the matching `triggers[].source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
-        // Clerk user.created auth-plane event — no zombie context; handler
+        // Clerk user.created auth-plane event — no agent context; handler
         // verifies Svix inline against env CLERK_WEBHOOK_SECRET. Path moved
         // out of /v1/webhooks/ into /v1/auth/identity-events/ pre-v2 so the
         // customer data plane stays separated from auth-plane signals.
@@ -152,17 +152,17 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
 
-        // Zombie CRUD + activity + credentials
-        .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
-        .patch_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceZombie },
+        // Agent CRUD + activity + credentials
+        .workspace_agents => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceAgents },
+        .patch_workspace_agent => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceAgent },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
         // Chat ingress (workspace-scoped) — POST /messages
-        .workspace_zombie_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMessagesPost },
-        // Per-zombie event history + SSE live tail (Bearer this slice;
+        .workspace_agent_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentMessagesPost },
+        // Per-agent event history + SSE live tail (Bearer this slice;
         // cookie auth path lands with the dashboard slice).
-        .workspace_zombie_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEvents },
-        .workspace_zombie_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEventsStream },
+        .workspace_agent_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentEvents },
+        .workspace_agent_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentEventsStream },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
         // Approval inbox
@@ -171,7 +171,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_approval_resolve => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalResolve },
         // External-agent memory API — workspace-scoped collection, GET-only
         // (write verbs retired; capture flows through the runner plane).
-        .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },
+        .workspace_agent_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentMemoriesCollection },
 
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
@@ -186,17 +186,17 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
 
-        // Runner control plane. Enrollment mints a `zrn_` that joins the shared
+        // Runner control plane. Enrollment mints a `agt_r` that joins the shared
         // fleet receiving every tenant's inline secrets, so it is gated on the
         // platform-admin claim (platformAdmin), not per-tenant admin — a tenant
-        // admin or any `zmb_t_` api_key is rejected 403. The self-plane verbs are
-        // authed by the minted runner_token via runnerBearer (zrn_ only, no
+        // admin or any `agt_t` api_key is rejected 403. The self-plane verbs are
+        // authed by the minted runner_token via runnerBearer (agt_r only, no
         // JWKS/tenant fall-through) — a runner token can't satisfy a tenant
         // route and a tenant/user token can't satisfy a runner route, enforced
         // by which middleware guards the route.
         .register_runner => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeRegisterRunner },
         // Operator-plane read — same platform-admin gate as enrollment (a tenant
-        // admin / `zmb_t_` is rejected 403); never the runnerBearer plane.
+        // admin / `agt_t` is rejected 403); never the runnerBearer plane.
         .fleet_runners_list => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnersList },
         .fleet_runner_patch => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerPatch },
         .fleet_runner_events => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeFleetRunnerEvents },
@@ -240,10 +240,10 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.create_workspace, &reg);
     _ = specFor(.get_tenant_billing, &reg);
     _ = specFor(.get_tenant_billing_charges, &reg);
-    _ = specFor(.{ .workspace_zombies = "ws1" }, &reg);
-    _ = specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .workspace_agents = "ws1" }, &reg);
+    _ = specFor(.{ .patch_workspace_agent = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
     _ = specFor(.{ .workspace_credentials = "ws1" }, &reg);
-    _ = specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
+    _ = specFor(.{ .workspace_agent_messages = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
     _ = specFor(.admin_platform_keys, &reg);
     _ = specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg);
     _ = specFor(.{ .receive_webhook = "z1" }, &reg);
@@ -252,12 +252,12 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
-    _ = specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
-    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
-    _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg);
-    _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg);
+    _ = specFor(.{ .workspace_agent_memories = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
+    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
+    _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
+    _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .agent_id = "z1", .grant_id = "g1" } }, &reg);
     _ = specFor(.{ .agent_keys = "ws1" }, &reg);
-    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg);
+    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_key_id = "a1" } }, &reg);
     _ = specFor(.{ .workspace_approvals = "ws1" }, &reg);
     _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
     _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);
@@ -273,7 +273,7 @@ test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
     try testing.expectEqual(RouteClass.ops, classFor(.healthz));
     try testing.expectEqual(RouteClass.ops, classFor(.readyz));
     try testing.expectEqual(RouteClass.ops, classFor(.metrics));
-    try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_zombie_events_stream = .{ .workspace_id = "ws1", .zombie_id = "z1" } }));
+    try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_agent_events_stream = .{ .workspace_id = "ws1", .agent_id = "z1" } }));
     try testing.expectEqual(RouteClass.api, classFor(.model_caps));
     try testing.expectEqual(RouteClass.api, classFor(.create_workspace));
     try testing.expectEqual(RouteClass.api, classFor(.runner_lease));

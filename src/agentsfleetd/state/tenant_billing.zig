@@ -10,7 +10,7 @@ const log = logging.scoped(.state);
 
 /// Canonical nanos-per-USD conversion factor. 1 USD = 1_000_000_000 nanos
 /// (1 nano = 1/1,000,000,000 USD). Mirrors `NANOS_PER_USD` in
-/// `ui/packages/app/lib/types.ts` and `agentsfleet/src/constants/billing.js`.
+/// `ui/packages/app/lib/types.ts` and `cli/src/constants/billing.js`.
 pub const NANOS_PER_USD: i64 = 1_000_000_000;
 
 /// $5 starter grant in nanos.

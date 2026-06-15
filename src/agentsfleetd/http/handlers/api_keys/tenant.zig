@@ -34,7 +34,7 @@ const S_ID_MUST_BE_A_VALID_UUIDV7 = "id must be a valid UUIDv7";
 const S_API_KEY_NOT_FOUND = "API key not found";
 const S_PATCH_BODY_MUST_BE_ACTIVE_FALSE = "PATCH body must be {\"active\": false}";
 
-pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "zmb_t_"
+pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "agt_t"
 pub const KEY_RANDOM_BYTES: usize = 32;
 pub const MAX_NAME_LEN: usize = 64;
 pub const MAX_DESC_LEN: usize = 256;

@@ -5,7 +5,7 @@
 //! ordered by `slice_seq`, for the billing drill-down behind the Usage tab's
 //! one accumulated `stage` charge. The metering-periods table has no tenant
 //! column, so the read is ownership-guarded by an EXISTS against the event's
-//! `core.zombie_execution_telemetry` row (which the same CTE wrote with the
+//! `core.agent_execution_telemetry` row (which the same CTE wrote with the
 //! tenant id) — a tenant can only read the slices behind its own charge.
 
 const std = @import("std");
@@ -33,7 +33,7 @@ const LIST_FOR_EVENT_SQL =
     \\FROM fleet.metering_periods mp
     \\WHERE mp.event_id = $1
     \\  AND EXISTS (
-    \\      SELECT 1 FROM core.zombie_execution_telemetry t
+    \\      SELECT 1 FROM core.agent_execution_telemetry t
     \\      WHERE t.event_id = mp.event_id AND t.tenant_id = $2
     \\  )
     \\ORDER BY mp.slice_seq

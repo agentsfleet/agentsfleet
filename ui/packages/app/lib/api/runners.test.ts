@@ -46,7 +46,7 @@ describe("listRunners", () => {
 
 describe("createRunner", () => {
   it("mints against the enrollment endpoint with the host + tier + labels body", async () => {
-    requestMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "zrn_abc" });
+    requestMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
     const body = { host_id: "web-prod-1", sandbox_tier: "landlock_full" as const, labels: ["gpu"] };
     await createRunner("tok", body);
     expect(requestMock).toHaveBeenCalledWith("/v1/runners", { method: "POST", body: JSON.stringify(body) }, "tok");

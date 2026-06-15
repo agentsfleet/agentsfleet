@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-runner _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-agentsfleet-runner _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 
 # agentsfleet-runner integration tests — real-process sandbox proofs (fork/spawn at
 # the environ_map boundary, kill(-pgid) tree reap). Its own build graph
@@ -10,7 +10,7 @@
 # and reads /proc, a distinct privileged-Linux execution environment from both
 # the app integration lane (Postgres/Redis below) and the fast unit lane. The
 # bodies are Linux-gated (SkipZigTest elsewhere); on macOS this compiles only.
-test-integration-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
+test-integration-agentsfleet-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
 	@echo "→ [agentsfleet-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -18,8 +18,8 @@ test-integration-runner:  ## Run agentsfleet-runner integration tests (real-proc
 	 zig build --build-file build_runner.zig test-integration --summary all
 	@echo "✓ [agentsfleet-runner] Integration tests passed (Linux real-process proofs)"
 
-TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
-TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
+TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
+TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
@@ -54,20 +54,20 @@ _ensure-test-infra:
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
-# fixture rows behind (paused zombies, lingering secrets) that break subsequent runs.
+# fixture rows behind (paused agents, lingering secrets) that break subsequent runs.
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
-# Redis is flushed in the same reset: fixture zombie ids are fixed, so streams,
+# Redis is flushed in the same reset: fixture agent ids are fixed, so streams,
 # consumer groups, and unacked PEL entries persist across runs — and the strand
 # recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
 # replaying prior-run events into a freshly reset DB (shared-tenant balance drift).
 _reset-test-db: _ensure-test-infra
 	@echo "→ [infra] Resetting test database schemas to a clean state..."
 	@docker compose cp playbooks/operations/teardown/database/teardown.sql postgres:/tmp/teardown.sql >/dev/null
-	@out=$$(docker compose exec -T postgres psql -U usezombie -d usezombiedb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
+	@out=$$(docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
 	@echo "→ [infra] Flushing test Redis (prior-run streams/groups/PELs)..."
-	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a usezombie --no-auth-warning FLUSHALL >/dev/null
+	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
 	@echo "✓ [infra] Redis flushed"
 
 _test-integration-agentsfleetd:
@@ -154,7 +154,7 @@ _test-integration-full: _reset-test-db
 	echo "→ [agentsfleetd] Running full integration suite against real DB + Redis..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	ZOMBIE_RUNNER_BIN="$$(pwd)/zig-out/bin/agentsfleet-runner" \
+	AGENTSFLEET_RUNNER_BIN="$$(pwd)/zig-out/bin/agentsfleet-runner" \
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \

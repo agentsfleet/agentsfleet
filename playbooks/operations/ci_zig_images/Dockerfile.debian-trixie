@@ -49,6 +49,6 @@ RUN set -eux; \
 
 ENV PATH=/opt/zig:$PATH
 
-LABEL org.opencontainers.image.title="usezombie ci-zig-debian-trixie" \
-      org.opencontainers.image.description="Debian trixie-slim + Zig + valgrind for the usezombie memleak lane" \
-      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
+LABEL org.opencontainers.image.title="agentsfleet ci-zig-debian-trixie" \
+      org.opencontainers.image.description="Debian trixie-slim + Zig + valgrind for the agentsfleet memleak lane" \
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

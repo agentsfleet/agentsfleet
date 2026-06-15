@@ -152,7 +152,7 @@ export default function CliAuthPage({
       // customized default session token (`auth().getToken()` with no
       // template arg). WHY this site keeps the api-template mint:
       //   • The minted JWT is encrypted with the CLI's ephemeral ECDH
-      //     pubkey and persisted in `~/.usezombie/credentials.json` for
+      //     pubkey and persisted in `~/.agentsfleet/credentials.json` for
       //     ~15 minutes. The CLI has no Clerk SDK and cannot refresh.
       //   • Default session tokens are ~60s lived and refresh-coupled to
       //     the browser session via Clerk's cookie. That refresh

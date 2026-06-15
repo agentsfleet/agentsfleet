@@ -86,7 +86,7 @@ pub fn initRuntime(alloc: std.mem.Allocator, workspace_path: []const u8) ?memory
     };
 }
 
-/// Seed the in-run store with the zombie's prior memory the parent hydrated.
+/// Seed the in-run store with the agent's prior memory the parent hydrated.
 /// Best-effort per entry: a single store failure is logged and skipped so a bad
 /// row never aborts the run before the agent even starts. Content is never logged.
 pub fn seed(mem: Memory, entries: []const protocol.MemoryDelta) void {
@@ -104,7 +104,7 @@ pub fn seed(mem: Memory, entries: []const protocol.MemoryDelta) void {
 /// Flushes the in-run store out to the parent: enumerates every entry, drops
 /// NullClaw-internal bootstrap/autosave keys, and writes the survivors as one
 /// `.memory` frame on the progress fd. The parent forwards the frame to
-/// `POST /v1/runners/me/memory/{zombie_id}`. Best-effort by contract — a capture
+/// `POST /v1/runners/me/memory/{agent_id}`. Best-effort by contract — a capture
 /// blip never fails the run (the durable record is the next checkpoint / run end).
 pub const MemoryCapturer = struct {
     mem: Memory,

@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # Section 4: provision the agentsfleet-runner env file from vault.
-# Idempotent. Writes /opt/zombie/.env on the dev worker host with the three
+# Idempotent. Writes /opt/agentsfleet/.env on the dev worker host with the three
 # vars the runner daemon requires (see deploy/baremetal/agentsfleet-runner.service):
-#   ZOMBIE_API_URL       — control-plane base URL (literal for dev)
-#   ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (Option B; vault: runner-token)
+#   AGENTSFLEET_API_URL       — control-plane base URL (literal for dev)
+#   AGENTSFLEET_RUNNER_TOKEN  — pre-minted agt_r token (Option B; vault: runner-token)
 #   RUNNER_HOST_ID       — stable machine id; must equal the minted fleet host_id
-#                          (vault: tailscale-hostname = zombie-…-worker-ant)
+#                          (vault: tailscale-hostname = agent-…-worker-ant)
 #
-# Pre-Option-B, the daemon self-registered with a zmb_t_ API key and minted
-# its own zrn_. Post-Option-B (commit c1ac7343), the platform admin pre-mints
-# the zrn_ via POST /v1/runners and stores it under runner-token; the daemon
+# Pre-Option-B, the daemon self-registered with a agt_t API key and minted
+# its own agt_r. Post-Option-B (commit c1ac7343), the platform admin pre-mints
+# the agt_r via POST /v1/runners and stores it under runner-token; the daemon
 # authenticates with it directly and never self-registers.
 #
-# A real zrn_ is minted by a platform admin from the dashboard ("Add runner",
+# A real agt_r is minted by a platform admin from the dashboard ("Add runner",
 # POST /v1/runners) on the live dev control plane and stored under runner-token.
-# This script requires that real token: it seeds both the source /opt/zombie/.env
+# This script requires that real token: it seeds both the source /opt/agentsfleet/.env
 # (which deploy.sh copies on every CI run) and the unit's EnvironmentFile
 # /etc/default/agentsfleet-runner, then restarts and verifies the daemon is active.
-# A zrn_FAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
+# A agt_rFAKE_… placeholder is rejected below; DEV_WORKER_READY stays `false`
 # until a real token brings the runner up green.
 set -euo pipefail
 
 echo ""
-echo "== Section 4: provision /opt/zombie/.env =="
+echo "== Section 4: provision /opt/agentsfleet/.env =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
-api_url="${ZOMBIE_API_URL:-https://api-dev.usezombie.com}"
+api_url="${AGENTSFLEET_API_URL:-https://api-dev.agentsfleet.net}"
 missing=0
 
 declare -A OP_CACHE_VALUE
@@ -87,7 +87,7 @@ if [ "$missing" -gt 0 ]; then
   echo ""
   echo "❌ section 4 failed: $missing missing vault ref(s)"
   echo "  add the missing fields to 1Password before retrying."
-  echo "  runner-token may be a placeholder zrn_ until the platform-admin"
+  echo "  runner-token may be a placeholder agt_r until the platform-admin"
   echo "  enrollment gate is live; the structure must exist either way."
   exit 1
 fi
@@ -96,7 +96,7 @@ ssh_key="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/ssh-private
 ssh_host="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname")"
 ssh_user="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/deploy-user")"
 # RUNNER_HOST_ID must equal the fleet host_id the admin minted (POST /v1/runners):
-# the tailscale hostname (zombie-…-worker-ant). Reuse ssh_host rather than the
+# the tailscale hostname (agent-…-worker-ant). Reuse ssh_host rather than the
 # provider-DNS `hostname` field — the daemon's copy is local-only (host_id never
 # crosses the wire; the heartbeat is identified by the token), but matching keeps
 # the host's logs and the dashboard fleet list naming the runner the same way.
@@ -105,17 +105,17 @@ runner_token="$(op_read_with_retry "op://$vault_dev/zombie-dev-worker-ant/runner
 
 # Fail loud on a stale pre-Option-B token so a wrong shape is caught here, not
 # at runtime as a confusing 401 loop on the dev host.
-if [[ "$runner_token" != zrn_* ]]; then
-  echo "  ✗ runner-token does not start with zrn_ (Option B contract)"
+if [[ "$runner_token" != agt_r* ]]; then
+  echo "  ✗ runner-token does not start with agt_r (Option B contract)"
   echo "    got: $(printf '%s' "$runner_token" | head -c 5)... (truncated)"
   exit 1
 fi
 
-# Reject the placeholder: it satisfies the zrn_ prefix but the daemon would loop
+# Reject the placeholder: it satisfies the agt_r prefix but the daemon would loop
 # on 401s. Mirror deploy.sh sync_env's hardened exit so the cause is named here,
 # not surfaced as a confusing is-active failure after the restart below.
-if [[ "$runner_token" == zrn_FAKE* ]]; then
-  echo "  ✗ runner-token is the placeholder (zrn_FAKE…) — not a real token"
+if [[ "$runner_token" == agt_rFAKE* ]]; then
+  echo "  ✗ runner-token is the placeholder (agt_rFAKE…) — not a real token"
   echo "    mint one via the dashboard (POST /v1/runners) and update"
   echo "    op://$vault_dev/zombie-dev-worker-ant/runner-token before re-running."
   exit 1
@@ -131,30 +131,30 @@ trap 'rm -f "$ssh_id" "${env_local:-}"' EXIT
 printf '%s\n' "$ssh_key" > "$ssh_id"
 chmod 600 "$ssh_id"
 
-echo "-- writing /opt/zombie/.env on ${ssh_user}@${ssh_host}"
+echo "-- writing /opt/agentsfleet/.env on ${ssh_user}@${ssh_host}"
 # Build the env body locally, then scp; avoids passing the token on the SSH
 # command line where it would land in process listings on the remote host.
 env_local=$(mktemp)
 cat > "$env_local" <<EOF
-ZOMBIE_API_URL=${api_url}
-ZOMBIE_RUNNER_TOKEN=${runner_token}
+AGENTSFLEET_API_URL=${api_url}
+AGENTSFLEET_RUNNER_TOKEN=${runner_token}
 RUNNER_HOST_ID=${host_id}
 EOF
 chmod 600 "$env_local"
 scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
-  "${ssh_user}@${ssh_host}:/opt/zombie/.env"
+  "${ssh_user}@${ssh_host}:/opt/agentsfleet/.env"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "chmod 600 /opt/zombie/.env"
+  "chmod 600 /opt/agentsfleet/.env"
 
 # Sync the source env to the unit's EnvironmentFile, then restart. The unit reads
-# /etc/default/agentsfleet-runner (deploy.sh's ENV_DEST) — NOT /opt/zombie/.env — so a
+# /etc/default/agentsfleet-runner (deploy.sh's ENV_DEST) — NOT /opt/agentsfleet/.env — so a
 # restart without this copy would re-read the previous /etc/default and ignore the
-# vars just written. /opt/zombie/.env stays the source-of-truth deploy.sh copies
+# vars just written. /opt/agentsfleet/.env stays the source-of-truth deploy.sh copies
 # from on every CI deploy; we seed both here so this restart and the is-active
 # check below actually exercise the new token. install -m 600 keeps it root-only.
 echo "-- syncing env -> /etc/default/agentsfleet-runner + restarting agentsfleet-runner.service"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "sudo install -m 600 -o root -g root /opt/zombie/.env /etc/default/agentsfleet-runner \
+  "sudo install -m 600 -o root -g root /opt/agentsfleet/.env /etc/default/agentsfleet-runner \
    && sudo systemctl restart agentsfleet-runner.service"
 
 # Poll up to ~10s so we don't race systemd's RestartSec=5 (a daemon that

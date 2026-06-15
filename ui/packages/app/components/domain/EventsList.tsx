@@ -21,13 +21,13 @@ import {
 import { ActivityIcon } from "lucide-react";
 import {
   listWorkspaceEventsAction,
-  listZombieEventsAction,
+  listAgentEventsAction,
 } from "@/app/(dashboard)/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
 
 type Scope =
-  | { kind: "zombie"; workspaceId: string; zombieId: string }
+  | { kind: "agent"; workspaceId: string; agentId: string }
   | { kind: "workspace"; workspaceId: string };
 
 export type EventsListProps = {
@@ -66,8 +66,8 @@ export function EventsList({
     setError(null);
     startTransition(async () => {
       const result =
-        scope.kind === "zombie"
-          ? await listZombieEventsAction(scope.workspaceId, scope.zombieId, { cursor: nextCursor })
+        scope.kind === "agent"
+          ? await listAgentEventsAction(scope.workspaceId, scope.agentId, { cursor: nextCursor })
           : await listWorkspaceEventsAction(scope.workspaceId, { cursor: nextCursor });
       if (!result.ok) {
         setError(
@@ -98,8 +98,8 @@ export function EventsList({
     <div className="flex flex-col gap-3">
       <List variant="ordered" className="flex flex-col gap-2 list-none pl-0 space-y-0">
         {items.map((row) => (
-          <ListItem key={`${row.zombie_id}:${row.event_id}`}>
-            <EventCard row={row} showZombieId={scope.kind === "workspace"} />
+          <ListItem key={`${row.agent_id}:${row.event_id}`}>
+            <EventCard row={row} showAgentId={scope.kind === "workspace"} />
           </ListItem>
         ))}
       </List>
@@ -130,7 +130,7 @@ export function EventsList({
   );
 }
 
-function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean }) {
+function EventCard({ row, showAgentId }: { row: EventRow; showAgentId: boolean }) {
   const created = new Date(row.created_at);
   const ts = isFinite(created.getTime()) ? created.toISOString() : null;
   const variant = STATUS_VARIANT[row.status] ?? "default";
@@ -145,7 +145,7 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
           <CardTitle className="text-sm font-medium text-foreground">{row.actor}</CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
             {row.event_type}
-            {showZombieId ? ` · ${shortId(row.zombie_id)}` : ""}
+            {showAgentId ? ` · ${shortId(row.agent_id)}` : ""}
           </CardDescription>
           <div className="ml-auto">
             {ts ? (

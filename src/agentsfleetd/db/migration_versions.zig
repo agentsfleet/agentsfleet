@@ -22,6 +22,8 @@ pub const MAX_TRACKED_MIGRATIONS = 64;
 /// present in the canonical list are retained, so orphan rows never grow the
 /// buffer past `MAX_TRACKED_MIGRATIONS`.
 pub const AppliedVersionSet = struct {
+    const Self = @This();
+
     buf: [MAX_TRACKED_MIGRATIONS]i32 = [_]i32{0} ** MAX_TRACKED_MIGRATIONS,
     len: usize = 0,
 
@@ -49,7 +51,7 @@ pub const AppliedVersionSet = struct {
         return false;
     }
 
-    pub fn contains(self: *const AppliedVersionSet, version: i32) bool {
+    pub fn contains(self: *const Self, version: i32) bool {
         return std.mem.indexOfScalar(i32, self.buf[0..self.len], version) != null;
     }
 };

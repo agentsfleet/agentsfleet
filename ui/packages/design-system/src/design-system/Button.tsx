@@ -40,7 +40,7 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         // Primary CTA. Per `docs/DESIGN_SYSTEM.md` + the canonical preview
-        // at `~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html`,
+        // at `~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html`,
         // the primary button is mint background + theme-fixed dark text
         // (`--on-pulse`). The text token does NOT swap with theme — the
         // mint background is the same in dark + light, so the foreground

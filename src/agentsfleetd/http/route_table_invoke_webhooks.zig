@@ -6,7 +6,7 @@ const router = @import("router.zig");
 const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
-const webhooks = @import("handlers/webhooks/zombie.zig");
+const webhooks = @import("handlers/webhooks/agent.zig");
 const approval = @import("handlers/webhooks/approval.zig");
 const grant_approval = @import("handlers/webhooks/grant_approval.zig");
 const github_webhook_h = @import("handlers/webhooks/github.zig");

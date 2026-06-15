@@ -13,20 +13,20 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const SseClient = @import("handlers/zombies/test_sse_client.zig");
-const sse_fixtures = @import("handlers/zombies/sse_test_fixtures.zig");
+const SseClient = @import("handlers/agents/test_sse_client.zig");
+const sse_fixtures = @import("handlers/agents/sse_test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
 
-const TEST_ISSUER = "https://clerk.test.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.test.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f02";
 const API_KEY_ROW_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7003";
 const OP_RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7004";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 60;
 const TENANT_KEY_BODY_CHARS: usize = 48;
-const OP_RAW_TOKEN = "zrn_" ++ "p" ** RUNNER_TOKEN_BODY_HEX_CHARS;
-const ZMB_T_KEY = "zmb_t_" ++ "d" ** TENANT_KEY_BODY_CHARS;
+const OP_RAW_TOKEN = auth_mw.runner_bearer.RUNNER_TOKEN_PREFIX ++ "p" ** RUNNER_TOKEN_BODY_HEX_CHARS;
+const AGT_T_KEY = auth_mw.tenant_api_key.TENANT_KEY_PREFIX ++ "d" ** TENANT_KEY_BODY_CHARS;
 
 const BODY_CORDON = "{\"action\":\"cordon\"}";
 const BODY_DRAIN = "{\"action\":\"drain\"}";
@@ -35,12 +35,12 @@ const BODY_BAD_ACTION = "{\"action\":\"pause\"}";
 const ONE_EVENT: i64 = 1;
 
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"0Z8ud27-1vd_WsxIcCdMkFeWNiGYpOIKhKAkQruCx6lIzCiDnKyH4I1fL2copGyb5EXdzmqrPvMIKEvoSXGUafrjWp8QneMKdVXoFwRsdrsaEcXg_1npJuiF9smRouTn8pda6m0bwcjn8jBXdBo4q_Eah9O03A8yrC-ZfNqDKjClG0lsYWlJVxpcUIYGQNNVI6LRhYD3tQnzu_4vQdW_FgDrPffwv2uA6YQoMt-Tq93LtDZFE8PlEW43vDcSRw-1gWQazcLw9VPEw6vAywE7PLeQyx3cjIQZxBDo0eDld4J6oprxatCVZ0I-CuBdj07PvGFYmWke5nfV-zsbwwwvhw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"qXJuc_Hncnu-ZAFKPEhb6qeXXSp1GcUidOyyiyFFwi5bmql2NZH4Quv23LhHsAKM8L5950bvTQppdzcJ8zWQKx9F8kViZgaG1Ghagoz2a2BMjeSHLFu_gfsxP6y752WUcZ1uHUGnWm9WsDE7xMfbOOpcUoOc_RxiRhwuXjR3zw6J8Vl4DABKQXq_jb6l5nyDWOsi9FopsaS6FKpQoiWO4DWHEHVVNA7RxoYtb1ew9u4qSq4dyeyb6sOXBWuc9wOjSXcuEm30qYsvZJ8ORSh1hxdDaArUCXQKp_DPVJBO7Mmu_EAnOcSsFeZ-kgLVD7yJp_Yq983-s9odwX0TxlL8Lw","e":"AQAB","kid":"m80005-test-kid","use":"sig","alg":"RS256"}]}
 ;
 const PLATFORM_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIiwicGxhdGZvcm1fYWRtaW4iOnRydWV9fQ.x6um6bT-VysmVR12tT-NbGQl5m8Q1tQbT0J0tcm2UNOWmJ4-nyIu0q-LYniDxFC8LwovQYdqo4R24PcaBT3JTEtD3Msg9-PlB6C1_hgLiEpFg6oqYqKdy3qW8-p6c8NTguqKWWB8LNXOnoXZTsW6FCBDs3Lb0ucc6wpEXFiT44nPkRyC2uCDEjPwG3iEkBGRA9sZ4s_hMAqLdZLN_kH9LSELoGsZFZZlxiyXCyAnX1UtmhuyGLNo4jwsvx99SU8cKzICQljopjfoxWMcvkZ3bzU8aphsgX1emPwGKRkY-6M1hzec-P2BNcye3jOpPoo8v-WlVsL4LHengyyPzFeYkg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiIsInBsYXRmb3JtX2FkbWluIjp0cnVlfX0.H3gZWcqBWYnREFPQAbnoIzhV33ckaYyo37clfhGekxy4TMM96QuUbeyHJW0CnuMRS6UueCjwiidW3mfkINdfQy6-Y4aERoqPvfYQ7QGiwMSPU63heJKxS4fzHzbdDMfO1XoAEcj333xJ8NyvkdBXEbKS9k0LA2-4mczKXLnWkEHnAfWslsK1hdLdIf4rNYP4KahrV25QU-8RirkUTV5jUUgH3HuPMTF976FZX_Q6pL2vW6i1iS2S4iMVwmBdBPlMCPLfjc3Yi9EIP0eBCkWCwZrp1nD5U74Akb6Yh4LCJw9xbhj4kI4jr9e-zwOh7FH_fzbxgJUxHg2jl9pLSAofGw";
 const TENANT_ADMIN_TOKEN =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6ImFkbWluIn19.xOayzWVqaX6io92p8Q34Oiku4pepbpa1uaRG80na9fg6-dD3NNRGM3BKl6ez-ps6m2WucgWV_MT7NEnolgrMyP7EZgVMSZJzHCV9Rp2Iz0wFn52tHGSEXrNqvW3_Vk0U9dl9CwG_m1HVLuKj8rF6KHCsJTuW5q0uCWVKp_b8ore0N6O6lwaZQRwrGBx8bpgrdvdwIkHNgrn_Fz5d8acrxTliRPLN-jNWQO2jiUGAeCY5EFkcv2-ZE-DmVCqDJoGsbfNk_GLvykdIE2bG12BUGO3j5dDX_jAbpEaJMcKJaNAZjvXU8d0yHjqRwQ96wM9a-336yXE-Q_zfXNiu7qAuPA";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im04MDAwNS10ZXN0LWtpZCJ9.eyJzdWIiOiJ1c2VyX204MDAwNSIsImlzcyI6Imh0dHBzOi8vY2xlcmsudGVzdC5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJhZG1pbiJ9fQ.hwmrKrb3wFrLg6Bni7UJupLBC77ZVz9lLgCzTCLPrbSqfj25y-VzQUgA7aiXWJtmPlH565zIU2FCmOwD2oxDDlPSA2XJB0GkHQQT0_jWLBIK6il72YAhijRheJJKiRa2K7c1UABp9CPC2PPd8cEAPy2e5-N884T4y_jQo6qhn-bM2lHJ3i3SOG-vVHkt35uA-_Kgsg5DZHrCwsbWXc1jRM8_wirbtFIWzasEYMfjyt3HO15mMhiBUlo6-v28z_NQkA1WZ3BTFtUvpEbH5ZLhNNEQndbx3nqmF6U1F1YvgvR1krtwCJGFXXiv5RUuDR5fqMnH6DytrSxd7EpAvAlqnQ";
 
 // SAFETY: populated by configureRegistry before the middleware chain reads it.
 var api_key_ctx: api_key_lookup.Ctx = undefined;
@@ -72,7 +72,7 @@ fn seedTenantAndApiKey(h: *TestHarness) !void {
         \\VALUES ($1::uuid, 'Fleet Operator Test Tenant', $2::bigint, $2::bigint)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TENANT_ID, now_ms });
-    const key_hash = api_key.sha256Hex(ZMB_T_KEY);
+    const key_hash = api_key.sha256Hex(AGT_T_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys (uid, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'fleet-operator-test-key', '', $3::text, 'user_fleet_operator_test', TRUE, $4::bigint, $4::bigint)
@@ -179,7 +179,7 @@ test "fleet runner PATCH is platform-admin gated" {
     try tenant.expectStatus(.forbidden);
     try tenant.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
 
-    const api_key_resp = try patchRunner(h, ZMB_T_KEY, BODY_CORDON);
+    const api_key_resp = try patchRunner(h, AGT_T_KEY, BODY_CORDON);
     defer api_key_resp.deinit();
     try api_key_resp.expectStatus(.forbidden);
     try api_key_resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
@@ -223,7 +223,7 @@ test "fleet runner PATCH rejects malformed actions and missing runners" {
 // ── Fleet streams listing (StreamRegistry operator surface) ─────────────────
 
 const STREAMS_PATH = "/v1/fleet/streams";
-const ZOMBIE_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+const AGENTSFLEET_FLEET_STREAM = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 
 test "fleet streams: non-GET methods are 405" {
     // router.match resolves /v1/fleet/streams for ANY method; the invoke fn
@@ -251,7 +251,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
         const conn = try h.acquireConn();
         defer h.releaseConn(conn);
         try sse_fixtures.seedWorkspace(conn);
-        try sse_fixtures.seedZombie(conn, ZOMBIE_FLEET_STREAM, "fleet-streams");
+        try sse_fixtures.seedAgent(conn, AGENTSFLEET_FLEET_STREAM, "fleet-streams");
     }
 
     // tenant admin (verified JWT, but no platform_admin claim) → 403
@@ -265,9 +265,9 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     try empty.expectStatus(.ok);
     try std.testing.expect(empty.bodyContains("\"total\":0"));
 
-    // a live stream appears with its workspace + zombie (the platform-admin
+    // a live stream appears with its workspace + agent (the platform-admin
     // token's workspace metadata matches the seeded fixture workspace)
-    const stream_path = try sse_fixtures.streamPath(ALLOC, ZOMBIE_FLEET_STREAM);
+    const stream_path = try sse_fixtures.streamPath(ALLOC, AGENTSFLEET_FLEET_STREAM);
     defer ALLOC.free(stream_path);
     var sc = try SseClient.connect(ALLOC, h.port, stream_path, .{ .bearer = PLATFORM_ADMIN_TOKEN });
     @import("common").sleepNanos(sse_fixtures.SUBSCRIBE_SETTLE_NS);
@@ -275,7 +275,7 @@ test "fleet streams: platform-admin lists live streams; tenant admin is 403" {
     const listed = try (try h.get(STREAMS_PATH).bearer(PLATFORM_ADMIN_TOKEN)).send();
     defer listed.deinit();
     try listed.expectStatus(.ok);
-    try std.testing.expect(listed.bodyContains(ZOMBIE_FLEET_STREAM));
+    try std.testing.expect(listed.bodyContains(AGENTSFLEET_FLEET_STREAM));
     try std.testing.expect(listed.bodyContains(sse_fixtures.TEST_WORKSPACE_ID));
     try std.testing.expect(listed.bodyContains("\"total\":1"));
 

@@ -11,9 +11,11 @@ pub const Requirement = struct {
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Access = struct {
+    const Self = @This();
+
     /// Reserved for future per-request state. Currently empty; `deinit` is a
     /// no-op so existing call sites (`defer access.deinit(alloc)`) stay valid.
-    pub fn deinit(self: Access, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         _ = self;
         _ = alloc;
     }

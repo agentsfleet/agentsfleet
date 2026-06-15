@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test_readme_hero_sync — assert the hero paragraph in this repo's README.md
 # is byte-identical to ~/Projects/.github/profile/README.md (the org-profile
-# landing page on github.com/usezombie). Spec §4.5 requires both surfaces to
-# carry the same hero so the launch positioning is consistent.
+# landing page on github.com/agentsfleet). Both surfaces must carry the same
+# hero so the launch positioning stays consistent.
 #
 # Skips with a warning when the org-profile README is not present locally
 # (CI environments without the .github repo cloned alongside).

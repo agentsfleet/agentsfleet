@@ -25,9 +25,9 @@ test "failures bucket by runner and reason" {
 
     var buf: [8192]u8 = undefined;
     const out = try render(&buf);
-    try std.testing.expect(contains(out, "zombie_runner_failures_total{runner_id=\"r1\",reason=\"oom_kill\"} 2"));
-    try std.testing.expect(contains(out, "zombie_runner_failures_total{runner_id=\"r1\",reason=\"timeout_kill\"} 1"));
-    try std.testing.expect(contains(out, "zombie_runner_failures_total{runner_id=\"r2\",reason=\"renewal_terminate\"} 1"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_failures_total{runner_id=\"r1\",reason=\"oom_kill\"} 2"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_failures_total{runner_id=\"r1\",reason=\"timeout_kill\"} 1"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_failures_total{runner_id=\"r2\",reason=\"renewal_terminate\"} 1"));
 }
 
 test "absent reason renders as reason=unknown" {
@@ -46,8 +46,8 @@ test "executions split by outcome" {
 
     var buf: [8192]u8 = undefined;
     const out = try render(&buf);
-    try std.testing.expect(contains(out, "zombie_runner_executions_total{runner_id=\"r1\",outcome=\"processed\"} 3"));
-    try std.testing.expect(contains(out, "zombie_runner_executions_total{runner_id=\"r1\",outcome=\"agent_error\"} 1"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_executions_total{runner_id=\"r1\",outcome=\"processed\"} 3"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_executions_total{runner_id=\"r1\",outcome=\"agent_error\"} 1"));
 }
 
 test "a seen runner renders a last_seen_seconds series" {
@@ -55,7 +55,7 @@ test "a seen runner renders a last_seen_seconds series" {
     mr.touchRunnerSeen("r1");
     var buf: [4096]u8 = undefined;
     const out = try render(&buf);
-    try std.testing.expect(contains(out, "zombie_runner_last_seen_seconds{runner_id=\"r1\"}"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_last_seen_seconds{runner_id=\"r1\"}"));
 }
 
 test "active_leases tracks grant then release" {
@@ -63,10 +63,10 @@ test "active_leases tracks grant then release" {
     mr.incRunnerActiveLeases("r1");
     mr.incRunnerActiveLeases("r1");
     var buf: [4096]u8 = undefined;
-    try std.testing.expect(contains(try render(&buf), "zombie_runner_active_leases{runner_id=\"r1\"} 2"));
+    try std.testing.expect(contains(try render(&buf), "agentsfleet_runner_active_leases{runner_id=\"r1\"} 2"));
 
     mr.decRunnerActiveLeases("r1");
-    try std.testing.expect(contains(try render(&buf), "zombie_runner_active_leases{runner_id=\"r1\"} 1"));
+    try std.testing.expect(contains(try render(&buf), "agentsfleet_runner_active_leases{runner_id=\"r1\"} 1"));
 }
 
 test "active_leases clamps below zero and emits no negative series" {
@@ -75,7 +75,7 @@ test "active_leases clamps below zero and emits no negative series" {
     var buf: [4096]u8 = undefined;
     const out = try render(&buf);
     // Clamped to 0, and a 0 gauge is omitted — so no active_leases line for r1.
-    try std.testing.expect(!contains(out, "zombie_runner_active_leases{runner_id=\"r1\"}"));
+    try std.testing.expect(!contains(out, "agentsfleet_runner_active_leases{runner_id=\"r1\"}"));
 }
 
 test "render is empty before any runner activity" {
@@ -107,10 +107,10 @@ test "cardinality overflow routes to _other with the reason preserved" {
     defer aw.deinit();
     try mr.renderPrometheus(&aw.writer);
     const text = aw.written();
-    try std.testing.expect(contains(text, "zombie_runner_failures_total{runner_id=\"_other\",reason=\"oom_kill\"} 1"));
-    try std.testing.expect(contains(text, "zombie_runner_failures_overflow_total 1"));
+    try std.testing.expect(contains(text, "agentsfleet_runner_failures_total{runner_id=\"_other\",reason=\"oom_kill\"} 1"));
+    try std.testing.expect(contains(text, "agentsfleet_runner_failures_overflow_total 1"));
 }
 
-// The zombie_memory_* family tests moved to metrics_memory_test.zig with the
+// The agent_memory_* family tests moved to metrics_memory_test.zig with the
 // module split; renderPrometheus still composes those families after the
 // runner ones, pinned there through this same render entry point.

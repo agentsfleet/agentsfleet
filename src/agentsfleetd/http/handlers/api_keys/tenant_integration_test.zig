@@ -1,9 +1,9 @@
 // Integration tests for /v1/api-keys (M28_002 §3, §4).
 //
 // Covers:
-//   - POST creates: 201, zmb_t_ prefix, SHA-256 hex persisted in core.api_keys.
+//   - POST creates: 201, agt_t prefix, SHA-256 hex persisted in core.api_keys.
 //   - Duplicate key_name within a tenant: 409 UZ-APIKEY-005.
-//   - Round-trip auth: a minted zmb_t_ key authenticates a subsequent GET.
+//   - Round-trip auth: a minted agt_t key authenticates a subsequent GET.
 //   - PATCH {active:false} revokes; the same key can no longer authenticate.
 //   - Re-revoke is 409; DELETE on active/revoked/missing keys is 409/204/404.
 //   - Tenant isolation: GET as tenant A does not return tenant B's rows.
@@ -31,13 +31,13 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const OTHER_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ccc01";
 const FOREIGN_KEY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ccc02";
 
-const TEST_ISSUER = "https://clerk.dev.usezombie.com";
-const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
+const TEST_AUDIENCE = "https://api.agentsfleet.net";
 const TEST_JWKS =
-    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+    \\{"keys":[{"kty":"RSA","n":"310oH7ahxoKws6fEKmbOP30dQaQhT21HGRxvibeBuqfywkNxJ0xcfhhao1mwbLH7BUOg2GYXDEA6EvcVlKXqGN_Wa_4Q7UenmZqeXYdB_IhAc-SzyoW9hRi01FskVVI8w_N0Pf5SItu7DIqdxbKP8_eGFyrTL1mN-5klkIDCSnhrDLUEgjVo7iod0vsoqUEH-2m1s-2xDh5aQr5rSF6neCTA1-JvKVkJLD6eOdBnEwYBm6-yZ0CNgMfw1uUyw5cGwdaPsCerHctH0EwcI_qQFUUnFjBeN4FJkP_DDoHWTEV9a-5wzomOcoKlyfZvRgplGYYqTWrIAfcZobyzYiSy1w","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJleHAiOjQxMDI0NDQ4MDAsIm1ldGFkYXRhIjp7InRlbmFudF9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYwMSIsIndvcmtzcGFjZV9pZCI6IjAxOTViNGJhLThkM2EtN2YxMy04YWJjLTJiM2UxZTBhNmYxMSIsInJvbGUiOiJvcGVyYXRvciJ9fQ.eEQp3HyUFsV1bRBDvww3DirCY1R-vrASYT3KXnTeXBa8Owuag8Mc1I_v93XBatf-t-Y0qd6r9uNQuRiRpuXkrC01MJwyPnyvKDYHFAX828PIMdFgZ5FUGU0S6r1B4B8FaVZnfMdwyyQW9tCeFBvvh2hkuodoOlkcaJnR98kMrYjGHVoyDQc5H5JnU5O8Kkb9STE-XR-3b8VdOlGJR-ljX4Vw8Fipo5p7fo_VdhhUXD2C974DrbQWtsXhqUTqOFWAEUcUMM2ODH8pEFWhG8poHVP8LLWCcSFxZDN_Ia3dNR8OK9SEblCPIlfimiMtscqxli-9uC00n62UmLuQtGVlXA";
 
 // Real DB-backed api-key lookup. The ctx must outlive the middleware chain, so
 // we park it at module scope — `zig build test` runs tests sequentially in a
@@ -107,7 +107,7 @@ fn parseJsonString(alloc: std.mem.Allocator, body: []const u8, field: []const u8
 
 // ── Tests ─────────────────────────────────────────────────────────────────
 
-test "integration: POST /v1/api-keys returns 201 with zmb_t_ key and persists SHA-256 hash" {
+test "integration: POST /v1/api-keys returns 201 with agt_t key and persists SHA-256 hash" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -121,8 +121,8 @@ test "integration: POST /v1/api-keys returns 201 with zmb_t_ key and persists SH
 
     const raw_key = (try parseJsonString(ALLOC, resp.body, "key")) orelse return error.TestExpectedEqual;
     defer ALLOC.free(raw_key);
-    try std.testing.expect(std.mem.startsWith(u8, raw_key, "zmb_t_"));
-    try std.testing.expectEqual(@as(usize, 70), raw_key.len);
+    try std.testing.expect(std.mem.startsWith(u8, raw_key, auth_mw.tenant_api_key.TENANT_KEY_PREFIX));
+    try std.testing.expectEqual(@as(usize, auth_mw.tenant_api_key.TENANT_KEY_PREFIX.len + 64), raw_key.len);
 
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(raw_key, &digest, .{});
@@ -160,7 +160,7 @@ test "integration: POST /v1/api-keys duplicate key_name returns 409 UZ-APIKEY-00
     finalCleanup(h);
 }
 
-test "integration: minted zmb_t_ key authenticates GET, revoked by PATCH {active:false}" {
+test "integration: minted agt_t key authenticates GET, revoked by PATCH {active:false}" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -176,7 +176,7 @@ test "integration: minted zmb_t_ key authenticates GET, revoked by PATCH {active
     const id = (try parseJsonString(ALLOC, create_resp.body, "id")) orelse return error.TestExpectedEqual;
     defer ALLOC.free(id);
 
-    // Authenticate GET using the minted raw key (Bearer <zmb_t_...>).
+    // Authenticate GET using the minted raw key (Bearer <agt_t...>).
     const list_before = try (try h.get("/v1/api-keys").bearer(raw_key)).send();
     defer list_before.deinit();
     try list_before.expectStatus(.ok);

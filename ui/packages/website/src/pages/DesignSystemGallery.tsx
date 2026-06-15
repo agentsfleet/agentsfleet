@@ -139,7 +139,7 @@ export default function DesignSystemGallery() {
         <h2>InstallBlock</h2>
         <InstallBlock
           title="Install agentsfleet"
-          command="npm install -g @usezombie/zombiectl"
+          command="npm install -g @agentsfleet/cli"
           actions={[
             { label: "Docs", to: DOCS_URL, external: true },
             { label: "Pricing", to: "/pricing", variant: "ghost" },

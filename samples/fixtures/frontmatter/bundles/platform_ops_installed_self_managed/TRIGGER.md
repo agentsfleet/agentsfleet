@@ -1,7 +1,7 @@
 ---
-name: platform-ops-zombie
+name: platform-ops-agent
 
-x-usezombie:
+x-agentsfleet:
   model: ""
   context:
     context_cap_tokens: 0

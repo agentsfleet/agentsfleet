@@ -45,7 +45,7 @@ fn benchActivityCursorRoundtrip(allocator: std.mem.Allocator) void {
 
 // ── json_encode_response ──────────────────────────────────────────────────
 fn benchJsonEncodeResponse(allocator: std.mem.Allocator) void {
-    const body = .{ .zombies = fx.ZOMBIE_PAGE };
+    const body = .{ .agents = fx.AGENTSFLEET_PAGE };
     const s = std.json.Stringify.valueAlloc(allocator, body, .{}) catch @panic("json encode OOM");
     defer allocator.free(s);
     std.mem.doNotOptimizeAway(s.ptr);

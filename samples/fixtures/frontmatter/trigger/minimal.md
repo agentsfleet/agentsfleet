@@ -1,7 +1,7 @@
 ---
 name: minimal-skill
 
-x-usezombie:
+x-agentsfleet:
   triggers:
     - type: cron
       schedule: "0 9 * * *"

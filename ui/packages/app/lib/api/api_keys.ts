@@ -8,7 +8,7 @@ import { request } from "./client";
 // Mirrors the Zig handler's constants verbatim (src/http/handlers/api_keys):
 // tenant.zig isValidKeyName (1-64 chars, alnum + - + _) and MAX_DESC_LEN,
 // list.zig DEFAULT_PAGE_SIZE / MAX_PAGE_SIZE and the sort allowlist.
-export const KEY_PREFIX = "zmb_t_";
+export const KEY_PREFIX = "agt_t";
 export const KEY_NAME_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 export const KEY_NAME_MAX = 64;
 export const DESCRIPTION_MAX = 256;

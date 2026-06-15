@@ -34,7 +34,7 @@ export default function App() {
               aria-hidden="true"
               className="inline-block size-3 rounded-full bg-pulse"
             />
-            <span>usezombie</span>
+            <span>agentsfleet</span>
           </Link>
 
           <nav aria-label="Primary" className="hidden md:flex items-center gap-6">

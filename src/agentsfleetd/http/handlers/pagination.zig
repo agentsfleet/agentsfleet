@@ -32,9 +32,11 @@ pub fn parsePageParams(qs: anytype) ?PageParams {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 const FakeQs = struct {
+    const Self = @This();
+
     page: ?[]const u8 = null,
     page_size: ?[]const u8 = null,
-    fn get(self: FakeQs, key: []const u8) ?[]const u8 {
+    fn get(self: Self, key: []const u8) ?[]const u8 {
         if (std.mem.eql(u8, key, QUERY_PAGE)) return self.page;
         if (std.mem.eql(u8, key, QUERY_PAGE_SIZE)) return self.page_size;
         return null;

@@ -14,7 +14,7 @@ test.describe("Agents page (/agents)", () => {
   test("renders install block with npm command", async ({ page }) => {
     await expect(page.getByRole("heading", { name: /install agentsfleet/i })).toBeVisible();
     await expect(page.getByLabel(/install agentsfleet command/i)).toContainText(
-      "npm install -g @usezombie/zombiectl",
+      "npm install -g @agentsfleet/cli",
     );
   });
 
@@ -27,10 +27,10 @@ test.describe("Agents page (/agents)", () => {
   test("renders bootstrap commands", async ({ page }) => {
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toBeVisible();
-    await expect(block).toContainText("npm install -g @usezombie/zombiectl");
+    await expect(block).toContainText("npm install -g @agentsfleet/cli");
     await expect(block).toContainText("agentsfleet login");
-    await expect(block).toContainText("npx skills add usezombie/skills");
-    await expect(block).toContainText("/usezombie-install-platform-ops");
+    await expect(block).toContainText("npx skills add agentsfleet/skills");
+    await expect(block).toContainText("/agentsfleet-install-platform-ops");
   });
 
   test("renders machine surface heading + openapi link", async ({ page }) => {

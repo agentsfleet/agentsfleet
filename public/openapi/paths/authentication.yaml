@@ -8,7 +8,7 @@
       `token_name` label. The server allocates a UUIDv7 session_id and
       stores `{cli_public_key, token_name, status: pending, expires_at_ms}`
       in Redis with a 5-minute TTL. The CLI then prints
-      `https://app.usezombie.com/cli-auth/{session_id}` for the operator
+      `https://app.agentsfleet.net/cli-auth/{session_id}` for the operator
       to open in their browser.
 
       Unauthenticated; rate-limited at the Cloudflare WAF edge

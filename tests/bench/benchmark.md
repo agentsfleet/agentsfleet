@@ -16,7 +16,7 @@ make _bench-micro
 
 # Redis XADD concurrency (8 producer threads; needs a live TLS Redis):
 BENCH_REDIS=1 \
-  REDIS_URL="rediss://:usezombie@localhost:6379" \
+  REDIS_URL="rediss://:agentsfleet@localhost:6379" \
   REDIS_TLS_CA_CERT_FILE="$(pwd)/.tmp/redis-ca.crt" \
   make bench-redis
 ```

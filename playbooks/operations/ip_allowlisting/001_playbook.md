@@ -3,7 +3,7 @@
 Legacy milestone/workstream ID: `M29_001`
 
 > **Context:** This playbook hardens the data-plane network boundary for the v2 product direction.
-> See `docs/v2/usezombie-v2.md` — credentials must never be visible to agent processes.
+> See `docs/v2/agentsfleet-v2.md` — credentials must never be visible to agent processes.
 > IP allowlisting is the network-layer complement to the credential firewall.
 
 ---

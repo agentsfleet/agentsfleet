@@ -33,7 +33,7 @@ const ec = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
-const metering = @import("../zombie/metering.zig");
+const metering = @import("../agent/metering.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const LEASE_NOT_FOUND_DETAIL = "No lease matches this lease_id for the runner";
 
@@ -177,7 +177,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return Lease{
+    return .{
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
         .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),

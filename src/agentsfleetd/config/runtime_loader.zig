@@ -35,7 +35,7 @@ const S_T_R_N = " \t\r\n";
 /// `startEventStream` spawns the dedicated thread — events_stream.zig module
 /// header has the full story). The empirical ceiling is Redis fan-out CPU,
 /// not memory — the M88-gated load test refines it, fed by the
-/// zombie_sse_in_flight_streams gauge.
+/// agent_sse_in_flight_streams gauge.
 pub const SSE_MAX_STREAMS_DEFAULT: u32 = 64;
 
 const SizesConfig = struct {
@@ -170,8 +170,8 @@ const MiscConfig = struct {
 };
 
 pub fn loadMisc(env_map: *const EnvMap, alloc: Allocator) !MiscConfig {
-    const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.usezombie.com");
+    const app_url = try env.envOrDefaultOwned(env_map, alloc, "APP_URL", "https://app.agentsfleet.net");
     errdefer alloc.free(app_url);
-    const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.usezombie.com");
+    const api_url = try env.envOrDefaultOwned(env_map, alloc, "API_URL", "https://api.agentsfleet.net");
     return .{ .app_url = app_url, .api_url = api_url };
 }

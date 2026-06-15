@@ -52,6 +52,8 @@ const BootstrapParams = struct {
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const Bootstrap = struct {
+    const Self = @This();
+
     user_id: []const u8,
     tenant_id: []const u8,
     workspace_id: []const u8,
@@ -59,7 +61,7 @@ pub const Bootstrap = struct {
     /// `true` on fresh bootstrap, `false` on idempotent replay.
     created: bool,
 
-    pub fn deinit(self: *Bootstrap, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.user_id);
         alloc.free(self.tenant_id);
         alloc.free(self.workspace_id);

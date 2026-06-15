@@ -2,11 +2,11 @@
 //!
 //! Composes *after* an auth middleware that populated `ctx.principal`.
 //! Rejects with 403 `UZ-AUTH-021` unless the principal carries the verified
-//! `platform_admin` claim — the one principal usezombie allows to mint a
+//! `platform_admin` claim — the one principal agentsfleet allows to mint a
 //! runner token (`POST /v1/runners`).
 //!
 //! Fail-closed twice over: the api_key path never sets `platform_admin` (so a
-//! `zmb_t_` admin key is rejected), and a missing JWT claim parses to false.
+//! `agt_t` admin key is rejected), and a missing JWT claim parses to false.
 //! If `ctx.principal == null` (composition bug — no auth middleware ran
 //! earlier in the chain) we short-circuit 401 rather than grant access.
 
@@ -26,7 +26,9 @@ const DETAIL_REQUIRED = "Platform-admin privileges are required to perform this 
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
 
 pub const PlatformAdmin = struct {
-    pub fn middleware(self: *PlatformAdmin) chain.Middleware(AuthCtx) {
+    const Self = @This();
+
+    pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
     }
 
@@ -35,7 +37,7 @@ pub const PlatformAdmin = struct {
         return execute(self, ctx);
     }
 
-    pub fn execute(_: *PlatformAdmin, ctx: *AuthCtx) !chain.Outcome {
+    pub fn execute(_: *Self, ctx: *AuthCtx) !chain.Outcome {
         const principal = ctx.principal orelse {
             ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
@@ -113,7 +115,7 @@ test "platform_admin short-circuits 403 for an api_key principal" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    // A `zmb_t_` api_key authenticates as .role=.admin but never carries
+    // A `agt_t` api_key authenticates as .role=.admin but never carries
     // platform_admin — it must not be able to enroll a runner.
     var mw = PlatformAdmin{};
     var ctx = makeCtx(ht.res, .{ .mode = .api_key, .role = .admin });

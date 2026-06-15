@@ -14,7 +14,7 @@ zig-pkg/
 .tmp/
 node_modules/
 # Build outputs only — ui/agentsfleet.dev/dist is a committed static site, not a build artifact
-agentsfleet/dist/
+cli/dist/
 ui/packages/*/dist/
 coverage/
 .next/

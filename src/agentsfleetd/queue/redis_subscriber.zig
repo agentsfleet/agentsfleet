@@ -13,6 +13,7 @@
 //! File-as-struct: this file IS the `Subscriber`.
 
 pub const Subscriber = @This();
+const Self = @This();
 
 const S_AUTH = "AUTH";
 const S_SUBSCRIBE = "SUBSCRIBE";
@@ -47,7 +48,7 @@ pub const InitOptions = struct {
     ca_cert_file: ?[]const u8 = null,
 };
 
-pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Subscriber {
+pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Self {
     const url = try redis_config.resolveRedisUrl(env_map, alloc, role);
     defer alloc.free(url);
     var cfg = try redis_config.parseRedisUrl(alloc, url);
@@ -56,7 +57,7 @@ pub fn connectFromEnv(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocat
     return connectFromConfig(io, alloc, cfg, options);
 }
 
-pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Subscriber {
+pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Self {
     var cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
     if (options.ca_cert_file) |ca| cfg.ca_cert_file = try alloc.dupe(u8, ca);
@@ -67,12 +68,12 @@ pub fn connectFromUrl(io: std.Io, alloc: std.mem.Allocator, url: []const u8, opt
 /// is BORROWED (e.g. the request-path Client's pool config) — read during the
 /// dial, never freed here. This is the SSE path's seam: it reuses the pool's
 /// resolved config instead of re-reading env.
-pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Subscriber {
+pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOptions) !Self {
     // Zig 0.16 dial: resolve host (DNS) + connect via Io.net.HostName.
     const hostname = try std.Io.net.HostName.init(cfg.host);
     const stream = try hostname.connect(io, cfg.port, .{ .mode = .stream });
     // SAFETY: written by surrounding init logic before any read of this storage.
-    var sub = Subscriber{ .alloc = alloc, .io = io, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
+    var sub = Self{ .alloc = alloc, .io = io, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
     if (cfg.use_tls) {
         // SAFETY: written by surrounding init logic before any read of this storage.
@@ -98,14 +99,14 @@ pub fn connectFromConfig(io: std.Io, alloc: std.mem.Allocator, cfg: redis_config
     return sub;
 }
 
-pub fn deinit(self: *Subscriber) void {
+pub fn deinit(self: *Self) void {
     self.transport.deinit(self.io, self.alloc);
 }
 
 /// SUBSCRIBE to a single channel and consume the acknowledgment.
 /// After this returns, the connection is in subscribe mode — only
 /// `nextMessage()` and `unsubscribe()` are valid until disconnect.
-pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
+pub fn subscribe(self: *Self, channel: []const u8) !void {
     try self.sendCommand(&.{ S_SUBSCRIBE, channel });
 
     var ack = try redis_protocol.readRespValue(self.alloc, self.transport.reader());
@@ -125,7 +126,7 @@ pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
 ///   ["message", <channel>, <payload>]
 /// All other shapes (PSUBSCRIBE pmessage, ping/pong, subscribe count) are
 /// skipped; we keep reading until we see a `message` frame or hit EOF.
-pub fn nextMessage(self: *Subscriber) !?Message {
+pub fn nextMessage(self: *Self) !?Message {
     while (true) {
         var value = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| switch (err) {
             error.EndOfStream, error.ReadFailed => return null,
@@ -159,30 +160,30 @@ pub fn nextMessage(self: *Subscriber) !?Message {
 }
 
 /// UNSUBSCRIBE from all channels. Best-effort — connection is about to close.
-pub fn unsubscribe(self: *Subscriber, channel: []const u8) void {
+pub fn unsubscribe(self: *Self, channel: []const u8) void {
     self.sendCommand(&.{ S_UNSUBSCRIBE, channel }) catch return;
 }
 
 /// Send SUBSCRIBE without reading the ack — for owners whose dedicated reader
 /// thread consumes every inbound frame (`nextMessage` skips the ack via its
 /// message-kind filter). Synchronous-ack `subscribe()` would race that reader.
-pub fn sendSubscribe(self: *Subscriber, channel: []const u8) !void {
+pub fn sendSubscribe(self: *Self, channel: []const u8) !void {
     try self.sendCommand(&.{ S_SUBSCRIBE, channel });
 }
 
 /// UNSUBSCRIBE counterpart of `sendSubscribe` — ack consumed by the reader.
-pub fn sendUnsubscribe(self: *Subscriber, channel: []const u8) !void {
+pub fn sendUnsubscribe(self: *Self, channel: []const u8) !void {
     try self.sendCommand(&.{ S_UNSUBSCRIBE, channel });
 }
 
 /// Install the configured read timeout now. `subscribe()` installs it after
 /// its ack; owners that never call `subscribe()` (reader-thread consumers
 /// using `sendSubscribe`) call this once after connect.
-pub fn installReadTimeout(self: *Subscriber) void {
+pub fn installReadTimeout(self: *Self) void {
     if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
-fn sendCommand(self: *Subscriber, argv: []const []const u8) !void {
+fn sendCommand(self: *Self, argv: []const []const u8) !void {
     const writer = self.transport.writer();
     try writer.print("*{d}\r\n", .{argv.len});
     for (argv) |arg| {

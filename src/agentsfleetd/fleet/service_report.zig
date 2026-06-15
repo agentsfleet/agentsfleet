@@ -1,7 +1,7 @@
 //! agentsfleetd-side runner control-plane orchestration — the `report` verb.
 //!
 //! Mirror of `event_loop_writepath.finalize` for the happy path: `markTerminal`
-//! + the final metering settle + `checkpointZombieSession` (independent
+//! + the final metering settle + `checkpointAgentSession` (independent
 //! autocommit statements, non-atomic) then `XACK`. The continuation/SSE-publish
 //! steps of `finalize` are intentionally NOT reproduced: continuation is a no-op
 //! on the happy path (`exit_ok`), and the activity publish writes no durable
@@ -11,10 +11,10 @@
 //! each `/renew` and the FINAL partial slice is settled ATOMICALLY with the
 //! report claim (`claimReportAndSettle` → `renewal_settle.claimAndSettle`), so
 //! the drained credit equals the real run and no final slice is lost to a
-//! report→reclaim race. `fencing_token` is VERIFIED against the zombie's live
+//! report→reclaim race. `fencing_token` is VERIFIED against the agent's live
 //! fencing sequence: a report whose lease was superseded by a reclaim (token <
 //! current) is rejected UZ-RUN-005 and writes nothing — the current holder wins.
-//! On success the zombie's affinity claim is released so its next event becomes
+//! On success the agent's affinity claim is released so its next event becomes
 //! leasable.
 //!
 //! Allocator: per-request arena (`hx.alloc`); see service.zig's module note.
@@ -33,12 +33,12 @@ const protocol = contract_mod.protocol;
 const affinity = @import("affinity.zig");
 
 const event_rows = @import("event_rows.zig");
-const metering = @import("../zombie/metering.zig");
+const metering = @import("../agent/metering.zig");
 const renewal = @import("renewal.zig");
 const renewal_settle = @import("renewal_settle.zig");
-const redis_zombie = @import("../queue/redis_zombie.zig");
+const redis_agent = @import("../queue/redis_agent.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
-const activity_publisher = @import("../zombie/activity_publisher.zig");
+const activity_publisher = @import("../agent/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const runner_events = @import("runner_events.zig");
 
@@ -49,7 +49,7 @@ const ExecutionResult = contract_mod.execution_result.ExecutionResult;
 
 /// The lease-row fields the report needs to reproduce finalize. All arena-dup'd.
 const Lease = struct {
-    zombie_id: []const u8,
+    agent_id: []const u8,
     workspace_id: []const u8,
     tenant_id: []const u8,
     event_id: []const u8,
@@ -87,11 +87,11 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         return;
     };
     if (!settled.claimed) {
-        log.info("report_fenced", .{ .zombie_id = lease.zombie_id, .lease_id = body.lease_id, .fencing_token = lease.fencing_token, .runner_id = runner_id });
+        log.info("report_fenced", .{ .agent_id = lease.agent_id, .lease_id = body.lease_id, .fencing_token = lease.fencing_token, .runner_id = runner_id });
         hx.fail(ec.ERR_RUN_STALE_FENCING_TOKEN, "Lease superseded by a newer holder; report rejected");
         return;
     }
-    log.info("report_settled", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
+    log.info("report_settled", .{ .agent_id = lease.agent_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
 
     finalize(hx, runner_id, lease, body);
     // Per-runner telemetry (best-effort, in-memory — never gates the report).
@@ -142,15 +142,15 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT zombie_id::text, workspace_id::text, tenant_id::text,
+        \\SELECT agent_id::text, workspace_id::text, tenant_id::text,
         \\       event_id, posture, provider, model, fencing_token
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     // Dup every column before q.deinit() invalidates the row-backed slices.
-    return Lease{
-        .zombie_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
+    return .{
+        .agent_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
         .event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
@@ -182,34 +182,34 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .failure = if (body.outcome == .processed) null else body.failure_reason,
     };
 
-    event_rows.markTerminal(pool, lease.zombie_id, lease.event_id, result, wall_ms);
+    event_rows.markTerminal(pool, lease.agent_id, lease.event_id, result, wall_ms);
     // Close the SSE activity bracket the deleted worker published on completion —
     // the dashboard + `agentsfleet steer` consume `event_complete` to end the live
     // tail. Best-effort (the publisher swallows failures).
     const status_text: []const u8 = if (result.exit_ok) event_rows.STATUS_PROCESSED else event_rows.STATUS_AGENT_ERROR;
     var scratch = activity_publisher.Scratch.init(alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.zombie_id, lease.event_id, status_text);
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, lease.agent_id, lease.event_id, status_text);
     // Emit the delivery span. The final slice was already settled atomically with
     // the report claim (`claimReportAndSettle`, before finalize), so by here the
     // billing is closed and only the OTel span remains. Best-effort.
     metering.emitDeliverySpan(lease.tenant_id, .{
         .workspace_id = lease.workspace_id,
-        .zombie_id = lease.zombie_id,
+        .agent_id = lease.agent_id,
         .event_id = lease.event_id,
         .posture = parsePosture(lease.posture),
         .provider = lease.provider,
         .model = lease.model,
     }, 0, body.tokens, wall_ms, clock.nowMillis() - @as(i64, @intCast(wall_ms)));
-    event_rows.checkpointZombieSession(alloc, pool, lease.zombie_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
-        log.warn("report_checkpoint_failed", .{ .zombie_id = lease.zombie_id, .err = @errorName(err) });
+    event_rows.checkpointAgentSession(alloc, pool, lease.agent_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
+        log.warn("report_checkpoint_failed", .{ .agent_id = lease.agent_id, .err = @errorName(err) });
     };
-    redis_zombie.xackZombie(hx.ctx.queue, lease.zombie_id, lease.event_id) catch |err| {
-        log.warn("report_xack_failed", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .err = @errorName(err) });
+    redis_agent.xackAgent(hx.ctx.queue, lease.agent_id, lease.event_id) catch |err| {
+        log.warn("report_xack_failed", .{ .agent_id = lease.agent_id, .event_id = lease.event_id, .err = @errorName(err) });
     };
-    releaseAffinity(hx, lease.zombie_id, lease.fencing_token);
-    runner_events.appendLeaseReleasedBestEffort(hx.ctx.pool, hx.alloc, runner_id, body.lease_id, lease.zombie_id, lease.event_id);
-    log.info("report_finalized", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .lease_id = body.lease_id });
+    releaseAffinity(hx, lease.agent_id, lease.fencing_token);
+    runner_events.appendLeaseReleasedBestEffort(hx.ctx.pool, hx.alloc, runner_id, body.lease_id, lease.agent_id, lease.event_id);
+    log.info("report_finalized", .{ .agent_id = lease.agent_id, .event_id = lease.event_id, .lease_id = body.lease_id });
 }
 
 /// Reproduce the `context_json` the direct path wrote: `{last_event_id,
@@ -230,15 +230,15 @@ fn parsePosture(label: []const u8) tenant_provider.Mode {
     return .platform;
 }
 
-/// Release the zombie's affinity claim so its next event becomes leasable. The
+/// Release the agent's affinity claim so its next event becomes leasable. The
 /// active→reported flip + final settle already happened atomically in
 /// `claimReportAndSettle`; this only frees the slot, token-guarded so a
 /// superseded holder can't free the current one. Best-effort — a DB blip must
 /// not fail an already-finalized report.
-fn releaseAffinity(hx: Hx, zombie_id: []const u8, token: u64) void {
+fn releaseAffinity(hx: Hx, agent_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
-    affinity.release(conn, zombie_id, token) catch |err| {
-        log.warn("report_claim_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
+    affinity.release(conn, agent_id, token) catch |err| {
+        log.warn("report_claim_release_failed", .{ .agent_id = agent_id, .err = @errorName(err) });
     };
 }

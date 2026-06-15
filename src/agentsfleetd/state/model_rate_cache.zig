@@ -45,6 +45,8 @@ fn writeKey(buf: []u8, provider: []const u8, model: []const u8) ?[]const u8 {
 }
 
 pub const Cache = struct {
+    const Self = @This();
+
     arena: std.heap.ArenaAllocator,
     rates: RatesMap,
 
@@ -76,12 +78,12 @@ pub const Cache = struct {
         return .{ .arena = arena, .rates = rates };
     }
 
-    pub fn deinit(self: *Cache) void {
+    pub fn deinit(self: *Self) void {
         self.arena.deinit();
         self.* = undefined;
     }
 
-    pub fn lookup(self: *const Cache, provider: []const u8, model: []const u8) ?ModelRate {
+    pub fn lookup(self: *const Self, provider: []const u8, model: []const u8) ?ModelRate {
         var key_buf: [512]u8 = undefined;
         const key = writeKey(&key_buf, provider, model) orelse return null;
         return self.rates.get(key);

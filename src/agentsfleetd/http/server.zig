@@ -47,10 +47,12 @@ const ServerConfig = struct {
 /// `run()` stack frame). All threads share this read-only pointer — no mutex
 /// needed because registry is immutable after `initChains()`.
 const App = struct {
+    const Self = @This();
+
     ctx: *handler.Context,
     registry: *auth_mw.MiddlewareRegistry,
 
-    pub fn handle(self: App, req: *httpz.Request, res: *httpz.Response) void {
+    pub fn handle(self: Self, req: *httpz.Request, res: *httpz.Response) void {
         dispatch(self.ctx, self.registry, req, res);
     }
 
@@ -64,6 +66,8 @@ const App = struct {
 /// Replaces the previous module-level pointer (which was a cross-thread data race
 /// and meant tests couldn't isolate their own server instance).
 pub const Server = struct {
+    const Self = @This();
+
     alloc: std.mem.Allocator,
     inner: httpz.Server(App),
     cfg: ServerConfig,
@@ -99,17 +103,17 @@ pub const Server = struct {
     }
 
     /// Block until stop() is called from another thread.
-    pub fn listen(self: *Server) !void {
+    pub fn listen(self: *Self) !void {
         log.info("listening", .{ .interface = self.cfg.interface, .port = self.cfg.port });
         try self.inner.listen();
     }
 
     /// Signal the server to stop. Safe to call from any thread.
-    pub fn stop(self: *Server) void {
+    pub fn stop(self: *Self) void {
         self.inner.stop();
     }
 
-    pub fn deinit(self: *Server) void {
+    pub fn deinit(self: *Self) void {
         self.inner.deinit();
         self.alloc.destroy(self);
     }
@@ -225,18 +229,18 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     const req_id = common.requestId(alloc);
     var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-    // Populate the webhook zombie slot before running the middleware
+    // Populate the webhook agent slot before running the middleware
     // chain. The webhook_sig + svix middlewares read it; all other
     // middlewares ignore the field.
     switch (matched) {
-        .receive_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .receive_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
-        .receive_svix_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .receive_svix_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
-        .github_webhook => |zombie_id| {
-            auth.webhook_zombie_id = zombie_id;
+        .github_webhook => |agent_id| {
+            auth.webhook_agent_id = agent_id;
         },
         else => {},
     }

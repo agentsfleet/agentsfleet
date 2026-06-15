@@ -20,7 +20,7 @@
 //!   5. Encoding         — multi-byte UTF-8, NUL-byte safety
 //!
 //! Companion to the integration tests in
-//! `src/zombie/event_loop_harness_redaction_test.zig`. This file isolates
+//! `src/agent/event_loop_harness_redaction_test.zig`. This file isolates
 //! the primitive so a contract regression need not surface through the
 //! pipeline to be caught.
 

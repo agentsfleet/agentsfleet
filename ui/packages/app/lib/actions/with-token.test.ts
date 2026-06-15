@@ -39,13 +39,13 @@ describe("withToken", () => {
   it("maps ApiError to ok:false with status + errorCode fields", async () => {
     getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
-      throw new ApiError("conflict", 409, "UZ-ZMB-009");
+      throw new ApiError("conflict", 409, "UZ-AGT-009");
     });
     expect(result).toEqual({
       ok: false,
       error: "conflict",
       status: 409,
-      errorCode: "UZ-ZMB-009",
+      errorCode: "UZ-AGT-009",
     });
   });
 

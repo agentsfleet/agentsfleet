@@ -136,7 +136,7 @@ export function designSystemCore(actual: Record<string, unknown>) {
   };
 }
 
-// Tabs family + Textarea — used by the zombies test shards (ZombieConfig).
+// Tabs family + Textarea — used by the agents test shards (AgentConfig).
 const TabsCtx = React.createContext<{ active: string; setActive: (v: string) => void }>({ active: "", setActive: () => {} });
 
 export function designSystemTabs() {

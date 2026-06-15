@@ -117,8 +117,8 @@ function KeyValueGrid({ gate }: { gate: ApprovalGate }) {
       className="grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 space-y-0"
     >
       <Row label="Agent" value={
-        <Link href={`/zombies/${gate.zombie_id}`} className="hover:underline">
-          {gate.zombie_name}
+        <Link href={`/agents/${gate.agent_id}`} className="hover:underline">
+          {gate.agent_name}
         </Link>
       } />
       <Row label="Tool" value={<code className="font-mono text-xs">{gate.tool_name}</code>} />

@@ -23,7 +23,7 @@ const STEPS: readonly Step[] = [
     title: "Run the install skill",
     command: INSTALL_SKILL_SLASH,
     caption:
-      "Drop the slash command into Claude Code, or paste TRIGGER.md + SKILL.md at /zombies/new in the Dashboard.",
+      "Drop the slash command into Claude Code, or paste TRIGGER.md + SKILL.md at /agents/new in the Dashboard.",
   },
   {
     id: "wire",
@@ -38,9 +38,9 @@ const STEPS: readonly Step[] = [
     id: "steer",
     number: "04",
     title: "Steer your agent",
-    command: 'agentsfleet steer <zombie_id> "morning health check"',
+    command: 'agentsfleet steer <agent_id> "morning health check"',
     caption:
-      "Or type into the Dashboard chat composer on /zombies/{id}. Every wake lands on the durable event log.",
+      "Or type into the Dashboard chat composer on /agents/{id}. Every wake lands on the durable event log.",
   },
 ];
 

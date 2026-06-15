@@ -28,7 +28,7 @@ describe("Agents", () => {
     renderAgents();
     expect(screen.getByRole("heading", { name: /install agentsfleet/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/install agentsfleet command/i)).toHaveTextContent(
-      /npm install -g @usezombie\/zombiectl/,
+      /npm install -g @agentsfleet\/cli/,
     );
   });
 
@@ -45,10 +45,10 @@ describe("Agents", () => {
     renderAgents();
     const block = screen.getByLabelText(/bootstrap commands/i);
     expect(block).toBeInTheDocument();
-    expect(block).toHaveTextContent(/npm install -g @usezombie\/zombiectl/);
+    expect(block).toHaveTextContent(/npm install -g @agentsfleet\/cli/);
     expect(block).toHaveTextContent(/agentsfleet login/);
-    expect(block).toHaveTextContent(/npx skills add usezombie\/skills/);
-    expect(block).toHaveTextContent(/usezombie-install-platform-ops/);
+    expect(block).toHaveTextContent(/npx skills add agentsfleet\/skills/);
+    expect(block).toHaveTextContent(/agentsfleet-install-platform-ops/);
   });
 
   it("renders machine surface table", () => {
@@ -103,7 +103,7 @@ describe("Agents", () => {
     expect(script).not.toBeNull();
     const data = JSON.parse(script!.textContent!);
     expect(data["@type"]).toBe("SoftwareApplication");
-    expect(data.name).toBe("usezombie");
+    expect(data.name).toBe("agentsfleet");
   });
 
   it("does not render orange-era decorative chrome", () => {

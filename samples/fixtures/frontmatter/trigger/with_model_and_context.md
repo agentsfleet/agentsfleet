@@ -1,7 +1,7 @@
 ---
 name: with-model-and-context-skill
 
-x-usezombie:
+x-agentsfleet:
   model: accounts/fireworks/models/kimi-k2.6
   context:
     context_cap_tokens: 256000

@@ -18,7 +18,7 @@
         "name": "runner_id",
         "type": "query",
         "datasource": "${DS_PROMETHEUS}",
-        "query": "label_values(zombie_runner_last_seen_seconds, runner_id)",
+        "query": "label_values(agentsfleet_runner_last_seen_seconds, runner_id)",
         "refresh": 2,
         "includeAll": true,
         "current": { "text": "All", "value": "$__all" }
@@ -36,7 +36,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum by (runner_id, reason) (increase(zombie_runner_failures_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
+          "expr": "sum by (runner_id, reason) (increase(agentsfleet_runner_failures_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
           "legendFormat": "{{runner_id}} · {{reason}}"
         }
       ]
@@ -51,7 +51,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum by (runner_id, outcome) (increase(zombie_runner_executions_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
+          "expr": "sum by (runner_id, outcome) (increase(agentsfleet_runner_executions_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
           "legendFormat": "{{runner_id}} · {{outcome}}"
         }
       ]
@@ -66,7 +66,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "min by (runner_id) (zombie_runner_last_seen_seconds{runner_id=~\"$runner_id\"})",
+          "expr": "min by (runner_id) (agentsfleet_runner_last_seen_seconds{runner_id=~\"$runner_id\"})",
           "legendFormat": "{{runner_id}}"
         }
       ]
@@ -81,7 +81,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum by (runner_id) (zombie_runner_active_leases{runner_id=~\"$runner_id\"})",
+          "expr": "sum by (runner_id) (agentsfleet_runner_active_leases{runner_id=~\"$runner_id\"})",
           "legendFormat": "{{runner_id}}"
         }
       ]
@@ -96,7 +96,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum (zombie_runner_failures_overflow_total)",
+          "expr": "sum (agentsfleet_runner_failures_overflow_total)",
           "legendFormat": "overflow"
         }
       ]
@@ -111,7 +111,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "count (count by (runner_id) (zombie_runner_last_seen_seconds))",
+          "expr": "count (count by (runner_id) (agentsfleet_runner_last_seen_seconds))",
           "legendFormat": "runners"
         }
       ]

@@ -1,4 +1,4 @@
--- usezombie clean-state role and schema privilege baseline
+-- agentsfleet clean-state role and schema privilege baseline
 
 CREATE SCHEMA IF NOT EXISTS vault;
 CREATE SCHEMA IF NOT EXISTS ops_ro;
@@ -9,7 +9,7 @@ DECLARE
     r text;
 BEGIN
     -- The worker datastore role was removed: the worker process was deleted in
-    -- the runtime split; zombied writes every execution-path row as api_runtime.
+    -- the runtime split; agentsfleetd writes every execution-path row as api_runtime.
     -- No role is named after the runner — it holds zero datastore credentials.
     FOREACH r IN ARRAY ARRAY[
         'db_migrator',

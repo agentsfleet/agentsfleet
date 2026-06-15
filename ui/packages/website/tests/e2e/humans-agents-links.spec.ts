@@ -23,7 +23,7 @@ async function assertFooterLinks(page: Page) {
   }
 
   await expect(footer.locator('a[href^="https://docs.agentsfleet.net"]')).toHaveCount(1);
-  await expect(footer.locator('a[href="https://github.com/agentsfleet/usezombie"]')).toHaveCount(1);
+  await expect(footer.locator('a[href="https://github.com/agentsfleet/agentsfleet"]')).toHaveCount(1);
   await expect(footer.locator('a[href="https://discord.gg/H9hH2nqQjh"]')).toHaveCount(1);
 }
 
@@ -95,7 +95,7 @@ test.describe("Cross-page link coverage", () => {
     ).toHaveCount(1);
     await expect(
       page.locator("a").filter({ hasText: /open dashboard/i }),
-    ).toHaveAttribute("href", /app\.(dev\.)?usezombie\.com/);
+    ).toHaveAttribute("href", /app\.(dev\.)?agentsfleet\.net/);
 
     await expect(page.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");
 

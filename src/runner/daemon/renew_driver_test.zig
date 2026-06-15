@@ -40,7 +40,7 @@ fn driverWith(fake: *FakeClient, deadline_ms: i64) Driver {
     return .{
         .alloc = testing.allocator,
         .cp = fake,
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .lease_id = "lease_test",
         .deadline_ms = deadline_ms,
         .renew_deadline_ms = client.RENEW_DEADLINE_MS,

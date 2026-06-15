@@ -2,12 +2,11 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Vocab guard: the user-facing product noun is "agent". The word "zombie" may
-// appear in code identifiers, routes, schema names, the brand (usezombie), and
-// CLI/daemon names — but never as a bare English product noun in *rendered
-// copy*. This scan extracts user-visible text (string literals + JSX text) and
-// fails if a multi-word phrase still contains the standalone word "zombie", so
-// the rename can't silently regress.
+// Vocab guard: the user-facing product noun is "agent". The retired entity noun
+// "zombie" — retired in the entity cutover — must never resurface as a bare
+// English word in *rendered copy*. This scan extracts user-visible text (string
+// literals + JSX text) and fails if a multi-word phrase contains the standalone
+// word "zombie", so a future regression can't silently reintroduce it.
 //
 // Scope is deliberately narrow to avoid false positives:
 //   - only string literals ("…", '…', `…`) and same-line JSX text (>…<)
@@ -15,7 +14,7 @@ import { join } from "node:path";
 //     identifiers / paths / test-ids / class names / enum values, not copy
 //   - comment lines are skipped
 //   - brand/route/schema fragments are allowlisted
-const ALLOW_FRAGMENTS = ["usezombie", "/zombies", "zombie:", "zombie_", "core.zombie", "zombie-"];
+const ALLOW_FRAGMENTS: string[] = []; // zombie is fully retired — nothing legit to skip
 const WORD = /\bzombies?\b/i;
 
 const SEGMENT = /"([^"]*)"|'([^']*)'|`([^`]*)`|>([^<>{}]*)</g;

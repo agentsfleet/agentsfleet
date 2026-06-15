@@ -4,35 +4,35 @@ import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "usezombie",
+  name: "agentsfleet",
   applicationCategory: "DeveloperApplication",
-  url: "https://usezombie.sh/agents",
-  sameAs: ["https://usezombie.sh/openapi.json"],
+  url: "https://agentsfleet.dev/agents",
+  sameAs: ["https://agentsfleet.dev/openapi.json"],
 };
 
 const apiOps = [
-  { action: "Create agent",   method: "POST",   path: "/v1/workspaces/:workspace_id/zombies",                                  purpose: "Provision a new agent in a workspace" },
-  { action: "Update agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Update mutable configuration (body: { config_json })." },
-  { action: "Stop agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Halt the running session, keep the record (body: { status: \"stopped\" })." },
-  { action: "Resume agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Return a stopped agent to active execution (body: { status: \"active\" })." },
-  { action: "Kill agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Mark the agent terminal — irreversible (body: { status: \"killed\" })." },
-  { action: "Delete agent",   method: "DELETE", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id",                       purpose: "Hard-purge the agent and its history. Must kill first." },
-  { action: "Steer / chat",   method: "POST",   path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages",              purpose: "Send a steer message to an agent" },
-  { action: "Stream events",  method: "GET",    path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream",         purpose: "Server-Sent Events stream of new events" },
-  { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:zombie_id",                                                purpose: "Deliver an inbound event to an agent" },
+  { action: "Create agent",   method: "POST",   path: "/v1/workspaces/:workspace_id/agents",                                  purpose: "Provision a new agent in a workspace" },
+  { action: "Update agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Update mutable configuration (body: { config_json })." },
+  { action: "Stop agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Halt the running session, keep the record (body: { status: \"stopped\" })." },
+  { action: "Resume agent",   method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Return a stopped agent to active execution (body: { status: \"active\" })." },
+  { action: "Kill agent",     method: "PATCH",  path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Mark the agent terminal — irreversible (body: { status: \"killed\" })." },
+  { action: "Delete agent",   method: "DELETE", path: "/v1/workspaces/:workspace_id/agents/:agent_id",                       purpose: "Hard-purge the agent and its history. Must kill first." },
+  { action: "Steer / chat",   method: "POST",   path: "/v1/workspaces/:workspace_id/agents/:agent_id/messages",              purpose: "Send a steer message to an agent" },
+  { action: "Stream events",  method: "GET",    path: "/v1/workspaces/:workspace_id/agents/:agent_id/events/stream",         purpose: "Server-Sent Events stream of new events" },
+  { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:agent_id",                                                purpose: "Deliver an inbound event to an agent" },
 ] as const;
 
 const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
-npm install -g @usezombie/zombiectl
+npm install -g @agentsfleet/cli
 agentsfleet login
-npx skills add usezombie/skills
+npx skills add agentsfleet/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
-#    /usezombie-install-platform-ops
-#    The slash-command provisions the platform-ops agent and prints its zombie_id.
+#    /agentsfleet-install-platform-ops
+#    The slash-command provisions the platform-ops agent and prints its agent_id.
 
 # 3. Back in the shell — steer the agent
-agentsfleet steer <zombie_id> "morning health check"`;
+agentsfleet steer <agent_id> "morning health check"`;
 
 const webhookPayload = `{
   "event_id": "evt_01JEXAMPLE",
@@ -80,7 +80,7 @@ export default function Agents() {
         <div className="wrap flex flex-col gap-4">
           <InstallBlock
             title="Install agentsfleet"
-            command="npm install -g @usezombie/zombiectl"
+            command="npm install -g @agentsfleet/cli"
             actions={[
               { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
               { label: "read the docs", to: DOCS_URL, variant: "ghost" },
@@ -150,7 +150,7 @@ export default function Agents() {
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
-            <code className="font-mono">/v1/webhooks/:zombie_id</code>. Every inbound webhook must
+            <code className="font-mono">/v1/webhooks/:agent_id</code>. Every inbound webhook must
             carry a per-agent HMAC signature header — unsigned requests are rejected.
           </p>
           <Terminal label="Webhook payload example" className="max-w-wide">

@@ -16,11 +16,13 @@ pub const EnvVarsErrors = error{
 };
 
 const EnvVars = struct {
+    const Self = @This();
+
     db_api: ?[]const u8,
     redis_api: ?[]const u8,
     alloc: std.mem.Allocator,
 
-    pub fn deinit(self: *EnvVars) void {
+    pub fn deinit(self: *Self) void {
         if (self.db_api) |v| self.alloc.free(v);
         if (self.redis_api) |v| self.alloc.free(v);
     }

@@ -14,7 +14,7 @@ test "removed workspace billing routes are 404 (pre-v2.0 per RULE EP4)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_1/zombies/z_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/agents/z_1/billing/summary", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
 }
 
@@ -72,7 +72,7 @@ test "match resolves auth routes" {
 }
 
 // Memory API moved from /v1/memory/{store,recall,list,forget} to
-// workspace-scoped /v1/workspaces/{ws}/zombies/{zid}/memories[/{key}].
+// workspace-scoped /v1/workspaces/{ws}/agents/{zid}/memories[/{key}].
 // The retired top-level paths must 404.
 test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
     try std.testing.expect(match("/v1/memory/store", .POST) == null);
@@ -81,15 +81,15 @@ test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
     try std.testing.expect(match("/v1/memory/forget", .POST) == null);
 }
 
-test "match resolves /v1/workspaces/{ws}/zombies/{zid}/memories collection" {
-    switch (match("/v1/workspaces/ws1/zombies/z1/memories", .GET).?) {
-        .workspace_zombie_memories => |r| {
+test "match resolves /v1/workspaces/{ws}/agents/{zid}/memories collection" {
+    switch (match("/v1/workspaces/ws1/agents/z1/memories", .GET).?) {
+        .workspace_agent_memories => |r| {
             try std.testing.expectEqualStrings("ws1", r.workspace_id);
-            try std.testing.expectEqualStrings("z1", r.zombie_id);
+            try std.testing.expectEqualStrings("z1", r.agent_id);
         },
         else => return error.TestExpectedEqual,
     }
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/memories/", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/memories/", .GET) == null);
 }
 
 // /v1/runs/* routes removed (pipeline v1) — get_run, retry_run, replay_run,
@@ -128,48 +128,48 @@ test "match returns null for removed spec relay routes" {
 // ── webhook route tests ───────────────────────────────────────────────────
 
 test "webhook routes resolve and reject correctly" {
-    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const agent_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     // Webhook tests for matchWebhookRoute are in route_matchers.zig.
     // Test via match() integration:
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(zombie_id, switch (route) {
+    try std.testing.expectEqualStrings(agent_id, switch (route) {
         .receive_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
 }
 
-// ── zombie CRUD route tests ───────────────────────────────────────────────
+// ── agent CRUD route tests ───────────────────────────────────────────────
 
-test "match resolves workspace-scoped zombie collection" {
+test "match resolves workspace-scoped agent collection" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies", .GET).?) {
-        .workspace_zombies => |id| id,
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents", .GET).?) {
+        .workspace_agents => |id| id,
         else => return error.TestExpectedEqual,
     });
 }
 
-test "match: flat /v1/zombies/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
-    try std.testing.expect(match("/v1/zombies/", .GET) == null);
+test "match: flat /v1/agents/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
+    try std.testing.expect(match("/v1/agents/", .GET) == null);
 }
 
-test "workspace-scoped zombie PATCH resolves to patch_workspace_zombie" {
+test "workspace-scoped agent PATCH resolves to patch_workspace_agent" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?;
+    const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?;
     switch (r) {
-        .patch_workspace_zombie => |route| {
+        .patch_workspace_agent => |route| {
             try std.testing.expectEqualStrings(ws_id, route.workspace_id);
-            try std.testing.expectEqualStrings(zid, route.zombie_id);
+            try std.testing.expectEqualStrings(zid, route.agent_id);
         },
         else => return error.TestExpectedEqual,
     }
 }
 
-test "retired path: /v1/workspaces/{ws}/zombies/{id}/kill no longer resolves" {
-    // All status transitions fold into PATCH /zombies/{id} with body
+test "retired path: /v1/workspaces/{ws}/agents/{id}/kill no longer resolves" {
+    // All status transitions fold into PATCH /agents/{id} with body
     // {status: "active" | "stopped" | "killed"}. Verb-suffix paths (/kill,
     // /stop, /current-run) all 404.
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
 test "match resolves workspace-scoped credentials collection" {
@@ -178,24 +178,24 @@ test "match resolves workspace-scoped credentials collection" {
         .workspace_credentials => |id| id,
         else => return error.TestExpectedEqual,
     });
-    try std.testing.expect(match("/v1/zombies/credentials", .GET) == null);
+    try std.testing.expect(match("/v1/agents/credentials", .GET) == null);
 }
 
-test "match: flat /v1/zombies/{id} DELETE path is removed (bare 404 per RULE EP4)" {
-    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+test "match: flat /v1/agents/{id} DELETE path is removed (bare 404 per RULE EP4)" {
+    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
 }
 
-test "match: zombie routes reject invalid paths" {
-    try std.testing.expect(match("/v1/zombies/a/b", .GET) == null);
-    try std.testing.expect(match("/v1/zombies", .GET) == null);
+test "match: agent routes reject invalid paths" {
+    try std.testing.expect(match("/v1/agents/a/b", .GET) == null);
+    try std.testing.expect(match("/v1/agents", .GET) == null);
 }
 
 // ── approval gate route tests ─────────────────────────────────────────────
 
 test "match: approval webhook route resolves correctly" {
-    const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const agent_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/approval", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(zombie_id, switch (route) {
+    try std.testing.expectEqualStrings(agent_id, switch (route) {
         .approval_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
@@ -226,7 +226,7 @@ test "match: approval route resolves before webhook route" {
 
 test "matchWebhookAction excludes reserved literals at slot 1" {
     // /v1/webhooks/{reserved}/approval must NOT dispatch to .approval_webhook
-    // with zombie_id={reserved}. Symmetric with matchWebhook's reserved-segment
+    // with agent_id={reserved}. Symmetric with matchWebhook's reserved-segment
     // guard. (svix is excluded by matchWebhookAction too, but svix paths route
     // to the svix family via matchSvixWebhook — so they're tested separately.)
     const cases = [_][]const u8{
@@ -244,7 +244,7 @@ test "matchWebhookAction excludes reserved literals at slot 1" {
     }
 }
 
-test "svix webhook route resolves with zombie_id" {
+test "svix webhook route resolves with agent_id" {
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/svix/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zid, switch (route) {
@@ -254,7 +254,7 @@ test "svix webhook route resolves with zombie_id" {
 }
 
 test "svix route takes precedence over generic /v1/webhooks/{id}/{secret}" {
-    // /v1/webhooks/svix/{id} must NOT be interpreted as {zombie_id=svix, secret=id}.
+    // /v1/webhooks/svix/{id} must NOT be interpreted as {agent_id=svix, secret=id}.
     const route = match("/v1/webhooks/svix/zomb-abc", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
         .receive_svix_webhook => |id| try std.testing.expectEqualStrings("zomb-abc", id),
@@ -262,7 +262,7 @@ test "svix route takes precedence over generic /v1/webhooks/{id}/{secret}" {
     }
 }
 
-test "svix route rejects empty and multi-segment zombie_id" {
+test "svix route rejects empty and multi-segment agent_id" {
     try std.testing.expect(match("/v1/webhooks/svix/", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/svix/a/b", .GET) == null);
 }
@@ -308,33 +308,33 @@ test "retired path: /v1/workspaces/{ws}/sync no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/ws_123/sync", .GET) == null);
 }
 
-test "custom-method subpath: zombie /messages resolves" {
+test "custom-method subpath: agent /messages resolves" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
+    const route = match("/v1/workspaces/ws_abc/agents/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
-        .workspace_zombie_messages => |r| {
+        .workspace_agent_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.zombie_id);
+            try std.testing.expectEqualStrings(zid, r.agent_id);
         },
         else => return error.TestExpectedEqual,
     }
 }
 
-test "retired path: zombie /current-run no longer resolves" {
+test "retired path: agent /current-run no longer resolves" {
     // /current-run was the singleton-sub-resource form for stop. After the
-    // PATCH FSM unification (status: stopped|active|killed on the zombie
+    // PATCH FSM unification (status: stopped|active|killed on the agent
     // resource itself), /current-run is gone — must not match.
-    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .DELETE) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/agents/z_xyz/current-run", .DELETE) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/agents/z_xyz/current-run", .GET) == null);
 }
 
-test "retired path: /stop no longer resolves as a zombie action" {
+test "retired path: /stop no longer resolves as a agent action" {
     // /stop was the pre-hygiene path-verb form. With both /stop and
-    // /current-run retired in favor of PATCH /zombies/{id} {status:"stopped"},
+    // /current-run retired in favor of PATCH /agents/{id} {status:"stopped"},
     // this path must return null.
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/stop", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/stop", .POST) == null);
 }
 
 test "custom-method regression: old colon-action forms no longer hit the migrated routes" {
@@ -357,14 +357,14 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
         .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
-    const messages_colon_old = match("/v1/workspaces/ws1/zombies/z1:messages", .POST);
+    const messages_colon_old = match("/v1/workspaces/ws1/agents/z1:messages", .POST);
     if (messages_colon_old) |r| switch (r) {
-        .workspace_zombie_messages => return error.TestExpectedNotAction,
+        .workspace_agent_messages => return error.TestExpectedNotAction,
         else => {},
     };
-    const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop", .POST);
+    const stop_old = match("/v1/workspaces/ws1/agents/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_messages => return error.TestExpectedNotAction,
+        .workspace_agent_messages => return error.TestExpectedNotAction,
         else => {},
     };
     // /v1/workspaces/ws1:pause used to be the colon-op form (POST). With
@@ -388,8 +388,8 @@ test "webhook action routes: approval / grant-approval / svix / github dispatch 
         .grant_approval_webhook => {},
         else => return error.TestExpectedEqual,
     }
-    // "svix" as slot-1 is the Svix route prefix, not a zombie_id.
-    // /v1/webhooks/svix/{id} means "svix-signed webhook for zombie {id}".
+    // "svix" as slot-1 is the Svix route prefix, not a agent_id.
+    // /v1/webhooks/svix/{id} means "svix-signed webhook for agent {id}".
     const svix = match("/v1/webhooks/svix/zid", .GET) orelse return error.TestExpectedMatch;
     switch (svix) {
         .receive_svix_webhook => {},
@@ -407,8 +407,8 @@ test "custom-method subpath: trailing segments after action are rejected" {
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/github/extra", .POST) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/messages/extra", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/current-run/extra", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/messages/extra", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/current-run/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/sync/extra", .GET) == null);
 }
@@ -416,8 +416,8 @@ test "custom-method subpath: trailing segments after action are rejected" {
 test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/webhooks//approval", .GET) == null);
     try std.testing.expect(match("/v1/webhooks//grant-approval", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces//zombies/z1/messages", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies//current-run", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces//agents/z1/messages", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/agents//current-run", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//pause", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);
 }

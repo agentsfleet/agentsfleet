@@ -11,7 +11,7 @@ describe("FAQ", () => {
 
   it("renders all FAQ questions as buttons", () => {
     render(<FAQ />);
-    expect(screen.getByText("What is usezombie?")).toBeInTheDocument();
+    expect(screen.getByText("What is agentsfleet?")).toBeInTheDocument();
     expect(screen.getByText("What does self-managed mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
     expect(screen.getByText("Can I self-host?")).toBeInTheDocument();
@@ -70,10 +70,10 @@ describe("FAQ", () => {
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
   });
 
-  it("defines the agent at first touch: 'What is usezombie?' opens to the explicit definition", async () => {
+  it("defines the agent at first touch: 'What is agentsfleet?' opens to the explicit definition", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
-    await user.click(screen.getByText("What is usezombie?"));
+    await user.click(screen.getByText("What is agentsfleet?"));
     expect(
       screen.getByText(/An agent is a long-lived runtime you install once/i),
     ).toBeInTheDocument();

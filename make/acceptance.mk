@@ -15,5 +15,5 @@ acceptance-e2e:  ## Dashboard auth acceptance — Clerk sign-in + install + life
 
 cli-acceptance:  ## CLI auth acceptance — agentsfleet login + token lifecycle vs live API. Mirrors CI cli-acceptance-{dev,prod}.
 	@echo "→ [agentsfleet] Running CLI acceptance e2e (login + token lifecycle)..."
-	@cd agentsfleet && bun run test:acceptance
+	@cd cli && bun run test:acceptance
 	@echo "✓ [agentsfleet] CLI acceptance e2e passed"

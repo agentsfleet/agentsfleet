@@ -21,7 +21,7 @@ const Config = @import("daemon/config.zig");
 const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 const LANDLOCK_FULL = @tagName(contract.protocol.SandboxTier.landlock_full);
 const CONTAINER_NESTED = @tagName(contract.protocol.SandboxTier.container_nested);
-const WORKSPACE = "/tmp/zombie-ws-edge";
+const WORKSPACE = "/tmp/agent-ws-edge";
 
 /// Build a daemon Config struct literal for argv tests. buildArgv reads only
 /// `sandbox_tier`; the other slices are inert placeholders, never freed here
@@ -29,7 +29,7 @@ const WORKSPACE = "/tmp/zombie-ws-edge";
 fn cfgWithTier(tier: []const u8) Config {
     return Config{
         .control_plane_url = "http://127.0.0.1:8080",
-        .runner_token = "zrn_test",
+        .runner_token = "agt_rtest",
         .host_id = "host-edge",
         .sandbox_tier = tier,
         .workspace_base = "/tmp/agentsfleet-runner",

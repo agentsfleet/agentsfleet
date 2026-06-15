@@ -1,13 +1,13 @@
 // Integration tests for the runner-memory handler's lease authorization — the
 // fencing + IDOR cross-check that gates BOTH verbs:
-//   POST /v1/runners/me/memory/{zombie_id}  → pushLeaseSeq (capture)
-//   GET  /v1/runners/me/memory/{zombie_id}  → liveLeaseSeq (hydrate)
+//   POST /v1/runners/me/memory/{agent_id}  → pushLeaseSeq (capture)
+//   GET  /v1/runners/me/memory/{agent_id}  → liveLeaseSeq (hydrate)
 //
 // Drives the resolver functions directly against seeded fleet rows on a live
 // test-DB connection (mirrors renewal_integration_test): the live seq is
 // COALESCE(affinity.fencing_seq, lease.fencing_token), so a reclaim that bumped
 // the slot strands the old holder below it (stale fence → handler rejects). A
-// lease that exists but for another zombie/lease yields null — the IDOR guard
+// lease that exists but for another agent/lease yields null — the IDOR guard
 // is the WHERE itself. Requires LIVE_DB=1; skips when TEST_DATABASE_URL is unset.
 
 const std = @import("std");
@@ -23,8 +23,8 @@ const ALLOC = std.testing.allocator;
 // Distinct UUIDv7 literals (no collision with sibling fleet tests).
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8a01";
-const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c01";
-const OTHER_ZOMBIE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c99";
+const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c01";
+const OTHER_AGENT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8c99";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8f01";
 const OTHER_LEASE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e8f99";
@@ -46,19 +46,19 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (zombie_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq
-    , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, NOW_MS + 30_000 });
+        \\ON CONFLICT (agent_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq
+    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, NOW_MS + 30_000 });
 }
 
-/// Seed an active, unexpired lease for the runner naming `lease_id`/`zombie_id`.
-fn seedLease(conn: *pg.Conn, lease_id: []const u8, zombie_id: []const u8, fencing_token: i64) !void {
+/// Seed an active, unexpired lease for the runner naming `lease_id`/`agent_id`.
+fn seedLease(conn: *pg.Conn, lease_id: []const u8, agent_id: []const u8, fencing_token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -66,7 +66,7 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, zombie_id: []const u8, fencin
         \\        'chat', '{"message":"hi"}', 0, 'platform', 'p', 'm', 0, 0, 0, 0,
         \\        $7, $8, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, RUNNER_ID, zombie_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + 30_000 });
+    , .{ lease_id, RUNNER_ID, agent_id, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, fencing_token, NOW_MS + 30_000 });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -75,7 +75,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid)", .{ LEASE_ID, OTHER_LEASE });
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -89,7 +89,7 @@ fn harnessConn() !?struct { h: *TestHarness, conn: *pg.Conn } {
     return .{ .h = h, .conn = conn };
 }
 
-test "pushLeaseSeq: held lease returns the live seq; wrong zombie/lease is null (IDOR)" {
+test "pushLeaseSeq: held lease returns the live seq; wrong agent/lease is null (IDOR)" {
     const ctx = (try harnessConn()) orelse return error.SkipZigTest;
     defer ctx.h.deinit();
     defer ctx.h.releaseConn(ctx.conn);
@@ -99,15 +99,15 @@ test "pushLeaseSeq: held lease returns the live seq; wrong zombie/lease is null 
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
-    try seedLease(conn, LEASE_ID, ZOMBIE_ID, 5);
+    try seedLease(conn, LEASE_ID, AGENTSFLEET_ID, 5);
     defer teardown(conn);
 
     // Held: COALESCE(no affinity → lease.fencing_token) = 5.
-    try std.testing.expectEqual(@as(?u64, 5), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, ZOMBIE_ID, NOW_MS));
-    // IDOR: a lease that exists but is named with another zombie → null.
-    try std.testing.expectEqual(@as(?u64, null), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, OTHER_ZOMBIE, NOW_MS));
+    try std.testing.expectEqual(@as(?u64, 5), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, AGENTSFLEET_ID, NOW_MS));
+    // IDOR: a lease that exists but is named with another agent → null.
+    try std.testing.expectEqual(@as(?u64, null), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, OTHER_AGENT, NOW_MS));
     // A lease_id the runner does not hold → null.
-    try std.testing.expectEqual(@as(?u64, null), try memory.pushLeaseSeq(conn, RUNNER_ID, OTHER_LEASE, ZOMBIE_ID, NOW_MS));
+    try std.testing.expectEqual(@as(?u64, null), try memory.pushLeaseSeq(conn, RUNNER_ID, OTHER_LEASE, AGENTSFLEET_ID, NOW_MS));
 }
 
 test "pushLeaseSeq: a reclaim that bumped the affinity fence strands the old holder above its token" {
@@ -120,16 +120,16 @@ test "pushLeaseSeq: a reclaim that bumped the affinity fence strands the old hol
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
-    try seedLease(conn, LEASE_ID, ZOMBIE_ID, 5);
+    try seedLease(conn, LEASE_ID, AGENTSFLEET_ID, 5);
     try seedAffinity(conn, 7); // a newer holder bumped the slot to seq 7
     defer teardown(conn);
 
     // Live seq is the affinity seq (7), so a push fenced at token 5 (< 7) is
     // rejected by the handler as stale — the resolver surfaces the higher seq.
-    try std.testing.expectEqual(@as(?u64, 7), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, ZOMBIE_ID, NOW_MS));
+    try std.testing.expectEqual(@as(?u64, 7), try memory.pushLeaseSeq(conn, RUNNER_ID, LEASE_ID, AGENTSFLEET_ID, NOW_MS));
 }
 
-test "liveLeaseSeq: hydrate authorizes a held zombie; an unheld zombie is null" {
+test "liveLeaseSeq: hydrate authorizes a held agent; an unheld agent is null" {
     const ctx = (try harnessConn()) orelse return error.SkipZigTest;
     defer ctx.h.deinit();
     defer ctx.h.releaseConn(ctx.conn);
@@ -139,10 +139,10 @@ test "liveLeaseSeq: hydrate authorizes a held zombie; an unheld zombie is null" 
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
-    try seedLease(conn, LEASE_ID, ZOMBIE_ID, 5);
+    try seedLease(conn, LEASE_ID, AGENTSFLEET_ID, 5);
     defer teardown(conn);
 
-    try std.testing.expectEqual(@as(?u64, 5), try memory.liveLeaseSeq(conn, RUNNER_ID, ZOMBIE_ID, NOW_MS));
-    // No live lease for this zombie → null (hydrate rejected UZ-RUN-005).
-    try std.testing.expectEqual(@as(?u64, null), try memory.liveLeaseSeq(conn, RUNNER_ID, OTHER_ZOMBIE, NOW_MS));
+    try std.testing.expectEqual(@as(?u64, 5), try memory.liveLeaseSeq(conn, RUNNER_ID, AGENTSFLEET_ID, NOW_MS));
+    // No live lease for this agent → null (hydrate rejected UZ-RUN-005).
+    try std.testing.expectEqual(@as(?u64, null), try memory.liveLeaseSeq(conn, RUNNER_ID, OTHER_AGENT, NOW_MS));
 }

@@ -108,7 +108,7 @@ describe("Pricing component", () => {
   it("renders a single early-access CTA pointing at APP_BASE_URL", () => {
     renderPricing();
     const cta = screen.getByTestId("pricing-install-cta");
-    expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
+    expect(cta).toHaveAttribute("href", "https://app.dev.agentsfleet.net");
     expect(cta.textContent).toMatch(/get early access/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });

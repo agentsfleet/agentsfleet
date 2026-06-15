@@ -44,7 +44,7 @@ describe("listApiKeys", () => {
 
 describe("createApiKey / revokeApiKey / deleteApiKey", () => {
   it("POSTs the create body verbatim", async () => {
-    requestMock.mockResolvedValue({ id: "k", key_name: "ci", key: "zmb_t_x", created_at: 1 });
+    requestMock.mockResolvedValue({ id: "k", key_name: "ci", key: "agt_tx", created_at: 1 });
     await createApiKey("tok", { key_name: "ci", description: "runner" });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/api-keys",

@@ -1,17 +1,17 @@
 //! Log sink registry (LOGGING_STANDARD §13).
 //!
-//! `zombiedLog` formats each record once (level/scope/ts_ms/body) and
+//! `agentsfleetdLog` formats each record once (level/scope/ts_ms/body) and
 //! fans out to every registered `Sink`. Two production sinks register
 //! at boot — one renders + writes to stderr, one enqueues to the OTLP
 //! exporter. Tests install a `BufferedSink` to assert on emitted lines
 //! without subprocess capture.
 //!
 //! Until the first `registerSink` call, `emitToSinks` is a no-op so
-//! `zombiedLog` callers (which fire from comptime-plugged
+//! `agentsfleetdLog` callers (which fire from comptime-plugged
 //! `std_options.logFn` as early as `applyEnvSources` in main) can fall
 //! back to `fatalStderr` or direct write without dropping observable
 //! lines. The `sinksRegistered` predicate exists for exactly that
-//! pre-init fallback in `zombiedLog`.
+//! pre-init fallback in `agentsfleetdLog`.
 //!
 //! No runtime growth — `MAX_SINKS = 4` covers prod (stderr + OTLP)
 //! plus 2 test slots (additive capture + spare). Registration is

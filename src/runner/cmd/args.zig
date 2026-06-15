@@ -1,7 +1,7 @@
 //! Minimal argv reader for the operator subcommands. Space-separated flags
 //! (`--api <url>`), matching `agentsfleet`'s convention — distinct from
 //! `child_exec`'s `--workspace=` `=`-form, which is the forked-child protocol,
-//! not an operator surface. argv is never secret (the admin JWT and `zrn_` come
+//! not an operator surface. argv is never secret (the admin JWT and `agt_r` come
 //! from the environment, not flags, by default — RULE VLT).
 
 const std = @import("std");

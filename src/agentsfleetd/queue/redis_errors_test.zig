@@ -66,7 +66,7 @@ test "REDIS_REQUEST_TIMEOUT_MS_ENV is the contract scrapers + ops runbooks depen
     // pin test: literal is the contract — operator-facing env-var name.
     // The serve.zig boot log at error path interpolates this const into
     // the surfaced message: a rename here must thread through ops docs
-    // (docs.usezombie.com env reference) and any compose / k8s overlays
+    // (docs.agentsfleet.net env reference) and any compose / k8s overlays
     // shipping the var to production.
     try std.testing.expectEqualStrings("REDIS_REQUEST_TIMEOUT_MS", redis_config.REDIS_REQUEST_TIMEOUT_MS_ENV);
     try std.testing.expectEqual(@as(u32, 5000), redis_config.REDIS_REQUEST_TIMEOUT_MS_DEFAULT);
