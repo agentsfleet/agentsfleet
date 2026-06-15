@@ -197,7 +197,7 @@ The honest critique that informed the M46 trim: most YAML config in skill-style 
 ## See also
 
 - `docs/ARCHITECTURE.md` §8.1 (Authoring), §10 (capabilities)
-- `samples/platform-ops/` — canonical shipped example
+- `samples/fixtures/platform-ops-sample/` — canonical shipped example
 - `samples/fixtures/frontmatter/` — minimal/full/broken parser fixtures
 - `src/agent/config_parser.zig` — parser implementation
 - `src/agent/yaml_frontmatter.zig` — YAML→JSON converter

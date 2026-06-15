@@ -134,7 +134,7 @@ the entity rename, which turns the FK `zombie_id` into `agent_id` cleanly. Seque
 
 - **`docs/greptile-learnings/RULES.md`** — RULE NLR (touched files shed stale `zombie`/`usezombie`
   prose/comments), RULE NLG (no legacy shims / no dual-read), RULE ORP (orphan sweep per dropped
-  `samples/platform-ops` symbol), RULE TST-NAM (tests milestone-free), RULE UFS (header/env/metric
+  `samples/fixtures/platform-ops-sample` symbol), RULE TST-NAM (tests milestone-free), RULE UFS (header/env/metric
   names as named constants).
 - **`dispatch/write_sql.md`** — direct `schema/*.sql` edits for the 6 entity tables + `agent_keys`;
   SCHEMA GUARD fires; `schema/embed.zig` `@embedFile` consts + filenames kept in lockstep.
@@ -208,7 +208,7 @@ spans hundreds of files.
 | install script, `README*`, website install snippet, config | EDIT | `usezombie.sh`→`agentsfleet.dev`; `usezombie.com`→`agentsfleet.net` |
 | `cli/src/lib/contact.ts`, `ui/packages/{app,website}/.../contact.ts`, pins (5 mirrored) | EDIT | mail flip everything → `agentsfleet` |
 | `deploy/fly/**`, cloudflared, `.github/workflows/**` (hosts/env strings) | EDIT | fly app cutover + API host split (gated; Indy CI grant) |
-| `samples/platform-ops/` (delete), `samples/fixtures/`→test dirs | DELETE/EDIT | decommission in-repo samples; repoint 5 consumers |
+| `samples/fixtures/platform-ops-sample/` (delete), `samples/fixtures/`→test dirs | DELETE/EDIT | decommission in-repo samples; repoint 5 consumers |
 | `src/agentsfleetd/http/routes.zig` + struct files across `src/agentsfleetd/**` | EDIT | two pre-approved Zig refactors (own commits) |
 
 **Protected from the `zombie`→`agent` sed (flip to `agentsfleet`, or keep):** `usezombie` (brand),
@@ -305,7 +305,7 @@ renamed; Postgres creds rotated via the vault (values only; `ZMB_*` names keep).
 ### §5 — Residue sweep, hygiene + `samples/` decommission + Zig refactors
 
 Brand residue (Dockerfile labels, systemd `Description=`, compose headers, `github.com/usezombie`,
-`docs.usezombie.com`). Orphan sweep per RULE ORP. **`samples/platform-ops/` decommission:** delete +
+`docs.usezombie.com`). Orphan sweep per RULE ORP. **`samples/fixtures/platform-ops-sample/` decommission:** delete +
 repoint its 5 consumers (`postinstall.mjs` copier, `error_entries.zig` example pointer,
 `test-unit-bundle` lane, frontmatter/seed fixture readers). `samples/fixtures/` is parser test data —
 relocate into test dirs, never delete. **Two pre-approved Zig refactors** (route-enum/matcher;
@@ -314,7 +314,7 @@ green.
 
 - **Dimension 5.1** — residue grep matches only frozen-history keeps → Eval `E1` final
 - **Dimension 5.2** — orphan sweep + dead-code table complete → Eval `E5`
-- **Dimension 5.3** — `samples/platform-ops/` removed + consumers repointed; `test-unit-bundle` green → Test `test_samples_decommissioned`
+- **Dimension 5.3** — `samples/fixtures/platform-ops-sample/` removed + consumers repointed; `test-unit-bundle` green → Test `test_samples_decommissioned`
 - **Dimension 5.4** — two Zig refactors land; cross-compile + full suite green; no pub-surface growth → Eval `E2` + PUB-gate verdicts
 
 ---
@@ -382,7 +382,7 @@ vault names are out of scope of every sweep (Indy keep).
 | 4.1/4.3 | e2e/unit | `E10` / `test_install_skill_slash_pin` | npm pointer; slash-command constant + pin flip together |
 | 4.2 | unit | mail pin tests | `SUPPORT_EMAIL` == `agentsfleet@agentmail.to` across 5 mirrors; no `usezombie` mail literal |
 | 5.1–5.2 | eval | `E1` final + `E5` | residue and orphans zero outside frozen keeps |
-| 5.3 | integration | `test_samples_decommissioned` | suites green with `samples/platform-ops/` gone, fixtures test-local |
+| 5.3 | integration | `test_samples_decommissioned` | suites green with `samples/fixtures/platform-ops-sample/` gone, fixtures test-local |
 | 5.4 | eval | `E2` + PUB verdicts | two refactors land; full suite + cross-compile green; no pub-surface growth |
 
 **Regression:** `make test`, `make test-integration`, app/website suites, installer `install_test.sh` —
@@ -419,7 +419,7 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
 # E3: keep tokens byte-stable — git grep -c "ZMB_" vs origin/main ; agent_keys has one agent_id
 # E4: brand — git grep -nE "usezombie|useagent|agentctl\b|agentd\b" -- src/ cli/src ui/packages
 #     (expect: usezombie→flagged keeps only; useagent/agentctl/agentd == 0)
-# E5: orphan sweep — grep -rn "samples/platform-ops" src/ (expect 0)
+# E5: orphan sweep — grep -rn "samples/fixtures/platform-ops-sample" src/ (expect 0)
 # E10: installer — git grep -nE "usezombie\.sh" (live refs; expect 0)
 # E6/E7/E8/E9: fly/host/Vercel/creds — Indy console rows; paste evidence in PR body
 ```
@@ -430,14 +430,14 @@ git grep -nE "[Zz]ombie|UZ-ZMB|/zombies|core\.zombie" -- . \
 
 | File to delete | Verify |
 |----------------|--------|
-| `samples/platform-ops/` | `test ! -d samples/platform-ops` + `test-unit-bundle` green |
+| `samples/fixtures/platform-ops-sample/` | `test ! -d samples/fixtures/platform-ops-sample` + `test-unit-bundle` green |
 
 | Renamed/removed symbol | Grep | Expected |
 |-----------------------|------|----------|
 | `core.zombies`/`core.zombie_*`/`zombie_id`/`/zombies` (active tree) | Eval `E1` | 0 |
 | `zombie_runner_*` metrics + old grafana uid | `grep -rn zombie_runner_ src/ deploy/grafana/` | 0 |
 | `core.agent_keys.agent_id` as the key's own id | `grep -n "agent_id" schema/011_core_agent_keys.sql` | only the FK to `core.agents` |
-| `samples/platform-ops` consumers | Eval `E5` | 0 |
+| `samples/fixtures/platform-ops-sample` consumers | Eval `E5` | 0 |
 
 ---
 

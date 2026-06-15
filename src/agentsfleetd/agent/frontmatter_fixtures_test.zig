@@ -160,7 +160,7 @@ test "fixture bundles/platform_ops_installed_self_managed — sentinel model/cap
     try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);
 }
 
-test "shipped sample samples/platform-ops SKILL.md frontmatter validates" {
+test "shipped sample samples/fixtures/platform-ops-sample SKILL.md frontmatter validates" {
     // Note: the trigger side of platform-ops uses `type: chat` and tools
     // (`http_request`, `memory_*`, `cron_*`) that the registry in
     // config_helpers.zig does not yet recognize. That is a pre-existing
@@ -169,7 +169,7 @@ test "shipped sample samples/platform-ops SKILL.md frontmatter validates" {
     // For M46 we only assert the SKILL.md side validates, which is the
     // half this milestone added.
     const alloc = std.testing.allocator;
-    const skill_md = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), "samples/platform-ops/SKILL.md", alloc, .limited(64 * 1024));
+    const skill_md = try std.Io.Dir.cwd().readFileAlloc(common.globalIo(), "samples/fixtures/platform-ops-sample/SKILL.md", alloc, .limited(64 * 1024));
     defer alloc.free(skill_md);
     var meta = try config.parseSkillMetadata(alloc, skill_md);
     defer meta.deinit(alloc);

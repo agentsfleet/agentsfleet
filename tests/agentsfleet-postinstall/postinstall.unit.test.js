@@ -13,9 +13,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..", "..");
-const postinstall = resolve(repoRoot, "agentsfleet", "scripts", "postinstall.mjs");
-const prepublish = resolve(repoRoot, "agentsfleet", "scripts", "prepublish.mjs");
-const agentsfleetDir = resolve(repoRoot, "agentsfleet");
+const postinstall = resolve(repoRoot, "cli", "scripts", "postinstall.mjs");
+const prepublish = resolve(repoRoot, "cli", "scripts", "prepublish.mjs");
+const agentsfleetDir = resolve(repoRoot, "cli");
 
 function runNode(script, env = {}) {
   return spawnSync("node", [script], {
@@ -34,7 +34,7 @@ function withTempHome(fn) {
 }
 
 function withBundledSamples(fn) {
-  // Mirror repo-root samples/ into agentsfleet/samples/ via prepublish, run fn,
+  // Mirror repo-root samples/ into cli/samples/ via prepublish, run fn,
   // then clean up. Tests that need the bundled tree wrap with this helper.
   // Skills no longer bundle through prepublish — they live in
   // github.com/agentsfleet/skills and install via `npx skills add agentsfleet/skills`.
@@ -57,13 +57,13 @@ test("postinstall in dev mode (no bundled samples) is a silent no-op", () => {
   });
 });
 
-test("postinstall populates ~/.config/agentsfleet/samples/ on first run", () => {
+test("postinstall populates ~/.config/cli/samples/ on first run", () => {
   withBundledSamples(() => withTempHome((home) => {
     const r = runNode(postinstall, { HOME: home });
     assert.equal(r.status, 0);
     const dst = resolve(home, ".config", "agentsfleet", "samples");
-    assert.ok(existsSync(resolve(dst, "platform-ops", "SKILL.md")));
-    assert.ok(existsSync(resolve(dst, "platform-ops", "TRIGGER.md")));
+    assert.ok(existsSync(resolve(dst, "fixtures", "platform-ops-sample", "SKILL.md")));
+    assert.ok(existsSync(resolve(dst, "fixtures", "platform-ops-sample", "TRIGGER.md")));
     assert.ok(existsSync(resolve(home, ".config", "agentsfleet", ".samples-manifest")));
   }));
 });
@@ -81,8 +81,8 @@ test("postinstall backs up a corrupted target before recopying", () => {
   withBundledSamples(() => withTempHome((home) => {
     // Pre-populate target with junk content to simulate corruption.
     const cfg = resolve(home, ".config", "agentsfleet");
-    mkdirSync(resolve(cfg, "samples", "platform-ops"), { recursive: true });
-    writeFileSync(resolve(cfg, "samples", "platform-ops", "SKILL.md"), "junk");
+    mkdirSync(resolve(cfg, "samples", "fixtures", "platform-ops-sample"), { recursive: true });
+    writeFileSync(resolve(cfg, "samples", "fixtures", "platform-ops-sample", "SKILL.md"), "junk");
     // Manifest absent → trigger backup path.
     const r = runNode(postinstall, { HOME: home });
     assert.equal(r.status, 0);
@@ -90,7 +90,7 @@ test("postinstall backs up a corrupted target before recopying", () => {
     const backups = readdirSync(cfg).filter((n) => n.startsWith("samples.backup-"));
     assert.ok(backups.length >= 1, "expected at least one samples.backup-<ts> dir");
     // Fresh copy in place.
-    assert.notEqual(readFileSync(resolve(cfg, "samples", "platform-ops", "SKILL.md"), "utf8"), "junk");
+    assert.notEqual(readFileSync(resolve(cfg, "samples", "fixtures", "platform-ops-sample", "SKILL.md"), "utf8"), "junk");
   }));
 });
 
@@ -111,7 +111,7 @@ test("postinstall on a permission-denied HOME exits 0 (never crashes npm install
 
 test("prepublish bundles repo-root samples/ into the package dir", () => {
   withBundledSamples(() => {
-    assert.ok(existsSync(resolve(agentsfleetDir, "samples", "platform-ops", "SKILL.md")));
+    assert.ok(existsSync(resolve(agentsfleetDir, "samples", "fixtures", "platform-ops-sample", "SKILL.md")));
   });
 });
 
