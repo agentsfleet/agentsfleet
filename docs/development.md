@@ -115,7 +115,7 @@ production-dead (test-kept); `_test.zig` files in neither walk are true orphans.
 - Token at runtime: `VERCEL_TOKEN=$(op read 'op://ZMB_CD_DEV/vercel-api-token/credential')`
   — never print it. Team scope `indykishs-projects`.
 - Projects → domains: `agentsfleet-website` (marketing) · `agentsfleet-app`
-  (dashboard) · `agentsfleet-agents-sh` (serves the `agentsfleet.dev` installer
+  (dashboard) · `agentsfleet-agents-dev` (serves the `agentsfleet.dev` installer
   domain; static output `ui/agentsfleet.dev/dist/`).
 - **Preview URLs return 401** (`ssoProtection: all_except_custom_domains`); prod
   custom domains are raw-reachable. To curl a preview, fetch the project's
