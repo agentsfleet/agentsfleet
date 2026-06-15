@@ -38,7 +38,7 @@ pub fn resolveBilling(hx: Hx, session: *AgentSession, acq: assign.Acquired) ?Bil
     switch (acq.kind) {
         .reclaim => {
             const r = acq.reused.?;
-            return Billed{ .tenant_id = r.tenant_id, .posture = r.posture, .model = r.model };
+            return .{ .tenant_id = r.tenant_id, .posture = r.posture, .model = r.model };
         },
         .fresh => {
             var event = eventView(acq);
@@ -210,7 +210,7 @@ fn runBilling(hx: Hx, session: *AgentSession, event: *const redis_agent.AgentEve
     // No issue-time stage debit: run fee + tokens meter on /renew + settle at report.
 
     committed = true; // ownership of tr.resolved transfers to the returned Billed
-    return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
+    return .{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
 }
 
 /// Tenant + provider resolution split by error class (RULE ECL): a permanent

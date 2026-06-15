@@ -149,7 +149,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     defer q.deinit();
     const row = try q.next() orelse return null;
     // Dup every column before q.deinit() invalidates the row-backed slices.
-    return Lease{
+    return .{
         .agent_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),

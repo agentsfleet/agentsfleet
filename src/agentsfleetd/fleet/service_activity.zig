@@ -109,7 +109,7 @@ fn loadTargetInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Target
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return Target{
+    return .{
         .agent_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
     };

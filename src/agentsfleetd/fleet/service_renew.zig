@@ -177,7 +177,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     , .{ lease_id, runner_id }));
     defer q.deinit();
     const row = try q.next() orelse return null;
-    return Lease{
+    return .{
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
         .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),

@@ -241,5 +241,5 @@ fn collectAgentPage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !AgentPag
         break :blk try keyset_cursor.format(alloc, .{ .created_at_ms = last.created_at, .id = last.id });
     } else null;
 
-    return AgentPage{ .rows = owned, .next_cursor = next_cursor };
+    return .{ .rows = owned, .next_cursor = next_cursor };
 }
