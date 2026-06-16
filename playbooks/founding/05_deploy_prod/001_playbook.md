@@ -8,6 +8,14 @@
 
 This is the canonical step-by-step PROD deployment runbook.
 
+> **Worker deploy gate.** `PROD_WORKER_READY` is owned by
+> `playbooks/founding/07_runner_bootstrap_prod/001_playbook.md` (it stays
+> `false` until a real `agt_r` runner-token is admin-minted and stored under
+> `op://ZMB_CD_PROD/<host>/runner-token`). The prod worker-deploy jobs
+> (`deploy-prod-canary` / `deploy-prod-fleet` in `.github/workflows/release.yml`)
+> stay gated `if: vars.PROD_WORKER_READY == 'true'` and ship nothing until `07`
+> completes. The API deploy (§3.1) does **not** depend on the worker.
+
 ---
 
 ## 1.0 Preflight Gate
@@ -41,9 +49,9 @@ flyctl secrets list --app cloudflared-prod | grep TUNNEL_TOKEN
 cat VERSION   # must match the tag you're about to push, e.g. 0.2.0
 ```
 
-4. Confirm `CHANGELOG.md` has a `## [X.Y.Z]` section for this version.
+5. Confirm `CHANGELOG.md` has a `## [X.Y.Z]` section for this version.
 
-5. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (M2_002 §4.7). **Do not cut a release tag before this is verified.** If not done:
+6. Confirm `deploy.sh` is bootstrapped and tested on all worker nodes (`playbooks/founding/07_runner_bootstrap_prod/001_playbook.md`). **Do not cut a release tag before this is verified.** If not done:
 ```bash
 for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
   KEY=$(op read "op://$VAULT_PROD/$node/ssh-private-key")
@@ -51,7 +59,7 @@ for node in zombie-prod-worker-ant zombie-prod-worker-bird; do
 done
 ```
 
-6. Confirm Fly API token is in vault: `op read "op://$VAULT_PROD/fly-api-token/credential"` (non-empty).
+7. Confirm Fly API token is in vault: `op read "op://$VAULT_PROD/fly-api-token/credential"` (non-empty).
 
 ---
 
@@ -151,6 +159,16 @@ npx agentsfleet login && npx agentsfleet doctor
 agentsfleetd doctor --format=json
 ```
 
+> **Expected-failure rule.** Do NOT skip the `agentsfleet` / `agentsfleetd
+> doctor` lines. If `command -v agentsfleet` returns non-zero they FAIL — and
+> that failure is the signal that `@agentsfleet/cli` is still unpublished (a
+> known, tracked gap). Leave it red until the CLI ships; the `curl` checks are
+> the binding PROD runtime pass-condition in the meantime.
+>
+> **Binary placement.** `agentsfleet` is the client CLI (runs on the operator
+> machine); `agentsfleetd doctor` queries the server daemon (the deployed
+> `agentsfleetd-prod` Fly app), so run it where the daemon lives.
+
 ---
 
 ## 5.0 Evidence Capture
@@ -171,10 +189,19 @@ Recommended evidence location:
 
 ## 6.0 CLI PROD Smoke Gate
 
-Run the CLI smoke against PROD after `/healthz` and `/readyz` are green:
+Run the CLI smoke against PROD after `/healthz` and `/readyz` are green.
+
+> **Expected-failure rule.** Do NOT skip. This gate FAILS while `command -v
+> agentsfleet` returns non-zero — surfacing that `@agentsfleet/cli` is still
+> unpublished (a known, tracked gap). It is meant to stay red until the CLI
+> ships; the §4.0 `curl` checks are the binding PROD runtime pass-condition.
+>
+> **`<ACCEPTANCE_REPO_URL>`** is an operator-supplied input, not a repo constant:
+> the clone/HTTPS URL of the throwaway GitHub repository the smoke run opens its
+> PR against. Supply your own; there is no committed default.
 
 ```bash
-export AGENTSFLEET_API_URL=https://api.<domain>
+export AGENTSFLEET_API_URL=https://api.agentsfleet.net
 
 npx agentsfleet login
 npx agentsfleet workspace add <ACCEPTANCE_REPO_URL>

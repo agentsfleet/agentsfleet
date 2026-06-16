@@ -26,8 +26,13 @@ export VAULT_PROD="${VAULT_PROD:-ZMB_CD_PROD}"
 | 3 | **Human** | Fill any missing vault fields reported by section 1 |
 | 4 | **Agent** | Run section 2 — provider target separation (dev vs prod) |
 | 5 | **Human** | Review output, then approve provider writes: `export ALLOW_PROVIDER_WRITES=1` |
-| 6 | **Agent** | Run allowlist apply (once `scripts/allowlist-apply.sh` is implemented) |
-| 7 | **Agent** | Run verify to confirm no drift |
+| 6 | **Agent** | ⛔ **NOT YET EXECUTABLE** — run allowlist apply (blocked: `scripts/allowlist-apply.sh` does not exist yet) |
+| 7 | **Agent** | ⛔ **NOT YET EXECUTABLE** — run verify to confirm no drift (depends on step 6) |
+
+> **State:** the read-only inventory half (steps 1–4 / sections 1–2 of the gate) runs
+> today. The **mutation half (steps 6–7) is unimplemented**: `scripts/allowlist-apply.sh`
+> has not landed, so an agent **cannot complete steps 6–7** — they are blocked until the
+> script ships, regardless of `ALLOW_PROVIDER_WRITES`.
 
 ---
 
@@ -90,10 +95,12 @@ Checks:
 
 ## Provider Write Approval
 
-Mutation scripts (`scripts/allowlist-apply.sh`) will not run without explicit approval:
+Mutation scripts (`scripts/allowlist-apply.sh`, **not yet implemented**) will not run
+without explicit approval:
 
 ```bash
 export ALLOW_PROVIDER_WRITES=1
 ```
 
-Never set this before reviewing section 1 and section 2 output.
+Never set this before reviewing section 1 and section 2 output. Until
+`scripts/allowlist-apply.sh` lands, this flag gates a step that cannot run.

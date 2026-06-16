@@ -195,7 +195,10 @@ REMOTE
 ```bash
 KEY=$(op read "op://$VAULT_PROD/${WORKER_NAME}/ssh-private-key")
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${WORKER_NAME}" \
-  "bwrap --version && nft --version && ip -V && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
+  "export PATH=/usr/sbin:/sbin:\$PATH; bwrap --version && nft --version && ip -V && git --version && openssl version && test -f /sys/fs/cgroup/cgroup.controllers && echo 'all deps ok'"
+# PATH prepends /usr/sbin so sbin-only nft/ip resolve over non-login SSH
+# (Debian's default non-interactive PATH omits /usr/sbin — a present nftables
+#  would otherwise read as MISSING, matching playbooks/lib/egress_host_deps.sh).
 # Expected:
 #   bubblewrap 0.11.0 (Trixie ships 0.11; ≥ 0.8 has --info-fd/--block-fd)
 #   nftables v1.x

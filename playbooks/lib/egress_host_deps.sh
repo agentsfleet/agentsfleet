@@ -34,6 +34,10 @@ egress_probe_remote() {
   # shellcheck disable=SC2016  # the block runs on the REMOTE host — must not expand locally
   report="$(
     "$remote_cmd_fn" '
+      # nft and ip live in /usr/sbin; a non-interactive SSH PATH on Debian omits
+      # it, so a present nftables would otherwise read as MISSING. Prepend sbin
+      # (expands on the REMOTE host, not locally) before the command -v probes.
+      export PATH="/usr/sbin:/sbin:$PATH"
       if command -v bwrap >/dev/null 2>&1; then
         printf "BWRAP_VERSION=%s\n" "$(bwrap --version 2>&1 | head -1)"
         bwrap --help 2>&1 | grep -q -- "--info-fd"  && echo "BWRAP_INFO_FD=1"  || echo "BWRAP_INFO_FD=0"
