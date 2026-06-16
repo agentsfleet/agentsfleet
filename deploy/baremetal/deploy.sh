@@ -165,13 +165,21 @@ drain_runner() {
 restart_services() {
   drain_runner
   log "Restarting runner ..."
-  # One-time transition off the pre-rename unit: a host still
-  # running agent-runner.service gets it stopped and disabled before the
-  # renamed unit takes over; harmless no-op everywhere else.
-  if systemctl cat agent-runner.service >/dev/null 2>&1; then
-    systemctl stop agent-runner.service 2>/dev/null || true
-    systemctl disable agent-runner.service 2>/dev/null || true
-  fi
+  # One-time transition off any pre-rename unit before the renamed unit takes
+  # over. The fleet's rename chain is zombie-runner → agent-runner →
+  # agentsfleet-runner; a host still carrying either legacy unit gets it stopped
+  # and disabled here. Live bare-metal boxes were provisioned as zombie-runner,
+  # so that name MUST be covered — the prior shim named only agent-runner and so
+  # left zombie-runner.service enabled alongside the new unit. Harmless no-op on
+  # a freshly-bootstrapped box that never had a legacy unit.
+  local legacy_unit
+  for legacy_unit in zombie-runner.service agent-runner.service; do
+    if systemctl cat "$legacy_unit" >/dev/null 2>&1; then
+      log "Transitioning off legacy unit ${legacy_unit} ..."
+      systemctl stop "$legacy_unit" 2>/dev/null || true
+      systemctl disable "$legacy_unit" 2>/dev/null || true
+    fi
+  done
   systemctl restart "$SERVICE_NAME"
 }
 
