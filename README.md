@@ -37,7 +37,7 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
-| `agentsfleet/` | CLI — install, manage agents, tail runs |
+| `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
 | `public/openapi/` | OpenAPI spec |
 | `schema/` | Postgres migrations |
 
@@ -45,11 +45,11 @@ Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on you
 
 ## Local development
 
-**Prerequisites:** [Zig 0.15.2](https://ziglang.org/download/) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Zig 0.16.0](https://ziglang.org/download/) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
-cd cli
+cd agentsfleet
 
 # Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
 make up           # Postgres + Redis + agentsfleetd (auto-migrates DB)
@@ -59,9 +59,24 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:3000" > .env.local
 bun install && bun run dev
 ```
 
-**Verify:** `make lint-all` · `make test-unit-all` · `make test-integration` (needs `make up` running).
+**Verify:**
 
-`agentsfleet` defaults to production; point it at local with `--api http://localhost:3000` or `export AGENTSFLEET_API_URL=http://localhost:3000`.
+```bash
+make lint-all
+make test-unit-all
+make test-integration   # needs make up running
+```
+
+---
+
+## CLI
+
+`agentsfleet` defaults to **production**. Point it at your local stack with the `--api` flag, or persist it via the environment:
+
+```bash
+agentsfleet --api http://localhost:3000 <command>
+export AGENTSFLEET_API_URL=http://localhost:3000   # or set it once
+```
 
 ---
 
@@ -69,7 +84,11 @@ bun install && bun run dev
 
 Enable git hooks: `git config core.hooksPath .githooks`
 
-Bootstrap steps and coding conventions live in [`playbooks/`](playbooks/) and [`AGENTS.md`](AGENTS.md).
+Coding conventions and the agent operating model live in [`AGENTS.md`](AGENTS.md).
+
+The [`playbooks/`](playbooks/) tree bootstraps your **own private agentsfleet instance** — a Fly.io control plane behind a Cloudflare Tunnel, with [Clerk](https://clerk.com) for auth and 1Password (`op`) for every secret. Start at [`playbooks/founding/01_bootstrap/001_playbook.md`](playbooks/founding/01_bootstrap/001_playbook.md).
+
+For the system design — control plane, runner fleet, data flow, scaling — see [`docs/architecture/`](docs/architecture/), and the tunnel-first deployment rationale in [`playbooks/ARCHITECTURE.md`](playbooks/ARCHITECTURE.md).
 
 ---
 
