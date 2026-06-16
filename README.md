@@ -1,6 +1,6 @@
 <div align="center"><img src="branding/agentsfleet-mark-glow.png" width="180" alt="agentsfleet" />
 
-# Your deploy failed. The agent already knows why.
+# Your hardest support tickets are engineering problems. Now they have an engineer.
 
 [![CI](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
 [![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.agentsfleet.net)
@@ -8,24 +8,25 @@
 
 </div>
 
-**[agentsfleet](https://agentsfleet.net)** automates incident investigation. When a deploy fails, an agent wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
+**[agentsfleet](https://agentsfleet.net)** is a resident engineer for support escalations. A ticket arrives, an agent wakes — reads your code, telemetry, internal docs, and live control-plane state — finds the root cause, and proposes a remediation. A human approves, then it ships the fix or drafts the customer reply. Every step is a replayable log.
 
+- **Human approval, by design** — the agent investigates and proposes; a person approves before anything ships
 - **Replayable event logs** — audit every action and decision
 - **Bring your own provider keys** — no vendor lock-in on inference
 - **Runs locally or against production** — same agent, same evidence
 
-Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. Open-source runtime, hosted control plane.
+Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. We build the engineer, not a wrapper — open-source runtime, hosted control plane.
 
 ---
 
 ## Quick start
 
 ```bash
-bun install -g agentsfleet
+npm install -g @agentsfleet/cli
 agentsfleet login
 ```
 
-Define an agent in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart)** — free to try, no card, under five minutes.
+Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis and a proposed fix on your next escalation. Full walkthrough at **[docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart)** — free to try, no card, under five minutes.
 
 ---
 
