@@ -11,6 +11,11 @@ Scrapes `agentsfleetd` at `/metrics`. All `agent_*` counters, histograms, and ga
 Receives OTLP traces from `agentsfleetd` background flush thread.
 Config: `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`, `GRAFANA_OTLP_API_KEY`.
 
+**Manual / out-of-scope of the automated gate:** no gate verifies Tempo. Set the
+three `GRAFANA_OTLP_*` env vars on the worker and wire the Tempo datasource in the
+Grafana UI by hand; `03_dashboard.sh` checks only the Prometheus + PostgreSQL
+datasources and the dashboard panel counts.
+
 ### 3. PostgreSQL
 
 Direct connection to the agent database for `usage_ledger` queries.
@@ -24,7 +29,7 @@ Direct connection to the agent database for `usage_ledger` queries.
 
 Import `agent_run_breakdown.json` via Grafana UI:
 1. Go to Dashboards > Import.
-2. Upload `docs/grafana/agent_run_breakdown.json`.
+2. Upload `deploy/grafana/agent_run_breakdown.json`.
 3. Select datasources when prompted:
    - `prometheus` → your Prometheus datasource
    - `agentsfleet-postgres` → your PostgreSQL datasource

@@ -37,7 +37,7 @@ One key per service:
 | Vercel (`agentsfleet-agents-dev`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Vercel (`agentsfleet-app`) | Deployment Protection bypass secret | Vercel → project → Settings → Deployment Protection |
 | Cloudflare | API token with Zone:Edit + DNS:Edit + Transform Rules:Edit (all zones) | CF → My Profile → API Tokens → Create Token |
-| Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o <org>` → copy output |
+| Fly.io | Deploy token (org-scoped) | `fly tokens create deploy -o agentsfleet` → copy output |
 | Clerk (DEV instance) | Publishable key + Secret key | Clerk dashboard → DEV instance → API Keys |
 | Clerk (PROD instance) | Publishable key + Secret key | Clerk dashboard → PROD instance → API Keys |
 | GitHub App | App ID + PEM private key | GitHub → Settings → Developer settings → GitHub Apps → New GitHub App |
@@ -162,7 +162,7 @@ GitHub repo → Settings → Secrets and Variables → Actions:
 
 After the first CI push to GHCR (triggered automatically on the first merge to `main`), set the package visibility:
 
-1. Go to `https://github.com/orgs/<org>/packages/container/<service>/settings`
+1. Go to `https://github.com/orgs/agentsfleet/packages/container/agentsfleetd/settings`
 2. **Change visibility → Public** — Fly.io and any consumer can pull without credentials
 3. **Manage Actions access → Add repository** → select the repo → set role to **Write**
 
@@ -204,8 +204,8 @@ export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
 # Create apps (API + tunnel connector — execution runs on the bare-metal
 # agentsfleet-runner, not a Fly app; see 06_/07_runner_bootstrap_*)
-fly apps create agentsfleetd-dev       --org <org>
-fly apps create cloudflared-dev   --org <org>
+fly apps create agentsfleetd-dev       --org agentsfleet
+fly apps create cloudflared-dev   --org agentsfleet
 
 # Set secrets from vault
 fly secrets set \
@@ -239,7 +239,7 @@ Cloudflare Tunnel routes all traffic from `api-dev.agentsfleet.net` → Fly priv
 cloudflared tunnel create agentsfleetd-dev
 # Output: tunnel ID e.g. abc123...
 
-# Store tunnel credentials in vault
+# Store tunnel credentials in vault (<tunnel-id> = the id printed by `cloudflared tunnel create` above)
 op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   --category "API Credential" \
   "credential=$(cat ~/.cloudflared/<tunnel-id>.json | base64)"
@@ -258,7 +258,7 @@ For non-API DNS (website, app, etc.) — agent sets CNAME records via Cloudflare
 
 ```bash
 CF_TOKEN=$(op read "op://$VAULT_PROD/cloudflare-api-token/credential")
-ZONE_ID=<from 2.6 below>
+ZONE_ID=<from 2.6 below>   # resolve via §2.6 (Zone Discovery) first
 
 # These point to Vercel (not Fly — API traffic goes via tunnel)
 curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
@@ -319,7 +319,7 @@ After applying, **trigger a fresh redeploy per project without build cache** —
 
 ## 3.0 Handoff to Milestone 2
 
-Once 2.4 is verified, agent runs `./playbooks/founding/02_preflight/00_gate.sh` (`founding/02_preflight`) to confirm all vault items are present before executing `playbooks/founding/03_priming_infra/001_playbook.md`.
+Once §2.7 is verified, agent runs `./playbooks/founding/02_preflight/00_gate.sh` (`founding/02_preflight`) to confirm all vault items are present before executing `playbooks/founding/03_priming_infra/001_playbook.md`.
 
 All vault items the agent will need are listed in `playbooks/founding/02_preflight/001_playbook.md §1.0` and `§4.0`. Review that list now and create any missing items in 1Password before the handoff — it avoids mid-execution failures.
 
