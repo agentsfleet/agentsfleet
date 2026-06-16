@@ -28,7 +28,7 @@ import {
 } from "./fixtures/negatives.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
+const CLI_ROOT = path.resolve(HERE, "..", "..");
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
@@ -49,9 +49,9 @@ let pkgVersion: string;
 let validateModule: ValidateModule;
 
 beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
+  const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
   pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
-  validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts")) as ValidateModule;
+  validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
 });
 
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {

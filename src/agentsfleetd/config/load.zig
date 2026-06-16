@@ -9,8 +9,8 @@ const LoadError = error{
 };
 
 const PATH_DOTENV_LOCAL = ".env.local";
-const ENV_ZOMBIED_LOAD_DOTENV = "ZOMBIED_LOAD_DOTENV";
-const ENV_ZOMBIED_ENV_MODE = "ZOMBIED_ENV_MODE";
+const ENV_AGENTSFLEETD_LOAD_DOTENV = "AGENTSFLEETD_LOAD_DOTENV";
+const ENV_AGENTSFLEETD_ENV_MODE = "AGENTSFLEETD_ENV_MODE";
 const ENV_MODE_DEV = "dev";
 const VAL_TRUE = "true";
 const VAL_FALSE = "false";
@@ -36,12 +36,12 @@ pub fn applyEnvSources(
 }
 
 fn shouldLoadDotEnvLocal(env_map: *const std.process.Environ.Map) bool {
-    if (env_map.get(ENV_ZOMBIED_LOAD_DOTENV)) |raw| {
+    if (env_map.get(ENV_AGENTSFLEETD_LOAD_DOTENV)) |raw| {
         const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_TRUE) or std.mem.eql(u8, trimmed, VAL_ONE)) return true;
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_FALSE) or std.mem.eql(u8, trimmed, VAL_ZERO)) return false;
     }
-    if (env_map.get(ENV_ZOMBIED_ENV_MODE)) |raw| {
+    if (env_map.get(ENV_AGENTSFLEETD_ENV_MODE)) |raw| {
         const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         return std.ascii.eqlIgnoreCase(trimmed, ENV_MODE_DEV);
     }

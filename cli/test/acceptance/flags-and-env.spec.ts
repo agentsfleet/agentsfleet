@@ -28,7 +28,7 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
+const CLI_ROOT = path.resolve(HERE, "..", "..");
 const ANSI_RE = /\x1b\[/;
 
 interface ExitResult {
@@ -41,7 +41,7 @@ interface ExitResult {
 let pkgVersion: string;
 
 beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
+  const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
   pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
 });
 

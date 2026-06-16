@@ -6,9 +6,9 @@ const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
 const S_SRC_MAIN_ZIG = "src/agentsfleetd/main.zig";
-const S_ZOMBIED_TESTS_ROOT = "src/agentsfleetd/tests.zig";
+const S_AGENTSFLEETD_TESTS_ROOT = "src/agentsfleetd/tests.zig";
 const S_NULLCLAW = "nullclaw";
-const S_ZOMBIED_TESTS = "agentsfleetd-tests";
+const S_AGENTSFLEETD_TESTS = "agentsfleetd-tests";
 const S_LOG = "log";
 const S_HMAC_SIG = "hmac_sig";
 const S_AUTH_CODES = "auth_codes";
@@ -209,9 +209,9 @@ pub fn build(b: *std.Build) void {
 
     // ── Test step ─────────────────────────────────────────────────────────────
     const tests = b.addTest(.{
-        .name = S_ZOMBIED_TESTS,
+        .name = S_AGENTSFLEETD_TESTS,
         .root_module = b.createModule(.{
-            .root_source_file = b.path(S_ZOMBIED_TESTS_ROOT),
+            .root_source_file = b.path(S_AGENTSFLEETD_TESTS_ROOT),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -330,7 +330,7 @@ pub fn build(b: *std.Build) void {
 
     // Installable backend test binary for coverage tooling (kcov/codecov).
     const install_tests = b.addInstallArtifact(tests, .{
-        .dest_sub_path = S_ZOMBIED_TESTS,
+        .dest_sub_path = S_AGENTSFLEETD_TESTS,
     });
     b.step("test-bin", "Build/install backend test binary for coverage").dependOn(&install_tests.step);
 }
