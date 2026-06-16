@@ -167,19 +167,26 @@ restart_services() {
   log "Restarting runner ..."
   # One-time transition off any pre-rename unit before the renamed unit takes
   # over. The fleet's rename chain is zombie-runner → agent-runner →
-  # agentsfleet-runner; a host still carrying either legacy unit gets it stopped
-  # and disabled here. Live bare-metal boxes were provisioned as zombie-runner,
-  # so that name MUST be covered — the prior shim named only agent-runner and so
-  # left zombie-runner.service enabled alongside the new unit. Harmless no-op on
-  # a freshly-bootstrapped box that never had a legacy unit.
-  local legacy_unit
+  # agentsfleet-runner; a host still carrying either legacy unit gets it stopped,
+  # disabled, AND its unit file removed here so the transition fires exactly once
+  # (a left-behind disabled unit would otherwise re-trip this every deploy). Live
+  # bare-metal boxes were provisioned as zombie-runner, so that name MUST be
+  # covered — the prior shim named only agent-runner and so left
+  # zombie-runner.service enabled alongside the new unit. We warn LOUDLY rather
+  # than clean up silently, so a box that still carried pre-rename residue is
+  # visible in the deploy log + Discord; non-fatal because the cutover is
+  # self-healing. Harmless no-op on a freshly-bootstrapped box.
+  local legacy_unit found_stale=0
   for legacy_unit in zombie-runner.service agent-runner.service; do
     if systemctl cat "$legacy_unit" >/dev/null 2>&1; then
-      log "Transitioning off legacy unit ${legacy_unit} ..."
+      found_stale=1
+      log "⚠ STALE LEGACY UNIT ${legacy_unit} found on ${HOST} — stopping, disabling, and removing it (pre-rename residue; investigate why this host was not re-bootstrapped if unexpected)."
       systemctl stop "$legacy_unit" 2>/dev/null || true
       systemctl disable "$legacy_unit" 2>/dev/null || true
+      rm -f "${SYSTEMD_DIR}/${legacy_unit}" 2>/dev/null || true
     fi
   done
+  [[ "$found_stale" -eq 1 ]] && systemctl daemon-reload
   systemctl restart "$SERVICE_NAME"
 }
 
