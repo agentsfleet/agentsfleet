@@ -87,12 +87,12 @@ grep "needs:.*binaries" .github/workflows/release.yml
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
 
 # Create the two DEV apps (API + tunnel connector)
-fly apps create agentsfleetd-dev      --org <org>
-fly apps create cloudflared-dev  --org <org>
+fly apps create agentsfleetd-dev      --org agentsfleet
+fly apps create cloudflared-dev  --org agentsfleet
 
 # Repeat for PROD
-fly apps create agentsfleetd-prod      --org <org>
-fly apps create cloudflared-prod  --org <org>
+fly apps create agentsfleetd-prod      --org agentsfleet
+fly apps create cloudflared-prod  --org agentsfleet
 ```
 
 ### 2.2 Set Secrets from 1Password (Agent)
@@ -167,18 +167,18 @@ There is no Fly "worker" app. Execution runs on the host-resident `agentsfleet-r
 Tunnel replaces CNAME. All traffic: Cloudflare edge → encrypted tunnel → Fly private network. No public Fly port. No bypass.
 
 ```bash
-# Create tunnel (run locally, credentials stored in ~/.cloudflared/)
-cloudflared tunnel create agentsfleetd-dev
-# Output: Created tunnel agentsfleetd-dev with id <TUNNEL_ID>
+# Create tunnel (run locally, credentials stored in ~/.cloudflared/) and capture its id
+# Output line: "Created tunnel agentsfleetd-dev with id <uuid>"
+TUNNEL_ID=$(cloudflared tunnel create agentsfleetd-dev | grep -oE '[0-9a-f-]{36}')
 
 # Store credentials in vault
-TUNNEL_CREDS=$(cat ~/.cloudflared/<TUNNEL_ID>.json | base64)
+TUNNEL_CREDS=$(cat ~/.cloudflared/"$TUNNEL_ID".json | base64)
 op item create --vault "$VAULT_DEV" --title cloudflare-tunnel-dev \
   --category "API Credential" \
-  "tunnel-id=<TUNNEL_ID>" \
+  "tunnel-id=$TUNNEL_ID" \
   "credentials-json-b64=$TUNNEL_CREDS"
 
-# Route tunnel to domain (creates CNAME <TUNNEL_ID>.cfargotunnel.com automatically)
+# Route tunnel to domain (creates CNAME $TUNNEL_ID.cfargotunnel.com automatically)
 cloudflared tunnel route dns agentsfleetd-dev api-dev.agentsfleet.net
 
 # Repeat for PROD
@@ -249,7 +249,7 @@ fly scale count 2 --app agentsfleetd-prod       # 1 machine per region
 
 ```bash
 # Store Fly deploy token in vault
-fly tokens create deploy -o <org> --name ci-deploy
+fly tokens create deploy -o agentsfleet --name ci-deploy
 op item create --vault "$VAULT_DEV" --title fly-api-token \
   --category "API Credential" "credential=<token>"
 
@@ -257,6 +257,8 @@ op item create --vault "$VAULT_DEV" --title fly-api-token \
 gh variable set FLY_APP_DEV --body "agentsfleetd-dev" --repo agentsfleet/agentsfleet
 gh variable set FLY_APP_PROD --body "agentsfleetd-prod" --repo agentsfleet/agentsfleet
 ```
+
+> The `DEV_WORKER_READY` / `PROD_WORKER_READY` GitHub vars are **not** set here — they stay `false` and are flipped later by `06_runner_bootstrap_dev` / `07_runner_bootstrap_prod` once a real `agt_r` runner-token is minted. The worker deploy path stays dark until then.
 
 CI deploy step in `deploy-dev.yml`:
 ```yaml
@@ -348,7 +350,7 @@ Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIEN
 
 **Verification (per env, after save):**
 
-1. Sign out of `app.agentsfleet.net` (or `app-dev.agentsfleet.net`) in a clean browser session; sign in again to force a fresh token.
+1. Sign out of `app.agentsfleet.net` (or `app.dev.agentsfleet.net`) in a clean browser session; sign in again to force a fresh token.
 2. Open DevTools → Application → Cookies → `__session`; copy the value.
 3. Decode at `jwt.io` (or `jwt-cli decode`). Confirm the payload carries:
    - `aud` matches the env's `OIDC_AUDIENCE`.

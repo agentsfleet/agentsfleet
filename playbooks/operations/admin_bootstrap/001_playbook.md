@@ -104,6 +104,9 @@ No other user in the environment receives either change.
    ```json
    { "tenant_id": "...<leave as-is>...", "role": "admin", "platform_admin": true }
    ```
+   The `"...<leave as-is>..."` is a **human-readable instruction, not a literal to
+   paste**: keep whatever `tenant_id` UUID the signup webhook already wrote, and only
+   add/update the `role` and `platform_admin` keys.
 5. Save.
 6. **Do NOT touch any other user's metadata.** This is the only account that gets
    `role=admin` or `platform_admin=true`.

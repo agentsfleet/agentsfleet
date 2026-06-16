@@ -130,9 +130,23 @@ Then hand off:
 
 ### Acceptance
 
+List the fleet with a platform-admin Clerk **session** JWT (mint one via Clerk's
+Backend API exactly as `admin_bootstrap/001_playbook.md` §3 does — a tenant `agt_t`
+key is rejected here):
+
 ```bash
-# Platform-admin session against the control plane:
-GET /v1/fleet/runners   # the runner is listed; liveness registered → online after first heartbeat
+API_BASE="https://api-dev.agentsfleet.net"
+ADMIN_EMAIL="nkishore@megam.io"
+CLERK_SECRET=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')
+USER_ID=$(curl -s -H "Authorization: Bearer $CLERK_SECRET" \
+  "https://api.clerk.com/v1/users?email_address=$ADMIN_EMAIL" | jq -r '.[0].id')
+SESSION_ID=$(curl -s -X POST -H "Authorization: Bearer $CLERK_SECRET" \
+  "https://api.clerk.com/v1/sessions" -d "user_id=$USER_ID" | jq -r '.id')
+ADMIN_JWT=$(curl -s -X POST -H "Authorization: Bearer $CLERK_SECRET" \
+  "https://api.clerk.com/v1/sessions/$SESSION_ID/tokens" | jq -r '.jwt')
+
+curl -s -H "Authorization: Bearer $ADMIN_JWT" "$API_BASE/v1/fleet/runners" | jq .
+# The runner is listed; liveness registered → online after first heartbeat.
 ```
 
 A tenant `agt_t` key or a non-platform-admin JSON Web Token returns

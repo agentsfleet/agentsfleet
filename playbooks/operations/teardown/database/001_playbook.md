@@ -12,7 +12,7 @@ Permanently delete all data from PlanetScale databases (DEV and/or PROD). This i
 
 ## Prerequisites
 
-1. Docker available for psql container
+1. Docker available for the psql container (`postgres:18-alpine`, pinned to match `03_verify.sh`)
 2. 1Password CLI access (desktop app integration or `OP_SERVICE_ACCOUNT_TOKEN`)
 3. Required environment approvals set
 

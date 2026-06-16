@@ -131,8 +131,9 @@ The `deploy-fly-dev` job reads secrets from 1Password and runs `flyctl secrets s
 2. Wait for pipeline to complete:
 
 ```bash
-gh run list --workflow "deploy (dev)" --limit 1
-gh run view <run-id> --json conclusion
+# Resolve the most recent deploy-dev run id deterministically:
+RUN_ID=$(gh run list --workflow "deploy (dev)" --limit 1 --json databaseId -q '.[0].databaseId')
+gh run view "$RUN_ID" --json conclusion
 ```
 
 3. Verify API is healthy with the new credentials:
@@ -175,10 +176,14 @@ rm /tmp/old-bypass-secret.txt
 
 **Who:** Agent
 
-1. Check the new deploy-dev run logs to confirm `VERCEL_BYPASS_SECRET` is masked (shows `***`):
+1. Check the new deploy-dev run logs to confirm `VERCEL_BYPASS_SECRET` is masked (shows `***`).
+   `VERCEL_BYPASS_SECRET` is loaded inside the **`qa-dev`** job (the only job that reads it),
+   so target that job's id explicitly:
 
 ```bash
-gh run view <run-id> --log --job <qa-dev-job-id> | grep -i "VERCEL_BYPASS"
+RUN_ID=$(gh run list --workflow "deploy (dev)" --limit 1 --json databaseId -q '.[0].databaseId')
+QA_DEV_JOB_ID=$(gh run view "$RUN_ID" --json jobs -q '.jobs[] | select(.name | test("qa-dev")).databaseId')
+gh run view "$RUN_ID" --log --job "$QA_DEV_JOB_ID" | grep -i "VERCEL_BYPASS"
 # Should show *** not the actual value
 ```
 
