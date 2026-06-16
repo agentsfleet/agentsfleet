@@ -65,4 +65,7 @@ curl -sSI https://agentsfleet.dev/install.sh | grep -i content-type   # -> text/
 
 ## Prerequisite for a meaningful end-to-end install
 
-The script runs `npm install -g @agentsfleet/cli`. At authoring time npm lagged at `0.3.0` vs the repo's `0.37.0`, and GitHub Releases topped out at `v0.4.0`. Publish a current `@agentsfleet/cli` to npm before treating a live `curl … | bash` install as the real end-to-end path — that is a separate release task, not part of this wiring.
+The script runs `npm install -g @agentsfleet/cli`. Publish the current `@agentsfleet/cli`
+to npm (so the published version matches the repo's `VERSION`, with a corresponding
+GitHub Release) before treating a live `curl … | bash` install as the real end-to-end
+path — that is a separate release task, not part of this wiring.

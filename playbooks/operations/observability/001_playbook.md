@@ -17,7 +17,7 @@ Bootstrap the Grafana observability stack so operators can diagnose runs, token 
 | 1.0 | Agent | Verify Prometheus datasource scrapes `agent_*` metrics |
 | 2.0 | Agent | Create PostgreSQL datasource for `usage_ledger` queries |
 | 3.0 | Agent | Import `agent_run_breakdown.json` dashboard |
-| 4.0 | Agent | Verify all 7 panels render without errors |
+| 4.0 | Agent | Verify all 6 panels render without errors |
 
 After step 0 the agent runs steps 1–4 in sequence without human intervention.
 
@@ -114,6 +114,11 @@ curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
 
 **Goal:** The `agent_run_breakdown.json` dashboard is importable and loads in Grafana.
 
+> The manual import below covers `agent_run_breakdown.json` only. The automated gate
+> (`03_dashboard.sh`) loops **every** `deploy/grafana/*.json` — both
+> `agent_run_breakdown.json` (Prometheus + PostgreSQL) and `runner_fleet.json`
+> (Prometheus-only) — importing and verifying each against its own panel count.
+
 ```bash
 # Get datasource UIDs
 PROM_UID=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" "$GRAFANA_URL/api/datasources/name/Prometheus" | jq -r '.uid')
@@ -122,7 +127,7 @@ PG_UID=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" "$GRAFANA_URL/api/datas
 # Import dashboard
 jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
   '{ "dashboard": ., "inputs": [{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":$prom},{"name":"DS_POSTGRES","type":"datasource","pluginId":"postgres","value":$pg}], "overwrite": true }' \
-  docs/grafana/agent_run_breakdown.json | \
+  deploy/grafana/agent_run_breakdown.json | \
   curl -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
     -H "Content-Type: application/json" \
     "$GRAFANA_URL/api/dashboards/import" -d @-
@@ -140,7 +145,7 @@ curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
 
 ## 4.0 Agent: Verify Panels
 
-**Goal:** All 7 panels render without query errors.
+**Goal:** All 6 panels render without query errors.
 
 | # | Panel | Verify |
 |---|-------|--------|
@@ -163,5 +168,5 @@ All panels load without red error banners. Empty data is acceptable (no runs yet
 # Verify dashboard exists and has expected panel count
 PANELS=$(curl -sH "Authorization: Bearer $GRAFANA_TOKEN" \
   "$GRAFANA_URL/api/dashboards/uid/agent-run-breakdown" | jq '.dashboard.panels | length')
-[ "$PANELS" -ge 7 ] && echo "PASS: $PANELS panels" || echo "FAIL: expected >= 7 panels, got $PANELS"
+[ "$PANELS" -ge 6 ] && echo "PASS: $PANELS panels" || echo "FAIL: expected >= 6 panels, got $PANELS"
 ```

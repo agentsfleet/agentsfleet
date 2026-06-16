@@ -8,6 +8,14 @@
 
 This is the canonical step-by-step DEV deployment runbook.
 
+> **Worker deploy gate.** The `deploy-worker-dev` job in `.github/workflows/deploy-dev.yml`
+> stays gated `if: vars.DEV_WORKER_READY == 'true'` and ships nothing until
+> `playbooks/founding/06_runner_bootstrap_dev/001_playbook.md` completes — that
+> playbook provisions the host's `agt_r` runner-token (vault field `runner-token`)
+> that the bare-metal `agentsfleet-runner` daemon authenticates with. This
+> runbook (Fly.io API + smoke) does **not** depend on the worker; the worker is
+> deployed separately once `06_runner_bootstrap_dev` flips `DEV_WORKER_READY=true`.
+
 ---
 
 ## 1.0 Preflight Gate
@@ -85,12 +93,22 @@ curl -sf https://api-dev.agentsfleet.net/healthz
 curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
 ```
 
-Optional operator checks (requires `agentsfleet` CLI — not yet available):
+Operator checks (require the `agentsfleet` CLI — not yet published):
 
 ```bash
 npx agentsfleet doctor
 agentsfleetd doctor --format=json
 ```
+
+> **Expected-failure rule.** Do NOT skip. Run the checks; if `command -v
+> agentsfleet` returns non-zero the step FAILS — and that failure is the signal,
+> not noise: it means `@agentsfleet/cli` is still unpublished (a known, tracked
+> gap). Leave it red until the CLI ships; the `curl` checks above are the binding
+> DEV runtime pass-condition in the meantime.
+>
+> **Binary placement.** `agentsfleet` is the client CLI (runs on the operator
+> machine); `agentsfleetd doctor` queries the server daemon (the deployed
+> `agentsfleetd-dev` Fly app), so run it where the daemon lives.
 
 ---
 
@@ -131,7 +149,17 @@ Evidence location:
 
 **Status:** PENDING — blocked: `agentsfleet` CLI not yet built/published
 
-Run the full CLI acceptance flow against DEV after the pipeline is green:
+Run the full CLI acceptance flow against DEV after the pipeline is green.
+
+> **Expected-failure rule.** Do NOT skip. This gate FAILS while `command -v
+> agentsfleet` returns non-zero — surfacing that `@agentsfleet/cli` is still
+> unpublished (the known gap tracked by the §6.0 status above and the §7.0 exit
+> criterion). It is meant to stay red until the CLI ships; don't paper over it.
+>
+> **`<ACCEPTANCE_REPO_URL>`** is an operator-supplied input, not a repo constant:
+> the clone/HTTPS URL of the throwaway GitHub repository the acceptance run opens
+> its PR against (the GitHub App is installed on it during `workspace add`).
+> Supply your own; there is no committed default.
 
 ```bash
 export AGENTSFLEET_API_URL=https://api-dev.agentsfleet.net
