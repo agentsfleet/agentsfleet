@@ -34,8 +34,10 @@ ENV=prod ./playbooks/founding/02_preflight/00_gate.sh
 # Check if machines exist
 flyctl machine list --app cloudflared-prod
 
-# If no machines — deploy once; CI handles restarts after this
-flyctl deploy --app cloudflared-prod --config deploy/fly/cloudflared-prod/fly.toml
+# If no machines — deploy once; CI handles restarts after this.
+# NB: positional path = build context (config.yml lives there). flyctl >=0.4.5x —
+# `--config` from repo root fails the Dockerfile COPY ("/config.yml not found").
+flyctl deploy deploy/fly/cloudflared-prod --app cloudflared-prod
 
 # Verify TUNNEL_TOKEN secret is set (get token from Cloudflare dashboard)
 flyctl secrets list --app cloudflared-prod | grep TUNNEL_TOKEN
