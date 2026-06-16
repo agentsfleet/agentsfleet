@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const SELF = fileURLToPath(import.meta.url);
-const ZOMBIECTL_DIR = dirname(dirname(SELF));
+const CLI_DIR = dirname(dirname(SELF));
 
 function readThreshold() {
-  const bunfigPath = join(ZOMBIECTL_DIR, "bunfig.toml");
+  const bunfigPath = join(CLI_DIR, "bunfig.toml");
   const raw = readFileSync(bunfigPath, "utf8");
   const match = raw.match(/coverageThreshold\s*=\s*\{\s*line\s*=\s*([0-9.]+)\s*,\s*function\s*=\s*([0-9.]+)/);
   if (!match) {
@@ -28,7 +28,7 @@ function readThreshold() {
 
 function runTests() {
   const result = spawnSync("bun", ["test", "--coverage"], {
-    cwd: ZOMBIECTL_DIR,
+    cwd: CLI_DIR,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });

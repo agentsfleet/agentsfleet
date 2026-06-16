@@ -91,8 +91,8 @@ The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acc
 #    - admin@agentsfleet.dev   (tenant admin role)
 # 2. Generate a strong password for each: `openssl rand -base64 24` (or similar).
 # 3. Store both as separate 1Password items in the DEV vault:
-#    op://$VAULT_DEV/e2e-fixture-email/regular  → fields: email, password
-#    op://$VAULT_DEV/e2e-fixture-email/admin    → fields: email, password
+#    op://$VAULT_DEV/e2e-fixtures-email/regular  → fields: email, password
+#    op://$VAULT_DEV/e2e-fixtures-email/admin    → fields: email, password
 ```
 
 PROD vault: **not required**. If a future spec adds prod-canary smoke tests, that spec authors the prod entries separately.
@@ -131,8 +131,8 @@ Create each item listed there. Value sources for items that require human provis
 | `encryption-master-key` | `openssl rand -hex 32` (DEV and PROD must differ) |
 | `auth-session-code-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
 | `audit-log-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
-| `e2e-fixture-email/regular` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
-| `e2e-fixture-email/admin` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
+| `e2e-fixtures-email/regular` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
+| `e2e-fixtures-email/admin` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
 | `agentsfleetd-prod-server-*` | Created on server provision |
 
 ### 2.2 Set GitHub Secrets and Variables
