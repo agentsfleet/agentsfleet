@@ -43,8 +43,11 @@ make test-unit-all
 # Check if machines exist
 flyctl machine list --app cloudflared-dev
 
-# If no machines — deploy once; CI handles restarts after this
-flyctl deploy --app cloudflared-dev --config deploy/fly/cloudflared-dev/fly.toml
+# If no machines — deploy once; CI handles restarts after this.
+# NB: the positional path is the BUILD CONTEXT (where config.yml lives). Required
+# by flyctl >=0.4.5x, which no longer infers context from --config's directory —
+# `--config` from repo root fails the Dockerfile COPY ("/config.yml not found").
+flyctl deploy deploy/fly/cloudflared-dev --app cloudflared-dev
 
 # Verify TUNNEL_TOKEN secret is set
 flyctl secrets list --app cloudflared-dev | grep TUNNEL_TOKEN
