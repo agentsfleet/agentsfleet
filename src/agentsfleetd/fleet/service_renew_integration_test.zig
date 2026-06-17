@@ -7,8 +7,9 @@
 // with UZ-RUN-012 and the lease's kill deadline is left untouched (a broke
 // tenant's run ends at its original deadline, never extended).
 //
-// The gate only refuses under the .stop balance policy (default is .warn, which
-// covers), so the test sets ctx.balance_policy = .stop on the harness directly.
+// The gate only refuses under the .stop balance policy (now the default), so the
+// test sets ctx.balance_policy = .stop on the harness directly (explicit, so the
+// assertion is independent of the configured default).
 // Requires LIVE_DB=1; skipped when TEST_DATABASE_URL is unset, and also skipped
 // while the free-trial window is open (stage charge is 0, so the gate can't
 // refuse — see the free-trial section in billing_and_provider_keys.md). Asserts
