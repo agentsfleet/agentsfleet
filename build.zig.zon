@@ -4,18 +4,18 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
-        // Fork release usezombie/nullclaw v2026.5.29-zmb.2 — upstream tag
+        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.2 — upstream tag
         // v2026.5.29 (b25c6eb) plus one commit: cumulative prompt/completion
         // token-split accumulation + promptTokensUsed()/completionTokensUsed()
         // accessors beside tokensUsed(), AND clearSessionState() zeroing both
         // new counters so /new and /reset don't leave by-side metering with
         // stale per-session figures. The runner reads these to bill token spend
         // by side. We have no push or release rights on upstream nullclaw/nullclaw,
-        // so the patch rides our fork (reviewed in usezombie/nullclaw#1, tag below;
+        // so the patch rides our fork (reviewed in agentsfleet/nullclaw#1, tag below;
         // supersedes zmb.1). Drop this fork pin and return to the upstream tag
         // when upstream exposes split accessors.
         .nullclaw = .{
-            .url = "git+https://github.com/usezombie/nullclaw.git?ref=v2026.5.29-zmb.2#dd85a21cdd5a9288556109e2b1438776f19d83b9",
+            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.2#dd85a21cdd5a9288556109e2b1438776f19d83b9",
             .hash = "nullclaw-2026.5.29-wlZZyROORwEVQ6YA9mTLZWk7bxJJ3R-oHpRHD9xLXxga",
         },
         // Vendored fork of karlseguin/pg.zig at upstream commit 1aa3e3c (ref master),
@@ -31,7 +31,7 @@
             .path = "vendor/pg",
         },
         .posthog = .{
-            .url = "git+https://github.com/usezombie/posthog-zig.git#v0.2.0",
+            .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
             .hash = "posthog-0.2.0-QwvZlsuGAgBOvEKmQ-yKf77yaLyP7SeCCPanYW1pRl7X",
         },
         // zbench pinned to the zig-0.16.0 branch HEAD — the maintained branch for
