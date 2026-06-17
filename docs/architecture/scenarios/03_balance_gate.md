@@ -25,6 +25,8 @@ flowchart TD
 ```
 
 > Single source of truth for the cost model: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md). This scenario walks through what those numbers mean in practice for one user over time.
+>
+> **Flow note (M80_010):** the flowchart above shows the pre-M80_010 one-shot order (run debited once at lease issue). That was superseded — the run charge is no longer a one-shot deduction at lease issue; it meters incrementally on each `/renew` and settles at `report`. The lease-issue gate is now a coverage check only. The canonical incremental flow is in the parent doc §3.
 
 ---
 
@@ -46,11 +48,13 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ---
 
-## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
+## 2. Stage 1 — John on platform-managed (Week 1-2 of his journey)
 
 **Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key agentsfleet pays Fireworks with is **not** a magic constant. It lives in the `agentsfleet-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's self-managed uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../../playbooks/operations/admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the path from `agentsfleetd`'s resolver to the runner's inference call; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
+
+> **Flow note (M80_010):** the run charge is no longer a one-shot deduction at lease issue — it meters incrementally on each `/renew` and settles at `report`. The lease-issue gate is now a coverage check only. The trace below still shows the single-shot model for illustrative clarity (it predates M80_010); the canonical incremental flow is in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3, and the totals it lands on are unchanged.
 
 ```
 XREADGROUP unblocks → INSERT agent_events (status='received')
@@ -66,23 +70,24 @@ DEDUCT RECEIVE
   UPDATE tenant_billing SET balance_nanos = 1000 - 1 = 999
   INSERT agent_execution_telemetry
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
-     charge_type='receive', credit_deducted_cents=1)
+     charge_type='receive', credit_deducted_nanos=1)
 
 approval gate → pass (no destructive tools in this run)
 
 resolveSecretsMap → {fly, slack, github}
 
-DEDUCT RUN
-  UPDATE tenant_billing SET balance_nanos = 999 - 2 = 997
-  INSERT agent_execution_telemetry
-    (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
-     charge_type='stage', credit_deducted_cents=2)
-
-issue lease → runner forks NullClaw child
+issue lease → runner forks NullClaw child   (no run debit at issue under M80_010 — coverage check only)
   outbound to api.fireworks.ai/inference/v1
   runner reports: tokens(in=820, out=1040), wall=8.2s
 
-UPDATE agent_execution_telemetry  (the run row)
+RUN charge (metered on /renew ticks + settled at report under M80_010;
+            shown here collapsed into one step for illustration)
+  UPDATE tenant_billing SET balance_nanos = 999 - 2 = 997
+  UPDATE agent_execution_telemetry  (the accumulated 'stage' row)
+    (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
+     charge_type='stage', credit_deducted_nanos=2)
+
+UPDATE agent_execution_telemetry  (the 'stage' row — token counts)
   SET token_count_input=820, token_count_output=1040, wall_ms=8210
 
 reconcile actual cost:
@@ -106,15 +111,15 @@ Week 2 opens. By midweek John is at ~150¢ left and notices his balance is lower
 
 ---
 
-## 3. Phase 2 — John switches to self-managed (week 2 onwards)
+## 3. Stage 2 — John switches to self-managed (week 2 onwards)
 
 He runs through Scenario 02's setup:
 
 ```bash
 op read 'op://<vault>/fireworks/api_key' |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  agentsfleet credential set account-fireworks-key --data @-
-agentsfleet tenant provider set --credential account-fireworks-key
+  agentsfleet credential add account-fireworks-key --data @-
+agentsfleet tenant provider add --credential account-fireworks-key
 ```
 
 `core.tenant_providers` now has a row: `mode=self_managed`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-key`. John's agentsfleet balance is unchanged at ~150¢.
@@ -129,11 +134,11 @@ estimate cost = compute_receive_charge(.self_managed) + compute_stage_charge(.se
 gate: 150¢ ≥ 1¢ → pass
 
 DEDUCT RECEIVE → 0¢ deducted (self-managed receive is zero in v2.0)
-  INSERT telemetry (charge_type='receive', credit_deducted_cents=0)
+  INSERT telemetry (charge_type='receive', credit_deducted_nanos=0)
 
 DEDUCT RUN → 1¢ deducted
   UPDATE balance_nanos = 150 - 1 = 149
-  INSERT telemetry (charge_type='stage', credit_deducted_cents=1)
+  INSERT telemetry (charge_type='stage', credit_deducted_nanos=1)
 
 runner's NullClaw child (provider key fw_LIVE_…) → outbound to
   api.fireworks.ai/inference/v1/chat/completions
@@ -143,7 +148,7 @@ runner reports: tokens(in=820, out=1320), wall=11.4s
 
 UPDATE telemetry run row SET token_count_input=820, token_count_output=1320,
                               wall_ms=11400
-(credit_deducted_cents stays 1¢; tokens are FYI only under self-managed)
+(credit_deducted_nanos stays 1¢; tokens are FYI only under self-managed)
 
 UPDATE agent_events status='processed'
 XACK
@@ -164,7 +169,7 @@ By end of week 4: balance ≈ 30¢ left.
 
 ---
 
-## 4. Phase 3 — the gate eventually trips
+## 4. Stage 3 — the gate eventually trips
 
 Week 5 opens. John's balance is hovering around 30¢. A flaky deploy triggers a 30-event burst from his CD pipeline. The lease path runs through the first 30 events at 1¢ each, draining to 0¢:
 
@@ -195,7 +200,7 @@ Note that the gate trip happens identically under both postures — the only dif
 
 The same user with the same workload sees different drain rates depending on which posture he's in. Cumulative spend over ~5 weeks of identical activity:
 
-| Phase | Posture | Events/day (avg) | ¢/event | ¢/week (5 days × 40 events) | Cumulative ¢ |
+| Stage | Posture | Events/day (avg) | ¢/event | ¢/week (5 days × 40 events) | Cumulative ¢ |
 |---|---|---|---|---|---|
 | Week 1-1.5 | platform | 40 | ~3 | ~600 | ~850 (full week + half) |
 | Week 1.5-5 | self_managed | 40 | 1 | ~200 | ~150 over 3.5 weeks |
@@ -203,7 +208,7 @@ The same user with the same workload sees different drain rates depending on whi
 
 If John had stayed on platform the entire time, his $10 would have lasted roughly 1.5–2 weeks. Switching to self-managed extended his runway to ~5 weeks for the same workload. The 3× extension is the self-managed incentive — paid for by his separate Fireworks bill.
 
-| Aspect | Platform phase | self-managed phase |
+| Aspect | Platform stage | self-managed stage |
 |---|---|---|
 | `tenant_providers` row | Absent (synth-default) | `mode=self_managed`, `credential_ref=account-fireworks-key` |
 | Resolver returns | `{provider: fireworks, api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: accounts/fireworks/models/kimi-k2.6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
@@ -257,7 +262,7 @@ The Usage tab shows John's full posture history — the three platform rows from
 
 - Headline: **$0.00 USD**.
 - **Purchase Credits** button (disabled, tooltip "Coming in v2.1 — contact support for a top-up").
-- Usage tab populated with John's drain history (both posture phases visible).
+- Usage tab populated with John's drain history (both posture stages visible).
 - Invoices tab: empty state.
 - Payment Method tab: empty state.
 - Auto Top Up card: hidden (not shipped in v2.0).
@@ -281,14 +286,14 @@ John can flip postures at any time during his journey. The mechanics:
   ```
   op read 'op://<vault>/<item>/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-    agentsfleet credential set <name> --data @-
-  agentsfleet tenant provider set --credential <name>
+    agentsfleet credential add <name> --data @-
+  agentsfleet tenant provider add --credential <name>
   ```
   Next event resolves `mode=self_managed`. Drain drops from ~3¢ to 1¢ per event. The api_key is in vault; he never sees it again from any agentsfleet surface.
 
 - **self-managed → platform** (e.g. if Fireworks has a billing issue):
   ```
-  agentsfleet tenant provider reset
+  agentsfleet tenant provider delete
   ```
   Next event resolves `mode=platform`. Drain jumps from 1¢ to ~3¢. If his balance is now too low for the platform-rate worst-case estimate, the gate trips on the next event — he'd see the credit-exhausted UX and need to top up.
 
@@ -308,11 +313,11 @@ Two events claim the queue simultaneously, both pass the gate (balance was suffi
 
 ### 8.3 Posture flip mid-event
 
-The resolver runs exactly once at gate time (step "Resolve posture" in the flowchart). Whatever posture it returned is the snapshot for both deductions and the outbound LLM call. A `tenant provider set` that lands during step 3-7 of the flowchart has no effect on this event; it takes effect on the next event.
+The resolver runs exactly once at gate time (step "Resolve posture" in the flowchart). Whatever posture it returned is the snapshot for both deductions and the outbound LLM call. A `tenant provider add` that lands during step 3-7 of the flowchart has no effect on this event; it takes effect on the next event.
 
 ### 8.4 self-managed credential deleted while still in self-managed mode
 
-Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_label='provider_credential_missing'`. **Receive is not debited** (we couldn't even resolve posture, so we wouldn't know which receive rate to use); the dead-letter row stays at the very-early step. This is a different terminal state than `balance_exhausted` and the dashboard distinguishes them.
+Resolver returns `error.CredentialMissing`. Event terminates with `status='gate_blocked'`, `failure_label='tenant_resolve_failed'`. **Receive is not debited** (we couldn't even resolve posture, so we wouldn't know which receive rate to use); the `gate_blocked` row stays at the very-early step. This is a different failure label than `balance_exhausted` and the dashboard distinguishes them.
 
 ---
 

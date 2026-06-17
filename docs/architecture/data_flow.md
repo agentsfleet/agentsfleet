@@ -21,7 +21,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | `core.agents` | `agentsfleetd-api` only | `agentsfleetd` at lease (config resolved fresh per lease) |
 | `core.agent_sessions` | `agentsfleetd` lease path (mark busy) + report path (checkpoint) | `agentsfleetd` at lease + `agentsfleet status` |
 | `fleet.runner_leases` / `fleet.runner_affinity` | `agentsfleetd` lease path (issue) + report/reclaim (flip / release) | `agentsfleetd` assignment + fencing + reclaim |
-| `vault.secrets` | `agentsfleetd-api` on `credential set` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
+| `vault.secrets` | `agentsfleetd-api` on `credential add` (upsert) | `agentsfleetd` resolves just-in-time at `lease`, ships inline in the lease reply |
 | `agent:control` | — (removed at the cutover) | — (removed at the cutover) |
 
 ---
@@ -138,7 +138,7 @@ The coding agent is a workstation tool driving `agentsfleet`. The agent — the 
            ║      response_text=<content>       ║
            ║   8. PUBLISH agent:{id}:activity  ║   ← live: terminal frame
            ║      {kind:"event_complete"}       ║
-           ║   9. INSERT agent_execution_      ║   ← billing/latency
+           ║   9. INSERT core.agent_execution_ ║   ← billing/latency
            ║      telemetry (reconcile actuals) ║     audit (UNIQUE event_id)
            ║  10. UPSERT core.agent_sessions   ║   ← resume cursor:
            ║      context_json, execution_id=NULL║     clears handle,
@@ -165,12 +165,12 @@ The flow above writes to three Postgres tables. They are **not** redundant — e
 |---|---|---|---|
 | `core.agent_sessions` | **One row per agent** | UPSERT — mutated on every event boundary | "Where is this agent *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `agentsfleet status`. |
 | `core.agent_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this agent do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
-| `agent_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `agent_events` via `event_id`. |
+| `core.agent_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `agent_events` via `event_id`. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention contracts:
 
 - `agent_events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
-- `agent_execution_telemetry` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
+- `core.agent_execution_telemetry` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
 
 The durable lease bookkeeping (`fleet.runner_leases`, `fleet.runner_affinity`) is a fourth concern — it is the *ownership* layer (which runner holds this event, at what fencing token, until when), not a user-facing record. It lives in the `fleet` schema and never carries user strings.
 
@@ -239,10 +239,10 @@ response_text  "Deploy failed: Fly.io OOM kill on machine i-01abc,
 completed_at   2026-04-25T08:00:08Z
 ```
 
-**Step 9 — INSERT `agent_execution_telemetry`** (immutable audit row, joinable on `event_id`):
+**Step 9 — INSERT `core.agent_execution_telemetry`** (immutable audit row, joinable on `event_id`):
 
 ```
-agent_execution_telemetry  (run row reconciled with actuals)
+core.agent_execution_telemetry  (run row reconciled with actuals)
 ─────────────────────────────────────────────────
 id                       tel-1729874000000-0
 agent_id                f4e3c2b1-...
@@ -253,7 +253,7 @@ time_to_first_token_ms   320
 wall_seconds             8
 epoch_wall_time_ms       1729874000000
 plan_tier                free
-credit_deducted_cents    4
+credit_deducted_nanos    4
 recorded_at              1729874008210
 ```
 
@@ -283,7 +283,7 @@ Before the cutover there were three Redis surfaces. The split kept two and retir
 
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
-| `agent:{id}:events` | Stream + consumer group `agent_workers` | One per agent | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the agent handles. |
+| `agent:{id}:events` | Stream + consumer group `agent_lease` | One per agent | Single event ingress — steer / webhook / cron / continuation all `XADD` here. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the agent handles. |
 | `agent:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per agent | Best-effort live tail — `agentsfleetd` `PUBLISH`es one frame per `event_received` / `tool_call_started` / `agent_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`. The bracket frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
 | `agent:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-agent threads — and there are no per-agent threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `redis_agent.ensureAgentConsumerGroup` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
@@ -361,7 +361,7 @@ A config change never alters a language-model turn already in flight (one lease 
     ├─► [PG]    INSERT core.agents          (RLS: tenant boundary)
     ├─► [PG]    INSERT core.agent_sessions  (idle row: execution_id=NULL,
     │                                         context_json={}, checkpoint_at=now)
-    ├─► [Redis] XGROUP CREATE MKSTREAM agent:{id}:events agent_workers 0
+    ├─► [Redis] XGROUP CREATE MKSTREAM agent:{id}:events agent_lease 0
     │           (ensureAgentConsumerGroup — the lease XREADGROUP needs this group)
     └─► 201 to user  (invariant: data stream + group exist before 201)
 
@@ -370,8 +370,8 @@ A config change never alters a language-model turn already in flight (one lease 
 
    At rest:
      PG:    core.agents row, core.agent_sessions idle row.
-            No core.agent_events. No agent_execution_telemetry. No fleet.runner_leases.
-     Redis: stream agent:{id}:events with group agent_workers (empty).
+            No core.agent_events. No core.agent_execution_telemetry. No fleet.runner_leases.
+     Redis: stream agent:{id}:events with group agent_lease (empty).
             Channel agent:{id}:activity does not yet exist (implicit on first PUBLISH).
 ```
 
@@ -462,7 +462,7 @@ user action:
   `triggers[].source` is unknown to the provider registry, OR the
   workspace has no `agent:<source>` vault credential (vault row missing
   OR `webhook_secret` field absent). User-recoverable misconfig — fix
-  with `agentsfleet credential set <source> --data @-` and pipe JSON on stdin.
+  with `agentsfleet credential add <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has
@@ -572,7 +572,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           SET status = outcome==ok ? 'processed' : 'agent_error',
               response_text, completed_at = now()
      8. PUBLISH agent:{id}:activity { kind:"event_complete", event_id, status }
-     9. INSERT/reconcile agent_execution_telemetry ← billing/latency,
+     9. INSERT/reconcile core.agent_execution_telemetry ← billing/latency,
           (event_id UNIQUE, token_count, ttft_ms, wall_seconds, ...)
     10. UPSERT core.agent_sessions                ← idle bookmark
           SET context_json = { last_event_id, last_response },
@@ -666,7 +666,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 |---|---|
 | PG (`core.agents`, `core.agent_events`, etc.) | Row-Level Security by `workspace_id`. The API enforces via `app.workspace_id` session var; the control-plane lease/report path uses the service role with explicit WHERE filtering. |
 | Redis data plane (`agent:{id}:events`) | Key namespaced by agent UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by `agent_id` being unguessable + API gatekeeping. |
-| Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one agent's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only agentsfleet's platform admin may add a host to the shared fleet, via the dashboard "Add runner" (M84_001). Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to M85_001 (the stale "M80_007" reservation moved there; M80_007 shipped as the observability spec). |
+| Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one agent's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only agentsfleet's platform admin may add a host to the shared fleet, via the dashboard "Add runner" (M84_001). Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to a later milestone (M85_001 shipped label-matching placement only, not trust tiers; M80_007 shipped as the observability spec). |
 | Sandboxed child | Per-execution: secrets resolved at the lease, delivered via the child's stdin only, substituted at the tool bridge inside the sandbox, never flowing as raw strings into agent context. |
 
 ## One active lease per agent — the ownership model
@@ -690,7 +690,7 @@ Failure mode: if the runner holding a lease dies, no other runner can claim that
 
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the SKILL.md and TRIGGER.md grant it)
-- Never escapes the sandbox — Landlock (filesystem) + cgroups (process/memory kill domain) bound the runner's child. **Network egress** is fully blocked on the `deny_all` policy (empty net namespace via `--unshare-all`) and, on the network-enabled policy, constrained to an operator-declared host allowlist by the **runner egress model** (own net namespace + default-deny DNS-pinning proxy — see [`runner_fleet.md` §Egress model](./runner_fleet.md)). Note the network-enabled policy historically shared the host net namespace (`--share-net`, allowlist log-only) with no kernel egress restriction; that is the gap the egress model closes.
+- Never escapes the sandbox — Landlock (filesystem) + cgroups (process/memory kill domain) bound the runner's child. **Network egress** is fully blocked on the `deny_all` policy (empty net namespace via `--unshare-all`) and, on the network-enabled policy, constrained to an operator-declared host allowlist by the **runner egress model** (own net namespace + host-side nftables IP-allowlist (resolve-at-setup, resolver-less) — see [`runner_fleet.md` §Egress model](./runner_fleet.md)). Note the network-enabled policy historically shared the host net namespace (`--share-net`, allowlist log-only) with no kernel egress restriction; that is the gap the egress model closes.
 - Never holds a datastore credential — the runner reaches the platform only over the `/v1/runners` protocol
 
 ## The install failure scenario, visually
