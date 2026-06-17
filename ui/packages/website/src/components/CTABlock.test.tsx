@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import CTABlock from "./CTABlock";
+import { CTA_COPY } from "../lib/marketing-copy";
 
 function renderCtaBlock() {
   return render(
@@ -15,13 +16,13 @@ describe("CTABlock", () => {
   it("renders the human-voice heading", () => {
     renderCtaBlock();
     expect(
-      screen.getByRole("heading", { level: 2, name: /stop chasing failed deploys/i }),
+      screen.getByRole("heading", { level: 2, name: CTA_COPY.heading }),
     ).toBeInTheDocument();
   });
 
   it("speaks to the operator, not the machine API", () => {
     renderCtaBlock();
-    expect(screen.getByText(/install one agent, wire one webhook/i)).toBeInTheDocument();
+    expect(screen.getByText(CTA_COPY.lede)).toBeInTheDocument();
     // The OpenAPI / machine-surface pitch belongs on /agents, not the human closer.
     expect(screen.queryByText(/openapi 3\.1/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/machine surface/i)).not.toBeInTheDocument();
@@ -43,13 +44,13 @@ describe("CTABlock", () => {
     const { container } = renderCtaBlock();
     const heading = screen.getByRole("heading", {
       level: 2,
-      name: /stop chasing failed deploys/i,
+      name: CTA_COPY.heading,
     });
     // Heading aligns with the page's left rail; the prose + buttons keep the
     // narrower reading measure.
     expect(heading.closest(".max-w-measure")).toBeNull();
     const measure = container.querySelector(".max-w-measure");
     expect(measure).not.toBeNull();
-    expect(measure!.textContent).toMatch(/install one agent/i);
+    expect(measure!.textContent).toMatch(/support escalations/i);
   });
 });

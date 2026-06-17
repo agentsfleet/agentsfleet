@@ -1,6 +1,7 @@
 import { Button, DisplayLG } from "@agentsfleet/design-system";
 import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked } from "../analytics/posthog";
+import { CTA_COPY } from "../lib/marketing-copy";
 
 /*
  * CTABlock — restrained closing CTA on the human landing page. Mono headline,
@@ -11,12 +12,10 @@ export default function CTABlock() {
   return (
     <section className="site-section" data-testid="cta-block">
       <div className="wrap flex flex-col gap-6">
-        <DisplayLG>Stop chasing failed deploys.</DisplayLG>
+        <DisplayLG>{CTA_COPY.heading}</DisplayLG>
         <div className="flex flex-col gap-6 max-w-measure">
           <p className="font-sans text-body-lg leading-body text-text-muted m-0">
-            Install one agent, wire one webhook — it wakes on the failure, reads
-            the logs, and posts the diagnosis with evidence. You read the answer,
-            not another dashboard.
+            {CTA_COPY.lede}
           </p>
           <div className="flex flex-wrap gap-3 items-center">
             <Button asChild>

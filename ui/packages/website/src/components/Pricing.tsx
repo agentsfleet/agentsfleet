@@ -1,9 +1,19 @@
-import type { ReactNode } from "react";
-import { Button, Card, SectionLabel } from "@agentsfleet/design-system";
+import {
+  Badge,
+  Button,
+  Card,
+  DisplayLG,
+  List,
+  ListItem,
+  SectionLabel,
+} from "@agentsfleet/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";
+import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
+
+const PRICING_TRACKING_SOURCE_PREFIX = "pricing_";
 
 /*
  * Pricing — one simple story: free during the trial, then a single
@@ -11,102 +21,124 @@ import { RATES_DISPLAY } from "../lib/rates";
  * working (same rate on the platform or your own provider key), and the model
  * bill is always yours. No struck-through gradient, no per-stage billing grid,
  * no tier-extras list — those buried the "it's free right now" headline. Rate
- * VALUES come from RATES_DISPLAY (lib/rates.ts), the changelog-pinned single
+ * Rate values come from RATES_DISPLAY (lib/rates.ts), the changelog-pinned single
  * source; this component only arranges them.
  */
 export default function Pricing() {
   return (
     <section id="pricing" className="site-section" data-testid="pricing-block">
-      <div className="wrap flex flex-col gap-6">
+      <div className="wrap flex flex-col items-center gap-6 text-center">
         <SectionLabel className="mb-0">pricing</SectionLabel>
+        <p
+          data-testid="pricing-free-trial-banner"
+          className="font-mono text-label uppercase tracking-label text-pulse border border-border-strong rounded-sm px-md py-sm m-0"
+        >
+          {RATES_DISPLAY.FREE_TRIAL_PILL} — {PRICING_COPY.trialSuffix}
+        </p>
+        <DisplayLG>
+          {PRICING_COPY.headline}
+        </DisplayLG>
+        <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-measure">
+          {PRICING_COPY.lede}
+        </p>
 
-        <Card data-testid="pricing-rate-card" className="flex flex-col gap-5">
-          <p
-            data-testid="pricing-free-trial-banner"
-            className="font-mono text-fluid-display-md leading-display-md tracking-display-md font-medium text-text m-0 max-w-narrow"
-          >
-            {RATES_DISPLAY.FREE_TRIAL_BANNER}
-          </p>
+        <div className="grid w-full max-w-content grid-cols-1 gap-4 text-left lg:grid-cols-3">
+          {PRICING_PLANS.map((plan) => (
+            <PricingPlanCard key={plan.id} plan={plan} />
+          ))}
+        </div>
 
-          <RateTable />
-
-          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-narrow">
-            You&apos;re billed <span className="text-text">by the second</span>, only while an
-            agent is actively working — not a flat monthly seat, not idle time. A quiet agent
-            waiting on nothing costs nothing.
-          </p>
-
-          <p
-            data-testid="pricing-design-partner-note"
-            className="font-sans text-body-sm leading-body-sm text-pulse m-0 max-w-narrow"
-          >
-            Want a hand calibrating an agent or to join as a design partner? Email{" "}
-            <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=Design%20partner`}
-              className="underline hover:text-text"
-            >
-              {SUPPORT_EMAIL}
-            </a>
-            .
-          </p>
-
-          <Button asChild className="self-start">
-            <a
-              href={APP_BASE_URL}
-              data-testid="pricing-install-cta"
-              onClick={() =>
-                trackSignupStarted({
-                  source: "pricing_install",
-                  surface: "pricing",
-                  mode: "humans",
-                })
-              }
-            >
-              → get early access
-            </a>
-          </Button>
-        </Card>
+        <p className="font-sans text-body-sm leading-body-sm text-text-subtle m-0 max-w-measure">
+          {PRICING_COPY.note}
+        </p>
       </div>
     </section>
   );
 }
 
-function RateTable() {
-  return (
-    <dl data-testid="pricing-rate-table" className="m-0 flex flex-col gap-3">
-      <RateRow label="Event receipt">
-        <span data-testid="pricing-rate-event" className="text-text">
-          {RATES_DISPLAY.EVENT_RATE}
-        </span>
-        <span className="text-text-muted">— always</span>
-      </RateRow>
-      <RateRow label="Active runtime">
-        <span data-testid="pricing-rate-run" className="text-text tabular-nums">
-          {RATES_DISPLAY.RUN_RATE_PER_SEC}
-        </span>
-        <span data-testid="pricing-rate-run-hourly" className="text-text-muted tabular-nums">
-          ≈ {RATES_DISPLAY.RUN_RATE_PER_HOUR}
-        </span>
-        <span className="text-text-subtle" aria-hidden="true">
-          ·
-        </span>
-        <span className="text-text-muted">only while an agent is running, platform or your own key</span>
-      </RateRow>
-      <RateRow label="Model tokens">
-        <span className="text-text">your provider</span>
-        <span className="text-text-muted">— your bill, we mark up zero</span>
-      </RateRow>
-    </dl>
-  );
-}
+function PricingPlanCard({ plan }: { plan: PricingPlan }) {
+  const ctaHref =
+    plan.id === "enterprise"
+      ? `mailto:${SUPPORT_EMAIL}?subject=Enterprise%20agentsfleet`
+      : APP_BASE_URL;
+  const badge = "badge" in plan ? plan.badge : undefined;
+  const suffix = "suffix" in plan ? plan.suffix : undefined;
+  const testId = `pricing-card-${plan.id}`;
 
-function RateRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border pb-3 last:border-0 last:pb-0">
-      <dt className="font-mono text-body-sm text-text-muted">{label}</dt>
-      <dd className="m-0 flex flex-wrap items-baseline gap-x-2 font-mono text-body">
-        {children}
-      </dd>
-    </div>
+    <Card
+      featured={plan.featured}
+      badgeLabel={badge}
+      data-testid={testId}
+      className="flex h-full flex-col gap-5"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-mono text-label uppercase tracking-label text-text-muted">
+          {plan.name}
+        </span>
+        {badge ? <Badge variant="live">{badge}</Badge> : null}
+      </div>
+
+      <div className="font-mono text-fluid-display-md leading-display-md tracking-display-md text-text tabular-nums">
+        {plan.id === "usage" ? (
+          <>
+            <span data-testid="pricing-rate-run">{RATES_DISPLAY.RUN_RATE_PER_SEC}</span>
+            <span className="text-body text-text-muted"> · </span>
+            <span data-testid="pricing-rate-run-hourly">{RATES_DISPLAY.RUN_RATE_PER_HOUR}</span>
+          </>
+        ) : (
+          <>
+            {plan.price}
+            {suffix ? (
+              <span className="text-body text-text-muted"> / {suffix}</span>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {plan.id === "usage" ? (
+        <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
+          Events are{" "}
+          <span data-testid="pricing-rate-event" className="text-text">
+            {RATES_DISPLAY.EVENT_RATE}
+          </span>
+          . Usage is metered only while running.
+        </p>
+      ) : null}
+
+      {plan.id === "trial" ? (
+        <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
+          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit after the trial.
+        </p>
+      ) : null}
+
+      <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
+        {plan.features.map((feature) => (
+          <ListItem key={feature} bullet="arrow" className="font-sans text-body-sm text-text-muted">
+            {feature}
+          </ListItem>
+        ))}
+      </List>
+
+      <Button
+        asChild
+        variant={plan.featured ? "default" : "secondary"}
+        className="mt-auto w-full justify-center"
+      >
+        <a
+          href={ctaHref}
+          data-testid={`pricing-cta-${plan.id}`}
+          onClick={() =>
+            trackSignupStarted({
+              source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+              surface: "pricing",
+              mode: "humans",
+            })
+          }
+        >
+          {plan.cta}
+        </a>
+      </Button>
+    </Card>
   );
 }

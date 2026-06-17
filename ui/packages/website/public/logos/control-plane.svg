@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Control plane">
+  <rect x="5" y="4" width="14" height="16" rx="2" fill="none" stroke="#8B9398" stroke-width="1.6"/>
+  <path d="M8 9h8M8 13h8M8 17h5" fill="none" stroke="#8B9398" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M16.2 16.3l1 1 2.2-2.6" fill="none" stroke="#5EEAD4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

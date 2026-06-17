@@ -10,6 +10,7 @@ vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
 import { APP_BASE_URL } from "./config";
+import { HERO_HEADLINE } from "./lib/marketing-copy";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -83,7 +84,7 @@ describe("App", () => {
     renderApp("/");
     expect(screen.getByTestId("hero")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: /the agent already knows why/i }),
+      screen.getByRole("heading", { level: 1, name: HERO_HEADLINE }),
     ).toBeInTheDocument();
   });
 

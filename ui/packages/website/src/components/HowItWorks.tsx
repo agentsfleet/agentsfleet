@@ -1,25 +1,5 @@
 import { Card, DisplayLG, SectionLabel } from "@agentsfleet/design-system";
-
-const steps = [
-  {
-    n: "01",
-    title: "A trigger arrives",
-    description:
-      "A GitHub Actions deploy fails, a cron fires, or you run agentsfleet steer. Each lands on the event stream with actor provenance: webhook:github, cron:<schedule>, steer:<user>.",
-  },
-  {
-    n: "02",
-    title: "The agent gathers evidence",
-    description:
-      "It calls the tools TRIGGER.md allow-lists — http_request, memory_store, cron_add. Secrets substitute at the sandbox boundary; the model sees placeholders, never raw bytes.",
-  },
-  {
-    n: "03",
-    title: "Diagnosis posts; the run is auditable",
-    description:
-      "Slack receives the evidenced diagnosis. Every event is on core.agent_events with actor and timestamp. agentsfleet steer {id} picks the conversation up later.",
-  },
-];
+import { HOW_IT_WORKS_HEADING, LOOP_STEPS } from "../lib/marketing-copy";
 
 /*
  * HowItWorks — 3-step mono numbered cards. No counter pseudo-element,
@@ -32,14 +12,18 @@ export default function HowItWorks() {
         <div className="flex flex-col gap-3">
           <SectionLabel className="mb-0">How it works</SectionLabel>
           <DisplayLG className="max-w-narrow">
-            From trigger to evidenced diagnosis, durably.
+            {HOW_IT_WORKS_HEADING}
           </DisplayLG>
         </div>
         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
-          {steps.map((step) => (
-            <Card key={step.n} className="flex flex-col gap-3" data-testid={`how-step-${step.n}`}>
+          {LOOP_STEPS.map((step) => (
+            <Card
+              key={step.number}
+              className="flex flex-col gap-3"
+              data-testid={`how-step-${step.number}`}
+            >
               <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
-                {step.n}
+                {step.number}
               </span>
               <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
                 {step.title}
