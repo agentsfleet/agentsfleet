@@ -218,8 +218,10 @@ Cloudflare SSL/TLS: **Full (Strict)**. No Transform Rules. No CNAME hack.
 
 ```bash
 export FLY_API_TOKEN=$(op read "op://$VAULT_DEV/fly-api-token/credential")
-fly deploy --app cloudflared-dev \
-  --config deploy/fly/cloudflared-dev/fly.toml \
+# Positional path = build context (the dir holding config.yml + Dockerfile).
+# Required by flyctl >=0.4.5x; do NOT use `--config` from repo root — the Dockerfile
+# `COPY config.yml` then fails with "/config.yml not found".
+fly deploy deploy/fly/cloudflared-dev --app cloudflared-dev \
   --wait-timeout 120
 ```
 

@@ -449,7 +449,7 @@ jobs:
         # pushed before we check tunnel health — prevents "Invalid tunnel secret" failures.
         run: |
           TUNNEL_APP="cloudflared-prod"
-          TUNNEL_CONFIG="deploy/fly/cloudflared-prod/fly.toml"
+          TUNNEL_DIR="deploy/fly/cloudflared-prod"   # build-context dir (config.yml + Dockerfile live here)
           echo "Syncing tunnel token from vault..."
           flyctl secrets set TUNNEL_TOKEN="$TUNNEL_TOKEN" --app "$TUNNEL_APP"
           echo "Checking tunnel connector ($TUNNEL_APP)..."
@@ -466,7 +466,9 @@ jobs:
             sleep 15
           elif [ "$TOTAL" -eq 0 ]; then
             echo "  ▲ no machines found — deploying $TUNNEL_APP from scratch..."
-            flyctl deploy --app "$TUNNEL_APP" --config "$TUNNEL_CONFIG" --wait-timeout 60 \
+            # Positional path = build context; flyctl >=0.4.5x uses CWD otherwise and
+            # the Dockerfile COPY config.yml then fails ("/config.yml not found").
+            flyctl deploy "$TUNNEL_DIR" --app "$TUNNEL_APP" --wait-timeout 60 \
               || { echo "  ✗ flyctl deploy failed for $TUNNEL_APP — check logs above"; true; }
             echo "  waiting 15s for tunnel reconnect..."
             sleep 15
