@@ -1,5 +1,4 @@
 import {
-  Badge,
   Button,
   Card,
   DisplayLG,
@@ -14,12 +13,15 @@ import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-
 import { RATES_DISPLAY } from "../lib/rates";
 
 const PRICING_TRACKING_SOURCE_PREFIX = "pricing_";
+const ENTERPRISE_PLAN_ID = "enterprise";
+const TRIAL_PLAN_ID = "trial";
+const USAGE_PLAN_ID = "usage";
 
 /*
  * Pricing — one simple story: free during the trial, then a single
  * usage-based run rate billed by the second only while an agent is actually
  * working (same rate on the platform or your own provider key), and the model
- * bill is always yours. No struck-through gradient, no per-stage billing grid,
+ * bill is always yours. No struck-through gradient, no staged billing grid,
  * no tier-extras list — those buried the "it's free right now" headline. Rate
  * Rate values come from RATES_DISPLAY (lib/rates.ts), the changelog-pinned single
  * source; this component only arranges them.
@@ -31,7 +33,7 @@ export default function Pricing() {
         <SectionLabel className="mb-0">pricing</SectionLabel>
         <p
           data-testid="pricing-free-trial-banner"
-          className="font-mono text-label uppercase tracking-label text-pulse border border-border-strong rounded-sm px-md py-sm m-0"
+          className="font-mono text-label uppercase tracking-label text-text-muted border border-border-strong rounded-sm px-md py-sm m-0"
         >
           {RATES_DISPLAY.FREE_TRIAL_PILL} — {PRICING_COPY.trialSuffix}
         </p>
@@ -58,12 +60,13 @@ export default function Pricing() {
 
 function PricingPlanCard({ plan }: { plan: PricingPlan }) {
   const ctaHref =
-    plan.id === "enterprise"
+    plan.id === ENTERPRISE_PLAN_ID
       ? `mailto:${SUPPORT_EMAIL}?subject=Enterprise%20agentsfleet`
       : APP_BASE_URL;
   const badge = "badge" in plan ? plan.badge : undefined;
   const suffix = "suffix" in plan ? plan.suffix : undefined;
   const testId = `pricing-card-${plan.id}`;
+  const ctaDisabled = plan.id === USAGE_PLAN_ID;
 
   return (
     <Card
@@ -72,15 +75,14 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
       data-testid={testId}
       className="flex h-full flex-col gap-5"
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-label uppercase tracking-label text-text-muted">
+      <div className="flex items-center gap-3">
+        <h3 className="font-mono text-label uppercase tracking-label text-text-muted m-0">
           {plan.name}
-        </span>
-        {badge ? <Badge variant="live">{badge}</Badge> : null}
+        </h3>
       </div>
 
       <div className="font-mono text-fluid-display-md leading-display-md tracking-display-md text-text tabular-nums">
-        {plan.id === "usage" ? (
+        {plan.id === USAGE_PLAN_ID ? (
           <>
             <span data-testid="pricing-rate-run">{RATES_DISPLAY.RUN_RATE_PER_SEC}</span>
             <span className="text-body text-text-muted"> · </span>
@@ -96,7 +98,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
         )}
       </div>
 
-      {plan.id === "usage" ? (
+      {plan.id === USAGE_PLAN_ID ? (
         <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
           Events are{" "}
           <span data-testid="pricing-rate-event" className="text-text">
@@ -106,7 +108,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
         </p>
       ) : null}
 
-      {plan.id === "trial" ? (
+      {plan.id === TRIAL_PLAN_ID ? (
         <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
           Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit after the trial.
         </p>
@@ -120,25 +122,36 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
         ))}
       </List>
 
-      <Button
-        asChild
-        variant={plan.featured ? "default" : "secondary"}
-        className="mt-auto w-full justify-center"
-      >
-        <a
-          href={ctaHref}
+      {ctaDisabled ? (
+        <Button
+          disabled
+          variant="default"
+          className="mt-auto min-h-11 w-full justify-center"
           data-testid={`pricing-cta-${plan.id}`}
-          onClick={() =>
-            trackSignupStarted({
-              source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
-              surface: "pricing",
-              mode: "humans",
-            })
-          }
         >
           {plan.cta}
-        </a>
-      </Button>
+        </Button>
+      ) : (
+        <Button
+          asChild
+          variant="secondary"
+          className="mt-auto min-h-11 w-full justify-center"
+        >
+          <a
+            href={ctaHref}
+            data-testid={`pricing-cta-${plan.id}`}
+            onClick={() =>
+              trackSignupStarted({
+                source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+                surface: "pricing",
+                mode: "humans",
+              })
+            }
+          >
+            {plan.cta}
+          </a>
+        </Button>
+      )}
     </Card>
   );
 }

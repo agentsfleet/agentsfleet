@@ -7,7 +7,6 @@ import {
   Section,
   SectionLabel,
   Terminal,
-  WakePulse,
 } from "@agentsfleet/design-system";
 import {
   LEDGER_LINES,
@@ -76,6 +75,8 @@ function SourceCard({ category }: { category: SourceCategory }) {
           src={category.icon}
           alt=""
           aria-hidden="true"
+          loading="lazy"
+          decoding="async"
           className="size-5 shrink-0"
         />
         <Badge variant="default">{category.label}</Badge>
@@ -104,11 +105,12 @@ function LedgerLogLine({ line }: { line: LedgerLine }) {
         </LogToken>
       ) : null}
       {isApproval ? (
-        <WakePulse live asChild>
-          <span className="text-pulse" data-testid="pipeline-human-gate">
-            ⏸ {line.message}
-          </span>
-        </WakePulse>
+        <span className="text-text" data-testid="pipeline-human-gate">
+          <LogToken severity="debug" className="mr-2">
+            hold
+          </LogToken>
+          {line.message}
+        </span>
       ) : (
         <span>{line.message}</span>
       )}

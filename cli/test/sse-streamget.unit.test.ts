@@ -88,6 +88,23 @@ test("streamGet throws ApiError when the response is non-2xx", async () => {
   ).rejects.toMatchObject({ status: 500, code: "UZ-EXT-001" });
 });
 
+test("streamGet non-JSON error bodies fall back to status text and raw body", async () => {
+  const fetchImpl = fakeFetch(() => partialResponse({
+    ok: false,
+    status: 502,
+    statusText: "Bad Gateway",
+    text: async () => "upstream unavailable",
+  }));
+  await expect(
+    streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
+  ).rejects.toMatchObject({
+    status: 502,
+    code: "HTTP_502",
+    message: "Bad Gateway",
+    body: "upstream unavailable",
+  });
+});
+
 test("streamGet throws when fetch is unavailable", async () => {
   // Pass an explicit non-function impl AND temporarily knock out
   // globalThis.fetch so the typeof guard can fire.
@@ -128,6 +145,29 @@ test("streamGet returns silently when the external signal is already aborted", a
   );
 });
 
+test("streamGet returns silently when the external signal aborts in flight", async () => {
+  const ctrl = new AbortController();
+  let requestSignal: AbortSignal | undefined;
+  const fetchImpl = fakeFetch((_url, init) => {
+    requestSignal = init?.signal as AbortSignal | undefined;
+    return new Promise<FakeFetchResult>((_resolve, reject) => {
+      requestSignal?.addEventListener("abort", () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        reject(err);
+      }, { once: true });
+      queueMicrotask(() => ctrl.abort());
+    });
+  });
+  await streamGet(
+    "https://example/x",
+    {},
+    () => {},
+    { fetchImpl, timeoutMs: 0, signal: ctrl.signal },
+  );
+  expect(requestSignal?.aborted).toBe(true);
+});
+
 test("streamGet maps a timeout AbortError to ApiError(TIMEOUT, 408)", async () => {
   const fetchImpl = fakeFetch(() => {
     const err = new Error("timed out");
@@ -137,6 +177,24 @@ test("streamGet maps a timeout AbortError to ApiError(TIMEOUT, 408)", async () =
   await expect(
     streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 1 }),
   ).rejects.toMatchObject({ status: 408, code: "TIMEOUT" });
+});
+
+test("streamGet timeout aborts the in-flight request", async () => {
+  let requestSignal: AbortSignal | undefined;
+  const fetchImpl = fakeFetch((_url, init) => {
+    requestSignal = init?.signal as AbortSignal | undefined;
+    return new Promise<FakeFetchResult>((_resolve, reject) => {
+      requestSignal?.addEventListener("abort", () => {
+        const err = new Error("timed out");
+        err.name = "AbortError";
+        reject(err);
+      }, { once: true });
+    });
+  });
+  await expect(
+    streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 1 }),
+  ).rejects.toMatchObject({ status: 408, code: "TIMEOUT" });
+  expect(requestSignal?.aborted).toBe(true);
 });
 
 test("streamGet sends Accept: text/event-stream and merges caller headers", async () => {

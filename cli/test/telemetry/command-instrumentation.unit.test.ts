@@ -314,7 +314,7 @@ describe("withCommandInstrumentation", () => {
     expect(analytics.captured[0]?.properties.command_run_id).toBe("rid-custom-42");
   });
 
-  it("touches CommandRuntime class constructor for coverage", async () => {
+  it("resolves the configured CommandRuntime service", async () => {
     const layer = commandRuntimeFromValuesLayer({
       commandPath: ["x"],
       commandRunId: "rid-2",

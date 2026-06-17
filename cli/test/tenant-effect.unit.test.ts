@@ -171,6 +171,33 @@ describe("tenantProviderShowEffect", () => {
     ).toBe(true);
   });
 
+  test("surfaces generic provider resolver errors with the credential reference", async () => {
+    const rec = makeRecorder();
+    const program = tenantProviderShowEffect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer()),
+      Effect.provide(
+        httpClientLayer(
+          () =>
+            Effect.succeed({
+              mode: PROVIDER_MODE.self_managed,
+              provider: "fireworks",
+              error: "provider_unreachable",
+              credential_ref: "fw-key",
+            }) as Effect.Effect<unknown, ServerError>,
+          rec,
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+    );
+    await runWith(program);
+    expect(
+      rec.stderr.some((line) =>
+        /Provider resolver error: provider_unreachable \(credential_ref=fw-key\)/.test(line),
+      ),
+    ).toBe(true);
+  });
+
   test("--json mode prints raw response and skips warning prose", async () => {
     const rec = makeRecorder();
     const payload = {

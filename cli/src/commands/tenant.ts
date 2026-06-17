@@ -179,12 +179,12 @@ export const tenantProviderAddEffectFromArgs = (
 // billing endpoint never breaks the delete success path.
 const lowBalanceWarning: Effect.Effect<
   void,
-  never,
+  CliError,
   CliConfig | Credentials | HttpClient | Output
 > = Effect.gen(function* () {
   const output = yield* Output;
   const http = yield* HttpClient;
-  const token = yield* resolveAuthToken.pipe(Effect.orElseSucceed(() => undefined));
+  const token = yield* resolveAuthToken;
   const billing = yield* http
     .request<BillingResponse>({ path: TENANT_BILLING_PATH, token })
     .pipe(Effect.orElseSucceed(() => null));

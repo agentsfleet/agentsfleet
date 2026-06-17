@@ -13,6 +13,5 @@ export interface BrowserShape {
   readonly open: (url: string) => Effect.Effect<boolean>;
 }
 
-export class Browser extends Context.Service<Browser, BrowserShape>()(
-  "agentsfleet/runtime/Browser",
-) {}
+export type Browser = BrowserShape;
+export const Browser = Context.Service<Browser>("agentsfleet/runtime/Browser");

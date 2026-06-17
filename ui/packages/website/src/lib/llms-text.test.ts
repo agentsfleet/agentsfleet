@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INSTALL_COMMAND, DOCS_URL, GITHUB_URL } from "../config";
+import { INSTALL_COMMAND, DOCS_URL, GITHUB_URL, MARKETING_SITE_URL } from "../config";
 import {
   buildLlmsFullText,
   buildLlmsIndexText,
@@ -17,6 +17,7 @@ const inputs = {
   docsUrl: DOCS_URL,
   githubUrl: GITHUB_URL,
   installCommand: INSTALL_COMMAND,
+  siteUrl: MARKETING_SITE_URL,
   runRatePerSecond: RATES_DISPLAY.RUN_RATE_PER_SEC,
   starterCredit: RATES_DISPLAY.STARTER_CREDIT,
   eventRate: RATES_DISPLAY.EVENT_RATE,
@@ -37,6 +38,16 @@ describe("llms text builders", () => {
     expect(body).toContain("[OpenAPI](/openapi.json)");
     expect(body).toContain(`[Source](${GITHUB_URL})`);
     expect(body).toContain(`Install: \`${INSTALL_COMMAND}\``);
+  });
+
+  it("should trim a trailing slash from the site URL when building anchors", () => {
+    const body = buildLlmsIndexText({
+      ...inputs,
+      siteUrl: "https://example.test/",
+    });
+    expect(body).toContain(`https://example.test/#${LOOP_ANCHOR_ID}`);
+    expect(body).toContain("https://example.test/#pricing");
+    expect(body).not.toContain("https://example.test//#");
   });
 
   it("should render llms-full.txt with pillars, loop, sources, and links", () => {

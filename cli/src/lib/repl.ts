@@ -95,6 +95,6 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
   }
 }
 
-export class ReplSignalEmitter
-  extends EventEmitter
-  implements ReplSignalSource {}
+export const ReplSignalEmitter = EventEmitter as {
+  new(): EventEmitter & ReplSignalSource;
+};
