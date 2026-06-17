@@ -33,7 +33,7 @@ This matters architecturally for two reasons. First, the skill artifact is porta
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
-v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet auth login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
+v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice point: it defaults to the hosted endpoint, prompts Clerk OAuth via `agentsfleet login` if the CLI is not authenticated, and proceeds. There is no self-host runbook in v2 and no `--self-host` flag.
 
 This is a deliberate scope cut, not a gap in the architecture. The runtime is already structured so the auth substrate (Clerk OAuth), KMS adapter (cloud KMS), and process orchestration (Fly.io machines) are the only deployment-specific layers — the worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic. **Validating** that on a clean non-Fly Linux host (Clerk shim or local-token auth, a portable KMS adapter, the runner's Landlock+cgroups+bwrap on a vanilla VM, systemd orchestration) is a v3 workstream once v2 has earned the trust to justify the integration burden.
 
@@ -41,7 +41,7 @@ Practically, this means:
 
 - v2 launch claim is **OSS + self-managed + markdown-defined**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.agentsfleet.net` for v2.
-- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours.md`](./office_hours.md) P1 are v3 customers, not v2.
+- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market P1 personas are v3 customers, not v2.
 - self-managed still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md).
 
 ## §8.1 Authoring the agent
@@ -77,7 +77,7 @@ Or run the chain explicitly (skip any step already in place):
 ```bash
 npm install -g @agentsfleet/cli     # CLI binary + bundled samples (postinstall copies to ~/.config/agentsfleet/samples/)
 npx skills add agentsfleet/skills         # symlinks /agentsfleet-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
-agentsfleet auth login                     # Clerk OAuth → token in ~/.config/agentsfleet/auth.json
+agentsfleet login                          # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
 
@@ -86,7 +86,7 @@ The install-skill's first action (§8.2.2 step 1) is a `which agentsfleet && whi
 ### §8.2.2 Per-agent install flow
 
 1. Claude (or another agent), typically driven by the `/agentsfleet-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
-2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, tenant provider readiness, and (M68) free-trial state. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
+2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
 3. The user (or skill) installs or updates the agent through `agentsfleet install --from <path>` or the dashboard install form at `/agents/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/agents`; the API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
 4. The API stores the agent config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).
 5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/agents/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
@@ -109,7 +109,7 @@ All actors flow through the same runtime path. The agent's reasoning loop does n
 
 `type: api` (catch-all JSON ingress at `POST /v1/agents/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
 
-Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the worker telling the user "what I just had to apply got applied" — see [`data_flow.md` §Synthetic system events](./data_flow.md#synthetic-system-events). They surface in the same activity tail and in `agentsfleet events {id} --actor=system`, so the user sees them alongside the work the agent does.
+Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the runtime telling the user "what I just had to apply got applied" — see [`data_flow.md`](./data_flow.md). They surface in the same activity tail and in `agentsfleet events {id} --actor=system`, so the user sees them alongside the work the agent does.
 
 ## §8.4 Working from Claude or the dashboard
 
@@ -186,27 +186,29 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 Two things travel together: the **model** the runner's agent invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
-The install-skill's job in both postures is the same shape: **call `agentsfleet doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `agentsfleet auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+The install-skill's job in both postures is the same shape: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json`, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the sanctioned health check — it verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider or trial posture. If a health check fails (or the CLI is not authenticated) the skill prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Free-trial state comes from `agentsfleet billing show`. The skill never calls the model-caps endpoint directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
 ```
                      PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
                   ─────────────────────────────────       ─────────────────────────────────
-install-skill →   doctor --json                           doctor --json
-                    auth_token_present: true ✓              auth_token_present: true ✓
-                    workspace_bound: true   ✓              workspace_bound: true   ✓
-                    tenant_provider:                       tenant_provider:
-                      {mode=platform,                        {mode=self_managed,
-                       model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
-                       context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
-                  ─ if any auth check fails: print           context_cap_tokens=256000}
-                    `agentsfleet auth login` and STOP. ─    ─ same auth-fail short-circuit ─
+install-skill →   doctor --json (health)                  doctor --json (health)
+                    server_reachable: true  ✓              server_reachable: true  ✓
+                    workspace_selected: true ✓             workspace_selected: true ✓
+                    workspace_binding_valid: ✓             workspace_binding_valid: ✓
+                  ─ if any health check fails: print      ─ same health-fail short-circuit ─
+                    `agentsfleet login` and STOP. ─
+                  tenant provider show --json:            tenant provider show --json:
+                    {mode=platform,                        {mode=self_managed,
+                     model=accounts/fireworks/models/kimi-k2.6,                provider=fireworks,
+                     context_cap_tokens=256000}              model=accounts/.../kimi-k2.6,
+                  (billing show → free-trial state)         context_cap_tokens=256000}
                   branch on mode → write frontmatter      branch on mode → write frontmatter
                   pin into frontmatter (resolved):        pin into frontmatter (sentinels):
                     model: accounts/fireworks/models/kimi-k2.6                model: ""
                     context_cap_tokens: 256000              context_cap_tokens: 0
 
-tenant provider → (nothing — synth-default                → agentsfleet tenant provider set
-set                stays in place)                            --credential account-fireworks-key
+tenant provider → (nothing — synth-default                → agentsfleet tenant provider add
+add                stays in place)                            --credential account-fireworks-key
                                                               → API loads vault row
                                                               → API GETs /_um/.../cap.json
                                                               → upsert tenant_providers row
@@ -233,4 +235,4 @@ L3 run chunking
 
 The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `AgentConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.
+Single source of truth for caps: `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`. Resolved at `tenant provider add` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.

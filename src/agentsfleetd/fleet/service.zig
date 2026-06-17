@@ -177,7 +177,17 @@ fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.Resol
 /// refused the lease upstream — by here `entries` is complete or absent.
 fn resolveExecutionPolicy(hx: Hx, session: *AgentSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret) execution_policy.ExecutionPolicy {
     const alloc = hx.alloc;
-    const budget = context_resolve.resolveContextBudget(session.config.context, session.config.model);
+    // Lease-time overlay (see user_flow.md): sentinel frontmatter (cap 0 /
+    // model "") inherits the cap+model the control plane resolved into
+    // tenant_providers; a real frontmatter value wins. `resolved` outlives the
+    // hx.ok serialization (deinit deferred in issueLease), so the borrowed model
+    // is valid for the response. No resolved provider ⇒ 0/"" ⇒ overlay no-op.
+    const budget = context_resolve.resolveContextBudget(
+        session.config.context,
+        session.config.model,
+        if (resolved) |r| r.context_cap_tokens else 0,
+        if (resolved) |r| r.model else "",
+    );
     var secrets_map: ?std.json.Value = null;
     if (entries) |list| {
         var obj: std.json.ObjectMap = .empty;
