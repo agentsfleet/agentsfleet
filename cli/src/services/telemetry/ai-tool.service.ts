@@ -8,6 +8,7 @@ interface AiToolShape {
   readonly name: Option.Option<string>;
 }
 
-export class AiTool extends Context.Service<AiTool, AiToolShape>()(
+export type AiTool = AiToolShape;
+export const AiTool = Context.Service<AiTool>(
   "agentsfleet/telemetry/AiTool",
-) {}
+);

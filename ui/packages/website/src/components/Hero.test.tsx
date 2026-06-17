@@ -234,10 +234,13 @@ describe("Hero", () => {
 
   it("renders early-access and loop CTAs without replacing the copy-row", () => {
     renderHero();
-    expect(screen.getByTestId("hero-cta-early-access")).toHaveTextContent(
+    const earlyAccess = screen.getByTestId("hero-cta-early-access");
+    expect(earlyAccess).toHaveTextContent(
       HERO_PRIMARY_LABEL,
     );
-    expect(screen.getByTestId("hero-cta-early-access")).toHaveAttribute("href", "/#pricing");
+    expect(earlyAccess.tagName).toBe("BUTTON");
+    expect(earlyAccess).toBeDisabled();
+    expect(earlyAccess).not.toHaveAttribute("href");
     expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
       "href",
@@ -247,14 +250,10 @@ describe("Hero", () => {
     expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
   });
 
-  it("tracks early-access CTA clicks separately from install-copy clicks", () => {
+  it("does not track disabled early-access CTA clicks", () => {
     renderHero();
     fireEvent.click(screen.getByTestId("hero-cta-early-access"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "hero_early_access",
-      surface: "hero",
-      mode: "humans",
-    });
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("renders the animated install Terminal whose Copy yields only the slash command", () => {

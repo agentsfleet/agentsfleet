@@ -18,7 +18,7 @@ export default function CTABlock() {
             {CTA_COPY.lede}
           </p>
           <div className="flex flex-wrap gap-3 items-center">
-            <Button asChild>
+            <Button asChild className="min-h-11">
               <a
                 href={DOCS_QUICKSTART_URL}
                 target="_blank"
@@ -30,7 +30,7 @@ export default function CTABlock() {
                 → read quickstart
               </a>
             </Button>
-            <Button asChild variant="ghost">
+            <Button asChild variant="ghost" className="min-h-11">
               <a
                 href="/#pricing"
                 onClick={() =>

@@ -20,8 +20,13 @@ import { CurrentAnalyticsContext, type AnalyticsContext } from "./analytics-cont
 import { Analytics } from "./analytics.service.ts";
 import { AiTool } from "./ai-tool.service.ts";
 import { aiToolLayer } from "./ai-tool.layer.ts";
-import { TelemetryRuntime } from "./runtime.service.ts";
+import { TelemetryRuntime, type TelemetryRuntime as TelemetryRuntimeValue } from "./runtime.service.ts";
 import { telemetryRuntimeLayer } from "./runtime.layer.ts";
+
+const AI_TOOL_CI = "ci";
+const AI_TOOL_UNKNOWN_NON_INTERACTIVE = "unknown_non_interactive";
+
+type AiToolRuntime = Pick<TelemetryRuntimeValue, "isCi" | "isTty">;
 
 function stripUndefined(
   properties: Record<string, unknown>,
@@ -47,6 +52,16 @@ function resolveGroups(
     return { workspace: context.groups.workspace };
   }
   return undefined;
+}
+
+function resolveAiToolName(
+  name: Option.Option<string>,
+  runtime: AiToolRuntime,
+): string | undefined {
+  if (Option.isSome(name)) return name.value;
+  if (runtime.isCi) return AI_TOOL_CI;
+  if (runtime.isTty) return undefined;
+  return AI_TOOL_UNKNOWN_NON_INTERACTIVE;
 }
 
 const noopAnalytics = Analytics.of({
@@ -88,11 +103,7 @@ export const analyticsLayer = Layer.effect(
         is_first_run: runtime.isFirstRun,
         is_tty: runtime.isTty,
         is_ci: runtime.isCi,
-        ai_tool: Option.match(aiTool.name, {
-          onNone: () =>
-            runtime.isCi ? "ci" : runtime.isTty ? undefined : "unknown_non_interactive",
-          onSome: (name) => name,
-        }),
+        ai_tool: resolveAiToolName(aiTool.name, runtime),
         os: runtime.os,
         arch: runtime.arch,
         cli_version: runtime.cliVersion,
@@ -163,4 +174,5 @@ export const analyticsInternals = {
   stripUndefined,
   contextProperties,
   resolveGroups,
+  resolveAiToolName,
 } as const;

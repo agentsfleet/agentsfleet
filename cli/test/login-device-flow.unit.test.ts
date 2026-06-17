@@ -48,6 +48,21 @@ const outputNoop: Layer.Layer<Output> = Layer.succeed(Output, {
   printTable: () => Effect.void,
 });
 
+const outputRecording = (rec: { warnings: string[] }): Layer.Layer<Output> =>
+  Layer.succeed(Output, {
+    intro: () => Effect.void,
+    info: () => Effect.void,
+    success: () => Effect.void,
+    warn: (msg) => Effect.sync(() => rec.warnings.push(msg)),
+    error: () => Effect.void,
+    outro: () => Effect.void,
+    printJson: () => Effect.void,
+    printJsonErr: () => Effect.void,
+    printKeyValue: () => Effect.void,
+    printSection: () => Effect.void,
+    printTable: () => Effect.void,
+  });
+
 const inputReturning = (answer: string): Layer.Layer<Input> =>
   Layer.succeed(Input, { readLine: () => Effect.sync(() => answer) });
 
@@ -297,14 +312,16 @@ describe("decryptIssuedToken — opaque-channel failure", () => {
 describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
   test("two wrong codes surface VerificationFailedError after the retry prompt", async () => {
     const keypair = await generateCliKeypair();
+    const rec = { warnings: [] as string[] };
     const exit = await Effect.runPromiseExit(
       verifyAndDecryptWithRetry("sess_retry", keypair, { noInput: false }).pipe(
         Effect.provide(failingHttp(400, "UZ-AUTH-010")),
         Effect.provide(inputReturning("000000")),
-        Effect.provide(outputNoop),
+        Effect.provide(outputRecording(rec)),
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
+    expect(rec.warnings).toEqual(["verification code didn't match — one more try"]);
   });
 
   test("non-6-digit and empty entries re-prompt locally with no /verify round-trip", async () => {

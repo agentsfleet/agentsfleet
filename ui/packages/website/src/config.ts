@@ -14,6 +14,7 @@ export const DOCS_URL = "https://docs.agentsfleet.net";
 export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
 export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";
 export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
+export const MARKETING_SITE_URL = "https://agentsfleet.net";
 export const TEAM_EMAIL = "team@agentsfleet.net";
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
 

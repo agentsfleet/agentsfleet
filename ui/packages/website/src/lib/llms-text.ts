@@ -16,6 +16,7 @@ export type LlmsTextInputs = {
   docsUrl: string;
   githubUrl: string;
   installCommand: string;
+  siteUrl: string;
   runRatePerSecond: string;
   starterCredit: string;
   eventRate: string;
@@ -25,18 +26,20 @@ export function buildLlmsIndexText({
   docsUrl,
   githubUrl,
   installCommand,
+  siteUrl,
   runRatePerSecond,
   starterCredit,
   eventRate,
 }: LlmsTextInputs): string {
+  const root = siteUrl.replace(/\/$/, "");
   return [
     `# ${PRODUCT_NAME}`,
     "",
     `> ${MARKETING_POSITIONING_SUMMARY}`,
     "",
     "## Product",
-    `- [How it works](https://agentsfleet.net/#${LOOP_ANCHOR_ID}): the compounding loop`,
-    `- [Pricing](https://agentsfleet.net/#pricing): ${runRatePerSecond} run, ${starterCredit} starter credit, events ${eventRate}`,
+    `- [How it works](${root}/#${LOOP_ANCHOR_ID}): the compounding loop`,
+    `- [Pricing](${root}/#pricing): ${runRatePerSecond} run, ${starterCredit} starter credit, events ${eventRate}`,
     "",
     "## Resources",
     `- [Docs](${docsUrl})`,

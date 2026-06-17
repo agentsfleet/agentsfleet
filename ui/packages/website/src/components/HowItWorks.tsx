@@ -2,8 +2,8 @@ import { Card, DisplayLG, SectionLabel } from "@agentsfleet/design-system";
 import { HOW_IT_WORKS_HEADING, LOOP_STEPS } from "../lib/marketing-copy";
 
 /*
- * HowItWorks — 3-step mono numbered cards. No counter pseudo-element,
- * no orange glow on hover. Border-only elevation.
+ * HowItWorks — LOOP_STEPS-driven mono numbered cards. No counter
+ * pseudo-element, no orange glow on hover. Border-only elevation.
  */
 export default function HowItWorks() {
   return (

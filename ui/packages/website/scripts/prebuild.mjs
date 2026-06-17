@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 //
-// Pre-build copier — places `public/openapi.json` (the canonical OpenAPI
-// bundle at repo root) into the website package's `public/` so Vite picks
-// it up at static-asset bundling time.
+// Pre-build website asset prep — places `public/openapi.json` (the canonical
+// OpenAPI bundle at repo root) into the website package's `public/` and writes
+// the llms.txt / llms-full.txt text surfaces so Vite picks them up at
+// static-asset bundling time.
 //
 // Why a script file rather than an inline `node -e` in package.json?
 // `bun run <script>` in a workspace package runs the script with
@@ -14,7 +15,7 @@
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { DOCS_URL, GITHUB_URL, INSTALL_COMMAND } from "../src/config";
+import { DOCS_URL, GITHUB_URL, INSTALL_COMMAND, MARKETING_SITE_URL } from "../src/config";
 import { buildLlmsFullText, buildLlmsIndexText } from "../src/lib/llms-text";
 import { RATES_DISPLAY } from "../src/lib/rates";
 
@@ -40,6 +41,7 @@ const llmsInputs = {
   docsUrl: DOCS_URL,
   githubUrl: GITHUB_URL,
   installCommand: INSTALL_COMMAND,
+  siteUrl: MARKETING_SITE_URL,
   runRatePerSecond: RATES_DISPLAY.RUN_RATE_PER_SEC,
   starterCredit: RATES_DISPLAY.STARTER_CREDIT,
   eventRate: RATES_DISPLAY.EVENT_RATE,

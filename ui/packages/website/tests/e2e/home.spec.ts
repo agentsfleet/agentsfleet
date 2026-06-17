@@ -35,7 +35,10 @@ test.describe("Home page", () => {
     await expect(pill).toHaveAttribute("href", "/pricing");
     await expect(pill).toContainText(/Free until July 31, 2026/);
 
-    await expect(page.getByTestId("hero-cta-early-access")).toContainText("Get early access");
+    const earlyAccess = page.getByTestId("hero-cta-early-access");
+    await expect(earlyAccess).toContainText("Get early access");
+    await expect(earlyAccess).toBeDisabled();
+    await expect(earlyAccess).not.toHaveAttribute("href", /./);
     await expect(page.getByTestId("hero-cta-secondary")).toContainText("See the loop");
   });
 
@@ -48,6 +51,8 @@ test.describe("Home page", () => {
   test("topbar renders the install CTA + brand-mark pulse", async ({ page }) => {
     const cta = page.getByTestId("header-install-cta");
     await expect(cta).toBeVisible();
+    await expect(cta).toBeDisabled();
+    await expect(cta).not.toHaveAttribute("href", /./);
 
     const brandMark = page.getByTestId("brand-mark");
     await expect(brandMark).toHaveAttribute("data-live", "true");
@@ -67,6 +72,30 @@ test.describe("Home page", () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(overflowsX).toBe(false);
+  });
+
+  test("pipeline cards stay visible without horizontal overflow on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("pipeline-diagram")).toBeVisible();
+    for (const id of ["signals", "telemetry", "code", "control-plane"]) {
+      await expect(page.getByTestId(`pipeline-source-${id}`)).toBeVisible();
+    }
+    await expect(page.getByTestId("pipeline-ledger")).toBeVisible();
+    const overflowsX = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflowsX).toBe(false);
+  });
+
+  test("pipeline approval gate remains static for reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const gate = page.getByTestId("pipeline-human-gate");
+    await expect(gate).toBeVisible();
+    await expect(gate).not.toHaveAttribute("data-live", "true");
+    const duration = await gate.evaluate(
+      (el) => getComputedStyle(el).animationDuration,
+    );
+    expect(["0s", "0ms"]).toContain(duration);
   });
 
   test("renders how it works steps", async ({ page }) => {

@@ -9,8 +9,7 @@ const analytics = vi.hoisted(() => ({
 vi.mock("./analytics/posthog", () => analytics);
 
 import App from "./App";
-import { APP_BASE_URL } from "./config";
-import { HERO_HEADLINE } from "./lib/marketing-copy";
+import { HERO_HEADLINE, HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
 
 function renderApp(initialRoute = "/") {
   const router = createMemoryRouter(
@@ -50,23 +49,19 @@ describe("App", () => {
     );
   });
 
-  it("renders the early-access CTA in topbar pointing at APP_BASE_URL", () => {
+  it("renders the early-access CTA in topbar disabled", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
-    expect(cta).toHaveAttribute("href", APP_BASE_URL);
-    expect(cta.textContent).toMatch(/get early access/i);
+    expect(cta.tagName).toBe("BUTTON");
+    expect(cta).toBeDisabled();
+    expect(cta).not.toHaveAttribute("href");
+    expect(cta.textContent).toContain(HERO_PRIMARY_LABEL.toLowerCase());
   });
 
-  it("clicking the early-access CTA fires trackSignupStarted with header_install source", () => {
+  it("clicking the disabled early-access CTA does not track signup", () => {
     renderApp();
     fireEvent.click(screen.getByTestId("header-install-cta"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "header_install",
-        surface: "header",
-        mode: "humans",
-      }),
-    );
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("clicking the header docs link fires trackNavigationClicked with header_nav_docs source", () => {

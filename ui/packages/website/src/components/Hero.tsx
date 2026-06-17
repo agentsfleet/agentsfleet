@@ -42,7 +42,7 @@ export default function Hero() {
   const [toast, setToast] = useState<null | "copied" | "manual">(null);
   const toastTimer = useResettableTimeout();
   // Toast keeps its children mounted through the fade-out window so the
-  // text fades rather than snapping to empty (design-system contract —
+  // text fades rather than snapping to empty (design-system behavior —
   // Toast.test.tsx "keeps children mounted during the fade window"). Hold
   // the last shown kind so children + severity stay stable while `visible`
   // is false and the fade plays; reading `toast` directly would reset both
@@ -93,7 +93,7 @@ export default function Hero() {
               target: "pricing",
             })
           }
-          className="inline-flex w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text hover:text-text transition-colors"
+          className="inline-flex min-h-11 w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text hover:text-text transition-colors"
           data-testid="hero-promo-pill"
         >
           <span className="rounded-full bg-evidence text-background px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
@@ -143,7 +143,7 @@ export default function Hero() {
               size="sm"
               onClick={() => void onCopyInstall()}
               data-testid="hero-cta-primary"
-              className="ml-auto shrink-0 h-auto py-0.5 font-mono text-label"
+              className="ml-auto min-h-11 shrink-0 font-mono text-label"
               aria-label="Copy the install command"
             >
               Copy
@@ -152,19 +152,13 @@ export default function Hero() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              asChild
+              disabled
+              className="min-h-11"
               data-testid="hero-cta-early-access"
-              onClick={() =>
-                trackSignupStarted({
-                  source: "hero_early_access",
-                  surface: "hero",
-                  mode: "humans",
-                })
-              }
             >
-              <a href="/#pricing">→ {HERO_PRIMARY_LABEL}</a>
+              → {HERO_PRIMARY_LABEL}
             </Button>
-            <Button asChild variant="ghost" data-testid="hero-cta-secondary">
+            <Button asChild variant="ghost" className="min-h-11" data-testid="hero-cta-secondary">
               <a href={`/#${LOOP_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
             </Button>
             <Toast
@@ -185,7 +179,7 @@ export default function Hero() {
           copyable
           animate
           copyText={INSTALL_SKILL_COMMAND}
-          className="max-w-wide"
+          className="hero-terminal-copy-target max-w-wide"
         >
           {/* Animated, multi-colour demo of the one-command install
             * (curl → agentsfleet + skill bundle), ending in the next-step

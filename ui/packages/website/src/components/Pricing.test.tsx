@@ -104,10 +104,22 @@ describe("Pricing component", () => {
     );
   });
 
-  it("renders usage early-access CTA pointing at APP_BASE_URL", () => {
+  it("enabled enterprise contact CTA still tracks signup intent", () => {
+    renderPricing();
+    fireEvent.click(screen.getByTestId("pricing-cta-enterprise"));
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "pricing_enterprise",
+      surface: "pricing",
+      mode: "humans",
+    });
+  });
+
+  it("renders usage early-access CTA disabled", () => {
     renderPricing();
     const cta = screen.getByTestId("pricing-cta-usage");
-    expect(cta).toHaveAttribute("href", "https://app.dev.agentsfleet.net");
+    expect(cta.tagName).toBe("BUTTON");
+    expect(cta).toBeDisabled();
+    expect(cta).not.toHaveAttribute("href");
     expect(cta.textContent).toMatch(/get early access/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
@@ -117,14 +129,10 @@ describe("Pricing component", () => {
     expect(screen.getByTestId("pricing-cta-usage").className).toMatch(/\bw-full\b/);
   });
 
-  it("early-access CTA fires trackSignupStarted with pricing usage source", () => {
+  it("disabled early-access CTA does not track signup", () => {
     renderPricing();
     fireEvent.click(screen.getByTestId("pricing-cta-usage"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "pricing_usage",
-      surface: "pricing",
-      mode: "humans",
-    });
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("does not render the old Hobby/Scale tier ladder", () => {

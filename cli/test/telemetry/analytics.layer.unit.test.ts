@@ -104,9 +104,46 @@ const ENV_KEYS = [
   "CIRCLECI",
   "JENKINS_URL",
   "BUILDKITE",
+  "AI_AGENT",
+  "CODEX_SANDBOX",
+  "CODEX_CI",
+  "CODEX_THREAD_ID",
+  "CURSOR_TRACE_ID",
+  "CURSOR_AGENT",
+  "CURSOR_EXTENSION_HOST_ROLE",
+  "GEMINI_CLI",
+  "ANTIGRAVITY_AGENT",
+  "AUGMENT_AGENT",
+  "OPENCODE_CLIENT",
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CLAUDE_CODE_IS_COWORK",
+  "REPL_ID",
+  "COPILOT_MODEL",
+  "COPILOT_ALLOW_ALL",
+  "COPILOT_GITHUB_TOKEN",
 ] as const;
+const STDOUT_IS_TTY_PROPERTY = "isTTY";
 const saved: Record<string, string | undefined> = {};
 let tmpDir: string | undefined;
+
+function forceStdoutIsTty(value: boolean): () => void {
+  const original = process.stdout.isTTY;
+  Object.defineProperty(process.stdout, STDOUT_IS_TTY_PROPERTY, {
+    configurable: true,
+    value,
+  });
+  return () => {
+    if (original === undefined) {
+      Reflect.deleteProperty(process.stdout, STDOUT_IS_TTY_PROPERTY);
+      return;
+    }
+    Object.defineProperty(process.stdout, STDOUT_IS_TTY_PROPERTY, {
+      configurable: true,
+      value: original,
+    });
+  };
+}
 
 beforeEach(() => {
   for (const k of ENV_KEYS) saved[k] = process.env[k];
@@ -234,6 +271,48 @@ describe("analyticsLayer", () => {
     expect(evt.properties?.flag_values).toEqual({ a: 1 });
     expect(evt.properties?.custom).toBe("x");
     expect(Object.hasOwn(evt.properties ?? {}, "drop")).toBe(false);
+  });
+
+  it("capture records the non-interactive fallback when no agent is detected", async () => {
+    grantConsent();
+    const program = Effect.scoped(
+      Effect.gen(function* () {
+        const svc = yield* getAnalytics();
+        yield* svc.capture("evt");
+      }),
+    );
+    await Effect.runPromise(program);
+    expect(STUB.captured[0]?.properties?.ai_tool).toBe("unknown_non_interactive");
+  });
+
+  it("capture records the continuous-integration fallback when no agent is detected", async () => {
+    grantConsent();
+    process.env.CI = "1";
+    const program = Effect.scoped(
+      Effect.gen(function* () {
+        const svc = yield* getAnalytics();
+        yield* svc.capture("evt");
+      }),
+    );
+    await Effect.runPromise(program);
+    expect(STUB.captured[0]?.properties?.ai_tool).toBe("ci");
+  });
+
+  it("capture omits ai_tool for an interactive terminal when no agent is detected", async () => {
+    grantConsent();
+    const restoreStdout = forceStdoutIsTty(true);
+    try {
+      const program = Effect.scoped(
+        Effect.gen(function* () {
+          const svc = yield* getAnalytics();
+          yield* svc.capture("evt");
+        }),
+      );
+      await Effect.runPromise(program);
+      expect(Object.hasOwn(STUB.captured[0]?.properties ?? {}, "ai_tool")).toBe(false);
+    } finally {
+      restoreStdout();
+    }
   });
 
   it("capture without context defaults distinctId to runtime deviceId", async () => {

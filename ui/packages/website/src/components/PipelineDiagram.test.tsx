@@ -27,11 +27,12 @@ describe("PipelineDiagram", () => {
     expect(ledger).toHaveTextContent("core.agent_events");
   });
 
-  it("should render the human approval gate as the only live pulse inside the ledger", () => {
+  it("should render the human approval gate as a static ledger hold", () => {
     render(<PipelineDiagram />);
     const gate = screen.getByTestId("pipeline-human-gate");
     expect(gate).toHaveTextContent(/awaiting human approval/i);
-    expect(gate).toHaveAttribute("data-live", "true");
+    expect(gate).toHaveTextContent("hold");
+    expect(gate).not.toHaveAttribute("data-live");
   });
 
   it("should render all source categories with local logo assets only", () => {
@@ -52,5 +53,9 @@ describe("PipelineDiagram", () => {
     expect(imageSources).toEqual(SOURCE_CATEGORIES.map((category) => category.icon));
     expect(imageSources.every((src) => src?.startsWith("/logos/"))).toBe(true);
     expect(imageSources.some((src) => /^https?:\/\//.test(src ?? ""))).toBe(false);
+    for (const img of strip.querySelectorAll("img")) {
+      expect(img).toHaveAttribute("loading", "lazy");
+      expect(img).toHaveAttribute("decoding", "async");
+    }
   });
 });

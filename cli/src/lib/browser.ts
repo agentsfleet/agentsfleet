@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 export interface BrowserResolutionOk {
   argv: [string, ...string[]];
@@ -49,13 +49,10 @@ function looksLikeWsl(env: NodeJS.ProcessEnv): boolean {
 }
 
 function commandExists(command: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = spawn("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
-      stdio: STDIO_IGNORE,
-    });
-    probe.on("exit", (code) => resolve(code === 0));
-    probe.on(STATUS_ERROR, () => resolve(false));
+  const probe = spawnSync("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
+    stdio: STDIO_IGNORE,
   });
+  return Promise.resolve(probe.status === 0);
 }
 
 export async function resolveBrowserCommand(

@@ -31,6 +31,7 @@ interface AnalyticsShape {
   ) => Effect.Effect<void>;
 }
 
-export class Analytics extends Context.Service<Analytics, AnalyticsShape>()(
+export type Analytics = AnalyticsShape;
+export const Analytics = Context.Service<Analytics>(
   "agentsfleet/telemetry/Analytics",
-) {}
+);
