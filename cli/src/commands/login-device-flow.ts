@@ -197,7 +197,8 @@ const promptVerificationCode = (
     const input = yield* Input;
     const output = yield* Output;
     yield* output.info("");
-    for (;;) {
+    let code = "";
+    while (!VERIFICATION_CODE_RE.test(code)) {
       const raw = yield* input.readLine(
         "Enter the 6-digit verification code shown in your browser: ",
         signal,
@@ -210,10 +211,12 @@ const promptVerificationCode = (
           }),
         );
       }
-      const code = raw.trim();
-      if (VERIFICATION_CODE_RE.test(code)) return code;
-      yield* output.warn("that isn't a 6-digit code — enter the 6 digits shown in your browser");
+      code = raw.trim();
+      if (!VERIFICATION_CODE_RE.test(code)) {
+        yield* output.warn("that isn't a 6-digit code — enter the 6 digits shown in your browser");
+      }
     }
+    return code;
   });
 
 const verifyAndDecrypt = (
@@ -251,8 +254,8 @@ export const verifyAndDecryptWithRetry = (
       );
     }
     const output = yield* Output;
-    let strikesLeft = MAX_CLI_VERIFY_ATTEMPTS;
-    for (;;) {
+    const submit = (strikesLeft: number): Effect.Effect<string, CliError, HttpClient | Input | Output> =>
+      Effect.gen(function* () {
       const code = yield* promptVerificationCode(opts.signal);
       const attempt = yield* verifyAndDecrypt(sessionId, keypair, code).pipe(
         Effect.map((token) => ({ kind: STATUS_OK, token })),
@@ -261,10 +264,12 @@ export const verifyAndDecryptWithRetry = (
         ),
       );
       if (attempt.kind === STATUS_OK) return attempt.token;
-      strikesLeft -= 1;
-      if (strikesLeft <= 0) return yield* Effect.fail(attempt.err);
+      const remaining = strikesLeft - 1;
+      if (remaining <= 0) return yield* Effect.fail(attempt.err);
       yield* output.warn("verification code didn't match — one more try");
-    }
+        return yield* submit(remaining);
+      });
+    return yield* submit(MAX_CLI_VERIFY_ATTEMPTS);
   });
 const HTTP_METHOD_POST = "POST" as const;
 const STATUS_OK = "ok" as const;

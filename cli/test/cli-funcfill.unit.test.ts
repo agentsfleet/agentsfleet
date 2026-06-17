@@ -53,6 +53,17 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
     });
   });
 
+  test("root-level version returns Commander's own exit code", async () => {
+    await withFreshStateDir(async () => {
+      const code = await runCli(["--version"], {
+        stdout: makeNoop(),
+        stderr: makeNoop(),
+        env: { NO_COLOR: "1" },
+      });
+      expect(code).toBe(0);
+    });
+  });
+
   test("auth-required command short-circuits to exit 1 via state.exitCode", async () => {
     // The preAction auth-guard sets state.exitCode = 1 and throws a
     // CommanderError(code "auth.required"). exitFromCommanderError sees

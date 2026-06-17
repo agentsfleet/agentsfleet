@@ -216,4 +216,25 @@ describe("credentialAddEffectFromFlags JSON-mode already-exists", () => {
     expect(parsed.status).toBe("skipped");
     expect(parsed.reason).toBe("already_exists");
   });
+
+  test("emits JSON stored payload after posting a new credential", async () => {
+    const captured: string[] = [];
+    const requests: Array<{ path: string; method?: string }> = [];
+    const exit = await runAdd(
+      { name: "k", data: '{"x":1}' },
+      captured,
+      true,
+      (input) => {
+        requests.push(input);
+        if (input.method === "GET") return Effect.succeed({ credentials: [] });
+        return Effect.succeed({});
+      },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "POST"]);
+    const found = captured.find((s) => s.includes("stored"));
+    expect(found).toBeDefined();
+    const parsed = JSON.parse(found ?? "{}") as { status?: string; name?: string };
+    expect(parsed).toEqual({ status: "stored", name: "k" });
+  });
 });

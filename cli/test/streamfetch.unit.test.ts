@@ -10,6 +10,7 @@ interface FakeReader {
 }
 interface FakeStream { getReader(): FakeReader }
 type FakeResponse = ResponseLike & { body?: FakeStream | null };
+const STREAM_URL = "https://api.test.com/v1/x";
 
 function sseResponseFrom(sseBody: string, status = 200): FakeResponse {
   const encoder = new TextEncoder();
@@ -132,6 +133,38 @@ describe("streamFetch — edge cases", () => {
 // ── T3: Error paths ─────────────────────────────────────────────────────────
 
 describe("streamFetch — error paths", () => {
+  test("missing fetch implementation fails before building a request", async () => {
+    const savedFetch = globalThis.fetch;
+    try {
+      (globalThis as { fetch?: unknown }).fetch = undefined;
+      await streamFetch(STREAM_URL, {}, {}, () => {}, { fetchImpl: undefined });
+      expect(true).toBe(false);
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).code).toBe("NO_FETCH");
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+
+  test("successful response without a stream body fails as not streamable", async () => {
+    const fetchImpl = asFetchImpl(async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
+      text: async () => "",
+      body: null,
+    }));
+    try {
+      await streamFetch(STREAM_URL, {}, {}, () => {}, { fetchImpl });
+      expect(true).toBe(false);
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).code).toBe("NO_STREAM_BODY");
+    }
+  });
+
   test("non-200 response throws ApiError with parsed error code", async () => {
     const fetchImpl = asFetchImpl(async () => ({
       ok: false,

@@ -227,6 +227,38 @@ describe("withCommandInstrumentation", () => {
     expect(analytics.captured[0]?.properties.flag_values).toEqual({ mode: "docker" });
   });
 
+  it("unwraps Option.none flag values to omitted analytics fields", async () => {
+    setArgv(["login", "--token"]);
+    const analytics = mockContextualAnalytics();
+    const program = Effect.void.pipe(
+      withCommandInstrumentation({
+        flags: { token: Option.none<string>() },
+        allowedFlagValues: ["token"],
+      }),
+      Effect.provide(analytics.layer),
+      Effect.provide(commandLayer(["login"])),
+    );
+    await Effect.runPromise(program);
+    expect(analytics.captured[0]?.properties.flags_used).toEqual(["token"]);
+    expect(analytics.captured[0]?.properties.flag_values).toEqual({});
+  });
+
+  it("unwraps Option.some flag values into analytics fields", async () => {
+    setArgv(["login", "--token"]);
+    const analytics = mockContextualAnalytics();
+    const program = Effect.void.pipe(
+      withCommandInstrumentation({
+        flags: { token: Option.some("token-fixture") },
+        allowedFlagValues: ["token"],
+      }),
+      Effect.provide(analytics.layer),
+      Effect.provide(commandLayer(["login"])),
+    );
+    await Effect.runPromise(program);
+    expect(analytics.captured[0]?.properties.flags_used).toEqual(["token"]);
+    expect(analytics.captured[0]?.properties.flag_values).toEqual({ token: "token-fixture" });
+  });
+
   it("collapses duplicate --flag occurrences in flags_used to a single sorted entry", async () => {
     setArgv(["start", "--exclude=a", "--exclude", "b", "--exclude=c"]);
     const analytics = mockContextualAnalytics();
