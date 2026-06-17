@@ -130,7 +130,6 @@ pub const ERR_PROVIDER_CREDENTIAL_NOT_FOUND = "UZ-PROVIDER-002";
 pub const ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED = "UZ-PROVIDER-003";
 pub const ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE = "UZ-PROVIDER-004";
 // MEMORY
-pub const ERR_MEM_SCOPE = "UZ-MEM-001";
 pub const ERR_MEM_AGENTSFLEET_NOT_FOUND = "UZ-MEM-002";
 pub const ERR_MEM_UNAVAILABLE = "UZ-MEM-003";
 // GATE
@@ -150,6 +149,7 @@ pub const ERR_EXEC_OOM_KILL = "UZ-EXEC-004";
 pub const ERR_EXEC_RESOURCE_KILL = "UZ-EXEC-005";
 pub const ERR_EXEC_TRANSPORT_LOSS = "UZ-EXEC-006";
 pub const ERR_EXEC_LEASE_EXPIRED = "UZ-EXEC-007";
+pub const ERR_EXEC_RENEWAL_TERMINATED = "UZ-EXEC-008";
 pub const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
 pub const ERR_EXEC_CRASH = "UZ-EXEC-010";
 pub const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
@@ -211,6 +211,7 @@ pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this in
 pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
 pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
+pub const MSG_APPROVAL_CONDITION_INVALID = "Gate condition is invalid. Use field == 'value' or field != 'value' (single-quoted).";
 // Webhook signature messages
 // Webhook constants
 pub const BEARER_PREFIX = "Bearer ";

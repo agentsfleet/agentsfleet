@@ -318,15 +318,10 @@ pub fn mapError(err: anyerror) types.FailureClass {
     };
 }
 
-pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
-    return switch (failure) {
-        .startup_posture => ERR_EXEC_RUNNER_AGENT_INIT,
-        .timeout_kill => client_errors.ERR_EXEC_TIMEOUT_KILL,
-        .oom_kill => client_errors.ERR_EXEC_OOM_KILL,
-        .runner_crash => ERR_EXEC_RUNNER_AGENT_RUN,
-        else => ERR_EXEC_RUNNER_AGENT_RUN,
-    };
-}
+/// Canonical `FailureClass` → `UZ-EXEC-*` error code. Lives in `client_errors`
+/// (colocated with the code constants, kept out of this file for RULE FLL) and
+/// re-exported here so call sites and tests keep using `runner.errorCodeForFailure`.
+pub const errorCodeForFailure = client_errors.errorCodeForFailure;
 
 fn elapsedSeconds(start_ms: i64) u64 {
     const elapsed_ms = clock.nowMillis() - start_ms;

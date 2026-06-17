@@ -7,6 +7,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
+const gate_condition = @import("gate_condition.zig");
 const logging = @import("log");
 const log = logging.scoped(.agent_config_gates);
 const MAX_BUDGET_UNITS = 10000;
@@ -91,6 +92,17 @@ pub fn parseGatePolicy(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Err
 pub fn freeGatePolicy(alloc: Allocator, policy: GatePolicy) void {
     freeGateRules(alloc, policy.rules);
     alloc.free(policy.anomaly_rules);
+}
+
+/// Write-time validation: the first gate-rule condition that is not a parseable
+/// expression (gate_condition.isValid), else null. The runtime parser stays
+/// lenient; create/patch call this to reject a bad condition with UZ-APPROVAL-005.
+pub fn firstInvalidCondition(rules: []const GateRule) ?[]const u8 {
+    for (rules) |rule| {
+        const c = rule.condition orelse continue;
+        if (!gate_condition.isValid(c)) return c;
+    }
+    return null;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────

@@ -21,11 +21,19 @@ pub const ExecutionResult = contract_execution_result.ExecutionResult;
 /// scratch writes without starving a legitimate build/checkout.
 const DEFAULT_DISK_WRITE_LIMIT_MB: u64 = 1024;
 
+/// Default per-lease process/thread (PID) ceiling — bounds a fork bomb / runaway
+/// spawns while leaving generous headroom for a multi-process tool run (e.g. the
+/// bash tool shelling out). A fork past the cap fails with EAGAIN (never a kill)
+/// and bumps cgroup pids.events `max`, which the classifier reads to attribute a
+/// resulting failure to resource exhaustion.
+const DEFAULT_PIDS_LIMIT: u64 = 512;
+
 /// Resource caps enforced by the host backend.
 pub const ResourceLimits = struct {
     memory_limit_mb: u64 = 512,
     cpu_limit_percent: u64 = 100,
     disk_write_limit_mb: u64 = DEFAULT_DISK_WRITE_LIMIT_MB,
+    pids_limit: u64 = DEFAULT_PIDS_LIMIT,
     network_egress_allowed: bool = false,
 };
 

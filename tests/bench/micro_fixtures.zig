@@ -52,8 +52,7 @@ pub const ROUTE_PATHS = [_][]const u8{
 pub const ERROR_CODES = [_][]const u8{
     "UZ-REQ-001",      "UZ-REQ-002",    "UZ-AUTH-001",           "UZ-AUTH-002",         "UZ-AUTH-003",
     "UZ-AUTH-004",     "UZ-AUTH-005",   "UZ-AUTH-006",           "UZ-INTERNAL-001",     "UZ-INTERNAL-002",
-    "UZ-INTERNAL-003", "UZ-UUIDV7-003", "UZ-UUIDV7-005",         "UZ-UUIDV7-009",       "UZ-UUIDV7-010",
-    "UZ-UUIDV7-011",   "UZ-UUIDV7-012",
+    "UZ-INTERNAL-003", "UZ-UUIDV7-009",
     // Unknowns — exercise the StaticStringMap miss path.
     "UZ-DOES-NOT-EXIST-001", "UZ-ALSO-MISSING-002",
 };

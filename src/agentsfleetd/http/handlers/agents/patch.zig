@@ -60,6 +60,7 @@ const TxnOutcome = union(enum) {
     not_found,
     invalid_transition,
     invalid_trigger_markdown,
+    invalid_gate_condition,
     invalid_source_markdown,
     invalid_required_tags, // SKILL.md `tags:` outside placement bounds (UZ-REQ-001)
     name_mismatch,
@@ -125,6 +126,7 @@ pub fn innerPatchAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8, ag
         .not_found => return hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND),
         .invalid_transition => return hx.fail(ec.ERR_AGENTSFLEET_ALREADY_TERMINAL, "Status transition not allowed from current state"),
         .invalid_trigger_markdown, .invalid_source_markdown => return hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_INVALID_CONFIG),
+        .invalid_gate_condition => return hx.fail(ec.ERR_APPROVAL_CONDITION_INVALID, ec.MSG_APPROVAL_CONDITION_INVALID),
         .invalid_required_tags => return hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
         .name_mismatch => return hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH),
         .lock_timeout => {
@@ -260,6 +262,17 @@ fn patchAgentInTxn(
     }
 
     const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
+
+    // UZ-APPROVAL-005: reject a malformed gate condition on the to-be-persisted
+    // config_json (markdown or direct path); lenient parse, non-gate fall-through.
+    if (new_config_json) |cj| {
+        if (agent_config.parseAgentConfig(alloc, cj)) |cfg| {
+            defer cfg.deinit(alloc);
+            if (cfg.gates) |g| if (agent_config.firstInvalidGateCondition(g.rules) != null)
+                return .{ .invalid_gate_condition = {} };
+        } else |err| if (err == error.OutOfMemory) return err;
+    }
+
     const new_name: ?[]const u8 = if (parsed_trigger) |pt| pt.config.name else null;
 
     const now_ms = clock.nowMillis();

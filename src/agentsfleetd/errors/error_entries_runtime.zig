@@ -32,6 +32,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-005", .internal_server_error, "Execution resource kill", "Execution exceeded resource limits and was killed."),
     e("UZ-EXEC-006", .internal_server_error, "Execution transport loss", "Connection to execution transport was lost."),
     e("UZ-EXEC-007", .internal_server_error, "Execution lease expired", "Execution lease expired. The task took too long to complete."),
+    e("UZ-EXEC-008", .internal_server_error, "Execution renewal-terminated", "The control plane stopped the lease mid-run (lease lost, max-runtime cap, or no credits). A policy stop, kept distinct from a wall-clock timeout (UZ-EXEC-003) for triage and billing."),
     e("UZ-EXEC-009", .internal_server_error, "Execution startup posture failure", "Execution startup posture check failed. Verify runner security config."),
     e("UZ-EXEC-010", .internal_server_error, "Execution crash", "The execution process crashed. Check logs for details."),
     e("UZ-EXEC-011", .forbidden, "Landlock policy deny", "Landlock policy denied the filesystem operation."),
@@ -48,8 +49,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-APPROVAL-005", .bad_request, "Approval condition invalid", "Gate condition expression is invalid. Supported operators: == and != with single-quoted values."),
     e("UZ-APPROVAL-006", .conflict, "Approval already resolved", "Resolved earlier by Slack, dashboard, or auto-timeout. Original outcome + resolver in body."),
     // ── MEMORY ───────────────────────────────────────────────────────────────
-    e("UZ-MEM-001", .forbidden, "Memory scope denied", "Memory request targets an agent that belongs to a different workspace. " ++
-        "Each agent's memory is scoped to its own agent_id; cross-agent access is not permitted."),
     e("UZ-MEM-002", .not_found, "Agent not found for memory op", "The agent_id does not exist or does not belong to the requesting workspace. " ++
         "Verify the agent_id and workspace scope."),
     e("UZ-MEM-003", .service_unavailable, "Memory backend unavailable", "The memory backend (Postgres memory schema) is unreachable. " ++

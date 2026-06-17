@@ -17,6 +17,7 @@ const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
 const id_format = @import("../types/id_format.zig");
 const config_gates = @import("config_gates.zig");
+const gate_condition = @import("gate_condition.zig");
 
 const approval_gate_db = @import("approval_gate_db.zig");
 const approval_gate_anomaly = @import("approval_gate_anomaly.zig");
@@ -114,30 +115,18 @@ fn evaluateCondition(condition: []const u8, context: ?std.json.Value) bool {
         else => return true,
     };
 
-    if (parseConditionParts(condition, " == ")) |parts| {
-        const actual = getContextField(obj, parts.field) orelse return true;
-        return std.mem.eql(u8, actual, parts.value);
-    }
-    if (parseConditionParts(condition, " != ")) |parts| {
-        const actual = getContextField(obj, parts.field) orelse return true;
-        return !std.mem.eql(u8, actual, parts.value);
+    if (gate_condition.parse(condition)) |c| {
+        const actual = getContextField(obj, c.field) orelse return true;
+        const matched = std.mem.eql(u8, actual, c.value);
+        return if (c.negate) !matched else matched;
     }
 
-    // Invalid condition — treat as match (safe default: gate fires).
+    // Operator-less condition — fail safe (gate fires). Parse-time validation
+    // (config_gates via gate_condition.isValid → UZ-APPROVAL-005) now rejects
+    // these for stored policies, so in practice only directly-constructed
+    // GateRules reach this branch.
     log.warn("invalid_condition", .{ .condition = condition });
     return true;
-}
-
-const ConditionParts = struct { field: []const u8, value: []const u8 };
-
-fn parseConditionParts(condition: []const u8, op: []const u8) ?ConditionParts {
-    const idx = std.mem.indexOf(u8, condition, op) orelse return null;
-    const field = std.mem.trim(u8, condition[0..idx], " ");
-    const rhs = std.mem.trim(u8, condition[idx + op.len ..], " ");
-    if (rhs.len >= 2 and rhs[0] == '\'' and rhs[rhs.len - 1] == '\'') {
-        return ConditionParts{ .field = field, .value = rhs[1 .. rhs.len - 1] };
-    }
-    return ConditionParts{ .field = field, .value = rhs };
 }
 
 fn getContextField(obj: std.json.ObjectMap, field: []const u8) ?[]const u8 {
