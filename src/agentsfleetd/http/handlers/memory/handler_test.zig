@@ -56,10 +56,6 @@ test "DEFAULT_LIST_LIMIT = 100 (spec §2)" {
 
 // ── T7: Error code string stability (regression guard) ───────────────────────
 
-test "ERR_MEM_SCOPE = UZ-MEM-001" {
-    try std.testing.expectEqualStrings("UZ-MEM-001", ec.ERR_MEM_SCOPE);
-}
-
 test "ERR_MEM_AGENTSFLEET_NOT_FOUND = UZ-MEM-002" {
     try std.testing.expectEqualStrings("UZ-MEM-002", ec.ERR_MEM_AGENTSFLEET_NOT_FOUND);
 }
@@ -69,25 +65,18 @@ test "ERR_MEM_UNAVAILABLE = UZ-MEM-003" {
 }
 
 test "all UZ-MEM-* codes have UZ-MEM- prefix" {
-    for ([_][]const u8{ ec.ERR_MEM_SCOPE, ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, ec.ERR_MEM_UNAVAILABLE }) |code| {
+    for ([_][]const u8{ ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, ec.ERR_MEM_UNAVAILABLE }) |code| {
         try std.testing.expect(std.mem.startsWith(u8, code, "UZ-MEM-"));
     }
 }
 
-test "UZ-MEM codes are sequential 001-002-003" {
-    try std.testing.expectEqualStrings("UZ-MEM-001", ec.ERR_MEM_SCOPE);
+test "live UZ-MEM codes are stable (002, 003)" {
+    // The retired 403 "scope denied" memory code is gone — cross-workspace is now 404 (UZ-MEM-002).
     try std.testing.expectEqualStrings("UZ-MEM-002", ec.ERR_MEM_AGENTSFLEET_NOT_FOUND);
     try std.testing.expectEqualStrings("UZ-MEM-003", ec.ERR_MEM_UNAVAILABLE);
 }
 
 // ── T3: UZ-MEM-* → correct HTTP status codes ─────────────────────────────────
-
-test "UZ-MEM-001 (scope denied) → HTTP 403 Forbidden" {
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    common.errorResponse(ht.res, ec.ERR_MEM_SCOPE, "scope denied", "req-t3a");
-    try ht.expectStatus(403);
-}
 
 test "UZ-MEM-002 (agent not found) → HTTP 404 Not Found" {
     var ht = httpz.testing.init(.{});
@@ -105,7 +94,6 @@ test "UZ-MEM-003 (backend unavailable) → HTTP 503 Service Unavailable" {
 
 test "UZ-MEM-* error body contains error_code field" {
     for ([_]struct { code: []const u8, status: u16 }{
-        .{ .code = ec.ERR_MEM_SCOPE, .status = 403 },
         .{ .code = ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, .status = 404 },
         .{ .code = ec.ERR_MEM_UNAVAILABLE, .status = 503 },
     }) |c| {
@@ -118,28 +106,22 @@ test "UZ-MEM-* error body contains error_code field" {
     }
 }
 
-test "UZ-MEM-001 hint references 'workspace' (scope error is contextual)" {
-    const entry = ec.lookup(ec.ERR_MEM_SCOPE);
+// ── Security contract — cross-workspace is 404, never a leaky 403 ────────────
+
+test "cross-workspace access maps to UZ-MEM-002 / 404 (don't leak existence)" {
+    // helpers.zig:resolveAgentInWorkspace returns ERR_MEM_AGENTSFLEET_NOT_FOUND for
+    // an agent in another workspace — indistinguishable from a nonexistent agent.
+    // A 403 would confirm the agent exists; that is why the old 403 "scope
+    // denied" memory-scope code was retired.
+    const entry = ec.lookup(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND);
+    try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
     try std.testing.expect(std.mem.indexOf(u8, entry.hint, "workspace") != null);
 }
 
-// ── T8: Security contract ─────────────────────────────────────────────────────
-
-test "scope rejection is ERR_MEM_SCOPE not generic ERR_FORBIDDEN" {
-    try std.testing.expect(!std.mem.eql(u8, ec.ERR_MEM_SCOPE, ec.ERR_FORBIDDEN));
-}
-
-test "UZ-MEM-001 is HTTP 403 not 401 (scope != unauthenticated)" {
-    // 401 = unauthenticated, 403 = authenticated but wrong workspace.
-    const entry = ec.lookup(ec.ERR_MEM_SCOPE);
-    try std.testing.expectEqual(std.http.Status.forbidden, entry.http_status);
-}
-
-test "ERR_MEM_SCOPE title references memory or scope" {
-    const entry = ec.lookup(ec.ERR_MEM_SCOPE);
-    const ok = std.mem.indexOf(u8, entry.title, "Memory") != null or
-        std.mem.indexOf(u8, entry.title, "scope") != null;
-    try std.testing.expect(ok);
+test "no live UZ-MEM-* code maps to 403 (scope rejection must not leak existence)" {
+    for ([_][]const u8{ ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, ec.ERR_MEM_UNAVAILABLE }) |code| {
+        try std.testing.expect(ec.lookup(code).http_status != std.http.Status.forbidden);
+    }
 }
 
 // ── T11: Memory safety — httpz arena balanced ────────────────────────────────
@@ -149,7 +131,7 @@ test "50 errorResponse calls for each UZ-MEM-* do not leak" {
     while (i < 50) : (i += 1) {
         var ht = httpz.testing.init(.{});
         defer ht.deinit();
-        common.errorResponse(ht.res, ec.ERR_MEM_SCOPE, "d", "r");
-        try ht.expectStatus(403);
+        common.errorResponse(ht.res, ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, "d", "r");
+        try ht.expectStatus(404);
     }
 }
