@@ -14,7 +14,7 @@
 
 > **Provenance is load-bearing.** LLM-drafted — cross-check every claim against `src/agentsfleetd/auth/` and `config/` before EXECUTE; do not trust the prose over the code.
 
-**Canonical architecture:** `docs/AUTH.md` §"The two tokens at a glance" + the OIDC env-var table (`OIDC_JWKS_URL` / `OIDC_ISSUER` rows) — the source of truth for the verifier's claim checks and key-fetch caching.
+**Canonical architecture:** `docs/AUTH.md` §"The three flows at a glance" + the OIDC env-var table (`OIDC_JWKS_URL` / `OIDC_ISSUER` rows) — the source of truth for the verifier's claim checks and key-fetch caching.
 
 ---
 

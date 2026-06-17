@@ -28,20 +28,41 @@ pub const ContextBudget = struct {
 
     /// Substitute defaults for any zero-value (auto-sentinel) field. Mutates in
     /// place. Non-zero fields are operator overrides and left alone. `model` and
-    /// `context_cap_tokens` are upstream-populated and don't auto-default.
+    /// `context_cap_tokens` are upstream-populated and don't auto-default; an
+    /// auto (zero) `tool_window` resolves from `context_cap_tokens` via the
+    /// model-tier table in `autoToolWindow`.
     pub fn applyDefaults(self: *ContextBudget) void {
-        if (self.tool_window == 0) self.tool_window = DEFAULT_TOOL_WINDOW;
+        if (self.tool_window == 0) self.tool_window = autoToolWindow(self.context_cap_tokens);
         if (self.memory_checkpoint_every == 0) self.memory_checkpoint_every = DEFAULT_MEMORY_CHECKPOINT_EVERY;
         if (self.stage_chunk_threshold == 0.0) self.stage_chunk_threshold = DEFAULT_STAGE_CHUNK_THRESHOLD;
     }
 };
 
-/// Auto default for `tool_window` — sized for a 200k-class working set.
+/// Auto `tool_window` when the context cap is unknown (0), and the mid-tier
+/// value for caps between SMALL and LARGE — sized for a 200k–300k-class set.
 pub const DEFAULT_TOOL_WINDOW: u32 = 20;
+/// Auto `tool_window` for a context cap at/above `CONTEXT_CAP_LARGE_TOKENS`.
+const TOOL_WINDOW_LARGE_CAP: u32 = 30;
+/// Auto `tool_window` for a context cap at/below `CONTEXT_CAP_SMALL_TOKENS`.
+const TOOL_WINDOW_SMALL_CAP: u32 = 10;
+/// Context-cap tier boundaries (tokens) that pick the auto `tool_window`.
+const CONTEXT_CAP_LARGE_TOKENS: u32 = 1_000_000;
+const CONTEXT_CAP_SMALL_TOKENS: u32 = 200_000;
 /// Auto default for `memory_checkpoint_every` — cheap and always safe.
 pub const DEFAULT_MEMORY_CHECKPOINT_EVERY: u32 = 5;
 /// Auto default for `stage_chunk_threshold` — L3 failsafe at 75% fill.
 pub const DEFAULT_STAGE_CHUNK_THRESHOLD: f32 = 0.75;
+
+/// Resolve the auto `tool_window` from the active model's context cap, per the
+/// context-lifecycle tiers in `docs/architecture/capabilities.md` §4: 30 for a
+/// cap ≥ 1M tokens, 10 for a cap ≤ 200k, 20 in between. An unknown cap (0, not
+/// yet resolved at install/provider-set time) falls back to the mid-tier default.
+fn autoToolWindow(context_cap_tokens: u32) u32 {
+    if (context_cap_tokens == 0) return DEFAULT_TOOL_WINDOW;
+    if (context_cap_tokens >= CONTEXT_CAP_LARGE_TOKENS) return TOOL_WINDOW_LARGE_CAP;
+    if (context_cap_tokens <= CONTEXT_CAP_SMALL_TOKENS) return TOOL_WINDOW_SMALL_CAP;
+    return DEFAULT_TOOL_WINDOW;
+}
 
 /// Bundle of per-execution policy fields, set at `createExecution` and invariant
 /// for the session's lifetime. Empty defaults: deny-all egress, no tool filter,
@@ -103,4 +124,29 @@ test "hostFromUrl extracts the bare host across URL shapes" {
     // inner colons are address bytes, not a port). greptile P2 edge case.
     try std.testing.expectEqualStrings("[::1]", hostFromUrl("https://[::1]:443/v1"));
     try std.testing.expectEqualStrings("[2001:db8::1]", hostFromUrl("https://[2001:db8::1]/v1"));
+}
+
+test "autoToolWindow tiers tool_window by context cap (capabilities.md §4)" {
+    try std.testing.expectEqual(TOOL_WINDOW_LARGE_CAP, autoToolWindow(CONTEXT_CAP_LARGE_TOKENS)); // ≥1M → 30
+    try std.testing.expectEqual(TOOL_WINDOW_LARGE_CAP, autoToolWindow(2_000_000));
+    try std.testing.expectEqual(DEFAULT_TOOL_WINDOW, autoToolWindow(256_000)); // 200k–300k → 20
+    try std.testing.expectEqual(DEFAULT_TOOL_WINDOW, autoToolWindow(500_000)); // mid band → 20
+    try std.testing.expectEqual(TOOL_WINDOW_SMALL_CAP, autoToolWindow(200_000)); // ≤200k → 10
+    try std.testing.expectEqual(TOOL_WINDOW_SMALL_CAP, autoToolWindow(128_000));
+    try std.testing.expectEqual(DEFAULT_TOOL_WINDOW, autoToolWindow(0)); // unknown cap → mid default
+}
+
+test "applyDefaults resolves an auto tool_window from the cap; overrides survive" {
+    var big: ContextBudget = .{ .context_cap_tokens = CONTEXT_CAP_LARGE_TOKENS };
+    big.applyDefaults();
+    try std.testing.expectEqual(TOOL_WINDOW_LARGE_CAP, big.tool_window);
+
+    var small: ContextBudget = .{ .context_cap_tokens = 200_000 };
+    small.applyDefaults();
+    try std.testing.expectEqual(TOOL_WINDOW_SMALL_CAP, small.tool_window);
+
+    // An explicit operator override is never overwritten by the auto-tiering.
+    var override: ContextBudget = .{ .context_cap_tokens = CONTEXT_CAP_LARGE_TOKENS, .tool_window = 8 };
+    override.applyDefaults();
+    try std.testing.expectEqual(@as(u32, 8), override.tool_window);
 }

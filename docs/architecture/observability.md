@@ -20,9 +20,9 @@ All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`.
 independent signal paths, each with a different consumer:
 
 - **Prometheus metrics (pull).** The `agent_*` metric families — counters,
-  histograms, and gauges for external-call retries/failures, API backpressure and
-  in-flight depth, execution, the runner fleet, workspace tokens, the Redis pool,
-  run limits, and the signup funnel — render at the pull endpoint
+  histograms, and gauges for API and Server-Sent Events (SSE) backpressure and
+  in-flight depth, the signup funnel, `agent_triggered_total`, the runner fleet,
+  and the Redis pool — render at the pull endpoint
   `GET /metrics` (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
   Nothing pushes; Prometheus scrapes.
 
