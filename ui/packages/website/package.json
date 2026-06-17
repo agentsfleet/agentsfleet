@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "prebuild": "node ./scripts/prebuild.mjs",
+    "dev": "bun run prebuild && vite",
+    "prebuild": "bun ./scripts/prebuild.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "oxlint src tests/e2e playwright.config.ts",

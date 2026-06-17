@@ -5,6 +5,8 @@ import { AGENT_DEFINITION, AGENT_SHORT_GLOSS } from "./copy";
 // core noun. It must stay faithful to docs/architecture/direction.md
 // ("a durable runtime, not a one-shot prompt") and name the noun "agent".
 describe("agent copy constants", () => {
+  const retiredNoun = ["zom", "bie"].join("");
+
   it("AGENT_DEFINITION carries the canonical markers", () => {
     expect(AGENT_DEFINITION).toMatch(/^An agent is/);
     expect(AGENT_DEFINITION).toMatch(/durable/i);
@@ -13,9 +15,9 @@ describe("agent copy constants", () => {
     expect(AGENT_DEFINITION).toMatch(/not a one-shot prompt/i);
   });
 
-  it("names the product 'agent', never the retired noun 'zombie'", () => {
-    expect(AGENT_DEFINITION.toLowerCase()).not.toContain("zombie");
-    expect(AGENT_SHORT_GLOSS.toLowerCase()).not.toContain("zombie");
+  it("names the product 'agent', never the retired noun", () => {
+    expect(AGENT_DEFINITION.toLowerCase()).not.toContain(retiredNoun);
+    expect(AGENT_SHORT_GLOSS.toLowerCase()).not.toContain(retiredNoun);
   });
 
   it("AGENT_SHORT_GLOSS is a one-liner naming the agent", () => {

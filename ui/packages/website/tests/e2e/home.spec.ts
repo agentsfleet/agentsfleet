@@ -5,10 +5,9 @@ test.describe("Home page", () => {
     await page.goto("/");
   });
 
-  test("renders hero heading (Mockup A two-line)", async ({ page }) => {
+  test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Your deploy failed.");
-    await expect(h1).toContainText("The agent already knows why.");
+    await expect(h1).toContainText("A resident engineer that compounds operational knowledge.");
   });
 
   test("hero LIVE eyebrow renders a WakePulse data-live element", async ({ page }) => {
@@ -36,7 +35,8 @@ test.describe("Home page", () => {
     await expect(pill).toHaveAttribute("href", "/pricing");
     await expect(pill).toContainText(/Free until July 31, 2026/);
 
-    await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
+    await expect(page.getByTestId("hero-cta-early-access")).toContainText("Get early access");
+    await expect(page.getByTestId("hero-cta-secondary")).toContainText("See the loop");
   });
 
   test("renders the animated hero install Terminal", async ({ page }) => {
@@ -53,20 +53,15 @@ test.describe("Home page", () => {
     await expect(brandMark).toHaveAttribute("data-live", "true");
   });
 
-  test("renders OnboardingFlow steps", async ({ page }) => {
-    // `OnboardingFlow.tsx` is the home page's four-step pictorial, anchored at
-    // `#onboarding-flow`.
-    const flow = page.locator('[aria-label="Onboarding flow"]');
-    await expect(flow).toBeVisible();
-    await expect(flow.getByRole("heading", { name: "Install the CLI" })).toBeVisible();
-    await expect(flow.getByRole("heading", { name: "Run the install skill" })).toBeVisible();
-    await expect(flow.getByRole("heading", { name: "Wire your trigger" })).toBeVisible();
-    await expect(flow.getByRole("heading", { name: "Steer your agent" })).toBeVisible();
+  test("renders operational knowledge and Terminal Ledger sections", async ({ page }) => {
+    await expect(page.getByTestId("operational-knowledge")).toBeVisible();
+    await expect(page.getByText("Recurring tickets become operational memory.")).toBeVisible();
+    await expect(page.getByTestId("pipeline-diagram")).toBeVisible();
+    await expect(page.getByTestId("pipeline-ledger-line-problem-class")).toContainText(
+      "recurring problem class",
+    );
+    await expect(page.getByTestId("pipeline-human-gate")).toContainText("human approval");
 
-    // Regression: the four cards used to be a single non-wrapping row that ran
-    // the fourth card ("Steer your agent") off the right edge. Pin the desktop
-    // breakpoint (>=1024px) the bug lived at so this guard stays meaningful
-    // regardless of the Playwright project's device viewport.
     await page.setViewportSize({ width: 1280, height: 800 });
     const overflowsX = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -76,14 +71,14 @@ test.describe("Home page", () => {
 
   test("renders how it works steps", async ({ page }) => {
     const how = page.getByTestId("how-it-works");
-    await expect(how.getByRole("heading", { name: "A trigger arrives", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "A signal arrives", exact: true })).toBeVisible();
     await expect(how.getByRole("heading", { name: "The agent gathers evidence", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "Diagnosis posts; the run is auditable", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "The class is remembered", exact: true })).toBeVisible();
   });
 
   test("does not render a duplicate install block below pricing", async ({ page }) => {
-    // The standalone InstallBlock was removed — the OnboardingFlow steps at the
-    // top of the page already cover install + the slash command.
+    // The standalone InstallBlock was removed; the loop section now carries the
+    // operational path instead of a second install pitch.
     await expect(
       page.getByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
     ).toHaveCount(0);
@@ -99,6 +94,14 @@ test.describe("Home page", () => {
     await expect(page.getByRole("contentinfo")).toBeVisible();
     const footer = page.getByRole("contentinfo");
     await expect(footer.getByRole("link", { name: /^github$/i })).toBeVisible();
+    await expect(footer.getByRole("link", { name: /^llms\.txt$/i })).toHaveAttribute(
+      "href",
+      "/llms.txt",
+    );
+    await expect(footer.getByRole("link", { name: /^llms-full\.txt$/i })).toHaveAttribute(
+      "href",
+      "/llms-full.txt",
+    );
     const discord = footer.getByRole("link", { name: /^discord$/i });
     await expect(discord).toHaveAttribute("href", "https://discord.gg/H9hH2nqQjh");
   });

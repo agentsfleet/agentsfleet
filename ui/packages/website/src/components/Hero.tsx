@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Button,
+  DisplayXL,
   LogLine,
   LogToken,
   Terminal,
@@ -11,6 +12,13 @@ import {
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 import { INSTALL_COMMAND, INSTALL_SKILL_COMMAND } from "../config";
+import {
+  HERO_HEADLINE,
+  HERO_LEDE_PARTS,
+  HERO_PRIMARY_LABEL,
+  HERO_SECONDARY_LABEL,
+  LOOP_ANCHOR_ID,
+} from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
 const TOAST_VISIBLE_MS = 2000;
@@ -95,19 +103,24 @@ export default function Hero() {
           <span aria-hidden="true">→</span>
         </Link>
 
-        <h1
-          className="font-mono text-fluid-hero leading-display-xl tracking-display-xl font-medium text-text"
-          data-testid="hero-headline"
-        >
-          Your deploy failed.
-          <br />
-          The agent already knows why.
-        </h1>
+        <DisplayXL data-testid="hero-headline" className="max-w-tagline">
+          {HERO_HEADLINE}
+        </DisplayXL>
 
         <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
-          An agent is a long-lived runtime that owns one operational outcome
-          end to end. It wakes on your events, runs against a durable,
-          replayable log, and posts evidenced answers — never chats.
+          {HERO_LEDE_PARTS.intro}{" "}
+          <strong className="font-medium text-text">
+            {HERO_LEDE_PARTS.problemClass}
+          </strong>
+          , {HERO_LEDE_PARTS.middle}{" "}
+          <strong className="font-medium text-text">
+            {HERO_LEDE_PARTS.humanApproval}
+          </strong>
+          . {HERO_LEDE_PARTS.outro}{" "}
+          <strong className="font-medium text-text">
+            {HERO_LEDE_PARTS.replayableLog}
+          </strong>{" "}
+          {HERO_LEDE_PARTS.close}
         </p>
 
         <div className="flex flex-col gap-3 max-w-wide">
@@ -138,6 +151,22 @@ export default function Hero() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Button
+              asChild
+              data-testid="hero-cta-early-access"
+              onClick={() =>
+                trackSignupStarted({
+                  source: "hero_early_access",
+                  surface: "hero",
+                  mode: "humans",
+                })
+              }
+            >
+              <a href="/#pricing">→ {HERO_PRIMARY_LABEL}</a>
+            </Button>
+            <Button asChild variant="ghost" data-testid="hero-cta-secondary">
+              <a href={`/#${LOOP_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
+            </Button>
             <Toast
               visible={toast !== null}
               severity={shown === "manual" ? "warning" : "info"}

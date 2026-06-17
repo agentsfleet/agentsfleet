@@ -31,9 +31,25 @@ test.describe("Smoke", () => {
   test("pricing section renders inline on home", async ({ page }) => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
+    await expect(page.getByTestId("pricing-card-trial")).toBeVisible();
+    await expect(page.getByTestId("pricing-card-usage")).toBeVisible();
+    await expect(page.getByTestId("pricing-card-enterprise")).toBeVisible();
     await expect(page.getByTestId("pricing-rate-event")).toHaveText("free");
     await expect(page.getByTestId("pricing-rate-run")).toHaveText("$0.0001/sec");
-    await expect(page.getByTestId("pricing-rate-run-hourly")).toHaveText("≈ $0.36/hr");
+    await expect(page.getByTestId("pricing-rate-run-hourly")).toHaveText("$0.36/hr");
+  });
+
+  test("llms surfaces are generated and reachable", async ({ page }) => {
+    const llms = await page.request.get("/llms.txt");
+    expect(llms.status()).toBe(200);
+    const llmsBody = await llms.text();
+    expect(llmsBody).toContain("# agentsfleet");
+    expect(llmsBody).toContain("## Product");
+    expect(llmsBody).toContain("[OpenAPI](/openapi.json)");
+
+    const llmsFull = await page.request.get("/llms-full.txt");
+    expect(llmsFull.status()).toBe(200);
+    expect(await llmsFull.text()).toContain("resident engineer");
   });
 
   test("agents page loads", async ({ page }) => {

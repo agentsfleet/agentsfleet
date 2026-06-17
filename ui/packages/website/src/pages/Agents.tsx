@@ -22,7 +22,7 @@ const apiOps = [
   { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:agent_id",                                                purpose: "Deliver an inbound event to an agent" },
 ] as const;
 
-const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
+const bootstrapScript = `# 1. Shell — install the Command-Line Interface (CLI) and the skill bundle
 npm install -g @agentsfleet/cli
 agentsfleet login
 npx skills add agentsfleet/skills
