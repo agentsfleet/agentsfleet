@@ -39,6 +39,15 @@ const AUDIT_ARCH: u32 = switch (builtin.cpu.arch) {
     else => 0,
 };
 
+// A 0 AUDIT_ARCH would make the arch-check (prog[1]) never match, trapping every
+// syscall — including the exit_group inside onSigsys — into an unrecoverable SIGSYS
+// loop that hangs the child. Fail the build instead. Non-Linux targets no-op in
+// applyFilter (the filter is never installed), so AUDIT_ARCH is moot there.
+comptime {
+    if (builtin.os.tag == .linux and AUDIT_ARCH == 0)
+        @compileError("seccomp: unsupported Linux CPU arch — runner ships x86_64 + aarch64 only");
+}
+
 // Cross-process introspection, root/mount surgery, kernel module + kexec, bpf,
 // perf, reboot, swap. exec/fork/file/socket stay allowed (bash tool + engine).
 const DENIED = [_]std.os.linux.SYS{
