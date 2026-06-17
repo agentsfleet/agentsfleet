@@ -184,6 +184,26 @@ fn expectLeasePolicyKey(h: *TestHarness, token: []const u8, expect_api_key: []co
     try std.testing.expectEqualStrings(expect_api_key, policy.get("api_key").?.string);
 }
 
+/// Lease as `token` and assert the issued lease's policy.context carries the
+/// overlaid cap+model and the cap-derived auto tool_window. Proves the
+/// lease-time tenant-provider overlay (see user_flow.md) end-to-end: the cap
+/// the control plane resolved into tenant_providers reaches the budget the
+/// runner receives, and drives the auto tool_window tiering (capabilities.md §4).
+fn expectLeasePolicyContext(h: *TestHarness, token: []const u8, expect_cap: i64, expect_tool_window: i64, expect_model: []const u8) !void {
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const resp = try req.send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+    defer parsed.deinit();
+    const lease = parsed.value.object.get("lease").?;
+    try std.testing.expect(lease != .null);
+    const ctx = lease.object.get("policy").?.object.get("context").?.object;
+    try std.testing.expectEqual(expect_cap, ctx.get("context_cap_tokens").?.integer);
+    try std.testing.expectEqual(expect_tool_window, ctx.get("tool_window").?.integer);
+    try std.testing.expectEqualStrings(expect_model, ctx.get("model").?.string);
+}
+
 fn expectLeaseInstructions(h: *TestHarness, token: []const u8, expect_substr: []const u8) !void {
     const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
     const resp = try req.send();
@@ -394,6 +414,45 @@ test "integration: runner control plane — a reclaimed lease re-resolves and ca
     // Reclaim reuses prior billing, but the key was never persisted — issueLease
     // re-resolves it, so the reclaimed lease still authenticates (the named fix).
     try expectLeasePolicyKey(h, RUNNER_B_TOKEN, KNOWN_KEY);
+}
+
+test "integration: runner control plane — a fresh lease overlays the resolved context cap+model onto sentinel frontmatter" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    // The model + 1M cap the control plane resolved into tenant_providers at
+    // provider-set time (the model-caps endpoint). CONFIG_NO_GATES carries no
+    // x-agentsfleet.context block, so the agent's frontmatter cap/model are the
+    // sentinels (0 / "") that the lease-time overlay fills.
+    const OVERLAY_MODEL = "accounts/fireworks/models/kimi-k2.6";
+    const OVERLAY_CAP_TOKENS = 1_000_000; // ≥ large tier → tool_window 30 (capabilities.md §4)
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_overlay_path_key");
+    // A platform tenant_providers row pins a 1M cap so the overlaid cap lands in
+    // a different tool_window tier than the mid default — proving the tiering,
+    // not just the passthrough. credential_ref is NULL: platform mode resolves
+    // its key via core.platform_llm_keys, not the row.
+    _ = try conn.exec(
+        \\INSERT INTO core.tenant_providers
+        \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
+        \\VALUES ($1::uuid, 'platform', 'fireworks', $2, $3, NULL, 0, 0)
+        \\ON CONFLICT (tenant_id) DO UPDATE SET mode = EXCLUDED.mode,
+        \\  model = EXCLUDED.model, context_cap_tokens = EXCLUDED.context_cap_tokens
+    , .{ base.TEST_TENANT_ID, OVERLAY_MODEL, @as(i32, OVERLAY_CAP_TOKENS) });
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveAgent(conn, AGENTSFLEET_1_ID, "cp-agent-1", SESSION_1_ID);
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
+
+    // The sentinel frontmatter inherits the tenant cap+model, and the overlaid
+    // 1M cap drives the auto tool_window to the large tier (30). Pre-fix this
+    // lease shipped context_cap_tokens=0 / model="" / tool_window=20 (the mid
+    // default), silently disabling L3 chunking — the drift this overlay closes.
+    try expectLeasePolicyContext(h, RUNNER_A_TOKEN, OVERLAY_CAP_TOKENS, 30, OVERLAY_MODEL);
 }
 
 test "integration: runner control plane — a fresh lease carries the installed SKILL.md instructions" {
