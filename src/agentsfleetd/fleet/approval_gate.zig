@@ -130,8 +130,10 @@ fn requestNewGate(
         redis,
         session.agent_id,
         detail,
-    ) catch {
-        // Redis unavailable — default-deny.
+    ) catch |err| {
+        // Redis unavailable — fail closed (default-deny). Surface the registry
+        // code so operators can trace the default-deny back to gate-service loss.
+        log.warn("gate_redis_unavailable", .{ .agent_id = session.agent_id, .event_id = event.event_id, .error_code = error_codes.ERR_APPROVAL_REDIS_UNAVAILABLE, .err = @errorName(err) });
         logGateActivity(pool, alloc, session, error_codes.GATE_EVENT_DENIED, "gate_unavailable");
         return .{ .blocked = .unavailable };
     };
