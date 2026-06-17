@@ -20,9 +20,9 @@ pub const Policy = enum {
 
     /// Log + let the run proceed. Zero nanos deducted.
     @"continue",
-    /// Same as `continue` plus a rate-limited activity event. Default.
+    /// Same as `continue` plus a rate-limited activity event.
     warn,
-    /// Pre-claim gate rejects the delivery; agent never runs.
+    /// Pre-claim gate rejects the delivery; agent never runs. Default.
     stop,
 
     pub fn label(self: Self) []const u8 {
@@ -34,7 +34,7 @@ pub const Policy = enum {
     }
 };
 
-pub const DEFAULT: Policy = .warn;
+pub const DEFAULT: Policy = .stop;
 
 pub fn parse(raw: []const u8) ?Policy {
     if (std.ascii.eqlIgnoreCase(raw, S_CONTINUE)) return .@"continue";
@@ -94,8 +94,8 @@ test "parse: unknown returns null" {
     try std.testing.expect(parse("  warn  ") == null); // no trimming
 }
 
-test "DEFAULT is warn" {
-    try std.testing.expectEqual(Policy.warn, DEFAULT);
+test "DEFAULT is stop" {
+    try std.testing.expectEqual(Policy.stop, DEFAULT);
 }
 
 // ── resolve ───────────────────────────────────────────────────────────────
