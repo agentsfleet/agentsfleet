@@ -99,6 +99,16 @@ describe("detectColorMode — TERM-based fallback", () => {
     expect(detectColorMode({ TERM: "xterm" }, tty.stream)).toBe(ColorMode.BASIC16);
   });
 
+  test("TERM=screen (no 256color) returns 'basic16'", () => {
+    const tty = makeTtyStream();
+    expect(detectColorMode({ TERM: "screen" }, tty.stream)).toBe(ColorMode.BASIC16);
+  });
+
+  test("TERM=vt100 returns 'basic16'", () => {
+    const tty = makeTtyStream();
+    expect(detectColorMode({ TERM: "vt100" }, tty.stream)).toBe(ColorMode.BASIC16);
+  });
+
   test("TERM=dumb returns 'none'", () => {
     const tty = makeTtyStream();
     expect(detectColorMode({ TERM: "dumb" }, tty.stream)).toBe(ColorMode.NONE);

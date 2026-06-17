@@ -88,8 +88,7 @@ export function runCommanderParse(
 function unwrapCause(exit: Exit.Exit<unknown, unknown>): unknown {
   if (Exit.isSuccess(exit)) return undefined;
   const failure = Cause.findErrorOption(exit.cause);
-  if (Option.isSome(failure)) return failure.value;
-  return Cause.squash(exit.cause);
+  return Option.isSome(failure) ? failure.value : Cause.squash(exit.cause);
 }
 
 // Layer for the parse-only Effect: CommandRuntime + Analytics +

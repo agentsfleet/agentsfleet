@@ -147,7 +147,7 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
 
 // commander.* error codes that map to POSIX "usage error" exit 2.
 // Commander itself uses 1 for these; we override to 2 so the
-// did-you-mean / unknown-subcommand contract matches POSIX.
+// did-you-mean / unknown-subcommand rule matches POSIX.
 const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
   "commander.unknownCommand",
   "commander.unknownOption",
@@ -161,8 +161,7 @@ const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
 function exitFromCommanderError(err: CommanderError, state: ProgramState): number {
   if (err.code === "commander.help" || err.code === "commander.helpDisplayed") return 0;
   if (state.exitCode !== 0) return state.exitCode;
-  if (COMMANDER_USAGE_CODES.has(err.code)) return 2;
-  return typeof err.exitCode === "number" ? err.exitCode : 1;
+  return COMMANDER_USAGE_CODES.has(err.code) ? 2 : err.exitCode;
 }
 
 function errMessage(err: unknown): string {

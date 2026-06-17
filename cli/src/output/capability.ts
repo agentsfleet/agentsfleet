@@ -50,9 +50,6 @@ export function detectColorMode(
   const term = env.TERM ?? "";
   if (term === "" || term === "dumb") return MODE_NONE;
   if (term.includes("256color")) return MODE_XTERM256;
-  if (term.includes("xterm") || term.includes("screen") || term.includes("vt100")) {
-    return MODE_BASIC16;
-  }
   return MODE_BASIC16;
 }
 

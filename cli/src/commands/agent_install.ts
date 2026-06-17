@@ -17,8 +17,8 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsAgentsPath, wsAgentPath } from "../lib/api-paths.ts";
 import {
   loadSkillFromPath,
-  SkillLoadError,
   type LoadedSkill,
+  type SkillLoadError,
 } from "../lib/load-skill-from-path.ts";
 import { validateRequiredId } from "../program/validators.ts";
 import { OPT_FROM } from "../constants/cli-flags.ts";
@@ -47,17 +47,13 @@ const loadBundle = (
 ): Effect.Effect<LoadedSkill, ConfigError> =>
   Effect.try({
     try: () => loadSkillFromPath(fromPath),
-    catch: (err) =>
-      new ConfigError({
-        detail:
-          err instanceof SkillLoadError
-            ? `${err.code}: ${err.message}`
-            : err instanceof Error
-              ? err.message
-              : String(err),
-        suggestion:
-          "verify the path exists and contains a skill.md + trigger.md",
-      }),
+    catch: (err) => {
+      const loadErr = err as SkillLoadError;
+      return new ConfigError({
+        detail: `${loadErr.code}: ${loadErr.message}`,
+        suggestion: "verify the path exists and contains a skill.md + trigger.md",
+      });
+    },
   });
 
 const requireFromPath = (
