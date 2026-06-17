@@ -4,11 +4,12 @@
 **Milestone:** M93
 **Workstream:** 001
 **Date:** Jun 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a drifted JWKS URL is a silent, total auth outage; the fix removes the field that can drift.
 **Categories:** API, INFRA
 **Batch:** B1 — standalone hardening, no concurrent dependants.
-**Branch:** {feat/m93-oidc-jwks-derive — added at CHORE(open)}
+**Branch:** feat/m93-oidc-jwks-derive
+**Test Baseline:** unit=1958 integration=190 (`make _lint_zig_test_depth`, CHORE(open) Jun 17 2026)
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-4-8, Jun 17 2026) — from a live prod-config incident investigation.
 
@@ -97,10 +98,11 @@
 | `src/agentsfleetd/config/runtime_loader.zig` | EDIT | derive jwks_url from issuer when override absent; move enable-gate to issuer. |
 | `src/agentsfleetd/config/runtime_validate.zig` | EDIT | require issuer (not jwks_url) when OIDC requested; remap fatal message. |
 | `src/agentsfleetd/config/runtime_types.zig` | EDIT | rename/replace `MissingOidcJwksUrl` → `MissingOidcIssuer` (or add) in the error set. |
-| `src/agentsfleetd/config/env_vars.zig` | EDIT | document `OIDC_JWKS_URL` as optional override; constant for the well-known suffix. |
-| `src/agentsfleetd/auth/oidc.zig` | EDIT | host the derivation helper (or accept derived url); no verifier-logic change. |
-| `src/agentsfleetd/cmd/doctor.zig` | EDIT | derive via the shared helper so the doctor check matches runtime. |
-| `src/agentsfleetd/cmd/serve.zig` | EDIT | wiring only, if the resolved jwks_url path moves. |
+| ~~`src/agentsfleetd/config/env_vars.zig`~~ | ~~EDIT~~ → **NOT TOUCHED** | CHORE(open) correction (provenance cross-check): this file is DB/Redis URL validation only — it has zero OIDC content. The well-known suffix constant + derivation helper live in `auth/oidc.zig` (row below). The `OIDC_JWKS_URL`-is-optional documentation lands in `docs/AUTH.md` (new row). |
+| `src/agentsfleetd/auth/oidc.zig` | EDIT | host the `WELL_KNOWN_JWKS_SUFFIX` named constant + the derivation/resolution helper (shared by runtime loader + doctor); no verifier-logic change. |
+| `src/agentsfleetd/cmd/doctor.zig` | EDIT | read `OIDC_ISSUER`, resolve via the shared helper so the doctor check matches runtime. |
+| `src/agentsfleetd/cmd/serve.zig` | EDIT (logging-only) + orphan fix | wiring unchanged (already reads `oidc_jwks_url orelse ""`); adds the resolved `jwks_url` to the `startup.oidc_init_start` info log so a misconfig is greppable at boot (LOGGING gate); plus the `MissingOidcJwksUrl`→`MissingOidcIssuer` rename in its exhaustive `ValidationError` switch. |
+| `docs/AUTH.md` | EDIT | document `OIDC_JWKS_URL` as an optional override (default derived from `OIDC_ISSUER`). |
 | `.github/workflows/deploy-dev.yml` | EDIT | drop `OIDC_JWKS_URL` from the 1Password load + `flyctl secrets set`. |
 | `.github/workflows/release.yml` | EDIT | drop `OIDC_JWKS_URL` from the prod load + `flyctl secrets set`. |
 | `src/agentsfleetd/config/runtime_loader_test.zig` + OIDC/JWKS tests | EDIT | cover derive / override / missing-issuer. |
@@ -118,23 +120,23 @@
 
 ## Sections (implementation slices)
 
-### §1 — Derive JWKS URL from issuer in the config loader
+### §1 — Derive JWKS URL from issuer in the config loader ✅ DONE
 
-`loadOidc` resolves the effective JWKS URL: explicit `OIDC_JWKS_URL` (trimmed, non-empty) wins; otherwise derive `<issuer>/.well-known/jwks.json` from a trailing-slash-normalised issuer. The OIDC enable-gate becomes "issuer is non-empty". **Implementation default:** strip exactly one trailing `/` from issuer before appending the well-known suffix, because Clerk issuers are emitted without a trailing slash and a double-slash path 404s.
+`loadOidc` resolves the effective JWKS URL: explicit `OIDC_JWKS_URL` (trimmed, non-empty) wins; otherwise derive `<issuer>/.well-known/jwks.json` from a trailing-slash-normalised issuer. The OIDC enable-gate becomes "issuer is non-empty". **Implementation default:** strip surrounding whitespace and **every** trailing `/` from the issuer (`std.mem.trimEnd`) before appending the well-known suffix, because Clerk issuers are emitted without a trailing slash and a double-slash path 404s. (Hardened during `/review` from the draft's "exactly one slash" — the goal is *no* `//`, so trim the whole class, not just one.)
 
 - **Dimension 1.1** — issuer set, no override → derived url = `<issuer>/.well-known/jwks.json` → Test `test_oidc_derives_jwks_from_issuer`
 - **Dimension 1.2** — explicit `OIDC_JWKS_URL` set → returned verbatim, no derivation → Test `test_oidc_explicit_jwks_overrides_derivation`
 - **Dimension 1.3** — issuer has a trailing slash → derived url has no double slash → Test `test_oidc_issuer_trailing_slash_normalised`
 - **Dimension 1.4** — enable-gate fires on issuer, not jwks_url → Test `test_oidc_enabled_when_issuer_present_only`
 
-### §2 — Validation + doctor parity
+### §2 — Validation + doctor parity ✅ DONE
 
 Required-field validation moves to issuer; the fatal message names `OIDC_ISSUER`. `agentsfleet doctor` derives the reachability-check URL through the **same** helper as the runtime, so the doctor never tests a different URL than the daemon will fetch.
 
 - **Dimension 2.1** — OIDC requested (any OIDC var set) but issuer empty → `MissingOidcIssuer` fatal → Test `test_oidc_missing_issuer_rejected`
 - **Dimension 2.2** — doctor's derived JWKS URL equals the loader's derived URL for the same issuer → Test `test_doctor_jwks_url_matches_runtime`
 
-### §3 — INFRA: stop shipping the derivable secret
+### §3 — INFRA: stop shipping the derivable secret ✅ DONE
 
 Remove `OIDC_JWKS_URL` from both deploy workflows (1Password load block + `flyctl secrets set`), keeping `OIDC_ISSUER`. After deploys confirm green, remove the `jwks-url` field from the `clerk-dev` and `clerk-prod` vault items (ops step recorded in Discovery).
 
@@ -164,7 +166,7 @@ OIDC_PROVIDER      (unchanged)                   default: clerk
 | Mode | Cause | Handling (system response + observable) |
 |------|-------|------------------------------------------|
 | Missing issuer | OIDC vars present, `OIDC_ISSUER` empty | fatal at startup: `OIDC is required — set OIDC_ISSUER…`; process exits non-zero. |
-| Issuer trailing slash | operator sets `https://x/` | normalised to single slash; derived URL valid. |
+| Issuer trailing slash(es) | operator sets `https://x/` or `https://x///` | all trailing slashes trimmed; derived URL has no `//`. |
 | Stale explicit override | operator sets a wrong `OIDC_JWKS_URL` | override is honoured (escape hatch); `doctor` reachability check fails loudly with the URL printed. |
 | Derived host unreachable | issuer host down at boot | existing JWKS-fetch failure path (cached-stale-serve / `JwksFetchFailed`) — unchanged. |
 | OIDC disabled | no OIDC vars at all | `enabled=false`; unchanged (local/dev no-auth path). |
@@ -182,16 +184,20 @@ OIDC_PROVIDER      (unchanged)                   default: clerk
 
 ## Test Specification (tiered)
 
-| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
-|-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_oidc_derives_jwks_from_issuer` | issuer `https://clerk.agentsfleet.net`, no override → `…/.well-known/jwks.json` |
-| 1.2 | unit | `test_oidc_explicit_jwks_overrides_derivation` | both set → returns the explicit URL verbatim |
-| 1.3 | unit | `test_oidc_issuer_trailing_slash_normalised` | `https://x/` → `https://x/.well-known/jwks.json` (no `//`) |
-| 1.4 | unit | `test_oidc_enabled_when_issuer_present_only` | only issuer set → `enabled=true` |
-| 2.1 | unit | `test_oidc_missing_issuer_rejected` | audience set, issuer empty → `MissingOidcIssuer` |
-| 2.2 | unit | `test_doctor_jwks_url_matches_runtime` | same issuer → doctor URL == loader URL |
-| 3.1 | integration | `test_workflows_no_jwks_url` | grep both workflows → zero `OIDC_JWKS_URL` references |
-| 3.2 | integration | `test_workflows_retain_issuer_audience` | both workflows still set `OIDC_ISSUER` + `OIDC_AUDIENCE` |
+Test names are the **actual prose names** shipped (RULE TST-NAM — milestone-free), reconciled from the spec's draft snake_case identifiers. All in `runtime_loader_test.zig`.
+
+| Dimension | Tier | Test (actual name) | Asserts (concrete inputs → expected output) | ✅ |
+|-----------|------|------|---------------------------------------------|----|
+| 1.1 | unit | `"loadOidc derives the JWKS URL from issuer when no override is set"` | issuer `https://clerk.agentsfleet.net`, no override → `…/.well-known/jwks.json` | ✅ |
+| 1.2 | unit | `"loadOidc returns an explicit OIDC_JWKS_URL verbatim, overriding derivation"` | both set → returns the explicit URL verbatim | ✅ |
+| 1.3 | unit | `"loadOidc normalises an issuer trailing slash with no double slash"` | `https://x/` → `https://x/.well-known/jwks.json` (no `//`) | ✅ |
+| 1.4 | unit | `"loadOidc is enabled when only OIDC_ISSUER is present"` | only issuer set → `enabled=true` | ✅ |
+| 2.1 | unit | `"loadOidc rejects an OIDC slate that sets audience but no issuer"` | audience set, issuer empty → `MissingOidcIssuer` | ✅ |
+| 2.2 | unit | `"doctor and loader resolve the same JWKS URL from one issuer"` | same issuer → loader URL == `oidc.resolveJwksUrl` (the fn doctor calls) | ✅ |
+| 3.1 | acceptance grep | `! grep -rn OIDC_JWKS_URL .github/workflows/` | both workflows → zero `OIDC_JWKS_URL` references | ✅ |
+| 3.2 | acceptance grep | `grep -c "OIDC_ISSUER\|OIDC_AUDIENCE" …` | both workflows still set `OIDC_ISSUER` + `OIDC_AUDIENCE` (3 each) | ✅ |
+
+**Bonus coverage added:** `"… accepts custom provider"` now asserts the explicit override is retained, and `"… treats an empty OIDC_JWKS_URL as absent and derives from issuer"` pins the empty-override edge. **Five pre-existing OIDC tests** were updated to set `OIDC_ISSUER` (the enable-gate moved jwks_url → issuer).
 
 **Regression:** the existing `oidc.zig`/`jwks_test.zig` happy-path + reject tests must still pass unchanged (verifier logic untouched). **Idempotency/replay:** N/A.
 
@@ -199,12 +205,12 @@ OIDC_PROVIDER      (unchanged)                   default: clerk
 
 ## Acceptance Criteria
 
-- [ ] Derive-from-issuer + override + missing-issuer all covered — verify: `make test` (the eight tests above pass)
-- [ ] Neither workflow references the removed var — verify: `! grep -rn "OIDC_JWKS_URL" .github/workflows/`
-- [ ] Both workflows retain issuer + audience — verify: `grep -c "OIDC_ISSUER\|OIDC_AUDIENCE" .github/workflows/deploy-dev.yml .github/workflows/release.yml`
-- [ ] `make lint` clean · `make test` passes
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] Derive-from-issuer + override + missing-issuer all covered — `make test-unit-agentsfleetd` (8 dimensions + 2 bonus pass; exit 0)
+- [x] Neither workflow references the removed var — `! grep -rn "OIDC_JWKS_URL" .github/workflows/` → 0 references ✓
+- [x] Both workflows retain issuer + audience — `grep -c "OIDC_ISSUER\|OIDC_AUDIENCE" …` → deploy-dev=3, release=3 ✓
+- [x] `make lint-zig` clean · `make test-unit-agentsfleetd` passes (note: repo has no `make test`/`make lint` umbrella — Zig lanes are `lint-zig` / `test-unit-agentsfleetd`)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` → both OK
+- [x] `gitleaks detect` clean (no leaks found) · no file over 350 lines (serve.zig held at 350) · `make memleak` 0 failed
 
 ---
 
@@ -244,6 +250,8 @@ grep -rn "MissingOidcJwksUrl" src/ | head
 
 > **Empty at creation.** Append consults, skill-chain outcomes, and Indy-acked deferral quotes as work proceeds.
 
+- **CHORE(open) provenance cross-check (Jun 17 2026):** read `runtime_loader.zig`, `runtime_validate.zig`, `runtime_types.zig`, `env_vars.zig`, `oidc.zig`, `jwks.zig`, `doctor.zig`, `runtime.zig`, `serve.zig`, and the loader tests against the spec. Three corrections to Files-Changed: (1) `env_vars.zig` has **no** OIDC content (DB/Redis URL validation only) — the suffix constant + helper move to `auth/oidc.zig`, the optional-override doc moves to `docs/AUTH.md`; (2) `serve.zig` needs **no** change (`oidc_jwks_url orelse ""` already consumes the resolved value); (3) the enable-gate move (jwks_url → issuer) **breaks several existing loader tests** that set `OIDC_JWKS_URL` but no `OIDC_ISSUER` (`accepts custom provider`, `applies size defaults`, `rejects short/non-hex encryption key`, `rejects provider without required OIDC_JWKS_URL`, `rejects empty OIDC_JWKS_URL`) — these gain `OIDC_ISSUER` / are repurposed to the missing-issuer case, in-scope per §1/§2.
+- **§3 is a guarded action:** `.github/workflows/**` edits are CI/CD-guarded (explicit approval required; auto-mode does not cover). Daemon §1+§2 proceed autonomously; §3 surfaces to Indy for go/no-go before the workflow edits land.
 - **Pre-spec context (Jun 17 2026):** discovered during a CI-failure investigation. Sibling fixes already shipped/queued outside this spec: qa-dev Vercel-alias repoint (PR #419); Clerk `api` template `aud` typo `agentsfleeet`→`agentsfleet` (dashboard fix, Indy); dev+prod vault `jwks-url` corrected manually (prod was `clerk.usezombie.com`, dead). This spec removes the *ability* for jwks-url to drift again.
 - **Ops step (do at §3, record here):** remove `clerk-dev`/`clerk-prod` `jwks-url` fields from 1Password only after both deploys confirm green on derived URLs.
 
@@ -263,12 +271,14 @@ grep -rn "MissingOidcJwksUrl" src/ | head
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
-| Workflow sweep | `grep -rn OIDC_JWKS_URL .github/workflows/` | {paste} | |
-| Orphan sweep | `grep -rn MissingOidcJwksUrl src/` | {paste} | |
+| Unit tests | `make test-unit-agentsfleetd` | exit 0; test-depth unit=1964 (baseline 1958, +6) integration=190 | ✅ |
+| Lint (Zig) | `make lint-zig` | fmt ✓ · ZLint 0/0 across 468 files · pg-drain ✓ · schema-gate ✓ · no `-gnu` ✓ · line-limit ✓ | ✅ |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | X86_64_LINUX_OK + AARCH64_LINUX_OK | ✅ |
+| Memleak | `make memleak` | 1249 passed; 380 skipped; 0 failed; allocator-leak gate passed | ✅ |
+| Gitleaks | `gitleaks detect --no-banner --redact` | no leaks found | ✅ |
+| CI gates | `make check-gh-actions-valid` + `check-playbooks` + `harness-verify` | actionlint + make-refs green · playbook refs resolve · gates green | ✅ |
+| Workflow sweep | `grep -rn OIDC_JWKS_URL .github/workflows/` | 0 references | ✅ |
+| Orphan sweep | `grep -rn MissingOidcJwksUrl src/` | 0 references (renamed → `MissingOidcIssuer`) | ✅ |
 
 ---
 

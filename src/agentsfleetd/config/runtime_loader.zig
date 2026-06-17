@@ -88,8 +88,10 @@ const OidcConfig = struct {
 };
 
 pub fn loadOidc(env_map: *const EnvMap, alloc: Allocator) !OidcConfig {
-    const jwks_url = try common.env.owned(env_map, alloc, "OIDC_JWKS_URL");
-    errdefer if (jwks_url) |v| alloc.free(v);
+    // OIDC_JWKS_URL is an OPTIONAL override now. resolveJwksUrl dupes it into the
+    // returned struct, so this raw env copy is always freed here.
+    const explicit_jwks = try common.env.owned(env_map, alloc, "OIDC_JWKS_URL");
+    defer if (explicit_jwks) |v| alloc.free(v);
     const issuer = try common.env.owned(env_map, alloc, "OIDC_ISSUER");
     errdefer if (issuer) |v| alloc.free(v);
     const audience = try common.env.owned(env_map, alloc, "OIDC_AUDIENCE");
@@ -97,15 +99,19 @@ pub fn loadOidc(env_map: *const EnvMap, alloc: Allocator) !OidcConfig {
     const provider_raw = try common.env.owned(env_map, alloc, "OIDC_PROVIDER");
     defer if (provider_raw) |v| alloc.free(v);
 
-    const requested = jwks_url != null or issuer != null or audience != null or provider_raw != null;
-    const enabled = if (jwks_url) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
-    if (requested and !enabled) return ValidationError.MissingOidcJwksUrl;
+    // The issuer is the single source of identity truth and the enable-gate, so
+    // the key-source can never drift from it.
+    const requested = explicit_jwks != null or issuer != null or audience != null or provider_raw != null;
+    const enabled = if (issuer) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
+    if (requested and !enabled) return ValidationError.MissingOidcIssuer;
 
     const provider = if (provider_raw) |raw|
         oidc.parseProvider(std.mem.trim(u8, raw, S_T_R_N)) catch return ValidationError.InvalidOidcProvider
     else
         oidc.Provider.clerk;
 
+    // Effective JWKS URL: explicit override wins, else derived from the issuer.
+    const jwks_url = try oidc.resolveJwksUrl(alloc, explicit_jwks, issuer);
     return .{ .enabled = enabled, .provider = provider, .jwks_url = jwks_url, .issuer = issuer, .audience = audience };
 }
 
