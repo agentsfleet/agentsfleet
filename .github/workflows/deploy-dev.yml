@@ -429,7 +429,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet-app.vercel.app
+          BASE_URL: https://agentsfleet.vercel.app
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
@@ -445,8 +445,8 @@ jobs:
   # the acceptance suite (tests/e2e/acceptance/**). Failures gate the notify
   # step.
   #
-  # `https://agentsfleet-app.vercel.app` is the dev-facing dashboard — the
-  # `agentsfleet-app` Vercel project's Production env has
+  # `https://agentsfleet.vercel.app` is the dev-facing dashboard — the
+  # `agentsfleet` Vercel project's Production env has
   # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
   # production-customer dashboard lives behind the `app.agentsfleet.net`
   # custom domain via a separate project). Same URL that `qa-dev` above
@@ -503,7 +503,7 @@ jobs:
         run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet-app.vercel.app
+          BASE_URL: https://agentsfleet.vercel.app
           NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
@@ -575,7 +575,7 @@ jobs:
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: worktree
-          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://agentsfleet-app.vercel.app
+          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://agentsfleet.vercel.app
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
           AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}
