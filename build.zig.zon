@@ -18,17 +18,16 @@
             .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.2#dd85a21cdd5a9288556109e2b1438776f19d83b9",
             .hash = "nullclaw-2026.5.29-wlZZyROORwEVQ6YA9mTLZWk7bxJJ3R-oHpRHD9xLXxga",
         },
-        // Vendored fork of karlseguin/pg.zig at upstream commit 1aa3e3c (ref master),
-        // patched for a Zig 0.16 pool-acquire regression: upstream `Pool.acquire()`
-        // waits for a free connection via `Io.Select.concurrent` (sleep +
-        // Io.Condition.wait) — an async combinator that returns
-        // `error.ConcurrencyUnavailable` on the threaded `Io` this project runs, so
-        // any pool exhaustion 500s instead of waiting. Patched to block on a plain
-        // `Io.Condition.waitUncancelable` until `release()` signals a freed
-        // connection. See vendor/pg/CHANGES.md. Drop this vendor copy when upstream
-        // offers a threaded-Io timed wait and we re-pin.
+        // Fork pin agentsfleet/pg.zig (tag v0.0.0-af.1) over upstream karlseguin/pg.zig
+        // commit 1aa3e3c, patched for a Zig 0.16 pool-acquire regression: upstream
+        // `Pool.acquire()` waits via `Io.Select.concurrent` — an async combinator that
+        // returns `error.ConcurrencyUnavailable` on this project's threaded `Io`, so any
+        // pool exhaustion 500s instead of waiting. Patched to bounded-poll the exhaustion
+        // branch (see the fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin and
+        // return to upstream once it offers a threaded-Io timed wait.
         .pg = .{
-            .path = "vendor/pg",
+            .url = "git+https://github.com/agentsfleet/pg.zig.git?ref=v0.0.0-af.1#86fdb3e5c6a199daae77c59a116f5c987c5329d8",
+            .hash = "pg-0.0.0-Wp_7gZQBBwB5TqMl562eRWWcZGtOeHdgTCAUk1HYmirg",
         },
         .posthog = .{
             .url = "git+https://github.com/agentsfleet/posthog-zig.git#v0.2.0",
@@ -41,23 +40,24 @@
             .url = "git+https://github.com/hendriknielaender/zBench?ref=zig-0.16.0#c24d128bfa80ec6a1b495b84ec827c6a0bec7865",
             .hash = "zbench-0.11.2-YTdc76Q_AQAxonIKZ2-H1PdcESJGwyuYylw6RkPiBqyx",
         },
-        // Vendored fork of karlseguin/http.zig at upstream commit 40be022 (zig-0.16 branch),
-        // patched to fix a shutdown UAF in the non-blocking Worker.deinit:
-        // the per-worker thread pool was deinit'd (arena freed) without
-        // first being stopped, so pool threads waking from read_cond.wait
-        // would dereference a freed queue. See vendor/httpz/CHANGES.md.
-        // Drop this vendor copy when the upstream PR lands and we re-pin.
+        // Fork pin agentsfleet/http.zig (tag v0.0.0-af.1) over upstream karlseguin/http.zig
+        // commit f39f1ed (master), carrying two patches: (1) non-blocking Worker.deinit
+        // stops the thread pool before freeing the websocket + arena (Linux shutdown UAF),
+        // and (2) a shared-injector ThreadPool replacing per-thread private queues (see the
+        // fork's CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin once they land upstream.
         .httpz = .{
-            .path = "vendor/httpz",
+            .url = "git+https://github.com/agentsfleet/http.zig.git?ref=v0.0.0-af.1#ab27f0c0c2972dc9bce143b11c29aa0bfbf74bb8",
+            .hash = "httpz-0.0.0-PNVzrO0ACQACbDKnMiq2JfmmPCWykcBgUKQsF4TpdD6f",
         },
-        // Vendored fork of kubkon/zig-yaml at main commit 84d747b (0.3.0-dev).
-        // The library source is Zig 0.16-clean; the vendored build.zig drops the
-        // upstream YAML Test Suite conformance step, whose harness (test/spec.zig)
-        // uses std APIs removed in 0.16 and broke every consumer's build. We only
-        // consume the `yaml` module. See vendor/zig-yaml/CHANGES.md.
-        // Drop this vendor copy once upstream fixes test/spec.zig for 0.16.
+        // Fork pin agentsfleet/zig-yaml (tag v0.3.0-dev-af.1) over upstream kubkon/zig-yaml
+        // commit 84d747b (0.3.0-dev): the build.zig drops the upstream YAML Test Suite
+        // conformance step, whose harness (test/spec.zig) uses std APIs removed in 0.16 and
+        // broke every consumer's build. We consume only the `yaml` module (see the fork's
+        // CHANGES.md, PR patch/agentsfleet-0.16). Drop this pin once upstream fixes
+        // test/spec.zig for 0.16.
         .zig_yaml = .{
-            .path = "vendor/zig-yaml",
+            .url = "git+https://github.com/agentsfleet/zig-yaml.git?ref=v0.3.0-dev-af.1#11e8c661ca0730194e224b17d7418dfca0bd4841",
+            .hash = "zig_yaml-0.3.0-C1161n-rAgDc4O9pSMh-qdZcbCYCyoenayg3WpzM1Z8R",
         },
     },
     .paths = .{
@@ -66,6 +66,5 @@
         "src",
         "config",
         "schema",
-        "vendor",
     },
 }
