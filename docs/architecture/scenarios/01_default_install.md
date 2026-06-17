@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants an agent that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
-> **Rate snapshot.** Through 2026-07-31 UTC every event and every run execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
+> **Rate snapshot.** Through 2026-07-31 UTC every event and every run execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/agentsfleetd/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
 
 > **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
@@ -22,12 +22,15 @@ sequenceDiagram
     participant Slack
 
     Op->>Skill: invoke
-    Skill->>CLI: doctor --json
-    CLI->>API: GET /v1/me + workspace + tenant_provider
-    API-->>Skill: { auth ✓, workspace ✓, tenant_provider: {mode, provider, model, context_cap_tokens} }
-    Note over Skill: doctor's tenant_provider block carries the resolved<br/>model + cap (synth-default for John). The skill never<br/>calls the model-caps endpoint directly.
+    Skill->>CLI: doctor --json (health)
+    CLI->>API: GET /v1/me + workspace binding
+    API-->>Skill: { server_reachable ✓, workspace_selected ✓, workspace_binding_valid ✓ }
+    Skill->>CLI: tenant provider show --json
+    CLI->>API: GET /v1/.../tenant-provider
+    API-->>Skill: { mode, provider, model, context_cap_tokens }
+    Note over Skill: doctor returns health only. Posture comes from<br/>tenant provider show (synth-default for John);<br/>billing show carries free-trial state. The skill never<br/>calls the model-caps endpoint directly.
     Skill->>Op: ask 3 questions (slack, branch, cron)
-    Skill->>CLI: credential set (fly, slack, github, upstash)
+    Skill->>CLI: credential add (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
     Skill->>CLI: install --from .agentsfleet/platform-ops/
     CLI->>API: POST /agents<br/>{trigger_markdown, source_markdown}
@@ -43,7 +46,7 @@ sequenceDiagram
     Runner->>API: lease (POST /v1/runners/me/leases)
     Runner->>Slack: posts first-pass health summary
     Note over Op,Slack: Hours later, real CD failure...
-    GH->>API: POST /v1/webhooks/{agent_id} (HMAC verified)
+    GH->>API: POST /v1/webhooks/{agent_id}/github (HMAC verified)
     API->>API: XADD agent:{id}:events
     Runner->>API: lease (POST /v1/runners/me/leases)
     Runner->>Slack: posts evidenced diagnosis
@@ -63,19 +66,19 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 ### 1.1 Skill steps
 
-1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @agentsfleet/cli`, `npx skills add agentsfleet/skills`, `agentsfleet auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @agentsfleet/cli`, `npx skills add agentsfleet/skills`, `agentsfleet login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned health check; the skill never duplicates the logic.
 2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
 3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `AGENTSFLEET_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
-   then `agentsfleet credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
+   then `agentsfleet credential add <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
 
    For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced agents share it; rotation rotates everywhere).
-5. **Model and cap from doctor.** The skill reads `agentsfleet doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
+5. **Model and cap from `tenant provider show`.** After doctor confirms health, the skill reads `agentsfleet tenant provider show --json`, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; the CLI never has to call the model-caps endpoint at runtime.
 
-   The model-caps endpoint at `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
+   The model-caps endpoint at `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider add` (Scenario 02), **not** by the install-skill directly. The skill stays simple: run doctor for health, read `tenant provider show`, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
 6. **File generation.** The skill writes `.agentsfleet/platform-ops/SKILL.md` and `.agentsfleet/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
@@ -105,8 +108,8 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
          - "*.upstash.io"
          - slack.com
      budget:
-       daily_usd: 5
-       monthly_usd: 100
+       daily_dollars: 5
+       monthly_dollars: 100
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
@@ -156,10 +159,10 @@ A `agentsfleet-runner` leases the event within ≤5s. The lease path (in `agents
 2. PUBLISH `agent:{id}:activity` (`event_received`).
 3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
 4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_nanos=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
-5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
+5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_nanos=1`). One transaction.
 6. Approval gate (no destructive tools wired in this agent) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map`; `resolveActiveProvider`'s resolved provider+key ride the lease on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` (delivered fresh on every lease, including reclaim), separate from `secrets_map`, and the runner injects them into the NullClaw child for the inference call only.
-8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `agent_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_nanos=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
 9. `agentsfleetd` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `agentsfleetd`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`. The lease **also carries `instructions`** — the installed agent's stored `SKILL.md` body, extracted server-side by `AgentSession` — so the runner composes the NullClaw turn from the installed instructions **plus** the event. This is what makes the GitHub deploy-failure path (and the install smoke-test steer below) run the stored playbook on every trigger instead of a generic chat; it is delivered on **each** lease, fresh and reclaim alike (M84_008).
 10. The runner forks a sandboxed NullClaw child and runs the event (the webhook payload as the message).
 
@@ -190,13 +193,17 @@ $ /agentsfleet-install-platform-ops
 ▸ Preconditions …
   agentsfleet   ✓ on PATH
   gh          ✓ on PATH, scope admin:repo_hook present
-  doctor      ✓ auth + workspace + tenant_provider OK
-              tenant_provider: { mode: platform,
+  doctor      ✓ health OK
+              server_reachable: true
+              workspace_selected: true
+              workspace_binding_valid: true
+  provider    ✓ tenant provider show:
+              { mode: platform,
                 provider: fireworks,
                 model: accounts/fireworks/models/kimi-k2.6,
                 context_cap_tokens: 256000 }
-              billing: { free_trial: { active: true,
-                ends_at_ms: 1785542400000 } }
+  billing     ✓ billing show:
+              free_trial: { active: true, ends_at_ms: 1785542400000 }
               → Free until 2026-07-31 (UTC); runs charged 0 nanos.
 
 ▸ Detecting repo … github.com/john-doe/widgetly
@@ -219,7 +226,7 @@ $ /agentsfleet-install-platform-ops
 ▸ Writing .agentsfleet/platform-ops/SKILL.md, TRIGGER.md
    triggers: [ webhook:github events=[workflow_run] ]
    model: accounts/fireworks/models/kimi-k2.6
-   context_cap_tokens: 256000     ← from doctor's tenant_provider block
+   context_cap_tokens: 256000     ← from tenant provider show
 
 ▸ Installing …
   agent_id   = agt_a01HX9N3K…
@@ -256,10 +263,10 @@ evt_01HX9N4P…           steer:john        processed  2026-05-01T09:14:22  1610
 
 John clicks into `evt_01HX9P7M…` in the dashboard and sees the agent's evidence trail — the `http_request` calls to GitHub run logs and Fly app status, the diagnosis posted to Slack. The credential names appear (`github`, `fly`, `slack`); their secret bytes do not.
 
-### 3.3 Provider posture confirmed by `tenant provider get`
+### 3.3 Provider posture confirmed by `tenant provider show`
 
 ```text
-$ agentsfleet tenant provider get
+$ agentsfleet tenant provider show
 Mode:                platform   (synthesised default — no explicit row)
 Provider:            fireworks
 Model:               accounts/fireworks/models/kimi-k2.6
@@ -268,11 +275,11 @@ Context cap tokens:  256000
 ⓘ This is the platform default. To bring your own LLM key:
    op read 'op://<vault>/<item>/api_key' |
      jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-     agentsfleet credential set <name> --data @-
-   agentsfleet tenant provider set --credential <name>
+     agentsfleet credential add <name> --data @-
+   agentsfleet tenant provider add --credential <name>
 ```
 
-No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the self-managed setup commands.
+No `core.tenant_providers` row exists for John's tenant; `tenant provider show` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the self-managed setup commands.
 
 ---
 
@@ -289,5 +296,5 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider get` r
 
 - No self-managed. See `scenarios/02_self_managed.md`.
 - No balance trip. See `scenarios/03_balance_gate.md`.
-- No customer-facing statuspage / external comms. That's the bastion direction documented in [`../bastion.md`](../bastion.md).
+- No customer-facing statuspage / external comms. That's the bastion direction documented in [`../roadmap.md`](../roadmap.md#bastion--post-mvp-shape).
 - No GitHub App for auto-webhook config. Manual step in v2.

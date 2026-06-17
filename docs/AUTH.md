@@ -105,7 +105,7 @@ The full data lifecycle, sequence, session state machine, threat model, pinned c
 
 ## Flow 2 — UI (browser dashboard)
 
-> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the SSE route handler mints server-side. The single remaining client-held token — the `token` prop on the agent-detail thread, serialized into hydration data — is closed by **M77_001** (`docs/v2/active/M77_001_P1_UI_AUTH_CLIENT_TOKEN_REMOVAL.md`). For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
+> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the SSE route handler mints server-side. The single remaining client-held token — the `token` prop on the agent-detail thread, serialized into hydration data — is closed by **M77_001** (`docs/v2/done/M77_001_P1_UI_AUTH_CLIENT_TOKEN_REMOVAL.md`). For where this is headed, see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
 ### Shape
 
@@ -240,7 +240,7 @@ sequenceDiagram
     participant API as Zig backend
 
     Operator->>Browser: dashboard → "Create API key"
-    Browser->>API: POST /v1/workspaces/{ws}/api-keys<br/>Authorization: Bearer <user-jwt>
+    Browser->>API: POST /v1/api-keys<br/>Authorization: Bearer <user-jwt>
     Note over API: bearer_or_api_key validates user-jwt,<br/>handler mints agt_t<random>,<br/>stores SHA-256 hash in DB,<br/>returns plaintext ONCE
     API-->>Browser: 201 { key: "agt_t..." }
     Browser-->>Operator: shown once (copy now)
@@ -313,7 +313,8 @@ Every later call carries `Bearer agt_r` and hits a dedicated `runnerBearer` midd
 parse Bearer → require "agt_r" prefix          (else 401 — no JWKS fall-through)
 SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
   admin_state='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
-  miss / non-active    → 401 UZ-RUN-009
+  miss                 → 401 UZ-RUN-001
+  non-active           → 401 UZ-RUN-009
 ```
 
 This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `agt_r` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
@@ -356,7 +357,7 @@ flowchart TD
     Princ2 --> Handler
 ```
 
-### Configuration knobs (from `src/cmd/serve.zig`)
+### Configuration knobs (from `src/agentsfleetd/cmd/serve.zig`)
 
 | Knob              | Source                | Purpose                                                                         |
 | ----------------- | --------------------- | ------------------------------------------------------------------------------- |

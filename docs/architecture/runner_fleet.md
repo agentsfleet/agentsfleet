@@ -73,7 +73,7 @@ Fail-safe by construction: a transient `/renew` failure retries on the next tick
 
 The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencing, node heartbeats, drain, sticky scheduling, checkpointed workloads — but it is **not** a general orchestrator and must not drift into one. The non-goals are load-bearing; each rejected feature is one we deliberately do not build until a spec changes this direction:
 
-- **Not a general scheduler — *until M85_001*.** Placement is capped at *sticky + any-eligible* today. **Label** placement (a agent's `required_tags ⊆ runner.labels`, matched before the sticky hint) is built in **M85_001**; capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
+- **Not a general scheduler — beyond label placement.** **Label** placement (a agent's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in **M85_001** (live: `assign.zig` matches `required_tags <@ labels`); capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
 - **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
@@ -181,7 +181,7 @@ Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connect
 
 ### Operator plane + reassignment
 
-The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — landed in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires affinity for admin-driven reassignment — lands in **M84_002**. "Busy" stays **derived** from `fleet.runner_leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)` and `active = COUNT(active)` derive server-side, and reassignment targets a specific lease row. Capacity-aware scheduling (`available = worker_count − active`) stays out of scope until M85_001 because no runner-reported `worker_count` exists today. Heartbeat-lapse recovery remains bounded by the lease-expiry backstop first; M84_002 adds the offline audit event and admin-driven affinity expiry.
+The read of the fleet — `GET /v1/fleet/runners` (paginated, platform-admin-gated, derived liveness, no `token_hash`) — landed in **M84_001**. The **mutation** half — `PATCH /v1/fleet/runners/{id}` cordon/drain/revoke, the `status`→`admin_state` rename, `UZ-RUN-009`, the `fleet.runner_events` log, and the **liveness sweeper** that marks stale runners offline and expires affinity for admin-driven reassignment — landed in **M84_002**. "Busy" stays **derived** from `fleet.runner_leases` — a runner holds **0..N** active leases under the M88_002 worker pool, so there is no singular live-lease column: `busy = EXISTS(active lease)` and `active = COUNT(active)` derive server-side, and reassignment targets a specific lease row. Capacity-aware scheduling (`available = worker_count − active`) stays out of scope (M85_001 shipped label placement only, not capacity) because no runner-reported `worker_count` exists today. Heartbeat-lapse recovery remains bounded by the lease-expiry backstop first; M84_002 adds the offline audit event and admin-driven affinity expiry.
 
 ## Datastore role model — why there is no `runner_runtime`
 
@@ -264,7 +264,7 @@ trigger event E0 ─► RUN 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 
                 ─► RUN 3 (lease, checkpoint=C2) ─► NullClaw finishes ─► report{processed}
 ```
 
-Durable state across runs is the checkpoint in `agentsfleetd`, never runner-local — which is why a different runner can pick up run 2. A chain hard-stops at 10 continuations (escalates to a human). Sticky routing (below) prefers the runner that ran the previous run, but correctness never depends on it.
+Durable state across runs is the checkpoint in `agentsfleetd`, never runner-local — which is why a different runner can pick up run 2. There is no continuation-chain cap; a runaway run is bounded by the agent's `budget` caps and the lease runtime deadline instead. Sticky routing (below) prefers the runner that ran the previous run, but correctness never depends on it.
 
 ## Memory continuity — durable agent memory rides the trusted plane
 
@@ -377,7 +377,7 @@ The pre-cutover runtime had three Redis surfaces. The split keeps two (shifting 
 
 | Surface | Before | Now |
 |---|---|---|
-| `agent:{id}:events` (work stream, group `agent_workers`) | the per-agent worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
+| `agent:{id}:events` (work stream, group `agent_lease`) | the per-agent worker thread was the consumer (`worker-{host}-{ts}`); blocking `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`agentsfleetd` is the consumer.** `lease` does a non-blocking `XREADGROUP` on the request thread; `report` does the `XACK`. The runner is not a Redis consumer. |
 | reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker was a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`agentsfleetd` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
 | `agent:control` (control stream) | the watcher consumed `agent_created` / `agent_status_changed` / `agent_config_changed` / `worker_drain_request` to spawn / cancel / reload per-agent threads | **removed.** There are no per-agent threads to orchestrate: created is moot, status/config live in Postgres + are read fresh per `lease`, drain is the heartbeat reply. The producer (`control_stream.publish`) and the dead `control_stream` module were deleted; install keeps only `redis_agent.ensureAgentConsumerGroup` (the lease `XREADGROUP` needs the events group present). |
 | `agent:{id}:activity` (pub/sub) | the worker `PUBLISH`ed; SSE handlers subscribed | same channel + SSE; **`agentsfleetd` `PUBLISH`es** — bracket frames directly, mid-run frames fed by the runner's `activity` stream. |
@@ -422,7 +422,7 @@ Two network policies:
 
 ## Scaling
 
-The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment) / M85_001 (label placement) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N agents and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `agentsfleetd` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `agt_r`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M84_002 (reassignment, shipped) / M85_001 (label placement, shipped) concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## Observability — runner metrics on `agentsfleetd` `/metrics`
 
@@ -446,13 +446,13 @@ The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[met
 ### The four per-runner families
 
 ```
-agent_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
-agent_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
-agent_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
-agent_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
+agentsfleet_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
+agentsfleet_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
+agentsfleet_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
+agentsfleet_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
 ```
 
-All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/agentsfleetd/observability/metrics_runner.zig`, mirroring `metrics_workspace.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
+All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/agentsfleetd/observability/metrics_runner.zig`, mirroring `metrics_counters.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
@@ -489,18 +489,21 @@ The exact and restart-resilient form of the two gauges is a read-only background
  S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (done)
  S5  M80_005  IDENTITY   DONE — platform_admin gate on enrollment (POST /v1/runners) + Option B host
                                  (operator pre-mints agt_r, no self-register); trust_class +
-                                 allowed_workspace_ids + trust-gated placement deferred to M85_001
+                                 allowed_workspace_ids + trust-gated placement still deferred (later)
  S5  M80_006  FLEET      DONE — per-lease renewal (live runner keeps its lease); operator plane +
                                  heartbeat-lapse reassignment carved out → M84_002
  S6  M84_001  ENROLLMENT dashboard "Add runner" mint (retired register --token CLI) + GET
                          /v1/fleet/runners read + honest derived liveness                          (done)
  S6  M84_002  OPERATOR   PATCH /v1/fleet/runners cordon/drain/revoke + admin_state + UZ-RUN-009 +
                          fleet.runner_events log + liveness sweeper / reassignment                 (done)
- S7  M85_001  SCHEDULER  label placement (required_tags ⊆ runner.labels, before the sticky hint) +
-                         trust-gated placement; capacity / fairness / autoscale stay out            (pending)
+ S7  M85_001  SCHEDULER  label placement (required_tags ⊆ runner.labels, before the sticky hint);
+                         capacity / fairness / autoscale / trust-tier stay out                       (done)
  ── note ──────────────────────────────────────────────────────────────────────────────────────
-     "M80_007" shipped as the runner-observability spec; the placement reservation moved to M85_001
+     "M80_007" shipped as the runner-observability spec; the placement reservation moved to M85_001.
+     M85_001 shipped label placement only — trust-gated placement remains deferred (later).
  ── later ─────────────────────────────────────────────────────────────────────────────────────
+     trust-gated placement   trust_class + allowed_workspace_ids funnel (M80_005 carved this out;
+                             M85_001 did not pick it up — still a non-goal until a spec reopens it)
      mode C    self-enrolling runners — the open "run it on your own host" case
 ```
 
