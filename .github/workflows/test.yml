@@ -52,14 +52,6 @@ jobs:
       - name: Test agentsfleet
         run: bun run test:coverage
         working-directory: cli
-      - name: Upload agentsfleet coverage
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: agentsfleet/agentsfleet
-          flags: agentsfleet
-          files: cli/coverage/lcov.info
-          fail_ci_if_error: false
 
   test-unit-website:
     runs-on: ubuntu-latest
@@ -74,14 +66,6 @@ jobs:
       - name: Test website
         run: bun run test:coverage
         working-directory: ui/packages/website
-      - name: Upload website coverage
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: agentsfleet/agentsfleet
-          flags: website
-          files: ui/packages/website/coverage/lcov.info
-          fail_ci_if_error: false
 
   test-unit-app:
     runs-on: ubuntu-latest
@@ -96,14 +80,6 @@ jobs:
       - name: Test app
         run: bun run test:coverage
         working-directory: ui/packages/app
-      - name: Upload app coverage
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: agentsfleet/agentsfleet
-          flags: apps
-          files: ui/packages/app/coverage/lcov.info
-          fail_ci_if_error: false
 
   test-unit-design-system:
     runs-on: ubuntu-latest
@@ -118,14 +94,6 @@ jobs:
       - name: Test design-system (97% coverage gate)
         run: bun run test:coverage
         working-directory: ui/packages/design-system
-      - name: Upload design-system coverage
-        uses: codecov/codecov-action@v6
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: agentsfleet/agentsfleet
-          flags: design-system
-          files: ui/packages/design-system/coverage/lcov.info
-          fail_ci_if_error: false
 
   bundle-size-website:
     runs-on: ubuntu-latest
