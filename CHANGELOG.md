@@ -8,13 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Per-runner Prometheus metrics on `zombied` `/metrics`: `zombie_runner_failures_total{runner_id,reason}`, `zombie_runner_executions_total{runner_id,outcome}`, `zombie_runner_last_seen_seconds{runner_id}`, `zombie_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity
+- Per-runner Prometheus metrics on `agentsfleetd` `/metrics`: `agentsfleet_runner_failures_total{runner_id,reason}`, `agentsfleet_runner_executions_total{runner_id,outcome}`, `agentsfleet_runner_last_seen_seconds{runner_id}`, `agentsfleet_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity
 - Grafana dashboard JSON (`deploy/grafana/runner_fleet.json`) — runner-fleet observability; 6 panels with multi-replica-correct PromQL aggregation (`sum` counters, `min` liveness, best-effort `sum` active-leases), auto-imported by the 009 playbook alongside `agent_run_breakdown.json`
 
 ### Removed
 
-- 22 dead pipeline-tier-2 metrics (`zombie_agent_echo_*`, `zombie_agent_scout_*`, `zombie_agent_warden_*`, `zombie_sandbox_*`, `zombie_side_effect_outbox_*`, `zombie_worker_allocator_leaks_total`, `zombie_rate_limit_wait_ms_total`, and others) — consolidated into `zombie_agent_duration_seconds` histogram and per-workspace counters
-- `zombie_gate_repair_loops_per_run` histogram — replaced by the composite `zombie_agent_duration_seconds` histogram added in 0.4.0
+- 22 dead pipeline-tier-2 metrics (`agent_echo_*`, `agent_scout_*`, `agent_warden_*`, `agent_sandbox_*`, `agent_side_effect_outbox_*`, `agent_worker_allocator_leaks_total`, `agent_rate_limit_wait_ms_total`, and others) — consolidated into the `agent_duration_seconds` histogram and per-workspace counters
+- `agent_gate_repair_loops_per_run` histogram — replaced by the composite `agent_duration_seconds` histogram added in 0.4.0
 
 ## [0.4.0] - 2026-04-06
 
