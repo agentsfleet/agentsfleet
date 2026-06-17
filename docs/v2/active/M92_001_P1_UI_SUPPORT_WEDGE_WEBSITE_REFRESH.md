@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 001
 **Date:** Jun 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing: agentsfleet.net still sells the deploy-failure wake-on-event story while the product positioning moved to a resident engineer that compounds operational knowledge from recurring problem classes; every visitor from the application reads the wrong product
 **Categories:** User Interface (UI)
 **Batch:** B2 — after M92_002 (the agentsfleet rebrand lands first; every copy string here is authored under the new brand)
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m92-website-refresh
+**Test Baseline:** unit=1951 integration=189
 **Depends on:** M92_002 (brand noun + identity surfaces; this workstream's copy and guard tokens say `agentsfleet`)
 **Provenance:** agent-generated (website repositioning session, Jun 12, 2026) — grounded in `~/Downloads/usezombie-techstars-onepager.md` (the submitted positioning), `docs/architecture/archive/office_hours_support_wedge_jun2026.md` (competitive grid + Ideal Customer Profile), and a read of every `ui/packages/website/src` component; re-confirm at PLAN.
 
