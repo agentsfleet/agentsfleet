@@ -84,6 +84,7 @@
 |------|--------|-----|
 | `cli/bunfig.toml` | EDIT | Raise coverage floor to 100/100 and ignore only tag-only files. |
 | `cli/scripts/enforce-coverage.mjs` | EDIT | Parse and enforce exact 100/100 output; keep failure text actionable. |
+| `.github/workflows/test.yml` | EDIT | Remove Codecov upload steps while preserving package coverage commands in the GitHub test workflow. |
 | `cli/src/cli.ts` | EDIT | Remove or make reachable the remaining defensive Commander error mapping line without changing public exit codes. |
 | `cli/src/errors/auth.ts` | EDIT | Replace factory shape if JSC keeps mis-mapping executable error classes to type-only lines. |
 | `cli/src/errors/index.ts` | EDIT | Preserve error variants while eliminating uncredited class/function artifacts if needed. |
@@ -138,6 +139,7 @@ Update coverage settings and enforcement so both package-local and repo-level ga
 - **Dimension 4.1** — `cli/bunfig.toml` threshold is 1.00 line and 1.00 function → Test/evidence grep
 - **Dimension 4.2** — `npm run test` fails below 100 and passes at 100 → Test/evidence command output
 - **Dimension 4.3** — `make test-coverage-all` still passes after the CLI floor change → Test/evidence repo command output
+- **Dimension 4.4** — GitHub test workflow keeps package coverage gates but has no external coverage upload action → Test/evidence `actionlint .github/workflows/test.yml` + workflow grep
 
 ### §5 — Error/retry terminology audit stays green
 
@@ -202,6 +204,7 @@ No CLI command syntax, JSON output, HTTP API, or state-file format changes.
 | 4.1 | unit | coverage threshold grep | `coverageThreshold = { line = 1, function = 1 }` or equivalent |
 | 4.2 | integration | `npm run test` | package build + coverage enforcement passes at 100 |
 | 4.3 | integration | `make test-coverage-all` | repo coverage gate passes with CLI at 100 |
+| 4.4 | unit | workflow coverage-upload grep | `.github/workflows/test.yml` still runs coverage commands and contains no Codecov upload action |
 | 5.1 | unit | stale terminology grep | no live `zombie`/`usezombie` hits under `cli/src cli/test` |
 | 5.2 | integration | agent not-found tests | `UZ-AGT-*` / `UZ-MEM-*` errors use agent wording and suggestions |
 | 5.3 | integration | failure-mode error-code tests | login/auth/agent/memory/server failures surface stable codes |
@@ -214,6 +217,7 @@ No CLI command syntax, JSON output, HTTP API, or state-file format changes.
 - [ ] CLI coverage is literal 100/100 — verify: `cd cli && npm run test:coverage`
 - [ ] CLI enforcement fails below 100 and passes at 100 — verify: `cd cli && npm run test`
 - [ ] Repo coverage stays green — verify: `make test-coverage-all`
+- [ ] GitHub test workflow has no external coverage upload action — verify: `actionlint .github/workflows/test.yml` and `rg -n "[Cc]odecov|Upload .*coverage|coverage/lcov.info|CodeQL|codeql" .github/workflows && echo "FAIL" || echo "PASS"`
 - [ ] CLI stale terminology grep is clean — verify: `rg -n "zombie|usezombie" cli/src cli/test`
 - [ ] TypeScript typecheck and lint pass — verify: `cd cli && npm run typecheck && npm run lint`
 - [ ] No hidden real behavior in ignored coverage files — verify: tag-only audit test/script
@@ -242,6 +246,10 @@ gitleaks detect
 
 # E7: 350-line gate
 git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
+
+# E8: GitHub workflow keeps coverage tests but removes external upload
+actionlint .github/workflows/test.yml
+rg -n "[Cc]odecov|Upload .*coverage|coverage/lcov.info|CodeQL|codeql" .github/workflows && echo "FAIL" || echo "PASS"
 ```
 
 ## Dead Code Sweep
