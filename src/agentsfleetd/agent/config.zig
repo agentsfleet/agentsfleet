@@ -36,6 +36,8 @@ pub const validRequiredTags = config_types.validRequiredTags;
 
 // Gate/anomaly policy types (owned by config_gates, surfaced here for callers).
 pub const GatePolicy = config_gates.GatePolicy;
+// Write-time gate-condition validation (UZ-APPROVAL-005); runtime parse stays lenient.
+pub const firstInvalidGateCondition = config_gates.firstInvalidCondition;
 
 // Entry points.
 pub const parseAgentConfig = config_parser.parseAgentConfig;

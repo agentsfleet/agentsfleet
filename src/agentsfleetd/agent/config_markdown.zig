@@ -13,6 +13,7 @@ const Allocator = std.mem.Allocator;
 const config_types = @import("config_types.zig");
 const config_parser = @import("config_parser.zig");
 const config_validate = @import("config_validate.zig");
+const config_gates = @import("config_gates.zig");
 const yaml_frontmatter = @import("yaml_frontmatter.zig");
 
 const AgentConfig = config_types.AgentConfig;
@@ -277,4 +278,61 @@ test "parseTriggerMarkdownWithJson: parse failure inside frontmatter → JSON fr
         AgentConfigError.MissingRequiredField,
         parseTriggerMarkdownWithJson(alloc, trigger_md),
     );
+}
+
+test "parseTriggerMarkdownWithJson: malformed gate condition parses leniently; flagged at write boundary" {
+    const alloc = std.testing.allocator;
+    // The runtime parser is faithful: a malformed condition still parses, so an
+    // already-stored agent keeps loading (no silent claim-time hard-fail). The
+    // strict UZ-APPROVAL-005 rejection lives at the write boundary via
+    // config_gates.firstInvalidCondition, which must flag it.
+    const trigger_md =
+        \\---
+        \\name: test-agent
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: "0 0 * * *"
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\  gates:
+        \\    rules:
+        \\      - tool: git
+        \\        action: push
+        \\        condition: "garbage has no operator"
+        \\---
+    ;
+    var parsed = try parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+    try std.testing.expect(parsed.config.gates != null);
+    try std.testing.expect(config_gates.firstInvalidCondition(parsed.config.gates.?.rules) != null);
+}
+
+test "parseTriggerMarkdownWithJson: valid gate condition parses and passes write-boundary check" {
+    const alloc = std.testing.allocator;
+    const trigger_md =
+        \\---
+        \\name: test-agent
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: "0 0 * * *"
+        \\  tools:
+        \\    - agentmail
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\  gates:
+        \\    rules:
+        \\      - tool: git
+        \\        action: push
+        \\        condition: "branch == 'main'"
+        \\---
+    ;
+    var parsed = try parseTriggerMarkdownWithJson(alloc, trigger_md);
+    defer parsed.deinit(alloc);
+    try std.testing.expect(parsed.config.gates != null);
+    try std.testing.expectEqualStrings("branch == 'main'", parsed.config.gates.?.rules[0].condition.?);
+    try std.testing.expect(config_gates.firstInvalidCondition(parsed.config.gates.?.rules) == null);
 }

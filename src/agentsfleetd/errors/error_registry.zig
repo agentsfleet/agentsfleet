@@ -211,6 +211,7 @@ pub const MSG_SSE_STREAM_CAP = "Concurrent event-stream limit reached on this in
 pub const MSG_APPROVAL_NOT_FOUND = "Approval action not found or already resolved";
 pub const MSG_APPROVAL_INVALID_BODY = "Invalid approval payload";
 pub const MSG_APPROVAL_INVALID_DECISION = "Decision must be 'approve' or 'deny'";
+pub const MSG_APPROVAL_CONDITION_INVALID = "Gate condition is invalid. Use field == 'value' or field != 'value' (single-quoted).";
 // Webhook signature messages
 // Webhook constants
 pub const BEARER_PREFIX = "Bearer ";
