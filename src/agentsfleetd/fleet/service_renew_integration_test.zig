@@ -115,9 +115,10 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     };
     defer h.deinit();
 
-    // The credit gate only refuses under .stop; the harness Context defaults to
-    // the production default (.warn), which covers. Force .stop directly on the
-    // context — the gate reads ctx.balance_policy, so no env mutation is needed.
+    // The credit gate only refuses under .stop, which is now the production
+    // default (balance_policy.DEFAULT), so the harness Context already carries it.
+    // The explicit set keeps this test independent of the configured default —
+    // the gate reads ctx.balance_policy, so no env mutation is needed.
     h.ctx.balance_policy = .stop;
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
