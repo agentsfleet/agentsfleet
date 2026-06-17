@@ -12,7 +12,7 @@
 const std = @import("std");
 const logging = @import("log");
 
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
 const sandbox = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 
@@ -95,7 +95,7 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
 /// runs BEFORE the supervisor's single `wait()` — the target is still an
 /// un-reaped (agent-at-most) pid. `ESRCH` (group already gone via the cgroup
 /// kill) is harmless.
-pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
+pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup) void {
     if (scope.*) |*s| s.kill() catch |err|
         log.warn("cgroup_kill_failed_fallback_signal", .{ .err = @errorName(err) });
     std.posix.kill(-pid, std.posix.SIG.KILL) catch |err|

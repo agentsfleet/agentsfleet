@@ -47,12 +47,7 @@ fn e(
 
 pub const ENTRIES = [_]Entry{
     // ── UUIDV7 ──────────────────────────────────────────────────────────────
-    e("UZ-UUIDV7-003", .bad_request, "Invalid UUID canonical format", "ID must be a valid UUIDv7 in canonical 8-4-4-4-12 hex format."),
-    e("UZ-UUIDV7-005", .internal_server_error, "ID generation failed", "Internal ID generation failed. Retry the request."),
     e("UZ-UUIDV7-009", .bad_request, "Invalid ID shape", "The supplied ID does not match the expected UUIDv7 shape."),
-    e("UZ-UUIDV7-010", .conflict, "UUID backfill conflict", "UUID backfill found a conflicting existing ID. Resolve manually."),
-    e("UZ-UUIDV7-011", .internal_server_error, "Rollback blocked", "Rollback is blocked by a dependent resource. Check constraints."),
-    e("UZ-UUIDV7-012", .internal_server_error, "Error response linking failed", "Error response could not be linked to the originating request."),
     // ── INTERNAL ─────────────────────────────────────────────────────────────
     e("UZ-INTERNAL-001", .service_unavailable, "Database unavailable", "Check that DATABASE_URL is set and the database server is reachable. Run 'agentsfleetd doctor' to verify."),
     e("UZ-INTERNAL-002", .internal_server_error, "Database error", "A database query failed. Check the err= field and database logs."),

@@ -78,6 +78,16 @@ pub fn innerCreateAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     defer parsed.deinit(hx.alloc);
 
+    // UZ-APPROVAL-005: reject a malformed gate condition at the write boundary.
+    // The runtime parser is lenient (it must read whatever is already stored),
+    // so this strict check lives here rather than in parseGatePolicy.
+    if (parsed.config.gates) |g| {
+        if (agent_config.firstInvalidGateCondition(g.rules) != null) {
+            hx.fail(ec.ERR_APPROVAL_CONDITION_INVALID, ec.MSG_APPROVAL_CONDITION_INVALID);
+            return;
+        }
+    }
+
     // SKILL.md parsing is validate-only: the spec keeps SKILL.md verbatim
     // for the LLM (the SOUL half of the SOUL/CONTRACT split — see the
     // frontmatter schema spec under docs/v*/done/). The parsed metadata
