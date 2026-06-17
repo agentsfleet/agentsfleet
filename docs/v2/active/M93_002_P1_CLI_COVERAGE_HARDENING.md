@@ -4,11 +4,12 @@
 **Milestone:** M93
 **Workstream:** 002
 **Date:** Jun 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the Command-Line Interface (CLI) is the operator entrypoint; coverage gaps block release confidence.
 **Categories:** CLI
 **Batch:** B1 — standalone hardening; independent of M93_001 and the M92_001 website refresh.
-**Branch:** feat/m93-cli-coverage-hardening (reserved; set during CHORE(open))
+**Branch:** feat/m93-cli-coverage-hardening
+**Test Baseline:** unit=1951 integration=189
 **Depends on:** M92_003 (the CLI package and binary rename already landed)
 **Provenance:** agent-generated (coverage audit, Jun 17, 2026) — grounded in `cli/bunfig.toml`, `cli/coverage/lcov.info`, and the reference path `~/Projects/oss/cli/apps/cli/src/next`.
 
