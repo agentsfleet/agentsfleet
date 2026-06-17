@@ -114,10 +114,10 @@ flowchart TD
     L2 -->|no| Fill
     Drop --> Fill[continue tool calls]
     Fill --> L3{context fill<br/>over stage_chunk_threshold?}
-    L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>agentsfleetd enqueues continuation]
+    L3 -->|yes| Chunk[L3 fires observability:<br/>runtime logs chunk_threshold_breached<br/>SKILL.md prose tells the agent to<br/>snapshot via memory_store + wrap up]
     L3 -->|no| Tool4[tool call N+1]
     Tool4 --> L1
-    Chunk --> NextStage([Next run:<br/>memory_recall<br/>incident:X])
+    Chunk --> NextStage([Next trigger:<br/>agent recalls snapshot<br/>via memory hydration])
     NextStage --> Tool1
 ```
 
@@ -125,15 +125,15 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.agent_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `agentsfleetd` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run: the runner parent hydrates that agent's prior memory into the run over the `agt_r` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store — possibly on a different runner.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every LLM round-trip the runtime computes context fill (prompt tokens / cap); when it crosses the threshold it emits a `chunk_threshold_breached` observability log. It does **not** force a chunk — NullClaw exposes no mid-loop interrupt, so the runtime can see the fill but cannot halt the loop. The agent owns the decision: its `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) and wrap up the run as its context fills. A subsequent run then picks up where it left off: the runner parent hydrates that agent's prior memory over the `agt_r` plane — category-pinned, so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the agent itself holds no datastore credential) — and the agent recalls the snapshot from its in-run store, possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
-### The chain-cap escape hatch — `chunk_chain_escalate_human`
+### Bounding a runaway run
 
-A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `agentsfleetd` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `agentsfleet events <agent_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the agent itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
+Because the runtime cannot force a chunk (above), there is no enforced continuation-chain counter. A single run that will not wrap up is instead bounded by the guards that *are* enforced: the agent's `budget` caps (`daily_dollars` / `monthly_dollars`) and the lease's runtime kill-deadline. Those stop a runaway run regardless of whether the agent chooses to snapshot.
 
-Notification today is silent — observability only. Resume by steering a fresh message that calls `memory_recall` against whatever snapshot key the agent's own SKILL.md prose chose (the runtime never invents the key shape).
+`chunk_threshold_breached` is observability only — it tells an operator a run is getting large, nothing more. Resume a wrapped-up incident by steering a fresh message that calls `memory_recall` against whatever snapshot key the agent's own `SKILL.md` prose chose (the runtime never invents the key shape).
 
 ### Defaults — the user shouldn't have to do token math
 
@@ -151,7 +151,7 @@ The model's context cap is **not** baked into the runtime. It's resolved at inst
 | "My agent loses important findings mid-incident" | `memory_checkpoint_every: 3` | Checkpoint more often. Cheap. Always safe. |
 | "My agent hits context limits and chunks too aggressively" | `tool_window: 10` | Drop old results sooner so newer stuff fits. Loses older tool results earlier. |
 | "My agent chunks too late and produces partial diagnoses" | `stage_chunk_threshold: 0.6` | Chunk earlier. More handoffs but less risk of being cut off mid-thought. |
-| "I'm on Kimi 2.6 (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
+| "I'm on Kimi K2.6 (256k) and incidents are big" | `tool_window: 8` + `memory_checkpoint_every: 3` | Smaller windows + more checkpoints. Standard tight-context discipline. |
 
 ### The 80/20 rule
 
