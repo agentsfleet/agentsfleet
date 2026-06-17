@@ -1,12 +1,12 @@
-# Scenario 02 — Self-managed provider keys, Fireworks + Kimi 2.6
+# Scenario 02 — Self-managed provider keys, Fireworks + Kimi K2.6
 
-**Persona — John Doe.** Small-team user with his own Fireworks AI account already provisioned. Wants the orchestration substrate (durable runtime, webhook ingest, audit trail, sandbox, approval gating) but pays Fireworks directly for inference. Common reasons: cost control, model choice (Kimi K2 / 2.6 isn't in the platform-managed pool), data-locality preference, existing enterprise procurement with a specific provider. Tenant carries an explicit `core.tenant_providers` row with `mode=self_managed` after he runs `tenant provider set`.
+**Persona — John Doe.** Small-team user with his own Fireworks AI account already provisioned. Wants the orchestration substrate (durable runtime, webhook ingest, audit trail, sandbox, approval gating) but pays Fireworks directly for inference. Common reasons: cost control, model choice (Kimi K2.6 isn't in the platform-managed pool), data-locality preference, existing enterprise procurement with a specific provider. Tenant carries an explicit `core.tenant_providers` row with `mode=self_managed` after he runs `tenant provider add`.
 
-**Outcome under test:** John flips his tenant to self-managed with a Fireworks key + Kimi 2.6 model. All agent runs across every workspace under that tenant route inference through John's Fireworks account. agentsfleet still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
+**Outcome under test:** John flips his tenant to self-managed with a Fireworks key + Kimi K2.6 model. All agent runs across every workspace under that tenant route inference through John's Fireworks account. agentsfleet still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
 
 ---
 
-## 1. Why Fireworks + Kimi 2.6 is the worked example
+## 1. Why Fireworks + Kimi K2.6 is the worked example
 
 NullClaw's `providers/factory.zig` already maps Fireworks as an OpenAI-compatible provider:
 
@@ -14,16 +14,16 @@ NullClaw's `providers/factory.zig` already maps Fireworks as an OpenAI-compatibl
 |---|---|---|
 | `fireworks` / `fireworks-ai` | OpenAI-compatible (`/chat/completions`) | `https://api.fireworks.ai/inference/v1` |
 
-Kimi K2 (Moonshot's Kimi 2.6) is hosted on Fireworks at the model id `accounts/fireworks/models/kimi-k2.6`. The OpenAI-compatible client in `nullclaw/src/providers/compatible.zig` handles the wire shape; no provider-specific code needed in this repo.
+Kimi K2.6 (Moonshot's Kimi line) is hosted on Fireworks at the model id `accounts/fireworks/models/kimi-k2.6`. The OpenAI-compatible client in `nullclaw/src/providers/compatible.zig` handles the wire shape; no provider-specific code needed in this repo.
 
 The user can also pick Moonshot's own endpoint (`provider: "kimi"` → `https://api.moonshot.cn/v1`) if they have a Moonshot account directly. Same wire shape; same code path.
 
-This scenario uses Fireworks because it's the most-likely real choice (Western payment, CDN-fronted, multi-model catalogue including Kimi K2, Llama, DeepSeek, etc.).
+This scenario uses Fireworks because it's the most-likely real choice (Western payment, CDN-fronted, multi-model catalogue including Kimi K2.6, Llama, DeepSeek, etc.).
 
 ```mermaid
 flowchart LR
     subgraph Setup["Setup (one-time, tenant admin)"]
-        A[agentsfleet credential set<br/>account-fireworks-key<br/>provider/api_key/model] --> B[agentsfleet tenant provider set<br/>--credential account-fireworks-key]
+        A[agentsfleet credential add<br/>account-fireworks-key<br/>provider/api_key/model] --> B[agentsfleet tenant provider add<br/>--credential account-fireworks-key]
         B --> C{API resolves<br/>cap from<br/>caps endpoint}
         C -->|writes| D[(tenant_providers<br/>mode=self_managed<br/>provider/model<br/>context_cap_tokens<br/>credential_ref)]
     end
@@ -50,15 +50,15 @@ John runs two CLI commands. He picks the credential name himself — `account-fi
 ```bash
 op read 'op://<vault>/fireworks/api_key' |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  agentsfleet credential set account-fireworks-key --data @-
+  agentsfleet credential add account-fireworks-key --data @-
 
-agentsfleet tenant provider set --credential account-fireworks-key
+agentsfleet tenant provider add --credential account-fireworks-key
 ```
 
 What each does:
 
-- **`credential set account-fireworks-key`** — upsert. Vault stores an opaque JSON object keyed by the user-chosen name (per M45's structured-credentials model). The name is whatever John wants — another user might pick `anthropic-prod` or `openai-team-shared`. The JSON body is the provider's identity and key. **`context_cap_tokens` is not in the credential body** — it's resolved separately at `tenant provider set` time from the public model-caps endpoint.
-- **`tenant provider set --credential <name>`** — flips `core.tenant_providers.mode` to `self_managed` and writes a row keyed on the tenant. As part of the PUT, the API:
+- **`credential add account-fireworks-key`** — upsert. Vault stores an opaque JSON object keyed by the user-chosen name (per M45's structured-credentials model). The name is whatever John wants — another user might pick `anthropic-prod` or `openai-team-shared`. The JSON body is the provider's identity and key. **`context_cap_tokens` is not in the credential body** — it's resolved separately at `tenant provider add` time from the public model-caps endpoint.
+- **`tenant provider add --credential <name>`** — flips `core.tenant_providers.mode` to `self_managed` and writes a row keyed on the tenant. As part of the PUT, the API:
   1. Loads the vault row at `(tenant_id, "account-fireworks-key")`.
   2. Validates the JSON has `provider`, `api_key`, `model` (eager structural validation; PUT fails with `400 credential_data_malformed` otherwise).
   3. GETs `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?model=<urlencoded-model>` to resolve the cap.
@@ -66,7 +66,7 @@ What each does:
 
 If the model isn't in the public catalogue, the API returns `400 model_not_in_caps_catalogue` with a hint on how to add it (PR to the catalogue source, or wait for the admin-agent's next sweep — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9). The PUT does **not** make a synthetic call to Fireworks to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed` (lazy auth validation). The CLI prints a `Tip: run a test event to verify the key works against fireworks.` after success.
 
-`tenant_providers.tenant_id` is the primary key (one active provider per tenant). Multi-credential tenants are supported in vault — John can store `anthropic-prod` AND `account-fireworks-key` and flip between them with another `tenant provider set --credential <other>` — but only one is active at a time.
+`tenant_providers.tenant_id` is the primary key (one active provider per tenant). Multi-credential tenants are supported in vault — John can store `anthropic-prod` AND `account-fireworks-key` and flip between them with another `tenant provider add --credential <other>` — but only one is active at a time.
 
 The same setup works through the dashboard at `/settings/models`: a credential dropdown populated from the tenant's vault list, a model override field auto-filled from the picked credential, a Save button.
 
@@ -76,7 +76,7 @@ The same setup works through the dashboard at `/settings/models`: a credential d
 
 When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
 
-1. The skill calls `agentsfleet doctor --json`. Doctor's `tenant_provider` block reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — doctor is a readiness surface, not a secret surface.
+1. The skill calls `agentsfleet doctor --json` for connectivity + workspace health (`server_reachable`, `workspace_selected`, `workspace_binding_valid`), then reads `agentsfleet tenant provider show --json`, which reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — `tenant provider show` is a readiness surface, not a secret surface.
 2. The skill writes `.agentsfleet/platform-ops/SKILL.md` with sentinel frontmatter:
    ```yaml
    x-agentsfleet:
@@ -91,7 +91,7 @@ When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
 
 **Overlay rule (at lease time):** `model == ""` OR the `model:` key absent from the frontmatter ⇒ the control plane overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The install-skill emits the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this agent inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
 
-If John later runs `agentsfleet tenant provider set --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing agents pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
+If John later runs `agentsfleet tenant provider add --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing agents pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
 
 ---
 
@@ -127,7 +127,7 @@ L3 run chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigg
 
 The endpoint is the single source of truth for model→cap mapping. Design constraints:
 
-1. **Hot, unauthenticated, cacheable** — `tenant provider set` and the platform-side synth-default resolver need to call it without holding any tenant token.
+1. **Hot, unauthenticated, cacheable** — `tenant provider add` and the platform-side synth-default resolver need to call it without holding any tenant token.
 2. **Not a DDoS magnet** — `/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` would advertise itself to every random scanner. We use a cryptic path prefix that is unguessable to scanning but well-known to our own clients.
 3. **Cheap to serve** — small static JSON, CDN-cacheable, immutable per release.
 
@@ -173,16 +173,16 @@ This is the verbatim end-to-end CLI experience for the self-managed setup, model
 ```text
 $ op read 'op://<vault>/fireworks/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-    agentsfleet credential set account-fireworks-key --data @-
+    agentsfleet credential add account-fireworks-key --data @-
 ✓ Credential `account-fireworks-key` stored in vault for tenant tnt_01HX9P…
 
-$ agentsfleet tenant provider set --credential account-fireworks-key
+$ agentsfleet tenant provider add --credential account-fireworks-key
 ▸ Loading credential `account-fireworks-key` …                    ✓
 ▸ Validating shape (provider, api_key, model present) …            ✓
 ▸ Resolving cap for accounts/fireworks/models/kimi-k2.6 …          256000
 ▸ Writing core.tenant_providers …                                  ✓
 
-✓ Tenant provider set:
+✓ Tenant provider added:
     Mode:               self_managed
     Provider:           fireworks
     Model:              accounts/fireworks/models/kimi-k2.6
@@ -193,10 +193,19 @@ $ agentsfleet tenant provider set --credential account-fireworks-key
    agentsfleet steer <agent_id> "ping"
 ```
 
-### 6.2 Confirmation via doctor and `tenant provider get`
+### 6.2 Confirmation via doctor and `tenant provider show`
+
+Doctor confirms connectivity + workspace health; the provider posture comes from `tenant provider show`.
 
 ```text
-$ agentsfleet doctor --json | jq .tenant_provider
+$ agentsfleet doctor --json
+{
+  "server_reachable": true,
+  "workspace_selected": true,
+  "workspace_binding_valid": true
+}
+
+$ agentsfleet tenant provider show --json
 {
   "mode": "self_managed",
   "provider": "fireworks",
@@ -205,7 +214,7 @@ $ agentsfleet doctor --json | jq .tenant_provider
   "credential_ref": "account-fireworks-key"
 }
 
-$ agentsfleet tenant provider get
+$ agentsfleet tenant provider show
 Mode:                self_managed
 Provider:            fireworks
 Model:               accounts/fireworks/models/kimi-k2.6
@@ -216,19 +225,19 @@ Credential ref:      account-fireworks-key
   flat 1¢ per event regardless of model or token count.
 ```
 
-The api_key bytes are absent from both surfaces — `doctor --json` strips it before serialising; `tenant provider get` never asks for it.
+The api_key bytes are absent from both surfaces — `tenant provider show --json` strips it before serialising; the table form never asks for it. Doctor never carries the provider posture at all — it is health-only.
 
 ### 6.3 Switching models on the same credential
 
-A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. He updates the credential body and re-runs `tenant provider set`:
+A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. He updates the credential body and re-runs `tenant provider add`:
 
 ```text
 $ op read 'op://<vault>/fireworks/api_key' |
     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/deepseek-v4-pro"}' |
-    agentsfleet credential set account-fireworks-key --data @-
+    agentsfleet credential add account-fireworks-key --data @-
 ✓ Credential `account-fireworks-key` updated.
 
-$ agentsfleet tenant provider set --credential account-fireworks-key
+$ agentsfleet tenant provider add --credential account-fireworks-key
 ▸ Loading credential …                                             ✓
 ▸ Resolving cap for accounts/fireworks/models/deepseek-v4-pro …    131072
 ▸ Writing core.tenant_providers …                                  ✓
@@ -239,11 +248,11 @@ $ agentsfleet tenant provider set --credential account-fireworks-key
     Credential ref:     account-fireworks-key  (unchanged)
 ```
 
-John's `.agentsfleet/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the control plane just overlays the new values on the next event's lease. In-flight events claimed under Kimi K2 finish under Kimi K2.
+John's `.agentsfleet/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the control plane just overlays the new values on the next event's lease. In-flight events claimed under Kimi K2.6 finish under Kimi K2.6.
 
 ### 6.4 Failure mode — credential deleted while still in self-managed
 
-If John deletes the credential without first running `tenant provider reset`, the next event dead-letters cleanly:
+If John deletes the credential without first running `tenant provider delete`, the next event is blocked at the gate cleanly:
 
 ```text
 $ agentsfleet credential delete account-fireworks-key
@@ -253,21 +262,21 @@ $ agentsfleet credential delete account-fireworks-key
 
 $ agentsfleet events agt_a01HX9N3K…
 EVENT_ID                 ACTOR             STATUS               STARTED              FAILURE_LABEL
-evt_01HXC7P2…           webhook:github    dead_lettered        2026-06-03T11:08:42  provider_credential_missing
+evt_01HXC7P2…           webhook:github    gate_blocked         2026-06-03T11:08:42  tenant_resolve_failed
 
-$ agentsfleet tenant provider get
+$ agentsfleet tenant provider show
 Mode:                self_managed
 Provider:            fireworks
 Model:               accounts/fireworks/models/deepseek-v4-pro
 Context cap tokens:  131072
 Credential ref:      account-fireworks-key
 ⚠ Credential `account-fireworks-key` is missing from vault.
-   Re-add it with `agentsfleet credential set`, OR fall back to platform with
-   `agentsfleet tenant provider reset`. Mode is NOT auto-reverted (would silently
+   Re-add it with `agentsfleet credential add`, OR fall back to platform with
+   `agentsfleet tenant provider delete`. Mode is NOT auto-reverted (would silently
    re-enable platform billing without your consent).
 ```
 
-The system never auto-reverts the mode to platform. Either John re-adds the credential (events resume on the next webhook), or he explicitly opts back into platform billing with `tenant provider reset`.
+The system never auto-reverts the mode to platform. Either John re-adds the credential (events resume on the next webhook), or he explicitly opts back into platform billing with `tenant provider delete`.
 
 ---
 
@@ -275,7 +284,7 @@ The system never auto-reverts the mode to platform. Either John re-adds the cred
 
 - self-managed is a tenant-scoped credential + provider-config flip. It does **not** require any code path that knows about provider identity inside `agentsfleetd` or the runner — both stay model-agnostic; the routing happens inside NullClaw.
 - The model→cap source of truth is the **same endpoint** for both platform and self-managed paths. The difference is *where the resolved cap is stored after lookup* (synth-default constants for tenants with no row, `tenant_providers` row for tenants with explicit config) and *when the control plane resolves it* (the resolver runs once per lease; sentinels in frontmatter trigger overlay from `tenant_providers`).
-- Fireworks + Kimi 2.6 works today because NullClaw already speaks OpenAI-compatible. No provider-specific work in this repo. The same path opens up Together AI, Groq, Cerebras, Moonshot, OpenRouter, DeepSeek, Nebius, xAI — every compatible provider in NullClaw's catalogue.
+- Fireworks + Kimi K2.6 works today because NullClaw already speaks OpenAI-compatible. No provider-specific work in this repo. The same path opens up Together AI, Groq, Cerebras, Moonshot, OpenRouter, DeepSeek, Nebius, xAI — every compatible provider in NullClaw's catalogue.
 - The self-managed credential body is `{provider, api_key, model}` only. Cap lives in `tenant_providers`. Splitting the two means the cap can be re-resolved when the model changes without touching vault.
 - The credential name is user-chosen, not a hardcoded convention. Multi-credential tenants are supported; the active credential is whichever name `tenant_providers.credential_ref` points at.
 - The api_key crosses one boundary cleanly — vault → resolver (`agentsfleetd`) → runner's NullClaw → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.2.
