@@ -9,7 +9,7 @@ const clock = @import("common").clock;
 const supervisor = @import("child_supervisor.zig");
 const pipe_proto = @import("pipe_proto.zig");
 const contract = @import("contract");
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
@@ -69,7 +69,7 @@ test "enrollOrFail is a no-op success for a null (dev_none) scope and never sign
     // never spawned and never signalled precisely because that branch returns
     // first; a regression that drops the null guard would fail here (or kill an
     // unrelated process). Guards the local-dev path against an accidental refusal.
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
     try supervisor.enrollOrFail(&scope, 999_999, "dev-none-lease");
     try std.testing.expect(scope == null); // nothing enrolled, scope untouched
 }

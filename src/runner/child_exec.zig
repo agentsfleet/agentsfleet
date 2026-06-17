@@ -20,6 +20,7 @@ const contract = @import("contract");
 const engine = @import("engine/runner.zig");
 const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
+const seccomp = @import("engine/seccomp.zig");
 const context_budget = @import("engine/context_budget.zig");
 const input = @import("child_exec_input.zig");
 const pipe_proto = @import("pipe_proto.zig");
@@ -36,10 +37,12 @@ pub const WORKSPACE_FLAG_PREFIX = "--workspace=";
 /// argv flag the parent sets when the tier requires in-child sandboxing.
 pub const SANDBOXED_FLAG = "--sandboxed";
 
-/// Distinct exit code for a fail-closed sandbox-setup failure — lets the parent
-/// classify it as a sandbox failure (UZ-RUN-007), not a clean exit.
-const SANDBOX_FAIL_EXIT: u8 = 78;
-const GENERIC_FAIL_EXIT: u8 = 1;
+/// Distinct exit code for a fail-closed sandbox-setup failure — lets the parent's
+/// `classify` map it to a startup-posture failure, not a crash. Canonical in
+/// `pipe_proto` (the child↔parent protocol vocabulary); referenced here so the
+/// child and the supervisor agree on the value (RULE UFS).
+const SANDBOX_FAIL_EXIT: u8 = pipe_proto.SANDBOX_FAIL_EXIT;
+const GENERIC_FAIL_EXIT: u8 = pipe_proto.GENERIC_FAIL_EXIT;
 const MAX_LEASE_BYTES: usize = 4 * 1024 * 1024;
 const READ_CHUNK: usize = 64 * 1024;
 /// Operator-facing outcome when a lease carries no installed instructions — the
@@ -71,6 +74,12 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
         };
         landlock.applyPolicy(workspace) catch |err| {
             log.err("landlock_failed_fail_closed", .{ .err = @errorName(err) });
+            return SANDBOX_FAIL_EXIT;
+        };
+        // Syscall wall atop Landlock — establish failure fails closed; a runtime
+        // trap exits SECCOMP_VIOLATION_EXIT -> landlock_deny (see seccomp.zig).
+        seccomp.applyFilter() catch |err| {
+            log.err("seccomp_failed_fail_closed", .{ .err = @errorName(err) });
             return SANDBOX_FAIL_EXIT;
         };
     }

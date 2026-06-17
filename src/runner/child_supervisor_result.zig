@@ -5,7 +5,8 @@
 
 const std = @import("std");
 const types = @import("engine/types.zig");
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
+const pipe_proto = @import("pipe_proto.zig");
 
 const ExecutionResult = types.ExecutionResult;
 
@@ -28,8 +29,10 @@ pub fn failed(class: types.FailureClass) ExecutionResult {
 }
 
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
-/// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → clean exit
-/// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
+/// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → exit 0
+/// (parse result) → SANDBOX_FAIL_EXIT (startup_posture) → SECCOMP_VIOLATION_EXIT
+/// (landlock_deny) → PID-cap-exhausted crash (resource_kill) → other crash. A
+/// renewal `.terminate` (lease
 /// lost / capped / no credits) is `renewal_terminate` — a policy stop, kept
 /// distinct from `timeout_kill` (the wall-clock deadline) so triage and billing
 /// can tell a policy kill from a clock kill. Terminate wins over a co-occurring
@@ -38,19 +41,29 @@ pub fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
     term: std.process.Child.Term,
-    scope: *?cgroup.CgroupScope,
+    scope: *?cgroup,
 ) ExecutionResult {
     if (outcome.terminated) return failed(.renewal_terminate);
     if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
-    // Zig 0.16 reap returns a typed Term, not a raw wait() status word. A clean
-    // run is a zero exit; a non-zero exit or a signal/stop is a crash.
-    const clean_exit = switch (term) {
-        .exited => |code| code == 0,
-        else => false,
+    // Exit 0 = parse the result frame. The child's distinct exit codes attribute
+    // sandbox-setup aborts (startup_posture) and seccomp traps (landlock_deny);
+    // any other failure is a crash, or resource_kill if the PID cap was hit.
+    return switch (term) {
+        .exited => |code| switch (code) {
+            0 => parseResult(alloc, outcome.bytes),
+            pipe_proto.SANDBOX_FAIL_EXIT => failed(.startup_posture),
+            pipe_proto.SECCOMP_VIOLATION_EXIT => failed(.landlock_deny),
+            else => crashOrResource(scope),
+        },
+        else => crashOrResource(scope),
     };
-    if (!clean_exit) return failed(.runner_crash);
-    return parseResult(alloc, outcome.bytes);
+}
+
+/// A crash with no more-specific cause -> resource_kill if the PID cap was hit, else runner_crash.
+fn crashOrResource(scope: *?cgroup) ExecutionResult {
+    if (scope.*) |*s| if (s.wasPidsExhausted()) return failed(.resource_kill);
+    return failed(.runner_crash);
 }
 
 /// Parse the child's serialized `ExecutionResult`; content is dup'd into the
