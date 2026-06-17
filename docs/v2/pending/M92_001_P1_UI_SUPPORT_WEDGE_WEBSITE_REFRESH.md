@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Workstream:** 001
 **Date:** Jun 12, 2026
 **Status:** PENDING
-**Priority:** P1 — customer-facing: usezombie.com still sells the deploy-failure wake-on-event story while the product positioning moved to a resident engineer that compounds operational knowledge from recurring problem classes; every visitor from the application reads the wrong product
+**Priority:** P1 — customer-facing: agentsfleet.net still sells the deploy-failure wake-on-event story while the product positioning moved to a resident engineer that compounds operational knowledge from recurring problem classes; every visitor from the application reads the wrong product
 **Categories:** User Interface (UI)
 **Batch:** B2 — after M92_002 (the agentsfleet rebrand lands first; every copy string here is authored under the new brand)
 **Branch:** — added at CHORE(open)
@@ -35,10 +35,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
-## Pull Request (PR) Intent & comprehension handshake
+## Pull Request (PR) — PR Intent & comprehension handshake
 
 - **PR title (eventual):** `feat(m92): center website on compounding operational knowledge`
-- **Intent (one sentence):** a visitor lands on usezombie.com and reads the product as one resident-engineer loop — first signal → recurring problem class → scenario/test → fix Pull Request (PR) → human review → fewer repeats — drawn as a pipeline they can grasp in one glance.
+- **Intent (one sentence):** a visitor lands on agentsfleet.net and reads the product as one resident-engineer loop — first signal → recurring problem class → scenario/test → fix Pull Request (PR) → human review → fewer repeats — drawn as a pipeline they can grasp in one glance.
 - **Handshake (agent fills at PLAN, before EXECUTE):** restate intent; list `ASSUMPTIONS I'M MAKING:`. Confirm against the branch: (a) the current guard-test token lists (they may have moved since authoring), (b) the design-system component inventory actually exported (Terminal, LogLine, WakePulse, SectionLabel, DisplayLG confirmed at authoring), (c) `make lint-website` + `make test-unit-website` + the website dry lane are the canonical verification targets. A `[?]` blocks EXECUTE.
 
 ---
@@ -103,25 +103,27 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 |------|--------|-----|
 | `ui/packages/website/src/components/Hero.tsx` | EDIT | escalation headline/lede, persona-aware copy, design-partner call to action beside the install row |
 | `ui/packages/website/src/components/Hero.test.tsx` | EDIT | assertions track new copy + dual call to action |
+| `ui/packages/website/src/components/OnboardingFlow.tsx` | DELETE | install steps fold into the `PipelineDiagram` start node; standalone section removed (RULE ORP/NDC) |
+| `ui/packages/website/src/components/OnboardingFlow.test.tsx` | DELETE | component removed |
 | `ui/packages/website/src/components/PipelineDiagram.tsx` | CREATE | the signal→problem-class→scenario/test→fix PR→human-gate diagram + categorized source strip |
 | `ui/packages/website/src/components/PipelineDiagram.test.tsx` | CREATE | structure, fork, reduced-motion, local-asset assertions |
 | `ui/packages/website/src/components/OperationalKnowledgeSection.tsx` | CREATE | compounding operational knowledge: problem class → scenario/test → fix PR → fewer repeats |
 | `ui/packages/website/src/components/OperationalKnowledgeSection.test.tsx` | CREATE | copy + heading-rank assertions |
 | `ui/packages/website/src/components/HowItWorks.tsx` | EDIT | three deploy-era steps become the compounding knowledge loop |
 | `ui/packages/website/src/components/HowItWorks.test.tsx` | EDIT | step order assertion |
-| `ui/packages/website/src/components/CompetitionTable.tsx` | CREATE | the "stops at" + "learns into prevention" table |
-| `ui/packages/website/src/components/CompetitionTable.test.tsx` | CREATE | row content assertions |
 | `ui/packages/website/src/components/CTABlock.tsx` | EDIT | "Stop chasing failed deploys." → escalation framing |
 | `ui/packages/website/src/components/CTABlock.test.tsx` | EDIT | tracks new copy |
 | `ui/packages/website/src/components/FAQ.tsx` | EDIT | one new wedge question (what the agent reads / approval posture); rate answers untouched |
 | `ui/packages/website/src/components/FAQ.test.tsx` | EDIT | new entry assertion |
-| `ui/packages/website/src/pages/Home.tsx` | EDIT | section order + reframed capability blocks |
-| `ui/packages/website/src/pages/Home.test.tsx` | EDIT | section-order assertion |
-| `ui/packages/website/src/marketing-copy.ts` | CREATE | named constants: pillar tokens, loop titles, source categories (RULE UFS home) |
+| `ui/packages/website/src/components/Pricing.tsx` | EDIT | layout → 3-plan cards (Free trial / Usage / Enterprise-contact) per approved `/design-shotgun` direction; every `RATES_DISPLAY` value byte-identical |
+| `ui/packages/website/src/components/Pricing.test.tsx` | EDIT | 3-card structure assertion; rate-value byte-equality regression (Invariant 5) |
+| `ui/packages/website/src/pages/Home.tsx` | EDIT | new section order (Hero → OperationalKnowledge → PipelineDiagram → capabilities → HowItWorks → Pricing → FAQ → CTA); OnboardingFlow removed; reframed capability blocks |
+| `ui/packages/website/src/pages/Home.test.tsx` | EDIT | new section-order assertion; drop OnboardingFlow four-step + duplicate-install pins (`:49`, `:75`) |
+| `ui/packages/website/src/lib/marketing-copy.ts` | CREATE | named constants: pillar tokens, loop titles, source categories, capability copy, llms.txt fields (RULE UFS home) |
 | `ui/packages/website/src/marketing-spec.test.ts` | EDIT | pillar tokens for the new era; forbidden unvalidated + autonomy-overclaim strings |
 | `ui/packages/website/public/logos/*.svg` | CREATE | vendored monochrome source-logo assets |
-| `ui/packages/website/scripts/prebuild.mjs` | EDIT | emit `llms.txt` from `marketing-copy.ts` constants |
-| `ui/packages/website/tests/e2e/smoke.spec.ts` | EDIT | new sections render in the dry lane; `/llms.txt` reachable |
+| `ui/packages/website/scripts/prebuild.mjs` | EDIT | emit `llms.txt` (convention index) + `llms-full.txt` (full prose) from `lib/marketing-copy.ts` + `config.ts` (`INSTALL_COMMAND`/`DOCS_URL`) + `rates.ts` (pricing pointer) |
+| `ui/packages/website/tests/e2e/smoke.spec.ts` | EDIT | new sections render in the dry lane; `/llms.txt` + `/llms-full.txt` reachable (200) |
 
 ---
 
@@ -163,12 +165,11 @@ The three deploy-era steps become the compounding loop: first signal → investi
 
 - **Dimension 4.1** — the eight steps render in loop order with titles from `marketing-copy.ts` → Test `test_how_it_works_eight_steps_in_order`
 
-### §5 — Trust capabilities + competition table
+### §5 — Trust capabilities
 
-The four capability blocks reframe from solo-developer features to the trust layer the onepager leads with (sandboxed runtime, vaulted credentials, approval gating, open source + full auditability with replay) — same grid, same components. Below, the competition table: categories and where each stops (answer, route, diagnose, draft, suggest) versus whether they preserve a failure class as scenario/test-backed operational memory. Plain design-system table or definition list — not a feature-comparison checkmark grid.
+The four capability blocks reframe from solo-developer features to the trust layer the onepager leads with (sandboxed runtime, vaulted credentials, approval gating, open source + full auditability with replay) — same grid, same components. Capability copy moves to `lib/marketing-copy.ts` (UFS). *(Competition table removed per `/plan-eng-review` Jun 17 — see Discovery.)*
 
 - **Dimension 5.1** — four reframed capability blocks render with trust-layer copy → Test `test_capabilities_trust_framing`
-- **Dimension 5.2** — competition table renders four rows with the "stops at" + "learns into prevention" framing → Test `test_competition_table_rows`
 
 ### §6 — CTA + FAQ alignment
 
@@ -183,13 +184,33 @@ The four capability blocks reframe from solo-developer features to the trust lay
 
 - **Dimension 7.1** — guard test asserts era pillar tokens via `marketing-copy.ts` imports → Test `test_marketing_spec_pins_new_era`
 - **Dimension 7.2** — guard test rejects unvalidated quantitative + autonomy-overclaim strings across rendered copy → Test `test_no_unvalidated_or_autonomy_overclaims`
-- **Dimension 7.3** — rendered copy uses the `agentsfleet` product noun; `usezombie` survives only in operational strings (install command, resolving URLs, package/binary names) → Test `test_brand_noun_guard`
+- **Dimension 7.3** — rendered copy uses the `agentsfleet` product noun; **zero** `usezombie`/`zombie` matches anywhere in `src/` (the rebrand has landed — install is `agentsfleet.dev` per `config.ts`, no operational-string exception remains) → Test `test_brand_noun_guard`
 
 ### §8 — Large Language Model (LLM)-readable surface
 
-The site ships `public/llms.txt` (llms.txt convention: markdown index at the site root) carrying the compounding operational-knowledge positioning, loop, install command, pricing pointer, and docs links — sourced from `marketing-copy.ts` constants at build time so site copy and the LLM surface cannot drift. **Implementation default:** a prebuild script emits it (the package already has `scripts/prebuild.mjs`); a static hand-edited file is the fallback if build-time generation fights the bundler.
+The site ships `public/llms.txt` to the [llmstxt.org](https://llmstxt.org) convention — an H1 title, a blockquote one-line positioning summary, then `##` link sections — plus a `public/llms-full.txt` carrying the full positioning prose for deep crawls. Both are emitted by `scripts/prebuild.mjs` from `lib/marketing-copy.ts` (positioning + loop), `config.ts` (`INSTALL_COMMAND`, `DOCS_URL`, `GITHUB_URL`), and `rates.ts` (`RATES_DISPLAY` pricing pointer) so the LLM surface cannot drift from site copy or the pinned rate model. The index links the already-bundled `/openapi.json`. **Required shape:**
 
-- **Dimension 8.1** — `/llms.txt` is served and carries the era pillar tokens + compounding loop steps → Test `test_llms_txt_present_and_current`
+```
+# agentsfleet
+
+> Resident engineer that compounds operational knowledge: signal → recurring
+> problem class → scenario/test → fix PR → human approval → fewer repeats.
+
+## Product
+- [How it works](https://agentsfleet.net/#how-it-works): the compounding loop
+- [Pricing](https://agentsfleet.net/#pricing): $0.0001/sec run, $5 starter credit, events free
+
+## Resources
+- [Docs](https://docs.agentsfleet.net)
+- [OpenAPI](/openapi.json)
+- [Source](https://github.com/agentsfleet/agentsfleet)
+- Install: `curl -fsSL https://agentsfleet.dev | bash`
+```
+
+**Implementation default:** prebuild-script generation; a static hand-edited file is the fallback only if generation fights the bundler.
+
+- **Dimension 8.1** — `/llms.txt` is served, passes the convention shape (H1 + blockquote summary + ≥1 `##` link section), and carries the pillar tokens + ordered loop steps + docs/openapi/install/pricing links → Test `test_llms_txt_present_and_current`
+- **Dimension 8.2** — `/llms-full.txt` is served and carries the full positioning prose; both files derive from the shared constants (no hardcoded drift) → Test `test_llms_full_txt_present`
 
 ---
 
@@ -238,14 +259,14 @@ No HTTP/CLI surface. The locked rule is the exported constant module and the gua
 | 3.1 | unit | `test_operational_knowledge_section_renders` | compounding knowledge spine present; heading rank is h2 under the hero h1 |
 | 4.1 | unit | `test_how_it_works_eight_steps_in_order` | eight titles render in the exported order, first signal first, learn last |
 | 5.1 | unit | `test_capabilities_trust_framing` | four blocks render sandboxed-runtime / vaulted-credentials / approval-gating / open-source-replay copy |
-| 5.2 | unit | `test_competition_table_rows` | four rows; each names its category, "stops at" boundary, and prevention-learning posture |
 | 6.1 | unit | `test_cta_escalation_framing` | CTA headline matches new copy; "failed deploys" absent from touched components |
 | 6.2 | unit | `test_faq_wedge_entry_and_rates_regression` | new entry renders; rate answer strings byte-equal to `RATES_DISPLAY`-derived values |
 | 7.1 | unit | `test_marketing_spec_pins_new_era` | guard test sources tokens from `marketing-copy.ts`, fails when a token is removed from the hero |
 | 7.2 | unit | `test_no_unvalidated_or_autonomy_overclaims` | seeded forbidden string in a fixture component is detected; live tree has zero hits |
-| 7.3 | unit | `test_brand_noun_guard` | rendered copy says `agentsfleet`; `usezombie` only in allowlisted operational strings |
-| 8.1 | unit | `test_llms_txt_present_and_current` | emitted `public/llms.txt` contains every pillar token and all compounding loop steps in order |
-| all | e2e | website dry-lane smoke | homepage renders every section; `/llms.txt` returns 200; axe assertions green; no console errors |
+| 7.3 | unit | `test_brand_noun_guard` | rendered copy says `agentsfleet`; **zero** `usezombie`/`zombie` matches across `src/` (no exception) |
+| 8.1 | unit | `test_llms_txt_present_and_current` | emitted `public/llms.txt` passes convention shape (H1 + blockquote + ≥1 `##` link section) and carries every pillar token, ordered loop steps, and docs/openapi/install/pricing links |
+| 8.2 | unit | `test_llms_full_txt_present` | emitted `public/llms-full.txt` carries the full positioning prose; both files derive from shared constants |
+| all | e2e | website dry-lane smoke | homepage renders every section; `/llms.txt` + `/llms-full.txt` return 200; axe assertions green; no console errors |
 
 **Regression:** existing Hero clipboard/toast tests, vocab-guard, no-pr-validator-framing, rates pin tests, `/pricing` + `/agents` route renders — all must pass unmodified except where assertions track intentionally changed copy. **Idempotency/replay:** N/A — static site.
 
@@ -286,6 +307,20 @@ No files deleted. Removed-copy sweep:
 - **Amendment (Indy, Jun 12, 2026):** copy authored under the `agentsfleet` brand (M92_002 dependency); `/llms.txt` added (§8); the `/design-shotgun` follow-up MUST include a pricing-section structural variant in the zombieos.polsia.app direction; install command stays on `usezombie.sh` verbatim.
 - **Amendment (Indy, Jun 16, 2026):** the wedge positioning was rolled into the org README surfaces ahead of this website implementation — `README.md` (this repo), the `usezombie/.github` profile, `usezombie/docs` `README.md`, and `agentsfleet/skills` `README.md` now lead with the resident-engineer-for-support-escalations copy (hero: "Your hardest support tickets are engineering problems. Now they have an engineer."; pillar tokens: resident engineer, human approval, replayable log). These READMEs are NOT covered by the website `marketing-spec` guards; when this spec's website copy lands it remains canonical and the READMEs reconcile to it. Separately corrected this repo's README CLI install to the ecosystem-standard `npm install -g @agentsfleet/cli` (was a bare `bun install -g agentsfleet`).
 - **Amendment (Indy, Jun 17, 2026 `/plan-ceo-review`):** evolved scope collapses to one unique spine: **compounding operational knowledge**. Scenario generation, test generation, resident-engineer workflow, asleep-engineer PRs, and safety boundaries are proof points under that spine — not peer features. The website may say the loop is designed toward scenario/test-backed fix PRs while humans sleep, but must keep human review before merge/deploy and never claim zero tickets.
+- **Amendment (Indy, Jun 17, 2026 `/plan-eng-review`):** steer = "I like the polsia (zombieos.polsia.app) format, less cluttered, and the site must be LLM-friendly (llms.txt)." Decisions, all supersede the conflicting body text above:
+  - **Scope:** keep the full spec (diagram + operational-knowledge section + reframed capabilities + 8-step loop) rather than reducing to copy-only. The less-cluttered intent is satisfied within full scope by the two cuts below + deferring visual treatment to `/design-shotgun`.
+  - **Competition table removed** — §5.2, `CompetitionTable.tsx`/`.test.tsx`, Dimension 5.2, `test_competition_table_rows` all dropped. §5 is now trust-capabilities only.
+  - **OnboardingFlow merged into the diagram** — `OnboardingFlow.tsx`/`.test.tsx` DELETED; its install steps fold into the `PipelineDiagram` start node (install → first signal → …). Final section order: **Hero → OperationalKnowledge → PipelineDiagram → capabilities → HowItWorks → Pricing → FAQ → CTA** (~8 sections, down from ~10). `Home.test.tsx` `:49`/`:75` OnboardingFlow pins are removed; hero copy-row is the canonical `InstallBlock`. *Risk logged:* OnboardingFlow's 4-step setup content must survive in the diagram start node or a docs link, not vanish.
+  - **Brand:** the rebrand already landed in code (zero `usezombie` in `src/`; install is `agentsfleet.dev`). §7.3 now asserts **zero** `usezombie`/`zombie` (no operational-string exception); the obsolete "install stays on `usezombie.sh` verbatim" premise from the Jun 12 amendment is **void**. Stale `usezombie.com` prose in Priority/Intent corrected to `agentsfleet.net`.
+  - **Pricing:** confirmed adhered — `lib/rates.ts` is the single cross-tier-pinned source ($5 credit, free events, $0.0001/sec ≈ $0.36/hr, free-trial to Jul 31 2026); diff leaves it untouched (Invariant 5). Because §6 edits `FAQ.tsx` (a rate consumer), the verification block must run `scripts/audit-cross-tier-rates.sh`.
+  - **llms.txt:** ship the full llmstxt.org convention (H1 + blockquote + `##` link sections, linking docs/`openapi.json`/install/pricing) **plus** `llms-full.txt`; both generated from shared constants (§8 rewritten, Dimension 8.2 added).
+  - **`marketing-copy.ts` → `lib/marketing-copy.ts`** for consistency with `rates.ts`/`copy.ts`/`contact.ts`.
+  - **Follow-up:** `/design-shotgun` for the website (requested Jun 17) — must include a pricing-section structural variant in the polsia direction (standing requirement); the diagram's structural tests survive any re-skin.
+- **Amendment (Indy, Jun 17, 2026 `/design-shotgun` — APPROVED visual direction):** ran the shotgun (code-authored HTML mockups; AI-image path skipped — no OpenAI key, and the token-precise design system is better served by exact CSS). Three variants generated (Single Spine / Terminal Ledger / Diagram-Forward); artifacts at `~/.gstack/projects/agentsfleet-usezombie/designs/homepage-refresh-20260617/` (`chosen.html` is the approved merge). Approved direction:
+  - **Base = "Terminal Ledger"** — the loop (§2) renders as a **replayable terminal session** of timestamped evidence log-lines (`[wake] signal → [work] investigate → [EVIDENCE] problem class → scenario/test → fix PR → ⏸ human approval (pulse) → ✓ merged by human · recurrence reduced`), in `Terminal`/`LogLine` primitives — NOT the Cleric horizontal node-diagram. The four source categories (Signals · Telemetry · Code · Control plane) are still required (Dimension 2.1) but presented in the ledger aesthetic.
+  - **Hero headline:** "A resident engineer that compounds operational knowledge." Keep the `LIVE — wake.on.event` eyebrow + pulse.
+  - **CTA labels (§1.2):** primary **"Get early access"** (was "Become a design partner" — aligns with `RATES_DISPLAY.HEADLINE`); secondary **"See the loop"** (anchor to §2). The design-partner mailto label is retired; the primary CTA still routes to the access/contact affordance.
+  - **Pricing presentation (new scope consequence):** approved as a **3-plan card layout** (Free trial / Usage [featured] / Enterprise-contact) with copy "Start free. Pay only while it runs." + "Usage is metered per second — no seats, no tiers tax. Enterprise adds the controls big teams need." The **billed model stays metered** (`$5` credit · free events · `$0.0001/sec`); tiers are a **later product+billing decision**, Enterprise is contact-only (no fabricated price). This means **`Pricing.tsx` is now edited** (layout → 3 cards) while every `RATES_DISPLAY` value stays byte-identical — added to Files Changed; Invariant 5 + the rates pin still hold.
 
 ---
 
@@ -317,3 +352,27 @@ No files deleted. Removed-copy sweep:
 - docs.usezombie.com content updates — separate repo, separate spec.
 - Any connector implementation (Zoho Desk, Jira, Datadog ingestion) — the logo strip names source categories, not shipped integrations.
 - Any claim of zero tickets or autonomous merge/deploy while humans sleep — this PR may show the direction, not overstate the shipped guarantee.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | clean | spine collapsed to compounding operational knowledge (Jun 17) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 5 findings raised, all dispositioned; 0 unresolved, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | superseded by requested `/design-shotgun` |
+
+**Eng Review findings (all resolved):**
+1. **Scope vs. stated direction** (arch) — spec was maximalist (~10 sections) vs. "less cluttered" steer → kept full scope, trimmed CompetitionTable + merged OnboardingFlow into diagram (~8 sections); visual cleanup → `/design-shotgun`.
+2. **Brand guard premise stale** (code-quality, conf 9/10) — `config.ts:25` install is `agentsfleet.dev`, zero `usezombie` in `src/` → §7.3 now asserts zero usezombie; stale prose corrected.
+3. **Section order unspecified + OnboardingFlow collision** (arch, conf 8/10) — `Home.tsx:35-69` + `Home.test.tsx:75` → order locked, OnboardingFlow deleted, install folds into diagram.
+4. **llms.txt under-specified** (test/coverage, conf 8/10) — §8 ignored the llmstxt.org convention + bundled `openapi.json` → full convention + `llms-full.txt`, shape pinned.
+5. **`marketing-copy.ts` placement** (arch, conf 7/10) — convention is `lib/` → moved to `lib/marketing-copy.ts`.
+
+**Pricing confirmed adhered:** `lib/rates.ts` single source, cross-tier-pinned; diff untouched; `audit-cross-tier-rates.sh` added to verification (FAQ.tsx is a rate consumer).
+
+- **CODEX:** outside voice deferred (CODEX_MODE was ready) — user pivoted to `/design-shotgun`; re-run independent pass with `/codex review` before CHORE(close).
+- **VERDICT:** CEO + ENG CLEARED — ready to implement (or run `/design-shotgun` first per Indy's request).
+
+NO UNRESOLVED DECISIONS
