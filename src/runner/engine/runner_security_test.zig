@@ -312,6 +312,21 @@ test "mapError maps each RunnerError to its FailureClass; unknown → runner_cra
     try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(error.Unexpected));
 }
 
+test "errorCodeForFailure maps every FailureClass to its canonical UZ-EXEC code" {
+    const ec = @import("client_errors.zig");
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_STARTUP_POSTURE, runner.errorCodeForFailure(.startup_posture));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_TIMEOUT_KILL, runner.errorCodeForFailure(.timeout_kill));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_OOM_KILL, runner.errorCodeForFailure(.oom_kill));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_RESOURCE_KILL, runner.errorCodeForFailure(.resource_kill));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_CRASH, runner.errorCodeForFailure(.runner_crash));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_TRANSPORT_LOSS, runner.errorCodeForFailure(.transport_loss));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_LANDLOCK_DENY, runner.errorCodeForFailure(.landlock_deny));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_LEASE_EXPIRED, runner.errorCodeForFailure(.lease_expired));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_RENEWAL_TERMINATED, runner.errorCodeForFailure(.renewal_terminate));
+    // policy_deny is latent (no emit site) — mapped to the generic run-failure code.
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_RUNNER_AGENT_RUN, runner.errorCodeForFailure(.policy_deny));
+}
+
 test "collectSecrets extracts the llm api_key from agent_config" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };

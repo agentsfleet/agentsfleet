@@ -32,6 +32,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     e("UZ-EXEC-005", .internal_server_error, "Execution resource kill", "Execution exceeded resource limits and was killed."),
     e("UZ-EXEC-006", .internal_server_error, "Execution transport loss", "Connection to execution transport was lost."),
     e("UZ-EXEC-007", .internal_server_error, "Execution lease expired", "Execution lease expired. The task took too long to complete."),
+    e("UZ-EXEC-008", .internal_server_error, "Execution renewal-terminated", "The control plane stopped the lease mid-run (lease lost, max-runtime cap, or no credits). A policy stop, kept distinct from a wall-clock timeout (UZ-EXEC-003) for triage and billing."),
     e("UZ-EXEC-009", .internal_server_error, "Execution startup posture failure", "Execution startup posture check failed. Verify runner security config."),
     e("UZ-EXEC-010", .internal_server_error, "Execution crash", "The execution process crashed. Check logs for details."),
     e("UZ-EXEC-011", .forbidden, "Landlock policy deny", "Landlock policy denied the filesystem operation."),
