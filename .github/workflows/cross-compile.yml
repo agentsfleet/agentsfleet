@@ -112,11 +112,11 @@ jobs:
               cp -a /src/. /build
               cd /build
               echo "  compiling agentsfleetd + agentsfleet-runner (aarch64-linux)..."
-              # Retry zig build up to 3x — transitive deps declared in
-              # vendor/httpz/build.zig.zon are fetched from github.com
-              # and github'\''s archive CDN occasionally returns 5xx.
+              # Retry zig build up to 3x — fork-pinned deps (httpz/pg/
+              # zig_yaml) and their transitive packages are fetched from
+              # github.com, and github'\''s archive CDN occasionally returns 5xx.
               # Retries handle the transient-network failure mode without
-              # vendoring every transitive package.
+              # vendoring every package.
               attempt=1
               until zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl \
                  && zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl; do

@@ -1,5 +1,0 @@
-zig-out/
-.zig-cache/
-tests/server.key
-tests/server.crt
-zig-pkg
