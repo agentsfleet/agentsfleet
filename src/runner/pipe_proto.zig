@@ -29,6 +29,16 @@ pub const FrameType = enum(u8) {
 
 const HEADER_LEN = 1 + 4; // type byte + u32 big-endian length
 
+/// Child exit codes the parent's `classify` reads off the reaped `Term` when the
+/// child aborts before a `result` frame (single source, RULE UFS). Clean codes,
+/// not signals, so they survive bwrap's signal->exit translation.
+///   SANDBOX_FAIL_EXIT      — fail-closed sandbox setup (Invariant 7) -> startup_posture.
+///   SECCOMP_VIOLATION_EXIT — a denylisted syscall trapped -> landlock_deny.
+///   GENERIC_FAIL_EXIT      — any other pre-result abort -> crash.
+pub const SANDBOX_FAIL_EXIT: u8 = 78;
+pub const SECCOMP_VIOLATION_EXIT: u8 = 79;
+pub const GENERIC_FAIL_EXIT: u8 = 1;
+
 /// Create an anonymous pipe via libc (`std.posix.pipe` was removed in Zig 0.16;
 /// the runner links -lc). Returns `[read_fd, write_fd]`.
 pub fn testOsPipe() error{PipeFailed}![2]std.posix.fd_t {

@@ -11,7 +11,7 @@ const pipe_proto = @import("pipe_proto.zig");
 const client_errors = @import("engine/client_errors.zig");
 const contract = @import("contract");
 
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
@@ -287,7 +287,7 @@ test "sandbox setup fails closed: dev_none runs bare, a required tier with no do
 test "classify: a renewal terminate is renewal_terminate, distinct from a deadline timeout_kill" {
     // Both branches return before touching `scope`, so a null scope is safe and
     // keeps this a pure outcome→category check (no cgroup needed).
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
 
     // A renewal `.terminate` (lease lost / capped / no credits) → policy stop.
     const terminated = supervisor.classify(std.testing.allocator, .{ .terminated = true }, .{ .exited = 0 }, &scope);
@@ -303,17 +303,37 @@ test "classify: a renewal terminate is renewal_terminate, distinct from a deadli
 }
 
 test "classify: a policy terminate outranks a co-occurring deadline timeout" {
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
     // Deadline elapsed AND the renewal said terminate — the policy reason is the
     // more actionable cause, so terminate wins.
     const both = supervisor.classify(std.testing.allocator, .{ .terminated = true, .timed_out = true }, .{ .exited = 0 }, &scope);
     try std.testing.expectEqual(FailureClass.renewal_terminate, both.failure.?);
 }
 
+test "classify maps distinct child exit codes (sandbox-fail, seccomp) to their failure classes" {
+    // The child uses distinct exit codes for fail-closed sandbox outcomes so the
+    // parent can attribute them instead of lumping all non-zero exits into a
+    // crash: SANDBOX_FAIL_EXIT (setup abort — no_new_privs / Landlock / seccomp
+    // establish / missing workspace) → startup_posture, matching the parent-side
+    // refusals; SECCOMP_VIOLATION_EXIT (a denylisted syscall at run time) →
+    // landlock_deny. Both return before touching `scope`, so null is safe.
+    var scope: ?cgroup = null;
+    const sandbox_fail = supervisor.classify(std.testing.allocator, .{}, .{ .exited = pipe_proto.SANDBOX_FAIL_EXIT }, &scope);
+    try std.testing.expect(!sandbox_fail.exit_ok);
+    try std.testing.expectEqual(FailureClass.startup_posture, sandbox_fail.failure.?);
+
+    const seccomp_violation = supervisor.classify(std.testing.allocator, .{}, .{ .exited = pipe_proto.SECCOMP_VIOLATION_EXIT }, &scope);
+    try std.testing.expectEqual(FailureClass.landlock_deny, seccomp_violation.failure.?);
+
+    // Regression guard on the split: any OTHER non-zero exit is still a crash.
+    const other_nonzero = supervisor.classify(std.testing.allocator, .{}, .{ .exited = 1 }, &scope);
+    try std.testing.expectEqual(FailureClass.runner_crash, other_nonzero.failure.?);
+}
+
 test "classify threads the child's split counts through the result fold" {
     // Regression pin: parseResult must copy the splits off the child's result
     // JSON — dropping them folds the report back to zero and under-bills.
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
     var body = "{\"exit_ok\":true,\"token_count\":17,\"input_tokens\":10,\"cached_input_tokens\":2,\"output_tokens\":5}".*;
     const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
     defer std.testing.allocator.free(r.content);
@@ -325,7 +345,7 @@ test "classify threads the child's split counts through the result fold" {
 }
 
 test "classify parses an old-wire result without splits to zeros (run-fee-only, never an error)" {
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
     var body = "{\"exit_ok\":true,\"token_count\":17}".*;
     const r = supervisor.classify(std.testing.allocator, .{ .bytes = &body }, .{ .exited = 0 }, &scope);
     defer std.testing.allocator.free(r.content);

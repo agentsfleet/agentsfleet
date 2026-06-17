@@ -21,7 +21,7 @@ const clock = common.clock;
 
 const child_process = @import("child_process.zig");
 const child_supervisor = @import("child_supervisor.zig");
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
 const SH = "/bin/sh";
@@ -147,7 +147,7 @@ test "killChild reaps a forking child's whole process-group tree" {
     var child = try spawnReadyGroup(io, "/bin/sleep 60 & /bin/sleep 60 & echo ready; wait");
 
     // Kill the whole group (scope=null → the pure pgroup-signal path).
-    var scope: ?cgroup.CgroupScope = null;
+    var scope: ?cgroup = null;
     child_process.killChild(child.id.?, &scope);
     try expectReapedViaEof(child.stdout.?.handle); // EOF ⟺ both sleeps reaped
     _ = child.wait(io) catch {};
@@ -164,7 +164,7 @@ test "enrollOrFail refuses the lease fail-closed AND kills the child on enrollme
     // A scope whose cgroup dir does not exist → addProcess (open cgroup.procs)
     // fails deterministically — the exact enrollment failure the fail-closed
     // path guards, with no root or real cgroup needed.
-    var scope: ?cgroup.CgroupScope = .{
+    var scope: ?cgroup = .{
         .path = "/sys/fs/cgroup/agentsfleet-runner-no-such-scope/exec-enrolltest",
         .alloc = std.testing.allocator,
         .io = io,

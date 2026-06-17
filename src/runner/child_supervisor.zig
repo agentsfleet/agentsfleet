@@ -23,7 +23,7 @@ const builtin = @import("builtin");
 const logging = @import("log");
 
 const types = @import("engine/types.zig");
-const cgroup = @import("engine/cgroup.zig");
+const cgroup = @import("engine/CgroupScope.zig");
 const client_errors = @import("engine/client_errors.zig");
 const Config = @import("daemon/config.zig");
 const contract = @import("contract");
@@ -108,7 +108,7 @@ fn supervise(
     // be established, refuse the lease — never run prompt-injectable tool
     // execution unsandboxed.
     const requires_sandbox = !std.mem.eql(u8, cfg.sandbox_tier, SANDBOX_TIER_DEV_NONE);
-    var scope: ?cgroup.CgroupScope = establishSandbox(io, alloc, requires_sandbox) catch {
+    var scope: ?cgroup = establishSandbox(io, alloc, requires_sandbox) catch {
         log.err("sandbox_unavailable_fail_closed", .{
             .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
             .lease_id = payload.lease_id,
@@ -192,7 +192,7 @@ fn supervise(
 /// rather than running the agent unsandboxed. (Landlock + netns are applied by
 /// the child before it runs the agent; this sets up the parent-side cgroup
 /// kill/limit domain.)
-pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
+pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?cgroup {
     if (!requires) return null;
     // macOS Seatbelt is not yet wired — a required sandbox we cannot apply must
     // fail closed rather than pretend. (Dev on macOS uses the dev_none tier.)
@@ -204,7 +204,7 @@ pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?
     var exec_id: types.ExecutionId = undefined;
     if (std.os.linux.getrandom(&exec_id, exec_id.len, 0) != exec_id.len)
         return error.SandboxUnavailable;
-    return cgroup.CgroupScope.create(io, alloc, exec_id, .{}) catch error.SandboxUnavailable;
+    return cgroup.create(io, alloc, exec_id, .{}) catch error.SandboxUnavailable;
 }
 
 /// Bind the just-forked child to the cgroup kill/limit domain — FAIL-CLOSED.
@@ -212,7 +212,7 @@ pub fn establishSandbox(io: std.Io, alloc: std.mem.Allocator, requires: bool) !?
 /// with an empty exec-cgroup, so refuse the lease: kill it (via `killChild`,
 /// which also signals the pgroup — `scope.kill` alone no-ops on the empty
 /// cgroup) and surface the error. Null scope (`dev_none`) has nothing to enroll.
-pub fn enrollOrFail(scope: *?cgroup.CgroupScope, child_id: std.posix.pid_t, lease_id: []const u8) error{CgroupEnrollFailed}!void {
+pub fn enrollOrFail(scope: *?cgroup, child_id: std.posix.pid_t, lease_id: []const u8) error{CgroupEnrollFailed}!void {
     const s = if (scope.*) |*sc| sc else return;
     s.addProcess(child_id) catch |err| {
         log.err("cgroup_enroll_failed_fail_closed", .{
