@@ -4,6 +4,12 @@ const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 // flipped ahead of DNS — the product is down until the app/api hosts stand
 // up and Clerk JWT aud is configured. config.test.ts pins the new values so
 // a regression to the retired brand is a conscious test edit.
+//
+// Retained deliberately: the only UI consumer (the /agents "open dashboard"
+// link) was removed in the fleet-positioning PR, but this stays as the canonical
+// env-overridable app host (config.test.ts pins it) for when a dashboard link
+// returns. Unlike the deleted TEAM_EMAIL, this value is correct and load-bearing
+// config, not a dead, contradictory constant.
 export const APP_BASE_URL = fromEnv || (
   import.meta.env.PROD
     ? "https://app.agentsfleet.net"
