@@ -56,6 +56,8 @@ describe("App", () => {
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
     expect(cta).toHaveAttribute("href", WAITLIST_URL);
+    expect(cta).toHaveAttribute("target", "_blank");
+    expect(cta).toHaveAttribute("rel", "noopener noreferrer");
     expect(cta.textContent).toContain(HERO_PRIMARY_LABEL.toLowerCase());
   });
 

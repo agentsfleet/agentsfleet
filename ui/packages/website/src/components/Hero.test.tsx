@@ -240,6 +240,8 @@ describe("Hero", () => {
     expect(earlyAccess.tagName).toBe("A");
     expect(earlyAccess).not.toBeDisabled();
     expect(earlyAccess).toHaveAttribute("href", WAITLIST_URL);
+    expect(earlyAccess).toHaveAttribute("target", "_blank");
+    expect(earlyAccess).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
       "href",

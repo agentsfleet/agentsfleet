@@ -35,14 +35,6 @@ export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CA
 
 // Bootstrap one-liner — one command that installs agentsfleet AND the skill
 // bundle (host-detected) via the agentsfleet.dev installer. Bare-root form (no
-// /install.sh path) per the M75 canonical one-liner. Shared by Hero CTA
-// (clipboard payload + visible label) and the Terminal Ledger setup line — single
-// source so the two surfaces cannot drift independently.
+// /install.sh path) per the M75 canonical one-liner. Surfaced by the Hero
+// copy-row (clipboard payload + visible label).
 export const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-
-// The platform-ops install skill — step two, run inside the coding agent
-// after INSTALL_COMMAND has registered the slash command. INSTALL_SKILL_SLASH
-// is the bare command; INSTALL_SKILL_COMMAND is the
-// Claude Code invocation the hero terminal demos and copies. Single source.
-export const INSTALL_SKILL_SLASH = "/agentsfleet-install-platform-ops";
-export const INSTALL_SKILL_COMMAND = `claude ${INSTALL_SKILL_SLASH}`;

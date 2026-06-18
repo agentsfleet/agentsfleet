@@ -65,6 +65,10 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
     plan.id === ENTERPRISE_PLAN_ID
       ? `mailto:${SUPPORT_EMAIL}?subject=Enterprise%20agentsfleet`
       : WAITLIST_URL;
+  // The waitlist is an external (Clerk) host — open it in a new tab to match
+  // every other external link in the app and keep the marketing page alive.
+  // The Enterprise mailto stays same-tab (a new tab for a mailto is pointless).
+  const ctaExternal = ctaHref === WAITLIST_URL;
   const badge = "badge" in plan ? plan.badge : undefined;
   const suffix = "suffix" in plan ? plan.suffix : undefined;
   const testId = `pricing-card-${plan.id}`;
@@ -130,6 +134,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
       >
         <a
           href={ctaHref}
+          {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           data-testid={`pricing-cta-${plan.id}`}
           onClick={() =>
             trackSignupStarted({
@@ -149,7 +154,17 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
           data-testid="pricing-enterprise-email"
         >
           or email{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-text hover:underline">
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="text-text hover:underline"
+            onClick={() =>
+              trackSignupStarted({
+                source: `${PRICING_TRACKING_SOURCE_PREFIX}${ENTERPRISE_PLAN_ID}_email`,
+                surface: "pricing",
+                mode: "humans",
+              })
+            }
+          >
             {SUPPORT_EMAIL}
           </a>
         </p>
