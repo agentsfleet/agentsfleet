@@ -64,12 +64,6 @@ describe("rebrand pins — flipped values must not regress; operational strings 
     expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/agentsfleet");
   });
 
-  it("team email serves on the agentsfleet.net mailbox", async () => {
-    vi.resetModules();
-    const mod = await import("./config");
-    expect(mod.TEAM_EMAIL).toBe("team@agentsfleet.net");
-  });
-
   it("docs URL serves on the agentsfleet host", async () => {
     vi.resetModules();
     const mod = await import("./config");

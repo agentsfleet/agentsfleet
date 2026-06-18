@@ -22,6 +22,23 @@
  * compile into the final CSS. */
 @source "../../design-system/src/**/*.{ts,tsx}";
 
+/* ── Brand brightness (marketing site only) ──
+ * The design-consultation "amplify the mint" decision: lift the near-black
+ * base one notch and brighten the body text so the dark brand reads brighter
+ * and more alive without leaving the dark world. The app package keeps the
+ * original near-black.
+ *
+ * Scoped to `:root:not([data-theme="light"])` (specificity 0-2-0) so it only
+ * overrides the DARK tokens. The bare `:root` form (0-1-0) would tie with the
+ * design-system's `[data-theme="light"]` rule and, being later in the cascade,
+ * win — resolving --bg/--text to dark values in light mode. The `:not()` makes
+ * the override stop applying the instant a light theme is set, so light mode
+ * keeps the design-system parchment tokens. */
+:root:not([data-theme="light"]) {
+  --bg: #0d1113;
+  --text: #f4f8f9;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -118,6 +135,40 @@ body {
 .hero-terminal-copy-target [data-testid="copy-btn"] {
   min-height: 44px;
   padding-block: var(--sp-sm);
+}
+
+/* Hero bioluminescent glow — the one sanctioned marketing glow (approved
+ * design-shotgun variant B). A soft mint halo centered BEHIND the headline,
+ * anchored to the centered content column via calc(50% …) so it stays put on
+ * wide screens instead of drifting to the viewport edge. Paired with a faint
+ * headline text-shadow and a glow on the primary CTA. No glow on the topbar
+ * logo (deliberate — one glow center per viewport keeps "glow = live" honest). */
+.hero-glow {
+  position: absolute;
+  left: calc(50% - 250px);
+  top: 230px;
+  width: 600px;
+  height: 420px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--pulse-glow), transparent 60%);
+  filter: blur(26px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-headline-glow {
+  text-shadow: 0 0 42px var(--pulse-glow);
+}
+
+.cta-glow {
+  box-shadow: 0 0 30px var(--pulse-glow);
+}
+
+@media (max-width: 640px) {
+  .hero-glow {
+    left: 30%;
+    top: 200px;
+  }
 }
 
 /* Section vertical rhythm — Mockup A: 96px section padding on desktop,

@@ -1,5 +1,5 @@
-import { Card, DisplayLG, DisplayXL, InstallBlock, SectionLabel, Terminal } from "@agentsfleet/design-system";
-import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
+import { Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
+import { DOCS_QUICKSTART_URL, DOCS_URL, INSTALL_COMMAND } from "../config";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -22,10 +22,10 @@ const apiOps = [
   { action: "Ingest webhook", method: "POST",   path: "/v1/webhooks/:agent_id",                                                purpose: "Deliver an inbound event to an agent" },
 ] as const;
 
-const bootstrapScript = `# 1. Shell — install the Command-Line Interface (CLI) and the skill bundle
-npm install -g @agentsfleet/cli
+const bootstrapScript = `# 1. Shell — one command installs the Command-Line Interface (CLI) + the skill bundle
+${INSTALL_COMMAND}
+#    (or with npm: npm install -g @agentsfleet/cli && npx skills add agentsfleet/skills)
 agentsfleet login
-npx skills add agentsfleet/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
 #    /agentsfleet-install-platform-ops
@@ -51,6 +51,116 @@ const safetyLimits = [
   { title: "Policy enforcement", body: "Commands classified as safe, sensitive, or critical. Critical operations require explicit policy approval." },
 ];
 
+// Coming-soon surface so an agent parsing this page knows what is NOT yet GA
+// and should not be relied on. Grounded in the prebuilt fleet (Security Reviewer
+// is comingSoon) and the v2 hosted-only posture (self-host deferred).
+const comingSoon = [
+  { title: "Security Reviewer (prebuilt)", body: "Scans each pull request and its dependencies for vulnerabilities and exposed secrets, opens a remediation pull request, and holds at human approval. Not yet GA — join the waitlist." },
+  { title: "Self-host", body: "Hosted-only today on api.agentsfleet.net (Bearer + Clerk OAuth). Self-managed deployment lands in a later release." },
+];
+
+const mono = "font-mono text-text";
+
+// The minimal authenticated call sequence an agent follows to go from zero to a
+// running, observable agent. Grounded in the OpenAPI surface: BearerAuth +
+// POST /v1/api-keys mint, agent CRUD, HMAC-signed webhook ingest, SSE stream.
+const getStartedSteps = [
+  {
+    number: "01",
+    label: "authenticate",
+    body: (
+      <>
+        Mint a tenant key with <code className={mono}>POST /v1/api-keys</code> (returns an{" "}
+        <code className={mono}>agt_t…</code> key once), then send{" "}
+        <code className={mono}>Authorization: Bearer agt_t…</code> on every request.
+      </>
+    ),
+  },
+  {
+    number: "02",
+    label: "create an agent",
+    body: (
+      <>
+        Provision one with{" "}
+        <code className={mono}>POST /v1/workspaces/:workspace_id/agents</code>.
+      </>
+    ),
+  },
+  {
+    number: "03",
+    label: "trigger it",
+    body: (
+      <>
+        Send an event to <code className={mono}>POST /v1/webhooks/:agent_id</code> (HMAC-signed),
+        or steer it with <code className={mono}>POST …/agents/:agent_id/messages</code>.
+      </>
+    ),
+  },
+  {
+    number: "04",
+    label: "watch it work",
+    body: (
+      <>
+        Stream the run over Server-Sent Events at{" "}
+        <code className={mono}>GET …/agents/:agent_id/events/stream</code>.
+      </>
+    ),
+  },
+];
+
+/*
+ * ConstraintTable — the machine-readable two-column table shape shared by the
+ * Safety limits and Coming soon sections (constraint -> rule / capability ->
+ * status). `<th scope="row">` keeps each row label a row header for assistive
+ * tech + agent parsers. An optional `badge` annotates every row title (the
+ * Coming soon section uses it).
+ */
+function ConstraintTable({
+  cols,
+  rows,
+  badge,
+}: {
+  cols: readonly [string, string];
+  rows: readonly { title: string; body: string }[];
+  badge?: string;
+}) {
+  return (
+    <Card className="p-0 overflow-x-auto">
+      <table className="w-full min-w-narrow font-mono text-mono">
+        <thead>
+          <tr className="border-b border-border">
+            {cols.map((col) => (
+              <th
+                key={col}
+                className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label"
+              >
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.title}
+              className="border-b border-border last:border-b-0 align-top"
+            >
+              <th
+                scope="row"
+                className="text-left py-3 px-4 font-medium text-text whitespace-nowrap"
+              >
+                {row.title}
+                {badge ? <span className="text-evidence"> {badge}</span> : null}
+              </th>
+              <td className="py-3 px-4 text-text-muted">{row.body}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
 export default function Agents() {
   return (
     <div data-testid="agents-page">
@@ -65,28 +175,69 @@ export default function Agents() {
         </div>
       </section>
 
+      {/* Get started for an agent — the minimal authenticated call sequence.
+        * This page's audience is a machine, so the first thing it needs (how to
+        * authenticate) leads, then create / trigger / stream. Full schemas live
+        * in /openapi.json. */}
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md">
-            Bootstrap
+          <DisplayLG className="text-fluid-display-md text-pulse">
+            Get started in four calls
           </DisplayLG>
-          <Terminal label="Bootstrap commands" copyable className="max-w-wide">
-            {bootstrapScript}
-          </Terminal>
+          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
+            Authenticate, create an agent, trigger it, then stream what it does.
+            Full request and response schemas live in{" "}
+            <a href="/openapi.json" className="text-pulse hover:underline">
+              /openapi.json
+            </a>
+            .
+          </p>
+          <Card>
+            <ol className="m-0 flex list-none flex-col gap-4 p-0">
+              {getStartedSteps.map((step) => (
+                <li key={step.number} className="flex flex-col gap-1">
+                  <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-pulse">
+                    {step.number} · {step.label}
+                  </span>
+                  <p className="font-sans text-body-sm leading-body text-text-muted m-0">
+                    {step.body}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </Card>
         </div>
       </section>
 
+      {/* One install story for an agent: the CLI plus the skill bundle plus the
+        * in-agent slash command. The old standalone InstallBlock (bare `npm
+        * install -g` + an "open dashboard" link) was redundant with this and
+        * has been folded in. Heading carries the mint brand color. */}
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <InstallBlock
-            title="Install agentsfleet"
-            command="npm install -g @agentsfleet/cli"
-            actions={[
-              { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
-              { label: "read the docs", to: DOCS_URL, variant: "ghost" },
-              { label: "open dashboard", to: APP_BASE_URL, variant: "default" },
-            ]}
-          />
+          <DisplayLG className="text-fluid-display-md text-pulse">
+            Install agentsfleet
+          </DisplayLG>
+          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
+            Install the command-line interface and the skill bundle, then
+            provision an agent from inside your coding agent. No dashboard
+            required.
+          </p>
+          <Terminal label="Bootstrap commands" copyable className="max-w-wide">
+            {bootstrapScript}
+          </Terminal>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button asChild className="min-h-11">
+              <a href={DOCS_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                → start an agent
+              </a>
+            </Button>
+            <Button asChild variant="ghost" className="min-h-11">
+              <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+                read the docs
+              </a>
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -150,8 +301,17 @@ export default function Agents() {
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
-            <code className="font-mono">/v1/webhooks/:agent_id</code>. Every inbound webhook must
-            carry a per-agent HMAC signature header — unsigned requests are rejected.
+            <code className="font-mono">/v1/webhooks/:agent_id</code>. Each webhook is HMAC-signed
+            per the trigger source&apos;s scheme — e.g.{" "}
+            <code className="font-mono">x-hub-signature-256</code> for GitHub,{" "}
+            <code className="font-mono">x-slack-signature</code> +{" "}
+            <code className="font-mono">x-slack-request-timestamp</code> for Slack. Unsigned or
+            stale requests are rejected; the exact header set per source lives in{" "}
+            <a href="/openapi.json" className="text-pulse hover:underline">
+              /openapi.json
+            </a>
+            . Duplicate deliveries within the source&apos;s dedup window (24h or more) are accepted
+            idempotently.
           </p>
           <Terminal label="Webhook payload example" className="max-w-wide">
             {webhookPayload}
@@ -159,23 +319,31 @@ export default function Agents() {
         </div>
       </section>
 
+      {/* Safety limits as a machine-readable constraint table (constraint ->
+        * rule), matching the API-operations table above — this page's audience
+        * is an autonomous agent parsing the surface, not a human reading
+        * marketing cards. */}
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
           <DisplayLG className="text-fluid-display-md">
             Safety limits
           </DisplayLG>
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-            {safetyLimits.map((limit) => (
-              <Card key={limit.title} className="flex flex-col gap-2">
-                <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
-                  {limit.title}
-                </h3>
-                <p className="font-sans text-body-sm leading-body text-text-muted m-0">
-                  {limit.body}
-                </p>
-              </Card>
-            ))}
-          </div>
+          <ConstraintTable cols={["constraint", "rule"]} rows={safetyLimits} />
+        </div>
+      </section>
+
+      {/* Coming soon — tells an agent which capabilities are NOT yet GA so it
+        * doesn't build against them. Same constraint-table shape. */}
+      <section className="site-section">
+        <div className="wrap flex flex-col gap-4">
+          <DisplayLG className="text-fluid-display-md">
+            Coming soon
+          </DisplayLG>
+          <ConstraintTable
+            cols={["capability", "status"]}
+            rows={comingSoon}
+            badge="coming soon"
+          />
         </div>
       </section>
 

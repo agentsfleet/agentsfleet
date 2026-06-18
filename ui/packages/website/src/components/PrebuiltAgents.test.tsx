@@ -16,7 +16,6 @@ vi.mock("../analytics/posthog", async () => {
 import PrebuiltAgents from "./PrebuiltAgents";
 import { WAITLIST_URL } from "../config";
 import {
-  AGENT_PILLARS,
   AGENTS_SECTION_HEADING,
   LOOP_ANCHOR_ID,
   PREBUILT_AGENTS,
@@ -90,11 +89,13 @@ describe("PrebuiltAgents", () => {
     expect(cta).toHaveTextContent(/join the waitlist/i);
   });
 
-  it("shows a coming-soon tile and the three product pillars", () => {
+  it("shows a coming-soon tile and no longer renders the product pillars", () => {
     renderAgents();
     expect(screen.getByTestId("agent-card-coming-soon")).toHaveTextContent(/coming soon/i);
-    for (const pillar of AGENT_PILLARS) {
-      expect(screen.getByTestId(`agent-pillar-${pillar.id}`)).toHaveTextContent(pillar.title);
-    }
+    // The Isolated / Compounding / Proactive pillars moved to Core Capabilities
+    // (rendered on Home as capability-pillar-*). They must not appear here.
+    expect(screen.queryByTestId("agent-pillar-sandbox")).toBeNull();
+    expect(screen.queryByTestId("agent-pillar-learns")).toBeNull();
+    expect(screen.queryByTestId("agent-pillar-proactive")).toBeNull();
   });
 });

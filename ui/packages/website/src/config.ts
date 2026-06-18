@@ -4,6 +4,12 @@ const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 // flipped ahead of DNS — the product is down until the app/api hosts stand
 // up and Clerk JWT aud is configured. config.test.ts pins the new values so
 // a regression to the retired brand is a conscious test edit.
+//
+// Retained deliberately: the only UI consumer (the /agents "open dashboard"
+// link) was removed in the fleet-positioning PR, but this stays as the canonical
+// env-overridable app host (config.test.ts pins it) for when a dashboard link
+// returns. Unlike the deleted TEAM_EMAIL, this value is correct and load-bearing
+// config, not a dead, contradictory constant.
 export const APP_BASE_URL = fromEnv || (
   import.meta.env.PROD
     ? "https://app.agentsfleet.net"
@@ -30,7 +36,10 @@ export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
 export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";
 export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const MARKETING_SITE_URL = "https://agentsfleet.net";
-export const TEAM_EMAIL = "team@agentsfleet.net";
+// NOTE: the canonical contact address is SUPPORT_EMAIL ("agentsfleet@agentmail.to")
+// in src/lib/contact.ts — used by Pricing, Terms, and Privacy. A second
+// "team@agentsfleet.net" constant used to live here, unused by any component
+// and contradicting the canonical address, so it was removed.
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
 
 // Bootstrap one-liner — one command that installs agentsfleet AND the skill
