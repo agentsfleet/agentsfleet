@@ -6,7 +6,7 @@
 // once so bun's per-function metric credits it.
 //
 // Note on the residual per-file ceiling: each of these files carries one
-// `Context.Service` subclass (CommandRuntime / Input / CliConfig). bun
+// `Context.Service` tag modules (CommandRuntime / Input / CliConfig). Bun
 // counts the synthesized service constructor as a function it cannot
 // exercise — Layer.succeed/Layer.effect register the shape, they never
 // `new` the class, and `new Service(shape)` does not credit it either

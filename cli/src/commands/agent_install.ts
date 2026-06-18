@@ -42,21 +42,27 @@ const USAGE_INSTALL = "agentsfleet install --from <path>";
 const USAGE_UPDATE =
   "agentsfleet agent update <agent_id> --from <path>";
 
-const loadBundle = (
+// `loader` is injectable (defaults to the real filesystem load) so the
+// non-SkillLoadError catch arms are reachable in a unit test. The ladder is
+// defensive: loadSkillFromPath only throws SkillLoadError today, but a future
+// foreign throw (TypeError, OutOfMemory, a bare string) must still render a
+// readable detail instead of `undefined: ...`.
+export const loadBundle = (
   fromPath: string,
+  loader: (path: string) => LoadedSkill = loadSkillFromPath,
 ): Effect.Effect<LoadedSkill, ConfigError> =>
   Effect.try({
-    try: () => loadSkillFromPath(fromPath),
+    try: () => loader(fromPath),
     catch: (err) =>
       new ConfigError({
+        // SkillLoadError carries a typed code; any other throw falls back to
+        // its message (Error) or its string form (non-Error) — never the
+        // `undefined: ...` a blind `err as SkillLoadError` cast would print.
         detail:
           err instanceof SkillLoadError
             ? `${err.code}: ${err.message}`
-            : err instanceof Error
-              ? err.message
-              : String(err),
-        suggestion:
-          "verify the path exists and contains a skill.md + trigger.md",
+            : String((err as Error)?.message ?? err),
+        suggestion: "verify the path exists and contains a skill.md + trigger.md",
       }),
   });
 

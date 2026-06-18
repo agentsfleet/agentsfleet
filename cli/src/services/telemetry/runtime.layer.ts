@@ -126,11 +126,11 @@ export const telemetryRuntimeLayer = Layer.effect(
       arch: os.arch(),
       cliVersion: CLI_VERSION,
     };
-    return TelemetryRuntime.of(
+    const runtime =
       identity.distinctId !== undefined
         ? { ...base, distinctId: identity.distinctId }
-        : base,
-    );
+        : base;
+    return TelemetryRuntime.of(runtime);
   }),
 
 );

@@ -15,9 +15,8 @@ export interface InputShape {
   readonly readLine: (prompt: string, signal?: AbortSignal) => Effect.Effect<string | null>;
 }
 
-export class Input extends Context.Service<Input, InputShape>()(
-  "agentsfleet/runtime/Input",
-) {}
+export type Input = InputShape;
+export const Input = Context.Service<Input>("agentsfleet/runtime/Input");
 
 // Narrowed readline surface — just the two members the prompt path uses.
 // Injecting the factory (rather than calling readline directly) lets a

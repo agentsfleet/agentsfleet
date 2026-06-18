@@ -83,17 +83,16 @@ function hasFlags<Flags extends Record<string, unknown>>(
 
 function withCommandTracingImplementation() {
   return <A, E, R>(self: Effect.Effect<A, E, R>) =>
-    Effect.gen(function* () {
-      const commandRuntime = yield* CommandRuntime;
+    CommandRuntime.pipe(Effect.flatMap((commandRuntime) => {
       const command = getCommandRuntimeCommand(commandRuntime);
-      return yield* Effect.gen(function* () {
-        yield* Effect.annotateCurrentSpan({
-          command_run_id: commandRuntime.commandRunId,
-          command,
-        });
-        return yield* self;
-      }).pipe(Effect.withSpan(getCommandRuntimeSpanName(commandRuntime)));
-    });
+      return Effect.annotateCurrentSpan({
+        command_run_id: commandRuntime.commandRunId,
+        command,
+      }).pipe(
+        Effect.flatMap(() => self),
+        Effect.withSpan(getCommandRuntimeSpanName(commandRuntime)),
+      );
+    }));
 }
 
 function withCommandAnalyticsImplementation<Flags extends Record<string, unknown>>(

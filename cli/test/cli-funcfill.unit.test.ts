@@ -18,10 +18,28 @@
 // Documented in the StructuredOutput note rather than faked.
 
 import { describe, test, expect } from "bun:test";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { runCli } from "../src/cli.ts";
 import { bufferStream, makeNoop, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 
 const VALID_ID = "01900000-0000-7000-8000-000000000001";
+
+async function withBrokenStateBase<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.AGENTSFLEET_STATE_DIR;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-broken-state-"));
+  const fileBase = path.join(dir, "not-a-directory");
+  await fs.writeFile(fileBase, "x");
+  process.env.AGENTSFLEET_STATE_DIR = fileBase;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = previous;
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
 
 describe("runCli exit-code mapping (exitFromCommanderError reachable branches)", () => {
   test("root-level unknown command maps a usage CommanderError to exit 2", async () => {
@@ -53,6 +71,17 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
     });
   });
 
+  test("root-level version returns Commander's own exit code", async () => {
+    await withFreshStateDir(async () => {
+      const code = await runCli(["--version"], {
+        stdout: makeNoop(),
+        stderr: makeNoop(),
+        env: { NO_COLOR: "1" },
+      });
+      expect(code).toBe(0);
+    });
+  });
+
   test("auth-required command short-circuits to exit 1 via state.exitCode", async () => {
     // The preAction auth-guard sets state.exitCode = 1 and throws a
     // CommanderError(code "auth.required"). exitFromCommanderError sees
@@ -81,6 +110,19 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
         env: { NO_COLOR: "1" },
       });
       expect(code).toBe(1);
+    });
+  });
+
+  test("state-load failures fall back to empty credentials and workspaces", async () => {
+    await withBrokenStateBase(async () => {
+      const err = bufferStream();
+      const code = await runCli(["doctor"], {
+        stdout: makeNoop(),
+        stderr: err.stream,
+        env: { NO_COLOR: "1" },
+      });
+      expect(code).toBe(1);
+      expect(err.read()).toContain("not authenticated");
     });
   });
 

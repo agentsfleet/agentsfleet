@@ -22,10 +22,10 @@ export interface WorkspacesShape {
   readonly save: (next: WorkspacesValue) => Effect.Effect<void, UnexpectedError>;
 }
 
-export class Workspaces extends Context.Service<
-  Workspaces,
-  WorkspacesShape
->()("agentsfleet/state/Workspaces") {}
+export type Workspaces = WorkspacesShape;
+export const Workspaces = Context.Service<Workspaces>(
+  "agentsfleet/state/Workspaces",
+);
 
 const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>

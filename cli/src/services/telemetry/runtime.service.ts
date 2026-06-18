@@ -31,10 +31,10 @@ interface TelemetryRuntimeShape {
   readonly cliVersion: string;
 }
 
-export class TelemetryRuntime extends Context.Service<
-  TelemetryRuntime,
-  TelemetryRuntimeShape
->()("agentsfleet/telemetry/TelemetryRuntime") {}
+export type TelemetryRuntime = TelemetryRuntimeShape;
+export const TelemetryRuntime = Context.Service<TelemetryRuntime>(
+  "agentsfleet/telemetry/TelemetryRuntime",
+);
 
 // Test seam — fixture layer with caller-supplied values. The Live
 // layer (telemetryRuntimeLayer in runtime.layer.ts) reads from

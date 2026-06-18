@@ -17,6 +17,7 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import {
   updateEffectFromArgs,
   installEffectFromFlags,
+  loadBundle,
 } from "../src/commands/agent_install.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -88,20 +89,25 @@ describe("updateEffectFromArgs — undefined agentId (lines 143-148)", () => {
   });
 });
 
-// ── Lines 55-56: loadBundle catches a generic Error ──────────────────────────
+// ── loadBundle defensive catch ladder ────────────────────────────────────────
 //
-// installEffectFromFlags calls loadBundle which uses Effect.try wrapping
-// loadSkillFromPath. To hit the `err instanceof Error ? err.message :
-// String(err)` branch (lines 55-56), we need a path that throws a non-
-// SkillLoadError exception at the fs level. A non-string path passed
-// directly to loadSkillFromPath would throw a TypeError; however, since
-// loadSkillFromPath itself only throws SkillLoadError, this branch is
-// only reachable by overriding the underlying implementation — which is
-// not injectable via Effect layers.
-//
-// CONCLUSION: Lines 55-56 are a defensive catch-all for unforeseen
-// loadSkillFromPath behaviour. They are unreachable without replacing the
-// sync function. Reported as genuinely unreachable; no fake required.
+// loadSkillFromPath only throws SkillLoadError today (that arm is covered by
+// agent-install.integration.test.ts via a real bad path). The other two arms
+// guard against a future foreign throw — reachable here because loadBundle
+// takes an injectable `loader`. The contract being pinned: a foreign error
+// must still render a readable detail, never `undefined: ...`.
+
+describe("loadBundle — foreign error catch arm", () => {
+  test("a non-SkillLoadError throw surfaces a readable detail, never 'undefined:'", async () => {
+    const err = await Effect.runPromise(
+      loadBundle("/any/path", () => { throw new TypeError("boom from loader"); }).pipe(
+        Effect.flip,
+      ),
+    );
+    expect(err.message).toContain("boom from loader");
+    expect(err.message).not.toContain("undefined");
+  });
+});
 
 describe("installEffectFromFlags — missing --from path (lines 68-73)", () => {
   test("empty fromPath string produces ValidationError", async () => {

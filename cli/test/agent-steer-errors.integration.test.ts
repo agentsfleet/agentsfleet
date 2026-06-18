@@ -6,12 +6,18 @@
 // that need pollEventTerminal to return "timeout" quickly.
 
 import { describe, expect, test, setSystemTime } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/agent_steer.ts";
-import { UnexpectedError } from "../src/errors/index.ts";
+import {
+  STATUS_SSE_DISCONNECTED,
+  STATUS_TIMEOUT,
+  pollEventTerminal,
+  tailEventStream,
+} from "../src/commands/agent_steer_events.ts";
+import { ServerError, UnexpectedError } from "../src/errors/index.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
-import type { HttpRequestInput } from "../src/services/http-client.ts";
+import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
 // Shared fixtures + mocked-layer config — single source of truth with the
 // part-1 steer suite so the two files cannot drift apart (makeLayer closes
@@ -19,6 +25,8 @@ import { ReplSignalEmitter } from "../src/lib/repl.ts";
 import {
   AGENTSFLEET_ID,
   EVENT_ID,
+  TOKEN,
+  WS_ID,
   streamFrom,
   nullOutput,
   makeRecorder,
@@ -35,6 +43,31 @@ const silentStream: StreamGetFn = async (): Promise<void> => { /* no events → 
 // ── SSE error path (lines 139-141) ────────────────────────────────────────
 
 describe("steer — SSE error path (lines 139-141)", () => {
+  test("stream frames for a different event_id are ignored", async () => {
+    const rec = makeRecorder();
+    const otherEventStream: StreamGetFn = async (_url, _headers, cb) => {
+      cb({
+        id: null,
+        type: "event_complete",
+        data: {
+          event_id: "1729874000000-other",
+          status: EVENT_STATUS.PROCESSED,
+        },
+      });
+    };
+    const outcome = await Effect.runPromise(
+      tailEventStream(
+        "ws_test",
+        AGENTSFLEET_ID,
+        EVENT_ID,
+        Redacted.make(TOKEN),
+        otherEventStream,
+      ).pipe(Effect.provide(makeLayer(rec))),
+    );
+    expect(outcome.kind).toBe(STATUS_SSE_DISCONNECTED);
+    expect(rec.stdout).toEqual([]);
+  });
+
   test("streamGet throwing an Error is caught as sse_error; poll recovers", async () => {
     const rec = makeRecorder();
     const throwingStream = async (): Promise<void> => { throw new Error("connection refused"); };
@@ -122,6 +155,41 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     expect(pollCount).toBe(1);
+  });
+
+  test("poll treats transient request failures as empty results", async () => {
+    const ctrl = new AbortController();
+    let requestCount = 0;
+    const failingHttp = Layer.succeed(HttpClient, {
+      request: () =>
+        Effect.sync(() => {
+          requestCount += 1;
+          ctrl.abort();
+        }).pipe(
+          Effect.flatMap(() =>
+            Effect.fail(
+              new ServerError({
+                detail: "temporary outage",
+                suggestion: "retry",
+                code: "UZ-INTERNAL-001",
+                status: 503,
+                requestId: null,
+              }),
+            ),
+          ),
+        ),
+    });
+    const outcome = await Effect.runPromise(
+      pollEventTerminal(
+        WS_ID,
+        AGENTSFLEET_ID,
+        EVENT_ID,
+        Redacted.make(TOKEN),
+        ctrl.signal,
+      ).pipe(Effect.provide(failingHttp)),
+    );
+    expect(outcome.kind).toBe(STATUS_TIMEOUT);
+    expect(requestCount).toBe(1);
   });
 });
 

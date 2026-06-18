@@ -214,12 +214,7 @@ export async function apiRequestWithRetry(
   options: ApiRequestWithRetryOptions = {},
 ): Promise<unknown> {
   const cfg = resolveRetryRuntime(options);
-  // `planRetry` owns the ceiling (`attempt < maxAttempts`); on the final
-  // attempt it returns null, so the loop always exits via return (success)
-  // or throw (failure) — no normal fall-through after the loop.
-  let attempt = 0;
-  while (true) {
-    attempt += 1;
+  async function runAttempt(attempt: number): Promise<unknown> {
     const startedAt = Date.now();
     try {
       const result = await apiRequest(url, options);
@@ -231,10 +226,11 @@ export async function apiRequestWithRetry(
       const step = planRetry(err, cfg, { attempt, status, durationMs });
       if (step) {
         await cfg.sleep(step.delayMs);
-        continue;
+        return runAttempt(attempt + 1);
       }
       emitTerminalAttempt(cfg.onAttempt, attempt, status, durationMs);
       throw err;
     }
   }
+  return runAttempt(1);
 }

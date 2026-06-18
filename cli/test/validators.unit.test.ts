@@ -235,6 +235,10 @@ describe("parseDurationOption", () => {
 });
 
 describe("parseJsonObjectOption", () => {
+  test("rejects non-string input", () => {
+    expect(() => parseJsonObjectOption()(42)).toThrow("must be a string of JSON");
+  });
+
   test("parses a valid JSON object", () => {
     expect(parseJsonObjectOption()('{"a":1}')).toEqual({ a: 1 });
   });
