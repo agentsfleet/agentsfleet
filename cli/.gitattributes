@@ -1,0 +1,5 @@
+# Byte-exact CLI output fixtures are compared with `toBe()` in
+# test/golden-output.unit.test.ts. runCli() emits LF; pin the fixtures to
+# LF so a CRLF-normalizing checkout (core.autocrlf on Windows) can't drift
+# them and break the help/version snapshot tests.
+test/golden/*.txt eol=lf
