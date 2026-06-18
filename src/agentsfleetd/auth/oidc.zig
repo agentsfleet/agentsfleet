@@ -52,12 +52,20 @@ fn deriveJwksUrl(alloc: std.mem.Allocator, issuer: []const u8) ![]const u8 {
 /// a URL (OIDC disabled). Caller owns the returned slice.
 pub fn resolveJwksUrl(alloc: std.mem.Allocator, explicit: ?[]const u8, issuer: ?[]const u8) !?[]const u8 {
     if (explicit) |raw| {
-        if (std.mem.trim(u8, raw, S_T_R_N).len > 0) return try alloc.dupe(u8, raw);
+        const trimmed = std.mem.trim(u8, raw, S_T_R_N);
+        if (trimmed.len > 0) return try alloc.dupe(u8, trimmed); // trim, so a padded override is not a dead URL
     }
     if (issuer) |raw| {
         if (std.mem.trim(u8, raw, S_T_R_N).len > 0) return try deriveJwksUrl(alloc, raw);
     }
     return null;
+}
+
+/// OIDC is enabled iff the issuer is present and non-empty — the single
+/// enable-gate shared by the runtime loader and `doctor`, so the two can never
+/// disagree on whether the daemon will accept the config (loader/doctor parity).
+pub fn isEnabled(issuer: ?[]const u8) bool {
+    return if (issuer) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
 }
 
 pub const VerifyError = jwks.VerifyError;

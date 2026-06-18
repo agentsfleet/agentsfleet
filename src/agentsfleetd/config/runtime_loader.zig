@@ -102,7 +102,7 @@ pub fn loadOidc(env_map: *const EnvMap, alloc: Allocator) !OidcConfig {
     // The issuer is the single source of identity truth and the enable-gate, so
     // the key-source can never drift from it.
     const requested = explicit_jwks != null or issuer != null or audience != null or provider_raw != null;
-    const enabled = if (issuer) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
+    const enabled = oidc.isEnabled(issuer);
     if (requested and !enabled) return ValidationError.MissingOidcIssuer;
 
     const provider = if (provider_raw) |raw|
