@@ -91,7 +91,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var serve_cfg = runtime_config.ServeConfig.load(env_map, alloc) catch |err| {
         switch (err) {
             runtime_config.ValidationError.OidcRequired,
-            runtime_config.ValidationError.MissingOidcJwksUrl,
+            runtime_config.ValidationError.MissingOidcIssuer,
             runtime_config.ValidationError.InvalidOidcProvider,
             runtime_config.ValidationError.MissingEncryptionMasterKey,
             runtime_config.ValidationError.InvalidEncryptionMasterKey,
@@ -229,7 +229,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     ctx.telemetry = tel.ptr();
 
     if (serve_cfg.oidc_enabled) {
-        log.info("startup.oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider) });
+        log.info("startup.oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider), .jwks_url = serve_cfg.oidc_jwks_url orelse "" });
     }
     var oidc = if (serve_cfg.oidc_enabled) oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,

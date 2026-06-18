@@ -119,7 +119,6 @@ jobs:
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_DEV }}/grafana-dev/otlp-endpoint
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
-          OIDC_JWKS_URL: op://${{ vars.VAULT_DEV }}/clerk-dev/jwks-url
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -140,7 +139,6 @@ jobs:
             CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
-            OIDC_JWKS_URL="$OIDC_JWKS_URL" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api-dev.agentsfleet.net" \
