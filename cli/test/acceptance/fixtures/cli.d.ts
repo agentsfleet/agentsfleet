@@ -31,6 +31,15 @@ export interface RunOptions {
   readonly binary?: "worktree" | "global";
 }
 
+export interface BinarySpec {
+  readonly command: string;
+  readonly prefixArgs: ReadonlyArray<string>;
+}
+
+// Resolves the spawn target (worktree `node dist/bin/...` vs global
+// `agentsfleet`) — shared by runAgentctl and the pty harness.
+export function resolveBinary(opts?: Pick<RunOptions, "binary">): BinarySpec;
+
 export function runAgentctl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;
 
 export function spawnAgentctl(
