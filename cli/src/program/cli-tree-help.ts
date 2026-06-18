@@ -82,7 +82,10 @@ function renderGroup(group: CommandGroup): string[] {
   let row = "";
   for (const command of group.commands) {
     const candidate = row === "" ? command : `${row}${COMMAND_GUTTER}${command}`;
-    if (COMMAND_INDENT.length + candidate.length > HELP_WIDTH) {
+    // Flush only when there's a packed row to break before this command — an
+    // empty row means `command` is the first/sole token, so accept it rather
+    // than emitting a stray indented blank line ahead of it.
+    if (row !== "" && COMMAND_INDENT.length + candidate.length > HELP_WIDTH) {
       lines.push(COMMAND_INDENT + row);
       row = command;
     } else {
