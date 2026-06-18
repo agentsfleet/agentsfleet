@@ -6,7 +6,7 @@
 
 pub const ValidationError = error{
     OidcRequired,
-    MissingOidcJwksUrl,
+    MissingOidcIssuer,
     InvalidOidcProvider,
     MissingEncryptionMasterKey,
     InvalidEncryptionMasterKey,

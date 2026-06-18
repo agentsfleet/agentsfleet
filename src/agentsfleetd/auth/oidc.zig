@@ -28,6 +28,46 @@ pub fn supportedProviderList() []const u8 {
     return "clerk, custom";
 }
 
+const S_T_R_N = " \t\r\n";
+
+/// Path appended to a (whitespace- and single-trailing-slash-normalised) OIDC
+/// issuer to form the JWKS endpoint when OIDC_JWKS_URL is not explicitly
+/// overridden — the OIDC/Clerk convention for publishing signing keys.
+const WELL_KNOWN_JWKS_SUFFIX: []const u8 = "/.well-known/jwks.json";
+
+/// Derive `<issuer>/.well-known/jwks.json`, stripping surrounding whitespace and
+/// every trailing slash so the path never double-slashes (a `//` path 404s).
+/// Caller owns the returned slice.
+fn deriveJwksUrl(alloc: std.mem.Allocator, issuer: []const u8) ![]const u8 {
+    const trimmed = std.mem.trim(u8, issuer, S_T_R_N);
+    const base = std.mem.trimEnd(u8, trimmed, "/");
+    return std.fmt.allocPrint(alloc, "{s}{s}", .{ base, WELL_KNOWN_JWKS_SUFFIX });
+}
+
+/// Resolve the effective JWKS URL through one code path, so the runtime loader
+/// and `doctor` can never test a different URL than the daemon fetches (the
+/// issuer/jwks-url drift bug class). An explicit, non-empty `explicit`
+/// (OIDC_JWKS_URL) wins and is returned verbatim as a fresh owned copy;
+/// otherwise derive from a non-empty `issuer`. Returns null when neither yields
+/// a URL (OIDC disabled). Caller owns the returned slice.
+pub fn resolveJwksUrl(alloc: std.mem.Allocator, explicit: ?[]const u8, issuer: ?[]const u8) !?[]const u8 {
+    if (explicit) |raw| {
+        const trimmed = std.mem.trim(u8, raw, S_T_R_N);
+        if (trimmed.len > 0) return try alloc.dupe(u8, trimmed); // trim, so a padded override is not a dead URL
+    }
+    if (issuer) |raw| {
+        if (std.mem.trim(u8, raw, S_T_R_N).len > 0) return try deriveJwksUrl(alloc, raw);
+    }
+    return null;
+}
+
+/// OIDC is enabled iff the issuer is present and non-empty — the single
+/// enable-gate shared by the runtime loader and `doctor`, so the two can never
+/// disagree on whether the daemon will accept the config (loader/doctor parity).
+pub fn isEnabled(issuer: ?[]const u8) bool {
+    return if (issuer) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
+}
+
 pub const VerifyError = jwks.VerifyError;
 
 pub const Principal = struct {

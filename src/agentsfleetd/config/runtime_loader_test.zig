@@ -20,6 +20,7 @@ const test_encryption_master_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const test_session_code_pepper = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const test_audit_log_pepper = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const test_jwks_url = "https://idp.example.com/.well-known/jwks.json";
+const test_issuer = "https://idp.example.com";
 // test_session_code_pepper + test_audit_log_pepper are referenced by every
 // ServeConfig.load test below; the loadAuthPeppers-specific tests live in
 // runtime_pepper_loader_test.zig.
@@ -31,6 +32,7 @@ fn envOf(pairs: []const [2][]const u8) !common.env.Map {
 test "ServeConfig.load accepts custom provider" {
     var env_map = try envOf(&.{
         .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
         .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
@@ -43,11 +45,14 @@ test "ServeConfig.load accepts custom provider" {
 
     try std.testing.expect(cfg.oidc_enabled);
     try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
+    // custom provider keeps its non-standard JWKS path: explicit override wins.
+    try std.testing.expectEqualStrings(test_jwks_url, cfg.oidc_jwks_url.?);
 }
 
 test "ServeConfig.load rejects invalid provider deterministically" {
     var env_map = try envOf(&.{
         .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "OIDC_PROVIDER", "not-real" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
         .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
@@ -58,7 +63,9 @@ test "ServeConfig.load rejects invalid provider deterministically" {
     try std.testing.expectError(ValidationError.InvalidOidcProvider, ServeConfig.load(&env_map, std.testing.allocator));
 }
 
-test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
+test "ServeConfig.load rejects an OIDC slate with a provider but no issuer" {
+    // The enable-gate is the issuer now: a provider (or any OIDC var) without
+    // OIDC_ISSUER is rejected — issuer is the single source of identity truth.
     var env_map = try envOf(&.{
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
@@ -67,19 +74,24 @@ test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
     });
     defer env_map.deinit();
 
-    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(&env_map, std.testing.allocator));
+    try std.testing.expectError(ValidationError.MissingOidcIssuer, ServeConfig.load(&env_map, std.testing.allocator));
 }
 
-test "ServeConfig.load rejects empty OIDC_JWKS_URL" {
+test "ServeConfig.load treats an empty OIDC_JWKS_URL as absent and derives from issuer" {
     var env_map = try envOf(&.{
         .{ "OIDC_JWKS_URL", "" },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
         .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
         .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     });
     defer env_map.deinit();
 
-    try std.testing.expectError(ValidationError.MissingOidcJwksUrl, ServeConfig.load(&env_map, std.testing.allocator));
+    var cfg = try ServeConfig.load(&env_map, std.testing.allocator);
+    defer cfg.deinit();
+
+    try std.testing.expect(cfg.oidc_enabled);
+    try std.testing.expectEqualStrings(test_jwks_url, cfg.oidc_jwks_url.?);
 }
 
 test "ServeConfig.load rejects a slate without any OIDC config" {
@@ -96,7 +108,7 @@ test "ServeConfig.load rejects a slate without any OIDC config" {
 
 test "ServeConfig.load applies size defaults; SSE cap independent of the thread pool" {
     var env_map = try envOf(&.{
-        .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
         .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
         .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
@@ -116,7 +128,7 @@ test "ServeConfig.load applies size defaults; SSE cap independent of the thread 
 
 test "ServeConfig.load rejects short encryption key" {
     var env_map = try envOf(&.{
-        .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "ENCRYPTION_MASTER_KEY", "tooshort" },
     });
     defer env_map.deinit();
@@ -126,7 +138,7 @@ test "ServeConfig.load rejects short encryption key" {
 
 test "ServeConfig.load rejects non-hex encryption key" {
     var env_map = try envOf(&.{
-        .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
         .{ "ENCRYPTION_MASTER_KEY", "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg" },
     });
     defer env_map.deinit();
@@ -232,6 +244,8 @@ test "loadOidc populates issuer and audience when set" {
     try std.testing.expect(cfg.enabled);
     try std.testing.expectEqualStrings("https://idp.example.com/", cfg.issuer.?);
     try std.testing.expectEqualStrings("agentsfleetd-prod", cfg.audience.?);
+    // explicit override is retained verbatim alongside the stored issuer.
+    try std.testing.expectEqualStrings(test_jwks_url, cfg.jwks_url.?);
 }
 
 test "loadOidc returns disabled with all-null fields when env empty" {
@@ -244,6 +258,131 @@ test "loadOidc returns disabled with all-null fields when env empty" {
     try std.testing.expect(cfg.issuer == null);
     try std.testing.expect(cfg.audience == null);
     try std.testing.expectEqual(oidc.Provider.clerk, cfg.provider);
+}
+
+// ── derive JWKS URL from issuer ──────────────────────────────────────────
+//
+// The issuer is the single source of identity truth; the JWKS URL is derived
+// from it unless OIDC_JWKS_URL is explicitly set (override). These pin the
+// derive / override / trailing-slash / enable-gate / runtime-doctor-parity
+// behaviour so the issuer and key-source can never drift again.
+
+test "loadOidc derives the JWKS URL from issuer when no override is set" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_ISSUER", "https://clerk.agentsfleet.net" },
+        .{ "OIDC_AUDIENCE", "https://api.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    const cfg = try loader.loadOidc(&env_map, std.testing.allocator);
+    defer loader.freeOidc(std.testing.allocator, cfg);
+    try std.testing.expect(cfg.enabled);
+    // pin test: literal is the contract (the endpoint Clerk publishes keys at).
+    try std.testing.expectEqualStrings("https://clerk.agentsfleet.net/.well-known/jwks.json", cfg.jwks_url.?);
+}
+
+test "loadOidc returns an explicit OIDC_JWKS_URL verbatim, overriding derivation" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_JWKS_URL", "https://custom.example.com/keys/jwks.json" },
+        .{ "OIDC_ISSUER", "https://clerk.agentsfleet.net" },
+        .{ "OIDC_AUDIENCE", "https://api.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    const cfg = try loader.loadOidc(&env_map, std.testing.allocator);
+    defer loader.freeOidc(std.testing.allocator, cfg);
+    // override wins — NOT the derived clerk.agentsfleet.net/.well-known path.
+    try std.testing.expectEqualStrings("https://custom.example.com/keys/jwks.json", cfg.jwks_url.?);
+}
+
+test "loadOidc normalises an issuer trailing slash with no double slash" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_ISSUER", "https://clerk.agentsfleet.net/" },
+        .{ "OIDC_AUDIENCE", "https://api.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    const cfg = try loader.loadOidc(&env_map, std.testing.allocator);
+    defer loader.freeOidc(std.testing.allocator, cfg);
+    try std.testing.expectEqualStrings("https://clerk.agentsfleet.net/.well-known/jwks.json", cfg.jwks_url.?);
+    // no `//` after the scheme — the single trailing slash was collapsed.
+    try std.testing.expect(std.mem.indexOf(u8, cfg.jwks_url.?["https://".len..], "//") == null);
+    // robustness: even multiple trailing slashes collapse (the goal is no `//` 404).
+    const multi = (try oidc.resolveJwksUrl(std.testing.allocator, null, "https://clerk.agentsfleet.net///")).?;
+    defer std.testing.allocator.free(multi);
+    try std.testing.expectEqualStrings("https://clerk.agentsfleet.net/.well-known/jwks.json", multi);
+}
+
+test "loadOidc is enabled when only OIDC_ISSUER is present" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_ISSUER", "https://clerk.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    const cfg = try loader.loadOidc(&env_map, std.testing.allocator);
+    defer loader.freeOidc(std.testing.allocator, cfg);
+    try std.testing.expect(cfg.enabled);
+    try std.testing.expect(cfg.jwks_url != null);
+    try std.testing.expect(cfg.audience == null);
+}
+
+test "loadOidc rejects an OIDC slate that sets audience but no issuer" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_AUDIENCE", "https://api.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    try std.testing.expectError(ValidationError.MissingOidcIssuer, loader.loadOidc(&env_map, std.testing.allocator));
+}
+
+test "doctor and loader resolve the same JWKS URL from one issuer" {
+    const alloc = std.testing.allocator;
+    const issuer = "https://clerk.agentsfleet.net";
+    var env_map = try envOf(&.{
+        .{ "OIDC_ISSUER", issuer },
+        .{ "OIDC_AUDIENCE", "https://api.agentsfleet.net" },
+    });
+    defer env_map.deinit();
+    const cfg = try loader.loadOidc(&env_map, alloc);
+    defer loader.freeOidc(alloc, cfg);
+    // `doctor` probes the URL returned by the SAME shared helper — proving the
+    // doctor can never test a different URL than the daemon will fetch.
+    const doctor_url = (try oidc.resolveJwksUrl(alloc, null, issuer)).?;
+    defer alloc.free(doctor_url);
+    try std.testing.expectEqualStrings(cfg.jwks_url.?, doctor_url);
+}
+
+test "resolveJwksUrl leaks nothing when an allocation fails on either path" {
+    // checkAllAllocationFailures fails each internal allocation in turn and asserts
+    // the error return leaks nothing — the deterministic proof that the derive
+    // (allocPrint) and override (dupe) paths own their memory correctly under OOM.
+    const Probe = struct {
+        fn run(alloc: std.mem.Allocator) !void {
+            if (try oidc.resolveJwksUrl(alloc, null, "https://clerk.agentsfleet.net/")) |u| alloc.free(u); // derive
+            if (try oidc.resolveJwksUrl(alloc, "https://custom.example.com/jwks.json", "https://x")) |u| alloc.free(u); // override
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
+}
+
+test "loadOidc rejects an explicit OIDC_JWKS_URL set without an issuer" {
+    // The daemon enables OIDC on the issuer, not the URL: an override without an
+    // issuer is rejected — so `doctor` must not green-light it either (parity).
+    var env_map = try envOf(&.{
+        .{ "OIDC_JWKS_URL", "https://custom.example.com/keys/jwks.json" },
+    });
+    defer env_map.deinit();
+    try std.testing.expectError(ValidationError.MissingOidcIssuer, loader.loadOidc(&env_map, std.testing.allocator));
+}
+
+test "resolveJwksUrl trims surrounding whitespace from an explicit override" {
+    const alloc = std.testing.allocator;
+    const url = (try oidc.resolveJwksUrl(alloc, "  https://custom.example.com/jwks.json\n", "https://clerk.agentsfleet.net")).?;
+    defer alloc.free(url);
+    // a config-paste-padded override must not become a dead URL with embedded ws.
+    try std.testing.expectEqualStrings("https://custom.example.com/jwks.json", url);
+}
+
+test "oidc.isEnabled is the shared issuer enable-gate" {
+    try std.testing.expect(oidc.isEnabled("https://clerk.agentsfleet.net"));
+    try std.testing.expect(!oidc.isEnabled(null));
+    try std.testing.expect(!oidc.isEnabled(""));
+    try std.testing.expect(!oidc.isEnabled("   \t\n"));
 }
 
 test "ServeConfig.load partial-build frees oidc when encryption rejected (RULE OWN)" {

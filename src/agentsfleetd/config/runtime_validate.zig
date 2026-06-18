@@ -21,8 +21,8 @@ pub fn isHexString(s: []const u8) bool {
 
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
-        ValidationError.OidcRequired => logging.fatalStderr("fatal: OIDC is required — set OIDC_JWKS_URL, OIDC_ISSUER, OIDC_AUDIENCE\n", .{}),
-        ValidationError.MissingOidcJwksUrl => logging.fatalStderr("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
+        ValidationError.OidcRequired => logging.fatalStderr("fatal: OIDC is required — set OIDC_ISSUER and OIDC_AUDIENCE (OIDC_JWKS_URL optional, derived from issuer)\n", .{}),
+        ValidationError.MissingOidcIssuer => logging.fatalStderr("fatal: OIDC_ISSUER is required and must be non-empty\n", .{}),
         ValidationError.InvalidOidcProvider => logging.fatalStderr("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
         ValidationError.MissingEncryptionMasterKey => logging.fatalStderr("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
         ValidationError.InvalidEncryptionMasterKey => logging.fatalStderr("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
