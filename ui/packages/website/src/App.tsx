@@ -13,6 +13,8 @@ const Agents = lazy(() => import("./pages/Agents"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
+// Lazy so Clerk's client runtime only loads when a visitor opens /waitlist.
+const WaitlistPage = lazy(() => import("./pages/Waitlist"));
 
 const NAV_LINK_CLASS =
   "inline-flex min-h-11 min-w-11 items-center justify-center font-mono text-eyebrow uppercase tracking-eyebrow text-text-muted hover:text-text transition-colors";
@@ -89,6 +91,7 @@ export default function App() {
              * client-side redirect to the anchor. */}
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/waitlist" element={<WaitlistPage />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/_design-system" element={<DesignSystemGallery />} />

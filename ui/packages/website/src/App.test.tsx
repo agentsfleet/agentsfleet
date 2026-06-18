@@ -8,6 +8,15 @@ const analytics = vi.hoisted(() => ({
 }));
 vi.mock("./analytics/posthog", () => analytics);
 
+// The /waitlist route mounts Clerk's <ClerkProvider>/<Waitlist>, which need a
+// live publishable key + runtime. Stub them so navigating there exercises the
+// lazy route without reaching Clerk; the form's own behaviour is covered in
+// pages/Waitlist.test.tsx.
+vi.mock("@clerk/clerk-react", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Waitlist: () => <div data-testid="waitlist-form" />,
+}));
+
 import App from "./App";
 import { HERO_HEADLINE, HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
 import { WAITLIST_URL } from "./config";
@@ -95,6 +104,11 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { level: 1 }),
     ).toBeInTheDocument();
+  });
+
+  it("renders the waitlist page at /waitlist", async () => {
+    renderApp("/waitlist");
+    expect(await screen.findByTestId("waitlist-form")).toBeInTheDocument();
   });
 
   it("renders privacy page at /privacy", async () => {

@@ -44,6 +44,48 @@ describe("APP_BASE_URL resolution", () => {
 });
 
 /*
+ * The waitlist now lives on this marketing site itself (/waitlist), not the
+ * Clerk Account Portal — so WAITLIST_URL is a same-origin relative path with
+ * no prod/dev host split, and CLERK_PUBLISHABLE_KEY feeds the embedded
+ * <Waitlist> form. Both resolve from env at module-eval, so we stub + reimport
+ * to exercise the override and fallback arms.
+ */
+describe("waitlist config resolution", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults the waitlist URL to the same-origin /waitlist route", async () => {
+    vi.stubEnv("VITE_WAITLIST_URL", "");
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.WAITLIST_URL).toBe("/waitlist");
+  });
+
+  it("prefers a trimmed VITE_WAITLIST_URL override", async () => {
+    vi.stubEnv("VITE_WAITLIST_URL", "  http://localhost:5173/waitlist  ");
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.WAITLIST_URL).toBe("http://localhost:5173/waitlist");
+  });
+
+  it("resolves the Clerk publishable key from a trimmed VITE_CLERK_PUBLISHABLE_KEY", async () => {
+    vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "  pk_test_marketing  ");
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.CLERK_PUBLISHABLE_KEY).toBe("pk_test_marketing");
+  });
+
+  it("falls back to an empty publishable key when the env is unset", async () => {
+    vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "");
+    vi.resetModules();
+    const mod = await import("./config");
+    expect(mod.CLERK_PUBLISHABLE_KEY).toBe("");
+  });
+});
+
+/*
  * agentsfleet rebrand pins. Two directions, both deliberate:
  *  - operational strings that must NOT change until their own cutover
  *    spec lands (team mailbox);
