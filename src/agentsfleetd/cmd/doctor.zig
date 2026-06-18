@@ -252,36 +252,41 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             };
         };
 
-        // Resolve the JWKS URL through the SAME helper the runtime loader uses,
-        // so the doctor never probes a different URL than the daemon will fetch.
+        // Mirror the loader's enable-gate (issuer non-empty) via the SAME helper
+        // BEFORE probing, so the doctor never green-lights a URL the daemon would
+        // reject at boot (e.g. OIDC_JWKS_URL set but OIDC_ISSUER missing).
         const issuer: ?[]const u8 = constants.env.owned(env_map, alloc, "OIDC_ISSUER") catch null;
         defer if (issuer) |v| alloc.free(v);
         const explicit_jwks: ?[]const u8 = constants.env.owned(env_map, alloc, "OIDC_JWKS_URL") catch null;
         defer if (explicit_jwks) |v| alloc.free(v);
-        const resolved_jwks: ?[]const u8 = oidc_auth.resolveJwksUrl(alloc, explicit_jwks, issuer) catch null;
-        defer if (resolved_jwks) |v| alloc.free(v);
+        const oidc_requested = issuer != null or explicit_jwks != null or oidc_provider_raw != null;
 
-        if (resolved_jwks) |url| {
-            if (oidc_provider) |provider| {
-                try appendFmtCheck(alloc, &results, S_OIDC_PROVIDER, true, &ok, "OIDC_PROVIDER={s}", .{@tagName(provider)});
-            }
-
-            var verifier = oidc_auth.Verifier.init(alloc, .{
-                .provider = oidc_provider orelse .clerk,
-                .jwks_url = url,
-            });
-            defer verifier.deinit();
-            var jwks_ok = true;
-            verifier.checkJwksConnectivity() catch {
-                // URL is public — print it so a misconfigured issuer is greppable.
-                try appendFmtCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, false, &ok, "OIDC JWKS fetch failed ({s})", .{url});
-                jwks_ok = false;
-            };
-            if (jwks_ok) {
-                try appendCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, true, "OIDC JWKS reachable", &ok);
-            }
+        if (!oidc_auth.isEnabled(issuer)) {
+            const detail = if (oidc_requested)
+                "OIDC_ISSUER required and non-empty whenever any OIDC var is set"
+            else
+                "Set OIDC_ISSUER — OIDC is required (the env-var API-key bootstrap was removed)";
+            try appendCheck(alloc, &results, "auth_config", false, detail, &ok);
         } else {
-            try appendCheck(alloc, &results, "auth_config", false, "Set OIDC_ISSUER — OIDC is required (the env-var API-key bootstrap was removed)", &ok);
+            // Enabled: resolve via the SAME helper the daemon uses, then probe.
+            const resolved_jwks: ?[]const u8 = oidc_auth.resolveJwksUrl(alloc, explicit_jwks, issuer) catch null;
+            defer if (resolved_jwks) |v| alloc.free(v);
+            if (resolved_jwks) |url| {
+                if (oidc_provider) |provider| {
+                    try appendFmtCheck(alloc, &results, S_OIDC_PROVIDER, true, &ok, "OIDC_PROVIDER={s}", .{@tagName(provider)});
+                }
+                var verifier = oidc_auth.Verifier.init(alloc, .{ .provider = oidc_provider orelse .clerk, .jwks_url = url });
+                defer verifier.deinit();
+                var jwks_ok = true;
+                verifier.checkJwksConnectivity() catch {
+                    // URL is public — print it so a misconfigured issuer is greppable.
+                    try appendFmtCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, false, &ok, "OIDC JWKS fetch failed ({s})", .{url});
+                    jwks_ok = false;
+                };
+                if (jwks_ok) {
+                    try appendCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, true, "OIDC JWKS reachable", &ok);
+                }
+            }
         }
     }
 

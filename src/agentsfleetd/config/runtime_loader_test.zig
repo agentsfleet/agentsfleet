@@ -360,6 +360,31 @@ test "resolveJwksUrl leaks nothing when an allocation fails on either path" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{});
 }
 
+test "loadOidc rejects an explicit OIDC_JWKS_URL set without an issuer" {
+    // The daemon enables OIDC on the issuer, not the URL: an override without an
+    // issuer is rejected — so `doctor` must not green-light it either (parity).
+    var env_map = try envOf(&.{
+        .{ "OIDC_JWKS_URL", "https://custom.example.com/keys/jwks.json" },
+    });
+    defer env_map.deinit();
+    try std.testing.expectError(ValidationError.MissingOidcIssuer, loader.loadOidc(&env_map, std.testing.allocator));
+}
+
+test "resolveJwksUrl trims surrounding whitespace from an explicit override" {
+    const alloc = std.testing.allocator;
+    const url = (try oidc.resolveJwksUrl(alloc, "  https://custom.example.com/jwks.json\n", "https://clerk.agentsfleet.net")).?;
+    defer alloc.free(url);
+    // a config-paste-padded override must not become a dead URL with embedded ws.
+    try std.testing.expectEqualStrings("https://custom.example.com/jwks.json", url);
+}
+
+test "oidc.isEnabled is the shared issuer enable-gate" {
+    try std.testing.expect(oidc.isEnabled("https://clerk.agentsfleet.net"));
+    try std.testing.expect(!oidc.isEnabled(null));
+    try std.testing.expect(!oidc.isEnabled(""));
+    try std.testing.expect(!oidc.isEnabled("   \t\n"));
+}
+
 test "ServeConfig.load partial-build frees oidc when encryption rejected (RULE OWN)" {
     // Proves the orchestrator's per-section errdefer chain frees every prior
     // heap-owning section when a late sub-loader fails. Loads valid OIDC
