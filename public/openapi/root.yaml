@@ -73,6 +73,14 @@ tags:
   description: Approval-gate inbox — list, inspect, and resolve pending gates from the dashboard or programmatically.
   x-mintlify:
     navigation: Approvals
+- name: Fleet
+  description: Runner fleet operator plane — enroll, list, and administer sandbox runners. Operator/admin-scoped.
+  x-mintlify:
+    navigation: Fleet
+- name: Model Catalogue
+  description: Public model→capability catalogue consumed at provisioning time.
+  x-mintlify:
+    navigation: Model Catalogue
 paths:
   /healthz:
     $ref: ./paths/health.yaml#/~1healthz
@@ -158,6 +166,16 @@ paths:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:approve
   /v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:deny
+  /v1/runners:
+    $ref: ./paths/fleet.yaml#/~1v1~1runners
+  /v1/fleet/runners:
+    $ref: ./paths/fleet.yaml#/~1v1~1fleet~1runners
+  /v1/fleet/runners/{id}:
+    $ref: ./paths/fleet.yaml#/~1v1~1fleet~1runners~1{id}
+  /v1/fleet/runners/{id}/events:
+    $ref: ./paths/fleet.yaml#/~1v1~1fleet~1runners~1{id}~1events
+  /_um/da5b6b3810543fe108d816ee972e4ff8/cap.json:
+    $ref: ./paths/model-caps.yaml#/~1_um~1da5b6b3810543fe108d816ee972e4ff8~1cap.json
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

@@ -56,9 +56,7 @@
                 additionalProperties: true
     responses:
       '200':
-        description: |
-          Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every
-          subsequent replay of the same `oidc_subject`.
+        description: "Handled. Shape depends on event type: user.created → {workspace_id, workspace_name, created}; user.deleted → {deleted}; any other type → {status: ignored, type}."
         content:
           application/json:
             schema:
@@ -74,6 +72,15 @@
                 created:
                   type: boolean
                   description: "`true` on fresh bootstrap; `false` on idempotent replay."
+                deleted:
+                  type: boolean
+                  description: true on a user.deleted event.
+                status:
+                  type: string
+                  description: "`ignored` for event types other than user.created/user.deleted."
+                type:
+                  type: string
+                  description: Echoed Clerk event type on ignored events.
       '400':
         $ref: ../../components/responses.yaml#/components/responses/Error
       '401':

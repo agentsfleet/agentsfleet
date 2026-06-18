@@ -8,7 +8,7 @@
 /// corresponding ERR_* constant in error_registry.zig.
 const std = @import("std");
 
-pub const ERROR_DOCS_BASE = "https://docs.agentsfleet.net/error-codes#";
+pub const ERROR_DOCS_BASE = "https://docs.agentsfleet.net/api-reference/error-codes#";
 
 const S_UZ_INTERNAL_003 = "UZ-INTERNAL-003";
 

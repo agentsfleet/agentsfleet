@@ -43,6 +43,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "credentials",       # core.credentials
     "agents",           # core.agents
     "workspaces",        # core.workspaces
+    "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleet/runners)
     "api-keys",          # api keys collection
     "agent-keys",        # agent keys collection
     "platform-keys",     # admin platform keys
@@ -93,6 +94,17 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
 # "we'll get to it" is mechanical.
 VENDOR_PATH_CARVE_OUTS: set[str] = set()
 
+# Static-catalogue carve-out — the public model→capability catalogue is served
+# at a cryptic, static-file-shaped path (`/_um/<hash>/cap.json`) so it can be
+# CDN-cached at the edge and is unauthenticated by design. It is a static asset,
+# NOT a REST resource, and can never satisfy §1 (the opaque hash + `.json`
+# suffix are intrinsic to its shape). Documenting it in the public OpenAPI
+# requires this explicit, named exception (owner-directed carve-out — the path
+# is pinned by the runtime handler `model_caps.zig` MODEL_CAPS_PATH).
+STATIC_CATALOGUE_CARVE_OUTS: set[str] = {
+    "/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json",
+}
+
 # A "noun-shaped" final segment is either a path param ({foo}), a colon-op
 # (:approve, :reject), or matches the noun grammar: lowercase letters,
 # digits, hyphens, optional trailing 's' or 'es' (we don't enforce
@@ -113,6 +125,8 @@ def is_legal_shape(path: str, last: str) -> bool:
     if path in TOP_LEVEL_ALLOW:
         return True
     if path in VENDOR_PATH_CARVE_OUTS:
+        return True
+    if path in STATIC_CATALOGUE_CARVE_OUTS:
         return True
     if PATH_PARAM_RE.match(last):
         return True
