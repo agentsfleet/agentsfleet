@@ -33,7 +33,7 @@ export default function Footer() {
         <div>
           <h4 className={COL_LABEL}>product</h4>
           <List variant="plain" className="m-0 flex flex-col gap-1 space-y-0">
-            <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>loop</a></ListItem>
+            <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>fleet</a></ListItem>
             <ListItem><a href="/#pricing" className={COL_LINK}>pricing</a></ListItem>
             <ListItem><Link to="/agents" className={COL_LINK}>agents</Link></ListItem>
           </List>

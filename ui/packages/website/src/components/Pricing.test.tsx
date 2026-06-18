@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { PRICING_COPY, PRICING_PLANS } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
+import { WAITLIST_URL } from "../config";
 
 const analytics = vi.hoisted(() => ({
   trackSignupStarted: vi.fn(),
@@ -114,14 +115,22 @@ describe("Pricing component", () => {
     });
   });
 
-  it("renders usage early-access CTA disabled", () => {
+  it("renders usage early-access CTA as a waitlist link", () => {
     renderPricing();
     const cta = screen.getByTestId("pricing-cta-usage");
-    expect(cta.tagName).toBe("BUTTON");
-    expect(cta).toBeDisabled();
-    expect(cta).not.toHaveAttribute("href");
+    expect(cta.tagName).toBe("A");
+    expect(cta).not.toBeDisabled();
+    expect(cta).toHaveAttribute("href", WAITLIST_URL);
     expect(cta.textContent).toMatch(/get early access/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
+  });
+
+  it("routes the free-trial Start-free CTA to the waitlist too", () => {
+    renderPricing();
+    const cta = screen.getByTestId("pricing-cta-trial");
+    expect(cta.tagName).toBe("A");
+    expect(cta).toHaveAttribute("href", WAITLIST_URL);
+    expect(cta.textContent).toMatch(/start free/i);
   });
 
   it("pricing CTAs stretch inside their plan cards", () => {
@@ -129,10 +138,24 @@ describe("Pricing component", () => {
     expect(screen.getByTestId("pricing-cta-usage").className).toMatch(/\bw-full\b/);
   });
 
-  it("disabled early-access CTA does not track signup", () => {
+  it("usage early-access CTA tracks signup intent", () => {
     renderPricing();
     fireEvent.click(screen.getByTestId("pricing-cta-usage"));
-    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "pricing_usage",
+      surface: "pricing",
+      mode: "humans",
+    });
+  });
+
+  it("enterprise card surfaces the contact email as visible, selectable text", () => {
+    renderPricing();
+    const note = screen.getByTestId("pricing-enterprise-email");
+    expect(note).toHaveTextContent(SUPPORT_EMAIL);
+    expect(within(note).getByRole("link")).toHaveAttribute(
+      "href",
+      `mailto:${SUPPORT_EMAIL}`,
+    );
   });
 
   it("does not render the old Hobby/Scale tier ladder", () => {

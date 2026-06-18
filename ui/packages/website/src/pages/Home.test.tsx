@@ -7,8 +7,8 @@ import {
   HERO_HEADLINE,
   HOW_IT_WORKS_HEADING,
   KNOWLEDGE_POINTS,
-  LEDGER_LINES,
   LOOP_STEPS,
+  PREBUILT_AGENTS,
   OPERATIONAL_KNOWLEDGE_HEADING,
   PRICING_COPY,
 } from "../lib/marketing-copy";
@@ -54,9 +54,9 @@ describe("Home", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the hero install Terminal", () => {
+  it("no longer renders the removed install-via Terminal in the hero", () => {
     renderHome();
-    expect(screen.getByLabelText(/install via agentsfleet\.dev/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/install via agentsfleet\.dev/i)).not.toBeInTheDocument();
   });
 
   it("does not mount the retired standalone onboarding section", () => {
@@ -67,17 +67,17 @@ describe("Home", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders operational knowledge and the Terminal Ledger before How it works", () => {
+  it("renders operational knowledge and the prebuilt-agents fleet before How it works", () => {
     renderHome();
     expect(screen.getByText(OPERATIONAL_KNOWLEDGE_HEADING)).toBeInTheDocument();
     for (const point of KNOWLEDGE_POINTS) {
       expect(screen.getByText(point.title)).toBeInTheDocument();
     }
-    for (const line of LEDGER_LINES) {
-      expect(screen.getByTestId(`pipeline-ledger-line-${line.id}`)).toHaveTextContent(
-        line.message,
-      );
+    expect(screen.getByTestId("prebuilt-agents")).toBeInTheDocument();
+    for (const agent of PREBUILT_AGENTS) {
+      expect(screen.getByTestId(`agent-card-${agent.id}`)).toHaveTextContent(agent.name);
     }
+    expect(screen.getByTestId("agent-card-coming-soon")).toBeInTheDocument();
   });
 
   it("renders How it works with all eight loop steps", () => {

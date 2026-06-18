@@ -10,6 +10,21 @@ export const APP_BASE_URL = fromEnv || (
     : "https://app.dev.agentsfleet.net"
 );
 
+// Clerk-hosted Account Portal waitlist page. "Get early access" links here
+// (hero, topbar, pricing usage tier) rather than embedding a Clerk form on the
+// marketing SPA — the dashboard owner enables Waitlist mode in Clerk and the
+// page is themed by the same appearance settings the app already configures.
+// PROD is the production Account Portal on the agentsfleet.net custom domain
+// (verified Clerk-served; returns 403 until Waitlist sign-up mode is enabled).
+// Dev is the Clerk dev instance Account Portal (slug from the dev publishable
+// key: winning-wombat-65.accounts.dev). Env-overridable; PROD/dev split mirrors
+// APP_BASE_URL.
+export const WAITLIST_URL = import.meta.env.VITE_WAITLIST_URL?.trim() || (
+  import.meta.env.PROD
+    ? "https://accounts.agentsfleet.net/waitlist"
+    : "https://winning-wombat-65.accounts.dev/waitlist"
+);
+
 export const DOCS_URL = "https://docs.agentsfleet.net";
 export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
 export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";

@@ -1,7 +1,7 @@
 import Hero from "../components/Hero";
 import FeatureSection from "../components/FeatureSection";
 import OperationalKnowledgeSection from "../components/OperationalKnowledgeSection";
-import PipelineDiagram from "../components/PipelineDiagram";
+import PrebuiltAgents from "../components/PrebuiltAgents";
 import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
@@ -14,7 +14,7 @@ export default function Home() {
     <div data-testid="home-page">
       <Hero />
       <OperationalKnowledgeSection />
-      <PipelineDiagram />
+      <PrebuiltAgents />
 
       <section className="site-section" aria-label="Core capabilities">
         <div className="wrap flex flex-col gap-8">

@@ -29,7 +29,7 @@ describe("Footer", () => {
   it("renders product column with links", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^loop$/i })).toHaveAttribute("href", "/#operational-loop");
+    expect(screen.getByRole("link", { name: /^fleet$/i })).toHaveAttribute("href", "/#operational-loop");
     expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
     expect(screen.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
   });
