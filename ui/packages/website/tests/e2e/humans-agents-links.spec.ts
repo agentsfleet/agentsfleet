@@ -11,7 +11,7 @@ async function assertFooterLinks(page: Page) {
   await expect(footer).toBeVisible();
 
   const internalFooterLinks: InternalLinkCase[] = [
-    { label: /^loop$/i, href: "/#operational-loop" },
+    { label: /^fleet$/i, href: "/#operational-loop" },
     { label: /^pricing$/i, href: "/#pricing" },
     { label: /^agents$/i, href: "/agents" },
     { label: /^llms\.txt$/i, href: "/llms.txt" },
