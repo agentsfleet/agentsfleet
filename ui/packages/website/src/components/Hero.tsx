@@ -155,6 +155,8 @@ export default function Hero() {
             >
               <a
                 href={WAITLIST_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 onClick={() =>
                   trackSignupStarted({
                     source: "hero_early_access",

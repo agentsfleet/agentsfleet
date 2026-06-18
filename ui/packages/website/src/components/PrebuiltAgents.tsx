@@ -115,6 +115,8 @@ function AgentCard({ agent }: { agent: PrebuiltAgent }) {
         >
           <a
             href={WAITLIST_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             data-testid={`agent-cta-${agent.id}`}
             onClick={() =>
               trackSignupStarted({

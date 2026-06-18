@@ -65,6 +65,8 @@ describe("PrebuiltAgents", () => {
     const auto = screen.getByTestId("agent-cta-auto-reviewer");
     expect(auto.tagName).toBe("A");
     expect(auto).toHaveAttribute("href", WAITLIST_URL);
+    expect(auto).toHaveAttribute("target", "_blank");
+    expect(auto).toHaveAttribute("rel", "noopener noreferrer");
     // A shipped agent invites you to "Try it"; a coming-soon one does not.
     expect(auto).toHaveTextContent(/try it/i);
     fireEvent.click(auto);

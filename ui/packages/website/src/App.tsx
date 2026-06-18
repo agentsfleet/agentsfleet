@@ -64,6 +64,8 @@ export default function App() {
           <Button asChild className="min-h-11" data-testid="header-install-cta">
             <a
               href={WAITLIST_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               onClick={() =>
                 trackSignupStarted({
                   source: "header_early_access",

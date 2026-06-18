@@ -122,6 +122,9 @@ describe("Pricing component", () => {
     expect(cta).not.toBeDisabled();
     expect(cta).toHaveAttribute("href", WAITLIST_URL);
     expect(cta.textContent).toMatch(/get early access/i);
+    // External (Clerk) host — opens in a new tab like every other external link.
+    expect(cta).toHaveAttribute("target", "_blank");
+    expect(cta).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
@@ -148,14 +151,25 @@ describe("Pricing component", () => {
     });
   });
 
-  it("enterprise card surfaces the contact email as visible, selectable text", () => {
+  it("enterprise card surfaces the contact email as visible, selectable text and tracks it", () => {
     renderPricing();
     const note = screen.getByTestId("pricing-enterprise-email");
     expect(note).toHaveTextContent(SUPPORT_EMAIL);
-    expect(within(note).getByRole("link")).toHaveAttribute(
-      "href",
-      `mailto:${SUPPORT_EMAIL}`,
-    );
+    const emailLink = within(note).getByRole("link");
+    expect(emailLink).toHaveAttribute("href", `mailto:${SUPPORT_EMAIL}`);
+    // A lead who emails directly must still register in the funnel.
+    fireEvent.click(emailLink);
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "pricing_enterprise_email",
+      surface: "pricing",
+      mode: "humans",
+    });
+  });
+
+  it("keeps the Enterprise mailto CTA in the same tab (no new-tab for a mailto)", () => {
+    renderPricing();
+    const cta = screen.getByTestId("pricing-cta-enterprise");
+    expect(cta).not.toHaveAttribute("target");
   });
 
   it("does not render the old Hobby/Scale tier ladder", () => {
