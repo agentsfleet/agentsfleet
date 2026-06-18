@@ -28,17 +28,13 @@ const agent_config = @import("../../../agent/config.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("contract").event_envelope;
+const webhook_parse = @import("webhook_parse.zig");
 
 const log = logging.scoped(.http_webhook);
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
-
-const WebhookPayload = struct {
-    event_id: []const u8,
-    type: []const u8,
-    data: std.json.Value,
-};
+const WebhookPayload = webhook_parse.WebhookPayload;
 
 const AgentRow = struct {
     workspace_id: []const u8,
@@ -75,40 +71,6 @@ fn fetchAgentById(pool: *pg.Pool, alloc: std.mem.Allocator, agent_id: []const u8
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-
-fn parseBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayload {
-    const body = req.body() orelse {
-        log.warn("no_body", .{
-            .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
-            .req_id = hx.req_id,
-        });
-        hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED);
-        return null;
-    };
-    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
-    const parsed = std.json.parseFromSlice(WebhookPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        log.warn("malformed_json", .{
-            .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
-            .req_id = hx.req_id,
-        });
-        hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
-        return null;
-    };
-    const payload = parsed.value;
-    if (payload.event_id.len == 0 or payload.type.len == 0) {
-        log.warn("missing_fields", .{
-            .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
-            .req_id = hx.req_id,
-        });
-        hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS);
-        parsed.deinit();
-        return null;
-    }
-    return payload;
-}
 
 fn dedupAndEnqueue(hx: Hx, agent_id: []const u8, workspace_id: []const u8, payload: WebhookPayload, source_label: []const u8) bool {
     var dedup_key_buf: [256]u8 = undefined;
@@ -184,8 +146,23 @@ fn releaseDedupSlot(hx: Hx, agent_id: []const u8, dedup_key: []const u8) void {
 // ── Main handler ───────────────────────────────────────────────────────────
 
 pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, agent_id: []const u8) void {
-    const payload = parseBody(hx, req, agent_id) orelse return;
+    const payload = webhook_parse.parseBody(hx, req, agent_id) orelse return;
+    deliverToAgent(hx, agent_id, payload);
+}
 
+/// Svix-signed delivery (Clerk identity events, etc.) routed to a customer
+/// agent's event log. A Svix envelope carries no top-level `event_id` — the
+/// `svix-id` header IS the idempotency key — and the whole body is forwarded
+/// as the agent event's data. Signature is verified by the svix middleware
+/// before this handler runs.
+pub fn innerReceiveSvixWebhook(hx: Hx, req: *httpz.Request, agent_id: []const u8) void {
+    const payload = webhook_parse.parseSvixBody(hx, req, agent_id) orelse return;
+    deliverToAgent(hx, agent_id, payload);
+}
+
+/// Shared post-parse path for both webhook ingress shapes: resolve the agent,
+/// short-circuit paused agents to 200-ignored, then dedup-and-enqueue.
+fn deliverToAgent(hx: Hx, agent_id: []const u8, payload: WebhookPayload) void {
     var agent = fetchAgentById(hx.ctx.pool, hx.alloc, agent_id) catch |err| {
         log.err("db_error", .{
             .error_code = ec.ERR_INTERNAL_DB_QUERY,
@@ -272,22 +249,7 @@ test "successful webhook acceptance increments agents_triggered counter" {
     try tel_mod.TestBackend.assertLastEventIs(.agent_triggered);
 }
 
-test "WebhookPayload parses valid event" {
-    const alloc = std.testing.allocator;
-    const body =
-        \\{"event_id":"evt_001","type":"email.received","data":{"from":"a@b.com"}}
-    ;
-    const parsed = try std.json.parseFromSlice(WebhookPayload, alloc, body, .{ .ignore_unknown_fields = true });
-    defer parsed.deinit();
-    try std.testing.expectEqualStrings("evt_001", parsed.value.event_id);
-    try std.testing.expectEqualStrings("email.received", parsed.value.type);
-}
-
-test "WebhookPayload rejects missing event_id" {
-    const alloc = std.testing.allocator;
-    const body =
-        \\{"type":"email.received","data":{}}
-    ;
-    const result = std.json.parseFromSlice(WebhookPayload, alloc, body, .{});
-    try std.testing.expect(if (result) |_| false else |_| true);
+// Body-parsing unit tests live with the parser they exercise.
+test {
+    _ = webhook_parse;
 }

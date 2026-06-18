@@ -23,7 +23,6 @@
                     $ref: ../components/schemas.yaml#/components/schemas/PlatformKey
                 request_id:
                   type: string
-                  format: uuid
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
   put:
@@ -72,7 +71,6 @@
                   type: boolean
                 request_id:
                   type: string
-                  format: uuid
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/admin/platform-keys/{provider}:
@@ -109,6 +107,5 @@
                   const: false
                 request_id:
                   type: string
-                  format: uuid
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

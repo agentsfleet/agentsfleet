@@ -18,7 +18,6 @@
               - status
               - service
               - commit
-              - request_id
               properties:
                 status:
                   type: string
@@ -31,10 +30,6 @@
                 commit:
                   type: string
                   description: Git commit SHA of the running build
-                request_id:
-                  type: string
-                  format: uuid
-                  description: Unique request identifier
 /metrics:
   get:
     operationId: metrics
@@ -50,6 +45,8 @@
           text/plain:
             schema:
               type: string
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
 /readyz:
   get:
     operationId: readyz
