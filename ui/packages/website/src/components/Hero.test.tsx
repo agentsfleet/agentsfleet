@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,9 +17,9 @@ import {
   LOOP_ANCHOR_ID,
   PILLAR_TOKENS,
 } from "../lib/marketing-copy";
+import { WAITLIST_URL } from "../config";
 
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-const INSTALL_SKILL_COMMAND = "claude /agentsfleet-install-platform-ops";
 
 function renderHero() {
   return render(
@@ -232,41 +232,36 @@ describe("Hero", () => {
     expect(fading.getAttribute("aria-live")).toBe("assertive");
   });
 
-  it("renders early-access and loop CTAs without replacing the copy-row", () => {
+  it("renders early-access as a waitlist link and loop CTA without replacing the copy-row", () => {
     renderHero();
     const earlyAccess = screen.getByTestId("hero-cta-early-access");
-    expect(earlyAccess).toHaveTextContent(
-      HERO_PRIMARY_LABEL,
-    );
-    expect(earlyAccess.tagName).toBe("BUTTON");
-    expect(earlyAccess).toBeDisabled();
-    expect(earlyAccess).not.toHaveAttribute("href");
+    expect(earlyAccess).toHaveTextContent(HERO_PRIMARY_LABEL);
+    // Now an enabled anchor to the Clerk-hosted waitlist, not a disabled button.
+    expect(earlyAccess.tagName).toBe("A");
+    expect(earlyAccess).not.toBeDisabled();
+    expect(earlyAccess).toHaveAttribute("href", WAITLIST_URL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
     expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
       "href",
       `/#${LOOP_ANCHOR_ID}`,
     );
     expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
-    expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
   });
 
-  it("does not track disabled early-access CTA clicks", () => {
+  it("tracks a signup when the early-access waitlist CTA is clicked", () => {
     renderHero();
     fireEvent.click(screen.getByTestId("hero-cta-early-access"));
-    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "hero_early_access",
+      surface: "hero",
+      mode: "humans",
+    });
   });
 
-  it("renders the animated install Terminal whose Copy yields only the slash command", () => {
-    const writeText = installClipboard();
+  it("no longer renders the removed install-via Terminal", () => {
     renderHero();
-    const cli = screen.getByTestId("hero-cli");
-    expect(cli).toBeInTheDocument();
-    expect(screen.getByLabelText(/install via agentsfleet\.dev/i)).toBeInTheDocument();
-    // `animate` hooks the CSS reveal onto the code block.
-    expect(cli.querySelector("[data-terminal-reveal]")).not.toBeNull();
-    // Copy hands back the next-step slash command, not the whole transcript.
-    fireEvent.click(within(cli).getByTestId("copy-btn"));
-    expect(writeText).toHaveBeenCalledWith(INSTALL_SKILL_COMMAND);
+    expect(screen.queryByTestId("hero-cli")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/install via agentsfleet\.dev/i)).not.toBeInTheDocument();
   });
 
   it("does not render orange-era hero scaffolding", () => {

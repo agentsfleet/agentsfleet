@@ -41,6 +41,10 @@ M80_006 shipped per-lease renewal (§3 — a *live* runner keeps its lease). The
 
 Both shipped: the `GET /v1/fleet/runners` read + honest derived liveness landed in **M84_001**, and the `PATCH` mutation surface, `admin_state` (`cordoned`/`revoked`/`draining`/`drained`), `UZ-RUN-009`, event history, and sweeper shipped in **M84_002**. Heartbeat-lapse recovery is still bounded by the lease-expiry backstop + the pull-triggered reclaim that M80_002 already ships; the sweeper adds the audit event and the admin-driven reassignment path.
 
+## Security Reviewer — prebuilt fleet agent (forward-looking)
+
+A customer-facing prebuilt agent whose job is **security testing on the customer's own code and infrastructure** (authorized, defensive — not red-teaming the agent runtime itself, which is the platform's internal sandbox concern). It fits the existing evidence-plus-approval loop: wakes on a pull request or a schedule, scans the diff and dependencies for vulnerabilities and exposed secrets, reproduces the finding as a scenario, opens a remediation pull request with the evidence attached, and **holds the fix at human approval** while flagging the team in Slack. Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident agents already use. Captured here because it surfaced as product direction (marketing showcase + customer ask) before any spec — so spec authors don't foreclose it. Not part of v2.0 scope.
+
 ## Bastion — post-MVP shape
 
 Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.

@@ -3,8 +3,8 @@ import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { DOCS_URL } from "./config";
-import { trackNavigationClicked } from "./analytics/posthog";
+import { DOCS_URL, WAITLIST_URL } from "./config";
+import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 import { HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
@@ -61,8 +61,19 @@ export default function App() {
             </a>
           </nav>
 
-          <Button disabled className="min-h-11" data-testid="header-install-cta">
-            → {HERO_PRIMARY_LABEL.toLowerCase()}
+          <Button asChild className="min-h-11" data-testid="header-install-cta">
+            <a
+              href={WAITLIST_URL}
+              onClick={() =>
+                trackSignupStarted({
+                  source: "header_early_access",
+                  surface: "header",
+                  mode: "humans",
+                })
+              }
+            >
+              → {HERO_PRIMARY_LABEL.toLowerCase()}
+            </a>
           </Button>
         </div>
       </header>

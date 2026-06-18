@@ -37,35 +37,32 @@ test.describe("Home page", () => {
 
     const earlyAccess = page.getByTestId("hero-cta-early-access");
     await expect(earlyAccess).toContainText("Get early access");
-    await expect(earlyAccess).toBeDisabled();
-    await expect(earlyAccess).not.toHaveAttribute("href", /./);
-    await expect(page.getByTestId("hero-cta-secondary")).toContainText("See the loop");
+    // Now an enabled link to the Clerk-hosted waitlist (was a disabled button).
+    await expect(earlyAccess).toHaveAttribute("href", /\/waitlist$/);
+    await expect(page.getByTestId("hero-cta-secondary")).toContainText("Meet the fleet");
   });
 
-  test("renders the animated hero install Terminal", async ({ page }) => {
-    const term = page.getByLabel(/install via agentsfleet\.dev/i);
-    await expect(term).toBeVisible();
-    await expect(term).toContainText("/agentsfleet-install-platform-ops");
+  test("no longer renders the removed hero install Terminal", async ({ page }) => {
+    await expect(page.getByLabel(/install via agentsfleet\.dev/i)).toHaveCount(0);
+    await expect(page.getByTestId("hero-cli")).toHaveCount(0);
   });
 
-  test("topbar renders the install CTA + brand-mark pulse", async ({ page }) => {
+  test("topbar renders the waitlist CTA + brand-mark pulse", async ({ page }) => {
     const cta = page.getByTestId("header-install-cta");
     await expect(cta).toBeVisible();
-    await expect(cta).toBeDisabled();
-    await expect(cta).not.toHaveAttribute("href", /./);
+    await expect(cta).toHaveAttribute("href", /\/waitlist$/);
 
     const brandMark = page.getByTestId("brand-mark");
     await expect(brandMark).toHaveAttribute("data-live", "true");
   });
 
-  test("renders operational knowledge and Terminal Ledger sections", async ({ page }) => {
+  test("renders operational knowledge and the prebuilt-agents fleet", async ({ page }) => {
     await expect(page.getByTestId("operational-knowledge")).toBeVisible();
     await expect(page.getByText("Recurring tickets become operational memory.")).toBeVisible();
-    await expect(page.getByTestId("pipeline-diagram")).toBeVisible();
-    await expect(page.getByTestId("pipeline-ledger-line-problem-class")).toContainText(
-      "recurring problem class",
-    );
-    await expect(page.getByTestId("pipeline-human-gate")).toContainText("human approval");
+    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
+    await expect(page.getByTestId("agent-card-auto-reviewer")).toContainText("Auto Reviewer");
+    await expect(page.getByTestId("agent-card-security-reviewer")).toContainText("Security Reviewer");
+    await expect(page.getByTestId("agent-card-coming-soon")).toContainText(/coming soon/i);
 
     await page.setViewportSize({ width: 1280, height: 800 });
     const overflowsX = await page.evaluate(
@@ -74,28 +71,16 @@ test.describe("Home page", () => {
     expect(overflowsX).toBe(false);
   });
 
-  test("pipeline cards stay visible without horizontal overflow on mobile", async ({ page }) => {
+  test("agent cards stay visible without horizontal overflow on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId("pipeline-diagram")).toBeVisible();
-    for (const id of ["signals", "telemetry", "code", "control-plane"]) {
-      await expect(page.getByTestId(`pipeline-source-${id}`)).toBeVisible();
+    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
+    for (const id of ["auto-reviewer", "diagnose", "security-reviewer"]) {
+      await expect(page.getByTestId(`agent-card-${id}`)).toBeVisible();
     }
-    await expect(page.getByTestId("pipeline-ledger")).toBeVisible();
     const overflowsX = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(overflowsX).toBe(false);
-  });
-
-  test("pipeline approval gate remains static for reduced motion", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const gate = page.getByTestId("pipeline-human-gate");
-    await expect(gate).toBeVisible();
-    await expect(gate).not.toHaveAttribute("data-live", "true");
-    const duration = await gate.evaluate(
-      (el) => getComputedStyle(el).animationDuration,
-    );
-    expect(["0s", "0ms"]).toContain(duration);
   });
 
   test("renders how it works steps", async ({ page }) => {

@@ -23,11 +23,11 @@ test.describe("Footer navigation", () => {
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
-  test("footer loop link navigates to the operational loop anchor", async ({ page }) => {
+  test("footer fleet link navigates to the prebuilt-agents anchor", async ({ page }) => {
     await page.goto("/agents");
-    await page.getByRole("contentinfo").getByRole("link", { name: /^loop$/i }).click();
+    await page.getByRole("contentinfo").getByRole("link", { name: /^fleet$/i }).click();
     await expect(page).toHaveURL(/\/#operational-loop$/);
-    await expect(page.getByTestId("pipeline-diagram")).toBeVisible();
+    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
   });
 
   test("footer privacy link navigates to /privacy", async ({ page }) => {

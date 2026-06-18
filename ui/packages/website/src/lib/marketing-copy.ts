@@ -20,7 +20,7 @@ export const HERO_LEDE_PARTS = {
 } as const;
 
 export const HERO_PRIMARY_LABEL = "Get early access";
-export const HERO_SECONDARY_LABEL = "See the loop";
+export const HERO_SECONDARY_LABEL = "Meet the fleet";
 export const LOOP_ANCHOR_ID = "operational-loop";
 
 export type SourceCategory = {
@@ -57,77 +57,95 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
   },
 ] as const;
 
-export type LedgerLine = {
-  id: string;
-  timestamp: string;
-  tag?: string;
-  tagSeverity?: "info" | "evidence" | "pulse";
-  severity?: "info" | "debug" | "done";
-  message: string;
+export const AGENTS_SECTION_HEADING = "A fleet, ready to run.";
+
+export const AGENTS_SECTION_LEDE =
+  "Prebuilt and proven. Install one, wire a single source, and it works the same day — every action gated, every run a replayable log. More join the fleet as the loop compounds.";
+
+export type AgentIntegration = {
+  label: string;
+  icon: string;
 };
 
-export const LEDGER_LINES: readonly LedgerLine[] = [
+export type PrebuiltAgent = {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  integrations: readonly AgentIntegration[];
+  // Roadmap/forward-looking agents (not yet a shipped prebuilt) render a
+  // "coming soon" badge and a waitlist CTA instead of "Try it".
+  comingSoon?: boolean;
+};
+
+const INTEGRATION_ICONS = {
+  github: { label: "GitHub", icon: "/logos/github.svg" },
+  fly: { label: "Fly.io", icon: "/logos/fly.svg" },
+  grafana: { label: "Grafana", icon: "/logos/grafana.svg" },
+  slack: { label: "Slack", icon: "/logos/slack.svg" },
+} as const satisfies Record<string, AgentIntegration>;
+
+export const PREBUILT_AGENTS: readonly PrebuiltAgent[] = [
   {
-    id: "install",
-    timestamp: "00:00.0",
-    tag: "[setup]",
-    tagSeverity: "pulse",
-    severity: "info",
-    message: "install agent, register skill, wire the first source",
+    id: "auto-reviewer",
+    category: "Code review",
+    name: "Auto Reviewer",
+    description:
+      "Wakes on every pull request, runs a full review against the diff and the surrounding code, and pushes inline feedback before a human opens the tab.",
+    integrations: [INTEGRATION_ICONS.github],
   },
   {
-    id: "wake",
-    timestamp: "00:00.2",
-    tag: "[wake]",
-    tagSeverity: "info",
-    severity: "info",
-    message: "first signal received — support escalation crossed into engineering work",
+    id: "diagnose",
+    category: "Incident response",
+    name: "Diagnose the Problem",
+    description:
+      "Triggered from GitHub, it pulls logs from Fly and dashboards from Grafana, correlates the failure into one cause, and posts the diagnosis to Slack.",
+    integrations: [
+      INTEGRATION_ICONS.github,
+      INTEGRATION_ICONS.fly,
+      INTEGRATION_ICONS.grafana,
+      INTEGRATION_ICONS.slack,
+    ],
   },
   {
-    id: "investigate",
-    timestamp: "00:00.6",
-    tag: "[work]",
-    tagSeverity: "info",
-    severity: "debug",
-    message: "pulling traces, logs, recent deploys, and repository context",
+    id: "security-reviewer",
+    category: "Security",
+    name: "Security Reviewer",
+    description:
+      "Scans each pull request and its dependencies for vulnerabilities and exposed secrets, reproduces the finding, opens a remediation pull request, and holds the fix at human approval while flagging the team in Slack.",
+    integrations: [INTEGRATION_ICONS.github, INTEGRATION_ICONS.slack],
+    comingSoon: true,
+  },
+] as const;
+
+export type AgentPillar = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+};
+
+export const AGENT_PILLARS: readonly AgentPillar[] = [
+  {
+    id: "sandbox",
+    eyebrow: "Isolated",
+    title: "A private machine per run",
+    description:
+      "Every agent runs in its own clean sandbox — a dedicated shell, tools, and scratch space. It clones the workspace, reads the context, writes the patch, and runs the checks without trampling anyone else's environment.",
   },
   {
-    id: "problem-class",
-    timestamp: "00:01.4",
-    tag: "[EVIDENCE]",
-    tagSeverity: "evidence",
-    severity: "info",
-    message: "recurring problem class: connection-pool exhaustion under retry storm",
+    id: "learns",
+    eyebrow: "Compounding",
+    title: "It learns how you operate",
+    description:
+      "No constant supervision. It sits inside the systems you connect, watches the work that actually happens, and models your stack in days, not weeks. Every recurrence starts where the last one left off.",
   },
   {
-    id: "scenario-test",
-    timestamp: "00:02.1",
-    tag: "[work]",
-    tagSeverity: "info",
-    severity: "debug",
-    message: "generated scenario and regression test for the class",
-  },
-  {
-    id: "fix-pr",
-    timestamp: "00:02.8",
-    tag: "[work]",
-    tagSeverity: "info",
-    severity: "debug",
-    message: "opened fix pull request — bound pool, jittered backoff",
-  },
-  {
-    id: "approval",
-    timestamp: "00:02.8",
-    tag: "[gate]",
-    tagSeverity: "pulse",
-    severity: "info",
-    message: "awaiting human approval — merge and deploy held",
-  },
-  {
-    id: "learn",
-    timestamp: "00:14.9",
-    severity: "done",
-    message: "approved and merged by a human · problem class captured · recurrence reduced",
+    id: "proactive",
+    eyebrow: "Proactive",
+    title: "It moves first",
+    description:
+      "Wake it on an event, a schedule, or a webhook and it takes the initiative — watching deploys, logs, and tickets, surfacing only what needs you. And every step it takes is a replayable log you can audit line by line.",
   },
 ] as const;
 
@@ -264,7 +282,7 @@ export const PRICING_PLANS = [
   {
     id: "usage",
     name: "Usage",
-    badge: "live model",
+    badge: "Team",
     price: "metered",
     suffix: "per second",
     features: ["Starter credit included", "Events always free", "Metered only while running", "Pay as you go"],

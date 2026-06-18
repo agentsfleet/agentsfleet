@@ -38,7 +38,7 @@ export function buildLlmsIndexText({
     `> ${MARKETING_POSITIONING_SUMMARY}`,
     "",
     "## Product",
-    `- [How it works](${root}/#${LOOP_ANCHOR_ID}): the compounding loop`,
+    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): prebuilt agents, ready to run`,
     `- [Pricing](${root}/#pricing): ${runRatePerSecond} run, ${starterCredit} starter credit, events ${eventRate}`,
     "",
     "## Resources",
