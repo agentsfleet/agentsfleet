@@ -25,10 +25,16 @@
 /* ── Brand brightness (marketing site only) ──
  * The design-consultation "amplify the mint" decision: lift the near-black
  * base one notch and brighten the body text so the dark brand reads brighter
- * and more alive without leaving the dark world. Scoped to the website :root
- * (after the design-system token import so it wins the cascade) — the app
- * package keeps the original near-black. Light mode is untouched. */
-:root {
+ * and more alive without leaving the dark world. The app package keeps the
+ * original near-black.
+ *
+ * Scoped to `:root:not([data-theme="light"])` (specificity 0-2-0) so it only
+ * overrides the DARK tokens. The bare `:root` form (0-1-0) would tie with the
+ * design-system's `[data-theme="light"]` rule and, being later in the cascade,
+ * win — resolving --bg/--text to dark values in light mode. The `:not()` makes
+ * the override stop applying the instant a light theme is set, so light mode
+ * keeps the design-system parchment tokens. */
+:root:not([data-theme="light"]) {
   --bg: #0d1113;
   --text: #f4f8f9;
 }
