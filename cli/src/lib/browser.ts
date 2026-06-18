@@ -48,13 +48,21 @@ function looksLikeWsl(env: NodeJS.ProcessEnv): boolean {
   return release.includes("wsl");
 }
 
-function commandExists(command: string): Promise<boolean> {
+// Async (non-blocking) probe so the event loop is never stalled while we ask
+// the shell whether an opener binary exists. `spawnImpl` is injectable for the
+// same reason as openUrl below — tests drive the close/error paths through a
+// stub instead of shelling out to the real OS. Exported so those paths are
+// directly coverable.
+export function commandExists(
+  command: string,
+  spawnImpl: typeof spawn = spawn,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const probe = spawn("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
+    const probe = spawnImpl("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
       stdio: STDIO_IGNORE,
     });
-    probe.on("exit", (code) => resolve(code === 0));
     probe.on(STATUS_ERROR, () => resolve(false));
+    probe.on(STATUS_CLOSE, (code) => resolve(code === 0));
   });
 }
 
@@ -129,6 +137,7 @@ export async function openUrl(url: string, opts: OpenUrlOptions = {}): Promise<b
 }
 const WINDOWS_CMD_COMMAND = "cmd" as const;
 const STATUS_ERROR = "error" as const;
+const STATUS_CLOSE = "close" as const;
 const STDIO_IGNORE = "ignore" as const;
 const MAC_OPEN_COMMAND = "open" as const;
 const WSLVIEW_COMMAND = "wslview" as const;

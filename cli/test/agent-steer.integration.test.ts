@@ -15,7 +15,7 @@ import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { Output } from "../src/services/output.ts";
+import { Output, type OutputShape } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
 import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
@@ -55,7 +55,7 @@ export const makeLayer = (
   rec: Recorder,
   httpReply: <T>(input: HttpRequestInput) => T = <T>() => ({ event_id: EVENT_ID } as T),
   jsonMode = false,
-  outputOverrides?: Partial<typeof Output.Service>,
+  outputOverrides?: Partial<OutputShape>,
 ) =>
   Layer.mergeAll(
     Layer.succeed(CliConfig, {

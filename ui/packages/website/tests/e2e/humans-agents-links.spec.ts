@@ -11,9 +11,12 @@ async function assertFooterLinks(page: Page) {
   await expect(footer).toBeVisible();
 
   const internalFooterLinks: InternalLinkCase[] = [
-    { label: /^features$/i, href: "/" },
+    { label: /^loop$/i, href: "/#operational-loop" },
     { label: /^pricing$/i, href: "/#pricing" },
     { label: /^agents$/i, href: "/agents" },
+    { label: /^llms\.txt$/i, href: "/llms.txt" },
+    { label: /^llms-full\.txt$/i, href: "/llms-full.txt" },
+    { label: /^OpenAPI$/, href: "/openapi.json" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
   ];
@@ -30,7 +33,9 @@ async function assertFooterLinks(page: Page) {
 test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("The agent already knows why.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "A resident engineer that compounds operational knowledge.",
+    );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: /^pricing$/i }).click();
@@ -48,11 +53,7 @@ test.describe("Cross-page link coverage", () => {
       "https://docs.agentsfleet.net",
     );
 
-    // The Hero primary CTA is a clipboard-copy button, not a docs anchor.
-    // The docs/quickstart deep link still lives on the home page — it moved
-    // to the final install block's "Start an agent" CTA, asserted in
-    // home.spec.ts "renders final install block actions". Here we just prove
-    // the Hero CTA is the button shape, not an anchor.
+    // The Hero primary copy affordance is a clipboard-copy button, not a docs anchor.
     const heroCtaPrimary = page.getByTestId("hero-cta-primary");
     await expect(heroCtaPrimary).toHaveJSProperty("tagName", "BUTTON");
     await expect(heroCtaPrimary).not.toHaveAttribute("href", /./);
@@ -60,7 +61,10 @@ test.describe("Cross-page link coverage", () => {
     // The Hero promo pill is the home page's link to the inline /pricing anchor.
     await expect(page.getByTestId("hero-promo-pill")).toHaveAttribute("href", "/pricing");
 
-    await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
+    await expect(
+      page.getByTestId("hero").getByRole("link", { name: /talk to us/i }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("pricing-cta-enterprise")).toHaveText(/talk to us/i);
 
     await assertFooterLinks(page);
   });

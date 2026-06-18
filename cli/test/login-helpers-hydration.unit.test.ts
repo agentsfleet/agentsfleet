@@ -50,9 +50,13 @@ const httpLayer = (
 const workspacesLayer = (
   rec: Rec,
   saveResult: Effect.Effect<void, UnexpectedError> = Effect.void,
+  loadResult: Workspaces["load"] = Effect.succeed({
+    current_workspace_id: null,
+    items: [],
+  }),
 ): Layer.Layer<Workspaces> =>
   Layer.succeed(Workspaces, {
-    load: Effect.succeed({ current_workspace_id: null, items: [] }),
+    load: loadResult,
     save: () =>
       saveResult.pipe(
         Effect.tap(() =>
@@ -128,6 +132,43 @@ describe("hydrateWorkspacesAfterLogin", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.stderr).toHaveLength(0);
     expect(rec.saved).toBe(0);
+  });
+
+  test("malformed workspace items are dropped while valid rows still save", async () => {
+    const rec = makeRec();
+    const items = [
+      null,
+      {},
+      { workspace_id: "ws_valid", name: "valid", created_at: 2 },
+    ];
+    const exit = await Effect.runPromiseExit(
+      hydrateWorkspacesAfterLogin(tok).pipe(
+        Effect.provide(httpLayer(() => Effect.succeed({ items }))),
+        Effect.provide(outputLayer(rec)),
+        Effect.provide(workspacesLayer(rec)),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.saved).toBe(1);
+    expect(rec.stderr).toHaveLength(0);
+  });
+
+  test("workspace load failure falls back before saving hydrated items", async () => {
+    const rec = makeRec();
+    const items = [{ workspace_id: "ws_valid", name: "valid", created_at: 2 }];
+    const failingLoad = Effect.fail(
+      new UnexpectedError({ detail: "read failed", suggestion: "retry" }),
+    );
+    const exit = await Effect.runPromiseExit(
+      hydrateWorkspacesAfterLogin(tok).pipe(
+        Effect.provide(httpLayer(() => Effect.succeed({ items }))),
+        Effect.provide(outputLayer(rec)),
+        Effect.provide(workspacesLayer(rec, Effect.void, failingLoad)),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.saved).toBe(1);
+    expect(rec.stderr).toHaveLength(0);
   });
 
   test("save failure → warn carrying 'unexpected'", async () => {

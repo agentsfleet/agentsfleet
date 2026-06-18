@@ -21,10 +21,10 @@ interface CommandRuntimeShape {
   readonly commandRunId: string;
 }
 
-export class CommandRuntime extends Context.Service<
-  CommandRuntime,
-  CommandRuntimeShape
->()("agentsfleet/runtime/CommandRuntime") {}
+export type CommandRuntime = CommandRuntimeShape;
+export const CommandRuntime = Context.Service<CommandRuntime>(
+  "agentsfleet/runtime/CommandRuntime",
+);
 
 export function getCommandRuntimeCommand(rt: CommandRuntimeShape): string {
   return rt.commandPath.join(" ");

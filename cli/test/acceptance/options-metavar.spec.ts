@@ -19,13 +19,21 @@
  * (validator + wire request).
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll, afterAll, setDefaultTimeout } from "bun:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 
 import { runAgentctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import type { AddressInfo } from "node:net";
+
+// Each case spawns the real CLI as a child process and awaits its exit.
+// Under `bun test --coverage` the instrumented parent makes spawn-and-await
+// occasionally exceed bun's 5000ms default per-test timeout. The
+// `setDefaultTimeout` in test/setup.ts only governs that preload file in
+// bun — it does NOT propagate to sibling spec files — so the headroom must
+// be re-declared file-locally here.
+setDefaultTimeout(15_000);
 
 // Any valid uuidv7 satisfies parseIdOption. Reusing the example string
 // the validator embeds in its error message keeps the test fixture in

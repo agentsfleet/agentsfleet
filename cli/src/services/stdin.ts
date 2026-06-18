@@ -21,9 +21,8 @@ export interface StdinShape {
   readonly readToEnd: Effect.Effect<string>;
 }
 
-export class Stdin extends Context.Service<Stdin, StdinShape>()(
-  "agentsfleet/runtime/Stdin",
-) {}
+export type Stdin = StdinShape;
+export const Stdin = Context.Service<Stdin>("agentsfleet/runtime/Stdin");
 
 const readStreamToEnd = (stream: NodeJS.ReadableStream): Promise<string> =>
   new Promise<string>((resolve, reject) => {

@@ -57,7 +57,7 @@ Unit tests use `bun:test`. Two patterns:
 
 Acceptance tests in `test/acceptance/` spawn the built binary and assert on stdout/exit code. They run against `AGENTSFLEET_ACCEPTANCE_TARGET` when set to an https URL; otherwise the live-API cases register as skip-only placeholders.
 
-Coverage floor is enforced by `scripts/enforce-coverage.mjs` (currently `function ≥96 / line ≥97`); see `bunfig.toml` for the per-file ignore list (Context.Tag-only shapes + pre-existing agent/* command surface deferred to a follow-up coverage spec).
+Coverage floor is enforced by `scripts/enforce-coverage.mjs` at 100 percent functions and 100 percent lines. `bunfig.toml` ignores `test/**` only; executable CLI source is covered by the gate.
 
 ## Effect-TS conventions
 

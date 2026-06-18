@@ -1,90 +1,114 @@
 // CliError taxonomy — discriminated union of every failure mode a command
-// Effect may carry on its error channel. The dispatcher's shared formatter
-// switches on `_tag` and the switch is exhaustive (TypeScript checks).
-//
-// Each variant carries:
-//   - `detail`     — operator-facing message body
-//   - `suggestion` — next-action hint rendered as `Suggestion: …`
-//
-// Server-side UZ-<CAT>-<NNN> codes map 1:1 onto AuthError / ServerError
-// variants via the `code` property so support workflows still grep on the
-// same identifiers.
+// Effect may carry on its error channel. The dispatcher switches on `_tag`
+// and TypeScript keeps the switch exhaustive.
 
-import { Data } from "effect";
-import * as AuthErrors from "./auth.ts";
+import {
+  DecryptError,
+  ExpiredSessionError,
+  InterruptedError,
+  InvalidSessionError,
+  MeValidationError,
+  RateLimitedError,
+  SessionAbortedError,
+  SessionConsumedError,
+  TimeoutError,
+  VerificationFailedError,
+  type AuthFlowError,
+} from "./auth.ts";
 
-export const InvalidSessionError = AuthErrors.InvalidSessionError;
-export const ExpiredSessionError = AuthErrors.ExpiredSessionError;
-export const RateLimitedError = AuthErrors.RateLimitedError;
-export const TimeoutError = AuthErrors.TimeoutError;
-export const InterruptedError = AuthErrors.InterruptedError;
-export const VerificationFailedError = AuthErrors.VerificationFailedError;
-export const DecryptError = AuthErrors.DecryptError;
-export const SessionAbortedError = AuthErrors.SessionAbortedError;
-export const SessionConsumedError = AuthErrors.SessionConsumedError;
-export const MeValidationError = AuthErrors.MeValidationError;
-export type AuthFlowError = AuthErrors.AuthFlowError;
+export {
+  DecryptError,
+  ExpiredSessionError,
+  InterruptedError,
+  InvalidSessionError,
+  MeValidationError,
+  RateLimitedError,
+  SessionAbortedError,
+  SessionConsumedError,
+  TimeoutError,
+  VerificationFailedError,
+  type AuthFlowError,
+};
 
-export class AuthError extends Data.TaggedError("AuthError")<{
+const SUGGESTION_PREFIX = "\n  Suggestion: " as const;
+
+abstract class CliErrorBase<Tag extends string> extends Error {
+  readonly _tag: Tag;
   readonly detail: string;
   readonly suggestion: string;
+
+  protected constructor(
+    tag: Tag,
+    fields: { readonly detail: string; readonly suggestion: string },
+  ) {
+    super(`${fields.detail}${SUGGESTION_PREFIX}${fields.suggestion}`);
+    this.name = tag;
+    this._tag = tag;
+    this.detail = fields.detail;
+    this.suggestion = fields.suggestion;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export class AuthError extends CliErrorBase<"AuthError"> {
   readonly code: string;
-  // Optional — populated when an AuthError is re-wrapped from a
-  // ServerError (e.g. login surface re-mapping a 503 from /auth/sessions
-  // so the dispatcher still emits `request_id:` for support workflows).
-  readonly requestId?: string | null;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+  readonly requestId: string | null | undefined;
+
+  constructor(fields: {
+    readonly detail: string;
+    readonly suggestion: string;
+    readonly code: string;
+    readonly requestId?: string | null;
+  }) {
+    super("AuthError", fields);
+    this.code = fields.code;
+    this.requestId = fields.requestId;
   }
 }
 
-export class NetworkError extends Data.TaggedError("NetworkError")<{
-  readonly detail: string;
-  readonly suggestion: string;
+export class NetworkError extends CliErrorBase<"NetworkError"> {
   readonly url: string;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly url: string }) {
+    super("NetworkError", fields);
+    this.url = fields.url;
   }
 }
 
-export class ServerError extends Data.TaggedError("ServerError")<{
-  readonly detail: string;
-  readonly suggestion: string;
+export class ServerError extends CliErrorBase<"ServerError"> {
   readonly code: string;
   readonly status: number;
   readonly requestId: string | null;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+
+  constructor(fields: {
+    readonly detail: string;
+    readonly suggestion: string;
+    readonly code: string;
+    readonly status: number;
+    readonly requestId: string | null;
+  }) {
+    super("ServerError", fields);
+    this.code = fields.code;
+    this.status = fields.status;
+    this.requestId = fields.requestId;
   }
 }
 
-export class ValidationError extends Data.TaggedError("ValidationError")<{
-  readonly detail: string;
-  readonly suggestion: string;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+export class ValidationError extends CliErrorBase<"ValidationError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("ValidationError", fields);
   }
 }
 
-export class ConfigError extends Data.TaggedError("ConfigError")<{
-  readonly detail: string;
-  readonly suggestion: string;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+export class ConfigError extends CliErrorBase<"ConfigError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("ConfigError", fields);
   }
 }
 
-export class UnexpectedError extends Data.TaggedError("UnexpectedError")<{
-  readonly detail: string;
-  readonly suggestion: string;
-}> {
-  override get message(): string {
-    return `${this.detail}\n  Suggestion: ${this.suggestion}`;
+export class UnexpectedError extends CliErrorBase<"UnexpectedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("UnexpectedError", fields);
   }
 }
 
@@ -95,12 +119,7 @@ export type CliError =
   | ValidationError
   | ConfigError
   | UnexpectedError
-  // Auth-flow specializations (the AuthFlowError union from auth.ts). Kept
-  // as siblings of AuthError rather than subclasses because Effect's
-  // Data.TaggedError doesn't compose by inheritance and the dispatcher's
-  // exit-code lookup keys directly on _tag. Each member still needs an
-  // EXIT_CODE entry below or the Record type rejects the dispatcher.
-  | AuthErrors.AuthFlowError;
+  | AuthFlowError;
 
 // Exit-code mapping. The dispatcher's exhaustive switch on `_tag`
 // references this; any new variant must add a row here or the
@@ -113,8 +132,8 @@ export const EXIT_CODE: Record<CliError["_tag"], number> = {
   ConfigError: 5,
   UnexpectedError: 1,
   // Auth-flow specializations. All exit 1 except InterruptedError,
-  // which uses the conventional SIGINT/abort code 130 so shells + CI
-  // can distinguish operator-cancel from a real failure.
+  // which uses the conventional interrupt/abort code 130 so shells and
+  // Continuous Integration (CI) can distinguish operator-cancel.
   InvalidSessionError: 1,
   ExpiredSessionError: 1,
   RateLimitedError: 2,
