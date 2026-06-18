@@ -108,6 +108,59 @@ const getStartedSteps = [
   },
 ];
 
+/*
+ * ConstraintTable — the machine-readable two-column table shape shared by the
+ * Safety limits and Coming soon sections (constraint -> rule / capability ->
+ * status). `<th scope="row">` keeps each row label a row header for assistive
+ * tech + agent parsers. An optional `badge` annotates every row title (the
+ * Coming soon section uses it).
+ */
+function ConstraintTable({
+  cols,
+  rows,
+  badge,
+}: {
+  cols: readonly [string, string];
+  rows: readonly { title: string; body: string }[];
+  badge?: string;
+}) {
+  return (
+    <Card className="p-0 overflow-x-auto">
+      <table className="w-full min-w-narrow font-mono text-mono">
+        <thead>
+          <tr className="border-b border-border">
+            {cols.map((col) => (
+              <th
+                key={col}
+                className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label"
+              >
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.title}
+              className="border-b border-border last:border-b-0 align-top"
+            >
+              <th
+                scope="row"
+                className="text-left py-3 px-4 font-medium text-text whitespace-nowrap"
+              >
+                {row.title}
+                {badge ? <span className="text-evidence"> {badge}</span> : null}
+              </th>
+              <td className="py-3 px-4 text-text-muted">{row.body}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
 export default function Agents() {
   return (
     <div data-testid="agents-page">
@@ -248,12 +301,17 @@ export default function Agents() {
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
-            <code className="font-mono">/v1/webhooks/:agent_id</code>. Every inbound webhook must
-            be HMAC-signed with{" "}
-            <code className="font-mono">x-signature: v0=&lt;hmac&gt;</code> and{" "}
-            <code className="font-mono">x-signature-timestamp</code> — unsigned or stale requests
-            are rejected. Duplicate events (same <code className="font-mono">event_id</code> within
-            24h) are accepted idempotently.
+            <code className="font-mono">/v1/webhooks/:agent_id</code>. Each webhook is HMAC-signed
+            per the trigger source&apos;s scheme — e.g.{" "}
+            <code className="font-mono">x-hub-signature-256</code> for GitHub,{" "}
+            <code className="font-mono">x-slack-signature</code> +{" "}
+            <code className="font-mono">x-slack-request-timestamp</code> for Slack. Unsigned or
+            stale requests are rejected; the exact header set per source lives in{" "}
+            <a href="/openapi.json" className="text-pulse hover:underline">
+              /openapi.json
+            </a>
+            . Duplicate deliveries within the source&apos;s dedup window (24h or more) are accepted
+            idempotently.
           </p>
           <Terminal label="Webhook payload example" className="max-w-wide">
             {webhookPayload}
@@ -270,32 +328,7 @@ export default function Agents() {
           <DisplayLG className="text-fluid-display-md">
             Safety limits
           </DisplayLG>
-          <Card className="p-0 overflow-x-auto">
-            <table className="w-full min-w-narrow font-mono text-mono">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label">constraint</th>
-                  <th className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label">rule</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safetyLimits.map((limit) => (
-                  <tr
-                    key={limit.title}
-                    className="border-b border-border last:border-b-0 align-top"
-                  >
-                    <th
-                      scope="row"
-                      className="text-left py-3 px-4 font-medium text-text whitespace-nowrap"
-                    >
-                      {limit.title}
-                    </th>
-                    <td className="py-3 px-4 text-text-muted">{limit.body}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <ConstraintTable cols={["constraint", "rule"]} rows={safetyLimits} />
         </div>
       </section>
 
@@ -306,33 +339,11 @@ export default function Agents() {
           <DisplayLG className="text-fluid-display-md">
             Coming soon
           </DisplayLG>
-          <Card className="p-0 overflow-x-auto">
-            <table className="w-full min-w-narrow font-mono text-mono">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label">capability</th>
-                  <th className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-label text-label">status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comingSoon.map((item) => (
-                  <tr
-                    key={item.title}
-                    className="border-b border-border last:border-b-0 align-top"
-                  >
-                    <th
-                      scope="row"
-                      className="text-left py-3 px-4 font-medium text-text whitespace-nowrap"
-                    >
-                      {item.title}{" "}
-                      <span className="text-evidence">coming soon</span>
-                    </th>
-                    <td className="py-3 px-4 text-text-muted">{item.body}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <ConstraintTable
+            cols={["capability", "status"]}
+            rows={comingSoon}
+            badge="coming soon"
+          />
         </div>
       </section>
 
