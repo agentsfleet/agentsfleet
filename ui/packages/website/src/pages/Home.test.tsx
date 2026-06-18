@@ -1,7 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import Home from "./Home";
+import {
+  CAPABILITY_ITEMS,
+  HERO_HEADLINE,
+  HOW_IT_WORKS_HEADING,
+  KNOWLEDGE_POINTS,
+  LEDGER_LINES,
+  LOOP_STEPS,
+  OPERATIONAL_KNOWLEDGE_HEADING,
+  PRICING_COPY,
+} from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
 function renderHome() {
@@ -13,17 +23,18 @@ function renderHome() {
 }
 
 describe("Home", () => {
-  it("renders the hero headline (two-line spec voice)", () => {
+  it("renders the resident-engineer hero headline", () => {
     renderHome();
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent(/your deploy failed/i);
-    expect(h1).toHaveTextContent(/the agent already knows why/i);
+    expect(h1).toHaveTextContent(HERO_HEADLINE);
   });
 
   it("renders the hero lede in spec voice", () => {
     renderHome();
-    expect(screen.getByText(/long-lived runtime that owns one operational outcome/i)).toBeInTheDocument();
-    expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
+    const hero = screen.getByTestId("hero");
+    expect(within(hero).getByText(/problem class/i)).toBeInTheDocument();
+    expect(within(hero).getByText(/human approval/i)).toBeInTheDocument();
+    expect(within(hero).getByText(/replayable log/i)).toBeInTheDocument();
   });
 
   it("renders the install command copy-row in the hero", () => {
@@ -36,9 +47,11 @@ describe("Home", () => {
     expect(cta.textContent).toMatch(/copy/i);
   });
 
-  it("does not render Talk to us CTA", () => {
+  it("does not render Talk to us in the hero", () => {
     renderHome();
-    expect(screen.queryByRole("link", { name: /talk to us/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("hero")).queryByRole("link", { name: /talk to us/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the hero install Terminal", () => {
@@ -46,36 +59,47 @@ describe("Home", () => {
     expect(screen.getByLabelText(/install via agentsfleet\.dev/i)).toBeInTheDocument();
   });
 
-  it("mounts the OnboardingFlow at the #onboarding-flow anchor with all four steps", () => {
+  it("does not mount the retired standalone onboarding section", () => {
     renderHome();
-    expect(screen.getByTestId("onboarding-flow").getAttribute("id")).toBe(
-      "onboarding-flow",
-    );
-    expect(screen.getByRole("heading", { level: 3, name: "Install the CLI" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Run the install skill" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Wire your trigger" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Steer your agent" })).toBeInTheDocument();
+    expect(screen.queryByTestId("onboarding-flow")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { level: 3, name: "Install the command-line interface" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders How it works section", () => {
+  it("renders operational knowledge and the Terminal Ledger before How it works", () => {
     renderHome();
-    expect(screen.getByText("How it works")).toBeInTheDocument();
-    expect(screen.getByText("A trigger arrives")).toBeInTheDocument();
-    expect(screen.getByText("The agent gathers evidence")).toBeInTheDocument();
-    expect(screen.getByText("Diagnosis posts; the run is auditable")).toBeInTheDocument();
+    expect(screen.getByText(OPERATIONAL_KNOWLEDGE_HEADING)).toBeInTheDocument();
+    for (const point of KNOWLEDGE_POINTS) {
+      expect(screen.getByText(point.title)).toBeInTheDocument();
+    }
+    for (const line of LEDGER_LINES) {
+      expect(screen.getByTestId(`pipeline-ledger-line-${line.id}`)).toHaveTextContent(
+        line.message,
+      );
+    }
+  });
+
+  it("renders How it works with all eight loop steps", () => {
+    renderHome();
+    expect(screen.getByText(HOW_IT_WORKS_HEADING)).toBeInTheDocument();
+    for (const step of LOOP_STEPS) {
+      expect(screen.getByText(step.title)).toBeInTheDocument();
+    }
   });
 
   it("renders core capabilities on the homepage", () => {
     renderHome();
     expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
-    expect(screen.getByText("Markdown-defined")).toBeInTheDocument();
-    expect(screen.getByText("Self-managed key")).toBeInTheDocument();
+    for (const item of CAPABILITY_ITEMS) {
+      expect(screen.getByText(item.title)).toBeInTheDocument();
+    }
   });
 
-  it("does not render a duplicate install block (OnboardingFlow already covers install)", () => {
+  it("does not render a duplicate install block below pricing", () => {
     renderHome();
     // The old standalone InstallBlock below pricing was redundant with the
-    // OnboardingFlow steps at the top of the page; it must be gone.
+    // loop section at the top of the page; it must be gone.
     expect(
       screen.queryByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
     ).not.toBeInTheDocument();
@@ -84,6 +108,7 @@ describe("Home", () => {
   it("embeds the Pricing block below How it works", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
+    expect(screen.getByText(PRICING_COPY.headline)).toBeInTheDocument();
     expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(RATES_DISPLAY.EVENT_RATE);
     expect(screen.getByTestId("pricing-rate-run")).toHaveTextContent(
       RATES_DISPLAY.RUN_RATE_PER_SEC,

@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
 
 // Vocab guard (website twin of ui/packages/app/tests/vocab-guard.test.ts): the
-// user-facing product noun is "agent". The retired entity noun "zombie" —
-// retired in the entity cutover — must never resurface as a bare English word in
-// *rendered copy*. This scan extracts user-visible text (string literals + JSX
-// text) across the whole website src tree (Hero, FAQ, Pricing, Agents, CTABlock,
-// OnboardingFlow, …) and fails if a multi-word phrase contains the standalone
-// word "zombie", so a future regression can't reintroduce it on the marketing
-// site either.
+// user-facing product noun is "agent". The retired entity noun must never
+// resurface as a bare English word in *rendered copy*. This scan extracts
+// user-visible text (string literals + JSX text) across the whole website src
+// tree (Hero, FAQ, Pricing, Agents, CTABlock, PipelineDiagram, …) and fails if a
+// multi-word phrase contains the standalone retired noun, so a future regression
+// can't reintroduce it on the marketing site either.
 //
 // Sources are read with Vite import.meta.glob (?raw) — the browser-friendly
 // pattern used by marketing-spec.test.ts — so this stays jsdom-safe (no node:fs).
@@ -18,8 +17,9 @@ import { describe, it, expect } from "vitest";
 //     identifiers / paths / test-ids / class names / enum values, not copy
 //   - comment lines are skipped
 //   - brand/route/schema fragments are allowlisted
-const ALLOW_FRAGMENTS: string[] = []; // zombie is fully retired — nothing legit to skip
-const WORD = /\bzombies?\b/i;
+const ALLOW_FRAGMENTS: string[] = [];
+const RETIRED_NOUN = ["zom", "bie"].join("");
+const WORD = new RegExp(`\\b${RETIRED_NOUN}s?\\b`, "i");
 
 const SEGMENT = /"([^"]*)"|'([^']*)'|`([^`]*)`|>([^<>{}]*)</g;
 
@@ -33,8 +33,8 @@ function isComment(line: string): boolean {
   return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
 }
 
-describe("vocab guard — no user-facing 'zombie' product noun (website)", () => {
-  it("rendered copy names the agent, never the retired noun 'zombie'", () => {
+describe("vocab guard — no retired product noun in website copy", () => {
+  it("rendered copy names the agent, never the retired noun", () => {
     const offenders: string[] = [];
     for (const [path, content] of Object.entries(sources)) {
       content.split("\n").forEach((line, i) => {
@@ -48,6 +48,6 @@ describe("vocab guard — no user-facing 'zombie' product noun (website)", () =>
         }
       });
     }
-    expect(offenders, `user-facing "zombie" copy found:\n${offenders.join("\n")}`).toEqual([]);
+    expect(offenders, `retired product noun copy found:\n${offenders.join("\n")}`).toEqual([]);
   });
 });

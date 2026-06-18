@@ -3,8 +3,9 @@ import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react
 import { Button, WakePulse } from "@agentsfleet/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
-import { APP_BASE_URL, DOCS_URL } from "./config";
-import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
+import { DOCS_URL } from "./config";
+import { trackNavigationClicked } from "./analytics/posthog";
+import { HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
  * stays lean. Vite code-splits each React.lazy import by default. */
@@ -14,7 +15,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
 
 const NAV_LINK_CLASS =
-  "font-mono text-eyebrow uppercase tracking-eyebrow text-text-muted hover:text-text transition-colors";
+  "inline-flex min-h-11 min-w-11 items-center justify-center font-mono text-eyebrow uppercase tracking-eyebrow text-text-muted hover:text-text transition-colors";
 
 export default function App() {
   return (
@@ -25,7 +26,7 @@ export default function App() {
         <div className="wrap flex items-center justify-between py-4">
           <Link
             to="/"
-            className="flex items-center gap-3 font-mono text-body font-medium text-text"
+            className="flex min-h-11 items-center gap-3 font-mono text-body font-medium text-text"
             data-testid="brand-link"
           >
             <WakePulse
@@ -60,15 +61,8 @@ export default function App() {
             </a>
           </nav>
 
-          <Button asChild data-testid="header-install-cta">
-            <a
-              href={APP_BASE_URL}
-              onClick={() =>
-                trackSignupStarted({ source: "header_install", surface: "header", mode: "humans" })
-              }
-            >
-              → get early access
-            </a>
+          <Button disabled className="min-h-11" data-testid="header-install-cta">
+            → {HERO_PRIMARY_LABEL.toLowerCase()}
           </Button>
         </div>
       </header>

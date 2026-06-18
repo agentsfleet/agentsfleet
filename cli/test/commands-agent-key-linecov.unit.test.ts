@@ -224,3 +224,17 @@ describe("requireValidId rejection", () => {
     expect(ve.suggestion).toBe("pass a valid uuidv7");
   });
 });
+
+describe("agent delete JSON mode", () => {
+  test("prints a deleted payload and skips the human success line", async () => {
+    const cap = newCapture();
+    const exit = await Effect.runPromiseExit(
+      provideAll(agentDeleteEffectFromArgs(WS_ID, WS_ID, undefined), cap, {
+        jsonMode: true,
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(cap.json).toEqual([{ deleted: true, agent_key_id: WS_ID }]);
+    expect(cap.success).toEqual([]);
+  });
+});

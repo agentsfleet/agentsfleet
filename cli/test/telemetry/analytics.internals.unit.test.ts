@@ -4,6 +4,7 @@
 // moved to CliConfig — see test/config.posthog-resolution.unit.test.ts.
 
 import { describe, expect, it } from "bun:test";
+import { Option } from "effect";
 import { analyticsInternals } from "../../src/services/telemetry/analytics.layer.ts";
 
 describe("analyticsInternals", () => {
@@ -45,5 +46,35 @@ describe("analyticsInternals", () => {
     expect(
       analyticsInternals.resolveGroups({ groups: { organization: "o" } }),
     ).toBeUndefined();
+  });
+
+  it("resolveAiToolName returns a detected tool before environment fallbacks", () => {
+    expect(
+      analyticsInternals.resolveAiToolName(Option.some("augment_cli"), {
+        isCi: true,
+        isTty: true,
+      }),
+    ).toBe("augment_cli");
+  });
+
+  it("resolveAiToolName selects each no-agent environment fallback", () => {
+    expect(
+      analyticsInternals.resolveAiToolName(Option.none(), {
+        isCi: true,
+        isTty: false,
+      }),
+    ).toBe("ci");
+    expect(
+      analyticsInternals.resolveAiToolName(Option.none(), {
+        isCi: false,
+        isTty: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      analyticsInternals.resolveAiToolName(Option.none(), {
+        isCi: false,
+        isTty: false,
+      }),
+    ).toBe("unknown_non_interactive");
   });
 });

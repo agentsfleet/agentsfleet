@@ -40,9 +40,10 @@ export interface CliConfigShape {
   readonly fetchImpl?: FetchImpl;
 }
 
-export class CliConfig extends Context.Service<CliConfig, CliConfigShape>()(
+export type CliConfig = CliConfigShape;
+export const CliConfig = Context.Service<CliConfig>(
   "agentsfleet/config/CliConfig",
-) {}
+);
 
 const readEnv = (key: string): string | undefined =>
   typeof process !== "undefined" ? process.env[key] : undefined;

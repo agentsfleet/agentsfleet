@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SUPPORT_EMAIL } from "../lib/contact";
+import { PRICING_COPY, PRICING_PLANS } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
 const analytics = vi.hoisted(() => ({
@@ -36,26 +37,27 @@ describe("Pricing component", () => {
   it("leads with the free-trial banner from RATES_DISPLAY", () => {
     renderPricing();
     const banner = screen.getByTestId("pricing-free-trial-banner");
-    expect(banner).toHaveTextContent(RATES_DISPLAY.FREE_TRIAL_BANNER);
+    expect(banner).toHaveTextContent(RATES_DISPLAY.FREE_TRIAL_PILL);
     expect(banner).toHaveTextContent(/Free until July 31, 2026/);
   });
 
-  it("renders a simple three-row rate table (event, runtime, model tokens)", () => {
+  it("renders the three approved pricing cards", () => {
     renderPricing();
-    const table = screen.getByTestId("pricing-rate-table");
-    expect(table.tagName).toBe("DL");
-    expect(table).toHaveTextContent(/Event receipt/i);
-    expect(table).toHaveTextContent(/Active runtime/i);
-    expect(table).toHaveTextContent(/Model tokens/i);
+    expect(screen.getByText(PRICING_COPY.headline)).toBeInTheDocument();
+    for (const plan of PRICING_PLANS) {
+      const card = screen.getByTestId(`pricing-card-${plan.id}`);
+      expect(card).toHaveTextContent(plan.name);
+      for (const feature of plan.features) {
+        expect(card).toHaveTextContent(feature);
+      }
+    }
   });
 
-  it("frames runtime as usage-based per-second, same rate both postures, no struck-through rates", () => {
+  it("frames runtime as usage-based per-second with no struck-through rates", () => {
     const { container } = renderPricing();
-    const table = screen.getByTestId("pricing-rate-table");
-    expect(table).toHaveTextContent(/active runtime/i);
-    expect(table).toHaveTextContent(/only while an agent is running/i);
-    expect(table).toHaveTextContent(/platform or your own key/i);
-    // No struck-through dual-rate presentation.
+    const usage = screen.getByTestId("pricing-card-usage");
+    expect(usage).toHaveTextContent(/metered only while running/i);
+    expect(usage).toHaveTextContent(/pay as you go/i);
     expect(container.querySelector("s")).toBeNull();
   });
 
@@ -89,43 +91,48 @@ describe("Pricing component", () => {
 
   it("explains the usage-based per-second billing in plain language", () => {
     renderPricing();
-    const card = screen.getByTestId("pricing-rate-card");
-    expect(card.textContent).toMatch(/billed by the second/i);
-    expect(card.textContent).toMatch(/only while an agent is actively working/i);
-    expect(card.textContent).toMatch(/idle time/i);
+    const card = screen.getByTestId("pricing-card-usage");
+    expect(screen.getByText(PRICING_COPY.lede)).toHaveTextContent(/metered per second/i);
+    expect(card.textContent).toMatch(/metered only while running/i);
   });
 
-  it("renders the design-partner contact note", () => {
+  it("renders the enterprise contact CTA", () => {
     renderPricing();
-    const note = screen.getByTestId("pricing-design-partner-note");
-    expect(note).toHaveTextContent(/design partner/i);
-    expect(note.querySelector("a")).toHaveAttribute(
+    expect(screen.getByTestId("pricing-cta-enterprise")).toHaveAttribute(
       "href",
       expect.stringContaining(SUPPORT_EMAIL),
     );
   });
 
-  it("renders a single early-access CTA pointing at APP_BASE_URL", () => {
+  it("enabled enterprise contact CTA still tracks signup intent", () => {
     renderPricing();
-    const cta = screen.getByTestId("pricing-install-cta");
-    expect(cta).toHaveAttribute("href", "https://app.dev.agentsfleet.net");
+    fireEvent.click(screen.getByTestId("pricing-cta-enterprise"));
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "pricing_enterprise",
+      surface: "pricing",
+      mode: "humans",
+    });
+  });
+
+  it("renders usage early-access CTA disabled", () => {
+    renderPricing();
+    const cta = screen.getByTestId("pricing-cta-usage");
+    expect(cta.tagName).toBe("BUTTON");
+    expect(cta).toBeDisabled();
+    expect(cta).not.toHaveAttribute("href");
     expect(cta.textContent).toMatch(/get early access/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
-  it("early-access CTA hugs its content (self-start) instead of stretching to card width", () => {
+  it("pricing CTAs stretch inside their plan cards", () => {
     renderPricing();
-    expect(screen.getByTestId("pricing-install-cta").className).toMatch(/\bself-start\b/);
+    expect(screen.getByTestId("pricing-cta-usage").className).toMatch(/\bw-full\b/);
   });
 
-  it("early-access CTA fires trackSignupStarted (NOT signupCompleted) with pricing_install source", () => {
+  it("disabled early-access CTA does not track signup", () => {
     renderPricing();
-    fireEvent.click(screen.getByTestId("pricing-install-cta"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "pricing_install",
-      surface: "pricing",
-      mode: "humans",
-    });
+    fireEvent.click(screen.getByTestId("pricing-cta-usage"));
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("does not render the old Hobby/Scale tier ladder", () => {

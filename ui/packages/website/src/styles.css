@@ -112,6 +112,14 @@ body {
 /* `.topbar-inner` was a one-callsite helper; inlined as utilities at the
  * single JSX site (App.tsx) — `flex items-center justify-between py-4`. */
 
+/* The design-system Terminal keeps its built-in copy button compact for dense
+ * product UI. The marketing hero gives it touch-target room without changing
+ * the shared primitive. */
+.hero-terminal-copy-target [data-testid="copy-btn"] {
+  min-height: 44px;
+  padding-block: var(--sp-sm);
+}
+
 /* Section vertical rhythm — Mockup A: 96px section padding on desktop,
  * border-top hairline between sections (skip first-of-type). Tighter on
  * mobile. */

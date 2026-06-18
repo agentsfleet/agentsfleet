@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Telemetry">
+  <path d="M4 17h16" fill="none" stroke="#8B9398" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M6 14l3-4 3 3 4-7 2 4" fill="none" stroke="#8B9398" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="9" cy="10" r="1.4" fill="#8B9398"/>
+  <circle cx="16" cy="6" r="1.4" fill="#8B9398"/>
+</svg>

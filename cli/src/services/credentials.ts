@@ -31,9 +31,10 @@ export interface CredentialsShape {
   readonly clearAccessToken: Effect.Effect<void, UnexpectedError>;
 }
 
-export class Credentials extends Context.Service<Credentials, CredentialsShape>()(
+export type Credentials = CredentialsShape;
+export const Credentials = Context.Service<Credentials>(
   "agentsfleet/auth/Credentials",
-) {}
+);
 
 const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>

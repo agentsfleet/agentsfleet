@@ -5,3 +5,5 @@ playwright-report/
 playwright-results/
 tsconfig.tsbuildinfo
 public/openapi.json
+public/llms.txt
+public/llms-full.txt
