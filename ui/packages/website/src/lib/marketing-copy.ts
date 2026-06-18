@@ -189,6 +189,11 @@ export const KNOWLEDGE_POINTS = [
 
 export const HOW_IT_WORKS_HEADING = "Push a pull request. Get a review back.";
 
+// Make explicit that the Auto Reviewer flow is one example, not the whole
+// product — the same loop runs for incidents, deploys, and security.
+export const HOW_IT_WORKS_FOOTNOTE =
+  "That's the Auto Reviewer — one teammate in the fleet. The same loop runs for incidents, deploys, and security reviews.";
+
 // Three opinionated beats, rendered as a left-to-right flow in HowItWorks.tsx.
 // The concrete Auto Reviewer path (PR -> review -> Slack) stands in for the
 // loop; it reads far better than the old eight-step abstraction.

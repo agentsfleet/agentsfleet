@@ -1,6 +1,10 @@
 import { Fragment, type ReactNode } from "react";
 import { Card, DisplayLG, SectionLabel } from "@agentsfleet/design-system";
-import { HOW_IT_WORKS_HEADING, LOOP_STEPS } from "../lib/marketing-copy";
+import {
+  HOW_IT_WORKS_FOOTNOTE,
+  HOW_IT_WORKS_HEADING,
+  LOOP_STEPS,
+} from "../lib/marketing-copy";
 
 /*
  * HowItWorks — an opinionated three-beat flow instead of an abstract
@@ -78,6 +82,9 @@ export default function HowItWorks() {
             </Fragment>
           ))}
         </div>
+        <p className="font-sans text-body-sm leading-body text-text-subtle m-0 max-w-narrow">
+          {HOW_IT_WORKS_FOOTNOTE}
+        </p>
       </div>
     </section>
   );
