@@ -41,11 +41,15 @@ const STEP_GLYPHS: readonly ReactNode[] = [
 // Enforce the index-coupling: exactly one glyph per loop step. Fires at module
 // load (so any import — including the test — trips it) if a future edit adds a
 // step without a matching glyph, instead of silently rendering nothing.
+// The throw is a defensive build-time invariant that can't execute while the
+// arrays are in sync, so it's excluded from the 100% coverage gate.
+/* v8 ignore start */
 if (STEP_GLYPHS.length !== LOOP_STEPS.length) {
   throw new Error(
     `HowItWorks: STEP_GLYPHS (${STEP_GLYPHS.length}) must match LOOP_STEPS (${LOOP_STEPS.length}).`,
   );
 }
+/* v8 ignore stop */
 
 export default function HowItWorks() {
   return (
