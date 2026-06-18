@@ -174,9 +174,11 @@ export const tenantProviderAddEffectFromArgs = (
     );
   });
 
-// Best-effort low-balance probe — the reset succeeded and is the headline.
-// `Effect.orElseSucceed(() => null)` swallows transport errors so a flaky
-// billing endpoint never breaks the delete success path.
+// Best-effort low-balance probe — the delete succeeded and is the headline.
+// The billing request is swallowed with `Effect.orElseSucceed(() => null)`,
+// and the call site runs the whole probe under `Effect.ignore`, so neither a
+// flaky billing endpoint nor a token-resolution failure can turn the
+// already-printed delete success into a non-zero exit.
 const lowBalanceWarning: Effect.Effect<
   void,
   CliError,
@@ -224,5 +226,6 @@ export const tenantProviderDeleteEffect: Effect.Effect<
   );
   yield* output.info("");
   yield* renderProviderTable(res);
-  yield* lowBalanceWarning;
+  // Best-effort: a probe failure must never break the printed delete success.
+  yield* lowBalanceWarning.pipe(Effect.ignore);
 });

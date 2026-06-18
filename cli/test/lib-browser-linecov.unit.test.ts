@@ -10,7 +10,7 @@
 
 import { expect, test } from "bun:test";
 import type { spawn } from "node:child_process";
-import { openUrl, resolveBrowserCommand } from "../src/lib/browser.ts";
+import { commandExists, openUrl, resolveBrowserCommand } from "../src/lib/browser.ts";
 
 const CB_URL = "https://app.test.local/auth/callback";
 
@@ -152,6 +152,37 @@ test("linux with a display resolves to xdg-open when that opener is installed", 
     expect(r.argv).toBeNull();
     expect(r.reason).toBe("missing-xdg-open");
   }
+});
+
+// commandExists is now async + non-blocking (spawn, not spawnSync). Drive its
+// close/error resolutions deterministically through an injected spawn stub so
+// the event loop is never blocked AND both callback lines stay covered without
+// shelling out to the real OS (the resolveBrowserCommand suites cover the real
+// `sh` close path; these pin the close-code fork and the spawn-error fork).
+function probeSpawn(event: "close0" | "close1" | "error"): typeof spawn {
+  return (() => {
+    const child = {
+      on(e: string, cb: (a?: unknown) => void) {
+        if (event === "error" && e === "error") cb(new Error("sh missing"));
+        if (event === "close0" && e === "close") cb(0);
+        if (event === "close1" && e === "close") cb(1);
+        return child;
+      },
+    };
+    return child;
+  }) as unknown as typeof spawn;
+}
+
+test("commandExists resolves true when the probe exits zero", async () => {
+  expect(await commandExists("xdg-open", probeSpawn("close0"))).toBe(true);
+});
+
+test("commandExists resolves false when the probe exits non-zero", async () => {
+  expect(await commandExists("xdg-open", probeSpawn("close1"))).toBe(false);
+});
+
+test("commandExists resolves false when the shell probe cannot spawn", async () => {
+  expect(await commandExists("xdg-open", probeSpawn("error"))).toBe(false);
 });
 
 test("openUrl on linux with a display drives the resolved opener through spawn", async () => {
