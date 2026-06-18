@@ -35,7 +35,7 @@ export class TimeoutError extends Error {
   }
 }
 
-function resolveBinary(opts) {
+export function resolveBinary(opts) {
   const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
   if (requested === ACCEPTANCE_BINARY.global) return { command: "agentsfleet", prefixArgs: [] };
   if (requested === ACCEPTANCE_BINARY.worktree) {

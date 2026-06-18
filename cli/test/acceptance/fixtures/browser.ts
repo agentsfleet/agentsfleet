@@ -15,9 +15,17 @@
  * expose `data-testid="cli-auth-approve"` on the approve action. The
  * carve-out subsection in `docs/AUTH.md` documents this contract; the
  * dashboard's CLI-auth handoff PR lands the page + selector.
+ *
+ * After approve, the page renders the 6-digit verification code in an
+ * `<output aria-label="Verification code">` element. We scrape it and
+ * return it so the caller can type it into the CLI's pty prompt — the code
+ * is the binding between the human who approved in the browser and the
+ * human (here, the harness) typing into the terminal.
  */
 
 const APPROVE_SELECTOR = "[data-testid=\"cli-auth-approve\"]";
+const VERIFICATION_CODE_LABEL = "Verification code";
+const VERIFICATION_CODE_RE = /^\d{6}$/;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 interface CookieAttrs {
@@ -52,9 +60,10 @@ export interface CliAuthHandoffOptions {
 }
 
 /**
- * Drive a Playwright Chromium context through the CLI-auth approve action.
+ * Drive a Playwright Chromium context through the CLI-auth approve action
+ * and return the 6-digit verification code the page displays on success.
  */
-export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<void> {
+export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.cookieJwt) throw new Error("completeCliAuthHandoff: cookieJwt required");
 
@@ -79,10 +88,17 @@ export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promi
     await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
     await page.waitForSelector(APPROVE_SELECTOR, { state: "visible", timeout: timeoutMs });
     await page.click(APPROVE_SELECTOR);
-    // Wait for the page to acknowledge the click — either a redirect or a
-    // confirmation marker. We don't pin the destination URL; the CLI's
-    // status poll is the authoritative ack of approval.
-    await page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => {});
+
+    // On success the page swaps to the "Type this code into your CLI" card.
+    // Read the code from its accessible <output> rather than pinning a URL —
+    // the CLI's /verify call is the authoritative ack of approval.
+    const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
+    await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
+    const code = ((await codeOutput.textContent()) ?? "").trim();
+    if (!VERIFICATION_CODE_RE.test(code)) {
+      throw new Error(`completeCliAuthHandoff: expected a 6-digit code, got ${JSON.stringify(code)}`);
+    }
+    return code;
   } finally {
     await browser.close().catch(() => {});
   }

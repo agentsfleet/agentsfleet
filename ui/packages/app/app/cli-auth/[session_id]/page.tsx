@@ -21,6 +21,12 @@ import {
   generateEphemeralKeypair,
   generateVerificationCode,
 } from "@/lib/auth/cli-flow";
+import {
+  CopyButton,
+  PageShell,
+  VerificationCodeDisplay,
+  sanitizeTokenName,
+} from "./cli-auth-ui";
 
 // Discriminant + status tags are named per RULE UFS (no bare repeated string
 // literals); the `as const` objects keep them usable as discriminated-union
@@ -69,7 +75,6 @@ type ApproveState =
   | { kind: typeof APPROVE.uncertain; verificationCode: string }
   | { kind: typeof APPROVE.failed; message: string };
 
-const TOKEN_NAME_MAX_LEN = 64;
 const JSON_CONTENT_TYPE = "application/json";
 
 export default function CliAuthPage({
@@ -306,6 +311,7 @@ export default function CliAuthPage({
         </CardContent>
         <CardFooter className="gap-2">
           <Button
+            data-testid="cli-auth-approve"
             onClick={() => void onApprove(load.session)}
             disabled={
               approve.kind === APPROVE.working ||
@@ -319,47 +325,4 @@ export default function CliAuthPage({
       </Card>
     </PageShell>
   );
-}
-
-function PageShell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-background p-6">
-      <div className="w-full max-w-md">{children}</div>
-    </main>
-  );
-}
-
-function VerificationCodeDisplay({ code }: { code: string }) {
-  return (
-    <output
-      aria-label="Verification code"
-      className="block font-mono text-3xl tracking-widest text-center py-4"
-    >
-      {code}
-    </output>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }, [value]);
-  return (
-    <Button variant="secondary" onClick={() => void onCopy()}>
-      {copied ? "Copied" : "Copy code"}
-    </Button>
-  );
-}
-
-function sanitizeTokenName(raw: string): string {
-  const trimmed = raw.slice(0, TOKEN_NAME_MAX_LEN);
-  const printable = trimmed.replace(/[\x00-\x1f\x7f]/g, "");
-  return printable.length > 0 ? printable : "your terminal";
 }
