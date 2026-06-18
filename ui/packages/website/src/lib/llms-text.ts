@@ -7,10 +7,10 @@ import {
 } from "./marketing-copy";
 
 export const MARKETING_POSITIONING_SUMMARY =
-  "Resident engineer that compounds operational knowledge: signal → recurring problem class → scenario/test → fix pull request → human approval → fewer repeats.";
+  "Prebuilt AI teammates for recurring engineering work: they wake on your events, open a scenario-backed fix, and hold at human approval before merge or deploy.";
 
 export const LLMS_FULL_INTRO =
-  "agentsfleet is a resident engineer for recurring operational work. It wakes on the first signal, reads allow-listed sources, captures the recurring problem class, generates a scenario and regression test, opens a fix pull request, and waits for human approval before merge or deploy.";
+  "agentsfleet is a fleet of prebuilt AI teammates for recurring engineering work. Each one wakes on an event — a pull request, an incident, a deploy — reads only the sources you allow-list, opens a fix with the evidence attached, and waits for human approval before anything merges or ships.";
 
 export type LlmsTextInputs = {
   docsUrl: string;

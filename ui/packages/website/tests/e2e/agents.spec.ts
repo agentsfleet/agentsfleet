@@ -11,17 +11,17 @@ test.describe("Agents page (/agents)", () => {
     );
   });
 
-  test("renders install block with npm command", async ({ page }) => {
+  test("renders the merged install heading and npm command", async ({ page }) => {
     await expect(page.getByRole("heading", { name: /install agentsfleet/i })).toBeVisible();
-    await expect(page.getByLabel(/install agentsfleet command/i)).toContainText(
+    await expect(page.getByLabel(/bootstrap commands/i)).toContainText(
       "npm install -g @agentsfleet/cli",
     );
   });
 
-  test("renders install block action buttons (lowercase)", async ({ page }) => {
+  test("renders install action links and no dashboard link", async ({ page }) => {
     await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /read the docs/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /open dashboard/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /open dashboard/i })).toHaveCount(0);
   });
 
   test("renders bootstrap commands", async ({ page }) => {
@@ -53,11 +53,11 @@ test.describe("Agents page (/agents)", () => {
     await expect(page.getByText(/deploy\.failed/)).toBeVisible();
   });
 
-  test("renders safety limit cards (sentence-case)", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /^idempotency$/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /^audit trail$/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /^secret management$/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /^policy enforcement$/i })).toBeVisible();
+  test("renders safety limits as a constraint table", async ({ page }) => {
+    await expect(page.getByRole("rowheader", { name: /^idempotency$/i })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /^audit trail$/i })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /^secret management$/i })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /^policy enforcement$/i })).toBeVisible();
   });
 
   test("does not render orange-era decorative chrome", async ({ page }) => {

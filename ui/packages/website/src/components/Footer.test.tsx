@@ -17,10 +17,10 @@ describe("Footer", () => {
     expect(screen.getByText(/^agentsfleet$/)).toBeInTheDocument();
   });
 
-  it("renders the tagline without the self-managed/open-source tail", () => {
+  it("renders the warm teammates tagline without the self-managed/open-source tail", () => {
     renderFooter();
     expect(
-      screen.getByText(/resident engineer that compounds operational knowledge/i),
+      screen.getByText(/prebuilt ai teammates that take the recurring engineering work/i),
     ).toBeInTheDocument();
     // "Self-managed. Open source." was pulled from the footer tagline.
     expect(screen.queryByText(/Self-managed\. Open source\./)).not.toBeInTheDocument();

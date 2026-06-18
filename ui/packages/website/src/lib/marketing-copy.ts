@@ -1,22 +1,27 @@
 export const PRODUCT_NAME = "agentsfleet";
 
-export const HERO_HEADLINE = "A resident engineer that compounds operational knowledge.";
+export const HERO_HEADLINE = "A fleet, ready to run.";
 
+// Tokens that must survive in the hero copy (marketing-spec.test.ts pins
+// presence). They double as the "Pillars" bullets in llms-full.txt, so keep
+// them phrase-shaped and meaningful, not single words.
 export const PILLAR_TOKENS = [
-  "resident engineer",
-  "human approval",
-  "replayable log",
+  "AI teammates",
+  "ready to run",
+  "recurring engineering work",
   "wake.on.event",
 ] as const;
 
+// Hero lede, warm/anti-jargon voice (design-consultation decision). Rendered as
+// one sentence with two emphasized phrases. Verbatim payoff line the user
+// approved in the hero preview: "Prebuilt AI teammates that take the recurring
+// engineering work off your plate — and hand you the change to approve."
 export const HERO_LEDE_PARTS = {
-  intro: "It wakes on the first signal, captures the",
-  problemClass: "problem class",
-  middle: "writes a scenario, a test, and a fix pull request, then holds at",
-  humanApproval: "human approval",
-  outro: "Everything it does is a",
-  replayableLog: "replayable log",
-  close: "you can audit line by line.",
+  intro: "Prebuilt",
+  teammates: "AI teammates",
+  middle: "that take the",
+  recurringWork: "recurring engineering work",
+  outro: "off your plate — and hand you the change to approve.",
 } as const;
 
 export const HERO_PRIMARY_LABEL = "Get early access";
@@ -57,10 +62,13 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
   },
 ] as const;
 
-export const AGENTS_SECTION_HEADING = "A fleet, ready to run.";
+// The hero owns "A fleet, ready to run." now, so the prebuilt-agents wall gets
+// its own heading. "Meet the fleet" matches the hero's secondary CTA, which
+// anchors to this section.
+export const AGENTS_SECTION_HEADING = "Meet the fleet.";
 
 export const AGENTS_SECTION_LEDE =
-  "Prebuilt and proven. Install one, wire a single source, and it works the same day — every action gated, every run a replayable log. More join the fleet as the loop compounds.";
+  "Prebuilt and proven. Install one, point it at your stack, and it works the same day — every action gated, every run a replayable log. More teammates join the fleet over time.";
 
 export type AgentIntegration = {
   label: string;
@@ -125,6 +133,9 @@ export type AgentPillar = {
   description: string;
 };
 
+// The three behavioral capabilities. Moved out of the prebuilt-agents wall and
+// into Core Capabilities (design-consultation decision) — they describe what
+// every teammate is, not which prebuilts exist.
 export const AGENT_PILLARS: readonly AgentPillar[] = [
   {
     id: "sandbox",
@@ -150,87 +161,64 @@ export const AGENT_PILLARS: readonly AgentPillar[] = [
 ] as const;
 
 export const OPERATIONAL_KNOWLEDGE_HEADING =
-  "Recurring tickets become operational memory.";
+  "It remembers, so the next time is faster.";
 
 export const OPERATIONAL_KNOWLEDGE_LEDE =
-  "The first signal is not the product. The compounding layer is: classify the problem, preserve the evidence, generate a scenario and a test, then turn the approved fix into memory for the next recurrence.";
+  "Every fix becomes memory. When the same problem comes back, your teammate already knows its shape — the scenario it wrote, the test it added, and the change that worked last time.";
 
 export const KNOWLEDGE_POINTS = [
   {
     number: "01",
-    title: "Classify the problem",
+    title: "It names the problem",
     description:
-      "The run turns scattered support symptoms into a named engineering problem class.",
+      "The first ticket stops being a one-off. Your teammate files it as a named, recurring problem instead of scattered symptoms.",
   },
   {
     number: "02",
-    title: "Prove it with evidence",
+    title: "It keeps the receipts",
     description:
-      "Logs, traces, repository context, and approval state stay replayable instead of disappearing into chat.",
+      "Logs, traces, and the change that fixed it stay together and replayable, instead of vanishing into a chat thread.",
   },
   {
     number: "03",
-    title: "Ship only through people",
+    title: "You still hold the merge",
     description:
-      "The agent can draft a fix pull request, but merge and deploy stay behind human approval.",
+      "It drafts the fix, but merging and shipping always wait for a human.",
   },
 ] as const;
 
-export const HOW_IT_WORKS_HEADING =
-  "From first signal to fewer repeats.";
+export const HOW_IT_WORKS_HEADING = "Push a pull request. Get a review back.";
 
+// Make explicit that the Auto Reviewer flow is one example, not the whole
+// product — the same loop runs for incidents, deploys, and security.
+export const HOW_IT_WORKS_FOOTNOTE =
+  "That's the Auto Reviewer — one teammate in the fleet. The same loop runs for incidents, deploys, and security reviews.";
+
+// Three opinionated beats, rendered as a left-to-right flow in HowItWorks.tsx.
+// The concrete Auto Reviewer path (PR -> review -> Slack) stands in for the
+// loop; it reads far better than the old eight-step abstraction.
 export const LOOP_STEPS = [
   {
     number: "01",
-    title: "A signal arrives",
+    title: "You push a pull request",
     description:
-      "A support escalation, workflow event, cron, or manual steer lands on the event stream with actor provenance.",
+      "The Auto Reviewer wakes the moment the PR lands. No prompt, no queue, no setup.",
   },
   {
     number: "02",
-    title: "The agent gathers evidence",
+    title: "It posts the review",
     description:
-      "It reads only the allow-listed sources: telemetry, repository context, approvals, and prior run history.",
+      "It reads the diff and the code around it, then leaves inline comments before a human opens the tab.",
   },
   {
     number: "03",
-    title: "The problem class is named",
+    title: "Slack gets the heads-up",
     description:
-      "The run stops treating the ticket as a one-off and records the recurring failure class.",
-  },
-  {
-    number: "04",
-    title: "A scenario is generated",
-    description:
-      "The agent writes the situation back as a reproducible scenario the team can inspect.",
-  },
-  {
-    number: "05",
-    title: "A regression test follows",
-    description:
-      "The class gets a test so the same failure has a durable tripwire next time.",
-  },
-  {
-    number: "06",
-    title: "A fix pull request opens",
-    description:
-      "Code changes arrive with the evidence trail attached, not as an ungrounded suggestion.",
-  },
-  {
-    number: "07",
-    title: "Humans approve",
-    description:
-      "Risky actions hold at the approval plane. People merge and deploy.",
-  },
-  {
-    number: "08",
-    title: "The class is remembered",
-    description:
-      "The next recurrence starts with the captured problem class, scenario, test, and fix trail.",
+      "Your team sees the verdict in Slack and decides — approve, merge, or steer. You stay the one who ships.",
   },
 ] as const;
 
-export const CAPABILITY_HEADING = "The trust layer, not a wrapper.";
+export const CAPABILITY_HEADING = "What every teammate ships with.";
 
 export const CAPABILITY_ITEMS = [
   {
@@ -305,9 +293,9 @@ export const FAQ_WEDGE_ITEM = {
 } as const;
 
 export const CTA_COPY = {
-  heading: "Give your hardest incidents an engineer.",
+  heading: "Meet the teammates who never skip the boring work.",
   lede:
-    "Install one agent, wire the first source, and let recurring support escalations become scenario-backed fixes with a human gate.",
+    "Chat with your fleet like colleagues. They watch the work that keeps recurring, take the first pass, and hand you a change to approve. No prompting, no setup, no jargon.",
 } as const;
 
 export const FORBIDDEN_MARKETING_CLAIMS = [

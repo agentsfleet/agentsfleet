@@ -7,7 +7,7 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("A resident engineer that compounds operational knowledge.");
+    await expect(h1).toContainText("A fleet, ready to run.");
   });
 
   test("hero LIVE eyebrow renders a WakePulse data-live element", async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe("Home page", () => {
 
   test("renders operational knowledge and the prebuilt-agents fleet", async ({ page }) => {
     await expect(page.getByTestId("operational-knowledge")).toBeVisible();
-    await expect(page.getByText("Recurring tickets become operational memory.")).toBeVisible();
+    await expect(page.getByText("It remembers, so the next time is faster.")).toBeVisible();
     await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
     await expect(page.getByTestId("agent-card-auto-reviewer")).toContainText("Auto Reviewer");
     await expect(page.getByTestId("agent-card-security-reviewer")).toContainText("Security Reviewer");
@@ -85,9 +85,9 @@ test.describe("Home page", () => {
 
   test("renders how it works steps", async ({ page }) => {
     const how = page.getByTestId("how-it-works");
-    await expect(how.getByRole("heading", { name: "A signal arrives", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "The agent gathers evidence", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "The class is remembered", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "You push a pull request", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "It posts the review", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "Slack gets the heads-up", exact: true })).toBeVisible();
   });
 
   test("does not render a duplicate install block below pricing", async ({ page }) => {
