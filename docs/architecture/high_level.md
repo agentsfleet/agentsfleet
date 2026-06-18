@@ -12,6 +12,8 @@ The product, the problem, the wedge, the differentiation, and why the obvious al
 
 agentsfleet v2 is a durable runtime for one operational outcome.
 
+On the product surface, that runtime ships as a fleet of prebuilt AI teammates — each one wakes on an event (a pull request, a deploy, an incident), does the recurring engineering work, and holds at human approval before anything merges or ships. The marketing framing and this technical thesis describe the same thing from two ends: "AI teammates, ready to run" is what the operator buys; "a durable runtime for one operational outcome" is what we build.
+
 It is meant for work that:
 
 - continues after the original human prompt is gone
