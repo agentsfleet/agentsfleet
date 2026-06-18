@@ -20,7 +20,14 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = normalizeTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <AuthProvider appearance={AUTH_APPEARANCE} localization={{ userButton: { action__manageAccount: "Account" } }}>
+    <AuthProvider
+      appearance={AUTH_APPEARANCE}
+      // Route Clerk's waitlist-mode "Join the waitlist" link (shown on the
+      // sign-in/sign-up widgets when the instance is in waitlist mode) to our
+      // self-hosted, themed /waitlist page instead of the hosted Account Portal.
+      waitlistUrl="/waitlist"
+      localization={{ userButton: { action__manageAccount: "Account" } }}
+    >
       <html lang="en" data-theme={theme} suppressHydrationWarning>
         <body>
           <AnalyticsBootstrap />

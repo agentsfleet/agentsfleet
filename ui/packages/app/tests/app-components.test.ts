@@ -34,6 +34,7 @@ vi.mock("@clerk/nextjs", () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
   SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
   SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
+  Waitlist: () => React.createElement("div", { "data-waitlist": "1" }),
   useAuth: () => ({ getToken: async () => "token_stub" }),
 }));
 

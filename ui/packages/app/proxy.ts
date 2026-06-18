@@ -3,6 +3,9 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  // Self-hosted Clerk <Waitlist> — must render signed-out for the marketing
+  // site's "Get early access" CTAs, so it's public (not bounced to /sign-in).
+  "/waitlist(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

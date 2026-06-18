@@ -1,4 +1,4 @@
-import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
+import { useUser, UserButton, ClerkProvider, SignIn, SignUp, Waitlist } from "@clerk/nextjs";
 
 // `useClientToken()` was retired in M64_006. Every dashboard mutation/read
 // now flows through a Server Action that calls `auth().getToken()`
@@ -36,3 +36,4 @@ export const AuthProvider = ClerkProvider;
 export const AuthUserButton = UserButton;
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;
+export const AuthWaitlist = Waitlist;

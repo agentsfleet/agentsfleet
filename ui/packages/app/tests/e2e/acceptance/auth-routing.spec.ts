@@ -40,4 +40,18 @@ test.describe("auth routing", () => {
       await expect(page).toHaveURL(/\/sign-in(\?|$|\/)/, { timeout: ROUTING_TIMEOUT_MS });
     }
   });
+
+  test("signed-out user can reach the public waitlist route without a sign-in bounce", async ({ page }) => {
+    // The self-hosted <Waitlist> is the marketing site's "Get early access"
+    // target (WAITLIST_URL → app /waitlist), so it must render signed-out.
+    // proxy.ts lists "/waitlist(.*)" as public; this proves the boundary holds
+    // — the URL stays on /waitlist instead of bouncing to /sign-in.
+    // (Independent of Clerk waitlist mode: we assert the route is reachable,
+    // not the form's submission behaviour.)
+    await signInAs(page, FIXTURE_KEY.regular);
+    await clerk.signOut({ page });
+
+    await page.goto("/waitlist");
+    await expect(page).toHaveURL(/\/waitlist(\?|$|\/)/, { timeout: ROUTING_TIMEOUT_MS });
+  });
 });

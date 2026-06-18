@@ -32,6 +32,7 @@ vi.mock("@clerk/nextjs", () => ({
   UserButton: () => React.createElement("div", { "data-user-button": "1" }),
   SignIn: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-in": JSON.stringify(appearance) }),
   SignUp: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-sign-up": JSON.stringify(appearance) }),
+  Waitlist: ({ appearance }: { appearance: unknown }) => React.createElement("div", { "data-waitlist": JSON.stringify(appearance) }),
   useUser,
 }));
 
@@ -114,5 +115,21 @@ describe("app layouts and pages", () => {
     expect(signUpMarkup).toContain("data-sign-up=");
     expect(signInMarkup).toContain("colorPrimary");
     expect(signUpMarkup).toContain("colorPrimary");
+  });
+
+  it("renders the waitlist page with shared appearance and a hidden footer action", async () => {
+    const { default: WaitlistPage } = await import("../app/(auth)/waitlist/page");
+
+    const markup = renderToStaticMarkup(React.createElement(WaitlistPage));
+    // The mock serializes the appearance prop into data-waitlist.
+    const serialized = markup.match(/data-waitlist="([^"]*)"/)?.[1];
+    expect(serialized).toBeDefined();
+    const appearance = JSON.parse(serialized!.replace(/&quot;/g, '"'));
+
+    // Inherits the shared mint/dark theming...
+    expect(appearance.variables.colorPrimary).toBe("var(--pulse)");
+    expect(appearance.elements.cardBox.backgroundColor).toBe("var(--surface-2)");
+    // ...and hides the "Already have access? Sign in" row.
+    expect(appearance.elements.footerAction).toEqual({ display: "none" });
   });
 });
