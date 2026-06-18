@@ -3,15 +3,12 @@ import { Link } from "react-router-dom";
 import {
   Button,
   DisplayXL,
-  LogLine,
-  LogToken,
-  Terminal,
   Toast,
   WakePulse,
   useResettableTimeout,
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import { INSTALL_COMMAND, INSTALL_SKILL_COMMAND } from "../config";
+import { INSTALL_COMMAND, WAITLIST_URL } from "../config";
 import {
   HERO_HEADLINE,
   HERO_LEDE_PARTS,
@@ -152,11 +149,24 @@ export default function Hero() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled
+              asChild
               className="min-h-11"
               data-testid="hero-cta-early-access"
             >
-              → {HERO_PRIMARY_LABEL}
+              <a
+                href={WAITLIST_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() =>
+                  trackSignupStarted({
+                    source: "hero_early_access",
+                    surface: "hero",
+                    mode: "humans",
+                  })
+                }
+              >
+                → {HERO_PRIMARY_LABEL}
+              </a>
             </Button>
             <Button asChild variant="ghost" className="min-h-11" data-testid="hero-cta-secondary">
               <a href={`/#${LOOP_ANCHOR_ID}`}>{HERO_SECONDARY_LABEL}</a>
@@ -172,27 +182,6 @@ export default function Hero() {
             </Toast>
           </div>
         </div>
-
-        <Terminal
-          label="install via agentsfleet.dev"
-          data-testid="hero-cli"
-          copyable
-          animate
-          copyText={INSTALL_SKILL_COMMAND}
-          className="hero-terminal-copy-target max-w-wide"
-        >
-          {/* Animated, multi-colour demo of the one-command install
-            * (curl → agentsfleet + skill bundle), ending in the next-step
-            * slash command. Per-token colour via <LogToken> (prompt, host,
-            * binaries, identifiers, next command) so it reads live, not
-            * monotone. Copy hands back exactly that slash command. */}
-          <LogLine severity="info"><LogToken severity="pulse">$</LogToken> {INSTALL_COMMAND}</LogLine>
-          <LogLine severity="debug">› detecting host… <LogToken severity="info">claude code</LogToken></LogLine>
-          <LogLine severity="debug">› installing <LogToken severity="info">agentsfleet</LogToken> + skill bundle…</LogLine>
-          <LogLine severity="done">✓ agentsfleet on PATH · skill added (<LogToken severity="evidence">agentsfleet/agentsfleet</LogToken>)</LogLine>
-          <LogLine severity="done">✓ webhook registered <LogToken severity="evidence">github.com/your-org/your-repo</LogToken></LogLine>
-          <LogLine severity="debug">→ next: <LogToken severity="pulse">{INSTALL_SKILL_COMMAND}</LogToken></LogLine>
-        </Terminal>
       </div>
     </section>
   );

@@ -6,7 +6,7 @@ import {
   ListItem,
   SectionLabel,
 } from "@agentsfleet/design-system";
-import { APP_BASE_URL } from "../config";
+import { WAITLIST_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-copy";
@@ -59,14 +59,19 @@ export default function Pricing() {
 }
 
 function PricingPlanCard({ plan }: { plan: PricingPlan }) {
+  // Pre-launch: both the free-trial ("Start free") and usage ("Get early
+  // access") CTAs route to the waitlist; only Enterprise stays a contact mailto.
   const ctaHref =
     plan.id === ENTERPRISE_PLAN_ID
       ? `mailto:${SUPPORT_EMAIL}?subject=Enterprise%20agentsfleet`
-      : APP_BASE_URL;
+      : WAITLIST_URL;
+  // The waitlist is an external (Clerk) host — open it in a new tab to match
+  // every other external link in the app and keep the marketing page alive.
+  // The Enterprise mailto stays same-tab (a new tab for a mailto is pointless).
+  const ctaExternal = ctaHref === WAITLIST_URL;
   const badge = "badge" in plan ? plan.badge : undefined;
   const suffix = "suffix" in plan ? plan.suffix : undefined;
   const testId = `pricing-card-${plan.id}`;
-  const ctaDisabled = plan.id === USAGE_PLAN_ID;
 
   return (
     <Card
@@ -122,36 +127,48 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
         ))}
       </List>
 
-      {ctaDisabled ? (
-        <Button
-          disabled
-          variant="default"
-          className="mt-auto min-h-11 w-full justify-center"
+      <Button
+        asChild
+        variant="secondary"
+        className="mt-auto min-h-11 w-full justify-center"
+      >
+        <a
+          href={ctaHref}
+          {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
           data-testid={`pricing-cta-${plan.id}`}
+          onClick={() =>
+            trackSignupStarted({
+              source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+              surface: "pricing",
+              mode: "humans",
+            })
+          }
         >
           {plan.cta}
-        </Button>
-      ) : (
-        <Button
-          asChild
-          variant="secondary"
-          className="mt-auto min-h-11 w-full justify-center"
+        </a>
+      </Button>
+
+      {plan.id === ENTERPRISE_PLAN_ID ? (
+        <p
+          className="font-sans text-body-sm leading-body-sm text-text-muted m-0 text-center"
+          data-testid="pricing-enterprise-email"
         >
+          or email{" "}
           <a
-            href={ctaHref}
-            data-testid={`pricing-cta-${plan.id}`}
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="text-text hover:underline"
             onClick={() =>
               trackSignupStarted({
-                source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+                source: `${PRICING_TRACKING_SOURCE_PREFIX}${ENTERPRISE_PLAN_ID}_email`,
                 surface: "pricing",
                 mode: "humans",
               })
             }
           >
-            {plan.cta}
+            {SUPPORT_EMAIL}
           </a>
-        </Button>
-      )}
+        </p>
+      ) : null}
     </Card>
   );
 }
