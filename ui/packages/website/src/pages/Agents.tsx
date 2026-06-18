@@ -1,5 +1,5 @@
-import { Card, DisplayLG, DisplayXL, InstallBlock, SectionLabel, Terminal } from "@agentsfleet/design-system";
-import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
+import { Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
+import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -65,28 +65,35 @@ export default function Agents() {
         </div>
       </section>
 
+      {/* One install story for an agent: the CLI plus the skill bundle plus the
+        * in-agent slash command. The old standalone InstallBlock (bare `npm
+        * install -g` + an "open dashboard" link) was redundant with this and
+        * has been folded in. Heading carries the mint brand color. */}
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md">
-            Bootstrap
+          <DisplayLG className="text-fluid-display-md text-pulse">
+            Install agentsfleet
           </DisplayLG>
+          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
+            Install the command-line interface and the skill bundle, then
+            provision an agent from inside your coding agent. No dashboard
+            required.
+          </p>
           <Terminal label="Bootstrap commands" copyable className="max-w-wide">
             {bootstrapScript}
           </Terminal>
-        </div>
-      </section>
-
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-4">
-          <InstallBlock
-            title="Install agentsfleet"
-            command="npm install -g @agentsfleet/cli"
-            actions={[
-              { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
-              { label: "read the docs", to: DOCS_URL, variant: "ghost" },
-              { label: "open dashboard", to: APP_BASE_URL, variant: "default" },
-            ]}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button asChild className="min-h-11">
+              <a href={DOCS_QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                → start an agent
+              </a>
+            </Button>
+            <Button asChild variant="ghost" className="min-h-11">
+              <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+                read the docs
+              </a>
+            </Button>
+          </div>
         </div>
       </section>
 

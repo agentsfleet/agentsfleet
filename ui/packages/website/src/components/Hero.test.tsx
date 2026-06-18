@@ -60,14 +60,16 @@ describe("Hero", () => {
     expect(pulse).not.toBeNull();
   });
 
-  it("renders the lede paragraph in the spec voice", () => {
+  it("renders the lede paragraph in the warm teammates voice", () => {
     renderHero();
     for (const token of PILLAR_TOKENS) {
       expect(screen.getByTestId("hero").textContent).toMatch(new RegExp(token, "i"));
     }
-    expect(screen.getByText(/captures the/i)).toBeInTheDocument();
-    expect(screen.getByText(/problem class/i)).toBeInTheDocument();
-    expect(screen.getByText(/human approval/i)).toBeInTheDocument();
+    expect(screen.getByText("AI teammates")).toBeInTheDocument();
+    expect(screen.getByText("recurring engineering work")).toBeInTheDocument();
+    expect(screen.getByTestId("hero").textContent).toMatch(
+      /hand you the change to approve/i,
+    );
   });
 
   it("renders the install command in a copy-row with a copy-only Copy button", () => {

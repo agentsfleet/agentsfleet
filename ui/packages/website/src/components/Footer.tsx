@@ -8,7 +8,7 @@ const COL_LABEL =
 const COL_LINK =
   "inline-flex min-h-11 min-w-11 items-center font-mono text-mono text-text-muted hover:text-text transition-colors";
 const FOOTER_TAGLINE =
-  "Resident engineer that compounds operational knowledge from recurring problem classes.";
+  "Prebuilt AI teammates that take the recurring engineering work off your plate — and wait for your approval.";
 
 /*
  * Footer — mono labels, restrained two-row layout. No decorative
