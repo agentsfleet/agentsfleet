@@ -34,7 +34,7 @@ test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "A resident engineer that compounds operational knowledge.",
+      "A fleet, ready to run.",
     );
 
     const nav = page.getByRole("navigation", { name: /primary/i });
@@ -97,9 +97,10 @@ test.describe("Cross-page link coverage", () => {
     await expect(
       page.locator('a[href="https://docs.agentsfleet.net"]').filter({ hasText: /read the docs/i }),
     ).toHaveCount(1);
+    // "open dashboard" was removed from the merged install block.
     await expect(
       page.locator("a").filter({ hasText: /open dashboard/i }),
-    ).toHaveAttribute("href", /app\.(dev\.)?agentsfleet\.net/);
+    ).toHaveCount(0);
 
     await expect(page.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");
 

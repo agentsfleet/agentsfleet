@@ -49,7 +49,7 @@ test.describe("Smoke", () => {
 
     const llmsFull = await page.request.get("/llms-full.txt");
     expect(llmsFull.status()).toBe(200);
-    expect(await llmsFull.text()).toContain("resident engineer");
+    expect(await llmsFull.text()).toContain("AI teammates");
   });
 
   test("agents page loads", async ({ page }) => {
