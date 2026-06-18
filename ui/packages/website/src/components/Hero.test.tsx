@@ -10,6 +10,13 @@ const analytics = vi.hoisted(() => ({
 vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
+import {
+  HERO_HEADLINE,
+  HERO_PRIMARY_LABEL,
+  HERO_SECONDARY_LABEL,
+  LOOP_ANCHOR_ID,
+  PILLAR_TOKENS,
+} from "../lib/marketing-copy";
 
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
 const INSTALL_SKILL_COMMAND = "claude /agentsfleet-install-platform-ops";
@@ -37,12 +44,11 @@ describe("Hero", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("renders the two-line mono headline", () => {
+  it("renders the resident-engineer headline", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
     expect(h1).not.toBeNull();
-    expect(h1).toHaveTextContent(/your deploy failed/i);
-    expect(h1).toHaveTextContent(/the agent already knows why/i);
+    expect(h1).toHaveTextContent(HERO_HEADLINE);
     expect(h1!.className).toContain("font-mono");
   });
 
@@ -56,8 +62,12 @@ describe("Hero", () => {
 
   it("renders the lede paragraph in the spec voice", () => {
     renderHero();
-    expect(screen.getByText(/long-lived runtime that owns one operational outcome/i)).toBeInTheDocument();
-    expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
+    for (const token of PILLAR_TOKENS) {
+      expect(screen.getByTestId("hero").textContent).toMatch(new RegExp(token, "i"));
+    }
+    expect(screen.getByText(/captures the/i)).toBeInTheDocument();
+    expect(screen.getByText(/problem class/i)).toBeInTheDocument();
+    expect(screen.getByText(/human approval/i)).toBeInTheDocument();
   });
 
   it("renders the install command in a copy-row with a copy-only Copy button", () => {
@@ -85,13 +95,13 @@ describe("Hero", () => {
     });
   });
 
-  it("copies only — does not scroll/navigate on primary CTA click (no #onboarding-flow jump)", async () => {
+  it("copies only — does not scroll or navigate on primary call-to-action click", async () => {
     const writeText = installClipboard();
-    // A real #onboarding-flow anchor exists on the page; the old hero scrolled
-    // to it on click. The copy-row must NOT — that was the "jumps to a different
+    // A real anchor exists on the page; the old hero scrolled away on click.
+    // The copy-row must NOT — that was the "jumps to a different
     // page" bug. Clicking copies and stays put.
     const anchor = document.createElement("section");
-    anchor.id = "onboarding-flow";
+    anchor.id = LOOP_ANCHOR_ID;
     const scrollIntoView = vi.fn();
     anchor.scrollIntoView = scrollIntoView;
     document.body.appendChild(anchor);
@@ -222,13 +232,28 @@ describe("Hero", () => {
     expect(fading.getAttribute("aria-live")).toBe("assertive");
   });
 
-  it("renders no replay link — the install copy-row is the only primary action", () => {
+  it("renders early-access and loop CTAs without replacing the copy-row", () => {
     renderHero();
-    expect(screen.queryByTestId("hero-cta-secondary")).toBeNull();
-    expect(screen.queryByText(/view a real wake/i)).toBeNull();
-    // The install copy-row and the animated install terminal remain.
+    const earlyAccess = screen.getByTestId("hero-cta-early-access");
+    expect(earlyAccess).toHaveTextContent(
+      HERO_PRIMARY_LABEL,
+    );
+    expect(earlyAccess.tagName).toBe("BUTTON");
+    expect(earlyAccess).toBeDisabled();
+    expect(earlyAccess).not.toHaveAttribute("href");
+    expect(screen.getByTestId("hero-cta-secondary")).toHaveTextContent(HERO_SECONDARY_LABEL);
+    expect(screen.getByTestId("hero-cta-secondary")).toHaveAttribute(
+      "href",
+      `/#${LOOP_ANCHOR_ID}`,
+    );
     expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
     expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
+  });
+
+  it("does not track disabled early-access CTA clicks", () => {
+    renderHero();
+    fireEvent.click(screen.getByTestId("hero-cta-early-access"));
+    expect(analytics.trackSignupStarted).not.toHaveBeenCalled();
   });
 
   it("renders the animated install Terminal whose Copy yields only the slash command", () => {

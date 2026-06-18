@@ -1,52 +1,97 @@
-// Auth-flow tagged error classes — Supabase-parity shape (mirrors
-// ~/Projects/oss/cli/apps/cli/src/next/commands/login/login.errors.ts).
-// Each variant is its own tagged class so the dispatcher's exit-code map
-// keys on a unique `_tag` and the formatter switch on `_tag` is
-// exhaustive at compile time. Built via factories (the reference idiom)
-// rather than 10 hand-written class bodies — one shared `message` getter
-// per field-shape instead of ten.
-//
-// All variants carry { detail, suggestion } at minimum. ServerError-
-// derived variants additionally carry an optional requestId so the
-// dispatcher can render `request_id:` alongside the detail for support
-// workflows — mirrors AuthError's existing requestId convention. The
-// reference has a single field shape; agent needs two (with/without
-// requestId), hence two factories over the reference's one.
+// Auth-flow tagged error classes. Each variant owns a stable `_tag` so
+// Effect.catchTag and the shared renderer can classify login failures.
 
-import { Data } from "effect";
+const SUGGESTION_PREFIX = "\n  Suggestion: " as const;
 
-interface BaseFields { readonly detail: string; readonly suggestion: string; }
-interface WithRequestId extends BaseFields { readonly requestId?: string | null; }
+abstract class AuthFlowErrorBase<Tag extends string> extends Error {
+  readonly _tag: Tag;
+  readonly detail: string;
+  readonly suggestion: string;
 
-const baseMessage = (e: BaseFields): string =>
-  `${e.detail}\n  Suggestion: ${e.suggestion}`;
-
-function baseError<Tag extends string>(tag: Tag) {
-  return class extends Data.TaggedError(tag)<BaseFields> {
-    override get message(): string {
-      return baseMessage(this);
-    }
-  };
+  protected constructor(
+    tag: Tag,
+    fields: { readonly detail: string; readonly suggestion: string },
+  ) {
+    super(`${fields.detail}${SUGGESTION_PREFIX}${fields.suggestion}`);
+    this.name = tag;
+    this._tag = tag;
+    this.detail = fields.detail;
+    this.suggestion = fields.suggestion;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
-function reqIdError<Tag extends string>(tag: Tag) {
-  return class extends Data.TaggedError(tag)<WithRequestId> {
-    override get message(): string {
-      return baseMessage(this);
-    }
-  };
+abstract class AuthFlowRequestError<Tag extends string> extends AuthFlowErrorBase<Tag> {
+  readonly requestId: string | null | undefined;
+
+  protected constructor(
+    tag: Tag,
+    fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null },
+  ) {
+    super(tag, fields);
+    this.requestId = fields.requestId;
+  }
 }
 
-export class InvalidSessionError extends reqIdError("InvalidSessionError") {}
-export class ExpiredSessionError extends reqIdError("ExpiredSessionError") {}
-export class RateLimitedError extends reqIdError("RateLimitedError") {}
-export class TimeoutError extends baseError("TimeoutError") {}
-export class InterruptedError extends baseError("InterruptedError") {}
-export class VerificationFailedError extends reqIdError("VerificationFailedError") {}
-export class DecryptError extends baseError("DecryptError") {}
-export class SessionAbortedError extends reqIdError("SessionAbortedError") {}
-export class SessionConsumedError extends reqIdError("SessionConsumedError") {}
-export class MeValidationError extends reqIdError("MeValidationError") {}
+export class InvalidSessionError extends AuthFlowRequestError<"InvalidSessionError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("InvalidSessionError", fields);
+  }
+}
+
+export class ExpiredSessionError extends AuthFlowRequestError<"ExpiredSessionError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("ExpiredSessionError", fields);
+  }
+}
+
+export class RateLimitedError extends AuthFlowRequestError<"RateLimitedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("RateLimitedError", fields);
+  }
+}
+
+export class TimeoutError extends AuthFlowErrorBase<"TimeoutError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("TimeoutError", fields);
+  }
+}
+
+export class InterruptedError extends AuthFlowErrorBase<"InterruptedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("InterruptedError", fields);
+  }
+}
+
+export class VerificationFailedError extends AuthFlowRequestError<"VerificationFailedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("VerificationFailedError", fields);
+  }
+}
+
+export class DecryptError extends AuthFlowErrorBase<"DecryptError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string }) {
+    super("DecryptError", fields);
+  }
+}
+
+export class SessionAbortedError extends AuthFlowRequestError<"SessionAbortedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("SessionAbortedError", fields);
+  }
+}
+
+export class SessionConsumedError extends AuthFlowRequestError<"SessionConsumedError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("SessionConsumedError", fields);
+  }
+}
+
+export class MeValidationError extends AuthFlowRequestError<"MeValidationError"> {
+  constructor(fields: { readonly detail: string; readonly suggestion: string; readonly requestId?: string | null }) {
+    super("MeValidationError", fields);
+  }
+}
 
 export type AuthFlowError =
   | InvalidSessionError

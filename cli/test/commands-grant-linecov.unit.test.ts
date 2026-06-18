@@ -202,3 +202,19 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
     }
   });
 });
+
+describe("grantDeleteEffectFromArgs JSON mode", () => {
+  test("prints a deleted payload and skips the human success line", async () => {
+    const cap: PrintCapture = { json: [], info: [] };
+    const exit = await Effect.runPromiseExit(
+      provideAll(grantDeleteEffectFromArgs(AGENTSFLEET_ID, AGENTSFLEET_ID), {
+        config: configLayer({ jsonMode: true }),
+        http: httpReturning({}),
+        output: captureOutputLayer(cap),
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(cap.json).toEqual([{ deleted: true, grant_id: AGENTSFLEET_ID }]);
+    expect(cap.info).toEqual([]);
+  });
+});

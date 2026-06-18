@@ -29,7 +29,7 @@ type ReqIdCtor = new (fields: {
   detail: string;
   suggestion: string;
   requestId?: string | null;
-}) => { _tag: string; message: string; requestId?: string | null };
+}) => { _tag: string; message: string; requestId: string | null | undefined };
 
 // Variants built via baseError() — { detail, suggestion } only.
 type BaseCtor = new (fields: { detail: string; suggestion: string }) => {

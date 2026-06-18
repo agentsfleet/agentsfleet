@@ -13,13 +13,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M92
 **Workstream:** 001
 **Date:** Jun 12, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — customer-facing: agentsfleet.net still sells the deploy-failure wake-on-event story while the product positioning moved to a resident engineer that compounds operational knowledge from recurring problem classes; every visitor from the application reads the wrong product
 **Categories:** User Interface (UI)
 **Batch:** B2 — after M92_002 (the agentsfleet rebrand lands first; every copy string here is authored under the new brand)
-**Branch:** — added at CHORE(open)
+**Branch:** feat/m92-website-refresh
+**Test Baseline:** unit=1951 integration=189
 **Depends on:** M92_002 (brand noun + identity surfaces; this workstream's copy and guard tokens say `agentsfleet`)
-**Provenance:** agent-generated (website repositioning session, Jun 12, 2026) — grounded in `~/Downloads/usezombie-techstars-onepager.md` (the submitted positioning) and a read of every `ui/packages/website/src` component; re-confirm at PLAN.
+**Provenance:** agent-generated (website repositioning session, Jun 12, 2026) — grounded in `~/Downloads/usezombie-techstars-onepager.md` (the submitted positioning), `docs/architecture/archive/office_hours_support_wedge_jun2026.md` (competitive grid + Ideal Customer Profile), and a read of every `ui/packages/website/src` component; re-confirm at PLAN.
 
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` (visual source of truth — mono typography, the pulse, dark-primary, anti-vibes list bans chat bubbles/gradient meshes/mascots) + `docs/architecture/direction.md` §UI surfaces. The compounding operational-knowledge loop itself lives only in `docs/architecture/archive/` (non-canon): this spec changes *marketing positioning*, approved via the TechStars submission + Jun 17 Chief Executive Officer (CEO) review; reconciling `high_level.md`/`user_flow.md` to the wedge is a named follow-up, not this diff.
 
@@ -54,7 +55,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 7. **Fit with existing features** — compounds with the design system (every new section composes existing primitives) and the guard-test pattern; must not destabilize the rates display (`RATES_DISPLAY` is the only pricing source and this diff never touches it).
 8. **Surface order** — UI-only by definition (marketing site). No Command-Line Interface (CLI) / API surface.
 9. **Dashboard restraint** — the source strip names categories the agent reads (Signals · Telemetry · Code · Control plane), not partnership claims; no customer logos, no testimonials, no quantitative performance claims until validated; no claim of autonomous merge/deploy while humans sleep.
-10. **Confused-user next step** — a visitor who wants proof clicks through to Docs (existing nav) or the design-partner call to action (mailto with a prefilled subject); a developer who wants to try it copies the install command — both affordances are in the hero.
+10. **Confused-user next step** — a visitor who wants proof clicks through to Docs (existing nav) or follows the loop anchor; a developer who wants to try it copies the install command. The `Get early access` affordance stays visible but disabled for Jun 17, 2026.
 
 ---
 
@@ -101,7 +102,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/website/src/components/Hero.tsx` | EDIT | escalation headline/lede, persona-aware copy, design-partner call to action beside the install row |
+| `ui/packages/website/src/components/Hero.tsx` | EDIT | escalation headline/lede, persona-aware copy, visible-but-disabled early-access call to action beside the install row |
 | `ui/packages/website/src/components/Hero.test.tsx` | EDIT | assertions track new copy + dual call to action |
 | `ui/packages/website/src/components/OnboardingFlow.tsx` | DELETE | install steps fold into the `PipelineDiagram` start node; standalone section removed (RULE ORP/NDC) |
 | `ui/packages/website/src/components/OnboardingFlow.test.tsx` | DELETE | component removed |
@@ -139,10 +140,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Hero repositioning
 
-The first screen says the new product. Headline moves to compounding operational knowledge in the house "memorable thing" voice; lede states the resident-engineer claim with the surviving pillar tokens; the install row and animated terminal stay; a design-partner call to action (mailto, prefilled subject) lands beside the install row. **Implementation default:** keep the `LIVE — wake.on.event` eyebrow — a first signal is the wake event, and it preserves a pinned token.
+The first screen says the new product. Headline moves to compounding operational knowledge in the house "memorable thing" voice; lede states the resident-engineer claim with the surviving pillar tokens; the install row and animated terminal stay; `Get early access` remains visible but disabled for Jun 17, 2026 with no link target or signup analytics. **Implementation default:** keep the `LIVE — wake.on.event` eyebrow — a first signal is the wake event, and it preserves a pinned token.
 
 - **Dimension 1.1** — hero carries the era pillar tokens (`resident engineer`, `human approval`, `replayable log`, `wake.on.event`) sourced from `marketing-copy.ts` → Test `test_hero_carries_era_pillar_tokens`
-- **Dimension 1.2** — dual call to action: install copy-row preserved verbatim; design-partner mailto present with analytics event → Test `test_hero_dual_cta`
+- **Dimension 1.2** — dual call to action: install copy-row preserved verbatim; `Get early access` renders disabled without `href` or signup analytics; secondary `See the loop` anchor remains present → Test `test_hero_dual_cta`
 
 ### §2 — Pipeline diagram + categorized logo strip
 
@@ -251,7 +252,7 @@ No HTTP/CLI surface. The locked rule is the exported constant module and the gua
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_hero_carries_era_pillar_tokens` | rendered hero text contains every token exported by `marketing-copy.ts` |
-| 1.2 | unit | `test_hero_dual_cta` | install copy-row and design-partner mailto both present; copy click writes `INSTALL_COMMAND` to clipboard (existing behaviour regression) |
+| 1.2 | unit | `test_hero_dual_cta` | install copy-row present; disabled `Get early access` has no `href` and does not fire signup analytics; copy click writes `INSTALL_COMMAND` to clipboard (existing behaviour regression) |
 | 2.1 | unit | `test_pipeline_renders_sources_and_stages` | four category labels + investigate/problem-class/scenario-test stages render in document order |
 | 2.2 | unit | `test_pipeline_scenario_pr_and_gate` | scenario/test artifact, fix PR card, and human-review gate render in document order |
 | 2.3 | unit | `test_pipeline_logos_local_only` | every rendered img/svg source matches `/logos/`; zero `http(s)://` sources |
@@ -274,10 +275,10 @@ No HTTP/CLI surface. The locked rule is the exported constant module and the gua
 
 ## Acceptance Criteria
 
-- [ ] Era pillar tokens, guard suite (incl. brand noun + unvalidated/autonomy-overclaim strings), and `llms.txt` test green — verify: `make test-unit-website`
-- [ ] Lint clean — verify: `make lint-website`
-- [ ] Homepage dry lane renders all sections, `/llms.txt` 200, axe green — verify: `make dry-smoke`
-- [ ] `gitleaks detect` clean · no non-md file over 350 lines added
+- [x] Era pillar tokens, guard suite (incl. brand noun + unvalidated/autonomy-overclaim strings), and `llms.txt` test green — verify: `make test-unit-website`
+- [x] Lint clean — verify: `make lint-website`
+- [x] Homepage dry lane renders all sections, `/llms.txt` 200, axe green — verify: `make dry-smoke`
+- [x] `gitleaks detect` clean · no non-md file over 350 lines added
 
 ---
 
@@ -319,7 +320,8 @@ No files deleted. Removed-copy sweep:
 - **Amendment (Indy, Jun 17, 2026 `/design-shotgun` — APPROVED visual direction):** ran the shotgun (code-authored HTML mockups; AI-image path skipped — no OpenAI key, and the token-precise design system is better served by exact CSS). Three variants generated (Single Spine / Terminal Ledger / Diagram-Forward); artifacts at `~/.gstack/projects/agentsfleet-usezombie/designs/homepage-refresh-20260617/` (`chosen.html` is the approved merge). Approved direction:
   - **Base = "Terminal Ledger"** — the loop (§2) renders as a **replayable terminal session** of timestamped evidence log-lines (`[wake] signal → [work] investigate → [EVIDENCE] problem class → scenario/test → fix PR → ⏸ human approval (pulse) → ✓ merged by human · recurrence reduced`), in `Terminal`/`LogLine` primitives — NOT the Cleric horizontal node-diagram. The four source categories (Signals · Telemetry · Code · Control plane) are still required (Dimension 2.1) but presented in the ledger aesthetic.
   - **Hero headline:** "A resident engineer that compounds operational knowledge." Keep the `LIVE — wake.on.event` eyebrow + pulse.
-  - **CTA labels (§1.2):** primary **"Get early access"** (was "Become a design partner" — aligns with `RATES_DISPLAY.HEADLINE`); secondary **"See the loop"** (anchor to §2). The design-partner mailto label is retired; the primary CTA still routes to the access/contact affordance.
+  - **CTA labels (§1.2):** primary **"Get early access"** (was "Become a design partner" — aligns with `RATES_DISPLAY.HEADLINE`); secondary **"See the loop"** (anchor to §2). The design-partner mailto label is retired.
+  - **Jun 17 disable:** Indy asked to disable `Get early access` for today. Header, hero, and usage-card early-access affordances render as disabled buttons with no `href`; the copy remains visible, and signup analytics do not fire from disabled controls.
   - **Pricing presentation (new scope consequence):** approved as a **3-plan card layout** (Free trial / Usage [featured] / Enterprise-contact) with copy "Start free. Pay only while it runs." + "Usage is metered per second — no seats, no tiers tax. Enterprise adds the controls big teams need." The **billed model stays metered** (`$5` credit · free events · `$0.0001/sec`); tiers are a **later product+billing decision**, Enterprise is contact-only (no fabricated price). This means **`Pricing.tsx` is now edited** (layout → 3 cards) while every `RATES_DISPLAY` value stays byte-identical — added to Files Changed; Invariant 5 + the rates pin still hold.
 
 ---
@@ -336,11 +338,13 @@ No files deleted. Removed-copy sweep:
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-website` | | |
-| Lint | `make lint-website` | | |
-| Dry lane (e2e + axe) | `make dry-smoke` | | |
-| Gitleaks | `gitleaks detect` | | |
-| Orphan sweep | Eval E6 | | |
+| Unit coverage | `cd ui/packages/website && npm run test:coverage` | 24 files / 164 tests passed; statements 100 percent, branches 100 percent, functions 100 percent, lines 100 percent | yes |
+| Typecheck | `cd ui/packages/website && npm run typecheck` | passed | yes |
+| Lint | `cd ui/packages/website && npm run lint` | passed | yes |
+| End-to-End (E2E) + axe | `cd ui/packages/website && npm run test:e2e` | 98 passed | yes |
+| Design audit | `/private/tmp/agentsfleet-design-audit.mjs` against local dev server | no console errors; no horizontal overflow; zero small touch targets; early-access controls disabled/no href; screenshots saved under `/private/tmp/agentsfleet-design-review/` | yes |
+| Gitleaks | `gitleaks detect` | pending | |
+| Orphan sweep | Eval E6 | pending | |
 
 ---
 

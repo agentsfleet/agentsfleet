@@ -1,13 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import HowItWorks from "./HowItWorks";
+import { HOW_IT_WORKS_HEADING, LOOP_STEPS } from "../lib/marketing-copy";
 
 describe("HowItWorks", () => {
   it("renders the section heading", () => {
     const { container } = render(<HowItWorks />);
     const heading = container.querySelector("h2");
     expect(heading).toBeInTheDocument();
-    expect(heading?.textContent).toBe("From trigger to evidenced diagnosis, durably.");
+    expect(heading?.textContent).toBe(HOW_IT_WORKS_HEADING);
   });
 
   it("renders the eyebrow", () => {
@@ -15,24 +16,32 @@ describe("HowItWorks", () => {
     expect(screen.getByText(/how it works/i)).toBeInTheDocument();
   });
 
-  it("renders all three steps", () => {
+  it("renders all eight loop steps", () => {
     render(<HowItWorks />);
-    expect(screen.getByText("A trigger arrives")).toBeInTheDocument();
-    expect(screen.getByText("The agent gathers evidence")).toBeInTheDocument();
-    expect(screen.getByText("Diagnosis posts; the run is auditable")).toBeInTheDocument();
+    for (const step of LOOP_STEPS) {
+      expect(screen.getByText(step.title)).toBeInTheDocument();
+    }
   });
 
   it("renders mono numbered eyebrows", () => {
     render(<HowItWorks />);
-    expect(screen.getByText("01")).toBeInTheDocument();
-    expect(screen.getByText("02")).toBeInTheDocument();
-    expect(screen.getByText("03")).toBeInTheDocument();
+    for (const step of LOOP_STEPS) {
+      expect(screen.getByText(step.number)).toBeInTheDocument();
+    }
   });
 
-  it("renders step descriptions", () => {
+  it("renders step descriptions in loop order", () => {
     render(<HowItWorks />);
-    expect(screen.getByText(/A GitHub Actions deploy fails, a cron fires/i)).toBeInTheDocument();
-    expect(screen.getByText(/calls the tools TRIGGER\.md allow-lists/i)).toBeInTheDocument();
-    expect(screen.getByText(/Slack receives the evidenced diagnosis/i)).toBeInTheDocument();
+    let previous: HTMLElement | null = null;
+    for (const step of LOOP_STEPS) {
+      const heading = screen.getByText(step.title);
+      expect(screen.getByText(step.description)).toBeInTheDocument();
+      if (previous) {
+        expect(
+          previous.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+      previous = heading;
+    }
   });
 });

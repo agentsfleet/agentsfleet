@@ -35,9 +35,10 @@ export interface HttpClientShape {
   ) => Effect.Effect<T, NetworkError | ServerError>;
 }
 
-export class HttpClient extends Context.Service<HttpClient, HttpClientShape>()(
+export type HttpClient = HttpClientShape;
+export const HttpClient = Context.Service<HttpClient>(
   "agentsfleet/runtime/HttpClient",
-) {}
+);
 
 const isFetchFailed = (cause: unknown): boolean =>
   cause instanceof TypeError &&

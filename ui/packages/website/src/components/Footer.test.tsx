@@ -20,7 +20,7 @@ describe("Footer", () => {
   it("renders the tagline without the self-managed/open-source tail", () => {
     renderFooter();
     expect(
-      screen.getByText(/durable, markdown-defined agents that wake on your events/i),
+      screen.getByText(/resident engineer that compounds operational knowledge/i),
     ).toBeInTheDocument();
     // "Self-managed. Open source." was pulled from the footer tagline.
     expect(screen.queryByText(/Self-managed\. Open source\./)).not.toBeInTheDocument();
@@ -29,10 +29,30 @@ describe("Footer", () => {
   it("renders product column with links", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^features$/i })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: /^loop$/i })).toHaveAttribute("href", "/#operational-loop");
     expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
-    expect(screen.getByRole("link", { name: /^docs$/i })).toHaveAttribute("href", "https://docs.agentsfleet.net");
     expect(screen.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
+  });
+
+  it("renders resources column with docs and machine-readable surfaces", () => {
+    renderFooter();
+    expect(screen.getByText(/^resources$/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^docs$/i })).toHaveAttribute(
+      "href",
+      "https://docs.agentsfleet.net",
+    );
+    expect(screen.getByRole("link", { name: /^llms\.txt$/i })).toHaveAttribute(
+      "href",
+      "/llms.txt",
+    );
+    expect(screen.getByRole("link", { name: /^llms-full\.txt$/i })).toHaveAttribute(
+      "href",
+      "/llms-full.txt",
+    );
+    expect(screen.getByRole("link", { name: /^OpenAPI$/ })).toHaveAttribute(
+      "href",
+      "/openapi.json",
+    );
   });
 
   it("renders community column with canonical Discord URL", () => {

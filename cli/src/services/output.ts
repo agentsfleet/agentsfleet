@@ -43,9 +43,8 @@ export interface OutputShape {
   ) => Effect.Effect<void>;
 }
 
-export class Output extends Context.Service<Output, OutputShape>()(
-  "agentsfleet/runtime/Output",
-) {}
+export type Output = OutputShape;
+export const Output = Context.Service<Output>("agentsfleet/runtime/Output");
 
 interface StreamPair {
   readonly stdout: Stream;
