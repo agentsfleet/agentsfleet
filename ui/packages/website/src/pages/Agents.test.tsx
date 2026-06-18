@@ -24,21 +24,29 @@ describe("Agents", () => {
     expect(screen.getByText(/canonical surface/i)).toBeInTheDocument();
   });
 
-  it("renders the install block with npm command", () => {
+  it("renders the merged install heading and npm command", () => {
     renderAgents();
+    // One install story: the "Install agentsfleet" heading sits over the
+    // bootstrap terminal (CLI + skills + slash command) — the old standalone
+    // InstallBlock was folded in.
     expect(screen.getByRole("heading", { name: /install agentsfleet/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/install agentsfleet command/i)).toHaveTextContent(
+    expect(screen.getByLabelText(/bootstrap commands/i)).toHaveTextContent(
       /npm install -g @agentsfleet\/cli/,
     );
   });
 
-  it("renders install block action buttons", () => {
+  it("renders install action links and no dashboard link", () => {
     renderAgents();
+    expect(screen.getByRole("link", { name: /start an agent/i })).toHaveAttribute(
+      "href",
+      "https://docs.agentsfleet.net/quickstart",
+    );
     expect(screen.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
     );
-    expect(screen.getByRole("link", { name: /open dashboard/i })).toBeInTheDocument();
+    // "open dashboard" was removed — no dashboard link on the agent surface.
+    expect(screen.queryByRole("link", { name: /open dashboard/i })).toBeNull();
   });
 
   it("renders bootstrap commands", () => {

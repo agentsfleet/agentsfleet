@@ -8,23 +8,20 @@ import {
 import { trackSignupStarted } from "../analytics/posthog";
 import { WAITLIST_URL } from "../config";
 import {
-  AGENT_PILLARS,
   AGENTS_SECTION_HEADING,
   AGENTS_SECTION_LEDE,
   LOOP_ANCHOR_ID,
   PREBUILT_AGENTS,
-  type AgentPillar,
   type PrebuiltAgent,
 } from "../lib/marketing-copy";
 
 /*
- * Prebuilt agents — the droids-style "ready to run" wall that replaced the old
- * loop · replayed ledger (redundant with HowItWorks + the hero lede). Each card
- * is category · name · description · connected-app logos · a waitlist CTA. The
- * three pillars beneath restate the product in one screen: an isolated machine
- * per run, operational memory that compounds, and proactive wake-on-event with
- * a replayable log. Keeps id={LOOP_ANCHOR_ID} so the hero "Meet the agents"
- * link, the footer "agents" link, nav, and llms.txt anchor all still resolve.
+ * Prebuilt agents — the droids-style "ready to run" wall. Each card is
+ * category · name · description · connected-app logos · a waitlist CTA. The
+ * three behavioral pillars (isolated / compounding / proactive) moved down to
+ * the Core Capabilities section, so this stays a clean catalogue. Keeps
+ * id={LOOP_ANCHOR_ID} so the hero "Meet the fleet" link, the footer "agents"
+ * link, nav, and the llms.txt anchor all still resolve.
  */
 export default function PrebuiltAgents() {
   return (
@@ -44,12 +41,6 @@ export default function PrebuiltAgents() {
               <AgentCard key={agent.id} agent={agent} />
             ))}
             <ComingSoonCard />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {AGENT_PILLARS.map((pillar) => (
-              <PillarCard key={pillar.id} pillar={pillar} />
-            ))}
           </div>
         </div>
       </section>
@@ -147,21 +138,5 @@ function ComingSoonCard() {
         More prebuilt agents are joining the fleet — coming soon.
       </p>
     </div>
-  );
-}
-
-function PillarCard({ pillar }: { pillar: AgentPillar }) {
-  return (
-    <Card className="flex flex-col gap-2" data-testid={`agent-pillar-${pillar.id}`}>
-      <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
-        {pillar.eyebrow}
-      </span>
-      <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
-        {pillar.title}
-      </h3>
-      <p className="font-sans text-body-sm leading-body text-text-muted m-0">
-        {pillar.description}
-      </p>
-    </Card>
   );
 }

@@ -16,7 +16,7 @@ describe("HowItWorks", () => {
     expect(screen.getByText(/how it works/i)).toBeInTheDocument();
   });
 
-  it("renders all eight loop steps", () => {
+  it("renders every loop step", () => {
     render(<HowItWorks />);
     for (const step of LOOP_STEPS) {
       expect(screen.getByText(step.title)).toBeInTheDocument();

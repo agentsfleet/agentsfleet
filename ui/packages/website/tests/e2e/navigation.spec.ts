@@ -113,7 +113,7 @@ test.describe("Agents page — install block", () => {
 
   test("npm install command is readable in install block", async ({ page }) => {
     await page.goto("/agents");
-    const block = page.getByLabel(/install agentsfleet command/i);
+    const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toContainText("npm install -g @agentsfleet/cli");
   });
 
@@ -125,8 +125,9 @@ test.describe("Agents page — install block", () => {
     );
   });
 
-  test("open dashboard button is visible", async ({ page }) => {
+  test("start an agent button is visible; no dashboard link", async ({ page }) => {
     await page.goto("/agents");
-    await expect(page.getByRole("link", { name: /open dashboard/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /open dashboard/i })).toHaveCount(0);
   });
 });
