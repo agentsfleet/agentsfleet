@@ -67,8 +67,16 @@ export default function Hero() {
   const shown = toast ?? lastToast.current;
 
   return (
-    <section className="site-section" aria-label="Hero" data-testid="hero">
-      <div className="wrap flex flex-col gap-8">
+    <section
+      className="site-section relative overflow-hidden"
+      aria-label="Hero"
+      data-testid="hero"
+    >
+      {/* The one sanctioned marketing glow — a mint halo centered behind the
+       * headline (design-shotgun "Bioluminescent", approved). Anchored to the
+       * content column via .hero-glow so it stays put on wide screens. */}
+      <div className="hero-glow" aria-hidden="true" />
+      <div className="wrap relative z-10 flex flex-col gap-8">
         <p
           className="inline-flex items-center gap-2 font-mono text-eyebrow uppercase tracking-eyebrow text-pulse"
           data-testid="hero-eyebrow"
@@ -100,24 +108,23 @@ export default function Hero() {
           <span aria-hidden="true">→</span>
         </Link>
 
-        <DisplayXL data-testid="hero-headline" className="max-w-tagline">
+        <DisplayXL
+          data-testid="hero-headline"
+          className="hero-headline-glow max-w-tagline"
+        >
           {HERO_HEADLINE}
         </DisplayXL>
 
         <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
           {HERO_LEDE_PARTS.intro}{" "}
           <strong className="font-medium text-text">
-            {HERO_LEDE_PARTS.problemClass}
-          </strong>
-          , {HERO_LEDE_PARTS.middle}{" "}
-          <strong className="font-medium text-text">
-            {HERO_LEDE_PARTS.humanApproval}
-          </strong>
-          . {HERO_LEDE_PARTS.outro}{" "}
-          <strong className="font-medium text-text">
-            {HERO_LEDE_PARTS.replayableLog}
+            {HERO_LEDE_PARTS.teammates}
           </strong>{" "}
-          {HERO_LEDE_PARTS.close}
+          {HERO_LEDE_PARTS.middle}{" "}
+          <strong className="font-medium text-text">
+            {HERO_LEDE_PARTS.recurringWork}
+          </strong>{" "}
+          {HERO_LEDE_PARTS.outro}
         </p>
 
         <div className="flex flex-col gap-3 max-w-wide">
@@ -150,7 +157,7 @@ export default function Hero() {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               asChild
-              className="min-h-11"
+              className="cta-glow min-h-11"
               data-testid="hero-cta-early-access"
             >
               <a

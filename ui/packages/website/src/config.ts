@@ -30,7 +30,10 @@ export const DOCS_QUICKSTART_URL = `${DOCS_URL}/quickstart`;
 export const GITHUB_URL = "https://github.com/agentsfleet/agentsfleet";
 export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const MARKETING_SITE_URL = "https://agentsfleet.net";
-export const TEAM_EMAIL = "team@agentsfleet.net";
+// NOTE: the canonical contact address is SUPPORT_EMAIL ("agentsfleet@agentmail.to")
+// in src/lib/contact.ts — used by Pricing, Terms, and Privacy. A second
+// "team@agentsfleet.net" constant used to live here, unused by any component
+// and contradicting the canonical address, so it was removed.
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
 
 // Bootstrap one-liner — one command that installs agentsfleet AND the skill

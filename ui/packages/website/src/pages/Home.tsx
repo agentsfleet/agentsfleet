@@ -6,8 +6,12 @@ import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
 import FAQ from "../components/FAQ";
-import { DisplayLG, SectionLabel } from "@agentsfleet/design-system";
-import { CAPABILITY_HEADING, CAPABILITY_ITEMS } from "../lib/marketing-copy";
+import { Card, DisplayLG, SectionLabel } from "@agentsfleet/design-system";
+import {
+  AGENT_PILLARS,
+  CAPABILITY_HEADING,
+  CAPABILITY_ITEMS,
+} from "../lib/marketing-copy";
 
 export default function Home() {
   return (
@@ -24,6 +28,31 @@ export default function Home() {
               {CAPABILITY_HEADING}
             </DisplayLG>
           </div>
+
+          {/* The three behavioral pillars — what every teammate is. Moved here
+           * from the prebuilt-agents wall so capabilities lead the section, and
+           * the prebuilts stay a clean catalogue. */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {AGENT_PILLARS.map((pillar) => (
+              <Card
+                key={pillar.id}
+                className="flex flex-col gap-2"
+                data-testid={`capability-pillar-${pillar.id}`}
+              >
+                <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-pulse">
+                  {pillar.eyebrow}
+                </span>
+                <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
+                  {pillar.title}
+                </h3>
+                <p className="font-sans text-body-sm leading-body text-text-muted m-0">
+                  {pillar.description}
+                </p>
+              </Card>
+            ))}
+          </div>
+
+          {/* The trust primitives — the guarantees underneath every run. */}
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {CAPABILITY_ITEMS.map((f) => (
               <FeatureSection

@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import Home from "./Home";
 import {
+  AGENT_PILLARS,
   CAPABILITY_ITEMS,
   HERO_HEADLINE,
   HOW_IT_WORKS_HEADING,
@@ -29,12 +30,12 @@ describe("Home", () => {
     expect(h1).toHaveTextContent(HERO_HEADLINE);
   });
 
-  it("renders the hero lede in spec voice", () => {
+  it("renders the hero lede in the warm teammates voice", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
-    expect(within(hero).getByText(/problem class/i)).toBeInTheDocument();
-    expect(within(hero).getByText(/human approval/i)).toBeInTheDocument();
-    expect(within(hero).getByText(/replayable log/i)).toBeInTheDocument();
+    expect(within(hero).getByText("AI teammates")).toBeInTheDocument();
+    expect(within(hero).getByText("recurring engineering work")).toBeInTheDocument();
+    expect(hero.textContent).toMatch(/hand you the change to approve/i);
   });
 
   it("renders the install command copy-row in the hero", () => {
@@ -80,7 +81,7 @@ describe("Home", () => {
     expect(screen.getByTestId("agent-card-coming-soon")).toBeInTheDocument();
   });
 
-  it("renders How it works with all eight loop steps", () => {
+  it("renders How it works with the three-beat flow", () => {
     renderHome();
     expect(screen.getByText(HOW_IT_WORKS_HEADING)).toBeInTheDocument();
     for (const step of LOOP_STEPS) {
@@ -88,9 +89,16 @@ describe("Home", () => {
     }
   });
 
-  it("renders core capabilities on the homepage", () => {
+  it("renders core capabilities — the three pillars plus the trust primitives", () => {
     renderHome();
     expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
+    // The Isolated / Compounding / Proactive pillars moved here from the
+    // prebuilt-agents wall.
+    for (const pillar of AGENT_PILLARS) {
+      expect(screen.getByTestId(`capability-pillar-${pillar.id}`)).toHaveTextContent(
+        pillar.title,
+      );
+    }
     for (const item of CAPABILITY_ITEMS) {
       expect(screen.getByText(item.title)).toBeInTheDocument();
     }

@@ -51,6 +51,6 @@ describe("CTABlock", () => {
     expect(heading.closest(".max-w-measure")).toBeNull();
     const measure = container.querySelector(".max-w-measure");
     expect(measure).not.toBeNull();
-    expect(measure!.textContent).toMatch(/support escalations/i);
+    expect(measure!.textContent).toMatch(/keeps recurring/i);
   });
 });
