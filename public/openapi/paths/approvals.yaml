@@ -191,7 +191,7 @@ components:
         agent_id: { type: string, format: uuid }
         agent_name: { type: string }
         workspace_id: { type: string, format: uuid }
-        action_id: { type: string }
+        action_id: { type: string, format: uuid }
         tool_name: { type: string }
         action_name: { type: string }
         gate_kind:
@@ -234,7 +234,7 @@ components:
       required: [gate_id, action_id, outcome, resolved_at, resolved_by]
       properties:
         gate_id: { type: string, format: uuid }
-        action_id: { type: string }
+        action_id: { type: string, format: uuid }
         outcome:
           type: string
           enum: [approved, denied, timed_out, auto_killed]
@@ -251,7 +251,7 @@ components:
         required: [gate_id, outcome, resolved_at, resolved_by]
         properties:
           gate_id: { type: string, format: uuid }
-          action_id: { type: string }
+          action_id: { type: string, format: uuid }
           outcome:
             type: string
             enum: [approved, denied, timed_out, auto_killed]

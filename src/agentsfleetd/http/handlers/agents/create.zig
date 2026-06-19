@@ -136,7 +136,7 @@ pub fn innerCreateAgent(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     const now_ms = clock.nowMillis();
 
     insertAgentOnConn(conn, workspace_id, body, parsed, skill_meta.tags, agent_id, now_ms) catch |err| {
-        if (isUniqueViolation(err)) {
+        if (isUniqueViolation(conn)) {
             hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
@@ -239,15 +239,23 @@ fn deleteAgentRow(conn: *pg.Conn, workspace_id: []const u8, agent_id: []const u8
     , .{ agent_id, workspace_id });
 }
 
-fn isUniqueViolation(_: anyerror) bool {
-    // pg.Pool returns error.PGError for all Postgres errors (connection, constraint, cast).
-    // We cannot distinguish unique_violation (SQLSTATE 23505) from other PGErrors
-    // because pg.Pool does not expose structured SQLSTATE codes.
-    // Return false to let the caller surface a 500 instead of a misleading 409.
-    return false;
+/// True when the last statement on `conn` failed the `uq_agents_workspace_name`
+/// unique constraint (a duplicate agent name in the workspace). The pg driver
+/// surfaces the structured SQLSTATE on `conn.err` after a failed `exec`, so the
+/// 409 path is reachable — same introspection the api-keys and signup handlers use.
+fn isUniqueViolation(conn: *pg.Conn) bool {
+    const pg_err = conn.err orelse return false;
+    return isUniqueViolationCode(pg_err.code);
 }
 
-test "isUniqueViolation always returns false (no SQLSTATE introspection)" {
-    try std.testing.expect(!isUniqueViolation(error.PGError));
-    try std.testing.expect(!isUniqueViolation(error.OutOfMemory));
+/// SQLSTATE `23505` is `unique_violation`.
+fn isUniqueViolationCode(sqlstate: []const u8) bool {
+    return std.mem.eql(u8, sqlstate, "23505");
+}
+
+test "isUniqueViolationCode matches 23505 only" {
+    try std.testing.expect(isUniqueViolationCode("23505"));
+    try std.testing.expect(!isUniqueViolationCode("23503")); // foreign_key_violation
+    try std.testing.expect(!isUniqueViolationCode("XX000"));
+    try std.testing.expect(!isUniqueViolationCode(""));
 }

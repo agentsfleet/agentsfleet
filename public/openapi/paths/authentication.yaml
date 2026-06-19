@@ -59,7 +59,6 @@
                   description: Session identifier for polling. UUIDv7.
                 request_id:
                   type: string
-                  format: uuid
                   description: Unique request identifier
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error

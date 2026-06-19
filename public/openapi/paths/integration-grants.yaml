@@ -74,7 +74,7 @@
       required: true
       schema:
         type: string
-      description: Opaque grant ID returned by integration-requests.
+      description: Grant ID (UUIDv7) returned by integration-requests.
     responses:
       '204':
         description: No Content
@@ -139,10 +139,46 @@
               properties:
                 grant_id:
                   type: string
+                  format: uuid
                 status:
                   type: string
                   enum:
                   - pending
+                agent_id:
+                  type: string
+                  format: uuid
+                service:
+                  type: string
+                requested_at:
+                  type: integer
+                  format: int64
+                message:
+                  type: string
+      '200':
+        description: Existing grant returned (idempotent — a pending or approved grant for this service already existed).
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grant_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum:
+                  - pending
+                  - approved
+                agent_id:
+                  type: string
+                  format: uuid
+                service:
+                  type: string
+                requested_at:
+                  type: integer
+                  format: int64
+                message:
+                  type: string
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':

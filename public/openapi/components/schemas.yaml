@@ -25,7 +25,7 @@ components:
           type: string
           format: uri
           description: Stable link to documentation for this error code
-          example: https://docs.agentsfleet.net/error-codes#UZ-AGT-009
+          example: https://docs.agentsfleet.net/api-reference/error-codes#UZ-AGT-009
         title:
           type: string
           description: Short human-readable label, same for every occurrence of this code
@@ -84,6 +84,7 @@ components:
       properties:
         agent_key_id:
           type: string
+          format: uuid
         agent_id:
           type: string
           format: uuid
@@ -108,6 +109,7 @@ components:
       properties:
         grant_id:
           type: string
+          format: uuid
         service:
           type: string
           enum:
@@ -170,8 +172,9 @@ components:
           type: boolean
           description: Whether this platform key is active
         updated_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
+          description: Epoch milliseconds of the last update.
     ReadyzBody:
       type: object
       description: Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only
@@ -200,6 +203,8 @@ components:
       - status
       - created_at
       - updated_at
+      - events_processed
+      - budget_used_nanos
       properties:
         id:
           type: string
@@ -226,6 +231,14 @@ components:
           description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
             $ref: '#/components/schemas/AgentTrigger'
+        events_processed:
+          type: integer
+          format: int64
+          description: Lifetime count of events this agent has processed (rows in `core.agent_events`).
+        budget_used_nanos:
+          type: integer
+          format: int64
+          description: Cumulative credit this agent has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `agent_execution_telemetry.credit_deducted_nanos`.
     AgentTrigger:
       type: object
       description: A single trigger projected into the agent list row.
@@ -264,3 +277,133 @@ components:
             type: string
             enum:
             - api
+    RunnerRegisterRequest:
+      type: object
+      description: Self-reported runner identity at enrollment. `sandbox_tier` is telemetry only — placement keys off operator-assigned trust, not this claim.
+      required:
+      - host_id
+      - sandbox_tier
+      - labels
+      properties:
+        host_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Operator-supplied host identifier for this runner (1-256 chars).
+        sandbox_tier:
+          type: string
+          description: Isolation strength the runner self-reports. Stored as telemetry.
+          enum:
+          - landlock_full
+          - container_nested
+          - macos_seatbelt
+          - dev_none
+        labels:
+          type: array
+          description: Free-form operator labels for placement/grouping.
+          items:
+            type: string
+    RunnerRegisterResponse:
+      type: object
+      description: The durable runner identity plus its bearer token. The `runner_token` is returned exactly once; the server stores only its SHA-256 hash.
+      required:
+      - runner_id
+      - runner_token
+      properties:
+        runner_id:
+          type: string
+          format: uuid
+          description: The minted runner's id (UUIDv7).
+        runner_token:
+          type: string
+          description: The `agt_r`-prefixed bearer token the runner presents on every later call. Returned once; never retrievable again.
+    RunnerSummary:
+      type: object
+      description: One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned.
+      required:
+      - id
+      - host_id
+      - sandbox_tier
+      - admin_state
+      - liveness
+      - labels
+      - last_seen_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        host_id:
+          type: string
+        sandbox_tier:
+          type: string
+          enum:
+          - landlock_full
+          - container_nested
+          - macos_seatbelt
+          - dev_none
+        admin_state:
+          type: string
+          description: Operator intent. `active` admits the runner plane; the others reject it.
+          enum:
+          - active
+          - cordoned
+          - draining
+          - drained
+          - revoked
+        liveness:
+          type: string
+          description: Derived runtime liveness. `registered` = minted, never seen; `busy` = holds a live lease; `online` = heartbeat fresh; `offline` = heartbeat stale.
+          enum:
+          - registered
+          - busy
+          - online
+          - offline
+        labels:
+          type: array
+          items:
+            type: string
+        last_seen_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds of the last heartbeat; 0 if never seen.
+        created_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds the runner was registered.
+    RunnerEvent:
+      type: object
+      description: One append-only runner history row.
+      required:
+      - id
+      - runner_id
+      - event_type
+      - occurred_at
+      - metadata
+      properties:
+        id:
+          type: string
+          format: uuid
+        runner_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+          - runner_registered
+          - runner_online
+          - runner_offline
+          - lease_acquired
+          - lease_released
+          - runner_cordoned
+          - runner_draining
+          - runner_drained
+          - runner_revoked
+        occurred_at:
+          type: integer
+          format: int64
+          description: Epoch milliseconds the event occurred.
+        metadata:
+          type: object
+          description: Event-type-specific metadata (e.g. host_id, from/to admin_state). Shape varies by event_type.
+          additionalProperties: true
