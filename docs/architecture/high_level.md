@@ -39,7 +39,7 @@ Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
 - **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's NullClaw child uses it for the inference call only. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
-- **Markdown-defined.** Operational behaviour lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
+- **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
 

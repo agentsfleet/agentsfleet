@@ -2,13 +2,16 @@
 
 Three end-to-end walkthroughs that compose the v2 install, trigger, execute, and bill loop. Each is a complete narrative — you should be able to read one in isolation and understand how a real user gets to a real outcome.
 
+Fleet Bundle import is tracked separately in Milestone 94 Workstream 002 (M94_002). These scenarios continue to prove the platform-ops path; M94_002 adds two bundle fixtures on top of the same runtime: GitHub Pull Request (PR) reviewer and Zoho Recruit outreach.
+
 All three scenarios follow the same persona — **John Doe** — across his journey from cold install to self-managed adoption to gate trip.
 
-| File | Phase of John's journey | What it proves |
+| File | Stage of John's journey | What it proves |
 |---|---|---|
 | [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Fireworks + Kimi K2.6) | Wedge demo: zero to first webhook diagnosis in <10 min. `tenant provider show` returns the synth-default posture block; install-skill writes resolved values into frontmatter. |
 | [`02_self_managed.md`](./02_self_managed.md) | Switches to self-managed (Fireworks + Kimi K2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider add` time; the control plane overlays sentinels at lease time; api_key never leaves the resolver-to-inference path. |
 | [`03_balance_gate.md`](./03_balance_gate.md) | $5 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + run deductions; gate trips at zero with a dashboard-pointer UX. |
+| M94_002 fixtures | Fleet Bundle import scenarios | Validated bundle snapshots install through the existing agent API; no separate bundle-install endpoint. |
 
 ## Cross-cutting decisions these scenarios encode
 

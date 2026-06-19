@@ -10,7 +10,7 @@ Principles. Each links to where it's enforced — when a spec contradicts one of
 
 - **One agent is a durable runtime, not a one-shot prompt.** Enforced by the lease model: `agentsfleetd` hands a runner one event at a time and an agent's state survives runner restarts via `core.agent_sessions`. See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The two agents in play".
 - **Trigger sources can differ; execution enters one common event-processing path.** Webhook, cron, steer, and continuation all `XADD agent:{id}:events`; the lease/execute path doesn't branch on actor. See [`data_flow.md`](./data_flow.md) §B (TRIGGER) and §C (EXECUTE).
-- **Behaviour is primarily defined in natural language through `SKILL.md` and `TRIGGER.md`.** The platform parses `TRIGGER.md` frontmatter (tools, credentials, network, budget, context, model); `SKILL.md` is advisory prose the agent reads at run open. See [`capabilities.md`](./capabilities.md) §1.
+- **Behaviour is primarily defined in natural language through `SKILL.md`, optional `TRIGGER.md`, and bundle support files.** The platform parses `TRIGGER.md` frontmatter when present (tools, credentials, network, budget, context, model); if absent, install creates the default manual/API trigger. `SKILL.md` is advisory prose the agent reads at run open. See [`capabilities.md`](./capabilities.md) §1.
 - **Secrets are injected at execution time, never embedded in prompt text or written into the agent's context.** Tool bridge substitutes `${secrets.NAME.FIELD}` after sandbox entry; `args_redacted` rebuilds the placeholder before progress frames leave the runner's sandboxed child. See [`data_flow.md`](./data_flow.md) §C step 4 + step 7, [`capabilities.md`](./capabilities.md) §3 "Credential vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 - **History is durable with actor provenance.** Every event lands in `core.agent_events` with `actor=(steer:<user>|webhook:<source>|cron:<schedule>|continuation:<original>)`. See [`data_flow.md`](./data_flow.md) §"The three durable stores".
 - **Checkpoints are durable; mid-run state survives via `memory_store`.** Layer 1 of the context lifecycle. See [`capabilities.md`](./capabilities.md) §4 ("Layer 1 — `memory_checkpoint_every`").
@@ -31,3 +31,5 @@ The runtime keeps only a thin typed envelope:
 - context budget knobs (defaults inherited from the active model's tier; user-overridable in `x-agentsfleet.context`)
 
 Everything else stays prompt-driven and iterated by editing the agent's documents and policies.
+
+Fleet Bundles are an import/template layer above the runtime, not a second runtime entity. A bundle snapshot may carry `SOUL.md`, provider playbooks, scripts, examples, or assets, but those files cannot grant capabilities by prose. Only parsed trigger policy plus workspace grants become `ExecutionPolicy` on lease.
