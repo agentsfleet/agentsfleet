@@ -89,7 +89,7 @@ export default function WorkspaceSwitcher({
             </span>
             <ChevronDownIcon size={14} aria-hidden="true" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="start" className="max-h-96 overflow-y-auto">
             <DropdownMenuLabel>Workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {workspaces.map((ws) => (

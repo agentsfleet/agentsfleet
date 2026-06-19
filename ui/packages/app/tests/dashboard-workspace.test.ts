@@ -79,6 +79,26 @@ describe("WorkspaceSwitcher component", () => {
     await waitFor(() => expect(screen.getByTestId("workspace-name-input")).toBeTruthy());
   });
 
+  it("bounds the workspace menu so create actions remain reachable", async () => {
+    const manyWorkspaces = Array.from({ length: 32 }, (_, index) => ({
+      id: `ws_${index}`,
+      name: `Workspace ${index}`,
+    }));
+    const { container } = render(
+      React.createElement(
+        (await import("../components/layout/WorkspaceSwitcher")).default,
+        {
+          workspaces: manyWorkspaces,
+          activeId: "ws_0",
+          onSwitch: setActiveWorkspaceMock,
+        } as never,
+      ),
+    );
+    const menu = container.querySelector("[data-dropdown-content]");
+    expect(menu?.className).toContain("max-h-96");
+    expect(menu?.className).toContain("overflow-y-auto");
+  });
+
   it("renders the active workspace label", async () => {
     await renderSwitcher();
     expect(screen.getByLabelText(/select workspace/i).textContent).toContain("Alpha");
