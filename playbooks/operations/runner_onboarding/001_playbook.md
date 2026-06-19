@@ -85,7 +85,7 @@ surface.
 ## 2.0 Human: run the dashboard + sign in
 
 - **Local:** `cd ui/packages/app && bun run dev` → http://localhost:3000
-- **Deployed (zero local setup):** `https://agentsfleet-app.vercel.app` — already
+- **Deployed (zero local setup):** `https://app-dev.agentsfleet.net` — already
   built against `api-dev` (may sit behind a Vercel bypass).
 
 Sign in as `nkishore@megam.io`. If **Configuration → Runners** is **absent**, the

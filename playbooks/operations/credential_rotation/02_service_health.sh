@@ -68,7 +68,7 @@ fi
 
 # --- 4.0 Vercel bypass with rotated secret ---
 echo ""
-echo "-- Vercel bypass (agentsfleet-app.vercel.app)"
+echo "-- Vercel bypass (app-dev.agentsfleet.net)"
 
 bypass_ref="op://$vault_prod/vercel-bypass-app/credential"
 bypass_secret="$(op_read_with_retry "$bypass_ref" || true)"
@@ -79,7 +79,7 @@ if [ -z "$bypass_secret" ]; then
 else
   http_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 \
     -H "x-vercel-protection-bypass: $bypass_secret" \
-    "https://agentsfleet-app.vercel.app/sign-in" 2>/dev/null || true)"
+    "https://app-dev.agentsfleet.net/sign-in" 2>/dev/null || true)"
 
   if [ "$http_code" = "200" ]; then
     echo "  ✓ Vercel bypass returned 200"

@@ -427,7 +427,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet.vercel.app
+          BASE_URL: https://app-dev.agentsfleet.net
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
@@ -443,7 +443,7 @@ jobs:
   # the acceptance suite (tests/e2e/acceptance/**). Failures gate the notify
   # step.
   #
-  # `https://agentsfleet.vercel.app` is the dev-facing dashboard — the
+  # `https://app-dev.agentsfleet.net` is the dev-facing dashboard — the
   # `agentsfleet` Vercel project's Production env has
   # `NEXT_PUBLIC_API_URL=https://api-dev.agentsfleet.net` baked in (the
   # production-customer dashboard lives behind the `app.agentsfleet.net`
@@ -501,7 +501,7 @@ jobs:
         run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
-          BASE_URL: https://agentsfleet.vercel.app
+          BASE_URL: https://app-dev.agentsfleet.net
           NEXT_PUBLIC_API_URL: https://api-dev.agentsfleet.net
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
@@ -564,8 +564,11 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/publishable-key
           AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/regular
           AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
+          # The handshake browser leg navigates the protected dev dashboard.
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
       - name: Run CLI acceptance suite against api-dev
         run: bun run test:acceptance
@@ -573,8 +576,14 @@ jobs:
         env:
           AGENTSFLEET_ACCEPTANCE_TARGET: https://api-dev.agentsfleet.net
           AGENTSFLEET_ACCEPTANCE_BINARY: worktree
-          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://agentsfleet.vercel.app
+          # Dev dashboard that serves /cli-auth/{session_id} and is built with
+          # the dev Clerk instance matching api-dev (Vercel dev environment).
+          AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL: https://app-dev.agentsfleet.net
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          # Browser leg signs in via clerk.signIn, which needs the publishable key.
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
+          # Bypass Vercel deployment protection so the browser reaches the app.
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
           AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
           AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}
 
