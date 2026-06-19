@@ -159,8 +159,12 @@ describe("api url resolution drives every fetch from runCli", () => {
   // cross-module short-circuit between the global-arg parser and creds
   // resolution — unit tests on the parser alone could not catch it. This
   // 16-case matrix walks every combination of (--api flag, AGENTSFLEET_API_URL
-  // env, API_URL env, creds.api_url persisted) and asserts the resolved
-  // URL drives the actual outbound fetch through the runCli dispatch.
+  // env, ambient unprefixed API_URL env, creds.api_url persisted) and asserts
+  // the resolved URL drives the actual outbound fetch through runCli dispatch.
+  //
+  // `aenv` sets a bare API_URL. It is NOT a resolution source — the
+  // unprefixed alias was removed as off-brand — so these cases double as the
+  // regression guard that an ambient API_URL is ignored, never resolved.
   describe("full precedence matrix", () => {
     const FLAG = "https://flag.example";
     const ZENV = "https://agent-env.example";
@@ -183,14 +187,16 @@ describe("api url resolution drives every fetch from runCli", () => {
       { set: { flag: 1, zenv: 0, aenv: 1, creds: 0 }, expected: FLAG },
       { set: { flag: 1, zenv: 0, aenv: 0, creds: 1 }, expected: FLAG },
       { set: { flag: 1, zenv: 0, aenv: 0, creds: 0 }, expected: FLAG },
-      // Flag unset, AGENTSFLEET_API_URL set → AGENTSFLEET_API_URL wins over API_URL / creds / default.
+      // Flag unset, AGENTSFLEET_API_URL set → it wins; the ambient API_URL
+      // alongside it is ignored either way.
       { set: { flag: 0, zenv: 1, aenv: 1, creds: 1 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 1, creds: 0 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 0, creds: 1 }, expected: ZENV },
       { set: { flag: 0, zenv: 1, aenv: 0, creds: 0 }, expected: ZENV },
-      // Flag + AGENTSFLEET_API_URL unset, API_URL set → API_URL wins over creds / default.
-      { set: { flag: 0, zenv: 0, aenv: 1, creds: 1 }, expected: AENV },
-      { set: { flag: 0, zenv: 0, aenv: 1, creds: 0 }, expected: AENV },
+      // Flag + AGENTSFLEET_API_URL unset, only a bare API_URL set → the alias
+      // is ignored, so resolution falls through to creds.api_url, then DEFAULT.
+      { set: { flag: 0, zenv: 0, aenv: 1, creds: 1 }, expected: CREDS },
+      { set: { flag: 0, zenv: 0, aenv: 1, creds: 0 }, expected: DEFAULT },
       // Only creds set → creds.api_url wins over default. (This is the leg
       // the original bug short-circuited.)
       { set: { flag: 0, zenv: 0, aenv: 0, creds: 1 }, expected: CREDS },
