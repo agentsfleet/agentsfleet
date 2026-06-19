@@ -1,6 +1,6 @@
 import { listAgentEvents } from "@/lib/api/events";
 import type { AgentTrigger } from "@/lib/types";
-import { triggerKey } from "./TriggerPanel";
+import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
 
 /**
  * Maps a declared trigger to the actor-glob the events API recognises.
@@ -19,11 +19,11 @@ import { triggerKey } from "./TriggerPanel";
  */
 export function actorGlobFor(t: AgentTrigger): string | null {
   switch (t.type) {
-    case "webhook":
-      return `webhook:${t.source}:*`;
-    case "cron":
-      return `cron:*`;
-    case "api":
+    case AGENT_TRIGGER_TYPE.webhook:
+      return `${AGENT_TRIGGER_TYPE.webhook}:${t.source}:*`;
+    case AGENT_TRIGGER_TYPE.cron:
+      return `${AGENT_TRIGGER_TYPE.cron}:*`;
+    case AGENT_TRIGGER_TYPE.api:
       return null;
   }
 }
@@ -48,7 +48,7 @@ export async function resolveLastDeliveries(
       const actor = actorGlobFor(t);
       if (!actor) {
         // Leave the key absent — `undefined` reads as "parent did not
-        // look" in TriggerPanel's prop contract, which suppresses both
+        // look" in TriggerPanel's prop semantics, which suppresses both
         // the "never" delivery badge and the auto-expand-on-mount path.
         // Writing `null` would falsely fire both on every api trigger.
         return;

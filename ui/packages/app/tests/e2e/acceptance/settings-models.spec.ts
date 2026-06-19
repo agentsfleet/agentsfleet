@@ -23,8 +23,8 @@ test.describe("settings model page", () => {
     await expect(page).toHaveURL(/\/settings\/models(\?|$)/);
 
     await expect(page.getByRole("heading", { name: /^models & credentials$/i })).toBeVisible();
-    await expect(page.getByLabel("Current model setup")).toBeVisible();
-    await expect(page.getByLabel("Model setup")).toBeVisible();
-    await expect(page.getByLabel("Credential vault")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Current model setup" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Model setup", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Credential vault" })).toBeVisible();
   });
 });
