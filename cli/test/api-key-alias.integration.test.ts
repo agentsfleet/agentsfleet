@@ -1,15 +1,15 @@
-// Regression guard for the removal of the unprefixed API_KEY env alias.
-// cli.ts previously read `env.API_KEY || env.AGENTSFLEET_API_KEY`; the bare
-// form was off-brand (and outranked the prefixed one). These tests prove
-// that an ambient `API_KEY` is no longer a recognized auth source while
-// `AGENTSFLEET_API_KEY` still clears runCli's local auth guard.
+// Regression guards for the unprefixed API_KEY env alias. cli.ts previously
+// read `env.API_KEY || env.AGENTSFLEET_API_KEY`; the bare form was off-brand
+// (and outranked the prefixed one). These prove that an ambient `API_KEY` is
+// no longer a recognized auth source, while `AGENTSFLEET_API_KEY` both clears
+// runCli's local auth guard AND reaches the wire as `Authorization: Bearer`
+// on the Effect http-client path.
 //
-// Scope note: this guards the alias REMOVAL (which env names the local
-// guard accepts), not wire-level service auth. Whether AGENTSFLEET_API_KEY
-// is propagated as an Authorization header is a separate concern — the
-// CLI's in-flight Effect http-client migration does not yet forward
-// ctx.apiKey on every command path (src/lib/http.ts does; the Effect
-// src/services/http-client.ts does not). That gap predates this change.
+// The wire-level assertion exists because handlers-bind's configOverrideFromCtx
+// originally mirrored only ctx.token into the Effect client's accessToken, so
+// a service key cleared the guard but sent no auth header on Effect-path
+// commands. bearerCredentialFromCtx now falls back to ctx.apiKey; this test
+// is its red-green proof.
 //
 // Sibling to api-url-resolution.integration.test.ts, which guards the
 // symmetric removal of the bare API_URL alias.
@@ -86,32 +86,35 @@ test("ambient bare API_KEY authenticates nothing — alias removed → AUTH_REQU
   });
 });
 
-test("AGENTSFLEET_API_KEY clears the local auth guard — bare API_KEY does not", async () => {
+test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path requests", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
-    let reached = false;
-    const fetchImpl = asFetchOverride(async (url): Promise<ResponseLike> => {
-      reached = true;
+    let authHeader: string | undefined;
+    // `list` runs through the Effect http-client (handlers-bind). Capture the
+    // Authorization header it sends on the workspace /agents request.
+    const fetchImpl = asFetchOverride(async (url, init): Promise<ResponseLike> => {
+      if (url.includes("/agents")) {
+        const headers = init?.headers as Record<string, string> | undefined;
+        authHeader = headers?.Authorization;
+      }
       return {
         ok: true,
         status: 200,
         statusText: "OK",
         headers: makeHeaders([]),
-        text: async () => JSON.stringify(url.endsWith("/healthz") ? { status: "ok" } : { items: [] }),
+        text: async () => JSON.stringify({ items: [] }),
       };
     });
-    await runCli(["--json", "doctor"], {
+    await runCli(["--json", "list"], {
       env: envWith({ AGENTSFLEET_API_KEY: "sk-branded-works" }),
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
     });
-    // The branded key clears the local auth guard, so doctor proceeds past it
-    // (reached=true) instead of short-circuiting with AUTH_REQUIRED. This
-    // asserts only that AGENTSFLEET_API_KEY is a recognized local auth source
-    // — NOT that the key is forwarded on the wire (see the scope note up top).
-    assert.equal(reached, true, `expected the command to clear the auth guard; stderr=${err.read()}`);
-    assert.ok(!/AUTH_REQUIRED/.test(err.read()), `branded key should clear the guard; stderr=${err.read()}`);
+    // The branded key clears the guard AND reaches the wire as a Bearer
+    // credential — proving the Effect-path propagation fix, not just that the
+    // local guard accepted it.
+    assert.equal(authHeader, "Bearer sk-branded-works", `expected the api key on the wire; stderr=${err.read()}`);
   });
 });
