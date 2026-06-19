@@ -103,17 +103,17 @@ describe("dashboard overview page", () => {
     });
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
-    expect(m).toContain("First wake");
+    expect(m).toContain("Start your fleet");
     expect(m).toContain("free credit"); // credits > 0 copy branch
   });
 
-  it("StatusTiles first-install copy degrades to the terminal prompt when balance is unknown", async () => {
+  it("StatusTiles first-install copy still points at SKILL.md when balance is unknown", async () => {
     listAgentsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
     getTenantBillingMock.mockResolvedValue(null); // balance null → credits-null branch
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
-    expect(m).toContain("First wake");
-    expect(m).toContain("Install an agent from your terminal");
+    expect(m).toContain("Start your fleet");
+    expect(m).toContain("SKILL.md");
   });
 
   it("StatusTiles returns null without a token or an active workspace", async () => {

@@ -57,6 +57,7 @@ function configOverrideFromCtx(ctx: LifecycleCtx): {
   jsonMode: boolean;
   noOpen: boolean;
   apiUrl: string;
+  dashboardUrl: string;
   accessToken: Option.Option<Redacted.Redacted<string>>;
   fetchImpl?: FetchImpl;
 } {
@@ -64,6 +65,7 @@ function configOverrideFromCtx(ctx: LifecycleCtx): {
     jsonMode: Boolean(ctx.jsonMode),
     noOpen: Boolean(ctx.noOpen),
     apiUrl: ctx.apiUrl,
+    dashboardUrl: ctx.dashboardUrl,
     accessToken:
       isString(ctx.apiKey) && ctx.apiKey.length > 0
         ? Option.some(Redacted.make(ctx.apiKey))

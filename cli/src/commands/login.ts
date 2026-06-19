@@ -3,7 +3,7 @@
 //
 //   1. CLI generates an ephemeral P-256 keypair.
 //   2. POST /v1/auth/sessions { public_key, token_name } → session_id.
-//   3. CLI prints + opens https://app.agentsfleet.net/cli-auth/{session_id}.
+//   3. CLI prints + opens the API-provided browser approval URL.
 //   4. Dashboard mints the JWT, AES-GCM-encrypts it to the CLI's public
 //      key, PATCHes the ciphertext + nonce + dashboard_public_key + a
 //      6-digit verification code to /v1/auth/sessions/{id}/approve.
@@ -164,7 +164,7 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   yield* captureLoginCompleted(sessionId, token, "browser");
 });
 
-// Login surface contract: every failure exits 1. Transport / server
+// Login surface rule: every failure exits 1. Transport / server
 // errors during create-session get re-wrapped as AuthError so the
 // dispatcher's exit-code map still routes them as AuthError(1) rather than
 // ServerError(3) / NetworkError(2). VerificationFailed, DecryptError, and
@@ -204,7 +204,8 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const keypair = yield* generateKeypair;
   const tokenName = flags.tokenName ?? defaultTokenName();
   const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
-  const loginUrl = buildLoginUrl(config.dashboardUrl, created.session_id);
+  const serverLoginUrl = created.login_url?.trim();
+  const loginUrl = serverLoginUrl ? serverLoginUrl : buildLoginUrl(config.dashboardUrl, created.session_id);
 
   yield* announceSession(created.session_id, loginUrl);
   yield* maybeOpenBrowser(loginUrl, flags.noOpen);

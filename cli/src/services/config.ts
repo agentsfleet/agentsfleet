@@ -8,14 +8,12 @@
 
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import type { FetchImpl } from "../lib/http.ts";
+import {
+  DEFAULT_API_URL,
+  normalizeApiUrl,
+  resolveDashboardUrl,
+} from "../util/url.ts";
 
-const DEFAULT_API_URL = "https://api.agentsfleet.net";
-// PROD dashboard is `app.agentsfleet.net` (DEV is the Vercel preview at
-// `app-dev.agentsfleet.net`; see `runtime_loader.zig:121 APP_URL`,
-// `BILLING_DASHBOARD_URL` in `commands/billing.ts`, and acceptance's
-// `DASHBOARD_URL_PROD`). The earlier `dashboard.agentsfleet.net` value
-// was a typo that pointed at a nonexistent domain.
-const DEFAULT_DASHBOARD_URL = "https://app.agentsfleet.net";
 // PostHog project key is public-by-design (write-only capture scope,
 // no read/admin), same model as Stripe pk_live_…. Supabase ships
 // theirs as a plain string in cli-config.layer.ts; we match that.
@@ -71,9 +69,13 @@ export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
   trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
 
 export const resolveCliConfig = (): CliConfigShape => {
-  const apiUrl = trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL;
-  const dashboardUrl =
-    trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
+  const apiUrl = normalizeApiUrl(
+    trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL,
+  );
+  const dashboardUrl = resolveDashboardUrl(
+    apiUrl,
+    trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")),
+  );
   // The env-sourced bearer is the service API key (env slot). It wins over
   // a stored login JWT via `resolveToken`'s env-first precedence. Resolution
   // is centralised in cli.ts before this layer; tests that bypass runCli see

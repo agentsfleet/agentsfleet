@@ -86,13 +86,15 @@ test "parseAgentConfig: cron trigger defaults" {
     try std.testing.expect(cfg.gates == null);
 }
 
-test "parseAgentConfig: api trigger is rejected with InvalidTriggerType" {
+test "parseAgentConfig: api trigger is parsed" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"api-agent",
-        \\ "x-agentsfleet":{"triggers":[{"type":"api"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\{"name":"api-agent","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
-    try std.testing.expectError(AgentConfigError.InvalidTriggerType, parseAgentConfig(alloc, json));
+    var cfg = try parseAgentConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
+    try std.testing.expect(cfg.triggers[0] == .api);
 }
 
 test "parseAgentConfig: singular trigger key inside x-agentsfleet returns UnknownRuntimeKey" {
@@ -133,12 +135,14 @@ test "parseAgentConfig: root is array not object returns MissingRequiredField" {
     try std.testing.expectError(AgentConfigError.MissingRequiredField, parseAgentConfig(alloc, "[]"));
 }
 
-test "parseAgentConfig: empty tools array rejected" {
+test "parseAgentConfig: empty tools array is accepted" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-agentsfleet":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":[],"budget":{"daily_dollars":1.0}}}
     ;
-    try std.testing.expectError(AgentConfigError.MissingRequiredField, parseAgentConfig(alloc, json));
+    var cfg = try parseAgentConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(usize, 0), cfg.tools.len);
 }
 
 test "parseAgentConfig: partial-build leak check (invalid budget after valid tools)" {

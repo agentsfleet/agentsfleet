@@ -1,4 +1,4 @@
-// Wire-shape contracts + platform default for the device-flow login, split out
+// Wire-shape types + platform default for the device-flow login, split out
 // of login-device-flow.ts to keep that module under the 350-line file cap
 // (RULE FLL). Re-exported from login-device-flow.ts, so existing consumers
 // (login.ts, tests) import unchanged.
@@ -9,6 +9,7 @@
 
 export interface SessionCreatedResponse {
   readonly session_id: string;
+  readonly login_url?: string;
   readonly request_id?: string;
 }
 

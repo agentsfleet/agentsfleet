@@ -11,14 +11,14 @@ const NAV_SURFACE = "settings_tabs";
 // destinations. Defaults + Security are scaffolded (the routes exist) but
 // omitted here until built — add them back to surface them.
 const SETTINGS_TABS: TabNavItem[] = [
-  { label: "Basic Info", href: "/settings" },
+  { label: "Workspace", href: "/settings" },
   { label: "API Keys", href: "/settings/api-keys" },
 ];
 
 // "/settings" is the index — match it only exactly so it doesn't light up on
 // nested tabs; deeper tabs match themselves and any future children. Masked
 // sub-routes (/settings/defaults, /settings/security) have no tab entry, so
-// they highlight nothing rather than falsely lighting up Basic Info.
+// they highlight nothing rather than falsely lighting up Workspace.
 function activeHref(pathname: string): string {
   for (const tab of SETTINGS_TABS) {
     if (tab.href === "/settings") continue;
@@ -37,12 +37,16 @@ function tabSource(href: string): string {
 // Thin Next adapter over the design-system <TabNav>: injects routing
 // (usePathname + <Link>), the settings tab set, and nav analytics. The nav
 // rendering/styling lives in the design-system primitive.
-export default function SettingsTabs() {
+type SettingsTabsProps = {
+  title?: string;
+};
+
+export default function SettingsTabs({ title = "Settings" }: SettingsTabsProps) {
   const pathname = usePathname();
   return (
     <div className="space-y-6">
       <PageHeader>
-        <PageTitle>Settings</PageTitle>
+        <PageTitle>{title}</PageTitle>
       </PageHeader>
       <TabNav
         label="Settings sections"

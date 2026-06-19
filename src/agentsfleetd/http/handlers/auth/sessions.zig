@@ -56,6 +56,12 @@ pub fn innerCreateAuthSession(hx: hx_mod.Hx, req: *httpz.Request) void {
     const session_id = hx.ctx.auth_sessions.create(parsed.value.public_key, parsed.value.token_name) catch |err| {
         return helpers.failFromStoreError(hx, err, null);
     };
+    defer hx.ctx.auth_sessions.alloc.free(session_id);
+    const login_url = buildLoginUrl(hx.alloc, hx.ctx.app_url, session_id) catch {
+        common.internalOperationError(hx.res, "Login URL build failed", hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(login_url);
 
     audit_events.emitSessionCreated(
         hx.ctx.audit_ctx,
@@ -68,7 +74,12 @@ pub fn innerCreateAuthSession(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     var rbuf: [helpers.REDACT_BUF_LEN]u8 = undefined;
     log.info("auth_session_created", .{ .session_id = helpers.redactSid(&rbuf, session_id), .req_id = hx.req_id });
-    hx.ok(.created, .{ .session_id = session_id, .request_id = hx.req_id });
+    hx.ok(.created, .{ .session_id = session_id, .login_url = login_url, .request_id = hx.req_id });
+}
+
+fn buildLoginUrl(alloc: std.mem.Allocator, app_url: []const u8, session_id: []const u8) ![]const u8 {
+    const base = std.mem.trimEnd(u8, app_url, "/");
+    return std.fmt.allocPrint(alloc, "{s}/cli-auth/{s}", .{ base, session_id });
 }
 
 // ── GET /v1/auth/sessions/{id} ───────────────────────────────────────────
@@ -280,5 +291,19 @@ fn bulkAbortObserverOnAborted(ctx: *anyopaque, session_id: []const u8) void {
         state.clerk_user_id,
         state.derived_ip,
         state.req_id,
+    );
+}
+
+test "buildLoginUrl trims the configured app URL before appending the auth path" {
+    const url = try buildLoginUrl(
+        std.testing.allocator,
+        "https://app-dev.agentsfleet.net/",
+        "019ee024-0073-7f7e-a5b5-718d94690cda",
+    );
+    defer std.testing.allocator.free(url);
+
+    try std.testing.expectEqualStrings(
+        "https://app-dev.agentsfleet.net/cli-auth/019ee024-0073-7f7e-a5b5-718d94690cda",
+        url,
     );
 }

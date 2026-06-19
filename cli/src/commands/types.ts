@@ -45,6 +45,7 @@ export interface CommandCtx {
   token?: string | null;
   apiKey?: string | null;
   apiUrl: string;
+  dashboardUrl: string;
   jsonMode?: boolean;
   noOpen?: boolean;
   noInput?: boolean;

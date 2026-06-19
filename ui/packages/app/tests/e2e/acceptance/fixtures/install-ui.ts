@@ -1,11 +1,11 @@
 /**
  * Dashboard-form install: drives the `/agents/new` `InstallAgentForm` like a
- * real operator. Used by the full-lifecycle scenarios, which deliberately
- * drive the install through the UI rather than via API seeding so the entire
+ * real human. Used by the full-lifecycle scenarios, which deliberately
+ * drive the install through the interface rather than via API seeding so the entire
  * signup → install → observe → halt walk is browser-driven end-to-end.
  *
- * Same wire as `agentsfleet install --from`: the form takes TRIGGER.md and
- * SKILL.md bodies; agentsfleetd parses the YAML frontmatter server-side and
+ * Same wire as `agentsfleet install --from`: the form takes SKILL.md and
+ * TRIGGER.md bodies; agentsfleetd parses the markdown frontmatter server-side and
  * derives `name` plus the compiled trigger config from it. The helper just
  * pastes valid markdown and clicks.
  *
@@ -16,13 +16,12 @@ import { expect, type Page } from "@playwright/test";
 
 // 30s, not 15s — the dashboard's `installAgentAction` is a Next.js Server
 // Action that compiles on first hit under `next dev --turbopack`. Cold-start
-// observed at ~18s in local runs; CI is in the same ballpark. A tighter
+// observed at ~18s in local runs; Continuous Integration (CI) is in the same ballpark. A tighter
 // timeout false-fails the spec without exercising any product behavior.
 const INSTALL_TIMEOUT_MS = 30_000;
 
 function fixtureTriggerMd(name: string): string {
-  // `triggers` is a list and `type: api` is rejected by the parser
-  // (config_helpers.zig) — use a single `cron` trigger, the smallest valid shape.
+  // Use cron here so browser scenarios keep a concrete wake rule.
   return [
     "---",
     `name: ${name}`,
@@ -58,9 +57,9 @@ export async function installViaUI(page: Page, name: string): Promise<string> {
   await page.goto("/agents/new");
   await expect(page).toHaveURL(/\/agents\/new(\?|$)/);
 
-  await page.getByLabel("TRIGGER.md body").fill(fixtureTriggerMd(name));
   await page.getByLabel("SKILL.md body").fill(fixtureSkillMd(name));
-  await page.getByRole("button", { name: "Install Agent" }).click();
+  await page.getByLabel("TRIGGER.md body").fill(fixtureTriggerMd(name));
+  await page.getByRole("button", { name: "Install teammate" }).click();
 
   // Success path: router.push(`/agents/${agent_id}`). Exclude the
   // /agents/new sentinel so we don't false-match an install that failed and

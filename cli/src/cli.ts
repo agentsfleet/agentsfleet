@@ -23,7 +23,7 @@ import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
-import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
+import { DEFAULT_API_URL, normalizeApiUrl, resolveDashboardUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { detectTokenInArgv } from "./lib/argv-redact.ts";
@@ -131,6 +131,10 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
     const apiOverride = opts["api"];
     if (isString(apiOverride) && apiOverride.length > 0) {
       ctx.apiUrl = normalizeApiUrl(apiOverride);
+      ctx.dashboardUrl = resolveDashboardUrl(
+        ctx.apiUrl,
+        ctx.env?.AGENTSFLEET_DASHBOARD_URL,
+      );
     }
 
     // Auth-guard: walk to the top-level command and exempt `login` only.
@@ -212,8 +216,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   const resolvedAuthRole = resolvedApiKey ? ROLE_ADMIN : extractRoleFromToken(storedToken);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
+  const apiUrl = normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL);
   const ctx: CommandCtx = {
-    apiUrl: normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL),
+    apiUrl,
+    dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
     token: storedToken,
     apiKey: resolvedApiKey,
     authRole: resolvedAuthRole,

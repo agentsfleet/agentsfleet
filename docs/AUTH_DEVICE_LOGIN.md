@@ -1,6 +1,6 @@
 # CLI device login — security model (Flow 1)
 
-> Relocated from [`AUTH.md`](./AUTH.md) so the canonical auth reference stays the *model*, not the depth. This is the M74_002 device-flow security design: data lifecycle, sequence, threat model, pinned crypto, the non-interactive token-seeding path, deploy contract, and the human-led invariant. For the auth model overview and the other principals, start at [`AUTH.md`](./AUTH.md) → *Flow 1*.
+> Relocated from [`AUTH.md`](./AUTH.md) so the canonical auth reference stays the *model*, not the depth. This is the M74_002 device-flow security design: data lifecycle, sequence, threat model, pinned crypto, the non-interactive token-seeding path, deploy rules, and the human-led invariant. For the auth model overview and the other principals, start at [`AUTH.md`](./AUTH.md) → *Flow 1*.
 
 The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. Once `credentials.json` (mode `0o600`) exists, the CLI carries the JWT on every request — same as a Flow 2 browser call after `getToken({template:"api"})`; on `401 token_expired` it re-runs `agentsfleet login`.
 
@@ -90,8 +90,8 @@ sequenceDiagram
         Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
         CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
-        API-->>CLI: 201 { session_id }
-        CLI-->>User: open https://app.agentsfleet.net/cli-auth/{session_id}
+        API-->>CLI: 201 { session_id, login_url }
+        CLI-->>User: open login_url
 
         Note over CLI: prompt "Verification code:" immediately — no polling.<br/>Possessing the code implies the dashboard approved.<br/>6-digit shape validated client-side (bad input re-prompts,<br/>no round-trip); SIGINT / EOF → exit 130, nothing persisted.
 
@@ -175,7 +175,7 @@ Two facts the diagram pins:
 
 ## Security properties by layer
 
-The contract. Every line of code in Flow 1 must trace to one of these properties. Any claim of "auth hardening" in the abstract should be re-read against this table.
+The rules. Every line of code in Flow 1 must trace to one of these properties. Any claim of "auth hardening" in the abstract should be re-read against this table.
 
 | Layer | Property | Out of scope |
 |---|---|---|
@@ -237,7 +237,7 @@ Six invariants. All are tested explicitly.
 3. **Verified sessions cannot revert.** The state machine is monotonic; no path from `consumed` / `expired` / `aborted` back to any active state.
 4. **PATCH /approve is single-write.** Calling it against a session already in `verification_pending` returns HTTP 409 Conflict. The dashboard MUST NOT retry PATCH /approve if it has previously succeeded for the same session.
 5. **`session_id` is high-entropy.** UUIDv7; 128 bits; CSPRNG; not enumerable.
-6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the primary verification URL (`https://app.agentsfleet.net/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — use the `redactSessionId()` helper), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
+6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the API-generated `login_url` (`https://app.agentsfleet.net/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — use the `redactSessionId()` helper), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
 
 ## Cryptographic primitives (pinned)
 
@@ -286,7 +286,7 @@ On `401 token_expired`, the CLI re-runs `agentsfleet login`. Clerk JWTs are shor
 
 ## Deployment requirements
 
-Flow 1's protocol assumes the following deploy contract. Diverging from these turns the flow's security claims into wishes.
+Flow 1's protocol assumes the following deploy rules. Diverging from these turns the flow's security claims into wishes.
 
 | Requirement | Detail |
 |---|---|
@@ -322,4 +322,3 @@ For any of the above, see **M75_xxx Agent Identity** (to be authored): persisten
 This is enforced by **discipline + documentation**, not by code. The login flow has no programmatic way to detect "is a real human present" — that is precisely why misuse must be called out as a spec violation rather than left as a runtime error.
 
 Local coding agents that run on the same workstation where the human can complete the browser approval AND the terminal verification (Cursor, Claude Code, etc.) ARE supported by Flow 1 — the human's presence is what makes it work, not the absence of a coding agent.
-

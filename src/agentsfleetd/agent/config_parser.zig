@@ -191,7 +191,6 @@ fn parseToolsField(
         .array => |a| a,
         else => return AgentConfigError.MissingRequiredField,
     };
-    if (arr.items.len == 0) return AgentConfigError.MissingRequiredField;
     return try helpers.dupeStringArray(alloc, arr.items);
 }
 

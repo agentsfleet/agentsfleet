@@ -94,12 +94,12 @@ afterEach(() => vi.clearAllMocks());
 describe("/credentials route", () => {
   it("redirects into the unified Models & Credentials page", async () => {
     const { default: CredentialsPage } = await import("../app/(dashboard)/credentials/page");
-    expect(() => CredentialsPage()).toThrow("redirect:/settings/models#credentials");
+    expect(() => CredentialsPage()).toThrow("redirect:/settings/models?tab=credentials#credentials");
   });
 });
 
 describe("unified Models & Credentials page", () => {
-  it("renders both a Model section and a Credentials section with the stored credentials", async () => {
+  it("renders model setup by default and stored credentials on the credentials tab", async () => {
     vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockResolvedValue({
       mode: PROVIDER_MODE.platform,
@@ -116,15 +116,19 @@ describe("unified Models & Credentials page", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // Model setup, current setup, and credentials render on one page.
+    // The default tab keeps setup focused on the model path.
     expect(markup).toContain(">Model setup<");
     expect(markup).toContain(">Current setup<");
     expect(markup).toContain(">Credentials<");
-    // The credentials section is anchorable from the in-page "manage" link.
-    expect(markup).toContain('id="credentials"');
+    expect(markup).not.toContain('id="credentials"');
+
+    const credentialsMarkup = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({ tab: "credentials" }) }),
+    );
+    expect(credentialsMarkup).toContain('id="credentials"');
     // The stored credential is listed in the Credentials section.
-    expect(markup).toContain(FLY_CREDENTIAL_NAME);
-    expect(markup).toContain("Credential vault");
+    expect(credentialsMarkup).toContain(FLY_CREDENTIAL_NAME);
+    expect(credentialsMarkup).toContain("Credential vault");
     // Page title reflects the union.
     expect(markup).toContain("Models &amp; Credentials");
   });

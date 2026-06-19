@@ -28,9 +28,7 @@ pub const MAX_TRIGGERS_PER_AGENT: usize = 8;
 const MAX_EVENTS_PER_TRIGGER: usize = 16;
 const MAX_EVENT_NAME_LEN: usize = 64;
 
-/// Parse a `triggers[]` array element. The api variant is admitted by
-/// the type union for layout stability but rejected here — re-admission
-/// lands with workspace-API-token surface.
+/// Parse a `triggers[]` array element.
 pub fn parseAgentTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || AgentConfigError)!AgentTrigger {
     const type_str = blk: {
         const val = obj.get("type") orelse return AgentConfigError.MissingRequiredField;
@@ -63,10 +61,7 @@ pub fn parseAgentTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.E
         return .{ .cron = .{ .schedule = schedule } };
     }
     if (std.mem.eql(u8, type_str, "api")) {
-        log.warn("trigger_type_api_not_yet_available", .{
-            .hint = "type: api is not yet available; use webhook or cron",
-        });
-        return AgentConfigError.InvalidTriggerType;
+        return .{ .api = {} };
     }
     return AgentConfigError.InvalidTriggerType;
 }
@@ -111,7 +106,7 @@ pub fn parseAgentTriggers(
             const conflict = switch (trig) {
                 .webhook => |w| std.mem.eql(u8, existing.webhook.source, w.source),
                 .cron => false, // ≤1-cron rule handles this above
-                .api => true, // api rejected at parseAgentTrigger; unreachable
+                .api => true,
             };
             if (conflict) {
                 log.warn("duplicate_trigger_tuple", .{ .index = idx });

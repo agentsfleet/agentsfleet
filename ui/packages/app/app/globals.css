@@ -18,7 +18,38 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   /* No dot-grid on the app body — DESIGN_SYSTEM.md §Aesthetic permits the
-   * dot-grid on the marketing hero only. The app surface stays flat. */
+  * dot-grid on the marketing hero only. The app surface stays flat. */
+}
+
+.app-glow-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.app-glow-surface::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  width: min(46rem, 82vw);
+  height: min(46rem, 82vw);
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--pulse-glow), transparent 64%);
+  filter: blur(8px);
+  opacity: 0.34;
+  transform: translate3d(-50%, -50%, 0);
+}
+
+.app-glow-surface[data-glow="auth"]::before {
+  left: 50%;
+  top: 40%;
+}
+
+.app-glow-surface[data-glow="dashboard"]::before {
+  left: 58%;
+  top: 18%;
+  opacity: 0.18;
 }
 
 /* In @layer base so per-element text-colour utilities win on <a> elements

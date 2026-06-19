@@ -45,25 +45,68 @@ describe("InstallAgentForm interactions", () => {
   }
 
   const FIXTURE_TRIGGER =
-    "---\nname: platform-ops\nx-agentsfleet:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
+    "---\nname: platform-ops\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
+  const FIXTURE_SKILL =
+    "---\nname: platform-ops\ndescription: Automates platform checks\nversion: 0.1.0\n---\n# Platform Ops\n";
 
-  it("empty TRIGGER.md blocks submit and shows the required-field error", async () => {
+  it("blank TRIGGER.md generates a manual-wake config", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ agent_id: "zom_manual", status: "active" }),
+    });
     const user = userEvent.setup({ delay: null });
     await renderForm();
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    expect(screen.getByText(/What is SKILL\.md/i)).toBeTruthy();
+    expect(screen.getAllByText(/manual wake/i).length).toBeGreaterThan(0);
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
     await waitFor(() =>
-      expect(screen.getByText(/TRIGGER\.md body is required/i)).toBeTruthy(),
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/v1/workspaces/ws_1/agents"),
+        expect.objectContaining({ method: "POST" }),
+      ),
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    const callBody = JSON.parse(
+      (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
+    ) as { trigger_markdown: string; source_markdown: string };
+    expect(callBody.trigger_markdown).toContain('name: "platform-ops"');
+    expect(callBody.trigger_markdown).toContain("type: api");
+    expect(callBody.trigger_markdown).toContain("tools: []");
+    expect(routerPush).toHaveBeenCalledWith("/agents/zom_manual");
   });
 
   it("empty SKILL.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
     await waitFor(() =>
       expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("invalid SKILL.md frontmatter blocks submit without a network call", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderForm();
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# missing frontmatter");
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/SKILL\.md needs YAML frontmatter/i)).toBeTruthy(),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("invalid TRIGGER.md frontmatter blocks submit without a network call", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderForm();
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), "---\nname: platform-ops\n---\n");
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/TRIGGER\.md frontmatter needs x-agentsfleet:/i)).toBeTruthy(),
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -76,9 +119,12 @@ describe("InstallAgentForm interactions", () => {
     });
     const user = userEvent.setup({ delay: null });
     await renderForm();
+    const skillField = screen.getByLabelText(/SKILL\.md body/i);
+    const triggerField = screen.getByLabelText(/TRIGGER\.md body/i);
+    expect(skillField.compareDocumentPosition(triggerField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -89,17 +135,11 @@ describe("InstallAgentForm interactions", () => {
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
     ) as { trigger_markdown: string; source_markdown: string };
-    // userEvent.type may normalize whitespace slightly when typing multi-line
-    // YAML into a happy-dom textarea; assert the load-bearing tokens are
-    // present in the POSTed body rather than byte-for-byte equality with the
-    // source fixture.
     expect(Object.keys(callBody).sort()).toEqual(["source_markdown", "trigger_markdown"]);
     expect(callBody.trigger_markdown).toContain("name: platform-ops");
     expect(callBody.trigger_markdown).toContain("x-agentsfleet:");
-    expect(callBody.source_markdown).toContain("skill body");
+    expect(callBody.source_markdown).toContain("Platform Ops");
     expect(routerPush).toHaveBeenCalledWith("/agents/zom_new");
-    // No router.refresh() — InstallAgentForm intentionally drops the refresh
-    // after push to avoid racing the destination URL commit.
     expect(routerRefresh).not.toHaveBeenCalled();
     expect(captureProductEventMock).toHaveBeenCalledTimes(1);
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.agent_created, { agent_id: "zom_new" });
@@ -115,8 +155,8 @@ describe("InstallAgentForm interactions", () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
     await waitFor(() =>
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
     );
@@ -134,8 +174,8 @@ describe("InstallAgentForm interactions", () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
     await waitFor(() =>
       expect(screen.getByText(/boom/)).toBeTruthy(),
     );
@@ -148,8 +188,8 @@ describe("InstallAgentForm interactions", () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install agent/i }));
+    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /install teammate/i }));
     // Same UZ-AUTH-401 mapping — "Your session expired" copy in the alert.
     await waitFor(() =>
       expect(screen.getByText(/Your session expired/i)).toBeTruthy(),

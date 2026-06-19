@@ -2,7 +2,7 @@
  * dashboard-home.spec.ts — `/` renders for the fixture user.
  *
  * Two render modes worth covering, both via the same authed fixture:
- *   - Empty: no agents → FirstInstallCard renders ("First wake" eyebrow).
+ *   - Empty: no agents → FirstInstallCard renders ("Start your fleet").
  *   - Populated: ≥1 agent → StatusCard tiles render (Live / Paused /
  *     Stopped / Balance).
  *
@@ -28,7 +28,7 @@ test.describe("dashboard home", () => {
     // the StatusCard primitive; role=region narrows the FirstInstallCard
     // section and avoids matching its command block label.
     const tiles = page.getByTestId("status-card");
-    const firstInstall = page.getByLabel("Install your first agent");
+    const firstInstall = page.getByLabel("Start your fleet");
     await expect(tiles.first().or(firstInstall)).toBeVisible({ timeout: 15_000 });
   });
 });

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  Button,
   buttonClassName,
   EmptyState,
   PageHeader,
@@ -10,12 +11,13 @@ import {
 import { listAgents } from "@/lib/api/agents";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { resolveActiveWorkspace } from "@/lib/workspace";
-import { AGENT_DEFINITION } from "@/lib/copy";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import AgentsList from "./components/AgentsList";
 
 export const dynamic = "force-dynamic";
+
+const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 export default async function AgentsListPage() {
   const { getToken } = await auth();
@@ -31,7 +33,7 @@ export default async function AgentsListPage() {
         </PageHeader>
         <EmptyState
           title="No workspace yet"
-          description="Create a workspace before installing agents."
+          description="Create a workspace before installing teammates."
         />
       </div>
     );
@@ -51,14 +53,26 @@ export default async function AgentsListPage() {
           href="/agents/new"
           className={buttonClassName("default", "sm")}
         >
-          <PlusIcon size={14} /> Install Agent
+          <PlusIcon size={14} /> Install teammate
         </Link>
       </PageHeader>
 
       {page.items.length === 0 ? (
         <EmptyState
-          title="No agents yet"
-          description={`${AGENT_DEFINITION} Install your first one from a skill template.`}
+          title="Start your fleet"
+          description="Install your first teammate to automate recurring work, then trigger it once to see events."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild size="sm">
+                <Link href="/agents/new">Install teammate</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+                  Quick start
+                </a>
+              </Button>
+            </div>
+          }
         />
       ) : (
         <AgentsList
