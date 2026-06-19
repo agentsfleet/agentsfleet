@@ -21,14 +21,19 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          # We manage the build cache ourselves via actions/cache on .tmp/ (see
+          # below). setup-zig's own cache is keyed per run-id (never reused
+          # across runs) AND it exports ZIG_GLOBAL/LOCAL_CACHE_DIR, which would
+          # hijack the Makefile's .tmp/ paths and leave our cache empty.
+          use-cache: false
       - name: Install OpenSSL dev headers
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
 
-      # Persist the Zig compilation cache across runs. The Makefile redirects
-      # Zig's cache to .tmp/zig-global-cache, so setup-zig's own caching is
-      # bypassed — without this, every CI run recompiles the agentsfleetd test
-      # binary from cold (~150s). Content-addressed: a stale hit only triggers a
-      # recompile of changed modules, never a wrong build.
+      # Persist the Zig compilation cache across runs. The Makefile points Zig's
+      # cache at .tmp/zig-{global,local}-cache (forced on the build step below,
+      # so setup-zig can't redirect it) — without this, every CI run recompiles
+      # the agentsfleetd test binary from cold (~150s). Content-addressed: a
+      # stale hit only triggers a recompile of changed modules, never a wrong build.
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
@@ -77,6 +82,11 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
           TEST_REDIS_TLS_URL: rediss://:agentsfleet@localhost:6379
+          # Force the build to write where actions/cache reads (step env beats
+          # setup-zig's GITHUB_ENV export). These equal the Makefile's CURDIR
+          # default, so the cached objects are found + saved.
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
+          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
         run: make test-integration
 
       - name: Stop services
