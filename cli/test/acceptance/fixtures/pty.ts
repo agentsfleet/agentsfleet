@@ -39,6 +39,7 @@ export interface PtySpawnOptions {
 interface LineWaiter {
   readonly matches: () => boolean;
   readonly settle: () => void;
+  readonly fail: (err: Error) => void;
 }
 
 export class PtyProcess {
@@ -46,11 +47,21 @@ export class PtyProcess {
   #output = "";
   #stderr = "";
   #waiters: LineWaiter[] = [];
+  #exited = false;
+  #exitCode: number | null = null;
 
   private constructor(proc: Bun.Subprocess<"pipe", "pipe", "pipe">) {
     this.#proc = proc;
-    void this.#pump(proc.stdout, (text) => { this.#output += text; });
-    void this.#pump(proc.stderr, (text) => { this.#stderr += text; });
+    // Both pumps complete when the child closes its pty fds (i.e. it exited),
+    // by which point every chunk has been pumped + matched. Any waiter still
+    // pending then will never see its line, so reject it immediately instead
+    // of hanging until the timeout — a non-zero exit before the awaited line
+    // becomes a fast, informative failure.
+    const pumps = [
+      this.#pump(proc.stdout, (text) => { this.#output += text; }),
+      this.#pump(proc.stderr, (text) => { this.#stderr += text; }),
+    ];
+    void Promise.all(pumps).then(async () => { this.#onExit(await proc.exited); });
   }
 
   /** Spawn the agentsfleet binary inside a pty, mirroring runAgentctl's resolution. */
@@ -72,6 +83,7 @@ export class PtyProcess {
     return new Promise((resolve, reject) => {
       const matches = (): boolean => this.#clean().split("\n").some(predicate);
       if (matches()) { resolve(this.#output); return; }
+      if (this.#exited) { reject(this.#exitError()); return; }
       const timer = setTimeout(() => {
         this.#waiters = this.#waiters.filter((w) => w !== waiter);
         reject(new Error(
@@ -83,6 +95,7 @@ export class PtyProcess {
       const waiter: LineWaiter = {
         matches,
         settle: () => { clearTimeout(timer); resolve(this.#output); },
+        fail: (err) => { clearTimeout(timer); reject(err); },
       };
       this.#waiters.push(waiter);
     });
@@ -137,5 +150,23 @@ export class PtyProcess {
       if (waiter.matches()) { waiter.settle(); return false; }
       return true;
     });
+  }
+
+  // Streams drained → the child exited. Reject every still-pending waiter so
+  // an awaited line that will never arrive fails fast instead of timing out.
+  #onExit(code: number): void {
+    this.#exited = true;
+    this.#exitCode = code;
+    const pending = this.#waiters;
+    this.#waiters = [];
+    for (const waiter of pending) waiter.fail(this.#exitError());
+  }
+
+  #exitError(): Error {
+    return new Error(
+      `pty: process exited (code ${this.#exitCode}) before a matching line arrived. ` +
+      `saw: ${this.#output.slice(0, OUTPUT_PREVIEW_CHARS)} | ` +
+      `stderr: ${this.#stderr.slice(0, STDERR_PREVIEW_CHARS)}`,
+    );
   }
 }
