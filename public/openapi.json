@@ -125,6 +125,20 @@
       "x-mintlify": {
         "navigation": "Approvals"
       }
+    },
+    {
+      "name": "Fleet",
+      "description": "Runner fleet operator plane — enroll, list, and administer sandbox runners. Operator/admin-scoped.",
+      "x-mintlify": {
+        "navigation": "Fleet"
+      }
+    },
+    {
+      "name": "Model Catalogue",
+      "description": "Public model→capability catalogue consumed at provisioning time.",
+      "x-mintlify": {
+        "navigation": "Model Catalogue"
+      }
     }
   ],
   "paths": {
@@ -147,8 +161,7 @@
                   "required": [
                     "status",
                     "service",
-                    "commit",
-                    "request_id"
+                    "commit"
                   ],
                   "properties": {
                     "status": {
@@ -164,11 +177,6 @@
                     "commit": {
                       "type": "string",
                       "description": "Git commit SHA of the running build"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "description": "Unique request identifier"
                     }
                   }
                 }
@@ -197,6 +205,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -261,8 +272,7 @@
                       }
                     },
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
@@ -331,8 +341,7 @@
                       "type": "boolean"
                     },
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
@@ -385,8 +394,7 @@
                       "const": false
                     },
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
@@ -453,7 +461,6 @@
                     },
                     "request_id": {
                       "type": "string",
-                      "format": "uuid",
                       "description": "Unique request identifier"
                     }
                   }
@@ -652,8 +659,7 @@
                   ],
                   "properties": {
                     "request_id": {
-                      "type": "string",
-                      "format": "uuid"
+                      "type": "string"
                     }
                   }
                 }
@@ -899,6 +905,9 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -967,7 +976,7 @@
         },
         "responses": {
           "200": {
-            "description": "Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every\nsubsequent replay of the same `oidc_subject`.\n",
+            "description": "Handled. Shape depends on event type: user.created → {workspace_id, workspace_name, created}; user.deleted → {deleted}; any other type → {status: ignored, type}.",
             "content": {
               "application/json": {
                 "schema": {
@@ -985,6 +994,18 @@
                     "created": {
                       "type": "boolean",
                       "description": "`true` on fresh bootstrap; `false` on idempotent replay."
+                    },
+                    "deleted": {
+                      "type": "boolean",
+                      "description": "true on a user.deleted event."
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "`ignored` for event types other than user.created/user.deleted."
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Echoed Clerk event type on ignored events."
                     }
                   }
                 }
@@ -1276,23 +1297,20 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "decision",
-                  "signature"
+                  "action_id",
+                  "decision"
                 ],
                 "properties": {
+                  "action_id": {
+                    "type": "string",
+                    "description": "The approval gate's action_id to resolve."
+                  },
                   "decision": {
                     "type": "string",
                     "enum": [
-                      "approved",
-                      "rejected"
+                      "approve",
+                      "deny"
                     ]
-                  },
-                  "signature": {
-                    "type": "string",
-                    "description": "HMAC signature over the body."
-                  },
-                  "reason": {
-                    "type": "string"
                   }
                 }
               }
@@ -1301,13 +1319,19 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Resolved.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "status": {
+                      "type": "string"
+                    },
+                    "action_id": {
+                      "type": "string"
+                    },
+                    "decision": {
                       "type": "string"
                     }
                   }
@@ -1322,6 +1346,9 @@
             "$ref": "#/components/responses/Error"
           },
           "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1357,7 +1384,7 @@
                 "required": [
                   "grant_id",
                   "decision",
-                  "signature"
+                  "nonce"
                 ],
                 "properties": {
                   "grant_id": {
@@ -1367,11 +1394,12 @@
                     "type": "string",
                     "enum": [
                       "approved",
-                      "rejected"
+                      "denied"
                     ]
                   },
-                  "signature": {
-                    "type": "string"
+                  "nonce": {
+                    "type": "string",
+                    "description": "Single-use anti-replay nonce issued with the approval request."
                   }
                 }
               }
@@ -1388,6 +1416,12 @@
                   "properties": {
                     "status": {
                       "type": "string"
+                    },
+                    "grant_id": {
+                      "type": "string"
+                    },
+                    "decision": {
+                      "type": "string"
                     }
                   }
                 }
@@ -1402,6 +1436,9 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         },
         "security": []
@@ -1411,7 +1448,7 @@
       "post": {
         "operationId": "github_webhook",
         "summary": "Ingest a GitHub Actions webhook",
-        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `agent:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the agent event stream; other events return 204. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
+        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `agent:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the agent event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
         "tags": [
           "Webhooks"
         ],
@@ -1514,6 +1551,9 @@
           },
           "413": {
             "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         },
         "security": []
@@ -1567,7 +1607,6 @@
                     },
                     "request_id": {
                       "type": "string",
-                      "format": "uuid",
                       "description": "Unique request identifier"
                     }
                   }
@@ -2107,7 +2146,7 @@
       "post": {
         "operationId": "store_workspace_credential",
         "summary": "Store a credential in the workspace vault",
-        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
+        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; a stringified form over 4 KiB is rejected with `UZ-VAULT-002`,\nand bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
         "tags": [
           "Credentials"
         ],
@@ -2902,6 +2941,13 @@
                     },
                     "status": {
                       "type": "string"
+                    },
+                    "webhook_urls": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "Map of each webhook trigger's source → its delivery URL (`{api_url}/v1/webhooks/{agent_id}/{source}`). Empty object when the agent declares no webhook triggers."
                     }
                   }
                 }
@@ -2921,6 +2967,9 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3036,6 +3085,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       },
@@ -3082,6 +3134,9 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3195,7 +3250,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Opaque grant ID returned by integration-requests."
+            "description": "Grant ID (UUIDv7) returned by integration-requests."
           }
         ],
         "responses": {
@@ -3277,6 +3332,43 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Existing grant returned (idempotent — a pending or approved grant for this service already existed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grant_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "approved"
+                      ]
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "requested_at": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
           "201": {
             "description": "Created",
             "content": {
@@ -3285,13 +3377,28 @@
                   "type": "object",
                   "properties": {
                     "grant_id": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     },
                     "status": {
                       "type": "string",
                       "enum": [
                         "pending"
                       ]
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "requested_at": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "message": {
+                      "type": "string"
                     }
                   }
                 }
@@ -3403,6 +3510,9 @@
           },
           "409": {
             "description": "Agent is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing work that would strand. The problem-details body carries `current_state` naming the actual agent status (e.g. `paused`). Resume with `agentsfleet resume <agent>`, then retry.",
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3953,6 +4063,460 @@
           }
         }
       }
+    },
+    "/v1/runners": {
+      "post": {
+        "operationId": "register_runner",
+        "summary": "Register a runner",
+        "description": "Enrolls a runner into the fleet. Authed by an existing operator credential (Clerk JWT or `agt_t` API key with admin role) — there is no enrollment token. Mints a durable `agt_r` runner token (returned once) and stores only its SHA-256 hash.",
+        "tags": [
+          "Fleet"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Runner registered; the bearer token is returned exactly once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegisterResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fleet/runners": {
+      "get": {
+        "operationId": "list_fleet_runners",
+        "summary": "List fleet runners",
+        "description": "Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "1-based page number.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page (1-100).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "Sort order.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "-created_at",
+                "host_id",
+                "-host_id"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of fleet runners.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RunnerSummary"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fleet/runners/{id}": {
+      "patch": {
+        "operationId": "patch_fleet_runner",
+        "summary": "Administer a fleet runner",
+        "description": "Platform-admin operator action on a single runner. `cordon` → cordoned, `drain` → draining, `revoke` → revoked (terminal; a revoked runner cannot transition back).",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Runner id (UUIDv7).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "description": "The operator transition to apply.",
+                    "enum": [
+                      "cordon",
+                      "drain",
+                      "revoke"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The runner's new admin state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "admin_state"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "admin_state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "cordoned",
+                        "draining",
+                        "drained",
+                        "revoked"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/fleet/runners/{id}/events": {
+      "get": {
+        "operationId": "list_fleet_runner_events",
+        "summary": "List fleet runner events",
+        "description": "Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.",
+        "tags": [
+          "Fleet"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Runner id (UUIDv7).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "1-based page number.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Rows per page (1-100).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "description": "Filter to a single runner event type.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "runner_registered",
+                "runner_online",
+                "runner_offline",
+                "lease_acquired",
+                "lease_released",
+                "runner_cordoned",
+                "runner_draining",
+                "runner_drained",
+                "runner_revoked"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Lower bound on occurred_at, epoch milliseconds (inclusive).",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runner events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RunnerEvent"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json": {
+      "get": {
+        "operationId": "get_model_caps",
+        "summary": "Get the model capability catalogue",
+        "description": "Public, unauthenticated model->capability catalogue plus the global, non-secret\nclient config (run/event rates, starter credit, free-trial window). Both the\ninstall skill and `agentsfleet provider set` call this once at provisioning time\nand pin the result.\n\nThe path-key segment (`da5b6b3810543fe108d816ee972e4ff8`) is an opportunistic-crawler\ndeflector, not a credential — the catalogue is public information. Rotation is a\ncoordinated CLI + skill + API release.\n",
+        "tags": [
+          "Model Catalogue"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "Filter the catalogue to a single `model_id`. Omit to return the whole catalogue.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The model catalogue, per-token rates, and global billing config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "models",
+                    "rates",
+                    "billing"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "description": "Catalogue version, derived as the max model updated_at rendered YYYY-MM-DD (UTC)."
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "provider",
+                          "context_cap_tokens",
+                          "input_nanos_per_mtok",
+                          "cached_input_nanos_per_mtok",
+                          "output_nanos_per_mtok"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "The model_id. Provider hosting is encoded in the id itself."
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "context_cap_tokens": {
+                            "type": "integer",
+                            "format": "int32"
+                          },
+                          "input_nanos_per_mtok": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "cached_input_nanos_per_mtok": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "output_nanos_per_mtok": {
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        }
+                      }
+                    },
+                    "rates": {
+                      "type": "object",
+                      "required": [
+                        "run_nanos_per_sec",
+                        "event_nanos"
+                      ],
+                      "properties": {
+                        "run_nanos_per_sec": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "event_nanos": {
+                          "type": "integer",
+                          "format": "int64"
+                        }
+                      }
+                    },
+                    "billing": {
+                      "type": "object",
+                      "required": [
+                        "starter_credit_nanos",
+                        "free_trial_end_ms",
+                        "free_trial_stage_nanos"
+                      ],
+                      "properties": {
+                        "starter_credit_nanos": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "free_trial_end_ms": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "free_trial_stage_nanos": {
+                          "type": "integer",
+                          "format": "int64"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3977,30 +4541,6 @@
       }
     },
     "schemas": {
-      "ReadyzBody": {
-        "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
-        "required": [
-          "ready",
-          "database",
-          "queue"
-        ],
-        "properties": {
-          "ready": {
-            "type": "boolean",
-            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
-          },
-          "database": {
-            "type": "boolean",
-            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
-          },
-          "queue": {
-            "type": "boolean",
-            "description": "True if the Redis queue backend is reachable"
-          }
-        },
-        "additionalProperties": false
-      },
       "ErrorBody": {
         "type": "object",
         "description": "RFC 7807 problem detail error response (application/problem+json)",
@@ -4016,7 +4556,7 @@
             "type": "string",
             "format": "uri",
             "description": "Stable link to documentation for this error code",
-            "example": "https://docs.agentsfleet.net/error-codes#UZ-AGT-009"
+            "example": "https://docs.agentsfleet.net/api-reference/error-codes#UZ-AGT-009"
           },
           "title": {
             "type": "string",
@@ -4044,6 +4584,30 @@
           }
         }
       },
+      "ReadyzBody": {
+        "type": "object",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "required": [
+          "ready",
+          "database",
+          "queue"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+          },
+          "database": {
+            "type": "boolean",
+            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "True if the Redis queue backend is reachable"
+          }
+        },
+        "additionalProperties": false
+      },
       "PlatformKey": {
         "type": "object",
         "description": "A platform-wide LLM provider key configuration",
@@ -4062,8 +4626,9 @@
             "description": "Whether this platform key is active"
           },
           "updated_at": {
-            "type": "string",
-            "format": "date-time"
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds of the last update."
           }
         }
       },
@@ -4190,7 +4755,8 @@
         ],
         "properties": {
           "agent_key_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "agent_id": {
             "type": "string",
@@ -4282,7 +4848,9 @@
           "name",
           "status",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "events_processed",
+          "budget_used_nanos"
         ],
         "properties": {
           "id": {
@@ -4317,6 +4885,16 @@
             "items": {
               "$ref": "#/components/schemas/AgentTrigger"
             }
+          },
+          "events_processed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Lifetime count of events this agent has processed (rows in `core.agent_events`)."
+          },
+          "budget_used_nanos": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cumulative credit this agent has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `agent_execution_telemetry.credit_deducted_nanos`."
           }
         }
       },
@@ -4330,7 +4908,8 @@
         ],
         "properties": {
           "grant_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "service": {
             "type": "string",
@@ -4397,7 +4976,8 @@
             "format": "uuid"
           },
           "action_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "tool_name": {
             "type": "string"
@@ -4482,7 +5062,8 @@
             "format": "uuid"
           },
           "action_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "outcome": {
             "type": "string",
@@ -4522,7 +5103,8 @@
                 "format": "uuid"
               },
               "action_id": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               "outcome": {
                 "type": "string",
@@ -4543,6 +5125,173 @@
             }
           }
         ]
+      },
+      "RunnerRegisterRequest": {
+        "type": "object",
+        "description": "Self-reported runner identity at enrollment. `sandbox_tier` is telemetry only — placement keys off operator-assigned trust, not this claim.",
+        "required": [
+          "host_id",
+          "sandbox_tier",
+          "labels"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Operator-supplied host identifier for this runner (1-256 chars)."
+          },
+          "sandbox_tier": {
+            "type": "string",
+            "description": "Isolation strength the runner self-reports. Stored as telemetry.",
+            "enum": [
+              "landlock_full",
+              "container_nested",
+              "macos_seatbelt",
+              "dev_none"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "description": "Free-form operator labels for placement/grouping.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RunnerRegisterResponse": {
+        "type": "object",
+        "description": "The durable runner identity plus its bearer token. The `runner_token` is returned exactly once; the server stores only its SHA-256 hash.",
+        "required": [
+          "runner_id",
+          "runner_token"
+        ],
+        "properties": {
+          "runner_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The minted runner's id (UUIDv7)."
+          },
+          "runner_token": {
+            "type": "string",
+            "description": "The `agt_r`-prefixed bearer token the runner presents on every later call. Returned once; never retrievable again."
+          }
+        }
+      },
+      "RunnerSummary": {
+        "type": "object",
+        "description": "One fleet row as returned to the operator. `liveness` is derived at read time (never stored); the auth `token_hash` and stored auth state are never returned.",
+        "required": [
+          "id",
+          "host_id",
+          "sandbox_tier",
+          "admin_state",
+          "liveness",
+          "labels",
+          "last_seen_at",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "sandbox_tier": {
+            "type": "string",
+            "enum": [
+              "landlock_full",
+              "container_nested",
+              "macos_seatbelt",
+              "dev_none"
+            ]
+          },
+          "admin_state": {
+            "type": "string",
+            "description": "Operator intent. `active` admits the runner plane; the others reject it.",
+            "enum": [
+              "active",
+              "cordoned",
+              "draining",
+              "drained",
+              "revoked"
+            ]
+          },
+          "liveness": {
+            "type": "string",
+            "description": "Derived runtime liveness. `registered` = minted, never seen; `busy` = holds a live lease; `online` = heartbeat fresh; `offline` = heartbeat stale.",
+            "enum": [
+              "registered",
+              "busy",
+              "online",
+              "offline"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds of the last heartbeat; 0 if never seen."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds the runner was registered."
+          }
+        }
+      },
+      "RunnerEvent": {
+        "type": "object",
+        "description": "One append-only runner history row.",
+        "required": [
+          "id",
+          "runner_id",
+          "event_type",
+          "occurred_at",
+          "metadata"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runner_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "runner_registered",
+              "runner_online",
+              "runner_offline",
+              "lease_acquired",
+              "lease_released",
+              "runner_cordoned",
+              "runner_draining",
+              "runner_drained",
+              "runner_revoked"
+            ]
+          },
+          "occurred_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Epoch milliseconds the event occurred."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Event-type-specific metadata (e.g. host_id, from/to admin_state). Shape varies by event_type.",
+            "additionalProperties": true
+          }
+        }
       }
     }
   }

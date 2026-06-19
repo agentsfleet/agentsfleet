@@ -96,6 +96,8 @@ fn writeListResponse(hx: Hx, page: AgentPage) void {
             .created_at = row.created_at,
             .updated_at = row.updated_at,
             .triggers = if (parsed_triggers[i]) |p| p.value else null,
+            .events_processed = row.events_processed,
+            .budget_used_nanos = row.budget_used_nanos,
         };
     }
 
@@ -113,6 +115,8 @@ const AgentListItem = struct {
     created_at: i64,
     updated_at: i64,
     triggers: ?std.json.Value,
+    events_processed: i64,
+    budget_used_nanos: i64,
 };
 
 fn parseLimitFromQs(qs: anytype) u32 {
@@ -132,6 +136,10 @@ const AgentListRow = struct {
     /// Raw JSONB projected from `config_json->'x-agentsfleet'->'triggers'`. `null`
     /// when the column has no entry (should not occur post-§1 reshape).
     triggers_raw: ?[]const u8 = null,
+    /// Count of `core.agent_events` rows for this agent (lifetime).
+    events_processed: i64 = 0,
+    /// Sum of `credit_deducted_nanos` across this agent's telemetry rows.
+    budget_used_nanos: i64 = 0,
 };
 
 const AgentPage = struct {
@@ -161,7 +169,10 @@ fn fetchAgentPageFirst(
 ) !AgentPage {
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-agentsfleet'->'triggers')::text
+        \\       (config_json->'x-agentsfleet'->'triggers')::text,
+        \\       (SELECT COUNT(*) FROM core.agent_events ev WHERE ev.agent_id = core.agents.id)::bigint,
+        \\       (SELECT COALESCE(SUM(te.credit_deducted_nanos), 0)::bigint
+        \\          FROM core.agent_execution_telemetry te WHERE te.agent_id = core.agents.id::text)
         \\FROM core.agents
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC, id DESC
@@ -182,7 +193,10 @@ fn fetchAgentPageAfter(
 
     var q = PgQuery.from(try conn.query(
         \\SELECT id::text, name, status, created_at, updated_at,
-        \\       (config_json->'x-agentsfleet'->'triggers')::text
+        \\       (config_json->'x-agentsfleet'->'triggers')::text,
+        \\       (SELECT COUNT(*) FROM core.agent_events ev WHERE ev.agent_id = core.agents.id)::bigint,
+        \\       (SELECT COALESCE(SUM(te.credit_deducted_nanos), 0)::bigint
+        \\          FROM core.agent_execution_telemetry te WHERE te.agent_id = core.agents.id::text)
         \\FROM core.agents
         \\WHERE workspace_id = $1::uuid
         \\  AND (created_at < $2 OR (created_at = $2 AND id::text < $3))
@@ -216,6 +230,8 @@ fn collectAgentPage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !AgentPag
         const triggers_raw_opt = try row.get(?[]const u8, 5);
         const triggers_raw: ?[]const u8 = if (triggers_raw_opt) |raw| try alloc.dupe(u8, raw) else null;
         errdefer if (triggers_raw) |t| alloc.free(t);
+        const events_processed = try row.get(i64, 6);
+        const budget_used_nanos = try row.get(i64, 7);
         try rows.append(alloc, .{
             .id = id,
             .name = name,
@@ -223,6 +239,8 @@ fn collectAgentPage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !AgentPag
             .created_at = created_at,
             .updated_at = updated_at,
             .triggers_raw = triggers_raw,
+            .events_processed = events_processed,
+            .budget_used_nanos = budget_used_nanos,
         });
     }
     const owned = try rows.toOwnedSlice(alloc);
