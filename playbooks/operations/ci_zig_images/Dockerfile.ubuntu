@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.7
 #
-# Ubuntu 24.04 + Zig — host-runner replacement for unit/bench/qa/lint-zig
-# lanes that today run bare on ubuntu-latest with mlugg/setup-zig. Includes
-# docker-cli so it can also drive `docker compose` against a mounted
-# /var/run/docker.sock from the test-integration lane (alternative is to
-# convert that lane to GHA `services:` and skip docker-cli).
+# Ubuntu 24.04 + Zig — host-runner replacement for unit/bench/qa/lint-zig AND
+# the test-integration lane (replacing bare ubuntu-latest + mlugg/setup-zig).
+# Bundles docker-cli + the compose v2 plugin so it can drive `docker compose`
+# against a mounted /var/run/docker.sock, and postgresql-client for the
+# test-integration Postgres healthcheck (pg_isready).
 # amd64 only.
 
 FROM mirror.gcr.io/library/ubuntu:24.04
@@ -28,6 +28,8 @@ RUN apt-get update \
       python3 \
       build-essential \
       docker.io \
+      docker-compose-v2 \
+      postgresql-client \
       gnupg \
  && rm -rf /var/lib/apt/lists/*
 
