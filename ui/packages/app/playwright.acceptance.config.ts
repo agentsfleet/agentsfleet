@@ -11,6 +11,8 @@ const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 const REPORTER_LINE = "line" as const;
 const PLAYWRIGHT_ON_FIRST_RETRY = "on-first-retry" as const;
 const ACCEPTANCE_AUDIT_ENABLED = "1";
+const ACCEPTANCE_AUDIT_TOKEN =
+  process.env.AGENTSFLEET_E2E_AUDIT_TOKEN ?? "local-acceptance-audit-token";
 
 export default defineConfig({
   testDir: "./tests/e2e/acceptance",
@@ -44,7 +46,7 @@ export default defineConfig({
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: `AGENTSFLEET_E2E_AUDIT=${ACCEPTANCE_AUDIT_ENABLED} bun run dev -- --port ${E2E_PORT}`,
+        command: `AGENTSFLEET_E2E_AUDIT=${ACCEPTANCE_AUDIT_ENABLED} AGENTSFLEET_E2E_AUDIT_TOKEN=${ACCEPTANCE_AUDIT_TOKEN} bun run dev -- --port ${E2E_PORT}`,
         url: `http://localhost:${E2E_PORT}/sign-in`,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

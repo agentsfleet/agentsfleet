@@ -37,7 +37,9 @@ export async function request<T>(
   init: RequestInit,
   token: string,
 ): Promise<T> {
-  recordWorkspaceFetchForAcceptance(path);
+  if ((init.method ?? "GET").toUpperCase() === "GET") {
+    recordWorkspaceFetchForAcceptance(path);
+  }
 
   const res = await fetch(`${BASE}${path}`, {
     ...init,

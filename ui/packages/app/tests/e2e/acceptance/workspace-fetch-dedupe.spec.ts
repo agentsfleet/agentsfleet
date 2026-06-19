@@ -14,16 +14,19 @@ const NOT_FOUND_STATUS = 404;
 const SECOND_WORKSPACE_NAME = "fixture-secondary";
 const WORKSPACE_FETCH_LIMIT = 1;
 const SWITCH_TIMEOUT_MS = 10_000;
+const AUDIT_HEADERS = {
+  "x-acceptance-token": process.env.AGENTSFLEET_E2E_AUDIT_TOKEN ?? "local-acceptance-audit-token",
+} as const;
 
 async function resetAudit(page: Page): Promise<boolean> {
-  const response = await page.request.post(AUDIT_URL);
+  const response = await page.request.post(AUDIT_URL, { headers: AUDIT_HEADERS });
   if (response.status() === NOT_FOUND_STATUS) return false;
   expect(response.ok()).toBe(true);
   return true;
 }
 
 async function readAudit(page: Page): Promise<WorkspaceFetchAuditSnapshot> {
-  const response = await page.request.get(AUDIT_URL);
+  const response = await page.request.get(AUDIT_URL, { headers: AUDIT_HEADERS });
   expect(response.ok()).toBe(true);
   return await response.json() as WorkspaceFetchAuditSnapshot;
 }
