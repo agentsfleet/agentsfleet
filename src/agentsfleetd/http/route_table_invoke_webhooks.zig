@@ -27,7 +27,7 @@ pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Rout
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
+    webhooks.innerReceiveSvixWebhook(hx.*, req, route.receive_svix_webhook);
 }
 
 // Clerk user.created auth-plane event. No middleware — handler verifies

@@ -188,3 +188,60 @@ describe("validate.js error stem", () => {
     assert.match(result.message, /workspace_id is required/i);
   });
 });
+
+// Integration coverage through the REAL shipped binary (worktree-DEV /
+// npm-global-PROD), not the in-process renderer. cli-tree-help.unit.test.ts
+// asserts helpTail() in isolation; these prove the same guarantees survive
+// the build, commander wiring, and process boundary — a bundling or
+// help-registration regression the unit test can't see.
+describe("help DX surfaces (real binary)", () => {
+  function helpEnv(): Record<string, string> {
+    // Disable telemetry so a PostHog flush timeout can't add stderr noise
+    // or stretch the spawn; help must not depend on network either way.
+    return emptyEnv({ AGENTSFLEET_TELEMETRY_DISABLED: "1" });
+  }
+
+  it("--help renders the task-grouped command guide", async () => {
+    const result = await runAgentctl(["--help"], { env: helpEnv() });
+    assert.equal(result.code, 0, `stderr=${result.stderr}`);
+    const out = stripAnsi(result.stdout);
+    assert.match(out, /Commands by task:/);
+    for (const title of ["Setup", "Workspaces", "Agents", "Tenant & billing", "Memory"]) {
+      assert.ok(out.includes(title), `guide missing "${title}" group`);
+    }
+    // The lone agent-group verb surfaced in the guide (the split made explicit).
+    assert.ok(out.includes("agent update"), "guide missing `agent update`");
+  });
+
+  it("--help aligns every environment-variable description to one column", async () => {
+    const result = await runAgentctl(["--help"], { env: helpEnv() });
+    assert.equal(result.code, 0, `stderr=${result.stderr}`);
+    const lines = stripAnsi(result.stdout).split("\n");
+    const start = lines.indexOf("Environment variables:");
+    assert.ok(start >= 0, "no Environment variables section in --help");
+    const columns: number[] = [];
+    for (const line of lines.slice(start + 1)) {
+      const match = /^ {2}(\S+)( +)(\S.*)$/.exec(line);
+      const name = match?.[1];
+      const gap = match?.[2];
+      if (name !== undefined && gap !== undefined) columns.push(2 + name.length + gap.length);
+    }
+    assert.ok(columns.length >= 10, `expected ≥10 env rows, got ${columns.length}`);
+    assert.equal(new Set(columns).size, 1, `env descriptions misaligned: columns=${columns.join(",")}`);
+  });
+
+  it("--help stays within 80 columns through the real binary", async () => {
+    const result = await runAgentctl(["--help"], { env: helpEnv() });
+    assert.equal(result.code, 0, `stderr=${result.stderr}`);
+    const overflow = stripAnsi(result.stdout).split("\n").filter((l) => l.length > 80);
+    assert.deepEqual(overflow, [], `lines over 80 cols: ${overflow.join(" | ")}`);
+  });
+
+  it("agent --help clarifies the lifecycle verbs are top-level", async () => {
+    const result = await runAgentctl(["agent", "--help"], { env: helpEnv() });
+    assert.equal(result.code, 0, `stderr=${result.stderr}`);
+    const out = stripAnsi(result.stdout);
+    assert.match(out, /top-level commands/);
+    assert.ok(out.includes("agentsfleet --help"), "agent --help should point at the full guide");
+  });
+});

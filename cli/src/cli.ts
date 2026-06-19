@@ -98,7 +98,7 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
     if (t === "--api") { api = argv[i + 1] || null; break; }
     if (t.startsWith(FLAG_API)) { api = t.slice(FLAG_API.length); break; }
   }
-  return api || env.AGENTSFLEET_API_URL || env.API_URL || null;
+  return api || env.AGENTSFLEET_API_URL || null;
 }
 
 function buildDeps(): CommandDeps {
@@ -207,7 +207,9 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // credentials.json) and the service API key (env slot). The api key wins
   // at the wire (resolveToken's env-first precedence), so an exported key
   // grants the admin role-gate; otherwise the role comes from the login
-  // JWT's claims.
+  // JWT's claims. resolveApiKeyFromEnv trims, so a whitespace-only key is
+  // treated as absent everywhere (guard + wire) rather than sending a blank
+  // `Authorization: Bearer`.
   const storedToken = creds.token ?? null;
   const resolvedApiKey = resolveApiKeyFromEnv(env);
   const resolvedAuthRole = resolvedApiKey ? ROLE_ADMIN : extractRoleFromToken(storedToken);
