@@ -43,6 +43,22 @@ export function buildAgentTree(
     .command("agent")
     .description("Agent management subcommands");
 
+  // The lifecycle verbs live at the top level, not under `agent` — so
+  // `agentsfleet agent list` would resolve to this group's help and show
+  // only `update`, with no hint that `list` is one level up. Spell the
+  // split out here; the top-level `--help` command guide does the same.
+  agentGroup.addHelpText(
+    "after",
+    [
+      "",
+      "Agent lifecycle verbs are top-level commands, not under `agent`:",
+      "  agentsfleet list | status | logs | events | steer",
+      "  agentsfleet install | stop | resume | kill | delete",
+      "This group holds in-place updates only. Run `agentsfleet --help`",
+      "for the full command guide.",
+    ].join("\n"),
+  );
+
   agentGroup
     .command("update <agent_id>")
     .description("Re-parse and PATCH an agent's TRIGGER.md + SKILL.md from a local bundle")

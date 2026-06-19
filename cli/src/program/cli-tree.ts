@@ -17,6 +17,7 @@ import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
 import { buildAgentTree } from "./cli-tree-agent.ts";
 import { buildMemoryTree } from "./cli-tree-memory.ts";
+import { helpTail } from "./cli-tree-help.ts";
 import type {
   ActionFrame,
   BuildProgramOptions,
@@ -27,44 +28,6 @@ import type {
 import type { ParsedArgs } from "../commands/types.ts";
 
 const BILLING_LIMIT_BOUNDS = { min: 1, max: 100 };
-
-function helpTail(): string {
-  // Commander's default help shows top-level commands only — subcommand
-  // names (`workspace add`, `workspace list`, …) and the env-var matrix
-  // never appear in the top-level body. Operators (and acceptance tests)
-  // expect both. addHelpText is additive — it does not override
-  // formatHelp, so commander still owns the layout above.
-  const subcommands = [
-    "auth status",
-    "workspace add", "workspace list", "workspace use", "workspace show",
-    "workspace credentials", "workspace delete",
-    "agent-key add", "agent-key list", "agent-key delete",
-    "grant list", "grant delete",
-    "tenant provider show", "tenant provider add", "tenant provider delete",
-    "billing show",
-    "credential add", "credential show", "credential list", "credential delete",
-    "agent update",
-    "memory list", "memory search",
-  ];
-  return [
-    "",
-    "Subcommands:",
-    ...subcommands.map((s) => `  ${s}`),
-    "",
-    "Environment variables:",
-    "  AGENTSFLEET_API_URL                  API base URL (overridden by --api)",
-    "  AGENTSFLEET_DASHBOARD_URL            Dashboard base URL (login verify page)",
-    "  AGENTSFLEET_TOKEN                    Auth token (interactive shells use env)",
-    "  AGENTSFLEET_API_KEY                  API key for service auth",
-    "  AGENTSFLEET_STATE_DIR                Directory for local CLI state files",
-    "  NO_COLOR                        Any non-empty value disables color",
-    "  AGENTSFLEET_TELEMETRY_DISABLED       Set to 1 to opt out of analytics+tracing",
-    "  DO_NOT_TRACK                    Set to 1 to opt out (industry-standard signal)",
-    "  AGENTSFLEET_TELEMETRY_POSTHOG_KEY    Override the PostHog project key",
-    "  AGENTSFLEET_TELEMETRY_POSTHOG_HOST   Override the PostHog ingest host",
-    "  AGENTSFLEET_TELEMETRY_DEBUG          Set to 1 to log span summaries to stderr",
-  ].join("\n");
-}
 
 function normalizeOptions(opts: Record<string, unknown>): Record<string, unknown> {
   // Commander camelCases hyphenated flag names: `--workspace-id` → `opts.workspaceId`.

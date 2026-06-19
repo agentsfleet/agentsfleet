@@ -49,10 +49,21 @@ export interface Lifecycle {
 
 type LifecycleCtx = Lifecycle[typeof CTX];
 
+// The auth guard accepts either a bearer token or AGENTSFLEET_API_KEY, and
+// authHeaders() emits both as `Authorization: Bearer <value>`. Mirror that
+// here so a service key (api key, no token) reaches the wire on Effect-path
+// commands too — not just the local guard. Prefer the token; fall back to
+// the api key.
+function bearerCredentialFromCtx(ctx: LifecycleCtx): Option.Option<Redacted.Redacted<string>> {
+  if (isString(ctx.token) && ctx.token.length > 0) return Option.some(Redacted.make(ctx.token));
+  if (isString(ctx.apiKey) && ctx.apiKey.length > 0) return Option.some(Redacted.make(ctx.apiKey));
+  return Option.none();
+}
+
 // Thread runCli's env-resolved values into Effect's CliConfig override.
 // `ctx.token` is already a `creds.token || env.AGENTSFLEET_TOKEN` merge from
-// cli.ts; mirror it as the override's `accessToken` so commands' Effects
-// receive the merged value.
+// cli.ts, and `ctx.apiKey` an `env.AGENTSFLEET_API_KEY`; mirror whichever is
+// present as the override's `accessToken` so commands' Effects authenticate.
 function configOverrideFromCtx(ctx: LifecycleCtx): {
   jsonMode: boolean;
   noOpen: boolean;
@@ -64,10 +75,7 @@ function configOverrideFromCtx(ctx: LifecycleCtx): {
     jsonMode: Boolean(ctx.jsonMode),
     noOpen: Boolean(ctx.noOpen),
     apiUrl: ctx.apiUrl,
-    accessToken:
-      isString(ctx.token) && ctx.token.length > 0
-        ? Option.some(Redacted.make(ctx.token))
-        : Option.none(),
+    accessToken: bearerCredentialFromCtx(ctx),
     ...(ctx.fetchImpl !== undefined
       ? { fetchImpl: ctx.fetchImpl as FetchImpl }
       : {}),
