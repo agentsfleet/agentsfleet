@@ -150,7 +150,7 @@ _test-integration-full: _reset-test-db
 	echo "→ [agentsfleet-runner] Building the runner binary for the operator-CLI integration arm (silent zig compile — no output until it links)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	zig build --build-file build_runner.zig; \
+	zig build --build-file build_runner.zig && \
 	echo "✓ [agentsfleet-runner] Runner binary built."; \
 	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
