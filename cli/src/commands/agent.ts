@@ -21,6 +21,7 @@ import {
   AGENTSFLEET_STATUS,
   type AgentMutationStatus,
 } from "../constants/agent-status.ts";
+import { formatDollars } from "../constants/billing.ts";
 import {
   ValidationError,
   type CliError,
@@ -42,7 +43,7 @@ interface AgentListItem {
   readonly name?: string;
   readonly status?: string;
   readonly events_processed?: number;
-  readonly budget_used_dollars?: number | null;
+  readonly budget_used_nanos?: number | null;
 }
 
 interface AgentListResponse {
@@ -102,15 +103,11 @@ export const statusEffect: Effect.Effect<
 
   yield* output.printSection("Agents");
   for (const z of agents) {
-    const budget =
-      typeof z.budget_used_dollars === "number"
-        ? `$${z.budget_used_dollars.toFixed(2)}`
-        : "—";
     yield* output.printKeyValue({
       Name: z.name ?? "",
       Status: z.status ?? "",
       Events: String(z.events_processed ?? 0),
-      Budget: budget,
+      Budget: formatDollars(z.budget_used_nanos),
     });
   }
 });
