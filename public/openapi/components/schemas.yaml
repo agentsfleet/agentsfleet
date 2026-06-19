@@ -203,6 +203,8 @@ components:
       - status
       - created_at
       - updated_at
+      - events_processed
+      - budget_used_nanos
       properties:
         id:
           type: string
@@ -229,6 +231,14 @@ components:
           description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
             $ref: '#/components/schemas/AgentTrigger'
+        events_processed:
+          type: integer
+          format: int64
+          description: Lifetime count of events this agent has processed (rows in `core.agent_events`).
+        budget_used_nanos:
+          type: integer
+          format: int64
+          description: Cumulative credit this agent has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `agent_execution_telemetry.credit_deducted_nanos`.
     AgentTrigger:
       type: object
       description: A single trigger projected into the agent list row.
