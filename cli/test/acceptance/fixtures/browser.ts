@@ -11,10 +11,13 @@
  * The `__client_uat` value MUST be `<= jwt.iat` per Clerk's middleware —
  * we decode the cookieJwt's iat and set uat to `iat - 1`.
  *
- * Selector contract — the dashboard's `/cli-auth/{session_id}` page MUST
- * expose `data-testid="cli-auth-approve"` on the approve action. The
- * carve-out subsection in `docs/AUTH.md` documents this contract; the
- * dashboard's CLI-auth handoff PR lands the page + selector.
+ * Selector strategy — we target the approve action by its accessible role
+ * (`button` named /approve/i) rather than a `data-testid`. The dashboard
+ * also exposes `data-testid="cli-auth-approve"`, but selecting by role keeps
+ * this test decoupled from the dashboard *deployment*: the role + the
+ * "Approve" label are present on the currently-deployed page even before a
+ * testid-bearing build ships, so the CLI suite doesn't gate on a dashboard
+ * deploy landing first.
  *
  * After approve, the page renders the 6-digit verification code in an
  * `<output aria-label="Verification code">` element. We scrape it and
@@ -23,7 +26,7 @@
  * human (here, the harness) typing into the terminal.
  */
 
-const APPROVE_SELECTOR = "[data-testid=\"cli-auth-approve\"]";
+const APPROVE_BUTTON_NAME = /approve/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
 const VERIFICATION_CODE_RE = /^\d{6}$/;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -86,8 +89,9 @@ export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promi
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
     await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
-    await page.waitForSelector(APPROVE_SELECTOR, { state: "visible", timeout: timeoutMs });
-    await page.click(APPROVE_SELECTOR);
+    const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
+    await approve.waitFor({ state: "visible", timeout: timeoutMs });
+    await approve.click();
 
     // On success the page swaps to the "Type this code into your CLI" card.
     // Read the code from its accessible <output> rather than pinning a URL —

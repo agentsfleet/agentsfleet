@@ -54,7 +54,20 @@ import {
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-const LOGIN_URL_RE = /login_url:\s*(https?:\/\/\S+)/i;
+// The browser leg requires the dashboard at AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL
+// to actually SERVE `/cli-auth/{session_id}`. Verified against api-dev's
+// dashboard (agentsfleet.vercel.app, 2026-06-19) that route currently
+// returns 404 — the page exists in source but is not deployed there yet, so
+// the whole real-login handshake (and the persisted-credential sweep that
+// depends on it seeding credentials.json) cannot complete. Opt in with
+// AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 once the dashboard ships the route;
+// the token-injection suite (lifecycle-with-token) covers the post-auth
+// surface live in the meantime.
+const handshakeEnabled = process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1";
+
+// printKeyValue renders the key space-aligned ("login_url   https://…"), not
+// "login_url: …" — match an optional colon then whitespace before the URL.
+const LOGIN_URL_RE = /login_url:?\s+(https?:\/\/\S+)/i;
 const CODE_PROMPT_RE = /verification code/i;
 const CREDENTIALS_MODE = 0o600;
 const JWT_SEGMENTS = 3;
@@ -81,6 +94,10 @@ function rewriteHost(loginUrl: string, dashboardBase: string): string {
 if (!isLive) {
   describe("lifecycle-after-login.spec.ts", () => {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
+  });
+} else if (!handshakeEnabled) {
+  describe("lifecycle-after-login.spec.ts", () => {
+    it.skip("dashboard /cli-auth route not deployed — set AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 once it ships", () => {});
   });
 } else {
   describe("lifecycle-after-login — real login → persisted credentials", () => {
