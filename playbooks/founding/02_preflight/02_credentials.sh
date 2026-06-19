@@ -100,7 +100,9 @@ check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v"
 
-  check_url_ref "op://$v/clerk-prod/jwks-url"
+  # JWKS URL is derived from the issuer (the daemon builds
+  # <issuer>/.well-known/jwks.json); the vault jwks-url field was removed.
+  # OIDC_ISSUER is the single source of identity truth.
   check_url_ref "op://$v/clerk-prod/issuer"
   check_ref "op://$v/cloudflare-api-token/credential"
   check_ref "op://$v/npm-publish-token/credential"
@@ -139,7 +141,9 @@ check_dev() {
   local v="$vault_dev"
   echo "-- checking DEV vault: $v"
 
-  check_url_ref "op://$v/clerk-dev/jwks-url"
+  # JWKS URL is derived from the issuer (the daemon builds
+  # <issuer>/.well-known/jwks.json); the vault jwks-url field was removed.
+  # OIDC_ISSUER is the single source of identity truth.
   check_url_ref "op://$v/clerk-dev/issuer"
   check_ref "op://$v/clerk-dev/publishable-key"
   check_ref "op://$v/clerk-dev/secret-key"

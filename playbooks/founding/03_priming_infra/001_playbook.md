@@ -114,7 +114,6 @@ for APP in agentsfleetd-dev; do
     GRAFANA_OTLP_INSTANCE_ID="$(op read 'op://$VAULT_DEV/grafana-dev/instance-id')" \
     GRAFANA_OTLP_API_KEY="$(op read 'op://$VAULT_DEV/grafana-dev/api-key')" \
     OIDC_PROVIDER=clerk \
-    OIDC_JWKS_URL="$(op read 'op://$VAULT_DEV/clerk-dev/jwks-url')" \
     OIDC_ISSUER="$(op read 'op://$VAULT_DEV/clerk-dev/issuer')" \
     PORT=3000 \
     ENVIRONMENT=dev \
