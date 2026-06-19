@@ -29,8 +29,8 @@ describe("status", () => {
         [`GET /v1/workspaces/${WS_ID}/agents`]: () =>
           jsonResponse(200, {
             items: [
-              { name: "my-bot", status: "active", events_processed: 42, budget_used_dollars: 1.23 },
-              { name: "idle-bot", status: "stopped", events_processed: 0, budget_used_dollars: null },
+              { name: "my-bot", status: "active", events_processed: 42, budget_used_nanos: 1_230_000_000 },
+              { name: "idle-bot", status: "stopped", events_processed: 0, budget_used_nanos: null },
             ],
           }),
       };
@@ -45,7 +45,7 @@ describe("status", () => {
         expect(text).toContain("my-bot");
         expect(text).toContain("$1.23");
         expect(text).toContain("idle-bot");
-        expect(text).toContain("—");
+        expect(text).toContain("$0.00");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET /v1/workspaces/${WS_ID}/agents`]);
       });
     });
