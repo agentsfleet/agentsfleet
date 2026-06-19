@@ -134,9 +134,11 @@ function ModelSetupSection({
 function CredentialVaultSection({
   workspaceId,
   credentials,
+  protectedCredentialName,
 }: {
   workspaceId: string;
   credentials: CredentialSummary[];
+  protectedCredentialName: string | null;
 }) {
   return (
     <Section asChild>
@@ -155,7 +157,11 @@ function CredentialVaultSection({
           </a>
         </div>
         <div className="space-y-4">
-          <CredentialsList workspaceId={workspaceId} credentials={credentials} />
+          <CredentialsList
+            workspaceId={workspaceId}
+            credentials={credentials}
+            protectedCredentialName={protectedCredentialName}
+          />
           <details className="rounded-md border border-dashed border-border bg-card">
             <summary className="cursor-pointer px-4 py-3">
               <span className="block font-medium text-foreground">Add a generic credential</span>
@@ -224,7 +230,11 @@ export default async function ProviderSettingsPage() {
         credentials={credentialsResp.credentials}
         catalogue={catalogue}
       />
-      <CredentialVaultSection workspaceId={workspace.id} credentials={credentialsResp.credentials} />
+      <CredentialVaultSection
+        workspaceId={workspace.id}
+        credentials={credentialsResp.credentials}
+        protectedCredentialName={provider?.credential_ref ?? null}
+      />
     </div>
   );
 }

@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRetryAfterHeaderValue, request } from "./client";
+import { readWorkspaceFetchAudit, resetWorkspaceFetchAudit, WORKSPACE_LIST_PATH } from "../acceptance/workspace-fetch-audit";
 import { ApiError } from "./errors";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-afterEach(() => fetchMock.mockReset());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  resetWorkspaceFetchAudit();
+  fetchMock.mockReset();
+});
 
 describe("parseRetryAfterHeaderValue", () => {
   it("converts a numeric delta-seconds string to milliseconds", () => {
@@ -67,6 +72,19 @@ describe("request", () => {
     const result = await request("/v1/test", { method: "DELETE" }, "tok");
     expect(result).toBeUndefined();
     expect(jsonFn).not.toHaveBeenCalled();
+  });
+
+  it("audits only GET workspace list requests", async () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
+
+    await request(WORKSPACE_LIST_PATH, { method: "GET" }, "tok");
+    await request(WORKSPACE_LIST_PATH, { method: "POST" }, "tok");
+
+    expect(readWorkspaceFetchAudit()).toEqual({
+      total: 1,
+      byPath: { [WORKSPACE_LIST_PATH]: 1 },
+    });
   });
 
   it("maps the RFC 7807 error body (detail, error_code, request_id) onto ApiError", async () => {

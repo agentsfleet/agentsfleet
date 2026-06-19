@@ -1,5 +1,6 @@
 "use client";
 
+import type { AgentTrigger } from "@/lib/types";
 import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
@@ -14,10 +15,12 @@ import {
   useResettableTimeout,
 } from "@agentsfleet/design-system";
 import { webhookUrlFor } from "@/lib/api/agents";
-import type { AgentTrigger } from "@/lib/types";
 import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
 import CronCard from "./CronCard";
 import { guidanceFor } from "./provider-guidance";
+import { AGENT_TRIGGER_TYPE, triggerKey } from "./trigger-key";
+
+export { triggerKey } from "./trigger-key";
 
 type Props = {
   agentId: string;
@@ -31,24 +34,13 @@ type Props = {
   lastDeliveryByKey?: Record<string, number | null>;
 };
 
-export function triggerKey(t: AgentTrigger): string {
-  switch (t.type) {
-    case "webhook":
-      return `webhook:${t.source}`;
-    case "cron":
-      return `cron:${t.schedule}`;
-    case "api":
-      return "api";
-  }
-}
-
 function triggerLabel(t: AgentTrigger): string {
   switch (t.type) {
-    case "webhook":
+    case AGENT_TRIGGER_TYPE.webhook:
       return `Webhook · ${t.source}`;
-    case "cron":
+    case AGENT_TRIGGER_TYPE.cron:
       return `Cron · ${t.schedule}`;
-    case "api":
+    case AGENT_TRIGGER_TYPE.api:
       return "API ingress";
   }
 }
@@ -72,10 +64,10 @@ export default function TriggerPanel({
     return setup ? triggerKey(setup) : undefined;
   }, [list, lastDeliveryByKey]);
 
-  const [openValue, setOpenValue] = useState<string | undefined>(undefined);
-  // Defer auto-expand to the client so SSR markup matches a collapsed accordion.
+  const [openValue, setOpenValue] = useState("");
+  // Defer auto-expand to the client so server-rendered markup matches a collapsed accordion.
   useEffect(() => {
-    setOpenValue(initiallyOpen);
+    setOpenValue(initiallyOpen ?? "");
   }, [initiallyOpen]);
 
   if (list.length === 0) {
@@ -88,7 +80,7 @@ export default function TriggerPanel({
         type="single"
         collapsible
         value={openValue}
-        onValueChange={(v) => setOpenValue(v || undefined)}
+        onValueChange={setOpenValue}
         data-testid="trigger-accordion"
       >
         {list.map((t) => {
@@ -126,10 +118,10 @@ function TriggerBody({
   agentId: string;
   lastDeliveryAt: number | null | undefined;
 }) {
-  if (trigger.type === "cron") {
+  if (trigger.type === AGENT_TRIGGER_TYPE.cron) {
     return <CronCard trigger={trigger} agentId={agentId} />;
   }
-  if (trigger.type === "webhook") {
+  if (trigger.type === AGENT_TRIGGER_TYPE.webhook) {
     const guidance = guidanceFor(trigger.source);
     const url = webhookUrlFor(agentId, trigger.source);
     if (!guidance) {
@@ -144,7 +136,7 @@ function TriggerBody({
       />
     );
   }
-  return <CopyUrlFallback url={webhookUrlFor(agentId)} source="api" />;
+  return <CopyUrlFallback url={webhookUrlFor(agentId)} source={AGENT_TRIGGER_TYPE.api} />;
 }
 
 function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
