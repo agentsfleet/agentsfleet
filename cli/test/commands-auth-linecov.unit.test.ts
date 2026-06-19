@@ -212,4 +212,38 @@ describe("authStatusEffect token summary derivation", () => {
     expect(rec.stdout.some((l) => l.includes("ok: authenticated"))).toBe(true);
   });
 });
+
+// An opaque api key (AGENTSFLEET_API_KEY) does not decode to a JWT payload, so
+// auth status must label it as such instead of emitting empty JWT-claim rows.
+describe("authStatusEffect credential kind", () => {
+  test("an opaque api key renders as api_key with no JWT claims", async () => {
+    const { exit, json } = await runJson("agt_t9f3c_opaque_not_a_jwt");
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(json["credential_kind"]).toBe("api_key");
+    expect(json["token"]).toBeNull();
+    expect(json["authenticated"]).toBe(true);
+  });
+
+  test("the human render shows the api-key line, not dashed JWT claims", async () => {
+    const rec = makeRecorder();
+    const exit = await Effect.runPromiseExit(
+      authStatusEffect.pipe(
+        Effect.provide(configLayer(false)),
+        Effect.provide(credentialsLayer(Option.some(Redacted.make("agt_t9f3c_opaque")))),
+        Effect.provide(okHttpLayer),
+        Effect.provide(outputLayer(rec)),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("credential: api key"))).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("tenant_id:"))).toBe(false);
+    expect(rec.stdout.some((l) => l.includes("ok: authenticated"))).toBe(true);
+  });
+
+  test("a decodable JWT is tagged credential_kind jwt", async () => {
+    const { json } = await runJson(makeJwt({ sub: "user_1", exp: FUTURE_EXP_SEC }));
+    expect(json["credential_kind"]).toBe("jwt");
+    expect(tokenOf(json)).not.toBeNull();
+  });
+});
 const MS_PER_SECOND = 1000 as const;
