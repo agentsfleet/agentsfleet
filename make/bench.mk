@@ -9,21 +9,30 @@
 .PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin
 
 memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
-	@echo "→ [agentsfleetd] Running allocator leak guard tests..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test -Dopenssl=false -- --test-filter "finalizeWorkerAllocator"
+	@# Build the test binary ONCE, then point both gates at the same
+	@# zig-out/bin/agentsfleetd-tests. The previous flow compiled it twice — a
+	@# `zig build test` (whose trailing `-- --test-filter …` was silently
+	@# dropped by the build runner, so it always ran the FULL suite) and a
+	@# second `test-bin` build with mismatched flags, so the cache never reused.
+	@# The allocator gate runs the binary directly (no args = full suite); the
+	@# `std.testing.allocator` leak check fires for every test either way.
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe EXTRA_BUILD_FLAGS="-Dopenssl=false"; \
+	    echo "→ [agentsfleetd] Building the test binary once (ReleaseSafe, openssl off) for both leak gates..."; \
+	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe EXTRA_BUILD_FLAGS="-Dopenssl=false" || exit 1; \
+	    echo "→ [agentsfleetd] Running allocator leak guard tests..."; \
+	    zig-out/bin/agentsfleetd-tests || exit 1; \
 	    echo "→ [agentsfleetd] Running valgrind leak gate..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 \
 	      zig-out/bin/agentsfleetd-tests;; \
 	  Darwin) \
+	    echo "→ [agentsfleetd] Building the test binary once for the leak gates..."; \
+	    $(MAKE) _ensure-test-bin || exit 1; \
+	    echo "→ [agentsfleetd] Running allocator leak guard tests..."; \
+	    zig-out/bin/agentsfleetd-tests || exit 1; \
 	    if command -v leaks >/dev/null 2>&1; then \
-	      $(MAKE) _ensure-test-bin; \
 	      echo "→ [agentsfleetd] Running macOS leaks gate..."; \
 	      MallocStackLogging=1 leaks -atExit -- zig-out/bin/agentsfleetd-tests >/dev/null || \
 	        echo "→ [agentsfleetd] leaks check unavailable in current runtime (continuing with allocator gate)"; \
@@ -31,7 +40,10 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	      echo "→ [agentsfleetd] leaks not found; allocator gate only"; \
 	    fi;; \
 	  *) \
-	    echo "→ [agentsfleetd] platform=$$(uname -s): allocator gate only";; \
+	    echo "→ [agentsfleetd] platform=$$(uname -s): allocator gate only"; \
+	    $(MAKE) _ensure-test-bin EXTRA_BUILD_FLAGS="-Dopenssl=false" || exit 1; \
+	    echo "→ [agentsfleetd] Running allocator leak guard tests..."; \
+	    zig-out/bin/agentsfleetd-tests || exit 1;; \
 	esac
 	@echo "✓ [agentsfleetd] memleak gate passed"
 
