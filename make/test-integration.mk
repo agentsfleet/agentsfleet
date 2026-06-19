@@ -151,9 +151,10 @@ _test-integration-full: _reset-test-db
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
-	zig build run -- migrate; \
+	zig build run -- migrate; migrate_rc=$$?; \
 	echo "→ [agentsfleet-runner] Waiting for the background runner build (usually already linked during migrate)..."; \
 	wait "$$runner_build_pid" || { echo "✗ [agentsfleet-runner] Runner binary build failed"; exit 1; }; \
+	[ "$$migrate_rc" -eq 0 ] || { echo "✗ [agentsfleetd] Test database migration failed (exit $$migrate_rc) — not running tests against an unmigrated DB"; exit 1; }; \
 	echo "✓ [agentsfleet-runner] Runner binary built."; \
 	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
