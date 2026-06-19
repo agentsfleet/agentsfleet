@@ -264,7 +264,6 @@ export default function CredentialsList({
           setEditTarget(name);
         }}
         onDelete={(name) => {
-          if (name === protectedCredentialName) return;
           setError(null);
           setTarget(name);
         }}
