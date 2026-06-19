@@ -4,11 +4,12 @@
 **Milestone:** Milestone 94 (M94)
 **Workstream:** 002
 **Date:** Jun 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** Priority 1 (P1) — fixes the first-run install path for a customer-facing dashboard flow.
 **Categories:** API, Command-Line Interface (CLI), Documentation (DOCS), Skill Bundle (SKILL), User Interface (UI)
 **Batch:** Batch 1 (B1) — bundle import and install flow.
 **Branch:** `fix/app-ui-polish-current`
+**Test Baseline:** unit=1974 integration=192
 **Depends on:** None.
 **Provenance:** agent-generated (pre-spec, current codebase review)
 **Canonical architecture:** `docs/architecture/user_flow.md` §8.2 and `docs/architecture/data_flow.md` install/execute paths define today's agent install flow; bundle registry/storage is a greenfield extension that must update those docs in this work.
