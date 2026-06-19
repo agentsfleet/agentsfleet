@@ -1,8 +1,15 @@
 // Regression guard for the removal of the unprefixed API_KEY env alias.
 // cli.ts previously read `env.API_KEY || env.AGENTSFLEET_API_KEY`; the bare
-// form was off-brand (and outranked the prefixed one). These tests prove,
-// end-to-end through runCli's auth guard, that an ambient `API_KEY` now
-// authenticates nothing and only `AGENTSFLEET_API_KEY` does.
+// form was off-brand (and outranked the prefixed one). These tests prove
+// that an ambient `API_KEY` is no longer a recognized auth source while
+// `AGENTSFLEET_API_KEY` still clears runCli's local auth guard.
+//
+// Scope note: this guards the alias REMOVAL (which env names the local
+// guard accepts), not wire-level service auth. Whether AGENTSFLEET_API_KEY
+// is propagated as an Authorization header is a separate concern — the
+// CLI's in-flight Effect http-client migration does not yet forward
+// ctx.apiKey on every command path (src/lib/http.ts does; the Effect
+// src/services/http-client.ts does not). That gap predates this change.
 //
 // Sibling to api-url-resolution.integration.test.ts, which guards the
 // symmetric removal of the bare API_URL alias.
@@ -79,7 +86,7 @@ test("ambient bare API_KEY authenticates nothing — alias removed → AUTH_REQU
   });
 });
 
-test("AGENTSFLEET_API_KEY authenticates — auth guard passes, doctor reaches the server", async () => {
+test("AGENTSFLEET_API_KEY clears the local auth guard — bare API_KEY does not", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -100,11 +107,11 @@ test("AGENTSFLEET_API_KEY authenticates — auth guard passes, doctor reaches th
       stderr: err.stream,
       fetchImpl,
     });
-    // The branded key clears the auth guard, so doctor proceeds to probe the
-    // server (reached=true) instead of short-circuiting with AUTH_REQUIRED.
-    // Whether every doctor health check passes is doctor-json.test.ts's job;
-    // here the only claim is that AGENTSFLEET_API_KEY authenticates.
-    assert.equal(reached, true, `expected doctor to reach the server; stderr=${err.read()}`);
-    assert.ok(!/AUTH_REQUIRED/.test(err.read()), `branded key should authenticate; stderr=${err.read()}`);
+    // The branded key clears the local auth guard, so doctor proceeds past it
+    // (reached=true) instead of short-circuiting with AUTH_REQUIRED. This
+    // asserts only that AGENTSFLEET_API_KEY is a recognized local auth source
+    // — NOT that the key is forwarded on the wire (see the scope note up top).
+    assert.equal(reached, true, `expected the command to clear the auth guard; stderr=${err.read()}`);
+    assert.ok(!/AUTH_REQUIRED/.test(err.read()), `branded key should clear the guard; stderr=${err.read()}`);
   });
 });
