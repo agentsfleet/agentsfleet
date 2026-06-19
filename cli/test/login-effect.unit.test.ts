@@ -3,7 +3,6 @@
 // trip). This file pins the non-prompting branches that 5.C.1 wired:
 //
 //   - D20 idempotency  — existing creds + --no-input + no --force aborts
-//   - D26b env-token   — AGENTSFLEET_TOKEN set + --no-input + no --force aborts
 //   - verify --no-input — verification prompt is skipped → InterruptedError
 //   - transport remap  — ServerError/NetworkError on POST /sessions become
 //                        AuthError so every login failure exits 1
@@ -46,7 +45,6 @@ const DEFAULT_FLAGS: LoginFlags = {
   force: false,
   tokenName: undefined,
   tokenFlag: undefined,
-  envToken: undefined,
 };
 
 interface Rec {
@@ -486,20 +484,6 @@ describe("loginEffect — non-interactive direct-token path", () => {
     expect(failureValue(exit)).toBeInstanceOf(MeValidationError);
     expect(creds.saves()).toBe(0);
     expect(browser.opens()).toBe(0);
-  });
-
-  test("AGENTSFLEET_TOKEN env resolves the token with no browser opened", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true, envToken: "env-token" },
-      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(browser.opens()).toBe(0);
-    expect(creds.saves()).toBe(1);
   });
 
   test("piped stdin (non-TTY) resolves the token with no browser opened", async () => {

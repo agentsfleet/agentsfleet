@@ -186,21 +186,17 @@ const trimToUndefined = (value: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
-// Non-interactive token resolution, mirroring supabase login.handler.ts
-// resolveToken: --token flag → AGENTSFLEET_TOKEN env → piped stdin (non-TTY).
+// Non-interactive token resolution: --token flag → piped stdin (non-TTY).
 // `none` means "no direct token" → the caller falls through to the browser
 // device flow. A non-TTY shell with no token cannot complete the device
 // flow (the verification code is typed by a human), so it fails fast with
 // the same advice supabase's NoTtyError carries.
 export const resolveDirectToken = (opts: {
   readonly tokenFlag: string | undefined;
-  readonly envToken: string | undefined;
 }): Effect.Effect<Option.Option<string>, CliError, Stdin> =>
   Effect.gen(function* () {
     const flag = trimToUndefined(opts.tokenFlag);
     if (flag !== undefined) return Option.some(flag);
-    const env = trimToUndefined(opts.envToken);
-    if (env !== undefined) return Option.some(env);
     const stdin = yield* Stdin;
     if (stdin.isTTY) return Option.none();
     const piped = trimToUndefined(yield* stdin.readToEnd);
@@ -208,7 +204,7 @@ export const resolveDirectToken = (opts: {
     return yield* Effect.fail(
       new InterruptedError({
         detail: "no token provided and stdin is not a terminal",
-        suggestion: "pass --token or set AGENTSFLEET_TOKEN",
+        suggestion: "pass --token or pipe the token on stdin",
       }),
     );
   });

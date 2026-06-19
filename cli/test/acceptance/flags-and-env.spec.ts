@@ -165,7 +165,7 @@ describe("non-TTY login fast-fails", () => {
   it("exits non-zero with token guidance and never opens a browser", async () => {
     const result = await waitForExit(spawnNonTtyLogin());
     assert.notEqual(result.code, 0, `expected fast-fail, got ${result.code}; stderr=${result.stderr}`);
-    assert.match(result.stderr, /--token|AGENTSFLEET_TOKEN/, `expected token guidance: ${result.stderr}`);
+    assert.match(result.stderr, /--token/, `expected token guidance: ${result.stderr}`);
     assert.ok(
       !/login_url|127\.0\.0\.1/i.test(result.stdout),
       `device flow must not start: ${result.stdout}`,
@@ -194,11 +194,12 @@ describe("non-TTY login fast-fails", () => {
 
   if (isLive) {
     describe("--api / AGENTSFLEET_API_URL precedence", () => {
-      // process.env.AGENTSFLEET_TOKEN is NOT injected by the CI workflow step
-      // (only CLERK_SECRET_KEY + fixture emails land). Mint a real
-      // session JWT once per describe so the auth-guard passes and the
-      // tests actually exercise URL precedence instead of exiting on
-      // "not authenticated".
+      // process.env.AGENTSFLEET_API_KEY is NOT injected by the CI workflow
+      // step (only CLERK_SECRET_KEY + fixture emails land). Mint a real
+      // session JWT once per describe and pass it via the env credential slot
+      // (a non-`agt_t` JWT routes to the server's OIDC verifier) so the
+      // auth-guard passes and the tests actually exercise URL precedence
+      // instead of exiting on "not authenticated".
       let sessionJwt: string = "";
       beforeAll(async () => {
         const minted = await attachJwt(resolveClerkSecret(), {
@@ -210,7 +211,7 @@ describe("non-TTY login fast-fails", () => {
       it("--api overrides AGENTSFLEET_API_URL", async () => {
         const env = composeEnv({
           AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-          AGENTSFLEET_TOKEN: sessionJwt,
+          AGENTSFLEET_API_KEY: sessionJwt,
           NO_COLOR: "1",
         });
         const result: RunResult = await runAgentctl(
@@ -224,7 +225,7 @@ describe("non-TTY login fast-fails", () => {
       it("AGENTSFLEET_API_URL honored when --api absent", async () => {
         const env = composeEnv({
           AGENTSFLEET_API_URL: target,
-          AGENTSFLEET_TOKEN: sessionJwt,
+          AGENTSFLEET_API_KEY: sessionJwt,
           NO_COLOR: "1",
         });
         const result: RunResult = await runAgentctl(["workspace", "list", "--json"], { env });

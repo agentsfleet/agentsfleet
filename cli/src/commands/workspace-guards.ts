@@ -1,10 +1,10 @@
 // Shared Effect-shaped guards every workspace-scoped, auth-required
 // command runs at the top of its gen block: require a current
-// workspace, resolve a bearer token from credentials → env.
+// workspace, resolve a bearer token (env API key over stored login).
 //
 // `requireWorkspaceId` fails with ConfigError (EXIT_CODE.ConfigError = 5)
 // when no workspace is selected. `resolveAuthToken` fails the same way
-// when neither stored credentials nor AGENTSFLEET_TOKEN env yield a token.
+// when neither stored credentials nor AGENTSFLEET_API_KEY env yield a token.
 // Both can also fail with UnexpectedError from the underlying state
 // store (disk read failure); commands widen their error channel to
 // `ConfigError | UnexpectedError` or just `CliError`.

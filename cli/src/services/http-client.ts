@@ -128,10 +128,13 @@ export const httpClientLayer: Layer.Layer<HttpClient, never, CliConfig> = Layer.
 
 );
 
-// Token resolution helper for command handlers: prefer Credentials over env.
+// Token resolution helper for command handlers. Precedence: the env-sourced
+// service API key (AGENTSFLEET_API_KEY) wins over the stored login JWT — a
+// machine that explicitly exports a key means to act as that principal,
+// overriding whatever `agentsfleet login` left on disk.
 // Returns the Option-wrapped Redacted value the HttpClient request shape consumes.
 export const resolveToken = (
   envToken: Option.Option<Redacted.Redacted<string>>,
   storedToken: Option.Option<Redacted.Redacted<string>>,
 ): Option.Option<Redacted.Redacted<string>> =>
-  Option.isSome(storedToken) ? storedToken : envToken;
+  Option.isSome(envToken) ? envToken : storedToken;

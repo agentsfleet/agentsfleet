@@ -60,8 +60,7 @@ Commands by task:
 Environment variables:
   AGENTSFLEET_API_URL                 API base URL (overridden by --api)
   AGENTSFLEET_DASHBOARD_URL           Dashboard base URL (login verify page)
-  AGENTSFLEET_TOKEN                   Auth token (interactive shells use env)
-  AGENTSFLEET_API_KEY                 API key for service auth
+  AGENTSFLEET_API_KEY                 Service API key (overrides stored login)
   AGENTSFLEET_STATE_DIR               Directory for local CLI state files
   NO_COLOR                            Any non-empty value disables color
   AGENTSFLEET_TELEMETRY_DISABLED      Set to 1 to opt out of analytics+tracing
