@@ -21,5 +21,18 @@ jobs:
       options: --security-opt seccomp=unconfined
     steps:
       - uses: actions/checkout@v6
+      # Persist the Zig cache across runs so memleak doesn't recompile the test
+      # binary from cold every time (~150s). Content-addressed: a stale hit only
+      # recompiles changed modules, never a wrong build.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Run memleak gate
         run: make memleak
