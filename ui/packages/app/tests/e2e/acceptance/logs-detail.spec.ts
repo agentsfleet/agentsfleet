@@ -45,7 +45,7 @@ test.describe("agent detail logs", () => {
 
     // Recent Activity section is always present on the detail page; assert
     // its label so a section-rename surfaces here.
-    const recentActivity = page.getByLabel("Recent Activity");
+    const recentActivity = page.getByRole("region", { name: "Recent Activity" });
     await expect(recentActivity).toBeVisible();
   });
 

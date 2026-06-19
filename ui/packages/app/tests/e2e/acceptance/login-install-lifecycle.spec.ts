@@ -55,7 +55,7 @@ test.describe("login → install → lifecycle", () => {
     // Post-install: form redirects to detail page. Recent Activity section
     // is the section-scaffolding assertion (matches logs-detail downgrade).
     await expect(page).toHaveURL(new RegExp(`/agents/${agentId}(\\?|$)`));
-    await expect(page.getByLabel("Recent Activity")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
     await page.goto("/agents");

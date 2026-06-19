@@ -95,9 +95,8 @@ describe("TriggerPanel", () => {
   });
 
   it("collapses an open accordion item when the user clicks the trigger again", () => {
-    // Branch coverage: `onValueChange={(v) => setOpenValue(v || undefined)}`
-    // — the user-collapse path where Radix passes `""` and we coerce to
-    // `undefined`. Auto-expand paths only exercise the expand half.
+    // Branch coverage: Radix passes `""` for the user-collapse path; the
+    // controlled accordion keeps that empty value instead of reopening.
     render(
       <TriggerPanel
         agentId="agt_ax"
