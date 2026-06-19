@@ -85,8 +85,8 @@ const resolveWorkspaceId = (
 const agentKeysPath = (workspaceId: string): string =>
   `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
 
-const agentKeyPath = (workspaceId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
+const agentKeyPath = (workspaceId: string, agentKeyId: string): string =>
+  `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentKeyId)}`;
 
 export const agentAddEffectFromArgs = (
   args: AgentAddArgs,
@@ -200,8 +200,8 @@ export const agentListEffectFromArgs = (
 
 export const agentDeleteEffectFromArgs = (
   workspaceIdFlag: string | undefined,
-  agentIdPositional: string | undefined,
-  agentIdFlag: string | undefined,
+  agentKeyIdPositional: string | undefined,
+  agentKeyIdFlag: string | undefined,
 ): Effect.Effect<
   void,
   CliError,
@@ -214,24 +214,24 @@ export const agentDeleteEffectFromArgs = (
     const token = yield* resolveAuthToken;
     const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
     yield* requireValidId(workspaceId, "workspace_id");
-    const agentIdRaw = yield* requireFlag(
-      agentIdPositional ?? agentIdFlag,
+    const agentKeyIdRaw = yield* requireFlag(
+      agentKeyIdPositional ?? agentKeyIdFlag,
       "agent-key delete requires <agent_key_id>",
       "pass <agent_key_id> as positional or --agent-key-id <id>",
     );
-    const agentId = yield* requireValidId(agentIdRaw, "key_id");
+    const agentKeyId = yield* requireValidId(agentKeyIdRaw, "key_id");
 
     yield* http.request<unknown>({
-      path: agentKeyPath(workspaceId, agentId),
+      path: agentKeyPath(workspaceId, agentKeyId),
       method: "DELETE",
       token,
     });
 
     if (config.jsonMode) {
-      yield* output.printJson({ deleted: true, agent_key_id: agentId });
+      yield* output.printJson({ deleted: true, agent_key_id: agentKeyId });
     } else {
       yield* output.success(
-        `Agent key ${agentId} deleted. Key immediately invalidated.`,
+        `Agent key ${agentKeyId} deleted. Key immediately invalidated.`,
       );
     }
   });
