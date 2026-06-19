@@ -141,16 +141,19 @@ _test-integration-full: _reset-test-db
 	  esac; \
 	fi; \
 	if [ -z "$$redis_tls_test_url" ]; then redis_tls_test_url="$(TEST_REDIS_TLS_URL_LOCAL)"; fi; \
-	echo "→ [agentsfleetd] Auto-migrating test database..."; \
 	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"; \
+	echo "→ [agentsfleet-runner] Building the runner binary in the background so it overlaps the migrate compile (separate build graph, no datastore; silent until it links)..."; \
+	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	zig build --build-file build_runner.zig & \
+	runner_build_pid=$$!; \
+	echo "→ [agentsfleetd] Auto-migrating test database..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
 	zig build run -- migrate; \
-	echo "→ [agentsfleet-runner] Building the runner binary for the operator-CLI integration arm (silent zig compile — no output until it links)..."; \
-	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	zig build --build-file build_runner.zig && \
+	echo "→ [agentsfleet-runner] Waiting for the background runner build (usually already linked during migrate)..."; \
+	wait "$$runner_build_pid" || { echo "✗ [agentsfleet-runner] Runner binary build failed"; exit 1; }; \
 	echo "✓ [agentsfleet-runner] Runner binary built."; \
 	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
