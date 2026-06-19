@@ -15,25 +15,23 @@ jobs:
   test-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Run inside our pre-baked Zig image (like the unit/memleak/lint lanes)
+    # instead of bare ubuntu-latest + setup-zig. The image bundles the Docker
+    # CLI + compose v2 + postgresql-client; mounting the host Docker socket lets
+    # `docker compose` drive Postgres/Redis on the host daemon. With no
+    # setup-zig, the Makefile's .tmp/ Zig-cache default applies, so actions/cache
+    # works exactly like the other container jobs (no env override needed).
+    container:
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
+      options: --volume /var/run/docker.sock:/var/run/docker.sock
+    env:
+      # Fixed compose project so we can join its default network by name and
+      # reach the services as postgres:5432 / redis:6379 (the Redis TLS cert's
+      # SAN includes `redis`, so TLS verifies on that hostname).
+      COMPOSE_PROJECT_NAME: af
     steps:
       - uses: actions/checkout@v6
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          # We manage the build cache ourselves via actions/cache on .tmp/ (see
-          # below). setup-zig's own cache is keyed per run-id (never reused
-          # across runs) AND it exports ZIG_GLOBAL/LOCAL_CACHE_DIR, which would
-          # hijack the Makefile's .tmp/ paths and leave our cache empty.
-          use-cache: false
-      - name: Install OpenSSL dev headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
-
-      # Persist the Zig compilation cache across runs. The Makefile points Zig's
-      # cache at .tmp/zig-{global,local}-cache (forced on the build step below,
-      # so setup-zig can't redirect it) — without this, every CI run recompiles
-      # the agentsfleetd test binary from cold (~150s). Content-addressed: a
-      # stale hit only triggers a recompile of changed modules, never a wrong build.
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
@@ -48,15 +46,18 @@ jobs:
       - name: Start Postgres and Redis via docker compose
         run: docker compose up -d postgres redis
 
+      - name: Join the compose network (reach services by name from this container)
+        run: docker network connect "${COMPOSE_PROJECT_NAME}_default" "$(hostname)"
+
       - name: Wait for Postgres to be ready
         run: |
           echo "→ Waiting for Postgres (TLS-enabled container, may need extra startup time)..."
           for i in $(seq 1 30); do
-            pg_isready -h localhost -p 5432 -U agentsfleet -d agentsfleetdb 2>/dev/null && break
+            pg_isready -h postgres -p 5432 -U agentsfleet -d agentsfleetdb 2>/dev/null && break
             echo "  attempt $i/30 — not ready yet"
             sleep 3
           done
-          pg_isready -h localhost -p 5432 -U agentsfleet -d agentsfleetdb \
+          pg_isready -h postgres -p 5432 -U agentsfleet -d agentsfleetdb \
             || { echo "✗ Postgres did not become ready in time"; exit 1; }
           echo "✓ Postgres is ready"
 
@@ -80,13 +81,11 @@ jobs:
 
       - name: Run all integration tests
         env:
-          TEST_DATABASE_URL: postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
-          TEST_REDIS_TLS_URL: rediss://:agentsfleet@localhost:6379
-          # Force the build to write where actions/cache reads (step env beats
-          # setup-zig's GITHUB_ENV export). These equal the Makefile's CURDIR
-          # default, so the cached objects are found + saved.
-          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-global-cache
-          ZIG_LOCAL_CACHE_DIR: ${{ github.workspace }}/.tmp/zig-local-cache
+          # Service-name hosts on the joined compose network (not localhost —
+          # localhost is this container). sslmode=disable: the PG container has
+          # no TLS; the Makefile only auto-appends it for localhost/127.0.0.1.
+          TEST_DATABASE_URL: postgres://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?sslmode=disable
+          TEST_REDIS_TLS_URL: rediss://:agentsfleet@redis:6379
         run: make test-integration
 
       - name: Stop services
