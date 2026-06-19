@@ -60,11 +60,13 @@ const CARRIAGE_RETURN = "\r";
 // A predicate that never matches — drives the timeout-rejection path.
 const NEVER_MATCH = (): boolean => false;
 
-// Internal waitForLine ceilings. The happy-path ceiling is generous so a
-// slow CI box never trips it; the reject ceiling is short so a regression
-// (a hang) fails fast instead of stalling the run.
+// Internal waitForLine ceilings. RESOLVE_WAIT_MS is generous so a slow CI box
+// never trips it (also used for the early-exit reject, where the child's exit
+// — not the timer — settles the waiter). TIMER_WAIT_MS is far below the
+// child's cold-start (~python+node spawn), so the timer fires while the child
+// is still alive — exercising the timeout path specifically.
 const RESOLVE_WAIT_MS = 8_000;
-const REJECT_WAIT_MS = 400;
+const TIMER_WAIT_MS = 50;
 
 // bun:test per-test deadlines. These MUST exceed the internal waitForLine
 // ceiling above — bun's default 5s deadline would otherwise kill a spawning
@@ -114,11 +116,13 @@ describe("PtyProcess — waitForLine resolution", () => {
 });
 
 describe("PtyProcess — waitForLine timeout", () => {
-  test("rejects with a timed-out message on a never-matching predicate", async () => {
+  test("rejects with a timed-out message while the child is still alive", async () => {
+    // TIMER_WAIT_MS fires well before the child can cold-start and exit, so
+    // this hits the timeout path specifically — not the early-exit path.
     const pty = spawnPty(VERSION_ARGS);
     let message: string | null = null;
     try {
-      await pty.waitForLine(NEVER_MATCH, REJECT_WAIT_MS);
+      await pty.waitForLine(NEVER_MATCH, TIMER_WAIT_MS);
     } catch (err) {
       message = (err as Error).message;
     }
@@ -126,10 +130,30 @@ describe("PtyProcess — waitForLine timeout", () => {
     expect(String(message).includes(TIMED_OUT_MARKER)).toBe(true);
     await pty.exited;
   }, REJECT_TEST_TIMEOUT_MS);
+});
+
+describe("PtyProcess — waitForLine on early exit", () => {
+  test("rejects fast via the exit path when the child exits before the line", async () => {
+    // A generous ceiling proves the rejection comes from the child exiting,
+    // not the timer: the message says "exited", not "timed out", and the test
+    // returns in ~exit-time rather than stalling for RESOLVE_WAIT_MS. This is
+    // the regression guard — pre-fix the waiter hung until the timeout.
+    const pty = spawnPty(VERSION_ARGS);
+    let message: string | null = null;
+    try {
+      await pty.waitForLine(NEVER_MATCH, RESOLVE_WAIT_MS);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).not.toBeNull();
+    expect(String(message)).toContain("exited");
+    expect(String(message).includes(TIMED_OUT_MARKER)).toBe(false);
+    await pty.exited;
+  }, SPAWN_TEST_TIMEOUT_MS);
 
   test("a rejected waiter does not strand the suite — exited still resolves", async () => {
     const pty = spawnPty(VERSION_ARGS);
-    await pty.waitForLine(NEVER_MATCH, REJECT_WAIT_MS).catch(() => undefined);
+    await pty.waitForLine(NEVER_MATCH, RESOLVE_WAIT_MS).catch(() => undefined);
     const code = await pty.exited;
     expect(code).toBe(EXIT_OK);
   }, REJECT_TEST_TIMEOUT_MS);

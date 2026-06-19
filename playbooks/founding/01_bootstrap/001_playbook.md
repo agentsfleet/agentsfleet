@@ -215,7 +215,6 @@ fly secrets set \
   ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
   GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
   GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
-  OIDC_JWKS_URL="https://winning-wombat-65.clerk.accounts.dev/.well-known/jwks.json" \
   OIDC_ISSUER="https://winning-wombat-65.clerk.accounts.dev" \
   --app agentsfleetd-dev
 
