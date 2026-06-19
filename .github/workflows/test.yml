@@ -18,6 +18,16 @@ jobs:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Test agentsfleetd (Zig units)
         run: make test-unit-agentsfleetd
 
@@ -27,6 +37,16 @@ jobs:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Test agentsfleet-runner (Zig units)
         run: make test-unit-agentsfleet-runner
 
@@ -36,6 +56,16 @@ jobs:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
     steps:
       - uses: actions/checkout@v6
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Test shared src/lib (Zig units)
         run: make test-unit-agentsfleet-lib
 
