@@ -12,10 +12,11 @@ An agent's capabilities split into two layers: what the language model is told i
 
 | File | What it carries | Enforced by |
 |---|---|---|
-| `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `TRIGGER.md` | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced inside the runner's sandboxed child — the language model cannot escape these |
+| `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. Required for every local install and every Fleet Bundle. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
+| `TRIGGER.md` | Optional policy file. When present, carries the `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs. When absent, install creates the default manual/API trigger with no tools, no credentials, and no network. | Code-enforced inside the runner's sandboxed child — the language model cannot escape these |
+| Fleet Bundle support files | Optional files such as `SOUL.md`, provider playbooks, scripts, examples, and assets. These are materialized into the sandbox workspace for the installed bundle. | File access only. They do not grant tools, network, approvals, or secrets unless `TRIGGER.md` / install metadata declares those grants. |
 
-The split matters. `SKILL.md` is *advisory* — the model reads it and tries to comply. `TRIGGER.md` is *binding* — the runner's sandboxed child refuses tool calls that would violate it, regardless of what the model wants.
+The split matters. `SKILL.md` and bundle support files are *advisory* — the model reads them and tries to comply. `TRIGGER.md` and install-derived policy are *binding* — the runner's sandboxed child refuses tool calls that would violate them, regardless of what the model wants.
 
 ### 1.1 `trigger.type` vs `event_type` — orthogonal fields, common confusion
 

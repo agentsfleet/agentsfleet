@@ -221,15 +221,18 @@ A `lease` reply is the runner's entire input for an event. The runner forks a sa
 
 ```
 lease → { event, ExecutionPolicy(config + secrets_map + network_policy + tool_allowlist),
-          instructions, lease_id, fencing_token, checkpoint? }
+          instructions, lease_id, fencing_token, checkpoint?, bundle_manifest? }
    (`instructions` = the installed agent's SKILL.md body, extracted server-side by
     AgentSession; the runner composes the NullClaw turn from instructions + event so
     the installed behaviour runs on every trigger. Soft reasoning input, never a secret
     — provider key + secrets_map stay in ExecutionPolicy / the tool bridge. M84_008.)
+   (`bundle_manifest` appears only for agents installed from Fleet Bundles. It carries
+    immutable snapshot metadata and support-file paths, never resolved credentials.)
    │
 agentsfleet-runner parent (child_supervisor.zig): establish the cgroup, fork, exec self as
-   `agentsfleet-runner __execute` under bwrap (unshare-all + ro-system + rw-workspace), feed the
-   lease over the child's stdin, read framed frames off its stdout under the lease deadline
+   `agentsfleet-runner __execute` under bwrap (unshare-all + ro-system + rw-workspace),
+   materialize bundle support files into the lease workspace when present, feed the lease over
+   the child's stdin, read framed frames off its stdout under the lease deadline
    │
    └─ sandboxed child (child_exec.zig): apply mandatory Landlock, build config + tool set from
       the policy, run the NullClaw turn — language-model calls + tool calls, secrets substituted
@@ -239,6 +242,11 @@ report → agentsfleetd: persist terminal state + telemetry + checkpoint, then X
 ```
 
 The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
+
+Fleet Bundle support files are mounted as workspace files, not pasted into the model prompt.
+`SKILL.md` may instruct the agent to read `SOUL.md`, `ZOHO.md`, scripts, examples, or assets,
+but those files do not grant tools, network, or secrets by themselves. A missing or corrupt
+bundle snapshot is a startup failure before the model is invoked.
 
 ### Process-boundary hardening
 
@@ -403,12 +411,13 @@ On a Mac, running `agentsfleet-runner` inside a Linux VM (Docker Desktop / OrbSt
 
 The runner box is **outbound-only**: it runs no inbound listener (the daemon dials the control plane via an outbound `std.http.Client`; see §Datastore role model), and holds no co-located datastore. So the network threat is entirely **outbound secret exfiltration** — the sandboxed agent legitimately holds the lease's inference `api_key` and tool secrets (e.g. a GitHub token), and the agent's *only* required egress is its inference endpoint (or a gateway) plus operator-declared `allow_hosts` for tools.
 
-Two network policies:
+Three network policies:
 
-- **`deny_all` (default)** — the child's net namespace is unshared (`--unshare-all`) with **no veth**; it reaches nothing. Correct for non-network agents.
-- **`registry_allowlist` (network-enabled)** — the child keeps its **own** unshared net namespace connected to the host by a single **veth pair** (`uzveth<worker>` ↔ peer, point-to-point `10.69.<worker>.0/30`). The parent installs **default-deny `nftables` rules in the host netns, on the host-side veth** (root-owned — Invariant 6, never inside the child's netns, which the child could `nft flush`): egress is permitted only to the **IP set resolved at lease setup** from the merged allowlist, and everything else — arbitrary exfil targets, raw IPs, link-local, RFC1918 — is dropped at the kernel. The operator's declared `allow_hosts` becomes a real packet-time boundary, not a log line. *(The retired pre-launch model re-shared the host netns via `--share-net` and only logged the allowlist; that is gone.)*
+- **`allow_all` (current default)** — the child re-shares the host network namespace with `--share-net`, so all outbound egress is allowed. This is the interim compatibility posture, not the final hardening posture.
+- **`deny_all_egress`** — the child's net namespace is unshared (`--unshare-all`) with **no veth**; it reaches nothing. Correct for non-network agents and isolation demos.
+- **`allow_list_egress` (enforced allow-list)** — the child keeps its **own** unshared net namespace connected to the host by a single **veth pair** (`uzveth<worker>` ↔ peer, point-to-point `10.69.<worker>.0/30`). The parent installs **default-deny `nftables` rules in the host netns, on the host-side veth** (root-owned — Invariant 6, never inside the child's netns, which the child could `nft flush`): egress is permitted only to the **IP set resolved at lease setup** from the merged allowlist, and everything else — arbitrary exfil targets, raw IPs, link-local, private network ranges — is dropped at the kernel. The operator's declared `allow_hosts` becomes a real packet-time boundary, not a log line. The current runner recognizes this policy name but refuses leases fail-closed until the egress setup path is wired.
 
-**The merged allowlist (one source for L4 + L7).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the operator-fed registry baseline (`RUNNER_REGISTRY_ALLOWLIST` → config; falls back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-agent `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
+**The merged allowlist (one source for Layer 4 (L4) + Layer 7 (L7)).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the package-registry baseline from runner config (falling back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-agent `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
 
 **The inference host is control-plane-authored — no parent-side drift.** The allowlist must permit exactly the host the agent's LLM call dials. The provider→URL map lives in NullClaw's `providers/factory.zig` (`compatibleProviderUrl`); `agentsfleetd` reads **that** table (not a copy) in `fleet/service.resolveExecutionPolicy`, extracts the host (`execution_policy.hostFromUrl`), and carries it on the lease as `ExecutionPolicy.inference_host`. The runner allowlists exactly what the engine reaches.
 

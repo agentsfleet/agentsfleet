@@ -349,18 +349,59 @@ A config change never alters a language-model turn already in flight (one lease 
 
 ## End-to-end sequence
 
-### A. INSTALL  (`agentsfleet install --from <path>`)
+### A. INSTALL  (`agentsfleet install --from <path>` or Fleet Bundle)
+
+Fleet Bundle import is a source-prep step before install, not a second runtime
+creation path:
+
+```
+   dashboard source picker
+    │
+    ├─► Start from template
+    ├─► Upload bundle archive
+    ├─► Import public GitHub repository/path
+    └─► Manual SKILL.md paste / local command-line install
+            │
+            ▼
+   agentsfleetd-api
+    │  GET  /v1/fleet-bundle-templates          (first-party template list)
+    │  POST /v1/workspaces/{ws}/fleet-bundles/imports
+    │       body: { source_kind, source_url? | upload_ref? | template_id? }
+    │
+    ├─► validate archive/path names, size caps, required SKILL.md,
+    │    frontmatter, secret-shaped content, and path traversal
+    ├─► if TRIGGER.md is missing, keep import valid; install will create
+    │    a default manual/API trigger with no tools, credentials, or network
+    ├─► [Postgres] store searchable bundle metadata, parsed requirements,
+    │    source kind, validation status, and content hash
+    ├─► [object storage] store immutable source snapshot and support files
+    └─► 201 { bundle_id, status, requirements, content_hash }
+```
+
+The user-facing copy says Fleet Bundle/Fleet. The runtime still creates a
+`core.agents` row until the entity rename is intentionally scoped.
 
 ```
    user / install-skill
     │  POST /v1/workspaces/{ws}/agents
-    │  body: { name, config_json, source_markdown }
+    │  body, direct Markdown:
+    │       { name, trigger_markdown?, source_markdown }
+    │  OR body, validated bundle:
+    │       { name, bundle_id, overrides? }
     ▼
   agentsfleetd-api (innerCreateAgent)
     │
+    ├─► if bundle_id present:
+    │      load validated bundle metadata + normalized SKILL.md/TRIGGER.md
+    │      from Postgres and immutable snapshot metadata from object storage
+    ├─► if trigger_markdown is absent:
+    │      generate default manual/API trigger config
+    ├─► check required workspace credentials by key name only; never resolve
+    │      raw secret values during install
     ├─► [PG]    INSERT core.agents          (RLS: tenant boundary)
     ├─► [PG]    INSERT core.agent_sessions  (idle row: execution_id=NULL,
     │                                         context_json={}, checkpoint_at=now)
+    ├─► [Postgres] record nullable bundle snapshot metadata on the agent
     ├─► [Redis] XGROUP CREATE MKSTREAM agent:{id}:events agent_lease 0
     │           (ensureAgentConsumerGroup — the lease XREADGROUP needs this group)
     └─► 201 to user  (invariant: data stream + group exist before 201)
@@ -519,20 +560,29 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL_MS)
      → 200 { event, ExecutionPolicy(config + secrets_map + network_policy
               + tool_allowlist + provider + api_key), instructions, lease_id,
-              fencing_token, checkpoint? }
+              fencing_token, checkpoint?, bundle_manifest? }
        (`instructions` = the installed agent's SKILL.md body, extracted server-side
         by AgentSession, so the runner gives NullClaw the installed behaviour and
         not a generic chat — soft reasoning input, never a secret. M84_008.)
+       (`bundle_manifest` appears only for agents installed from a Fleet Bundle. It
+        names the immutable snapshot and support-file paths the runner must
+        materialize; it never contains resolved credential values.)
 
    agentsfleet-runner — parent (child_supervisor.zig):
        establish cgroup → fork → exec self as `agentsfleet-runner __execute`
        under bwrap (unshare-all + ro-system + rw-workspace + die-with-parent)
+       → if bundle_manifest exists, fetch/materialize support files into the
+         lease workspace before the child starts
        → feed the lease over child stdin (VLT: secrets only via stdin)
        → read framed frames off child stdout under the lease deadline (poll)
 
    agentsfleet-runner — sandboxed child (child_exec.zig):
        apply mandatory Landlock (fail-closed on the required tier) →
        build NullClaw config + tool set from the policy → run the agent turn.
+       Bundle files such as SOUL.md, provider playbooks, scripts, examples, or
+       assets are ordinary workspace files inside the sandbox. SKILL.md can tell
+       the agent to read them, but capability still comes only from ExecutionPolicy
+       and workspace credential grants.
        (fail-closed: an empty installed playbook OR a config-build allocation
         failure reports startup_posture and never invokes the model — the
         provider/key pair is assembled atomically, so a half-built config

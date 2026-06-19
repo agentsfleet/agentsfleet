@@ -10,7 +10,7 @@ The initial user assumption is simple:
 - the user is already working on their own project or infrastructure
 - the user wants operational work to continue without babysitting an endless terminal loop
 
-The Claude session becomes the place where the user defines, installs, updates, and supervises agents. The agent runtime becomes the place where long-lived operational outcomes continue after the chat session ends.
+The Claude session becomes the place where the user defines, imports, installs, updates, and supervises agents. The agent runtime becomes the place where long-lived operational outcomes continue after the chat session ends.
 
 For the full end-to-end install + first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
 
@@ -48,8 +48,9 @@ Practically, this means:
 
 The user defines the agent in project files:
 
-- `SKILL.md` describes how the agent should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. No framework syntax.
-- `TRIGGER.md` describes how the agent wakes up: webhook, cron, user steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
+- `SKILL.md` describes how the agent should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. No framework syntax. Required.
+- `TRIGGER.md` describes how the agent wakes up: webhook, cron, user steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs. Optional for Fleet Bundles; a missing trigger creates the default manual/API trigger at install time.
+- Optional support files such as `SOUL.md`, provider playbooks, examples, scripts, and assets can ship with a Fleet Bundle. They are files the agent may read inside the sandbox workspace; they are not capability grants.
 
 The user iterates those files from Claude in natural language:
 
@@ -59,6 +60,14 @@ The user iterates those files from Claude in natural language:
 - "include Fly logs and Redis health in the first pass"
 
 This keeps the operational logic editable by changing instructions, not by rewriting a typed workflow engine for every variation.
+
+A **Fleet Bundle** is the import/template form of those files. It may come from:
+
+- a first-party template card,
+- an uploaded folder/archive, or
+- a public GitHub repository/path.
+
+Import validates and snapshots the bundle before install. The snapshot is immutable: searchable metadata and parsed requirements live in Postgres, while the source archive and assets live in object storage. Installing a bundle still creates a runtime `agent`; Fleet is the product language, `agent` is the current API and database entity.
 
 ## §8.2 Installing the agent
 
@@ -87,12 +96,31 @@ The install-skill's first action (§8.2.2 step 1) is a `which agentsfleet && whi
 
 1. Claude (or another agent), typically driven by the `/agentsfleet-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
-3. The user (or skill) installs or updates the agent through `agentsfleet install --from <path>` or the dashboard install form at `/agents/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/agents`; the API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
-4. The API stores the agent config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).
-5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/agents/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
-6. Future triggers are served with no restart and no watcher thread: the install created the agent's events stream + consumer group up front (step 3), so each later trigger `XADD`s to `agent:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
+3. The user (or skill) installs or updates the agent through one of two source paths:
+   - **Direct Markdown install** — `agentsfleet install --from <path>` or manual dashboard paste POSTs `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/agents`.
+   - **Fleet Bundle install** — the dashboard imports/uploads/selects a validated bundle snapshot, previews required credentials/tools/network, then POSTs `bundle_id` to the same `POST /v1/workspaces/{ws}/agents` endpoint. There is no `POST /fleet-bundles/{id}/install` route.
+4. The API parses frontmatter, derives `name` + `config_json`, persists the agent row, and synchronously creates the events stream + consumer group before returning 201. When a bundle lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no credentials, and no network. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the imported bundle metadata. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
+5. The API stores the agent config, linked credentials reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
+6. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only installs, the Trigger panel on `/agents/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
+7. Future triggers are served with no restart and no watcher thread: the install created the agent's events stream + consumer group up front (step 4), so each later trigger `XADD`s to `agent:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
 After install, the agent is no longer tied to the interactive Claude session that created it.
+
+### §8.2.3 Fleet Bundle dashboard flow
+
+The dashboard install screen is source-first, not paste-first:
+
+1. **Start from template** lists first-party Fleet Bundles such as GitHub Pull Request reviewer and Zoho Recruit outreach.
+2. **Upload bundle** accepts a local folder/archive snapshot.
+3. **Import from GitHub** accepts a public repository/path and snapshots the resolved content.
+4. **Manual paste** remains available for power users and existing tests.
+
+Import validation is server-side: required `SKILL.md`, safe paths, size caps, frontmatter parsing, and no resolved secrets. Parsed preview shows required credentials, required tools, network hosts, trigger mode, and whether `TRIGGER.md` is present. Missing workspace credentials block install with a clear list and a create action that routes to workspace credentials, not tenant model-provider setup.
+
+Two first scenarios anchor the product flow:
+
+- **GitHub Pull Request reviewer.** Wakes on GitHub pull request events, reads diff/context through `api.github.com`, and posts review comments using the workspace `github` credential.
+- **Zoho Recruit outreach.** Reads Zoho Recruit data, optionally sends mail through a separate credential, and uses support files such as `ZOHO.md` for provider-specific instructions.
 
 ## §8.3 Triggering the agent
 

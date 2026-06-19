@@ -25,7 +25,7 @@ After that, dip into whichever of these matches the change you're making:
 |---|---|
 | [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
 | [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
-| [`user_flow.md`](./user_flow.md) | How a user authors, installs, triggers, and supervises an agent. Includes the install-skill walkthrough, deployment posture, and the model-cap origin story (§8.7). |
+| [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises an agent. Includes Fleet Bundle entrypoints, the install-skill walkthrough, deployment posture, and the model-cap origin story (§8.7). |
 | [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two agents in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
 | [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the M80 roadmap. Sibling of `data_flow.md` (the same runtime, traced per event). |
 | [`capabilities.md`](./capabilities.md) | What the agent has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
@@ -52,6 +52,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | Term | Meaning |
 |---|---|
 | **Agent** | A long-lived, durable runtime instance defined by `SKILL.md` + `TRIGGER.md`; owns one operational outcome. [(more)](./high_level.md#1-product-thesis) |
+| **Fleet Bundle** | A validated template or imported folder/archive that contains required `SKILL.md` plus optional support files; installing it still creates a runtime `agent`. [(more)](./user_flow.md#81-authoring-the-agent) |
 | **NullClaw** | The language-model agent loop that runs inside the runner's sandboxed child — this is "the agent" (host) at runtime. [(more)](./capabilities.md#1-reasoning--tool-inventory-declared-in-the-agents-own-files) |
 | **`agentsfleetd` (control plane)** | Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment / fencing / reclaim. Host runners reach it only over the `/v1/runners` protocol. Implemented at the M80_002 cutover. [(more)](./runner_fleet.md) |
 | **agentsfleet-runner** | The host-resident binary (the parent control loop + NullClaw execution linked in — no separate sandbox sidecar) that registers to `agentsfleetd` and pulls work; holds no datastore credentials. Implemented at the M80_002 cutover. [(more)](./runner_fleet.md) |

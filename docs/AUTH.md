@@ -99,7 +99,7 @@ The one credential path humans use from a terminal: a browser-mediated device fl
 
 A non-interactive seeding path (`--token <pat>` → piped stdin) persists an already-held token without the browser, for non-TTY contexts (Continuous Integration runners, containers) — it never mints a new credential, so the device flow's human-led binding is untouched. For unattended machine principals the standing alternative is the `AGENTSFLEET_API_KEY` env var (an `agt_t…` tenant key); it is sent as the Bearer on every request and **takes precedence over a stored login session** (env slot wins over the on-disk credential).
 
-The full data lifecycle, sequence, session state machine, threat model, pinned crypto primitives, the non-interactive token-seeding path, deploy contract, and the human-led-only invariant live in **[`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md)**.
+The full data lifecycle, sequence, session state machine, threat model, pinned crypto primitives, the non-interactive token-seeding path, deploy rules, and the human-led-only invariant live in **[`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md)**.
 
 ---
 
@@ -335,6 +335,39 @@ M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes �
 
 ---
 
+## Fleet Bundle import and credential boundary
+
+Fleet Bundle list, preview, upload, and public GitHub import routes are ordinary
+workspace-authenticated API routes. They use the same human/session or tenant-key
+middleware as the dashboard and command-line install paths; they do not mint a
+new auth surface.
+
+Bundle content is untrusted user content until validation finishes. The import
+handler may store parsed metadata, required credential keys, required tools,
+network hosts, and an immutable source snapshot, but it must never resolve or
+store raw credential values. A bundle can say "requires `github`" or "requires
+`zoho`"; it cannot carry the secret and cannot read the workspace vault during
+preview.
+
+Install is the first point where credential presence matters. The existing
+`POST /v1/workspaces/{workspace_id}/agents` path checks that the workspace has
+the named credentials needed by the validated bundle, then stores references on
+the agent config. Secret bytes still resolve just-in-time at lease, inside
+`agentsfleetd`, and ride only the existing runner lease envelope described above.
+
+Runner materialization follows the same rule. A lease for a bundle-backed agent
+may include immutable snapshot metadata and support-file paths so the runner can
+place files in the sandbox workspace before NullClaw starts. That manifest is
+not a credential carrier. Prose files such as `SOUL.md` or `ZOHO.md` can instruct
+the agent, but capability comes only from the server-built `ExecutionPolicy` and
+workspace credential grants.
+
+Inbound provider webhooks remain separate: provider signatures are verified by
+the webhook middleware, not by bundle import routes, and the receiver still uses
+the installed agent trigger config to decide which provider path is valid.
+
+---
+
 ## Backend validation (the common path)
 
 ```mermaid
@@ -445,7 +478,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | `agt_t*` tenant API key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls; vault items; operator's password manager | logs · process lists · shell history · client-side storage · disk except a secrets manager · screenshots |
 | `agt_a*` agent key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls (specifically to the bound agent's surface) | same as `agt_t*` |
 | `CLERK_SECRET_KEY` | secret (catastrophic) | until rotated | Vercel runtime env · Fly runtime env · `~/Projects/agentsfleet/.env` (gitignored, operator laptop only) · CI runners (GitHub Actions secret) · 1Password vaults | client bundle (a rename to `NEXT_PUBLIC_*` would be a P0 incident) · logs · error bodies |
-| `session_id` (M74_002 device-flow session ID) | sensitive ephemeral capability — treat as password-reset token | 5 min (or terminal state) | the primary CLI-generated verification URL (`https://app.agentsfleet.net/cli-auth/{session_id}`) · API route paths that consume it (`/v1/auth/sessions/{id}{,/approve,/verify}`) | `.auth` log scope at info/warn/error (use `redactSessionId()` to 8-hex-prefix) · analytics · telemetry · metrics labels · secondary URLs (deep links, redirect targets, "share this page") · error response bodies routed to non-trusted surfaces · copied diagnostic bundles · support tickets |
+| `session_id` (M74_002 device-flow session ID) | sensitive ephemeral capability — treat as password-reset token | 5 min (or terminal state) | the API-generated `login_url` (`https://app.agentsfleet.net/cli-auth/{session_id}`) · API route paths that consume it (`/v1/auth/sessions/{id}{,/approve,/verify}`) | `.auth` log scope at info/warn/error (use `redactSessionId()` to 8-hex-prefix) · analytics · telemetry · metrics labels · secondary URLs (deep links, redirect targets, "share this page") · error response bodies routed to non-trusted surfaces · copied diagnostic bundles · support tickets |
 | `verification_code` (6 digits, M74_002) | secret ephemeral capability | 5 min (or terminal state) | dashboard JS process (display) · CLI process (prompt) · TLS-encrypted POST /approve and POST /verify bodies | server-side persistence in any form · `.auth` log scope · `.auth_audit` log scope (audit events MUST NOT carry the plaintext code, nor the `verification_code_hmac`) · metrics · error bodies |
 | `AUTH_SESSION_CODE_PEPPER` | secret (catastrophic if disclosed) | until rotated | 1Password vaults (`op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/AUTH_SESSION_CODE_PEPPER/credential`) · agentsfleetd process memory after Vault load | disk · logs · metrics · client bundles · environment-variable dumps · `op://` URI logged in any audit trail |
 | `AUDIT_LOG_PEPPER` | secret | until rotated | 1Password vaults · agentsfleetd process memory | same as `AUTH_SESSION_CODE_PEPPER` |
