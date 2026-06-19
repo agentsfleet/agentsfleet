@@ -97,7 +97,7 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
     if (t === "--api") { api = argv[i + 1] || null; break; }
     if (t.startsWith(FLAG_API)) { api = t.slice(FLAG_API.length); break; }
   }
-  return api || env.AGENTSFLEET_API_URL || env.API_URL || null;
+  return api || env.AGENTSFLEET_API_URL || null;
 }
 
 function buildDeps(): CommandDeps {
@@ -211,7 +211,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     isTty: Boolean((stdinSrc as { isTTY?: boolean }).isTTY),
   });
   const resolvedToken = resolvedAuth.token;
-  const resolvedApiKey = env.API_KEY || env.AGENTSFLEET_API_KEY || null;
+  const resolvedApiKey = env.AGENTSFLEET_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
