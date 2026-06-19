@@ -1,6 +1,6 @@
 /**
  * Single source of truth for the command-group enumeration the unauth +
- * AGENTSFLEET_TOKEN acceptance suites iterate over.
+ * authenticated acceptance suites iterate over.
  *
  * RULE UFS: every "list of commands" literal lives here once. Specs read
  * from these exports; nothing inlines a command-string list.

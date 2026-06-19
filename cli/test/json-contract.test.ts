@@ -141,7 +141,7 @@ describe("JSON error envelope", () => {
       const code = await runCli(argv, {
         stdout: out.stream,
         stderr: err.stream,
-        env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
+        env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
       });
       expect(code).toBe(2);
       expect(err.read()).toMatch(/unknown command/);

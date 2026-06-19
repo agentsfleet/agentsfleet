@@ -11,7 +11,7 @@ import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.agentsfleet.net";
 // PROD dashboard is `app.agentsfleet.net` (DEV is the Vercel preview at
-// `agentsfleet-app.vercel.app`; see `runtime_loader.zig:121 APP_URL`,
+// `app-dev.agentsfleet.net`; see `runtime_loader.zig:121 APP_URL`,
 // `BILLING_DASHBOARD_URL` in `commands/billing.ts`, and acceptance's
 // `DASHBOARD_URL_PROD`). The earlier `dashboard.agentsfleet.net` value
 // was a typo that pointed at a nonexistent domain.
@@ -21,10 +21,13 @@ const DEFAULT_DASHBOARD_URL = "https://app.agentsfleet.net";
 // theirs as a plain string in cli-config.layer.ts; we match that.
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
-// The single auth-token env-var name. One identifier shared by the
-// config resolver, the TTY-aware file/env resolver, and the login
-// command's direct-token source so the three never drift.
-export const AGENTSFLEET_TOKEN_ENV = "AGENTSFLEET_TOKEN";
+// The service-auth env-var name. A machine principal (an `agt_t…` tenant
+// API key) exported here authenticates the CLI without a browser login,
+// and — by the env-wins precedence in `resolveToken` — takes priority over
+// a stored login JWT. This is the only env-sourced bearer the CLI reads; the
+// older `AGENTSFLEET_TOKEN` env var (and the unprefixed `API_KEY` alias) were
+// removed.
+export const AGENTSFLEET_API_KEY_ENV = "AGENTSFLEET_API_KEY";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -45,8 +48,13 @@ export const CliConfig = Context.Service<CliConfig>(
   "agentsfleet/config/CliConfig",
 );
 
-const readEnv = (key: string): string | undefined =>
-  typeof process !== "undefined" ? process.env[key] : undefined;
+// Single guarded accessor for the process environment (returns an empty env
+// in non-Node contexts). All env reads route through here so the
+// `typeof process` guard lives in exactly one place.
+const processEnv = (): NodeJS.ProcessEnv =>
+  typeof process !== "undefined" ? process.env : ({} as NodeJS.ProcessEnv);
+
+const readEnv = (key: string): string | undefined => processEnv()[key];
 
 const trimmed = (v: string | undefined): string | undefined => {
   if (typeof v !== "string") return undefined;
@@ -54,14 +62,23 @@ const trimmed = (v: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
+// Single source for the env-sourced service API key. Trimmed so a
+// whitespace-only export counts as unset (never reaches the wire as a blank
+// Bearer). Both cli.ts and resolveCliConfig resolve through here so the read
+// can't drift between the two paths. Only `AGENTSFLEET_API_KEY` is honoured —
+// the unprefixed `API_KEY` alias was dropped as off-brand.
+export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
+  trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
+
 export const resolveCliConfig = (): CliConfigShape => {
   const apiUrl = trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL;
   const dashboardUrl =
     trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
-  // AGENTSFLEET_TOKEN is the auth-token env var. TTY-aware precedence vs
-  // credentials.json is resolved in cli.ts before this layer; tests that
-  // bypass runCli see the env value here.
-  const envToken = trimmed(readEnv(AGENTSFLEET_TOKEN_ENV));
+  // The env-sourced bearer is the service API key (env slot). It wins over
+  // a stored login JWT via `resolveToken`'s env-first precedence. Resolution
+  // is centralised in cli.ts before this layer; tests that bypass runCli see
+  // the env value here.
+  const envToken = resolveApiKeyFromEnv(processEnv());
   const telemetryPosthogKey =
     trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =
@@ -70,7 +87,7 @@ export const resolveCliConfig = (): CliConfigShape => {
     apiUrl,
     dashboardUrl,
     accessToken:
-      envToken !== undefined
+      envToken !== null
         ? Option.some(Redacted.make(envToken))
         : Option.none(),
     jsonMode: false,

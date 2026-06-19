@@ -69,7 +69,6 @@ describe("help output", () => {
     });
     const output = out.read();
     expect(output).toContain("AGENTSFLEET_API_URL");
-    expect(output).toContain("AGENTSFLEET_TOKEN");
     expect(output).toContain("AGENTSFLEET_API_KEY");
     expect(output).toContain("NO_COLOR");
   });

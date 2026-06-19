@@ -17,7 +17,8 @@ import {
 } from "./lib/state.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
-import { extractRoleFromToken, resolveAuthTokenForCli } from "./program/auth-token.ts";
+import { extractRoleFromToken } from "./program/auth-token.ts";
+import { resolveApiKeyFromEnv } from "./services/config.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
@@ -201,26 +202,22 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // Session identity (`device_id`, `session_id`, `session_last_active`)
   // is read+bumped inside `resolveIdentity` against `telemetry.json`
   // (mirrors supabase). No session file maintained here.
-  // D26: TTY-priority — interactive shells let an env-var the operator
-  // just exported beat a possibly-stale credentials.json; scripted runs
-  // prefer the on-disk credential.
   const stdinSrc = io.stdin ?? process.stdin;
-  const resolvedAuth = resolveAuthTokenForCli({
-    fileToken: creds.token ?? null,
-    env,
-    isTty: Boolean((stdinSrc as { isTTY?: boolean }).isTTY),
-  });
-  const resolvedToken = resolvedAuth.token;
-  // Trim like resolveAuthTokenForCli trims the token, so a whitespace-only
-  // AGENTSFLEET_API_KEY is treated as absent everywhere (auth guard + wire)
-  // rather than clearing the guard but sending `Authorization: Bearer    `.
-  const resolvedApiKey = env.AGENTSFLEET_API_KEY?.trim() || null;
-  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
+  // Two credential slots: the stored login JWT (file slot, from
+  // credentials.json) and the service API key (env slot). The api key wins
+  // at the wire (resolveToken's env-first precedence), so an exported key
+  // grants the admin role-gate; otherwise the role comes from the login
+  // JWT's claims. resolveApiKeyFromEnv trims, so a whitespace-only key is
+  // treated as absent everywhere (guard + wire) rather than sending a blank
+  // `Authorization: Bearer`.
+  const storedToken = creds.token ?? null;
+  const resolvedApiKey = resolveApiKeyFromEnv(env);
+  const resolvedAuthRole = resolvedApiKey ? ROLE_ADMIN : extractRoleFromToken(storedToken);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
   const ctx: CommandCtx = {
     apiUrl: normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL),
-    token: resolvedToken,
+    token: storedToken,
     apiKey: resolvedApiKey,
     authRole: resolvedAuthRole,
     jsonMode,

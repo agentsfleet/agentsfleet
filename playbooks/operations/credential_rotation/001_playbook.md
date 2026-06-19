@@ -149,7 +149,7 @@ curl -sf https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
 NEW_SECRET="$(op read 'op://ZMB_CD_PROD/vercel-bypass-app/credential')"
 curl -sf -o /dev/null -w '%{http_code}' \
   -H "x-vercel-protection-bypass: $NEW_SECRET" \
-  "https://agentsfleet-app.vercel.app/sign-in"
+  "https://app-dev.agentsfleet.net/sign-in"
 # Expected: 200
 ```
 
@@ -159,7 +159,7 @@ curl -sf -o /dev/null -w '%{http_code}' \
 OLD_BYPASS="$(cat /tmp/old-bypass-secret.txt)"
 curl -sf -o /dev/null -w '%{http_code}' \
   -H "x-vercel-protection-bypass: $OLD_BYPASS" \
-  "https://agentsfleet-app.vercel.app/sign-in"
+  "https://app-dev.agentsfleet.net/sign-in"
 # Expected: 401 or 403
 rm /tmp/old-bypass-secret.txt
 ```
