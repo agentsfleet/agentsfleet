@@ -15,21 +15,23 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@# `zig build test` (whose trailing `-- --test-filter …` was silently
 	@# dropped by the build runner, so it always ran the FULL suite) and a
 	@# second `test-bin` build with mismatched flags, so the cache never reused.
-	@# The allocator gate runs the binary directly (no args = full suite); the
-	@# `std.testing.allocator` leak check fires for every test either way.
-	@# Per-platform build flags are deliberate, not an oversight: Linux pins
-	@# ReleaseSafe + openssl=false because valgrind needs an optimized-but-safe
-	@# binary and chokes on OpenSSL's own pool allocations; macOS `leaks` has
-	@# neither constraint, so it uses the default (Debug, openssl ON) build,
-	@# which leak-checks the OpenSSL paths too — broader coverage, not less.
+	@# Single run where an external detector exists. On Linux, valgrind runs the
+	@# full suite with `std.testing.allocator` active AND propagates the binary's
+	@# exit code, so it already covers the allocator gate — the separate plain
+	@# run is dropped there (it was a full second suite run for no extra
+	@# coverage). macOS `leaks` is advisory (unreliable under SIP/sandbox), so the
+	@# plain allocator run stays the blocking gate there and `leaks` adds
+	@# system-level coverage on top; the `*)` fallback runs the plain gate alone.
+	@# Per-platform build flags are deliberate: Linux pins ReleaseSafe +
+	@# openssl=false because valgrind needs an optimized-but-safe binary and
+	@# chokes on OpenSSL's own pool allocations; macOS `leaks` has neither
+	@# constraint, so it uses the default (Debug, openssl ON) build.
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
-	    echo "→ [agentsfleetd] Building the test binary once (ReleaseSafe, openssl off) for both leak gates..."; \
+	    echo "→ [agentsfleetd] Building the test binary once (ReleaseSafe, openssl off) for the valgrind gate..."; \
 	    $(MAKE) _ensure-test-bin TARGET="$(MEMLEAK_TARGET)" OPTIMIZE=ReleaseSafe EXTRA_BUILD_FLAGS="-Dopenssl=false" || exit 1; \
-	    echo "→ [agentsfleetd] Running allocator leak guard tests..."; \
-	    zig-out/bin/agentsfleetd-tests || exit 1; \
-	    echo "→ [agentsfleetd] Running valgrind leak gate..."; \
+	    echo "→ [agentsfleetd] Running valgrind leak gate (full suite; subsumes the allocator gate)..."; \
 	    valgrind --quiet --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=definite,possible --undef-value-errors=no --error-exitcode=1 \
 	      zig-out/bin/agentsfleetd-tests;; \
 	  Darwin) \
