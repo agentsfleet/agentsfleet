@@ -12,6 +12,7 @@ import {
   PREBUILT_AGENTS,
   OPERATIONAL_KNOWLEDGE_HEADING,
   PRICING_COPY,
+  RUNTIME_GUARANTEES_LABEL,
 } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
@@ -21,6 +22,12 @@ function renderHome() {
       <Home />
     </BrowserRouter>
   );
+}
+
+function expectDocumentOrder(first: HTMLElement, second: HTMLElement) {
+  expect(
+    first.compareDocumentPosition(second) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
 }
 
 describe("Home", () => {
@@ -68,13 +75,20 @@ describe("Home", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders operational knowledge and the prebuilt-agents fleet before How it works", () => {
+  it("renders core capabilities in the first post-hero slot", () => {
     renderHome();
-    expect(screen.getByText(OPERATIONAL_KNOWLEDGE_HEADING)).toBeInTheDocument();
-    for (const point of KNOWLEDGE_POINTS) {
-      expect(screen.getByText(point.title)).toBeInTheDocument();
-    }
-    expect(screen.getByTestId("prebuilt-agents")).toBeInTheDocument();
+    const hero = screen.getByTestId("hero");
+    const capabilities = screen.getByTestId("core-capabilities");
+    const fleet = screen.getByTestId("prebuilt-agents");
+    expectDocumentOrder(hero, capabilities);
+    expectDocumentOrder(capabilities, fleet);
+  });
+
+  it("renders the prebuilt-agents fleet before How it works", () => {
+    renderHome();
+    const fleet = screen.getByTestId("prebuilt-agents");
+    const howItWorks = screen.getByTestId("how-it-works");
+    expectDocumentOrder(fleet, howItWorks);
     for (const agent of PREBUILT_AGENTS) {
       expect(screen.getByTestId(`agent-card-${agent.id}`)).toHaveTextContent(agent.name);
     }
@@ -89,18 +103,29 @@ describe("Home", () => {
     }
   });
 
+  it("moves operational knowledge below How it works", () => {
+    renderHome();
+    const howItWorks = screen.getByTestId("how-it-works");
+    const operationalKnowledge = screen.getByTestId("operational-knowledge");
+    expectDocumentOrder(howItWorks, operationalKnowledge);
+    expect(screen.getByText(OPERATIONAL_KNOWLEDGE_HEADING)).toBeInTheDocument();
+    for (const point of KNOWLEDGE_POINTS) {
+      expect(screen.getByText(point.title)).toBeInTheDocument();
+    }
+  });
+
   it("renders core capabilities — the three pillars plus the trust primitives", () => {
     renderHome();
-    expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
-    // The Isolated / Compounding / Proactive pillars moved here from the
-    // prebuilt-agents wall.
+    const capabilities = screen.getByTestId("core-capabilities");
+    expect(within(capabilities).getByText(/core capabilities/i)).toBeInTheDocument();
+    expect(within(capabilities).getByText(RUNTIME_GUARANTEES_LABEL)).toBeInTheDocument();
     for (const pillar of AGENT_PILLARS) {
       expect(screen.getByTestId(`capability-pillar-${pillar.id}`)).toHaveTextContent(
         pillar.title,
       );
     }
     for (const item of CAPABILITY_ITEMS) {
-      expect(screen.getByText(item.title)).toBeInTheDocument();
+      expect(within(capabilities).getAllByText(item.title).length).toBeGreaterThan(0);
     }
   });
 
