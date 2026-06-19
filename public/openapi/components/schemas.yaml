@@ -229,13 +229,6 @@ components:
           description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
             $ref: '#/components/schemas/AgentTrigger'
-        budget_used_dollars:
-          type: number
-          description: Cumulative budget consumed by this agent, in USD.
-        events_processed:
-          type: integer
-          format: int64
-          description: Number of events this agent has processed.
     AgentTrigger:
       type: object
       description: A single trigger projected into the agent list row.
