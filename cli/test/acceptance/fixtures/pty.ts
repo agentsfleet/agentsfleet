@@ -22,6 +22,11 @@ const PTY_LAUNCHER = path.join(HERE, "pty-spawn.py");
 const PYTHON_BIN = "python3";
 const DEFAULT_WAIT_MS = 30_000;
 const CARRIAGE_RETURN = /\r/g;
+// ANSI control sequences (CSI). readline renders the steer-REPL prompt as
+// `\x1b[1G\x1b[0J> \x1b[3G`, so a `^`-anchored line matcher would never see
+// the leading `>`. Strip them so line matchers + the transcript are
+// escape-insensitive (NO_COLOR suppresses colour, not cursor moves).
+const ANSI_CONTROL_SEQ = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const OUTPUT_PREVIEW_CHARS = 600;
 const STDERR_PREVIEW_CHARS = 300;
 
@@ -65,7 +70,7 @@ export class PtyProcess {
   /** Resolve once any line in the accumulated output satisfies `predicate`. */
   waitForLine(predicate: (line: string) => boolean, timeoutMs = DEFAULT_WAIT_MS): Promise<string> {
     return new Promise((resolve, reject) => {
-      const matches = (): boolean => this.#output.split(/\r?\n/).some(predicate);
+      const matches = (): boolean => this.#clean().split("\n").some(predicate);
       if (matches()) { resolve(this.#output); return; }
       const timer = setTimeout(() => {
         this.#waiters = this.#waiters.filter((w) => w !== waiter);
@@ -99,9 +104,13 @@ export class PtyProcess {
     return this.#proc.exited;
   }
 
-  /** Child output with carriage returns stripped (pty echoes them). */
+  /** Child output with carriage returns + ANSI control sequences stripped. */
   get output(): string {
-    return this.#output.replace(CARRIAGE_RETURN, "");
+    return this.#clean();
+  }
+
+  #clean(): string {
+    return this.#output.replace(CARRIAGE_RETURN, "").replace(ANSI_CONTROL_SEQ, "");
   }
 
   kill(): void {
