@@ -6,7 +6,6 @@ import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
-import { AGENTSFLEET_TOKEN_ENV } from "../services/config.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
@@ -50,9 +49,10 @@ export interface Lifecycle {
 type LifecycleCtx = Lifecycle[typeof CTX];
 
 // Thread runCli's env-resolved values into Effect's CliConfig override.
-// `ctx.token` is already a `creds.token || env.AGENTSFLEET_TOKEN` merge from
-// cli.ts; mirror it as the override's `accessToken` so commands' Effects
-// receive the merged value.
+// CliConfig.accessToken is the env-credential slot — the service API key
+// (`ctx.apiKey`). The stored login JWT reaches commands via the Credentials
+// service (disk); resolveToken gives the env-slot api key precedence at the
+// wire, so an exported key overrides the on-disk login.
 function configOverrideFromCtx(ctx: LifecycleCtx): {
   jsonMode: boolean;
   noOpen: boolean;
@@ -65,8 +65,8 @@ function configOverrideFromCtx(ctx: LifecycleCtx): {
     noOpen: Boolean(ctx.noOpen),
     apiUrl: ctx.apiUrl,
     accessToken:
-      isString(ctx.token) && ctx.token.length > 0
-        ? Option.some(Redacted.make(ctx.token))
+      isString(ctx.apiKey) && ctx.apiKey.length > 0
+        ? Option.some(Redacted.make(ctx.apiKey))
         : Option.none(),
     ...(ctx.fetchImpl !== undefined
       ? { fetchImpl: ctx.fetchImpl as FetchImpl }
@@ -178,16 +178,12 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         const opts = frame.parsed.options;
         const tokenNameOpt = opts["tokenName"] ?? opts["token-name"];
         const tokenOpt = opts["token"];
-        // Raw env value (not the file-merged ctx.token) — an existing
-        // credentials.json must not be re-read as a "direct token".
-        const envToken = lifecycle.ctx.env?.[AGENTSFLEET_TOKEN_ENV];
         return loginEffectFromFlags({
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
           tokenName: isString(tokenNameOpt) ? tokenNameOpt : undefined,
           tokenFlag: isString(tokenOpt) ? tokenOpt : undefined,
-          envToken: isString(envToken) ? envToken : undefined,
         });
       },
       lifecycle,

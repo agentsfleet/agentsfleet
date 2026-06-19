@@ -97,7 +97,7 @@ Everything below is per-surface detail. For the CLI device-flow threat model + c
 
 The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. Once `credentials.json` (mode `0o600`) exists, the CLI carries the JWT on every request — same as a Flow 2 browser call after `getToken({template:"api"})`; on `401 token_expired` it re-runs `agentsfleet login`.
 
-A non-interactive seeding path (`--token <pat>` → `AGENTSFLEET_TOKEN` env → piped stdin) persists an already-held token without the browser, for non-TTY contexts (Continuous Integration runners, containers) — it never mints a new credential, so the device flow's human-led binding is untouched.
+A non-interactive seeding path (`--token <pat>` → piped stdin) persists an already-held token without the browser, for non-TTY contexts (Continuous Integration runners, containers) — it never mints a new credential, so the device flow's human-led binding is untouched. For unattended machine principals the standing alternative is the `AGENTSFLEET_API_KEY` env var (an `agt_t…` tenant key); it is sent as the Bearer on every request and **takes precedence over a stored login session** (env slot wins over the on-disk credential).
 
 The full data lifecycle, sequence, session state machine, threat model, pinned crypto primitives, the non-interactive token-seeding path, deploy contract, and the human-led-only invariant live in **[`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md)**.
 

@@ -112,7 +112,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: NO_COLOR,

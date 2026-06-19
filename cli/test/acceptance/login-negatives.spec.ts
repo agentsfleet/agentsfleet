@@ -153,9 +153,9 @@ if (!isLive) {
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
-        // AGENTSFLEET_TOKEN intentionally absent — the token-path scenarios
-        // supply it explicitly (--token / piped stdin) and the rest prove
-        // credentials.json is the load-bearing auth source.
+        // No env API key (AGENTSFLEET_API_KEY) — the token-path scenarios
+        // supply a credential explicitly (--token / piped stdin) and the rest
+        // prove credentials.json is the load-bearing auth source.
       });
     });
 
@@ -261,8 +261,9 @@ if (!isLive) {
         assert.equal(await credentialHasToken(credentialsPath), false,
           "logout must clear the persisted token");
 
-        // With AGENTSFLEET_TOKEN absent and credentials.json cleared, a
-        // protected read must fail the auth guard rather than hit the API.
+        // With no env API key (AGENTSFLEET_API_KEY) and credentials.json
+        // cleared, a protected read must fail the auth guard rather than hit
+        // the API.
         const read = await spawn([CMD_WORKSPACE, SUB_LIST, FLAG_JSON]);
         assert.notEqual(read.code, 0, `post-logout read must be auth-required; got 0: ${read.stdout}`);
         assert.match(`${read.stderr}\n${read.stdout}`, AUTH_REQUIRED_RE,

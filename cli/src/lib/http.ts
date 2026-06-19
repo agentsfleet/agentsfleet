@@ -139,7 +139,6 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
 
 export interface AuthCredentials {
   token?: string | null | undefined;
-  apiKey?: string | null | undefined;
 }
 
 export function authHeaders(auth?: AuthCredentials | null): Record<string, string> {
@@ -149,11 +148,6 @@ export function authHeaders(auth?: AuthCredentials | null): Record<string, strin
 
   if (auth?.token) {
     headers.Authorization = `Bearer ${auth.token}`;
-    return headers;
-  }
-
-  if (auth?.apiKey) {
-    headers.Authorization = `Bearer ${auth.apiKey}`;
   }
 
   return headers;

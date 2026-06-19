@@ -27,9 +27,9 @@ describe("composeEnv — hermetic spawn env", () => {
     expect(env.AGENTSFLEET_TELEMETRY_DISABLED).toBe("0");
   });
 
-  test("should omit null and undefined fields so a parent AGENTSFLEET_TOKEN never leaks into a spawn", () => {
-    const env = composeEnv({ AGENTSFLEET_TOKEN: undefined, EXTRA: null, KEEP: "yes" });
-    expect("AGENTSFLEET_TOKEN" in env).toBe(false);
+  test("should omit null and undefined fields so a parent AGENTSFLEET_API_KEY never leaks into a spawn", () => {
+    const env = composeEnv({ AGENTSFLEET_API_KEY: undefined, EXTRA: null, KEEP: "yes" });
+    expect("AGENTSFLEET_API_KEY" in env).toBe(false);
     expect("EXTRA" in env).toBe(false);
     expect(env.KEEP).toBe("yes");
   });

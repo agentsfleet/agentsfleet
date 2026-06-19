@@ -56,11 +56,8 @@ export interface LoginFlags {
   readonly noInput: boolean;
   readonly force: boolean;
   readonly tokenName: string | undefined;
-  // --token <pat>; non-interactive direct-token source (highest priority).
+  // --token <pat>; non-interactive direct-token source (no browser).
   readonly tokenFlag: string | undefined;
-  // Raw AGENTSFLEET_TOKEN env value (not the file-merged CliConfig.accessToken)
-  // so an existing credentials.json is never mistaken for a direct token.
-  readonly envToken: string | undefined;
 }
 
 export interface LoginFlagsRaw {
@@ -69,7 +66,6 @@ export interface LoginFlagsRaw {
   readonly force: boolean | undefined;
   readonly tokenName: string | undefined;
   readonly tokenFlag: string | undefined;
-  readonly envToken: string | undefined;
 }
 
 const announceSession = Effect.fnUntraced(function* (
@@ -187,13 +183,11 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const noInput = flags.noInput || !stdin.isTTY;
   yield* idempotencyCheck({ force: flags.force, noInput });
 
-  // Non-interactive resolve (--token > AGENTSFLEET_TOKEN env > piped stdin)
-  // ahead of the browser device flow. A directly-supplied token is
-  // validated + persisted with no browser; `none` falls through to the
-  // device flow below.
+  // Non-interactive resolve (--token > piped stdin) ahead of the browser
+  // device flow. A directly-supplied token is validated + persisted with no
+  // browser; `none` falls through to the device flow below.
   const direct = yield* resolveDirectToken({
     tokenFlag: flags.tokenFlag,
-    envToken: flags.envToken,
   });
   if (Option.isSome(direct)) {
     if (flags.tokenName !== undefined && !config.jsonMode) {
@@ -272,6 +266,5 @@ export const loginEffectFromFlags = (
     force: raw.force ?? false,
     tokenName: raw.tokenName,
     tokenFlag: raw.tokenFlag,
-    envToken: raw.envToken,
   });
 const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as const;

@@ -13,12 +13,13 @@
  *
  *   - `readWithAgentKey` — runs one CLI read with the agent key injected as the
  *     bearer. The Effect command path resolves its bearer from
- *     `config.accessToken` ← `AGENTSFLEET_TOKEN` (see `cli/src/services/config.ts`
- *     + `workspace-guards.ts#resolveAuthToken`); `AGENTSFLEET_API_KEY` feeds only
- *     the legacy `CommandCtx` path the Effect-shaped read commands never consult.
- *     So the agent key is injected as `AGENTSFLEET_TOKEN` — the var that actually
- *     carries a bearer to the wire for these commands. This helper makes no claim
- *     about the OUTCOME; it returns the raw run result and the caller asserts.
+ *     `config.accessToken` ← `AGENTSFLEET_API_KEY` (env slot; see
+ *     `cli/src/services/config.ts` + `workspace-guards.ts#resolveAuthToken`),
+ *     which wins over any stored login JWT via `resolveToken`'s env-first
+ *     precedence. So the agent key is injected as `AGENTSFLEET_API_KEY` — the
+ *     env var that carries a bearer to the wire for these commands. This helper
+ *     makes no claim about the OUTCOME; it returns the raw run result and the
+ *     caller asserts.
  *
  *     CONTRACT (verified against `agentsfleetd`): an `agt_a…` agent key is NOT a
  *     control-plane credential. The standard `bearer()` middleware
@@ -62,10 +63,9 @@ export const KEY_AGENT_KEY_ID = "agent_key_id" as const;
 export const KEY_SECRET = "key" as const;
 
 // Auth-credential env vars (mirror the names in `cli/src/services/config.ts`
-// and `cli/src/cli.ts`). The agent key is injected as the TOKEN var — that is
-// the bearer the Effect command path resolves; API_KEY only feeds the legacy
-// CommandCtx path the read commands ignore.
-export const ENV_TOKEN = "AGENTSFLEET_TOKEN" as const;
+// and `cli/src/cli.ts`). The agent key is injected as the API-key var — the
+// env slot that carries the bearer to the wire (winning over a stored login).
+export const ENV_API_KEY = "AGENTSFLEET_API_KEY" as const;
 export const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
 export const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 export const ENV_NO_COLOR = "NO_COLOR" as const;
@@ -187,7 +187,7 @@ export async function readWithAgentKey(
   args: ReadonlyArray<string>,
 ): Promise<RunResult> {
   const keyEnv = composeEnv({
-    [ENV_TOKEN]: agentKeySecret,
+    [ENV_API_KEY]: agentKeySecret,
     [ENV_API_URL]: baseEnv[ENV_API_URL],
     [ENV_STATE_DIR]: baseEnv[ENV_STATE_DIR],
     [ENV_NO_COLOR]: NO_COLOR_ON,

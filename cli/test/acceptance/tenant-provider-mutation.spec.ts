@@ -1,5 +1,5 @@
 /**
- * Tenant provider mutation acceptance scenario (live, token-injected).
+ * Tenant provider mutation acceptance scenario (live, seeded-credentials session).
  *
  * Walks the tenant LLM-provider posture through a full mutate-and-restore
  * cycle against a real API:
@@ -90,13 +90,12 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: NO_COLOR_ON,
       });
       // Hydrate workspaces.json so the CLI has a workspace context — the
-      // token-injection path never walks the login hydrate branch.
+      // seeded-credentials session never walks the login hydrate branch.
       await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
 
       // Snapshot before any mutation so teardown can restore exactly.

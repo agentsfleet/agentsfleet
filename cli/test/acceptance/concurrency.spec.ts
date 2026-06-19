@@ -1,5 +1,5 @@
 /**
- * Concurrency acceptance scenario — AGENTSFLEET_TOKEN-injected, read-only.
+ * Concurrency acceptance scenario — seeded-credentials session, read-only.
  *
  * Two storms, both fanned out with a bounded `Promise.all`:
  *
@@ -84,15 +84,16 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("concurrency — read-only fan-out under AGENTSFLEET_TOKEN", () => {
+  describe("concurrency — read-only fan-out under a seeded-credentials session", () => {
     let apiUrl: string = "";
     let sessionJwt: string = "";
     // State dirs spun up across both scenarios — torn down in afterAll.
     const stateDirs: string[] = [];
 
     function envFor(stateDir: string): Record<string, string> {
+      // Auth comes from the seeded credentials.json in stateDir (file slot);
+      // the AGENTSFLEET_TOKEN env var was removed.
       return composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR,
@@ -218,9 +219,11 @@ if (!isLive) {
         sharedDir = await makeStateDir();
         stateDirs.push(sharedDir);
         // Hydrate workspaces.json so the read commands resolve a workspace,
-        // then pre-seed a well-formed credentials.json. The fan-out below
-        // uses AGENTSFLEET_TOKEN for auth (so no lane *writes* the file); the
-        // invariant is that concurrent readers leave the seed byte-identical.
+        // then pin a well-formed credentials.json. The fan-out below
+        // authenticates FROM that file (reads only — no lane *writes* it back);
+        // the invariant is that concurrent readers leave the seed byte-identical.
+        // (hydrate also seeds a credentials.json; seedCredentialsFile below is
+        // the authoritative last writer and the byte-pinned value.)
         await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir: sharedDir });
         const record: CredentialsRecord = {
           ...seedRecord,

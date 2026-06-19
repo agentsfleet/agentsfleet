@@ -1,5 +1,5 @@
 /**
- * Performance-budget acceptance scenario (live, AGENTSFLEET_TOKEN-injected).
+ * Performance-budget acceptance scenario (live, seeded-credentials session).
  *
  * This is a regression guardrail, NOT a microbenchmark. It measures the
  * end-to-end wall-clock of read-only CLI commands (`list --json`,
@@ -16,7 +16,8 @@
  * Identity / hydration mirror lifecycle-with-token.spec.ts exactly: mint a
  * Clerk session JWT via the admin path, hydrate workspaces.json directly
  * from the API (the CLI only hydrates inside the login flow), spawn the
- * real CLI with the token injected, and scrub the JWT from every capture.
+ * real CLI authenticating off the seeded credentials, and scrub the JWT
+ * from every capture.
  *
  * Live-only: the entire suite registers only when
  * `AGENTSFLEET_ACCEPTANCE_TARGET` is an https URL; otherwise every test is
@@ -139,7 +140,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("perf — read-command wall-clock budget (AGENTSFLEET_TOKEN injection)", () => {
+  describe("perf — read-command wall-clock budget (seeded-credentials session)", () => {
     let apiUrl = "";
     let sessionJwt = "";
     let stateDir = "";
@@ -181,7 +182,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-perf-"));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",

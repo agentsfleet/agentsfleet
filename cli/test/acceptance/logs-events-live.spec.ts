@@ -1,6 +1,7 @@
 /**
  * logs-events-live — live `logs` + `events` read paths against a freshly
- * installed agent (token-injected, mirrors lifecycle-with-token.spec.ts).
+ * installed agent (seeded-credentials session, mirrors
+ * lifecycle-with-token.spec.ts).
  *
  * Scenario:
  *   - mint a Clerk session JWT via the admin path
@@ -76,7 +77,6 @@ const isLive = target.startsWith("https://");
 
 // Wire/output literals (RULE UFS — each used >=2x or crosses a boundary).
 const STATE_DIR_PREFIX = "agentsfleet-logs-events-" as const;
-const TOKEN_ENV_KEY = "AGENTSFLEET_TOKEN" as const;
 const API_URL_ENV_KEY = "AGENTSFLEET_API_URL" as const;
 const STATE_DIR_ENV_KEY = "AGENTSFLEET_STATE_DIR" as const;
 const NO_COLOR_ENV_KEY = "NO_COLOR" as const;
@@ -132,7 +132,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [TOKEN_ENV_KEY]: sessionJwt,
         [API_URL_ENV_KEY]: apiUrl,
         [STATE_DIR_ENV_KEY]: stateDir,
         [NO_COLOR_ENV_KEY]: NO_COLOR_ON,

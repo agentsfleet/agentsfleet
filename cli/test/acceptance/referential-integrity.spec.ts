@@ -1,6 +1,6 @@
 /**
  * Referential-integrity / cross-resource acceptance scenarios (live,
- * AGENTSFLEET_TOKEN-injected). Mirrors lifecycle-with-token / credential-vault
+ * seeded-credentials session). Mirrors lifecycle-with-token / credential-vault
  * / agent-key-mutation: mint a Clerk session JWT, hydrate workspaces.json from
  * the API, then walk cross-resource deletes whose outcome the suite DISCOVERS
  * and DOCUMENTS against api-dev rather than presumes. The load-bearing contract
@@ -75,7 +75,6 @@ const KEY_STATUS = "status" as const;
 const KEY_DELETED = "deleted" as const;
 const STATUS_STORED = "stored" as const;
 
-const ENV_TOKEN = "AGENTSFLEET_TOKEN" as const;
 const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
 const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 const ENV_NO_COLOR = "NO_COLOR" as const;
@@ -110,7 +109,7 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("referential-integrity — cross-resource deletes (token injection)", () => {
+  describe("referential-integrity — cross-resource deletes (seeded-credentials session)", () => {
     let apiUrl = "";
     let sessionJwt = "";
     let stateDir = "";
@@ -137,7 +136,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [ENV_TOKEN]: sessionJwt,
         [ENV_API_URL]: apiUrl,
         [ENV_STATE_DIR]: stateDir,
         [ENV_NO_COLOR]: NO_COLOR_ON,

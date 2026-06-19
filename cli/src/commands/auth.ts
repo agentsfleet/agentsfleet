@@ -159,10 +159,13 @@ export const authStatusEffect: Effect.Effect<
   const fileToken = yield* credentials.getAccessToken;
   const envToken = config.accessToken;
 
-  const source: TokenSource = Option.isSome(fileToken)
-    ? "file"
-    : Option.isSome(envToken)
-      ? "env"
+  // Env-first, matching the wire precedence (resolveToken): an exported
+  // service API key wins over a stored login JWT. `env` here means the
+  // AGENTSFLEET_API_KEY credential; `file` means the login session on disk.
+  const source: TokenSource = Option.isSome(envToken)
+    ? "env"
+    : Option.isSome(fileToken)
+      ? "file"
       : "none";
 
   if (source === "none") {
@@ -186,8 +189,8 @@ export const authStatusEffect: Effect.Effect<
     );
   }
 
-  const activeToken = Option.getOrElse(fileToken, () =>
-    Option.getOrThrow(envToken),
+  const activeToken = Option.getOrElse(envToken, () =>
+    Option.getOrThrow(fileToken),
   );
   const savedAt = source === "file" ? yield* credentials.getSavedAt : null;
   const sessionId = source === "file" ? yield* credentials.getSessionId : null;

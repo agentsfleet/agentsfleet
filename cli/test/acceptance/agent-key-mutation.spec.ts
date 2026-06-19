@@ -1,5 +1,5 @@
 /**
- * agent-key mutation round-trip (live, AGENTSFLEET_TOKEN-injected).
+ * agent-key mutation round-trip (live, seeded-credentials session).
  *
  * Closes the biggest mutation gap the coverage critic flagged: every other
  * write verb got a dedicated live slice, but `agent-key add` / `delete` were
@@ -45,7 +45,6 @@ const FLAG_NAME = "--name" as const;
 const FLAG_JSON = "--json" as const;
 const KEY_DELETED = "deleted" as const;
 
-const ENV_TOKEN = "AGENTSFLEET_TOKEN" as const;
 const ENV_API_URL = "AGENTSFLEET_API_URL" as const;
 const ENV_STATE_DIR = "AGENTSFLEET_STATE_DIR" as const;
 const ENV_NO_COLOR = "NO_COLOR" as const;
@@ -79,7 +78,7 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("agent-key — mint → list → delete round-trip (token injection)", () => {
+  describe("agent-key — mint → list → delete round-trip (seeded-credentials session)", () => {
     let apiUrl = "";
     let sessionJwt = "";
     let stateDir = "";
@@ -102,7 +101,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        [ENV_TOKEN]: sessionJwt,
         [ENV_API_URL]: apiUrl,
         [ENV_STATE_DIR]: stateDir,
         [ENV_NO_COLOR]: NO_COLOR_ON,

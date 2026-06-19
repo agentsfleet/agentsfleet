@@ -3,7 +3,7 @@
  *
  * Proves the CLI's parse + help + auth-guard layer behaves correctly
  * against the same binary that ships to prod (worktree-DEV /
- * npm-global-PROD). No `AGENTSFLEET_TOKEN`, no `credentials.json`, no live
+ * npm-global-PROD). No env API key, no `credentials.json`, no live
  * API calls (the auth guard fires before any network I/O — the suite
  * sets `AGENTSFLEET_API_URL` to an unroutable address so a leaked fetch
  * surfaces as ECONNREFUSED instead of the expected stem).
