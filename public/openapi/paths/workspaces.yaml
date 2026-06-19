@@ -39,7 +39,6 @@
                     or server-generated Heroku-style.
                 request_id:
                   type: string
-                  format: uuid
                   description: Unique request identifier
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

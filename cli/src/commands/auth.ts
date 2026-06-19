@@ -26,6 +26,14 @@ const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable";
 
+// A JWT decodes to readable claims; an opaque api key (agt_t…) does not. Track
+// which kind authenticated so `auth status` renders the api key honestly
+// instead of a panel of empty JWT-claim rows.
+const CREDENTIAL_KIND = { jwt: "jwt", apiKey: "api_key" } as const;
+type CredentialKind = (typeof CREDENTIAL_KIND)[keyof typeof CREDENTIAL_KIND];
+const DASH = "—";
+const API_KEY_CREDENTIAL = "api key (opaque; scope resolved server-side)";
+
 interface ProbeResult {
   readonly status: ProbeStatus;
   readonly error: string | null;
@@ -48,6 +56,7 @@ interface AuthStatusResult {
   readonly saved_at: number | null;
   readonly session_id: string | null;
   readonly token: TokenSummary | null;
+  readonly credential_kind: CredentialKind;
   readonly server_check: ProbeResult;
 }
 
@@ -121,26 +130,36 @@ const renderHuman = (
   Effect.gen(function* () {
     const output = yield* Output;
     yield* output.printSection("Authentication");
+    // An opaque api key carries no readable claims, so show it as one line
+    // rather than four "—" JWT-claim rows that read like a broken session.
+    const claims =
+      result.credential_kind === CREDENTIAL_KIND.apiKey
+        ? { credential: API_KEY_CREDENTIAL }
+        : {
+            tenant_id: result.token?.tenant_id ?? DASH,
+            role: result.token?.role ?? DASH,
+            expires_at: result.token?.exp_at ?? DASH,
+            expired:
+              result.token?.expired === true
+                ? "yes"
+                : result.token?.expired === false
+                  ? "no"
+                  : DASH,
+          };
     yield* output.printKeyValue({
       source: result.source,
       api_url: result.api_url,
       saved_at: formatTs(result.saved_at),
-      tenant_id: result.token?.tenant_id ?? "—",
-      role: result.token?.role ?? "—",
-      expires_at: result.token?.exp_at ?? "—",
-      expired:
-        result.token?.expired === true
-          ? "yes"
-          : result.token?.expired === false
-            ? "no"
-            : "—",
+      ...claims,
       server_check: result.server_check.error
         ? `${result.server_check.status} (${result.server_check.error})`
         : result.server_check.status,
     });
     if (result.server_check.status === "unauthorized") {
       yield* output.error(
-        "server rejected the current token — re-run `agentsfleet login`",
+        result.credential_kind === CREDENTIAL_KIND.apiKey
+          ? "server rejected AGENTSFLEET_API_KEY — check the key or mint a new one"
+          : "server rejected the current token — re-run `agentsfleet login`",
       );
     } else {
       yield* output.success("authenticated");
@@ -195,6 +214,7 @@ export const authStatusEffect: Effect.Effect<
   const savedAt = source === "file" ? yield* credentials.getSavedAt : null;
   const sessionId = source === "file" ? yield* credentials.getSessionId : null;
   const probeResult = yield* probe(activeToken);
+  const tokenSummary = deriveTokenSummary(Redacted.value(activeToken));
 
   const result: AuthStatusResult = {
     authenticated: probeResult.status !== "unauthorized",
@@ -202,7 +222,8 @@ export const authStatusEffect: Effect.Effect<
     api_url: config.apiUrl,
     saved_at: savedAt,
     session_id: sessionId,
-    token: deriveTokenSummary(Redacted.value(activeToken)),
+    token: tokenSummary,
+    credential_kind: tokenSummary ? CREDENTIAL_KIND.jwt : CREDENTIAL_KIND.apiKey,
     server_check: probeResult,
   };
 

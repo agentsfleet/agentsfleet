@@ -38,12 +38,13 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `login [--timeout-sec N] [--poll-ms N] [--no-open]` | Authenticate via browser |
-| `logout` | Clear stored credentials |
+| `login [--token <token>] [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (or pass a token directly; prefer piped stdin to keep it out of shell history) |
+| `logout` | Sign out — revoke every active session on this account and clear local credentials |
+| `auth status` | Show active token source, claims, and server-side validity |
 | `workspace add [<name>]` | Create a new workspace |
 | `workspace list` | List workspaces |
 | `workspace use <workspace_id>` | Set the active workspace |
-| `workspace show [--workspace-id ID]` | Show workspace details |
+| `workspace show [<workspace_id>]` | Show workspace details (defaults to the active workspace) |
 | `workspace credentials` | Open the credential vault |
 | `workspace delete <workspace_id>` | Delete a workspace (irreversible) |
 | `doctor` | Diagnose CLI configuration and connectivity |
@@ -52,45 +53,46 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `agent add` | Mint an agent API key for the workspace |
-| `agent list` | List agent API keys |
-| `agent delete <key_id>` | Revoke an agent API key |
+| `agent-key add [--workspace <id>] [--agent <id>] [--name <name>]` | Mint an agent API key for the workspace |
+| `agent-key list [--workspace <id>]` | List agent API keys |
+| `agent-key delete <agent_key_id> [--workspace <id>]` | Revoke an agent API key |
 
 ### Integration grants
 
 | Command | Description |
 |---------|-------------|
-| `grant list` | List integration grants in the workspace |
-| `grant delete <grant_id>` | Revoke an integration grant |
+| `grant list [--agent <id>]` | List integration grants for an agent |
+| `grant delete <grant_id> [--agent <id>]` | Revoke an integration grant |
 
 ### Tenant provider
 
 | Command | Description |
 |---------|-------------|
 | `tenant provider show` | Show the active provider config |
-| `tenant provider add --credential <name>` | Use a self-managed credential |
+| `tenant provider add --credential <name> [--model <name>]` | Use a self-managed credential |
 | `tenant provider delete` | Reset to the platform default |
 
 ### Billing
 
 | Command | Description |
 |---------|-------------|
-| `billing show` | Plan, balance, and usage snapshot |
+| `billing show [--limit <n>] [--cursor <token>]` | Plan, balance, and recent events |
 
 ### Agents
 
 | Command | Description |
 |---------|-------------|
 | `install --from <path>` | Register an agent from `<path>` |
-| `list [--cursor C] [--limit N]` | List agents (paginated) |
-| `status [<agent_id>]` | Show agent status |
+| `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List agents (paginated) |
+| `status [<agent_id>]` | Show agent status (workspace-wide if no id) |
 | `stop <agent_id>` | Halt the session (resumable) |
-| `resume <agent_id>` | Resume from stopped |
+| `resume <agent_id>` | Resume from stopped or auto-paused |
 | `kill <agent_id>` | Mark terminal (irreversible) |
 | `delete <agent_id>` | Hard-delete (kill first) |
-| `logs <agent_id>` | Tail agent activity |
-| `events <agent_id> [opts]` | Page through historical events |
+| `logs [<agent_id>] [--limit <n>] [--cursor <token>]` | Tail agent activity |
+| `events <agent_id> [--since <when>] [--actor <glob>] [--limit <n>] [--cursor <token>]` | Page through historical events |
 | `steer <agent_id> "<msg>"` | Send a message; stream response |
+| `agent update <agent_id> --from <path>` | Re-parse and PATCH an agent's TRIGGER.md + SKILL.md from a local bundle |
 
 ### Memory (read-only)
 
@@ -132,9 +134,15 @@ Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash
 | Variable | Description |
 |----------|-------------|
 | `AGENTSFLEET_API_URL` | API base URL (overridden by `--api`) |
+| `AGENTSFLEET_DASHBOARD_URL` | Dashboard base URL (login verify page) |
 | `AGENTSFLEET_API_KEY` | Service API key; overrides a stored `login` session |
 | `AGENTSFLEET_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
 | `NO_COLOR` | Any non-empty value disables color |
+| `AGENTSFLEET_TELEMETRY_DISABLED` | Set to `1` to opt out of analytics + tracing |
+| `DO_NOT_TRACK` | Industry-standard opt-out signal |
+| `AGENTSFLEET_TELEMETRY_POSTHOG_KEY` | Override the PostHog project key |
+| `AGENTSFLEET_TELEMETRY_POSTHOG_HOST` | Override the PostHog ingest host |
+| `AGENTSFLEET_TELEMETRY_DEBUG` | Set to `1` to log span summaries to stderr |
 
 ## Configuration
 

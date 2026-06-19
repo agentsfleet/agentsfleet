@@ -1,0 +1,225 @@
+/v1/runners:
+  post:
+    operationId: register_runner
+    summary: Register a runner
+    description: Enrolls a runner into the fleet. Authed by an existing operator credential (Clerk JWT or `agt_t` API key with admin role) — there is no enrollment token. Mints a durable `agt_r` runner token (returned once) and stores only its SHA-256 hash.
+    tags:
+    - Fleet
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/schemas.yaml#/components/schemas/RunnerRegisterRequest
+    responses:
+      '201':
+        description: Runner registered; the bearer token is returned exactly once.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/RunnerRegisterResponse
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/fleet/runners:
+  get:
+    operationId: list_fleet_runners
+    summary: List fleet runners
+    description: Platform-admin operator-plane read of the whole fleet. Paginated, read-only. Each row carries a derived `liveness` — never the stored auth state, never the token hash.
+    tags:
+    - Fleet
+    parameters:
+    - name: page
+      in: query
+      required: false
+      description: 1-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    - name: page_size
+      in: query
+      required: false
+      description: Rows per page (1-100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+    - name: sort
+      in: query
+      required: false
+      description: Sort order.
+      schema:
+        type: string
+        enum:
+        - created_at
+        - -created_at
+        - host_id
+        - -host_id
+    responses:
+      '200':
+        description: A page of fleet runners.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              - page
+              - page_size
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/RunnerSummary
+                total:
+                  type: integer
+                  format: int64
+                page:
+                  type: integer
+                page_size:
+                  type: integer
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/fleet/runners/{id}:
+  patch:
+    operationId: patch_fleet_runner
+    summary: Administer a fleet runner
+    description: Platform-admin operator action on a single runner. `cordon` → cordoned, `drain` → draining, `revoke` → revoked (terminal; a revoked runner cannot transition back).
+    tags:
+    - Fleet
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Runner id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - action
+            properties:
+              action:
+                type: string
+                description: The operator transition to apply.
+                enum:
+                - cordon
+                - drain
+                - revoke
+    responses:
+      '200':
+        description: The runner's new admin state.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id
+              - admin_state
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                admin_state:
+                  type: string
+                  enum:
+                  - active
+                  - cordoned
+                  - draining
+                  - drained
+                  - revoked
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/fleet/runners/{id}/events:
+  get:
+    operationId: list_fleet_runner_events
+    summary: List fleet runner events
+    description: Platform-admin read of a single runner's append-only history. Paginated; optionally filtered by event type and an occurred-at millisecond window.
+    tags:
+    - Fleet
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Runner id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+    - name: page
+      in: query
+      required: false
+      description: 1-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    - name: page_size
+      in: query
+      required: false
+      description: Rows per page (1-100).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+    - name: event_type
+      in: query
+      required: false
+      description: Filter to a single runner event type.
+      schema:
+        type: string
+        enum:
+        - runner_registered
+        - runner_online
+        - runner_offline
+        - lease_acquired
+        - lease_released
+        - runner_cordoned
+        - runner_draining
+        - runner_drained
+        - runner_revoked
+    - name: since
+      in: query
+      required: false
+      description: Lower bound on occurred_at, epoch milliseconds (inclusive).
+      schema:
+        type: integer
+        format: int64
+    - name: until
+      in: query
+      required: false
+      description: Upper bound on occurred_at, epoch milliseconds (inclusive). Must be >= since.
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: A page of runner events.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              - page
+              - page_size
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/RunnerEvent
+                total:
+                  type: integer
+                  format: int64
+                page:
+                  type: integer
+                page_size:
+                  type: integer
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

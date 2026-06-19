@@ -118,18 +118,18 @@ describe("config precedence — API URL at the wire (authed list)", () => {
     });
   });
 
-  test("API_URL env beats a stale creds.api_url at the wire", async () => {
+  test("AGENTSFLEET_API_URL env beats a stale creds.api_url at the wire", async () => {
     await withAuthedStateDir({ workspaceId: WS_PERSISTED, token: DISK_TOKEN }, async () => {
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
-        // creds.api_url is unroutable; API_URL points at the live mock. Proves
-        // the API_URL env rung sits above the persisted credential.
+        // creds.api_url is unroutable; AGENTSFLEET_API_URL points at the live
+        // mock. Proves the env rung sits above the persisted credential.
         await seedCreds(UNROUTABLE_CREDS_URL, "sess_apiurl_env");
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { API_URL: apiUrl },
+          env: { AGENTSFLEET_API_URL: apiUrl },
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);

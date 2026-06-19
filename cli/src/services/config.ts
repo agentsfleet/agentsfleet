@@ -24,11 +24,10 @@ export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3b
 // The service-auth env-var name. A machine principal (an `agt_t…` tenant
 // API key) exported here authenticates the CLI without a browser login,
 // and — by the env-wins precedence in `resolveToken` — takes priority over
-// a stored login JWT. `API_KEY` is also honoured as an unprefixed alias
-// (see `cli.ts`). This is the only env-sourced bearer the CLI reads; the
-// older `AGENTSFLEET_TOKEN` env var was removed.
+// a stored login JWT. This is the only env-sourced bearer the CLI reads; the
+// older `AGENTSFLEET_TOKEN` env var (and the unprefixed `API_KEY` alias) were
+// removed.
 export const AGENTSFLEET_API_KEY_ENV = "AGENTSFLEET_API_KEY";
-const API_KEY_ENV_ALIAS = "API_KEY";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -49,8 +48,13 @@ export const CliConfig = Context.Service<CliConfig>(
   "agentsfleet/config/CliConfig",
 );
 
-const readEnv = (key: string): string | undefined =>
-  typeof process !== "undefined" ? process.env[key] : undefined;
+// Single guarded accessor for the process environment (returns an empty env
+// in non-Node contexts). All env reads route through here so the
+// `typeof process` guard lives in exactly one place.
+const processEnv = (): NodeJS.ProcessEnv =>
+  typeof process !== "undefined" ? process.env : ({} as NodeJS.ProcessEnv);
+
+const readEnv = (key: string): string | undefined => processEnv()[key];
 
 const trimmed = (v: string | undefined): string | undefined => {
   if (typeof v !== "string") return undefined;
@@ -58,13 +62,13 @@ const trimmed = (v: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
-// Single source for the env-sourced service API key. The bare `API_KEY`
-// alias is honoured ahead of `AGENTSFLEET_API_KEY`; the value is trimmed so a
+// Single source for the env-sourced service API key. Trimmed so a
 // whitespace-only export counts as unset (never reaches the wire as a blank
-// Bearer). Both cli.ts and resolveCliConfig resolve through here so the alias
-// order and trimming can't drift between the two paths.
+// Bearer). Both cli.ts and resolveCliConfig resolve through here so the read
+// can't drift between the two paths. Only `AGENTSFLEET_API_KEY` is honoured —
+// the unprefixed `API_KEY` alias was dropped as off-brand.
 export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
-  trimmed(env[API_KEY_ENV_ALIAS]) ?? trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
+  trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
 
 export const resolveCliConfig = (): CliConfigShape => {
   const apiUrl = trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL;
@@ -74,8 +78,7 @@ export const resolveCliConfig = (): CliConfigShape => {
   // a stored login JWT via `resolveToken`'s env-first precedence. Resolution
   // is centralised in cli.ts before this layer; tests that bypass runCli see
   // the env value here.
-  const envToken =
-    typeof process !== "undefined" ? resolveApiKeyFromEnv(process.env) : null;
+  const envToken = resolveApiKeyFromEnv(processEnv());
   const telemetryPosthogKey =
     trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =

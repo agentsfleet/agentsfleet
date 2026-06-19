@@ -186,6 +186,26 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
+      it("status exposes per-agent events_processed and budget_used_nanos", async () => {
+        // End-to-end: the real server aggregates these from core.agent_events
+        // and agent_execution_telemetry, and the CLI surfaces them in the list
+        // row that backs `agentsfleet status`. A freshly-installed agent may
+        // have 0 of each — the contract is the fields exist and are numeric.
+        const payload = await expectStatus(env, agentId, ["active", "starting", "running"]);
+        assert.equal(
+          typeof payload.events_processed,
+          "number",
+          `events_processed missing/not-number: ${JSON.stringify(payload)}`,
+        );
+        assert.equal(
+          typeof payload.budget_used_nanos,
+          "number",
+          `budget_used_nanos missing/not-number: ${JSON.stringify(payload)}`,
+        );
+        assert.ok((payload.events_processed as number) >= 0);
+        assert.ok((payload.budget_used_nanos as number) >= 0);
+      });
+
       it("logs --json returns a parseable envelope", async () => {
         // `--since` lives on `events`, NOT `logs` (`logs` only takes
         // `--agent`, `--limit`, `--cursor`); commander would exit 1 on

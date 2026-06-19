@@ -4,7 +4,7 @@
     summary: Ingest a GitHub Actions webhook
     description: GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's
       `agent:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the
-      agent event stream; other events return 204. Idempotency keyed on `X-GitHub-Delivery` for 24h.
+      agent event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.
     tags:
     - Webhooks
     parameters:
@@ -74,6 +74,8 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '413':
         $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
     security: []
 /v1/webhooks/{agent_id}/approval:
   post:
@@ -98,22 +100,20 @@
           schema:
             type: object
             required:
+            - action_id
             - decision
-            - signature
             properties:
+              action_id:
+                type: string
+                description: The approval gate's action_id to resolve.
               decision:
                 type: string
                 enum:
-                - approved
-                - rejected
-              signature:
-                type: string
-                description: HMAC signature over the body.
-              reason:
-                type: string
+                - approve
+                - deny
     responses:
       '200':
-        description: OK
+        description: Resolved.
         content:
           application/json:
             schema:
@@ -121,11 +121,17 @@
               properties:
                 status:
                   type: string
+                action_id:
+                  type: string
+                decision:
+                  type: string
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
         $ref: ../components/responses.yaml#/components/responses/Error
     security: []
 /v1/webhooks/{agent_id}/grant-approval:
@@ -152,7 +158,7 @@
             required:
             - grant_id
             - decision
-            - signature
+            - nonce
             properties:
               grant_id:
                 type: string
@@ -160,9 +166,10 @@
                 type: string
                 enum:
                 - approved
-                - rejected
-              signature:
+                - denied
+              nonce:
                 type: string
+                description: Single-use anti-replay nonce issued with the approval request.
     responses:
       '200':
         description: OK
@@ -173,11 +180,17 @@
               properties:
                 status:
                   type: string
+                grant_id:
+                  type: string
+                decision:
+                  type: string
       '400':
         $ref: ../components/responses.yaml#/components/responses/Error
       '401':
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
         $ref: ../components/responses.yaml#/components/responses/Error
     security: []
 /v1/webhooks/svix/{agent_id}:
