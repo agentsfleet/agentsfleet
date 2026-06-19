@@ -35,8 +35,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-prod` | `publishable-key` | Fly.io PROD `CLERK_PUBLISHABLE_KEY` |
 | `clerk-prod` | `secret-key` | Fly.io PROD `CLERK_SECRET_KEY` |
 | `clerk-prod` | `webhook-secret` | Fly.io PROD `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
-| `clerk-prod` | `jwks-url` | Fly.io PROD `OIDC_JWKS_URL` |
-| `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` |
+| `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
@@ -63,8 +62,7 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `clerk-dev` | `publishable-key` | Fly.io DEV `CLERK_PUBLISHABLE_KEY` |
 | `clerk-dev` | `secret-key` | Fly.io DEV `CLERK_SECRET_KEY` |
 | `clerk-dev` | `webhook-secret` | Fly.io DEV `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
-| `clerk-dev` | `jwks-url` | Fly.io DEV `OIDC_JWKS_URL` |
-| `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` |
+| `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` (JWKS URL derived from it — M93_001) |
 | `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
