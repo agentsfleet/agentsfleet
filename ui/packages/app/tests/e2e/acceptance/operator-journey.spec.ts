@@ -161,7 +161,7 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, secondaryWorkspaceName);
 
     await clickSidebarLink(page, "/agents", /\/agents(\?|$)/);
-    await page.getByRole("link", { name: /install agent/i }).click();
+    await page.getByRole("link", { name: /install teammate/i }).click();
     await expect(page).toHaveURL(/\/agents\/new(\?|$)/);
     const agentId = await installViaUI(page, agentName);
     createdAgentId = agentId;
@@ -176,7 +176,7 @@ test.describe("operator journey", () => {
     await expect(page.getByLabel("Pending approval gates")).toBeVisible();
 
     await clickSidebarLink(page, "/settings", /\/settings(\?|$)/);
-    await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^workspace$/i })).toBeVisible();
     await expect(page.getByLabel("Workspace", { exact: true })).toContainText(secondaryWorkspaceName);
     activeWorkspaceId = await activeWorkspaceIdFromSettings(page);
 

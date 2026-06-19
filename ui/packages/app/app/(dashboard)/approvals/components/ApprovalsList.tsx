@@ -65,7 +65,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   // the list within ~5 s of reality. Worker wake on resolution is a separate
   // ≤2 s concern handled server-side.
   //
-  // Skip the poll-driven reset once the operator has clicked Load more.
+  // Skip the poll-driven reset once the human has clicked Load more.
   // Polling fetches page 1 only (`limit: 50`, no cursor); replacing items
   // wholesale would silently drop the loaded-more pages. A ref is fine —
   // the latest value is read inside the interval callback, no re-render
@@ -82,7 +82,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       if (!alive || alreadyPaged()) return;
       if (!result.ok) {
         // 401 is terminal — silently retrying for 5s forever leaves the
-        // operator staring at a stale list with no signal that their
+        // human staring at a stale list with no signal that their
         // session expired. Surface it; refresh fixes it.
         if (result.status === 401) {
           setError("Session expired — refresh the page to sign back in.");
@@ -121,7 +121,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       setItems((prev) => [...prev, ...result.data.items]);
       setCursor(result.data.next_cursor);
       // Latch the polling guard so the next 5s tick doesn't reset the
-      // operator back to page 1 by replacing items with the first page.
+      // human back to page 1 by replacing items with the first page.
       hasLoadedMore.current = true;
     });
   }
@@ -144,7 +144,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const outcome: ResolveOutcome = result.data;
     // Optimistic removal — even on already_resolved the row leaves the
     // pending list. Toasts could be added later; for v1 the list update
-    // alone is the operator-visible signal.
+    // alone is the human-visible signal.
     setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
     if (outcome.kind === "already_resolved") {
       setError(
@@ -158,7 +158,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       <EmptyState
         icon={<CheckCircle2Icon size={28} />}
         title="No pending approvals"
-        description="Nothing waiting on operator action."
+        description="Nothing waiting on human review."
       />
     );
   }

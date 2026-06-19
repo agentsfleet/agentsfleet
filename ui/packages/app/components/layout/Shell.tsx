@@ -65,7 +65,7 @@ const PLATFORM_NAV: NavEntry[] = [
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
-  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Workspace", href: "/settings", icon: SettingsIcon },
   { label: "Billing", href: "/settings/billing", icon: CreditCardIcon },
 ];
 
@@ -116,7 +116,7 @@ export default function Shell({
   const isActive = (href: string) => href === activeHref;
 
   return (
-    <div className="grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]">
+    <div className="app-glow-surface grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]" data-glow="dashboard">
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
         <MobileNav isActive={isActive} isPlatformAdmin={isPlatformAdmin} />
 

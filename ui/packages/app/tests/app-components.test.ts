@@ -244,7 +244,6 @@ describe("app components", () => {
     mocks.usePathname.mockReturnValue("/agents");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Brand-mark always-alive contract.
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Operations / Configuration / Organization
@@ -262,7 +261,7 @@ describe("app components", () => {
     expect(markup).not.toContain('href="/credentials"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
-    expect(markup).toContain("Settings");
+    expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
@@ -386,9 +385,9 @@ describe("app components", () => {
     // 'Agents' (href /agents) exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
     await user.click(screen.getByText("Agents"));
-    // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
+    // Footer 'Docs' is external; 'Workspace' is internal.
     await user.click(screen.getByText("Docs"));
-    await user.click(screen.getByText("Settings"));
+    await user.click(screen.getByText("Workspace"));
     // The combined Configuration entry — a nested route exercises the
     // multi-segment slug branch.
     await user.click(screen.getByText("Models & Credentials"));

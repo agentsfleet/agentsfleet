@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Button,
   Label,
@@ -82,9 +83,13 @@ export default function Step1Credential({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        <a href="#credentials" className="underline" data-workspace-id={workspaceId}>
+        <Link
+          href="/settings/models?tab=credentials#credentials"
+          className="underline"
+          data-workspace-id={workspaceId}
+        >
           Manage credential vault →
-        </a>
+        </Link>
       </p>
     </div>
   );

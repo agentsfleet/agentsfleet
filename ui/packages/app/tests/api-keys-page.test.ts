@@ -10,6 +10,7 @@ const redirect = vi.fn((path: string) => {
 });
 const authMock = vi.fn();
 const resolveActiveWorkspaceMock = vi.fn().mockResolvedValue({ id: "ws_1", name: "Prod" });
+const listTenantWorkspacesCachedMock = vi.fn().mockResolvedValue({ items: [], total: 0 });
 const listApiKeysMock = vi.fn();
 
 vi.mock("next/navigation", () => ({ redirect, usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
@@ -18,7 +19,10 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace: resolveActiveWorkspaceMock }));
+vi.mock("@/lib/workspace", () => ({
+  listTenantWorkspacesCached: listTenantWorkspacesCachedMock,
+  resolveActiveWorkspace: resolveActiveWorkspaceMock,
+}));
 
 // Partial mock — keep the real DEFAULT_SORT / DEFAULT_PAGE_SIZE the page passes.
 vi.mock("@/lib/api/api_keys", async (orig) => ({
@@ -51,22 +55,23 @@ describe("settings index", () => {
     const html = renderToStaticMarkup(await SettingsPage());
     expect(html).toContain('href="/settings/api-keys"');
     expect(html).toMatch(/API keys/i);
+    expect(html).toMatch(/Manage workspace/i);
   });
 
-  it("shows the operator-access notice when redirected from the api-keys guard", async () => {
+  it("shows the admin-access notice when redirected from the api-keys guard", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
     const html = renderToStaticMarkup(
       await SettingsPage({ searchParams: Promise.resolve({ notice: "api-keys-operator-only" }) }),
     );
-    expect(html).toMatch(/API keys need operator access/i);
+    expect(html).toMatch(/API keys need admin access/i);
   });
 
   it("omits the notice when no redirect param is present", async () => {
     mockAuth();
     const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
     const html = renderToStaticMarkup(await SettingsPage({ searchParams: Promise.resolve({}) }));
-    expect(html).not.toMatch(/need operator access/i);
+    expect(html).not.toMatch(/need admin access/i);
   });
 });
 

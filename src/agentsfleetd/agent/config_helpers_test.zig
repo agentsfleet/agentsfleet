@@ -242,13 +242,15 @@ test "parseAgentTrigger.webhook: credential_name override is dup'd into the trig
     try std.testing.expectEqualStrings("github-orgA", trig.webhook.credential_name.?);
 }
 
-// ── type: api rejection ───────────────────────────────────────────────────
+// ── type: api ─────────────────────────────────────────────────────────────
 
-test "parseAgentTrigger: type=api is rejected with InvalidTriggerType (api not yet available)" {
+test "parseAgentTrigger: type=api is admitted" {
     const src =
         \\{"type":"api"}
     ;
-    try std.testing.expectError(AgentConfigError.InvalidTriggerType, parseTriggerForTest(src));
+    const trig = try parseTriggerForTest(src);
+    defer freeTrigger(trig);
+    try std.testing.expect(trig == .api);
 }
 
 test "parseAgentTrigger: type=foobar is rejected with InvalidTriggerType" {
@@ -314,6 +316,15 @@ test "parseAgentTriggers: distinct webhook sources are admitted" {
     try std.testing.expectEqualStrings("linear", trs[1].webhook.source);
 }
 
+test "parseAgentTriggers: duplicate api entries are rejected" {
+    try std.testing.expectError(AgentConfigError.InvalidTriggerType, parseTriggersForTest(
+        \\[
+        \\  {"type":"api"},
+        \\  {"type":"api"}
+        \\]
+    ));
+}
+
 test "parseAgentTriggers: more than one cron entry is rejected" {
     try std.testing.expectError(AgentConfigError.InvalidTriggerType, parseTriggersForTest(
         \\[
@@ -336,13 +347,16 @@ test "parseAgentTriggers: webhook plus cron is admitted" {
     try std.testing.expectEqualStrings("0 3 * * *", trs[1].cron.schedule);
 }
 
-test "parseAgentTriggers: type=api anywhere in the array is rejected" {
-    try std.testing.expectError(AgentConfigError.InvalidTriggerType, parseTriggersForTest(
+test "parseAgentTriggers: webhook plus api is admitted" {
+    const trs = try parseTriggersForTest(
         \\[
         \\  {"type":"webhook","source":"github"},
         \\  {"type":"api"}
         \\]
-    ));
+    );
+    defer freeTriggers(trs);
+    try std.testing.expectEqual(@as(usize, 2), trs.len);
+    try std.testing.expectEqual(config_types.AgentTriggerType.api, @as(config_types.AgentTriggerType, trs[1]));
 }
 
 test "parseAgentTriggers: non-object array element is rejected" {

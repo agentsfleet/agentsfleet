@@ -18,7 +18,7 @@ describe("dashboard segment loading states", () => {
     {
       name: "settings",
       importer: () => import("../app/(dashboard)/settings/loading"),
-      expectsTitle: "Settings",
+      expectsTitle: "Workspace",
     },
     {
       name: "events",

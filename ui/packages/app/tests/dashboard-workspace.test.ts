@@ -2,7 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerRefresh } from "./helpers/dashboard-mocks";
+import { routerPush, routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, setActiveWorkspaceMock, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -112,6 +112,10 @@ describe("WorkspaceSwitcher component", () => {
     await waitFor(() =>
       expect(setActiveWorkspaceMock).toHaveBeenCalledWith("ws_2"),
     );
+    expect(routerRefresh).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
+    );
   });
 
   it("picking the active workspace is a no-op", async () => {
@@ -123,6 +127,14 @@ describe("WorkspaceSwitcher component", () => {
     // Give transition a tick
     await new Promise((r) => setTimeout(r, 10));
     expect(setActiveWorkspaceMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("navigates to Settings from Manage workspace", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-manage"));
+    expect(routerPush).toHaveBeenCalledWith("/settings");
   });
 });
 
@@ -130,7 +142,11 @@ describe("WorkspaceSwitcher component", () => {
 
 describe("CreateWorkspaceDialog component", () => {
   async function renderDialog(
-    props: { open?: boolean; onOpenChange?: (open: boolean) => void } = {},
+    props: {
+      open?: boolean;
+      onOpenChange?: (open: boolean) => void;
+      onCreated?: (workspaceName: string) => void;
+    } = {},
   ) {
     const onOpenChange = props.onOpenChange ?? vi.fn();
     const { default: CreateWorkspaceDialog } = await import(
@@ -140,6 +156,7 @@ describe("CreateWorkspaceDialog component", () => {
       React.createElement(CreateWorkspaceDialog, {
         open: props.open ?? true,
         onOpenChange,
+        onCreated: props.onCreated,
       } as never),
     );
     return { onOpenChange };
@@ -147,16 +164,18 @@ describe("CreateWorkspaceDialog component", () => {
 
   it("submits the trimmed name, then closes and refreshes on success", async () => {
     const user = userEvent.setup({ delay: null });
+    const onCreated = vi.fn();
     createWorkspaceActionMock.mockResolvedValueOnce({
       ok: true,
       data: { workspace_id: "ws_x", name: "acme-prod" },
     });
-    const { onOpenChange } = await renderDialog();
+    const { onOpenChange } = await renderDialog({ onCreated });
     await user.type(screen.getByTestId("workspace-name-input"), "  acme-prod  ");
     await user.click(screen.getByTestId("workspace-create-submit"));
     await waitFor(() =>
       expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }),
     );
+    expect(onCreated).toHaveBeenCalledWith("acme-prod");
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(routerRefresh).toHaveBeenCalled();
   });

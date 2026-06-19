@@ -46,10 +46,7 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 }
 
 function triggerMd(name: string): string {
-  // Minimum valid shape for create_agent. Mirrors
-  // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md: `triggers`
-  // is a list, and `type: api` is rejected by the parser (config_helpers.zig)
-  // — use a single `cron` trigger, the smallest valid shape.
+  // Use cron here so seeded agents keep a concrete wake rule.
   return [
     "---",
     `name: ${name}`,

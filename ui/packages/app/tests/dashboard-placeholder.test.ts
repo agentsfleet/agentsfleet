@@ -54,7 +54,7 @@ describe("placeholder pages", () => {
     // this route is a redirect. Its list/empty rendering is covered by
     // tests/models-credentials-page.test.ts and credentials-components.test.ts.
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    expect(() => Page()).toThrow("redirect:/settings/models#credentials");
+    expect(() => Page()).toThrow("redirect:/settings/models?tab=credentials#credentials");
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
@@ -126,7 +126,8 @@ describe("placeholder pages", () => {
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Settings");
+    expect(m).toContain("Workspace");
+    expect(m).toContain("New workspace");
     expect(m).toContain("Production");
     expect(m).toContain("ws_xyz");
   });
@@ -136,7 +137,7 @@ describe("placeholder pages", () => {
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Settings");
+    expect(m).toContain("Workspace");
     expect(m).toContain("—");
   });
 
@@ -154,7 +155,7 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Models");
-    expect(m).toContain(PROVIDER_MODE.platform);
+    expect(m).toContain("Platform defaults");
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
 

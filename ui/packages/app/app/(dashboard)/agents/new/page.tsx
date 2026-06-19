@@ -18,10 +18,10 @@ export default async function InstallAgentPage() {
     return (
       <div>
         <PageHeader>
-          <PageTitle>Install Agent</PageTitle>
+          <PageTitle>Install teammate</PageTitle>
         </PageHeader>
         <p className="text-sm text-muted-foreground">
-          Create a workspace before installing agents.
+          Create a workspace before installing teammates.
         </p>
       </div>
     );
@@ -30,7 +30,7 @@ export default async function InstallAgentPage() {
   return (
     <div>
       <PageHeader>
-        <PageTitle>Install Agent</PageTitle>
+        <PageTitle>Install teammate</PageTitle>
       </PageHeader>
       <InstallAgentForm workspaceId={workspace.id} />
     </div>

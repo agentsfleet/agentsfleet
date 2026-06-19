@@ -120,8 +120,8 @@ describe("agents routes", () => {
     });
     const { default: Page } = await import("../app/(dashboard)/agents/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No agents yet");
-    expect(markup).toContain("Install Agent");
+    expect(markup).toContain("Start your fleet");
+    expect(markup).toContain("Install teammate");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -149,7 +149,7 @@ describe("agents routes", () => {
     });
     const { default: Page } = await import("../app/(dashboard)/agents/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No agents yet");
+    expect(markup).toContain("Start your fleet");
   });
 
   it("agents new page redirects to /sign-in when no token", async () => {
@@ -162,14 +162,14 @@ describe("agents routes", () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/agents/new/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Create a workspace before installing agents");
+    expect(markup).toContain("Create a workspace before installing teammates");
   });
 
   it("agents new page renders the install form when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     const { default: Page } = await import("../app/(dashboard)/agents/new/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Install Agent");
+    expect(markup).toContain("Install teammate");
     expect(markup).toContain("name=\"trigger_markdown\"");
     expect(markup).toContain("name=\"source_markdown\"");
   });
@@ -410,5 +410,4 @@ describe("agents routes", () => {
 
 // TriggerPanel coverage moved to a co-located test file with the
 // per-trigger accordion rewrite (`components/TriggerPanel.test.tsx`).
-// The legacy Tabs UI tested in this block no longer exists.
-
+// The legacy Tabs interface tested in this block no longer exists.
