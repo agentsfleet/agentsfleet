@@ -63,9 +63,6 @@ import {
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const CLI_ROOT = path.resolve(HERE, "..", "..");
-// PER_AGENTSFLEET_READ_ONLY_COMMANDS row.group for the per-agent memory store —
-// the only DEV subsystem whose 503 the read-only sweep tolerates.
-const MEMORY_GROUP = "memory" as const;
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
@@ -167,22 +164,12 @@ if (!isLive) {
       // fixture state into the workspace-wide READ_ONLY_COMMANDS table.
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
         const label = `${row.argsHead.join(" ")} --agent <id>`;
-        it(`${label} exits 0 with parseable JSON (or cleanly surfaces a backend 503)`, async () => {
+        it(`${label} exits 0 with parseable JSON`, async () => {
           const args = [...row.argsHead, "--agent", agentId, "--json"];
           const result = await runWithEnv(args);
-          // A backend 503 is an upstream outage, not a CLI defect — the CLI
-          // surfaces it cleanly (non-zero + typed HTTP_503). Tolerate it ONLY
-          // for the per-agent memory store, the one DEV subsystem observed
-          // returning 503 on api-dev; the CLI's correct handling of that
-          // outage is itself the contract. Scoped to the memory group so a
-          // genuine 503 on grant list / etc. still reds the suite.
-          if (
-            row.group === MEMORY_GROUP &&
-            result.code !== 0 &&
-            /HTTP_503|Service Unavailable/i.test(`${result.stdout}\n${result.stderr}`)
-          ) {
-            return;
-          }
+          // Strict: a 503 here means api-dev's memory backend (the
+          // memory_runtime Postgres role/grant from schema 002+013) is not
+          // provisioned — a real outage to fix on the server, not tolerate.
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
           const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
           if (row.requiredKey) {
