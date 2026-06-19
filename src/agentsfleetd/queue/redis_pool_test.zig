@@ -1181,26 +1181,9 @@ test "integration: Redis restart mid-PING — Client reconnects within 30s windo
     var client = try redis.testing.connectFromUrlWithOptions(common.globalIo(), alloc, tls_url, .{ .read_timeout_ms = 5000 });
     defer client.deinit();
 
-    // Baseline PING — confirms connectivity before chaos. Retry briefly: the
-    // preceding restart test (#24) can leave Redis still finishing its
-    // healthcheck when this test starts, and in the containerized
-    // test-integration lane `docker compose restart`'s timing differs from
-    // host+localhost — so a single un-retried PING here would fail on that
-    // tail. The test's contract is reconnection after *its own* restart, not
-    // surviving a prior test's recovery, so a bounded readiness wait is correct.
-    {
-        const baseline_deadline = clock.nowNanos() + 15 * std.time.ns_per_s;
-        while (true) {
-            if (client.command(&.{"PING"})) |val| {
-                var v = val;
-                v.deinit(alloc);
-                break;
-            } else |err| {
-                if (clock.nowNanos() >= baseline_deadline) return err;
-                common.sleepNanos(500 * std.time.ns_per_ms);
-            }
-        }
-    }
+    // Baseline PING — confirms connectivity before chaos.
+    var pong = try client.command(&.{"PING"});
+    pong.deinit(alloc);
 
     const reconnects_before = client.pool.stats().reconnects_total;
 
