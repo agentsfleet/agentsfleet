@@ -20,9 +20,15 @@ export default function FeatureSection({ number, title, description, compact }: 
       <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
         {number}
       </span>
-      <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
-        {title}
-      </h3>
+      {compact ? (
+        <h4 className="font-mono text-heading leading-heading text-text font-medium m-0">
+          {title}
+        </h4>
+      ) : (
+        <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
+          {title}
+        </h3>
+      )}
       <p
         className={
           compact

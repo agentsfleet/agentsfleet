@@ -71,9 +71,9 @@ function CoreCapabilitiesSection() {
           </div>
 
           <div className="flex flex-col gap-3" aria-label="Runtime guarantees">
-            <p className="font-mono text-label uppercase tracking-label text-text-subtle m-0">
+            <h3 className="font-mono text-label uppercase tracking-label text-text-subtle m-0">
               {RUNTIME_GUARANTEES_LABEL}
-            </p>
+            </h3>
             <Card className="lg:hidden">
               <List variant="plain" divided className="m-0 space-y-0">
                 {CAPABILITY_ITEMS.map((item) => (
@@ -82,9 +82,9 @@ function CoreCapabilitiesSection() {
                       <span className="font-mono text-label uppercase tracking-label text-text-subtle">
                         {item.number}
                       </span>
-                      <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
+                      <span className="font-mono text-heading leading-heading text-text font-medium">
                         {item.title}
-                      </h3>
+                      </span>
                       <p className="font-sans text-body-sm leading-body text-text-muted m-0">
                         {item.description}
                       </p>
