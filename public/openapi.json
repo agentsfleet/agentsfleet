@@ -905,6 +905,9 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -2143,7 +2146,7 @@
       "post": {
         "operationId": "store_workspace_credential",
         "summary": "Store a credential in the workspace vault",
-        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
+        "description": "Plaintext is the canonical-stringified form of the supplied JSON object,\nenvelope-encrypted with the KEK (master key v1) and persisted to\n`vault.secrets`. The raw value is never stored unencrypted and never\nreturned. `data` must be a non-empty JSON object whose stringified form\nis ≤ 4 KiB; a stringified form over 4 KiB is rejected with `UZ-VAULT-002`,\nand bare strings, arrays, scalars, and `{}` are rejected with\n`UZ-VAULT-001`.\n",
         "tags": [
           "Credentials"
         ],
@@ -4878,15 +4881,6 @@
             "items": {
               "$ref": "#/components/schemas/AgentTrigger"
             }
-          },
-          "budget_used_dollars": {
-            "type": "number",
-            "description": "Cumulative budget consumed by this agent, in USD."
-          },
-          "events_processed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Number of events this agent has processed."
           }
         }
       },

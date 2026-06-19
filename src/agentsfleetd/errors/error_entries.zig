@@ -114,7 +114,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AGT-008", .bad_request, "Invalid agent config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
         "in your TRIGGER.md frontmatter. See samples/fixtures/platform-ops-sample/TRIGGER.md for a working example."),
     e("UZ-AGT-009", .not_found, "Agent not found", "Agent not found. Verify the agent_id and that it has not been killed."),
-    e("UZ-AGT-010", .conflict, "Agent already stopped or killed", "This agent is already stopped or has been killed. Restart it before issuing another stop."),
+    e("UZ-AGT-010", .conflict, "Agent state transition not allowed", "The requested lifecycle action is not valid from the agent's current state. The response detail names the specific transition that was refused."),
     e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per agent bundle."),
     e("UZ-AGT-012", .conflict, "Agent is paused", "This agent is not active and refuses new work. Resume it with: agentsfleet resume <agent>, then retry."),
     // ── VAULT ────────────────────────────────────────────────────────────────
