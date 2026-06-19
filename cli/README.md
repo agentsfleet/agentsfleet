@@ -38,7 +38,7 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `login [--token <token>] [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (or pass a token directly; prefer `AGENTSFLEET_TOKEN` / piped stdin to keep it out of shell history) |
+| `login [--token <token>] [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (or pass a token directly; prefer piped stdin to keep it out of shell history) |
 | `logout` | Sign out — revoke every active session on this account and clear local credentials |
 | `auth status` | Show active token source, claims, and server-side validity |
 | `workspace add [<name>]` | Create a new workspace |
@@ -135,8 +135,7 @@ Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash
 |----------|-------------|
 | `AGENTSFLEET_API_URL` | API base URL (overridden by `--api`) |
 | `AGENTSFLEET_DASHBOARD_URL` | Dashboard base URL (login verify page) |
-| `AGENTSFLEET_TOKEN` | Auth token (overridden by `login`) |
-| `AGENTSFLEET_API_KEY` | API key for service auth |
+| `AGENTSFLEET_API_KEY` | Service API key; overrides a stored `login` session |
 | `AGENTSFLEET_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
 | `NO_COLOR` | Any non-empty value disables color |
 | `AGENTSFLEET_TELEMETRY_DISABLED` | Set to `1` to opt out of analytics + tracing |

@@ -56,7 +56,7 @@ test("workspace add does not persist local state when API create fails", async (
     });
 
     const code = await runCli(["workspace", "add", "acme-prod"], {
-      env: { ...process.env, AGENTSFLEET_API_URL: apiOrigin, AGENTSFLEET_TOKEN: "header.payload.sig", BROWSER: "false" },
+      env: { ...process.env, AGENTSFLEET_API_URL: apiOrigin, AGENTSFLEET_API_KEY: "agt_t_test", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,
@@ -90,7 +90,7 @@ test("workspace add persists backend workspace_id in json mode", async () => {
     }));
 
     const code = await runCli(["--json", "workspace", "add"], {
-      env: { ...process.env, AGENTSFLEET_TOKEN: "header.payload.sig" },
+      env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,

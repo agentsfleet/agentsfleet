@@ -95,7 +95,7 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
     const code = await runCli(["workspace", "use", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 0);
     const state = await loadWorkspaces();
@@ -115,7 +115,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
     const code = await runCli(["workspace", "use", "01900000-0000-7000-8000-00000000aaaa"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 5);
     assert.ok(err.read().includes("not in your local list"));
@@ -135,7 +135,7 @@ test("workspace use --json emits {active: <id>}", async () => {
     await runCli(["--json", "workspace", "use", "01900000-0000-7000-8000-000000000001"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.active, "01900000-0000-7000-8000-000000000001");
@@ -155,7 +155,7 @@ test("workspace show prints current workspace details", async () => {
     const code = await runCli(["workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 0);
     const text = out.read();
@@ -175,7 +175,7 @@ test("workspace show --json returns the full detail object", async () => {
     await runCli(["--json", "workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.workspace_id, "01900000-0000-7000-8000-000000000001");
@@ -192,7 +192,7 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
     const code = await runCli(["workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 5);
     assert.ok(err.read().includes("no active workspace"));
@@ -208,7 +208,7 @@ test("workspace credentials prints the redirect message", async () => {
     const code = await runCli(["workspace", "credentials"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     assert.equal(code, 0);
     assert.ok(out.read().includes("/credentials"));
@@ -222,7 +222,7 @@ test("workspace credentials --json returns status=redirect", async () => {
     await runCli(["--json", "workspace", "credentials"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.status, "redirect");
@@ -262,7 +262,7 @@ test("agent list calls the paginated endpoint and prints rows", async () => {
     const code = await runCli(["list", "--limit", "2"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
       fetchImpl,
     });
     assert.equal(code, 0);
@@ -292,7 +292,7 @@ test("agent list --json returns the raw envelope incl. cursor", async () => {
     await runCli(["--json", "list"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
       fetchImpl,
     });
     const parsed = JSON.parse(out.read());
@@ -325,7 +325,7 @@ test("agent list honors --workspace-id override over current_workspace_id", asyn
     await runCli(["list", "--workspace-id", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
       fetchImpl,
     });
     assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/agents"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
@@ -340,7 +340,7 @@ test("agent list errors with ConfigError when no active workspace and no --works
     const code = await runCli(["list"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_TOKEN: "tkn" },
+      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" },
     });
     // Effect-shape contract: ConfigError → exit 5.
     // The pre-Effect path returned 1 via writeError(NO_WORKSPACE, ...).

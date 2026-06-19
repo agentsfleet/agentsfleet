@@ -3,7 +3,7 @@
  *
  * Proves the CLI's parse + help + auth-guard layer behaves correctly
  * against the same binary that ships to prod (worktree-DEV /
- * npm-global-PROD). No `AGENTSFLEET_TOKEN`, no `credentials.json`, no live
+ * npm-global-PROD). No env API key, no `credentials.json`, no live
  * API calls (the auth guard fires before any network I/O — the suite
  * sets `AGENTSFLEET_API_URL` to an unroutable address so a leaked fetch
  * surfaces as ECONNREFUSED instead of the expected stem).
@@ -226,7 +226,7 @@ describe("help DX surfaces (real binary)", () => {
       const gap = match?.[2];
       if (name !== undefined && gap !== undefined) columns.push(2 + name.length + gap.length);
     }
-    assert.ok(columns.length >= 11, `expected ≥11 env rows, got ${columns.length}`);
+    assert.ok(columns.length >= 10, `expected ≥10 env rows, got ${columns.length}`);
     assert.equal(new Set(columns).size, 1, `env descriptions misaligned: columns=${columns.join(",")}`);
   });
 

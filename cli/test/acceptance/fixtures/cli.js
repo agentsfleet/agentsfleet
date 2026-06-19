@@ -35,7 +35,7 @@ export class TimeoutError extends Error {
   }
 }
 
-function resolveBinary(opts) {
+export function resolveBinary(opts) {
   const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
   if (requested === ACCEPTANCE_BINARY.global) return { command: "agentsfleet", prefixArgs: [] };
   if (requested === ACCEPTANCE_BINARY.worktree) {
@@ -132,7 +132,7 @@ export function spawnAgentctl(args, opts) {
 /**
  * Compose a child env from a known-allowlist of fixture-supplied vars.
  * Never reads `process.env` for fields the caller did not list — keeps
- * the parent's `AGENTSFLEET_TOKEN` (if any) out of every spawn unless the
+ * the parent's `AGENTSFLEET_API_KEY` (if any) out of every spawn unless the
  * caller asks for it explicitly.
  */
 export function composeEnv(fields) {
