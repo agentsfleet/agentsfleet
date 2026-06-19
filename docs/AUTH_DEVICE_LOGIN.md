@@ -6,7 +6,7 @@ The one credential path humans use from a terminal: a browser-mediated device fl
 
 ## Non-interactive token seeding (no device flow)
 
-When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → the `AGENTSFLEET_TOKEN` env var → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds (a Flow 3 tenant key or a previously-minted JWT), so the human-led binding of the device flow is untouched.
+When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds (a Flow 3 tenant key or a previously-minted JWT), so the human-led binding of the device flow is untouched.
 
 ## Where the JWT lives in plaintext (data lifecycle)
 
@@ -75,7 +75,7 @@ sequenceDiagram
     User->>CLI: agentsfleet login [--token <pat>] [--token-name LABEL]
     Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input: it fails loudly rather than consuming a piped<br/>token as the replace-prompt answer.
 
-    alt direct token — resolveDirectToken: --token flag > AGENTSFLEET_TOKEN env > piped stdin (non-TTY)
+    alt direct token — resolveDirectToken: --token flag > piped stdin (non-TTY)
         Note over CLI: first source wins; no browser, no session_id
         CLI->>API: GET /v1/me   (validate-first — before any write)
         alt token valid

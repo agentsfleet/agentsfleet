@@ -7,7 +7,7 @@
 // path — but the secret still lands in shell history and process lists.
 // We emit this caveat whenever `--token` appears in argv, then let the
 // command proceed (the flag works); the message just nudges operators
-// toward AGENTSFLEET_TOKEN or piped stdin, which don't leak.
+// toward piped stdin, which doesn't leak.
 //
 // Detection rules (POSIX-faithful):
 //   - `--` ends the option-scanning window (anything after it is a
@@ -19,7 +19,7 @@
 //     flag) is harmless — there's nothing for the shell to capture.
 
 export const TOKEN_LEAK_WARNING =
-  "warning: --token leaks into shell history and process lists; prefer AGENTSFLEET_TOKEN.";
+  "warning: --token leaks into shell history and process lists; prefer piped stdin.";
 
 const TOKEN_FLAG = "--token";
 const TOKEN_EQ_PREFIX = "--token=";

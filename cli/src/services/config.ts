@@ -21,10 +21,14 @@ const DEFAULT_DASHBOARD_URL = "https://app.agentsfleet.net";
 // theirs as a plain string in cli-config.layer.ts; we match that.
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
-// The single auth-token env-var name. One identifier shared by the
-// config resolver, the TTY-aware file/env resolver, and the login
-// command's direct-token source so the three never drift.
-export const AGENTSFLEET_TOKEN_ENV = "AGENTSFLEET_TOKEN";
+// The service-auth env-var name. A machine principal (an `agt_t…` tenant
+// API key) exported here authenticates the CLI without a browser login,
+// and — by the env-wins precedence in `resolveToken` — takes priority over
+// a stored login JWT. `API_KEY` is also honoured as an unprefixed alias
+// (see `cli.ts`). This is the only env-sourced bearer the CLI reads; the
+// older `AGENTSFLEET_TOKEN` env var was removed.
+export const AGENTSFLEET_API_KEY_ENV = "AGENTSFLEET_API_KEY";
+const API_KEY_ENV_ALIAS = "API_KEY";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -54,14 +58,24 @@ const trimmed = (v: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
+// Single source for the env-sourced service API key. The bare `API_KEY`
+// alias is honoured ahead of `AGENTSFLEET_API_KEY`; the value is trimmed so a
+// whitespace-only export counts as unset (never reaches the wire as a blank
+// Bearer). Both cli.ts and resolveCliConfig resolve through here so the alias
+// order and trimming can't drift between the two paths.
+export const resolveApiKeyFromEnv = (env: NodeJS.ProcessEnv): string | null =>
+  trimmed(env[API_KEY_ENV_ALIAS]) ?? trimmed(env[AGENTSFLEET_API_KEY_ENV]) ?? null;
+
 export const resolveCliConfig = (): CliConfigShape => {
   const apiUrl = trimmed(readEnv("AGENTSFLEET_API_URL")) ?? DEFAULT_API_URL;
   const dashboardUrl =
     trimmed(readEnv("AGENTSFLEET_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
-  // AGENTSFLEET_TOKEN is the auth-token env var. TTY-aware precedence vs
-  // credentials.json is resolved in cli.ts before this layer; tests that
-  // bypass runCli see the env value here.
-  const envToken = trimmed(readEnv(AGENTSFLEET_TOKEN_ENV));
+  // The env-sourced bearer is the service API key (env slot). It wins over
+  // a stored login JWT via `resolveToken`'s env-first precedence. Resolution
+  // is centralised in cli.ts before this layer; tests that bypass runCli see
+  // the env value here.
+  const envToken =
+    typeof process !== "undefined" ? resolveApiKeyFromEnv(process.env) : null;
   const telemetryPosthogKey =
     trimmed(readEnv("AGENTSFLEET_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =
@@ -70,7 +84,7 @@ export const resolveCliConfig = (): CliConfigShape => {
     apiUrl,
     dashboardUrl,
     accessToken:
-      envToken !== undefined
+      envToken !== null
         ? Option.some(Redacted.make(envToken))
         : Option.none(),
     jsonMode: false,

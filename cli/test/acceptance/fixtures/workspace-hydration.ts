@@ -1,23 +1,22 @@
 /**
- * Hydrate workspaces.json for the AGENTSFLEET_TOKEN-injection suite.
+ * Seed a minted-JWT session into a tmpdir-scoped `AGENTSFLEET_STATE_DIR` for
+ * the live acceptance suites.
  *
- * The CLI populates workspaces.json only inside the login flow's
- * post-success branch (`hydrateWorkspacesAfterLogin` in
- * src/commands/login-helpers.ts).
- * §4 injects a minted JWT directly via `AGENTSFLEET_TOKEN`, so it never walks
- * that path — without help the read-only sweep sees an empty local list
- * even though the tenant has workspaces.
+ * The suites mint a Clerk JWT (`attachJwt`) and need the CLI to run as that
+ * session. With the `AGENTSFLEET_TOKEN` env var removed, the only bearer
+ * surfaces are the stored login (credentials.json, file slot) and the
+ * service API key (`AGENTSFLEET_API_KEY`, env slot). The fixtures hold a
+ * login-shaped JWT, not an `agt_t` key, so it belongs in the file slot — we
+ * write it to `credentials.json` exactly as the login flow's persist step
+ * would (`saveAccessToken` → src/lib/state.ts `Credentials` shape).
  *
- * This helper mirrors the hydrate flow: hits `/v1/tenants/me/workspaces`
- * with the bearer token, writes the normalised list to the suite's
- * tmpdir-scoped `AGENTSFLEET_STATE_DIR`. Returns the picked current workspace
- * id so callers can chain into `workspace use` (idempotent) or pass via
- * `--workspace-id` per command.
- *
- * Discovery: the CLI lacks a `workspace pull` / `workspace sync` command
- * that an operator running under explicit `AGENTSFLEET_TOKEN` could call to
- * hydrate. Follow-on PR can add one — at which point this fixture
- * collapses to one CLI invocation.
+ * We also hydrate `workspaces.json`: the CLI populates it only inside the
+ * login post-success branch (`hydrateWorkspacesAfterLogin`), which the
+ * direct-JWT path never walks — so without it the read-only sweep sees an
+ * empty local list even though the tenant has workspaces. This helper hits
+ * `/v1/tenants/me/workspaces` with the bearer and writes the normalised
+ * list. Returns the picked current workspace id so callers can chain into
+ * `workspace use` (idempotent) or pass `--workspace-id` per command.
  */
 
 import fs from "node:fs/promises";
@@ -98,5 +97,17 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
   await fs.mkdir(stateDir, { recursive: true });
   const target = path.join(stateDir, "workspaces.json");
   await fs.writeFile(target, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+
+  // Seed the login session (file slot) so commands authenticate without the
+  // removed `AGENTSFLEET_TOKEN` env var. Matches src/lib/state.ts Credentials.
+  const credentials = {
+    token,
+    saved_at: Date.now(),
+    session_id: null,
+    api_url: apiUrl,
+  };
+  const credentialsTarget = path.join(stateDir, "credentials.json");
+  await fs.writeFile(credentialsTarget, `${JSON.stringify(credentials, null, 2)}\n`, { mode: 0o600 });
+
   return { currentWorkspaceId: current_workspace_id, workspaces: items };
 }

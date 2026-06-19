@@ -28,13 +28,13 @@ test("parseFloatOption rejects 1e500 (regex matches, parseFloat → Infinity)", 
 
 // ── http.ts: authHeaders + classify ECONNRESET + fetch unavailable ────
 
-test("authHeaders carries apiKey when token absent", () => {
-  const h = authHeaders({ apiKey: "key_abc" });
-  expect(h.Authorization).toBe("Bearer key_abc");
+test("authHeaders carries the bearer token", () => {
+  const h = authHeaders({ token: "tok_abc" });
+  expect(h.Authorization).toBe("Bearer tok_abc");
   expect(h["Content-Type"]).toBe("application/json");
 });
 
-test("authHeaders with neither token nor apiKey omits Authorization", () => {
+test("authHeaders without a token omits Authorization", () => {
   const h = authHeaders({});
   expect(h.Authorization).toBeUndefined();
   expect(h["Content-Type"]).toBe("application/json");

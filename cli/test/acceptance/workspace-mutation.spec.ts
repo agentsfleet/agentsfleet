@@ -1,5 +1,5 @@
 /**
- * Workspace-mutation acceptance scenario (live, AGENTSFLEET_TOKEN-injected).
+ * Workspace-mutation acceptance scenario (live, seeded-credentials session).
  *
  * Mints a Clerk session JWT via the admin path, hydrates workspaces.json
  * directly from the API (same bootstrap as lifecycle-with-token.spec.ts —
@@ -18,7 +18,7 @@
  *      display name — id is the stronger invariant.
  *
  * The minted JWT must never appear in stdout/stderr — `assertNoSecretLeak`
- * fires after every spawn that runs under the injected token.
+ * fires after every spawn that runs in the seeded-credentials session.
  *
  * HARD SERVER CONSTRAINT: `workspace delete` removes the entry from the
  * LOCAL store only — `src/commands/workspace.ts` issues no DELETE and the
@@ -86,7 +86,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("workspace-mutation — AGENTSFLEET_TOKEN injection", () => {
+  describe("workspace-mutation — seeded-credentials session", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
@@ -108,7 +108,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-ws-mutation-"));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",

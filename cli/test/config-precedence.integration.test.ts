@@ -2,8 +2,8 @@
 //
 // The pure resolvers are already unit/integration-tested in isolation and
 // this file deliberately does NOT re-walk them:
-//   - test/auth-token-resolve.unit.test.ts  → resolveAuthTokenForCli TTY
-//     matrix (the pure file-vs-AGENTSFLEET_TOKEN picker that fills ctx.token).
+//   - test/services-http-client.unit.test.ts → resolveToken (the pure
+//     env-API-key-vs-stored-login precedence picker).
 //   - test/api-url-resolution.integration.test.ts → the 16-case
 //     (--api / AGENTSFLEET_API_URL / API_URL / creds.api_url / default)
 //     API-URL matrix, driven through `doctor` /healthz.
@@ -20,14 +20,12 @@
 //       cli-tree-agent.ts) via the inbound Host header, not just the `doctor`
 //       probe. (resolveGlobalApiUrl in cli.ts L91, normalizeApiUrl in url.ts.)
 //   (b) Auth token: which Bearer the CLI actually sends. The headline
-//       contract is non-obvious and bites in BOTH TTY and non-TTY shells:
-//       the Effect-layer `resolveToken(config.accessToken, storedToken)`
-//       (services/http-client.ts) prefers the on-disk credential, so disk
-//       WINS over AGENTSFLEET_TOKEN at the wire — even in a TTY where the
-//       cli.ts TTY-priority resolver put the *env* token into ctx.token.
-//       ctx.token (TTY-resolved) only drives analytics/role display; the wire
-//       Bearer for a workspace-scoped command comes from disk-preferred
-//       resolveToken. env reaches the wire only when no disk token exists.
+//       behaviour is non-obvious: the Effect-layer
+//       `resolveToken(config.accessToken, storedToken)`
+//       (services/http-client.ts) is env-first, so the env-slot service
+//       API key (AGENTSFLEET_API_KEY) WINS over the on-disk login token at
+//       the wire. The on-disk login token reaches the wire only when no env
+//       API key is set.
 //   (c) Active workspace: the --workspace-id flag overrides the persisted
 //       current_workspace_id in the request path; absent the flag the
 //       persisted id is used.
@@ -58,7 +56,7 @@ const WS_PERSISTED = "01900000-0000-7000-8000-0000000ab1de";
 const WS_OVERRIDE = "01900000-0000-7000-8000-0000000fffff";
 
 const DISK_TOKEN = "disk.payload.sig";
-const ENV_TOKEN = "env.payload.sig";
+const ENV_API_KEY = "agt_t_envkey";
 
 // A creds.api_url that can never answer: if a precedence rung wrongly lets it
 // win, the request never reaches the mock and `calls` is empty — a louder,
@@ -72,11 +70,6 @@ const AUTH_HEADER = "authorization" as const;
 const HOST_HEADER = "host" as const;
 const BEARER_PREFIX = "Bearer " as const;
 const EMPTY_LIST = { items: [] } as const;
-
-// An interactive-terminal stdin so cli.ts's TTY-priority resolver runs the
-// TTY branch (env token beats file in ctx.token). Used to prove the wire
-// Bearer is disk *despite* a TTY ctx.token of env.
-const ttyStdin = { isTTY: true } as unknown as NodeJS.ReadableStream;
 
 // Single source of the wire path for a `list` against a workspace — used
 // both to register the mock route and to assert the inbound path, so the
@@ -192,58 +185,50 @@ describe("config precedence — API URL at the wire (authed list)", () => {
 });
 
 describe("config precedence — auth token Bearer at the wire (authed list)", () => {
-  test("non-TTY: on-disk token WINS over AGENTSFLEET_TOKEN env at the wire", async () => {
+  test("env AGENTSFLEET_API_KEY WINS over the on-disk login token at the wire", async () => {
     await withAuthedStateDir({ workspaceId: WS_PERSISTED, token: DISK_TOKEN }, async () => {
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        // No stdin injected → non-TTY. Both sources present: disk credential
-        // (seeded) + env token. cli.ts non-TTY resolver puts disk into
-        // ctx.token; resolveToken keeps disk too. Wire Bearer = disk.
+        // Both credentials present: a stored login JWT on disk (seeded) plus an
+        // exported service API key. resolveToken's env-first precedence sends
+        // the API key as the wire Bearer, overriding the on-disk login.
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_TOKEN: ENV_TOKEN },
+          env: { AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY },
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.headers[AUTH_HEADER]).toBe(bearer(DISK_TOKEN));
-        expect(calls[0]?.headers[AUTH_HEADER]).not.toBe(bearer(ENV_TOKEN));
+        expect(calls[0]?.headers[AUTH_HEADER]).toBe(bearer(ENV_API_KEY));
+        expect(calls[0]?.headers[AUTH_HEADER]).not.toBe(bearer(DISK_TOKEN));
       });
     });
   });
 
-  test("TTY: disk token STILL wins at the wire even though TTY ctx.token resolves to env (the cross-layer nuance)", async () => {
+  test("the on-disk login token reaches the wire when no API key is set", async () => {
     await withAuthedStateDir({ workspaceId: WS_PERSISTED, token: DISK_TOKEN }, async () => {
       await withMockApi(listRoutes(WS_PERSISTED), async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        // Interactive stdin → cli.ts TTY-priority resolver picks the ENV
-        // token into ctx.token (proven pure in auth-token-resolve.unit). But
-        // workspace-guards.resolveAuthToken prefers the DISK credential over
-        // config.accessToken, so the *wire* Bearer is disk regardless of TTY.
-        // This is the leg the non-TTY test above can't expose: ctx.token and
-        // the wire token diverge here.
+        // Env slot empty → resolveToken falls through to the file-slot login.
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          stdin: ttyStdin,
-          env: { AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_TOKEN: ENV_TOKEN },
+          env: { AGENTSFLEET_API_URL: apiUrl },
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[AUTH_HEADER]).toBe(bearer(DISK_TOKEN));
-        // The TTY-favoured env token must NOT have reached the wire.
-        expect(calls[0]?.headers[AUTH_HEADER]).not.toBe(bearer(ENV_TOKEN));
       });
     });
   });
 
-  test("AGENTSFLEET_TOKEN env reaches the wire only when no disk token exists", async () => {
+  test("AGENTSFLEET_API_KEY authenticates the wire with no on-disk login (machine path)", async () => {
     await withFreshStateDir(async () => {
       // Logged-out on disk (no credentials.json token) but a workspace is
-      // selected so `list` is workspace-resolvable. Env token is the only
-      // credential available — disk-preferred resolveToken falls through to it.
+      // selected so `list` is workspace-resolvable. The exported API key is
+      // the only credential — the env slot carries it to the wire.
       await saveWorkspaces({
         current_workspace_id: WS_PERSISTED,
         items: [{ workspace_id: WS_PERSISTED, name: "ws", created_at: Date.now() }],
@@ -254,11 +239,11 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_TOKEN: ENV_TOKEN },
+          env: { AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY },
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.headers[AUTH_HEADER]).toBe(bearer(ENV_TOKEN));
+        expect(calls[0]?.headers[AUTH_HEADER]).toBe(bearer(ENV_API_KEY));
       });
     });
   });

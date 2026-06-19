@@ -13,7 +13,7 @@
  *
  * No isLive gate: this never touches the network. composeEnv forwards only
  * PATH/HOME plus telemetry-off, so the spawned child neither reads a parent
- * AGENTSFLEET_TOKEN nor flushes PostHog; `--version` returns before any disk
+ * AGENTSFLEET_API_KEY nor flushes PostHog; `--version` returns before any disk
  * read, and `--help`/unknown only read credentials (swallowed) — nothing is
  * written, so no teardown is required and there is no secret to leak.
  *
@@ -77,7 +77,7 @@ const TIMED_OUT_MARKER = "timed out";
 
 /**
  * Spawn the CLI under a pty with a hermetic env. composeEnv forwards only
- * PATH/HOME plus the telemetry-off default, so no parent AGENTSFLEET_TOKEN
+ * PATH/HOME plus the telemetry-off default, so no parent AGENTSFLEET_API_KEY
  * leaks in and the child never reaches the network. NO_COLOR pins the plain
  * version line so VERSION_LINE has no ANSI/dot prefix to contend with.
  */

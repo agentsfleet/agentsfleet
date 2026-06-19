@@ -132,8 +132,7 @@ Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash
 | Variable | Description |
 |----------|-------------|
 | `AGENTSFLEET_API_URL` | API base URL (overridden by `--api`) |
-| `AGENTSFLEET_TOKEN` | Auth token (overridden by `login`) |
-| `AGENTSFLEET_API_KEY` | API key for service auth |
+| `AGENTSFLEET_API_KEY` | Service API key; overrides a stored `login` session |
 | `AGENTSFLEET_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
 | `NO_COLOR` | Any non-empty value disables color |
 

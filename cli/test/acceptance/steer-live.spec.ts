@@ -1,7 +1,7 @@
 /**
  * steer-live — one-shot `steer` against a freshly-installed live agent.
  *
- * Scenario (token-injected, mirrors lifecycle-with-token.spec.ts):
+ * Scenario (seeded-credentials session, mirrors lifecycle-with-token.spec.ts):
  *   - mint a Clerk session JWT via the admin path
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
@@ -196,7 +196,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: NO_COLOR,

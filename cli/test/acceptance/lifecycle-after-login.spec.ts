@@ -7,9 +7,9 @@
  *     dashboard's CLI-auth approve action via browser.ts, scrape the 6-digit
  *     code it displays, type it into the pty prompt, assert credentials.json
  *     mode 0600 + 3-segment JWT (WS-E #C3).
- *   - persisted-credentials read-only sweep (AGENTSFLEET_TOKEN explicitly
- *     absent from spawn env; proves credentials.json is the load-
- *     bearing auth source).
+ *   - persisted-credentials read-only sweep (no env API key
+ *     (AGENTSFLEET_API_KEY) in the spawn env; proves credentials.json is the
+ *     load-bearing auth source).
  *   - prefix-scoped post-teardown emptiness (agent list).
  *   - persisted-credentials install + lifecycle walk.
  *
@@ -130,7 +130,7 @@ if (!isLive) {
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
-        // AGENTSFLEET_TOKEN intentionally absent — every spawn proves
+        // No env API key (AGENTSFLEET_API_KEY) — every spawn proves
         // credentials.json is the load-bearing auth source.
       });
     });
@@ -174,13 +174,14 @@ if (!isLive) {
       });
     });
 
-    // Persisted-credentials read-only sweep (no AGENTSFLEET_TOKEN).
+    // Persisted-credentials read-only sweep (no env API key).
     describe("read-only sweep using persisted credentials", () => {
       for (const row of READ_ONLY_COMMANDS) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 against persisted credentials.json`, async () => {
-          // Helper guards: env constructed here MUST NOT carry AGENTSFLEET_TOKEN.
-          assert.equal(baseEnv["AGENTSFLEET_TOKEN"], undefined, "baseEnv must not contain AGENTSFLEET_TOKEN");
+          // The env MUST NOT carry AGENTSFLEET_API_KEY — it wins over the
+          // stored login, which would mask whether login actually persisted.
+          assert.equal(baseEnv["AGENTSFLEET_API_KEY"], undefined, "baseEnv must not contain AGENTSFLEET_API_KEY");
           const result = await spawn(row.args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
           const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
@@ -195,7 +196,7 @@ if (!isLive) {
     });
 
     // Prefix-scoped post-teardown emptiness (agent list).
-    // Same contract as the AGENTSFLEET_TOKEN spec: shared DEV tenants carry
+    // Same expectation as the seeded-credentials spec: shared DEV tenants carry
     // residual agents; the only assertion that holds is "none of MY
     // run's agents remain after teardown".
     describe("post-teardown emptiness (prefix-scoped)", () => {
@@ -214,8 +215,8 @@ if (!isLive) {
       });
     });
 
-    // Persisted-credentials install + lifecycle (no AGENTSFLEET_TOKEN).
-    describe("install + lifecycle (no AGENTSFLEET_TOKEN)", () => {
+    // Persisted-credentials install + lifecycle (no env API key).
+    describe("install + lifecycle (no env API key)", () => {
       let agentId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {

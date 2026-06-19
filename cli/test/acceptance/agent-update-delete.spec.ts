@@ -1,6 +1,6 @@
 /**
  * Agent update + delete + illegal-state-transition acceptance scenario
- * (live, AGENTSFLEET_TOKEN-injected).
+ * (live, seeded-credentials session).
  *
  * Mirrors lifecycle-with-token.spec.ts's identity + hydration setup
  * (Clerk session JWT minted via the admin path, workspaces.json hydrated
@@ -93,7 +93,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("agent update + delete + illegal transitions — AGENTSFLEET_TOKEN injection", () => {
+  describe("agent update + delete + illegal transitions — seeded-credentials session", () => {
     let apiUrl: string = "";
     let sessionJwt: string = "";
     let stateDir: string = "";
@@ -115,7 +115,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-update-delete-"));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",

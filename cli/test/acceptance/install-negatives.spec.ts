@@ -1,5 +1,5 @@
 /**
- * Install negative-path acceptance scenarios (live, token-injected).
+ * Install negative-path acceptance scenarios (live, seeded-credentials session).
  *
  * Mints a Clerk session JWT via the admin path, hydrates workspaces.json
  * from the API (matching the lifecycle-with-token spec's identity setup),
@@ -89,7 +89,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("install-negatives — AGENTSFLEET_TOKEN injection", () => {
+  describe("install-negatives — seeded-credentials session", () => {
     let apiUrl = "";
     let sessionJwt = "";
     let stateDir = "";
@@ -115,7 +115,6 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-install-neg-state-"));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
