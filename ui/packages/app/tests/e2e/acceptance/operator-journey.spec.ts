@@ -161,7 +161,7 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, secondaryWorkspaceName);
 
     await clickSidebarLink(page, "/agents", /\/agents(\?|$)/);
-    await page.getByRole("link", { name: /install teammate/i }).click();
+    await page.getByRole("link", { name: /install teammate/i }).first().click();
     await expect(page).toHaveURL(/\/agents\/new(\?|$)/);
     const agentId = await installViaUI(page, agentName);
     createdAgentId = agentId;

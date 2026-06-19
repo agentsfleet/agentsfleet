@@ -178,7 +178,8 @@ export function designSystemDropdown() {
     DropdownMenu: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown": "1" }, children),
     DropdownMenuTrigger: ({ children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) =>
       React.createElement("button", { ...rest }, children),
-    DropdownMenuContent: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown-content": "1" }, children),
+    DropdownMenuContent: ({ children, ...rest }: { children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) =>
+      React.createElement("div", { "data-dropdown-content": "1", ...rest }, children),
     DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => React.createElement("div", { "data-dropdown-label": "1" }, children),
     DropdownMenuSeparator: () => React.createElement("hr", { "data-dropdown-separator": "1" }),
     DropdownMenuItem: ({ children, onSelect, ...rest }: { children: React.ReactNode; onSelect?: () => void } & React.HTMLAttributes<HTMLDivElement>) =>
