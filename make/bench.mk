@@ -17,6 +17,11 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@# second `test-bin` build with mismatched flags, so the cache never reused.
 	@# The allocator gate runs the binary directly (no args = full suite); the
 	@# `std.testing.allocator` leak check fires for every test either way.
+	@# Per-platform build flags are deliberate, not an oversight: Linux pins
+	@# ReleaseSafe + openssl=false because valgrind needs an optimized-but-safe
+	@# binary and chokes on OpenSSL's own pool allocations; macOS `leaks` has
+	@# neither constraint, so it uses the default (Debug, openssl ON) build,
+	@# which leak-checks the OpenSSL paths too — broader coverage, not less.
 	@case "$$(uname -s)" in \
 	  Linux) \
 	    command -v valgrind >/dev/null 2>&1 || { echo "✗ valgrind is required on Linux for make memleak"; exit 1; }; \
