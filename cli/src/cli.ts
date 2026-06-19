@@ -20,7 +20,7 @@ import { runCommanderParse } from "./lib/commander-bridge.ts";
 import { extractRoleFromToken } from "./program/auth-token.ts";
 import { resolveApiKeyFromEnv } from "./services/config.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
-import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
+import { printVersion } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
@@ -180,9 +180,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   const fetchImpl = io.fetchImpl ?? globalThis.fetch;
 
   const jsonMode = detectJsonMode(argv);
-  const noColor = Boolean(env.NO_COLOR && env.NO_COLOR.length > 0);
-
-  printPreReleaseWarning(stderr, { noColor, jsonMode, ttyOnly: !stderr.isTTY });
 
   // D25 — surface the --token leak warning before any command runs. The
   // check is pure (no env/process reads); fires for any argv shape, --version

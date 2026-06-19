@@ -57,26 +57,42 @@ test("--help lists the agent subcommand group", async () => {
   assert.ok(text.includes("credential"), "credential line missing");
 });
 
-test("--help surfaces workspace use/show/credentials", async () => {
-  const out = bufferStream();
-  const err = bufferStream();
-  await runCli(["--help"], {
-    stdout: out.stream,
-    stderr: err.stream,
+test("--help lists the workspace group; its subcommands appear under `workspace --help`", async () => {
+  const top = bufferStream();
+  const topCode = await runCli(["--help"], {
+    stdout: top.stream,
+    stderr: bufferStream().stream,
     env: { NO_COLOR: "1" },
   });
-  const text = out.read();
-  assert.ok(text.includes("workspace use"));
-  assert.ok(text.includes("workspace show"));
-  assert.ok(text.includes("workspace credentials"));
+  assert.equal(topCode, 0);
+  assert.ok(top.read().includes("workspace"), "workspace group missing from top-level help");
+
+  // The nested verbs are discovered via the group's own --help.
+  const sub = bufferStream();
+  const subCode = await runCli(["workspace", "--help"], {
+    stdout: sub.stream,
+    stderr: bufferStream().stream,
+    env: { NO_COLOR: "1" },
+  });
+  assert.equal(subCode, 0);
+  const text = sub.read();
+  assert.ok(text.includes("use"), "workspace use subcommand missing");
+  assert.ok(text.includes("show"), "workspace show subcommand missing");
+  assert.ok(text.includes("credentials"), "workspace credentials subcommand missing");
 });
 
-test("--help surfaces the memory read verbs", async () => {
-  const out = bufferStream();
-  const code = await runCli(["--help"], { stdout: out.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
-  assert.equal(code, 0);
-  assert.ok(out.read().includes("memory list"), "memory list subcommand row missing");
-  assert.ok(out.read().includes("memory search"), "memory search subcommand row missing");
+test("--help lists the memory group; its read verbs appear under `memory --help`", async () => {
+  const top = bufferStream();
+  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
+  assert.equal(topCode, 0);
+  assert.ok(top.read().includes("memory"), "memory group missing from top-level help");
+
+  const sub = bufferStream();
+  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
+  assert.equal(subCode, 0);
+  const text = sub.read();
+  assert.ok(text.includes("list"), "memory list subcommand row missing");
+  assert.ok(text.includes("search"), "memory search subcommand row missing");
 });
 
 // ── workspace use <id> persists active workspace ─────────────────────────

@@ -201,16 +201,17 @@ describe("help DX surfaces (real binary)", () => {
     return emptyEnv({ AGENTSFLEET_TELEMETRY_DISABLED: "1" });
   }
 
-  it("--help renders the task-grouped command guide", async () => {
+  it("--help lists the top-level commands and the env-var matrix", async () => {
     const result = await runAgentctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    assert.match(out, /Commands by task:/);
-    for (const title of ["Setup", "Workspaces", "Agents", "Tenant & billing", "Memory"]) {
-      assert.ok(out.includes(title), `guide missing "${title}" group`);
+    // Commander's own Commands: block carries the command list.
+    assert.match(out, /Commands:/);
+    for (const command of ["install", "status", "steer", "workspace", "memory"]) {
+      assert.ok(out.includes(command), `help missing "${command}" command`);
     }
-    // The lone agent-group verb surfaced in the guide (the split made explicit).
-    assert.ok(out.includes("agent update"), "guide missing `agent update`");
+    // The env-var matrix is appended after the command list.
+    assert.match(out, /Environment variables:/);
   });
 
   it("--help aligns every environment-variable description to one column", async () => {
