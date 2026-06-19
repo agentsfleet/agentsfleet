@@ -80,12 +80,16 @@ export const AGENT_KEY_SECRET_PREFIX = "agt_a" as const;
 // An `agt_a` agent key sent as a control-plane bearer is REJECTED at the auth
 // boundary — the `bearer()` middleware answers 401 (no JWT / no `agt_t`), which
 // the CLI surfaces as an `HTTP_401` / `HTTP_403` ServerError stem. The same
-// rejection holds after the key is revoked. This regex matches either stem.
-export const REJECTED_AUTH_RE = /HTTP_401|HTTP_403|401|403|unauthor|forbidden|invalid|expired/i;
+// rejection holds after the key is revoked. Anchored to auth-rejection stems
+// only — a bare `invalid`/`expired` would also match unrelated errors
+// ("invalid argument", "expired snapshot") and let a wrong-reason failure
+// pass as an auth rejection.
+export const REJECTED_AUTH_RE = /HTTP_401|HTTP_403|\b401\b|\b403\b|unauthor|forbidden/i;
 
 // A credential delete refused for referential reasons surfaces as a conflict
-// (HTTP_409 / an in-use UZ-* code); the alternative is a clean cascade (exit 0).
-const CONFLICT_RE = /HTTP_409|409|conflict|in[_ -]?use|referenced|UZ-/i;
+// (HTTP_409); the alternative is a clean cascade (exit 0). Dropped the bare
+// `UZ-` alternative — it matched any UZ-* code, including unrelated ones.
+const CONFLICT_RE = /HTTP_409|\b409\b|conflict|in[_ -]?use|referenced/i;
 // `tenant provider show` flags a dangling credential reference via this marker
 // (per cli/src/commands/tenant.ts).
 const CREDENTIAL_MISSING = "credential_missing" as const;
