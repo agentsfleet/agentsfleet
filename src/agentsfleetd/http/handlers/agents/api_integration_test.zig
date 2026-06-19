@@ -229,6 +229,14 @@ test "integration: agents list — projects events_processed and budget_used_nan
         \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
     , .{ zid, TEST_WORKSPACE_ID, "aggregates-agent", now_ms + 20_000 });
 
+    // Telemetry is tenant-scoped with no FK cascade; clean up the rows this
+    // test seeds (and the agent, which cascades its events) so the shared test
+    // tenant stays telemetry-free for the billing "no telemetry" suite.
+    defer {
+        _ = conn.exec("DELETE FROM core.agent_execution_telemetry WHERE agent_id = $1", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+        _ = conn.exec("DELETE FROM core.agents WHERE id = $1::uuid", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    }
+
     // 3 events → events_processed = 3.
     for (0..3) |i| {
         const uid = try id_format.generateAgentId(alloc);
