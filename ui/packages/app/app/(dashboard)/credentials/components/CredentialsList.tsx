@@ -19,6 +19,7 @@ import EditCredentialDialog from "./EditCredentialDialog";
 type Props = {
   workspaceId: string;
   credentials: CredentialSummary[];
+  protectedCredentialName?: string | null;
 };
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -34,6 +35,7 @@ type CredentialActionProps = {
   credential: CredentialSummary;
   pending: boolean;
   deleting: boolean;
+  protectedFromDelete: boolean;
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
 };
@@ -42,9 +44,11 @@ function CredentialActions({
   credential,
   pending,
   deleting,
+  protectedFromDelete,
   onEdit,
   onDelete,
 }: CredentialActionProps) {
+  const deleteDisabled = pending || protectedFromDelete;
   return (
     <div className="flex justify-end gap-1">
       <Button
@@ -62,8 +66,17 @@ function CredentialActions({
         variant="ghost"
         size="sm"
         onClick={() => onDelete(credential.name)}
-        disabled={pending}
-        aria-label={`Delete credential ${credential.name}`}
+        disabled={deleteDisabled}
+        aria-label={
+          protectedFromDelete
+            ? `Credential ${credential.name} is in model setup`
+            : `Delete credential ${credential.name}`
+        }
+        title={
+          protectedFromDelete
+            ? "Switch model setup to platform defaults or another credential before deleting this one."
+            : undefined
+        }
       >
         {deleting ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
       </Button>
@@ -91,11 +104,13 @@ function CredentialCreatedCell({ credential }: { credential: CredentialSummary }
 function buildColumns({
   pending,
   target,
+  protectedCredentialName,
   onEdit,
   onDelete,
 }: {
   pending: boolean;
   target: string | null;
+  protectedCredentialName: string | null;
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
 }): DataTableColumn<CredentialSummary>[] {
@@ -120,6 +135,7 @@ function buildColumns({
           credential={c}
           pending={pending}
           deleting={pending && target === c.name}
+          protectedFromDelete={protectedCredentialName === c.name}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -173,16 +189,18 @@ function CredentialTable({
   credentials,
   pending,
   target,
+  protectedCredentialName,
   onEdit,
   onDelete,
 }: {
   credentials: CredentialSummary[];
   pending: boolean;
   target: string | null;
+  protectedCredentialName: string | null;
   onEdit: (name: string) => void;
   onDelete: (name: string) => void;
 }) {
-  const columns = buildColumns({ pending, target, onEdit, onDelete });
+  const columns = buildColumns({ pending, target, protectedCredentialName, onEdit, onDelete });
   return (
     <DataTable
       columns={columns}
@@ -193,7 +211,11 @@ function CredentialTable({
   );
 }
 
-export default function CredentialsList({ workspaceId, credentials }: Props) {
+export default function CredentialsList({
+  workspaceId,
+  credentials,
+  protectedCredentialName = null,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<string | null>(null);
@@ -211,6 +233,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
   }
 
   function onConfirmDelete(name: string) {
+    if (name === protectedCredentialName) return;
     setError(null);
     startTransition(async () => {
       const result = await deleteCredentialAction(workspaceId, name);
@@ -235,6 +258,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
         credentials={credentials}
         pending={pending}
         target={target}
+        protectedCredentialName={protectedCredentialName}
         onEdit={(name) => {
           setError(null);
           setEditTarget(name);

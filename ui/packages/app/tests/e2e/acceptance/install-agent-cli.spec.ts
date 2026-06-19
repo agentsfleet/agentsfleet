@@ -85,8 +85,10 @@ interface SpawnResult {
 
 async function spawnAgentctl(args: string[], env: Record<string, string>): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
+    const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env };
+    delete childEnv.FORCE_COLOR;
     const child = spawn(process.execPath, [CLI_BIN, ...args], {
-      env: { ...process.env, ...env },
+      env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
@@ -148,6 +150,7 @@ test.describe("install-agent-cli", () => {
       AGENTSFLEET_STATE_DIR: stateDir,
       AGENTSFLEET_API_URL: apiUrl,
       AGENTSFLEET_TOKEN: token,
+      AGENTSFLEET_TELEMETRY_DISABLED: "1",
       NO_COLOR: "1",
     });
     if (result.code !== 0) {

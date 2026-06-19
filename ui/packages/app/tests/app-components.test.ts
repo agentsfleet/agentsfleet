@@ -78,6 +78,10 @@ vi.mock("@/components/layout/ThemeToggle", () => ({
   default: () => React.createElement("button", { "data-theme-toggle": "1" }),
 }));
 
+vi.mock("@/components/layout/ClientOnlyAuthUserButton", () => ({
+  default: () => React.createElement("div", { "data-user-button": "1" }),
+}));
+
 beforeEach(() => {
   mocks.useUser.mockReset();
   mocks.usePathname.mockReset();

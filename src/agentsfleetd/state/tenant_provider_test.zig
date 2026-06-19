@@ -12,6 +12,7 @@ const tenant_provider = @import("tenant_provider.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
+const credential_key = @import("../agent/credential_key.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -74,6 +75,20 @@ fn seedSelfManagedCredential(
     try obj.put(alloc, "model", .{ .string = model });
     const value = std.json.Value{ .object = obj };
     try base.storeVaultJson(alloc, conn, ws_id, name, value);
+}
+
+fn seedAgentCredential(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    ws_id: []const u8,
+    name: []const u8,
+    provider: []const u8,
+    api_key: []const u8,
+    model: []const u8,
+) !void {
+    const key_name = try credential_key.allocKeyName(alloc, name);
+    defer alloc.free(key_name);
+    try seedSelfManagedCredential(conn, alloc, ws_id, key_name, provider, api_key, model);
 }
 
 // ── Mode enum + ResolvedProvider invariants ────────────────────────────────
@@ -179,6 +194,43 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
     try std.testing.expectEqualStrings("fw_USER_abc", rp.api_key);
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
+}
+
+test "resolveActiveProvider accepts dashboard agent-prefixed credential rows" {
+    setEncryptionKey();
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
+
+    const credential_ref = "dashboard-provider-key";
+    try seedAgentCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, credential_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
+
+    try tenant_provider.upsertSelfManaged(
+        ALLOC,
+        db_ctx.conn,
+        uc1.TENANT_ID,
+        credential_ref,
+        "accounts/fireworks/models/kimi-k2.6",
+        256_000,
+    );
+
+    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer rp.deinit(ALLOC);
+
+    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
+    try std.testing.expectEqualStrings(TP_TEST_PROVIDER, rp.provider);
+    try std.testing.expectEqualStrings("fw_DASHBOARD_abc", rp.api_key);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT credential_ref FROM core.tenant_providers WHERE tenant_id = $1::uuid
+    , .{uc1.TENANT_ID}));
+    defer q.deinit();
+    const row = (try q.next()).?;
+    try std.testing.expectEqualStrings(credential_ref, try row.get([]const u8, 0));
 }
 
 test "resolveActiveProvider returns CredentialMissing when self_managed credential row absent" {
