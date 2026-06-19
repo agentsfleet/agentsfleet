@@ -1,9 +1,9 @@
-// Unit tests for src/program/banner.ts — printVersion and printPreReleaseWarning.
+// Unit tests for src/program/banner.ts — printVersion.
 
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.ts";
-import { printVersion, printPreReleaseWarning } from "../src/program/banner.ts";
+import { printVersion } from "../src/program/banner.ts";
 import { runCli, VERSION } from "../src/cli.ts";
 
 // ── helpers — no magic, no copy-paste ─────────────────────────────────────────
@@ -21,8 +21,6 @@ function stripAnsi(str: string): string {
 }
 
 // ── constants guard — pin strings that appear in both code paths ──────────────
-const CONTACT_EMAIL = "nkishore@megam.io";
-const PRE_RELEASE_TAG = "[PRE-RELEASE]";
 const COLOR_ENV = { TERM: "xterm-256color" };
 
 // Decorative-ASCII teardown — these MUST NOT appear in the version banner
@@ -35,74 +33,6 @@ const FORBIDDEN_BANNER_CHARS = [
   "╯",    // ╯ box bottom-right
   "│",    // │ box vertical
 ];
-
-// ── printPreReleaseWarning ─────────────────────────────────────────────────────
-
-describe("printPreReleaseWarning — happy path", () => {
-  test("default opts writes non-empty output (color mode)", () => {
-    const out = makeTtyBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(out.read().length).toBeGreaterThan(0);
-  });
-
-  test("noColor=true writes non-empty plain output", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read().length).toBeGreaterThan(0);
-  });
-
-  test("jsonMode=true suppresses all output", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { jsonMode: true });
-    expect(out.read()).toBe("");
-  });
-
-  test("ttyOnly=true suppresses all output", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { ttyOnly: true });
-    expect(out.read()).toBe("");
-  });
-});
-
-describe("printPreReleaseWarning — suppression paths", () => {
-  test("jsonMode suppresses regardless of noColor", () => {
-    for (const noColor of [true, false]) {
-      const out = makeBufferStream();
-      printPreReleaseWarning(out.stream, { jsonMode: true, noColor });
-      expect(out.read()).toBe("");
-    }
-  });
-
-  test("ttyOnly suppresses regardless of noColor", () => {
-    for (const noColor of [true, false]) {
-      const out = makeBufferStream();
-      printPreReleaseWarning(out.stream, { ttyOnly: true, noColor });
-      expect(out.read()).toBe("");
-    }
-  });
-});
-
-describe("printPreReleaseWarning — fidelity (color mode)", () => {
-  test("color output contains warning glyph and email", () => {
-    const out = makeTtyBufferStream();
-    printPreReleaseWarning(out.stream, { env: COLOR_ENV });
-    const txt = out.read();
-    expect(txt).toContain("⚠");
-    expect(stripAnsi(txt)).toContain(CONTACT_EMAIL);
-    expect(stripAnsi(txt)).toContain("Pre-release build");
-  });
-
-  test("noColor output: plain ASCII, [PRE-RELEASE] tag, contact email", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    const txt = out.read();
-    expect(txt).not.toMatch(/\x1b\[/);
-    expect(txt).toContain(PRE_RELEASE_TAG);
-    expect(txt).toContain(CONTACT_EMAIL);
-    expect(txt).toMatch(/^\n/);
-    expect(txt).toMatch(/\n\n$/);
-  });
-});
 
 // ── printVersion (the new replacement for printBanner) ────────────────────────
 
@@ -217,8 +147,8 @@ describe("VERSION — constant matches package.json", () => {
   });
 });
 
-describe("ttyOnly flag — integration via runCli", () => {
-  test("pre-release warning shown when stderr is a TTY", async () => {
+describe("--version — integration via runCli", () => {
+  test("stderr stays clean for --version (TTY)", async () => {
     const out = makeBufferStream();
     const err = makeTtyBufferStream();
     const code = await runCli(["--version"], {
@@ -227,10 +157,10 @@ describe("ttyOnly flag — integration via runCli", () => {
       env: { NO_COLOR: "1" },
     });
     expect(code).toBe(0);
-    expect(err.read()).toContain("[PRE-RELEASE]");
+    expect(err.read()).toBe("");
   });
 
-  test("pre-release warning suppressed when stderr is not a TTY", async () => {
+  test("stderr stays clean for --version (non-TTY)", async () => {
     const out = makeBufferStream();
     const err = makeBufferStream();
     const code = await runCli(["--version"], {
@@ -242,7 +172,7 @@ describe("ttyOnly flag — integration via runCli", () => {
     expect(err.read()).toBe("");
   });
 
-  test("pre-release warning suppressed in --json mode even on TTY stderr", async () => {
+  test("stderr stays clean in --json --version", async () => {
     const out = makeBufferStream();
     const err = makeTtyBufferStream();
     const code = await runCli(["--json", "--version"], {
