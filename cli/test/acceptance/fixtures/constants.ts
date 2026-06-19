@@ -72,7 +72,7 @@ export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 export const API_URL_PROD = "https://api.agentsfleet.net";
 export const API_URL_DEV = "https://api-dev.agentsfleet.net";
 export const DASHBOARD_URL_PROD = "https://app.agentsfleet.net";
-export const DASHBOARD_URL_DEV = "https://agentsfleet-app.vercel.app";
+export const DASHBOARD_URL_DEV = "https://app-dev.agentsfleet.net";
 
 // Per-process acceptance run identifier — every agent created by this
 // run is named `${ACCEPTANCE_RUN_PREFIX}-…`; every list/teardown

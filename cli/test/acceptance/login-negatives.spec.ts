@@ -54,14 +54,14 @@ import {
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// Only the wrong-code retry drives the dashboard browser leg. It is gated
-// for the same reason as lifecycle-after-login: the dashboard suite's
-// cookie-mount needs the clerk.signIn ticket flow (azp claim) against the
-// correct host (agentsfleet-app.vercel.app), not the manual addCookies in
-// fixtures/browser.ts. Opt in with AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1
-// once browser.ts adopts the ticket flow. The SIGINT, --token, piped-stdin,
-// logout, and auth-status paths need no browser leg and always run live.
-const handshakeEnabled = process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1";
+// Only the wrong-code retry drives the dashboard browser leg (clerk.signIn).
+// Gated behind an explicit opt-in + the publishable key: clerk.signIn still
+// times out on window.Clerk.loaded against the deployed dashboard pending a
+// Clerk publishable-key/instance alignment (see lifecycle-after-login.spec).
+// The SIGINT, --token, piped-stdin, logout, and auth-status paths need no
+// browser leg and always run live.
+const handshakeEnabled =
+  process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1" && Boolean(process.env.CLERK_PUBLISHABLE_KEY);
 const itHandshake = handshakeEnabled ? it : it.skip;
 
 // printKeyValue renders the key space-aligned ("login_url   https://…"), not
@@ -117,7 +117,7 @@ if (!isLive) {
     let apiUrl: string = "";
     let dashboardUrl: string = "";
     let sessionJwt: string = "";
-    let cookieJwt: string = "";
+    let fixtureEmail: string = "";
     let stateDir: string = "";
     let baseEnv: Record<string, string> = {};
     let credentialsPath: string = "";
@@ -143,10 +143,9 @@ if (!isLive) {
       apiUrl = resolveAcceptanceEnv().apiUrl;
       dashboardUrl = resolveDashboardUrl(apiUrl);
       const clerkSecret = resolveClerkSecret();
-      const email = resolveFixtureEmail("regular");
-      const minted = await attachJwt(clerkSecret, { email });
+      fixtureEmail = resolveFixtureEmail("regular");
+      const minted = await attachJwt(clerkSecret, { email: fixtureEmail });
       sessionJwt = minted.sessionJwt;
-      cookieJwt = minted.cookieJwt;
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-login-neg-"));
       credentialsPath = path.join(stateDir, CREDENTIALS_FILENAME);
@@ -304,7 +303,7 @@ if (!isLive) {
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);
           const realCode = await completeCliAuthHandoff({
             loginUrl: handoffUrl,
-            cookieJwt,
+            email: fixtureEmail,
             timeoutMs: HANDSHAKE_TIMEOUT_MS,
           });
           assert.notEqual(realCode, WRONG_CODE, "fixture sanity: real code must differ from the wrong code");

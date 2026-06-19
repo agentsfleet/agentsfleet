@@ -1,101 +1,86 @@
 /**
- * Playwright Chromium wrapper for §5's CLI-auth handshake.
+ * Playwright Chromium wrapper for the CLI-auth handshake.
  *
- * Used only by `lifecycle-after-login.spec.ts`. We deliberately avoid
- * `@playwright/test` — the spec orchestrates the CLI subprocess itself,
- * and a parallel test-runner framework on top would add no value. One
- * `chromium.launch()` per call, closed in `finally`.
+ * Establishes a real Clerk session via `@clerk/testing`'s `clerk.signIn`
+ * (the same mechanism the dashboard acceptance suite's `signInAs` uses),
+ * then drives the `/cli-auth/{session_id}` approve action and returns the
+ * 6-digit verification code the page displays.
  *
- * Cookie-mount mirrors the dashboard suite's `signInAs` shape (three
- * Clerk DEV cookies: `__session`, `__client_uat`, `__clerk_db_jwt`).
- * The `__client_uat` value MUST be `<= jwt.iat` per Clerk's middleware —
- * we decode the cookieJwt's iat and set uat to `iat - 1`.
+ * Why `clerk.signIn` and not a manual cookie-mount: a Backend-API-minted
+ * `__session` token lacks the `azp` claim `clerkMiddleware` now requires, so
+ * a hand-mounted cookie is bounced to `/sign-in` on the first protected
+ * navigation (it also zeroes `__client_uat`). clerk-js mints the cookies the
+ * middleware was built to consume, so the approve page actually
+ * authenticates. Requires `CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` in
+ * env (resolved by global-setup); `setupClerkTestingToken` bypasses the dev
+ * bot-protection on the sign-in form.
  *
- * Selector strategy — we target the approve action by its accessible role
- * (`button` named /approve/i) rather than a `data-testid`. The dashboard
- * also exposes `data-testid="cli-auth-approve"`, but selecting by role keeps
- * this test decoupled from the dashboard *deployment*: the role + the
- * "Approve" label are present on the currently-deployed page even before a
- * testid-bearing build ships, so the CLI suite doesn't gate on a dashboard
- * deploy landing first.
- *
- * After approve, the page renders the 6-digit verification code in an
- * `<output aria-label="Verification code">` element. We scrape it and
- * return it so the caller can type it into the CLI's pty prompt — the code
- * is the binding between the human who approved in the browser and the
- * human (here, the harness) typing into the terminal.
+ * Selector: approve button by accessible role (`button` named /approve/i).
+ * Code: scraped from the `<output aria-label="Verification code">` the page
+ * renders on success — the CLI's /verify call is the authoritative ack.
  */
 
 const APPROVE_BUTTON_NAME = /approve/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
 const VERIFICATION_CODE_RE = /^\d{6}$/;
+const SIGN_IN_PATH = "/sign-in";
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-interface CookieAttrs {
-  readonly domain: string;
-  readonly path: "/";
-  readonly sameSite: "Lax";
-  readonly secure: boolean;
-}
-
-function decodeJwtIat(jwt: string): number {
-  const payload = jwt.split(".")[1];
-  if (!payload) throw new Error("malformed cookieJwt (no payload segment)");
-  const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { iat?: unknown };
-  if (typeof json.iat !== "number") throw new Error("cookieJwt missing iat claim");
-  return json.iat;
-}
-
-function cookieAttrs(loginUrl: string): CookieAttrs {
-  const url = new URL(loginUrl);
-  return {
-    domain: url.hostname,
-    path: "/",
-    sameSite: "Lax",
-    secure: url.protocol === "https:",
-  };
-}
 
 export interface CliAuthHandoffOptions {
   readonly loginUrl: string;
-  readonly cookieJwt: string;
+  readonly email: string;
   readonly timeoutMs?: number;
 }
 
 /**
- * Drive a Playwright Chromium context through the CLI-auth approve action
+ * Sign in the fixture user via clerk-js, drive the CLI-auth approve action,
  * and return the 6-digit verification code the page displays on success.
  */
 export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
-  if (!opts?.cookieJwt) throw new Error("completeCliAuthHandoff: cookieJwt required");
+  if (!opts?.email) throw new Error("completeCliAuthHandoff: email required");
 
-  // Lazy import — playwright is a devDependency; never pulled in non-§5 paths.
+  // Lazy imports — playwright + @clerk/testing are devDependencies; never
+  // pulled into non-handshake paths (the specs import this module but only
+  // call it when the handshake is enabled).
   const { chromium } = await import("playwright");
+  const { clerk, clerkSetup, setupClerkTestingToken } = await import("@clerk/testing/playwright");
+
+  // clerkSetup fetches the Clerk Frontend API URL (from CLERK_PUBLISHABLE_KEY)
+  // that setupClerkTestingToken needs to bypass dev bot-protection. The
+  // dashboard suite calls this in global setup; we call it here (idempotent)
+  // so the handshake fixture is self-contained.
+  await clerkSetup();
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const iat = decodeJwtIat(opts.cookieJwt);
-  const attrs = cookieAttrs(opts.loginUrl);
+  const origin = new URL(opts.loginUrl).origin;
+
+  // Vercel deployment protection guards the dev/preview dashboard — without
+  // the bypass header the browser hits Vercel's password page instead of the
+  // app, so clerk-js never loads and clerk.signIn hangs on window.Clerk.loaded.
+  // Mirrors ui/.../playwright.acceptance.config.ts. Omitted on public deploys.
+  const bypass = process.env.VERCEL_BYPASS_SECRET;
+  const contextOptions = bypass
+    ? { extraHTTPHeaders: { "x-vercel-protection-bypass": bypass, "x-vercel-set-bypass-cookie": "true" } }
+    : {};
 
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext();
-    await context.addCookies([
-      { name: "__session", value: opts.cookieJwt, httpOnly: true, ...attrs },
-      { name: "__client_uat", value: String(iat - 1), httpOnly: false, ...attrs },
-      { name: "__clerk_db_jwt", value: "fixture-dev-browser", httpOnly: false, ...attrs },
-    ]);
-
+    const context = await browser.newContext(contextOptions);
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
+
+    // clerk-js needs a Clerk-aware page mounted before it can mint a session;
+    // /sign-in is the cheapest such page in the dashboard.
+    await setupClerkTestingToken({ page });
+    await page.goto(`${origin}${SIGN_IN_PATH}`, { waitUntil: "load", timeout: timeoutMs });
+    await clerk.signIn({ page, emailAddress: opts.email });
+
     await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
     const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
     await approve.waitFor({ state: "visible", timeout: timeoutMs });
     await approve.click();
 
-    // On success the page swaps to the "Type this code into your CLI" card.
-    // Read the code from its accessible <output> rather than pinning a URL —
-    // the CLI's /verify call is the authoritative ack of approval.
     const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
     await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
     const code = ((await codeOutput.textContent()) ?? "").trim();
