@@ -139,6 +139,7 @@
               properties:
                 grant_id:
                   type: string
+                  format: uuid
                 status:
                   type: string
                   enum:
@@ -162,6 +163,7 @@
               properties:
                 grant_id:
                   type: string
+                  format: uuid
                 status:
                   type: string
                   enum:
