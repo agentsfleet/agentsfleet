@@ -3340,7 +3340,8 @@
                   "type": "object",
                   "properties": {
                     "grant_id": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     },
                     "status": {
                       "type": "string",
@@ -3376,7 +3377,8 @@
                   "type": "object",
                   "properties": {
                     "grant_id": {
-                      "type": "string"
+                      "type": "string",
+                      "format": "uuid"
                     },
                     "status": {
                       "type": "string",
