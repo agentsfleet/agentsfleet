@@ -24,6 +24,22 @@ jobs:
       - name: Install OpenSSL dev headers
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
 
+      # Persist the Zig compilation cache across runs. The Makefile redirects
+      # Zig's cache to .tmp/zig-global-cache, so setup-zig's own caching is
+      # bypassed — without this, every CI run recompiles the agentsfleetd test
+      # binary from cold (~150s). Content-addressed: a stale hit only triggers a
+      # recompile of changed modules, never a wrong build.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
+
       - name: Start Postgres and Redis via docker compose
         run: docker compose up -d postgres redis
 
@@ -79,5 +95,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      # Persist the Zig cache (build_runner.zig graph) across runs — see note
+      # in the test-integration job above. Content-addressed, so a stale hit
+      # only recompiles changed modules.
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .tmp/zig-global-cache
+            .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Runner sandbox proofs (env filter + kill-tree + cgroup-fault)
         run: make test-integration-agentsfleet-runner
