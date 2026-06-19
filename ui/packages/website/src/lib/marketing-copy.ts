@@ -220,6 +220,9 @@ export const LOOP_STEPS = [
 
 export const CAPABILITY_HEADING = "What every teammate ships with.";
 
+export const RUNTIME_GUARANTEES_LABEL =
+  "Runtime guarantees under every run";
+
 export const CAPABILITY_ITEMS = [
   {
     number: "01",
