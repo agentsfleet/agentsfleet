@@ -157,11 +157,14 @@ def main() -> int:
             continue
         violations.append((path, last))
 
-    # Catch carve-out rot: a vendor entry that no longer corresponds to a real
-    # path. A stale vendor entry means we've stopped serving an OAuth callback
-    # we claim to register with a vendor — a louder failure than a typo.
+    # Catch carve-out rot: an exempted full path that no longer corresponds to
+    # a real path. A stale vendor entry means we've stopped serving an OAuth
+    # callback we claim to register with a vendor; a stale static-catalogue
+    # entry means the obfuscated model-caps path hash rotated and the spec
+    # lagged. Both are louder failures than a typo, so check every full-path
+    # carve-out set, not just the vendor one.
     actual = set(paths)
-    for carve_out in VENDOR_PATH_CARVE_OUTS:
+    for carve_out in VENDOR_PATH_CARVE_OUTS | STATIC_CATALOGUE_CARVE_OUTS:
         if carve_out not in actual:
             stale_carve_outs.append(carve_out)
 
