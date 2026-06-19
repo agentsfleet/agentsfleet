@@ -86,6 +86,30 @@ test("ambient bare API_KEY authenticates nothing — alias removed → AUTH_REQU
   });
 });
 
+test("whitespace-only AGENTSFLEET_API_KEY is treated as absent → AUTH_REQUIRED", async () => {
+  await withFreshStateDir(async () => {
+    const out = bufferStream();
+    const err = bufferStream();
+    let fetchCalls = 0;
+    const fetchImpl = asFetchOverride(async () => {
+      fetchCalls += 1;
+      throw new Error("a blank key must not clear the guard, let alone reach the wire");
+    });
+    const code = await runCli(["--json", "doctor"], {
+      env: envWith({ AGENTSFLEET_API_KEY: "   " }),
+      stdout: out.stream,
+      stderr: err.stream,
+      fetchImpl,
+    });
+    // A blank key is trimmed to null at resolution, so it clears neither the
+    // guard nor sends `Authorization: Bearer    ` (symmetry with the token).
+    assert.equal(code, 1, `expected AUTH_REQUIRED exit 1; stdout=${out.read()}`);
+    assert.equal(fetchCalls, 0, "no network call should happen for a blank key");
+    const parsed = JSON.parse(err.read()) as { error: { code: string } };
+    assert.equal(parsed.error.code, "AUTH_REQUIRED");
+  });
+});
+
 test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path requests", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();

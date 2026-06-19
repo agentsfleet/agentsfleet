@@ -211,7 +211,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     isTty: Boolean((stdinSrc as { isTTY?: boolean }).isTTY),
   });
   const resolvedToken = resolvedAuth.token;
-  const resolvedApiKey = env.AGENTSFLEET_API_KEY || null;
+  // Trim like resolveAuthTokenForCli trims the token, so a whitespace-only
+  // AGENTSFLEET_API_KEY is treated as absent everywhere (auth guard + wire)
+  // rather than clearing the guard but sending `Authorization: Bearer    `.
+  const resolvedApiKey = env.AGENTSFLEET_API_KEY?.trim() || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
