@@ -89,6 +89,12 @@ export class PtyProcess {
     this.#proc.stdin.flush();
   }
 
+  /** Send Ctrl-C (ETX) — the pty line discipline raises SIGINT in the child. */
+  interrupt(): void {
+    this.#proc.stdin.write("\x03");
+    this.#proc.stdin.flush();
+  }
+
   get exited(): Promise<number> {
     return this.#proc.exited;
   }

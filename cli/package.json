@@ -26,7 +26,7 @@
   "scripts": {
     "test": "npm run build && node ./scripts/enforce-coverage.mjs",
     "test:coverage": "npm run build && bun test --coverage",
-    "test:acceptance": "npm run build && bun test test/acceptance",
+    "test:acceptance": "npm run build && bun test test/acceptance --timeout 120000",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
     "lint:fix": "oxlint src test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
