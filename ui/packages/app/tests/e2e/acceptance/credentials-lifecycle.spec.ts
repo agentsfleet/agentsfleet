@@ -51,6 +51,7 @@ test.describe("credentials lifecycle", () => {
     await expect(page).toHaveURL(/\/settings\/models/);
     await expect(page.getByRole("heading", { name: /credentials/i }).first()).toBeVisible();
 
+    await page.getByText("Add a generic credential").click();
     await page.getByLabel("Name").fill(name);
     await page.getByLabel(/Data \(JSON object\)/).fill('{"host":"api.machines.dev","api_token":"FLY_API_TOKEN"}');
     await page.getByRole("button", { name: "Add", exact: true }).click();

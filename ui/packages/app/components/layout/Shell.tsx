@@ -23,13 +23,12 @@ import {
   DialogTrigger,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { AuthUserButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
-import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
+import ClientOnlyAuthUserButton from "./ClientOnlyAuthUserButton";
 
 type NavEntry = {
   label: string;
@@ -144,7 +143,7 @@ export default function Shell({
 
         <ThemeToggle />
 
-        <AuthUserButton appearance={AUTH_APPEARANCE} />
+        <ClientOnlyAuthUserButton />
       </header>
 
       <aside className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4">

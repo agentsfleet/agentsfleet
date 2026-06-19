@@ -1,4 +1,5 @@
 import { ApiError } from "./errors";
+import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
 export const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api-dev.agentsfleet.net";
@@ -36,6 +37,8 @@ export async function request<T>(
   init: RequestInit,
   token: string,
 ): Promise<T> {
+  recordWorkspaceFetchForAcceptance(path);
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
