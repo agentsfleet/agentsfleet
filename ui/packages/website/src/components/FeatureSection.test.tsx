@@ -31,4 +31,9 @@ describe("FeatureSection", () => {
     expect(heading).toBeInTheDocument();
     expect(heading?.textContent).toBe("My Title");
   });
+
+  it("renders compact titles as h4 under a grouped heading", () => {
+    render(<FeatureSection number="04" title="Compact Title" description="Desc" compact />);
+    expect(screen.getByRole("heading", { level: 4, name: "Compact Title" })).toBeInTheDocument();
+  });
 });

@@ -118,7 +118,12 @@ describe("Home", () => {
     renderHome();
     const capabilities = screen.getByTestId("core-capabilities");
     expect(within(capabilities).getByText(/core capabilities/i)).toBeInTheDocument();
-    expect(within(capabilities).getByText(RUNTIME_GUARANTEES_LABEL)).toBeInTheDocument();
+    expect(
+      within(capabilities).getByRole("heading", {
+        level: 3,
+        name: RUNTIME_GUARANTEES_LABEL,
+      }),
+    ).toBeInTheDocument();
     for (const pillar of AGENT_PILLARS) {
       expect(screen.getByTestId(`capability-pillar-${pillar.id}`)).toHaveTextContent(
         pillar.title,
