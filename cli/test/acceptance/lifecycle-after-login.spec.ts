@@ -54,15 +54,19 @@ import {
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// The browser leg requires the dashboard at AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL
-// to actually SERVE `/cli-auth/{session_id}`. Verified against api-dev's
-// dashboard (agentsfleet.vercel.app, 2026-06-19) that route currently
-// returns 404 — the page exists in source but is not deployed there yet, so
-// the whole real-login handshake (and the persisted-credential sweep that
-// depends on it seeding credentials.json) cannot complete. Opt in with
-// AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 once the dashboard ships the route;
-// the token-injection suite (lifecycle-with-token) covers the post-auth
-// surface live in the meantime.
+// The browser leg needs (1) the RIGHT dashboard host and (2) a Clerk
+// session the dashboard middleware accepts. Verified 2026-06-19 against
+// api-dev: the `/cli-auth/{session_id}` route is served on
+// `agentsfleet-app.vercel.app` (the CI default AGENTSFLEET_ACCEPTANCE_DASHBOARD_URL
+// `agentsfleet.vercel.app` — no `-app` — 404s and must be corrected), and on
+// the correct host our manual cookie-mount in fixtures/browser.ts is bounced
+// to /sign-in: a Backend-API-minted __session token lacks the `azp` claim
+// clerkMiddleware now requires (it zeroes __client_uat and redirects). The
+// un-gate is to mint the session via `clerk.signIn` (ticket strategy) like
+// the dashboard suite's signInAs (ui/.../fixtures/auth.ts), not addCookies.
+// Opt in with AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 once browser.ts uses
+// the ticket flow; the token-injection suite (lifecycle-with-token) covers
+// the post-auth surface live meanwhile.
 const handshakeEnabled = process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1";
 
 // printKeyValue renders the key space-aligned ("login_url   https://…"), not

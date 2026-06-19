@@ -54,12 +54,13 @@ import {
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
-// Only the wrong-code retry drives the dashboard browser leg, which needs
-// the dashboard to serve `/cli-auth/{session_id}` (currently 404 on the
-// api-dev dashboard — see lifecycle-after-login.spec.ts). Opt in with
-// AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1 once the route deploys. The
-// SIGINT, --token, piped-stdin, logout, and auth-status paths need no
-// browser leg and always run live.
+// Only the wrong-code retry drives the dashboard browser leg. It is gated
+// for the same reason as lifecycle-after-login: the dashboard suite's
+// cookie-mount needs the clerk.signIn ticket flow (azp claim) against the
+// correct host (agentsfleet-app.vercel.app), not the manual addCookies in
+// fixtures/browser.ts. Opt in with AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE=1
+// once browser.ts adopts the ticket flow. The SIGINT, --token, piped-stdin,
+// logout, and auth-status paths need no browser leg and always run live.
 const handshakeEnabled = process.env.AGENTSFLEET_ACCEPTANCE_LOGIN_HANDSHAKE === "1";
 const itHandshake = handshakeEnabled ? it : it.skip;
 
