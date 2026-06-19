@@ -42,17 +42,56 @@ describe("CredentialsList component", () => {
       { name: "fly", created_at: Date.UTC(2026, 3, 26, 12) },
       { name: "slack", created_at: Date.UTC(2026, 3, 26, 12, 1) },
     ],
+    protectedCredentialName?: string | null,
   ) {
     const { default: CredentialsList } = await import(
       "../app/(dashboard)/credentials/components/CredentialsList"
     );
-    render(
-      React.createElement(CredentialsList, {
-        workspaceId: "ws_1",
-        credentials,
-      } as never),
-    );
+    const props = {
+      workspaceId: "ws_1",
+      credentials,
+      ...(protectedCredentialName === undefined ? {} : { protectedCredentialName }),
+    };
+    const element = React.createElement(CredentialsList, props as never);
+    const rendered = render(element);
+    return {
+      ...rendered,
+      rerenderList(nextProtectedCredentialName: string | null) {
+        rendered.rerender(
+          React.createElement(CredentialsList, {
+            workspaceId: "ws_1",
+            credentials,
+            protectedCredentialName: nextProtectedCredentialName,
+          } as never),
+        );
+      },
+    };
   }
+
+  it("disables delete for the credential used by model setup", async () => {
+    const user = userEvent.setup();
+    await renderList(undefined, "fly");
+
+    const protectedDelete = screen.getByLabelText("Credential fly is in model setup");
+    expect((protectedDelete as HTMLButtonElement).disabled).toBe(true);
+    expect(protectedDelete.getAttribute("title")).toMatch(/Switch model setup/i);
+    await user.click(protectedDelete);
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm delete when the credential becomes protected while the dialog is open", async () => {
+    const user = userEvent.setup();
+    const rendered = await renderList();
+
+    await user.click(screen.getByLabelText(/Delete credential fly/i));
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+    rendered.rerenderList("fly");
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
+  });
 
   it("renders the empty-state message when no credentials", async () => {
     await renderList([]);
