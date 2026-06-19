@@ -201,6 +201,84 @@ test "integration: agents list — projects triggers array from config_json" {
     try std.testing.expect(r.bodyContains("\"schedule\":\"*/30 * * * *\""));
 }
 
+// list.zig projects two per-agent aggregates the `agentsfleet status` table
+// renders: events_processed (COUNT of core.agent_events) and budget_used_nanos
+// (SUM of agent_execution_telemetry.credit_deducted_nanos). Seed 3 events + 2
+// telemetry rows for one agent and assert the list reflects 3 / 3_000_000.
+test "integration: agents list — projects events_processed and budget_used_nanos aggregates" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    // created_at far in the future so newest-first ordering puts this agent on
+    // page 1 regardless of rows left by sibling tests.
+    const zid = try id_format.generateAgentId(alloc);
+    defer alloc.free(zid);
+    _ = try conn.exec(
+        \\INSERT INTO core.agents
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
+    , .{ zid, TEST_WORKSPACE_ID, "aggregates-agent", now_ms + 20_000 });
+
+    // Telemetry is tenant-scoped with no FK cascade; clean up the rows this
+    // test seeds (and the agent, which cascades its events) so the shared test
+    // tenant stays telemetry-free for the billing "no telemetry" suite.
+    defer {
+        _ = conn.exec("DELETE FROM core.agent_execution_telemetry WHERE agent_id = $1", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+        _ = conn.exec("DELETE FROM core.agents WHERE id = $1::uuid", .{zid}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    }
+
+    // 3 events → events_processed = 3.
+    for (0..3) |i| {
+        const uid = try id_format.generateAgentId(alloc);
+        defer alloc.free(uid);
+        const event_id = try std.fmt.allocPrint(alloc, "evt-agg-{d}", .{i});
+        defer alloc.free(event_id);
+        _ = try conn.exec(
+            \\INSERT INTO core.agent_events
+            \\  (uid, agent_id, event_id, workspace_id, actor, event_type, status, request_json, created_at, updated_at)
+            \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'webhook:test', 'webhook', 'done', '{}'::jsonb, $5, $5)
+        , .{ uid, zid, event_id, TEST_WORKSPACE_ID, now_ms });
+    }
+
+    // 2 telemetry rows → budget_used_nanos = 1_000_000 + 2_000_000 = 3_000_000.
+    // (telemetry workspace_id / agent_id columns are TEXT, not uuid.)
+    const charges = [_]i64{ 1_000_000, 2_000_000 };
+    for (charges, 0..) |nanos, i| {
+        const uid = try id_format.generateAgentId(alloc);
+        defer alloc.free(uid);
+        const tid = try std.fmt.allocPrint(alloc, "tel-agg-{d}", .{i});
+        defer alloc.free(tid);
+        const event_id = try std.fmt.allocPrint(alloc, "tel-evt-agg-{d}", .{i});
+        defer alloc.free(event_id);
+        _ = try conn.exec(
+            \\INSERT INTO core.agent_execution_telemetry
+            \\  (uid, id, tenant_id, workspace_id, agent_id, event_id, charge_type, posture, model, credit_deducted_nanos, recorded_at)
+            \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, 'stage', 'platform', 'claude', $7, $8)
+        , .{ uid, tid, TEST_TENANT_ID, TEST_WORKSPACE_ID, zid, event_id, nanos, now_ms });
+    }
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents?limit=50", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    try std.testing.expect(r.bodyContains("\"name\":\"aggregates-agent\""));
+    try std.testing.expect(r.bodyContains("\"events_processed\":3"));
+    try std.testing.expect(r.bodyContains("\"budget_used_nanos\":3000000"));
+}
+
 // §2 contract: 201 install response carries a `webhook_urls` map keyed by
 // `triggers[].source`. URL pattern is `{api_url}/v1/webhooks/{id}/{source}`.
 // The CLI install-skill consumes this map verbatim when looping `gh api`

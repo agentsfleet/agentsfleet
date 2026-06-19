@@ -138,7 +138,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, agent_id: []con
 
     const revoked = rev_q.next() catch null;
     if (revoked == null) {
-        hx.fail(ec.ERR_GRANT_NOT_FOUND, "Grant not found or already revoked");
+        hx.fail(ec.ERR_GRANT_REVOKE_NOT_FOUND, "Grant not found or already revoked");
         return;
     }
 
