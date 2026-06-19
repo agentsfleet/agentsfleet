@@ -65,4 +65,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // ── INTEGRATION GRANTS ────────────────────────────────────────────────────
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This agent has no approved grant for the target service. " ++
         "Request one with: POST /v1/agents/{id}/integration-requests"),
+    e("UZ-GRANT-002", .not_found, "Integration grant not found", "No grant with that id exists for this agent, or it was already revoked. " ++
+        "List current grants with: GET /v1/workspaces/{ws}/agents/{id}/integration-grants"),
 };
