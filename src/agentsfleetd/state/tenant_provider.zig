@@ -11,7 +11,8 @@
 //! synthesised platform default. The api_key never lives in this row —
 //! under platform mode the resolver follows core.platform_llm_keys into
 //! the admin tenant's workspace vault; under self-managed it loads the user's
-//! tenant-primary workspace vault under the user-named credential_ref.
+//! tenant-primary workspace vault by first trying the raw user-named
+//! credential_ref, then the dashboard workspace credential key derived from it.
 //! The vault itself is keyed (workspace_id, key_name); the resolver
 //! bridges tenant_id → primary_workspace_id at lookup time via the same
 //! earliest-named-workspace pattern signup_bootstrap_store uses.

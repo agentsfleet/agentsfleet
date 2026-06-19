@@ -11,6 +11,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
 const logging = @import("log");
+const credential_key = @import("../agent/credential_key.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 pub const Mode = tenant_provider.Mode;
@@ -158,10 +159,7 @@ pub fn probeSelfManagedCredential(
     const ws_id = try resolvePrimaryWorkspace(alloc, conn, tenant_id);
     defer alloc.free(ws_id);
 
-    var parsed = vault.loadJson(alloc, conn, ws_id, credential_ref) catch |err| switch (err) {
-        error.NotFound => return ResolveError.CredentialMissing,
-        else => return err,
-    };
+    var parsed = try loadSelfManagedJson(alloc, conn, ws_id, credential_ref);
     defer parsed.deinit();
 
     if (parsed.value != .object) return ResolveError.CredentialDataMalformed;
@@ -180,6 +178,25 @@ pub fn probeSelfManagedCredential(
     }
     const model = try alloc.dupe(u8, model_v.string);
     return .{ .provider = provider, .api_key = api_key, .model = model };
+}
+
+fn loadSelfManagedJson(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    credential_ref: []const u8,
+) (ResolveError || anyerror)!std.json.Parsed(std.json.Value) {
+    return vault.loadJson(alloc, conn, workspace_id, credential_ref) catch |err| switch (err) {
+        error.NotFound => {
+            const key_name = try credential_key.allocKeyName(alloc, credential_ref);
+            defer alloc.free(key_name);
+            return vault.loadJson(alloc, conn, workspace_id, key_name) catch |prefixed_err| switch (prefixed_err) {
+                error.NotFound => return ResolveError.CredentialMissing,
+                else => return prefixed_err,
+            };
+        },
+        else => return err,
+    };
 }
 
 fn loadVaultApiKey(

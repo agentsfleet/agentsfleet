@@ -17,6 +17,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 
@@ -25,6 +26,7 @@ const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+const PRIMARY_WORKSPACE_CREATED_AT_MS: i64 = 0;
 
 const TEST_ISSUER = "https://clerk.dev.agentsfleet.net";
 const TEST_AUDIENCE = "https://api.agentsfleet.net";
@@ -55,6 +57,8 @@ fn setTestEncryptionKey() void {
 
 fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
+    try model_rate_cache.populate(std.heap.page_allocator, conn);
+    _ = try conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID});
     _ = try conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID});
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
@@ -64,11 +68,13 @@ fn setupSeedData(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
         \\VALUES ($1, $2, $3)
-        \\ON CONFLICT (workspace_id) DO NOTHING
-    , .{ TEST_WS_ID, TEST_TENANT_ID, now_ms });
+        \\ON CONFLICT (workspace_id) DO UPDATE
+        \\SET tenant_id = EXCLUDED.tenant_id, created_at = LEAST(core.workspaces.created_at, EXCLUDED.created_at)
+    , .{ TEST_WS_ID, TEST_TENANT_ID, PRIMARY_WORKSPACE_CREATED_AT_MS });
 }
 
 fn cleanupRows(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
@@ -135,6 +141,58 @@ test "integration: credential POST + GET + DELETE roundtrip never echoes value" 
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(!r.bodyContains("\"name\":\"fly\""));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupRows(conn);
+}
+
+test "integration: tenant provider accepts credential POST rows by raw name" {
+    setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const credentials_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/credentials", .{TEST_WS_ID});
+    defer alloc.free(credentials_path);
+
+    const credential_name = "provider-posted-key";
+    const credential_token = "provider-token-not-real";
+    const credential_body = try std.fmt.allocPrint(
+        alloc,
+        "{{\"name\":\"{s}\",\"data\":{{\"provider\":\"anthropic\",\"api_key\":\"{s}\",\"model\":\"claude-sonnet-4-6\"}}}}",
+        .{ credential_name, credential_token },
+    );
+    defer alloc.free(credential_body);
+
+    {
+        const r = try (try (try h.post(credentials_path).bearer(TOKEN_OPERATOR)).json(credential_body)).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+        try std.testing.expect(r.bodyContains(credential_name));
+        try std.testing.expect(!r.bodyContains(credential_token));
+    }
+
+    const provider_body = try std.fmt.allocPrint(
+        alloc,
+        "{{\"mode\":\"self_managed\",\"credential_ref\":\"{s}\"}}",
+        .{credential_name},
+    );
+    defer alloc.free(provider_body);
+
+    {
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(TOKEN_OPERATOR)).json(provider_body)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"mode\":\"self_managed\""));
+        try std.testing.expect(r.bodyContains("\"provider\":\"anthropic\""));
+        try std.testing.expect(r.bodyContains("\"model\":\"claude-sonnet-4-6\""));
+        try std.testing.expect(r.bodyContains("\"credential_ref\":\"provider-posted-key\""));
+        try std.testing.expect(!r.bodyContains(credential_token));
     }
 
     const conn = try h.acquireConn();
