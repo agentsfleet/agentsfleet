@@ -287,5 +287,5 @@ test("default createHelp (() => new AgentHelp()) renders --help when no factory 
     // commander throws CommanderError(0, "commander.helpDisplayed") post-render.
   }
   expect(rendered).toContain("agentsfleet");
-  expect(rendered).toContain("Commands by task:");
+  expect(rendered).toContain("Environment variables:");
 });

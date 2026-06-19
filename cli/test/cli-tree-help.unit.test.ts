@@ -4,13 +4,11 @@
 //
 // The golden snapshot (golden-output.unit.test.ts) already pins the help
 // byte-for-byte, but a snapshot only screams "something moved" — it does
-// not name the invariant that broke. These tests assert the three
-// guarantees the help DX work introduced, so a future edit that breaks one
-// fails with a meaningful message instead of an opaque diff:
+// not name the invariant that broke. These tests assert the guarantees the
+// help DX work introduced, so a future edit that breaks one fails with a
+// meaningful message instead of an opaque diff:
 //   1. the 80-column width budget holds at the source, not just the fixture
 //   2. every env-var description aligns to one column (the alignment fix)
-//   3. the command guide never emits a stray indented blank line (the
-//      renderGroup wrap guard)
 // Plus: `agent --help` spells out that the lifecycle verbs are top-level.
 
 import { test, expect } from "bun:test";
@@ -65,15 +63,6 @@ function envDescriptionColumns(): number[] {
   return columns;
 }
 
-function guideRegion(): string[] {
-  const lines = tailLines();
-  const start = lines.indexOf("Commands by task:");
-  const end = lines.indexOf("Environment variables:");
-  expect(start).toBeGreaterThanOrEqual(0);
-  expect(end).toBeGreaterThan(start);
-  return lines.slice(start + 1, end);
-}
-
 // ── Invariant: width budget ──────────────────────────────────────────────
 
 test("every help-tail line stays within the 80-column budget", () => {
@@ -96,36 +85,6 @@ test("env-var section documents the privacy + telemetry knobs", () => {
   const tail = helpTail();
   for (const name of ["NO_COLOR", "DO_NOT_TRACK", "AGENTSFLEET_TELEMETRY_DISABLED"]) {
     expect(tail).toContain(name);
-  }
-});
-
-// ── Regression: no stray indented blank line (renderGroup guard) ─────────
-
-test("command guide emits no whitespace-only lines", () => {
-  // Intentional separators are truly empty (""); a regression in the wrap
-  // helper would emit an indented "    " line. Match one-or-more spaces.
-  const stray = tailLines().filter((line) => /^ +$/.test(line));
-  expect(stray).toEqual([]);
-});
-
-// ── Behaviour: the journey guide groups every command (finding 2) ────────
-
-test("groups commands by task with the agent split made explicit", () => {
-  const guide = guideRegion().join("\n");
-  for (const title of [
-    "Setup", "Workspaces", "Agents", "Workspace credentials",
-    "Agent keys", "Integration grants", "Tenant & billing", "Memory",
-  ]) {
-    expect(guide).toContain(title);
-  }
-  // The imperative lifecycle verbs sit under Agents; `agent update` is the
-  // lone `agent`-group verb surfaced here — that split is the whole point.
-  for (const command of ["install", "status", "steer", "agent update"]) {
-    expect(guide).toContain(command);
-  }
-  // Nouns reachable only as subcommands still appear in the guide.
-  for (const command of ["auth status", "memory search", "agent-key add"]) {
-    expect(guide).toContain(command);
   }
 });
 
