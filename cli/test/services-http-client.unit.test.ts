@@ -207,19 +207,21 @@ describe("HttpClient", () => {
 });
 
 describe("resolveToken helper", () => {
-  test("prefers stored over env", () => {
+  // Env-first precedence: the env-sourced service API key (AGENTSFLEET_API_KEY)
+  // wins over the stored login JWT.
+  test("prefers env over stored", () => {
     const env = Option.some(Redacted.make("env-token"));
     const stored = Option.some(Redacted.make("stored-token"));
     const result = resolveToken(env, stored);
     expect(Option.isSome(result)).toBe(true);
-    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("stored-token");
+    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("env-token");
   });
-  test("falls back to env when stored is none", () => {
-    const env = Option.some(Redacted.make("env-token"));
-    const stored = Option.none<Redacted.Redacted<string>>();
+  test("falls back to stored when env is none", () => {
+    const env = Option.none<Redacted.Redacted<string>>();
+    const stored = Option.some(Redacted.make("stored-token"));
     const result = resolveToken(env, stored);
     expect(Option.isSome(result)).toBe(true);
-    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("env-token");
+    if (Option.isSome(result)) expect(Redacted.value(result.value)).toBe("stored-token");
   });
   test("returns none when both unset", () => {
     const result = resolveToken(Option.none(), Option.none());

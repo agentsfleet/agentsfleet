@@ -88,7 +88,7 @@ test("aligns every environment-variable description to a single column", () => {
   // Long (AGENTSFLEET_TELEMETRY_POSTHOG_HOST) and short (NO_COLOR,
   // DO_NOT_TRACK) names must share one description column — the bug was the
   // short names using a narrower pad than the AGENTSFLEET_* rows.
-  expect(columns.length).toBeGreaterThanOrEqual(11);
+  expect(columns.length).toBeGreaterThanOrEqual(10);
   expect(new Set(columns).size).toBe(1);
 });
 

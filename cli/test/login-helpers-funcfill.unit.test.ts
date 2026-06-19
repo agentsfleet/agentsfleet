@@ -39,27 +39,18 @@ const stdinLayer = (
   Layer.succeed(Stdin, Stdin.of({ isTTY, readToEnd: Effect.succeed(piped) }));
 
 describe("resolveDirectToken", () => {
-  test("--token flag wins, trimmed", async () => {
+  test("--token flag is trimmed", async () => {
     const result = await Effect.runPromise(
-      resolveDirectToken({ tokenFlag: "  pat_flag  ", envToken: "pat_env" }).pipe(
+      resolveDirectToken({ tokenFlag: "  pat_flag  " }).pipe(
         Effect.provide(stdinLayer(true)),
       ),
     );
     expect(Option.getOrNull(result)).toBe("pat_flag");
   });
 
-  test("falls back to AGENTSFLEET_TOKEN env when flag absent", async () => {
-    const result = await Effect.runPromise(
-      resolveDirectToken({ tokenFlag: undefined, envToken: " pat_env " }).pipe(
-        Effect.provide(stdinLayer(true)),
-      ),
-    );
-    expect(Option.getOrNull(result)).toBe("pat_env");
-  });
-
   test("interactive TTY with no token → Option.none (falls through to browser)", async () => {
     const result = await Effect.runPromise(
-      resolveDirectToken({ tokenFlag: undefined, envToken: undefined }).pipe(
+      resolveDirectToken({ tokenFlag: undefined }).pipe(
         Effect.provide(stdinLayer(true)),
       ),
     );
@@ -68,7 +59,7 @@ describe("resolveDirectToken", () => {
 
   test("non-TTY pipe carrying a token → Option.some of the trimmed piped value", async () => {
     const result = await Effect.runPromise(
-      resolveDirectToken({ tokenFlag: undefined, envToken: undefined }).pipe(
+      resolveDirectToken({ tokenFlag: undefined }).pipe(
         Effect.provide(stdinLayer(false, "  pat_piped\n")),
       ),
     );
@@ -77,7 +68,7 @@ describe("resolveDirectToken", () => {
 
   test("non-TTY with empty stdin → InterruptedError (no token, no terminal)", async () => {
     const exit = await Effect.runPromiseExit(
-      resolveDirectToken({ tokenFlag: "   ", envToken: "  " }).pipe(
+      resolveDirectToken({ tokenFlag: "   " }).pipe(
         Effect.provide(stdinLayer(false, "   \n")),
       ),
     );
@@ -93,7 +84,7 @@ describe("resolveDirectToken", () => {
   test("InterruptedError carries the no-token suggestion", () => {
     const e = new InterruptedError({
       detail: "no token provided and stdin is not a terminal",
-      suggestion: "pass --token or set AGENTSFLEET_TOKEN",
+      suggestion: "pass --token or pipe the token on stdin",
     });
     expect(e.message).toContain("no token provided");
     expect(e.suggestion).toContain("--token");

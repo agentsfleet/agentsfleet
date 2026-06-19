@@ -1,5 +1,5 @@
 /**
- * AGENTSFLEET_TOKEN-injection acceptance scenario.
+ * Seeded-credentials acceptance scenario (minted Clerk JWT in the file slot).
  *
  * Mints a Clerk session JWT via the admin path (mirrors the dashboard
  * suite's identity), hydrates workspaces.json directly from the API
@@ -102,7 +102,7 @@ if (!isLive) {
     it.skip("requires AGENTSFLEET_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
-  describe("lifecycle-with-token — AGENTSFLEET_TOKEN injection", () => {
+  describe("lifecycle-with-token — seeded-credentials session", () => {
     let apiUrl: string = "";
     let sessionJwt: string = "";
     let stateDir: string = "";
@@ -128,11 +128,11 @@ if (!isLive) {
 
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-token-"));
       env = composeEnv({
-        AGENTSFLEET_TOKEN: sessionJwt,
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
       });
+      // hydrateWorkspacesForToken seeds credentials.json (file slot) + workspaces.json.
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
@@ -167,6 +167,9 @@ if (!isLive) {
         it(`${label} exits 0 with parseable JSON`, async () => {
           const args = [...row.argsHead, "--agent", agentId, "--json"];
           const result = await runWithEnv(args);
+          // Strict: a 503 here means api-dev's memory backend (the
+          // memory_runtime Postgres role/grant from schema 002+013) is not
+          // provisioned — a real outage to fix on the server, not tolerate.
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
           const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
           if (row.requiredKey) {
@@ -314,8 +317,9 @@ if (!isLive) {
         if (!row.validatesClient) continue;
         for (const sample of rejectingSamples) {
           it(`${row.args.join(" ")} "${sample}" rejected without ECONNREFUSED`, async () => {
+            // Auth resolves from the seeded credentials.json in stateDir; the
+            // unroutable API URL proves the id is rejected client-side first.
             const unroutable = composeEnv({
-              AGENTSFLEET_TOKEN: sessionJwt,
               AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
               AGENTSFLEET_STATE_DIR: stateDir,
               NO_COLOR: "1",
