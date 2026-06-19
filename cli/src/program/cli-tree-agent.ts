@@ -46,7 +46,7 @@ export function buildAgentTree(
   // The lifecycle verbs live at the top level, not under `agent` — so
   // `agentsfleet agent list` would resolve to this group's help and show
   // only `update`, with no hint that `list` is one level up. Spell the
-  // split out here; the top-level `--help` command guide does the same.
+  // split out here; the top-level `--help` command list shows them too.
   agentGroup.addHelpText(
     "after",
     [
@@ -55,7 +55,7 @@ export function buildAgentTree(
       "  agentsfleet list | status | logs | events | steer",
       "  agentsfleet install | stop | resume | kill | delete",
       "This group holds in-place updates only. Run `agentsfleet --help`",
-      "for the full command guide.",
+      "for the full command list.",
     ].join("\n"),
   );
 
