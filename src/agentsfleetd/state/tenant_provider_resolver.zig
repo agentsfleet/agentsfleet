@@ -190,10 +190,12 @@ fn loadSelfManagedJson(
         error.NotFound => {
             const key_name = try credential_key.allocKeyName(alloc, credential_ref);
             defer alloc.free(key_name);
-            return vault.loadJson(alloc, conn, workspace_id, key_name) catch |prefixed_err| switch (prefixed_err) {
+            const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |prefixed_err| switch (prefixed_err) {
                 error.NotFound => return ResolveError.CredentialMissing,
                 else => return prefixed_err,
             };
+            log.debug("self_managed_credential_ref_fallback", .{ .workspace_id = workspace_id });
+            return parsed;
         },
         else => return err,
     };
