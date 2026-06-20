@@ -2,6 +2,7 @@ const std = @import("std");
 const constants = @import("common");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const R2 = @import("s3");
 const oidc = @import("../../auth/oidc.zig");
 const session_store_redis = @import("../../session/session_store_redis.zig");
 const audit_events = @import("../../auth/audit_events.zig");
@@ -53,6 +54,10 @@ pub const Context = struct {
     approval_signing_secret: ?[]const u8,
     clerk_secret_key: ?[]const u8,
     oidc: ?*oidc.Verifier,
+    /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once
+    /// at boot. Null when R2 credentials are unset (local dev / paste-only) — the
+    /// import handler 503s only when a bundle actually has support files to store.
+    r2: ?*R2 = null,
     auth_sessions: *session_store_redis.SessionStore,
     audit_ctx: audit_events.AuditCtx,
     app_url: []const u8,
