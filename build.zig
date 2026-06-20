@@ -1,5 +1,6 @@
 const std = @import("std");
 const build_pg = @import("build_pg.zig");
+const build_s3 = @import("build_s3.zig");
 
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
@@ -16,6 +17,7 @@ const S_PG = "pg";
 const S_YAML = "yaml";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";
+const S_S3 = "s3";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -130,6 +132,10 @@ pub fn build(b: *std.Build) void {
     // no domain coupling, no cycle (common never imports hmac_sig).
     hmac_sig_mod.addImport(S_COMMON, common_mod);
 
+    // R2 (Cloudflare) wrapper for Fleet Bundle snapshots — daemon graph only
+    // (the runner holds zero datastore credentials). See build_s3.zig.
+    const s3_mod = build_s3.module(b, target, optimize);
+
     // ── agentsfleet executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "agentsfleetd",
@@ -150,6 +156,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
+                .{ .name = S_S3, .module = s3_mod },
             },
         }),
     });
@@ -201,6 +208,9 @@ pub fn build(b: *std.Build) void {
     lib_test_step.dependOn(&b.addRunArtifact(lib_tests).step);
     lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
 
+    // `test-s3`: compile r2.zig against z3 standalone (build-wiring gate).
+    build_s3.addTestStep(b, target, optimize, test_filters);
+
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -227,6 +237,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
+                .{ .name = S_S3, .module = s3_mod },
             },
         }),
         .filters = test_filters,
