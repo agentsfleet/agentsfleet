@@ -62,7 +62,7 @@ test "pool drains via the drain flag as well as stop" {
 }
 
 test "single-worker pool is the degenerate N=1 case" {
-    // Invariant 6: worker_count=1 is one worker thread — today's single-agent
+    // Invariant 6: worker_count=1 is one worker thread — today's single-fleet
     // daemon shape. Proves spawn/join holds at the boundary value.
     const io = @import("common").globalIo();
     var env_map: std.process.Environ.Map = .init(testing.allocator);

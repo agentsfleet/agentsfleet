@@ -87,36 +87,40 @@ pub const ENTRIES = [_]Entry{
     // ── WORKSPACE ────────────────────────────────────────────────────────────
     // ── BILLING ──────────────────────────────────────────────────────────────
     // ── AGENT ────────────────────────────────────────────────────────────────
-    e("UZ-AGENT-001", .not_found, "Agent key not found", "Agent key not found. Verify the agent_key_id."),
+    e("UZ-FLEETKEY-001", .not_found, "Fleet key not found", "Fleet key not found. Verify the fleet_key_id."),
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
-    e("UZ-WH-001", .not_found, "Agent not found for webhook", "No agent is registered for this webhook endpoint."),
+    e("UZ-WH-001", .not_found, "Fleet not found for webhook", "No fleet is registered for this webhook endpoint."),
     e("UZ-WH-002", .bad_request, "Malformed webhook", "Webhook payload could not be parsed. Check Content-Type and body."),
-    // UZ-WH-003 retired (paused-ingress rework): a webhook to a paused agent answers
-    // 200 {"ignored":"agent_paused"} — sender retry queues add no value for
-    // an intentionally paused agent. Steer ingress refuses with UZ-AGT-012.
+    // UZ-WH-003 retired (paused-ingress rework): a webhook to a paused fleet answers
+    // 200 {"ignored":"fleet_paused"} — sender retry queues add no value for
+    // an intentionally paused fleet. Steer ingress refuses with UZ-AGT-012.
     e("UZ-WH-010", .unauthorized, "Invalid webhook signature", "Webhook signature verification failed. Confirm the signing secret " ++
         "stored for this provider (Slack/Clerk/other) matches the one configured " ++
         "upstream."),
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp", "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
-    e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this agent's source. Run " ++
+    e("UZ-WH-020", .unauthorized, "Webhook credential not configured", "No webhook credential is configured for this fleet's source. Run " ++
         "`agentsfleet credential add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
-        "in the agent's workspace, then resend."),
+        "in the fleet's workspace, then resend."),
     e("UZ-WH-030", .payload_too_large, "Webhook payload too large", "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-005", .bad_request, "Unknown tool", "Unknown tool name. Check spelling against the known tools list."),
     // ── AGENT ───────────────────────────────────────────────────────────────
-    e("UZ-AGT-003", .failed_dependency, "Agent credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
-    e("UZ-AGT-004", .internal_server_error, "Agent claim failed", "Agent could not be claimed from the database. Check that the agent_id exists and status is 'active'."),
-    e("UZ-AGT-006", .conflict, "Agent name already exists", "An Agent with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
+    e("UZ-AGT-003", .failed_dependency, "Fleet credential missing", "A required credential is not in the vault. Add it with: agentsfleet credential add <name>"),
+    e("UZ-AGT-004", .internal_server_error, "Fleet claim failed", "Fleet could not be claimed from the database. Check that the fleet_id exists and status is 'active'."),
+    e("UZ-AGT-006", .conflict, "Fleet name already exists", "A Fleet with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
     // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
-    e("UZ-AGT-008", .bad_request, "Invalid agent config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
+    e("UZ-AGT-008", .bad_request, "Invalid fleet config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
         "in your TRIGGER.md frontmatter. See samples/fixtures/platform-ops-sample/TRIGGER.md for a working example."),
-    e("UZ-AGT-009", .not_found, "Agent not found", "Agent not found. Verify the agent_id and that it has not been killed."),
-    e("UZ-AGT-010", .conflict, "Agent state transition not allowed", "The requested lifecycle action is not valid from the agent's current state. The response detail names the specific transition that was refused."),
-    e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per agent bundle."),
-    e("UZ-AGT-012", .conflict, "Agent is paused", "This agent is not active and refuses new work. Resume it with: agentsfleet resume <agent>, then retry."),
+    e("UZ-AGT-009", .not_found, "Fleet not found", "Fleet not found. Verify the fleet_id and that it has not been killed."),
+    e("UZ-AGT-010", .conflict, "Fleet state transition not allowed", "The requested lifecycle action is not valid from the fleet's current state. The response detail names the specific transition that was refused."),
+    e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per Fleet Bundle."),
+    e("UZ-AGT-012", .conflict, "Fleet is paused", "This fleet is not active and refuses new work. Resume it with: agentsfleet resume <fleet>, then retry."),
+    // ── Fleet Bundle ───────────────────────────────────────────────────────
+    e("UZ-BUNDLE-001", .bad_request, "Invalid Fleet Bundle", "The supplied Fleet Bundle is missing SKILL.md or contains unsafe, oversized, or malformed files."),
+    e("UZ-BUNDLE-002", .not_found, "Fleet Bundle not found", "No Fleet Bundle snapshot matches the supplied bundle_id in this workspace."),
+    e("UZ-BUNDLE-003", .failed_dependency, "Fleet Bundle credentials missing", "Add the missing workspace credentials before installing this Fleet Bundle."),
     // ── VAULT ────────────────────────────────────────────────────────────────
     e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object", "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++
         "Bare strings, arrays, scalars, and {} are rejected."),

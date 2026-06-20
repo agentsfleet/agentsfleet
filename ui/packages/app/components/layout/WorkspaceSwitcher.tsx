@@ -52,7 +52,7 @@ export default function WorkspaceSwitcher({
 
   function workspaceLabel(id: string): string {
     const workspace = workspaces.find((w) => w.id === id);
-    return workspace?.name ?? workspace?.id ?? id;
+    return workspace?.name ?? id;
   }
 
   function showNotice(severity: ToastSeverity, message: string) {

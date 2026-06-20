@@ -13,7 +13,7 @@ import {
   Skeleton,
   WakePulse,
 } from "@agentsfleet/design-system";
-import { listAgents, AGENTSFLEET_STATUS } from "@/lib/api/agents";
+import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
@@ -36,17 +36,17 @@ export async function StatusTiles() {
   // Request the server max (100) so the Active/Paused/Stopped tiles don't
   // silently under-report for workspaces above the 20-default page size.
   // A dedicated summary endpoint will replace this client-side rollup once it
-  // ships; until then 100 matches what the /agents list page uses.
-  const [agents, billing] = await Promise.all([
-    listAgents(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
+  // ships; until then 100 matches what the /fleets list page uses.
+  const [fleets, billing] = await Promise.all([
+    listFleets(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
     getTenantBilling(token).catch(() => null),
   ]);
 
-  const active = agents.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
-  const paused = agents.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
-  const stopped = agents.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
+  const active = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
+  const paused = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
+  const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
-  if (agents.length === 0) {
+  if (fleets.length === 0) {
     return (
       <>
         <ExhaustionBanner billing={billing} />
@@ -94,7 +94,7 @@ function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
             ) : null}
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild size="sm">
-                <Link href="/agents/new">Install teammate</Link>
+                <Link href="/fleets/new">Install teammate</Link>
               </Button>
               <Button asChild variant="ghost" size="sm">
                 <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">

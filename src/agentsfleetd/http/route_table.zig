@@ -45,7 +45,7 @@ pub const RouteClass = enum { ops, stream, api };
 pub fn classFor(route: router.Route) RouteClass {
     return switch (route) {
         .healthz, .readyz, .metrics => .ops,
-        .workspace_agent_events_stream => .stream,
+        .workspace_fleet_events_stream => .stream,
         .model_caps,
         .create_auth_session,
         .poll_auth_session,
@@ -59,6 +59,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .get_tenant_metering_periods,
         .list_tenant_workspaces,
         .tenant_provider,
+        .fleet_bundles,
         .receive_webhook,
         .receive_svix_webhook,
         .auth_identity_event_clerk,
@@ -67,22 +68,24 @@ pub fn classFor(route: router.Route) RouteClass {
         .github_webhook,
         .admin_platform_keys,
         .delete_admin_platform_key,
-        .workspace_agents,
-        .patch_workspace_agent,
+        .workspace_fleets,
+        .patch_workspace_fleet,
         .workspace_credentials,
         .delete_workspace_credential,
-        .workspace_agent_messages,
-        .workspace_agent_events,
+        .workspace_fleet_bundles,
+        .workspace_fleet_bundle,
+        .workspace_fleet_messages,
+        .workspace_fleet_events,
         .workspace_events,
         .workspace_approvals,
         .workspace_approval_detail,
         .workspace_approval_resolve,
-        .workspace_agent_memories,
+        .workspace_fleet_memories,
         .request_integration_grant,
         .list_integration_grants,
         .revoke_integration_grant,
-        .agent_keys,
-        .delete_agent_key,
+        .fleet_keys,
+        .delete_fleet_key,
         .tenant_api_keys,
         .tenant_api_key_by_id,
         .register_runner,
@@ -130,19 +133,20 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .get_tenant_metering_periods => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantMeteringPeriods },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
+        .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
         // Admin platform keys (admin role required)
         .admin_platform_keys => .{ .middlewares = registry.admin(), .invoke = invoke.invokeAdminPlatformKeys },
         .delete_admin_platform_key => .{ .middlewares = registry.admin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
-        // scheme + secret resolved per-agent from the workspace credential
+        // scheme + secret resolved per-fleet from the workspace credential
         // keyed by the matching `triggers[].source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
-        // Clerk user.created auth-plane event — no agent context; handler
+        // Clerk user.created auth-plane event — no fleet context; handler
         // verifies Svix inline against env CLERK_WEBHOOK_SECRET. Path moved
         // out of /v1/webhooks/ into /v1/auth/identity-events/ pre-v2 so the
         // customer data plane stays separated from auth-plane signals.
@@ -152,35 +156,37 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
 
-        // Agent CRUD + activity + credentials
-        .workspace_agents => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceAgents },
-        .patch_workspace_agent => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceAgent },
+        // Fleet create/read/update/delete + activity + credentials
+        .workspace_fleets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceFleets },
+        .patch_workspace_fleet => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceFleet },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
+        .workspace_fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleImports },
+        .workspace_fleet_bundle => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundleGet },
         // Chat ingress (workspace-scoped) — POST /messages
-        .workspace_agent_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentMessagesPost },
-        // Per-agent event history + SSE live tail (Bearer this slice;
+        .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
+        // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;
         // cookie auth path lands with the dashboard slice).
-        .workspace_agent_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentEvents },
-        .workspace_agent_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentEventsStream },
+        .workspace_fleet_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEvents },
+        .workspace_fleet_events_stream => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEventsStream },
         // Workspace-aggregate event history (replaces deleted activity.zig)
         .workspace_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceEvents },
         // Approval inbox
         .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
         .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },
         .workspace_approval_resolve => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalResolve },
-        // External-agent memory API — workspace-scoped collection, GET-only
+        // External-fleet memory API — workspace-scoped collection, GET-only
         // (write verbs retired; capture flows through the runner plane).
-        .workspace_agent_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentMemoriesCollection },
+        .workspace_fleet_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMemoriesCollection },
 
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },
         .revoke_integration_grant => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeRevokeGrant },
 
-        // Workspace agent-key management.
-        .agent_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentKeys },
-        .delete_agent_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAgentKey },
+        // Workspace fleet-key management.
+        .fleet_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetKeys },
+        .delete_fleet_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteFleetKey },
 
         // Tenant API keys — operator-minimum per RULE BIL.
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
@@ -240,10 +246,10 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.create_workspace, &reg);
     _ = specFor(.get_tenant_billing, &reg);
     _ = specFor(.get_tenant_billing_charges, &reg);
-    _ = specFor(.{ .workspace_agents = "ws1" }, &reg);
-    _ = specFor(.{ .patch_workspace_agent = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
+    _ = specFor(.{ .workspace_fleets = "ws1" }, &reg);
+    _ = specFor(.{ .patch_workspace_fleet = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.{ .workspace_credentials = "ws1" }, &reg);
-    _ = specFor(.{ .workspace_agent_messages = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
+    _ = specFor(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
     _ = specFor(.admin_platform_keys, &reg);
     _ = specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg);
     _ = specFor(.{ .receive_webhook = "z1" }, &reg);
@@ -252,12 +258,12 @@ test "specFor resolves a RouteSpec for a representative sample of every route fa
     _ = specFor(.{ .approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .grant_approval_webhook = "z1" }, &reg);
     _ = specFor(.{ .github_webhook = "z1" }, &reg);
-    _ = specFor(.{ .workspace_agent_memories = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
-    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
-    _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .agent_id = "z1" } }, &reg);
-    _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .agent_id = "z1", .grant_id = "g1" } }, &reg);
-    _ = specFor(.{ .agent_keys = "ws1" }, &reg);
-    _ = specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_key_id = "a1" } }, &reg);
+    _ = specFor(.{ .workspace_fleet_memories = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
+    _ = specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
+    _ = specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, &reg);
+    _ = specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .fleet_id = "z1", .grant_id = "g1" } }, &reg);
+    _ = specFor(.{ .fleet_keys = "ws1" }, &reg);
+    _ = specFor(.{ .delete_fleet_key = .{ .workspace_id = "ws1", .fleet_key_id = "a1" } }, &reg);
     _ = specFor(.{ .workspace_approvals = "ws1" }, &reg);
     _ = specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg);
     _ = specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg);
@@ -273,7 +279,7 @@ test "classFor: ops probes never shed, the SSE tail is stream, the rest api" {
     try testing.expectEqual(RouteClass.ops, classFor(.healthz));
     try testing.expectEqual(RouteClass.ops, classFor(.readyz));
     try testing.expectEqual(RouteClass.ops, classFor(.metrics));
-    try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_agent_events_stream = .{ .workspace_id = "ws1", .agent_id = "z1" } }));
+    try testing.expectEqual(RouteClass.stream, classFor(.{ .workspace_fleet_events_stream = .{ .workspace_id = "ws1", .fleet_id = "z1" } }));
     try testing.expectEqual(RouteClass.api, classFor(.model_caps));
     try testing.expectEqual(RouteClass.api, classFor(.create_workspace));
     try testing.expectEqual(RouteClass.api, classFor(.runner_lease));

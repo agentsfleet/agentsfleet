@@ -1,12 +1,12 @@
 /**
- * streaming-follow — long-lived / streamed `steer` against a live agent,
+ * streaming-follow — long-lived / streamed `steer` against a live fleet,
  * driven through a real pseudo-terminal (GROUP 4).
  *
  * Why a pty, and why `steer` (not `logs --follow`):
- *   - The `agentsfleet logs` command is one-shot paginated: cli-tree-agent.ts
- *     defines `logs [agent_id]` with ONLY `--agent` / `--limit` / `--cursor`.
+ *   - The `agentsfleet logs` command is one-shot paginated: cli-tree-fleet.ts
+ *     defines `logs [fleet_id]` with ONLY `--fleet` / `--limit` / `--cursor`.
  *     There is NO `--follow`/`--tail` flag and no live-tail loop in
- *     src/commands/agent_logs.ts — a `--follow` test would assert against an
+ *     src/commands/fleet_logs.ts — a `--follow` test would assert against an
  *     API that does not exist. The genuine long-lived, streamed surface in
  *     the CLI is `steer` ("Send a message; stream the response").
  *   - `steer <id>` with NO positional message and a TTY stdin enters the
@@ -17,8 +17,8 @@
  *     `event <id> processed` line (or a tolerated terminal/timeout stem on a
  *     shared DEV tenant), then RE-PROMPTS and waits for the next line. That
  *     re-prompt is exactly the "appended rather than one-shotting" property.
- *   - `runAgentctl` pipes stdin (non-TTY), so the REPL never engages there;
- *     a real pty (`PtyProcess.spawnAgentctl` via pty-spawn.py) is the only way
+ *   - `runFleetctl` pipes stdin (non-TTY), so the REPL never engages there;
+ *     a real pty (`PtyProcess.spawnFleetctl` via pty-spawn.py) is the only way
  *     to exercise the long-lived path. Under a pty the child's stdout AND
  *     stderr both land on the pty slave, so everything arrives on `output`.
  *
@@ -30,11 +30,11 @@
  *       the conventional SIGINT code per src/errors/index.ts) or 0, and NO
  *       stack trace / unhandled-rejection noise in the combined output.
  *   (b) multi-turn streaming — send a FIRST message, await streamed output,
- *       then send a SECOND message to the SAME agent in the SAME REPL and
+ *       then send a SECOND message to the SAME fleet in the SAME REPL and
  *       assert the second turn is accepted (a second streamed/terminal frame
  *       arrives). Then interrupt cleanly.
  *
- * Teardown: prefix-scoped `cleanWorkspaceAgents` — only this run's agents are
+ * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets are
  * killed; shared-tenant residue from other runs is untouched and global
  * emptiness is never asserted.
  *
@@ -60,8 +60,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import { PtyProcess } from "./fixtures/pty.ts";
 import {
   STEER_COMMAND,
@@ -101,7 +101,7 @@ if (!isLive) {
     let stateDir = "";
     let env: Record<string, string> = {};
     let workspaceId = "";
-    let agentId = "";
+    let fleetId = "";
 
     beforeAll(async () => {
       const apiUrl = resolveAcceptanceEnv().apiUrl;
@@ -119,16 +119,16 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      const installed = await installPlatformOpsAgent({ env });
-      const id = installed.id ?? installed.agent_id;
+      const installed = await installPlatformOpsFleet({ env });
+      const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      agentId = id;
+      fleetId = id;
     }, TURN_WAIT_MS);
 
     afterAll(async () => {
       if (env && workspaceId) {
         try {
-          await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
         } catch { /* best-effort teardown; never fail the run on cleanup */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
@@ -139,8 +139,8 @@ if (!isLive) {
     // appended / stayed alive rather than one-shotting), and Ctrl-C must exit
     // cleanly with no stack trace.
     it("steer REPL streams a turn, stays alive, then exits cleanly on Ctrl-C", async () => {
-      assert.ok(agentId, "agent was not installed in beforeAll");
-      const cli = PtyProcess.spawnAgentctl([STEER_COMMAND, agentId], { env });
+      assert.ok(fleetId, "fleet was not installed in beforeAll");
+      const cli = PtyProcess.spawnFleetctl([STEER_COMMAND, fleetId], { env });
       try {
         // The REPL announces itself with the "> " prompt before any input.
         await cli.waitForLine((line) => STEER_REPL_PROMPT_RE.test(line), TURN_WAIT_MS);
@@ -172,11 +172,11 @@ if (!isLive) {
       assertNoSecretLeak({ stdout: cli.output, stderr: "" }, sessionJwt);
     }, TURN_WAIT_MS + EXIT_WAIT_MS);
 
-    // (b) Multi-turn: a second message to the SAME agent in the SAME REPL is
+    // (b) Multi-turn: a second message to the SAME fleet in the SAME REPL is
     // accepted and streams its own turn.
-    it("steer REPL accepts a second turn to the same agent (multi-turn)", async () => {
-      assert.ok(agentId, "agent was not installed in beforeAll");
-      const cli = PtyProcess.spawnAgentctl([STEER_COMMAND, agentId], { env });
+    it("steer REPL accepts a second turn to the same fleet (multi-turn)", async () => {
+      assert.ok(fleetId, "fleet was not installed in beforeAll");
+      const cli = PtyProcess.spawnFleetctl([STEER_COMMAND, fleetId], { env });
       try {
         await cli.waitForLine((line) => STEER_REPL_PROMPT_RE.test(line), TURN_WAIT_MS);
 
@@ -185,7 +185,7 @@ if (!isLive) {
         const afterFirst = countSteerTurnFrames(cli.output);
         assert.ok(afterFirst >= 1, `first turn produced no streamed/terminal frame; output=${cli.output}`);
 
-        // Second turn to the SAME agent in the SAME long-lived process.
+        // Second turn to the SAME fleet in the SAME long-lived process.
         cli.writeLine(SECOND_MESSAGE);
         await cli.waitForLine(() => countSteerTurnFrames(cli.output) > afterFirst, TURN_WAIT_MS);
         assert.ok(

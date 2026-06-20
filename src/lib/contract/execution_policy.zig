@@ -69,7 +69,7 @@ fn autoToolWindow(context_cap_tokens: u32) u32 {
 /// no secrets, default context budget. Parsing lives in `context_budget.fromJson`.
 pub const ExecutionPolicy = struct {
     network_policy: NetworkPolicy = .{},
-    /// Allowlist of tool names the agent may invoke. Empty = no filter.
+    /// Allowlist of tool names the fleet may invoke. Empty = no filter.
     tools: []const []const u8 = &.{},
     /// Resolved credentials — JSON object keyed by credential name, values the
     /// parsed JSON bodies from vault. `null` = no secrets. Substitution looks up
@@ -82,12 +82,12 @@ pub const ExecutionPolicy = struct {
     provider: []const u8 = "",
     /// Resolved LLM api_key for `provider`; "" = none. Sensitive inline secret:
     /// never logged, never persisted to the lease row, redacted from activity
-    /// frames (engine keys redaction off `agent_config.api_key`).
+    /// frames (engine keys redaction off `fleet_config.api_key`).
     api_key: []const u8 = "",
     /// Resolved inference endpoint HOST (e.g. "api.fireworks.ai"); "" = none.
     /// Control-plane-authored from the SAME provider→URL table the engine dials
     /// (`nullclaw.providers.compatibleProviderUrl`), so the runner's egress
-    /// allowlist permits exactly the host the agent's LLM call will reach — no
+    /// allowlist permits exactly the host the fleet's LLM call will reach — no
     /// drift. Additive + defaulted so old/new leases stay parseable both ways.
     inference_host: []const u8 = "",
     context: ContextBudget = .{},

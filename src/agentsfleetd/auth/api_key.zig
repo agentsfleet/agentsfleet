@@ -1,10 +1,10 @@
-//! Shared helpers for agent-key authentication.
-//! Used by integration_grants/handler.zig and api_keys/agent.zig.
+//! Shared helpers for fleet-key authentication.
+//! Used by integration_grants/handler.zig and api_keys/fleet.zig.
 
 const std = @import("std");
 
-/// Agent-key raw token prefix — single source (RULE UFS). An agent key is
-/// minted as `KEY_PREFIX ++ {64 lower-hex}` (api_keys/agent.zig) and recognised
+/// Fleet-key raw token prefix — single source (RULE UFS). A Fleet key is
+/// minted as `KEY_PREFIX ++ {64 lower-hex}` (api_keys/fleet.zig) and recognised
 /// by the same prefix on the inbound path (integration_grants/handler.zig).
 /// Flip the wire prefix HERE only; both call sites reference this const, and the
 /// pin test below guards the literal value.

@@ -5,7 +5,7 @@ const fromEnv = import.meta.env.VITE_APP_BASE_URL?.trim();
 // up and Clerk JWT aud is configured. config.test.ts pins the new values so
 // a regression to the retired brand is a conscious test edit.
 //
-// Retained deliberately: the only UI consumer (the /agents "open dashboard"
+// Retained deliberately: the only UI consumer (the /fleets "open dashboard"
 // link) was removed in the fleet-positioning PR, but this stays as the canonical
 // env-overridable app host (config.test.ts pins it) for when a dashboard link
 // returns. Unlike the deleted TEAM_EMAIL, this value is correct and load-bearing

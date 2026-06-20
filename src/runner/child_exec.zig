@@ -46,8 +46,8 @@ const GENERIC_FAIL_EXIT: u8 = pipe_proto.GENERIC_FAIL_EXIT;
 const MAX_LEASE_BYTES: usize = 4 * 1024 * 1024;
 const READ_CHUNK: usize = 64 * 1024;
 /// Operator-facing outcome when a lease carries no installed instructions — the
-/// agent has no `SKILL.md` behaviour to run, so the model is not invoked.
-const NO_INSTRUCTIONS_MESSAGE = "no installed instructions: the agent has no SKILL.md behaviour to run; awaiting configuration";
+/// fleet has no `SKILL.md` behaviour to run, so the model is not invoked.
+const NO_INSTRUCTIONS_MESSAGE = "no installed instructions: the fleet has no SKILL.md behaviour to run; awaiting configuration";
 /// Operator-facing outcome when the engine config could not be assembled from the
 /// lease (allocation failure mid-build) — the model is not invoked with a partial
 /// config. Distinct from the no-instructions outcome for triage.
@@ -62,7 +62,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     };
 
     // FAIL-CLOSED (Invariant 7): on a sandboxed tier the mandatory in-child
-    // hardening MUST apply before we read the lease or run the agent — a sandbox
+    // hardening MUST apply before we read the lease or run the fleet — a sandbox
     // we cannot establish aborts, never running tool execution unsandboxed.
     // no_new_privs is set BEFORE Landlock: it defangs setuid binaries in the RO
     // mounts and is the precondition landlock_restrict_self will rely on once a
@@ -128,14 +128,14 @@ fn stubResult() types.ExecutionResult {
 /// stdout is the progress sink: the engine streams `activity` frames there
 /// (`pipe_proto`) while running, then `writeResult` appends the terminal frame.
 fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, workspace: []const u8, payload: LeasePayload, hydrated_memory: []const MemoryDelta) types.ExecutionResult {
-    // FAIL CLOSED: an installed agent with no behaviour prose must NOT run a
+    // FAIL CLOSED: an installed fleet with no behaviour prose must NOT run a
     // generic model turn. NullClaw is never invoked on a no-playbook run — we
     // report a clear "no installed instructions" outcome instead. Covers a
     // misconfigured frontmatter-only SKILL.md AND the mixed-version rollout
-    // window where an older `agentsfleetd` omits the field; either way the agent runs
+    // window where an older `agentsfleetd` omits the field; either way the fleet runs
     // its playbook or nothing, never a generic chat.
     if (payload.instructions.len == 0) {
-        log.warn("no_installed_instructions_fail_closed", .{ .agent_id = payload.event.agent_id });
+        log.warn("no_installed_instructions_fail_closed", .{ .fleet_id = payload.event.fleet_id });
         return noInstructionsResult();
     }
 
@@ -155,9 +155,9 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // FAIL CLOSED: if the engine config cannot be assembled (allocation failure
     // mid-build), do not invoke the model with a partial config — report a
     // startup-posture failure. buildCallArgs is atomic, so a half-built
-    // agent_config (e.g. provider-without-key) never reaches the engine.
+    // fleet_config (e.g. provider-without-key) never reaches the engine.
     var args = input.buildCallArgs(alloc, payload) catch |err| {
-        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .agent_id = payload.event.agent_id });
+        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .fleet_id = payload.event.fleet_id });
         return configBuildFailedResult();
     };
     defer args.deinit(alloc);
@@ -168,12 +168,12 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // fully consume `context` before this frame unwinds and `defer ctx_obj.deinit`
     // frees those arrays. A future async or context-retaining engine would have to
     // own or dupe the context instead of borrowing it here.
-    return engine.execute(env_map, alloc, workspace, args.agent_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
+    return engine.execute(env_map, alloc, workspace, args.fleet_config, args.tools_spec, args.message, .{ .object = ctx_obj }, &ep, std.posix.STDOUT_FILENO, hydrated_memory);
 }
 
 /// Fail-closed result for a lease whose installed instructions are absent (an
 /// empty `SKILL.md` body, or an older `agentsfleetd` that omitted the field): the
-/// model is never invoked, so the agent never runs as a generic chat. Reported
+/// model is never invoked, so the fleet never runs as a generic chat. Reported
 /// as a startup-posture failure carrying an operator-facing message.
 fn noInstructionsResult() types.ExecutionResult {
     return .{ .content = NO_INSTRUCTIONS_MESSAGE, .exit_ok = false, .failure = .startup_posture };

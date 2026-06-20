@@ -1,7 +1,7 @@
 //! Authenticated principal populated by auth middleware.
 //!
 //! Owned by `src/auth/` so the folder can be extracted into a standalone
-//! `agent-auth` repository without reaching into HTTP/business layers.
+//! `fleet-auth` repository without reaching into HTTP/business layers.
 //! `src/http/handlers/common.zig` re-exports these symbols for backward
 //! compatibility during the M18_002 migration.
 

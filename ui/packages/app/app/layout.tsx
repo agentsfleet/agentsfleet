@@ -8,7 +8,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "agentsfleet — Dashboard",
-  description: "Agent delivery control plane. Manage workspaces, runs, and pipeline visibility.",
+  description: "Fleet delivery control plane. Manage workspaces, runs, and pipeline visibility.",
 };
 
 // Dark is the brand default; the only other palette is `[data-theme="light"]`.

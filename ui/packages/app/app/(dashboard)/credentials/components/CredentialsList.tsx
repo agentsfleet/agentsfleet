@@ -173,7 +173,7 @@ function CredentialDialogs({
         open={target !== null}
         onOpenChange={onDeleteClose}
         title={`Delete credential "${target ?? ""}"?`}
-        description="Agents referencing this name will fail to resolve until it is re-added. This cannot be undone."
+        description="Fleets referencing this name will fail to resolve until it is re-added. This cannot be undone."
         confirmLabel="Delete"
         intent="destructive"
         errorMessage={error}
@@ -227,7 +227,7 @@ export default function CredentialsList({
       <EmptyState
         icon={<KeyRoundIcon size={28} />}
         title="No credentials yet"
-        description="Add a secret your agents can use to reach other services."
+        description="Add a secret your fleets can use to reach other services."
       />
     );
   }

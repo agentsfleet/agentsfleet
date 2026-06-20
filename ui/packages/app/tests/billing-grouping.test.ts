@@ -15,7 +15,7 @@ const RECEIVE: ChargeRow = {
   id: "tel_1",
   tenant_id: "t1",
   workspace_id: "w1",
-  agent_id: "z1",
+  fleet_id: "z1",
   event_id: "evt_1",
   charge_type: CHARGE_TYPE.receive,
   posture: PROVIDER_MODE.platform,

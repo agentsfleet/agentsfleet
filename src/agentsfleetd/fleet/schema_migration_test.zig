@@ -19,7 +19,7 @@ const EXPECTED_COLUMN_COUNT: i64 = 11;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 const EXPECTED_CORE_KEY_CONSTRAINTS: i64 = 6;
 
-// `uid id runner_id agent_id workspace_id tenant_id event_id actor event_type
+// `uid id runner_id fleet_id workspace_id tenant_id event_id actor event_type
 //  request_json event_created_at posture provider model metered_input_tokens
 //  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
 //  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
@@ -120,11 +120,11 @@ test "core key schemas: public text ids have explicit UUIDv7 constraints" {
         \\JOIN pg_class rel ON rel.oid = c.conrelid
         \\JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
         \\WHERE nsp.nspname = 'core'
-        \\  AND rel.relname IN ('agent_keys', 'integration_grants')
+        \\  AND rel.relname IN ('fleet_keys', 'integration_grants')
         \\  AND c.conname IN (
-        \\    'ck_agent_keys_uid_uuidv7',
-        \\    'ck_agent_keys_agent_key_id_uuidv7',
-        \\    'ck_agent_keys_uid_matches_agent_key_id',
+        \\    'ck_fleet_keys_uid_uuidv7',
+        \\    'ck_fleet_keys_fleet_key_id_uuidv7',
+        \\    'ck_fleet_keys_uid_matches_fleet_key_id',
         \\    'ck_integration_grants_uid_uuidv7',
         \\    'ck_integration_grants_grant_id_uuidv7',
         \\    'ck_integration_grants_uid_matches_grant_id'
@@ -134,7 +134,7 @@ test "core key schemas: public text ids have explicit UUIDv7 constraints" {
     // pin test: index name is the schema promise.
     try std.testing.expectEqual(@as(i64, 1), try scalarI64(
         ctx.conn,
-        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'runner_leases_runner_status_idx'",
+        "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'fleet' AND indexname = 'idx_runner_leases_runner_id_status'",
     ));
 }
 

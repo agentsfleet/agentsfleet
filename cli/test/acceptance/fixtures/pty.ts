@@ -1,7 +1,7 @@
 /**
  * Pseudo-terminal CLI runner for the login-handshake acceptance scenario.
  *
- * `runAgentctl` (cli.js) pipes stdin, so the spawned binary sees a non-TTY
+ * `runFleetctl` (cli.js) pipes stdin, so the spawned binary sees a non-TTY
  * stdin and `agentsfleet login` fast-fails before printing `login_url`.
  * The device flow is terminal-only by design (a human types the 6-digit
  * code), so this harness allocates a real pty via `pty-spawn.py` and drives
@@ -64,8 +64,8 @@ export class PtyProcess {
     void Promise.all(pumps).then(async () => { this.#onExit(await proc.exited); });
   }
 
-  /** Spawn the agentsfleet binary inside a pty, mirroring runAgentctl's resolution. */
-  static spawnAgentctl(args: ReadonlyArray<string>, opts: PtySpawnOptions): PtyProcess {
+  /** Spawn the agentsfleet binary inside a pty, mirroring runFleetctl's resolution. */
+  static spawnFleetctl(args: ReadonlyArray<string>, opts: PtySpawnOptions): PtyProcess {
     const { command, prefixArgs } = resolveBinary(opts);
     const proc = Bun.spawn([PYTHON_BIN, PTY_LAUNCHER, command, ...prefixArgs, ...args], {
       env: opts.env,

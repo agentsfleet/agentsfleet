@@ -7,7 +7,7 @@
 //!
 //! Callers own the storage key string. The wrapper does not compose a prefix —
 //! the handler that calls into this module decides whether the row is a
-//! agent credential (`agent:<name>`), a self-managed provider record (user-named),
+//! agent credential (`fleet:<name>`), a self-managed provider record (user-named),
 //! or anything else. Keeps this layer reusable without coupling to a single
 //! caller's naming convention.
 

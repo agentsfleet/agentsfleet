@@ -8,9 +8,9 @@ import { installViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
-  killAgent,
-  resumeAgent,
-  stopAgent,
+  killFleet,
+  resumeFleet,
+  stopFleet,
 } from "./fixtures/lifecycle";
 import {
   cliEnv,
@@ -24,7 +24,7 @@ const ACTION_TIMEOUT_MS = 60_000;
 const WORKSPACE_ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ws_[A-Za-z0-9_-]+/i;
 const TEMP_DIR_PREFIX = "agentsfleet-operator-journey-";
 
-interface CliAgentListResponse {
+interface CliFleetListResponse {
   items?: Array<{ id?: string; name?: string; status?: string }>;
 }
 
@@ -101,20 +101,20 @@ async function deleteApiKeyByNameDirect(keyName: string | null): Promise<void> {
   }
 }
 
-async function deleteAgentWithApiKey(
+async function deleteFleetWithApiKey(
   apiUrl: string,
   rawApiKey: string,
   workspaceId: string,
-  agentId: string,
+  fleetId: string,
 ): Promise<void> {
-  const agentUrl = `${apiUrl}/v1/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`;
+  const fleetUrl = `${apiUrl}/v1/workspaces/${encodeURIComponent(workspaceId)}/fleets/${encodeURIComponent(fleetId)}`;
   const headers = { Authorization: `Bearer ${rawApiKey}`, "Content-Type": "application/json" };
-  await fetch(agentUrl, {
+  await fetch(fleetUrl, {
     method: "PATCH",
     headers,
     body: JSON.stringify({ status: "killed" }),
   }).catch(() => undefined);
-  await fetch(agentUrl, { method: "DELETE", headers }).catch(() => undefined);
+  await fetch(fleetUrl, { method: "DELETE", headers }).catch(() => undefined);
 }
 
 test.describe("operator journey", () => {
@@ -124,15 +124,15 @@ test.describe("operator journey", () => {
   let createdApiKeyRaw: string | null = null;
   let createdTempRoot: string | null = null;
   let activeWorkspaceId: string | null = null;
-  let createdAgentId: string | null = null;
+  let createdFleetId: string | null = null;
 
   test.afterEach(async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (apiUrl && createdApiKeyRaw && activeWorkspaceId && createdAgentId) {
-      await deleteAgentWithApiKey(apiUrl, createdApiKeyRaw, activeWorkspaceId, createdAgentId);
+    if (apiUrl && createdApiKeyRaw && activeWorkspaceId && createdFleetId) {
+      await deleteFleetWithApiKey(apiUrl, createdApiKeyRaw, activeWorkspaceId, createdFleetId);
     }
     createdApiKeyRaw = null;
-    createdAgentId = null;
+    createdFleetId = null;
     await deleteApiKeyByNameDirect(createdApiKeyName);
     createdApiKeyName = null;
     if (createdTempRoot) {
@@ -142,29 +142,29 @@ test.describe("operator journey", () => {
     activeWorkspaceId = null;
   });
 
-  test("operator switches workspace, installs an agent, visits settings, mints an API key, uses it from command line, then halts the agent", async ({ page }) => {
+  test("operator switches workspace, installs a Fleet, visits settings, mints an API key, uses it from command line, then halts the Fleet", async ({ page }) => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL must be set");
 
     const primaryWorkspaceName = uniqueName("journey-primary");
     const secondaryWorkspaceName = uniqueName("journey-secondary");
-    const agentName = uniqueName("journey-agent");
+    const fleetName = uniqueName("journey-fleet");
     const apiKeyName = uniqueName("journey-key");
 
     await signInAs(page, FIXTURE_KEY.admin);
-    await page.goto("/agents");
-    await expect(page.getByRole("heading", { name: /^agents$/i }).first()).toBeVisible();
+    await page.goto("/fleets");
+    await expect(page.getByRole("heading", { name: /^fleets$/i }).first()).toBeVisible();
 
     await createWorkspaceFromSwitcher(page, primaryWorkspaceName);
     await createWorkspaceFromSwitcher(page, secondaryWorkspaceName);
     await switchWorkspace(page, primaryWorkspaceName);
     await switchWorkspace(page, secondaryWorkspaceName);
 
-    await clickSidebarLink(page, "/agents", /\/agents(\?|$)/);
+    await clickSidebarLink(page, "/fleets", /\/fleets(\?|$)/);
     await page.getByRole("link", { name: /install teammate/i }).first().click();
-    await expect(page).toHaveURL(/\/agents\/new(\?|$)/);
-    const agentId = await installViaUI(page, agentName);
-    createdAgentId = agentId;
+    await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
+    const fleetId = await installViaUI(page, fleetName);
+    createdFleetId = fleetId;
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     await clickSidebarLink(page, "/events", /\/events(\?|$)/);
@@ -208,26 +208,26 @@ test.describe("operator journey", () => {
     if (cli.code !== 0) {
       throw new Error(`agentsfleet list failed with API key auth (exit ${cli.code}):\n${cli.stderr}`);
     }
-    const cliList = JSON.parse(cli.stdout) as CliAgentListResponse;
-    expect(cliList.items?.some((agent) => agent.id === agentId && agent.name === agentName)).toBe(true);
+    const cliList = JSON.parse(cli.stdout) as CliFleetListResponse;
+    expect(cliList.items?.some((fleet) => fleet.id === fleetId && fleet.name === fleetName)).toBe(true);
 
-    await page.goto(`/agents/${agentId}`);
-    await stopAgent(page);
+    await page.goto(`/fleets/${fleetId}`);
+    await stopFleet(page);
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
-    await page.goto(`/agents/${agentId}`);
-    await resumeAgent(page);
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "live");
+    await page.goto(`/fleets/${fleetId}`);
+    await resumeFleet(page);
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/agents/${agentId}`);
-    await killAgent(page);
+    await page.goto(`/fleets/${fleetId}`);
+    await killFleet(page);
     await expectDetailKilled(page);
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "failed");
-    await deleteAgentWithApiKey(apiUrl, rawApiKey, activeWorkspaceId, agentId);
-    createdAgentId = null;
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "failed");
+    await deleteFleetWithApiKey(apiUrl, rawApiKey, activeWorkspaceId, fleetId);
+    createdFleetId = null;
 
     await page.goto("/settings/api-keys");
     await expect(page.getByText(apiKeyName, { exact: true })).toBeVisible();

@@ -4,7 +4,7 @@
 
 -- Domain schemas: app data is segmented by bounded context.
 CREATE SCHEMA IF NOT EXISTS core;
-CREATE SCHEMA IF NOT EXISTS agent;
+CREATE SCHEMA IF NOT EXISTS fleet;
 CREATE SCHEMA IF NOT EXISTS billing;
 
 -- Audit schema: migration bookkeeping + immutable operator audit

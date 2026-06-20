@@ -21,13 +21,13 @@ import {
 import { ActivityIcon } from "lucide-react";
 import {
   listWorkspaceEventsAction,
-  listAgentEventsAction,
+  listFleetEventsAction,
 } from "@/app/(dashboard)/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
 import { presentErrorString } from "@/lib/errors";
 
 type Scope =
-  | { kind: "agent"; workspaceId: string; agentId: string }
+  | { kind: "fleet"; workspaceId: string; fleetId: string }
   | { kind: "workspace"; workspaceId: string };
 
 export type EventsListProps = {
@@ -45,7 +45,7 @@ export type EventsListProps = {
 // the default (muted) badge — readable, not opinionated.
 const STATUS_VARIANT: Record<string, BadgeVariant> = {
   processed: "green",
-  agent_error: "destructive",
+  fleet_error: "destructive",
   gate_blocked: "amber",
   received: "cyan",
 };
@@ -66,8 +66,8 @@ export function EventsList({
     setError(null);
     startTransition(async () => {
       const result =
-        scope.kind === "agent"
-          ? await listAgentEventsAction(scope.workspaceId, scope.agentId, { cursor: nextCursor })
+        scope.kind === "fleet"
+          ? await listFleetEventsAction(scope.workspaceId, scope.fleetId, { cursor: nextCursor })
           : await listWorkspaceEventsAction(scope.workspaceId, { cursor: nextCursor });
       if (!result.ok) {
         setError(
@@ -98,8 +98,8 @@ export function EventsList({
     <div className="flex flex-col gap-3">
       <List variant="ordered" className="flex flex-col gap-2 list-none pl-0 space-y-0">
         {items.map((row) => (
-          <ListItem key={`${row.agent_id}:${row.event_id}`}>
-            <EventCard row={row} showAgentId={scope.kind === "workspace"} />
+          <ListItem key={`${row.fleet_id}:${row.event_id}`}>
+            <EventCard row={row} showFleetId={scope.kind === "workspace"} />
           </ListItem>
         ))}
       </List>
@@ -130,7 +130,7 @@ export function EventsList({
   );
 }
 
-function EventCard({ row, showAgentId }: { row: EventRow; showAgentId: boolean }) {
+function EventCard({ row, showFleetId }: { row: EventRow; showFleetId: boolean }) {
   const created = new Date(row.created_at);
   const ts = isFinite(created.getTime()) ? created.toISOString() : null;
   const variant = STATUS_VARIANT[row.status] ?? "default";
@@ -145,7 +145,7 @@ function EventCard({ row, showAgentId }: { row: EventRow; showAgentId: boolean }
           <CardTitle className="text-sm font-medium text-foreground">{row.actor}</CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
             {row.event_type}
-            {showAgentId ? ` · ${shortId(row.agent_id)}` : ""}
+            {showFleetId ? ` · ${shortId(row.fleet_id)}` : ""}
           </CardDescription>
           <div className="ml-auto">
             {ts ? (

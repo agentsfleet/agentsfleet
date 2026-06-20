@@ -2,8 +2,8 @@
  * dashboard-home.spec.ts — `/` renders for the fixture user.
  *
  * Two render modes worth covering, both via the same authed fixture:
- *   - Empty: no agents → FirstInstallCard renders ("Start your fleet").
- *   - Populated: ≥1 agent → StatusCard tiles render (Live / Paused /
+ *   - Empty: no Fleets → FirstInstallCard renders ("Start your fleet").
+ *   - Populated: ≥1 Fleet → StatusCard tiles render (Live / Paused /
  *     Stopped / Balance).
  *
  * The persistent fixture's state is not deterministic between specs, so

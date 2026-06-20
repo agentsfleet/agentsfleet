@@ -181,7 +181,7 @@ test "child span shares parent trace_id (Tempo waterfall invariant)" {
     const child = root.child();
 
     const root_span = buildSpan(root, "run.execute", 100, 200);
-    const child_span = buildSpan(child, "agent.call", 110, 190);
+    const child_span = buildSpan(child, "fleet.call", 110, 190);
 
     // Both spans must have the same trace_id.
     try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);
@@ -205,14 +205,14 @@ test "manual TraceContext with external trace_id produces aligned spans" {
 
     const root_span = buildSpan(manual_tc, "run.execute", 0, 100);
 
-    // Now build a child the way emitAgentSpan does:
+    // Now build a child the way emitFleetSpan does:
     var child_tc: trace.TraceContext = undefined;
     @memcpy(&child_tc.trace_id, external_trace_id);
     const child_gen = trace.TraceContext.generate();
     child_tc.span_id = child_gen.span_id;
     child_tc.parent_span_id = root_tc.span_id;
 
-    const child_span = buildSpan(child_tc, "agent.call", 10, 90);
+    const child_span = buildSpan(child_tc, "fleet.call", 10, 90);
 
     // Invariant: same trace_id, child points to root.
     try std.testing.expectEqualSlices(u8, &root_span.trace_id, &child_span.trace_id);

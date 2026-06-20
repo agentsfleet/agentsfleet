@@ -36,7 +36,7 @@ import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1" as const;
-const READ_PATH = `/v1/workspaces/${WS_ID}/agents` as const;
+const READ_PATH = `/v1/workspaces/${WS_ID}/fleets` as const;
 const READ_ROUTE = `GET ${READ_PATH}` as const;
 
 // Effect-shape contract (mirrors failure-modes.integration.test.ts):

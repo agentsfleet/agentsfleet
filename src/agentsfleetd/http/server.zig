@@ -1,5 +1,5 @@
 //! httpz HTTP server setup and request routing.
-//! Thread 1 — all endpoint handlers run here. Never blocks on agent execution.
+//! Thread 1 — all endpoint handlers run here. Never blocks on fleet execution.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -229,18 +229,18 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
     const req_id = common.requestId(alloc);
     var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-    // Populate the webhook agent slot before running the middleware
+    // Populate the webhook fleet slot before running the middleware
     // chain. The webhook_sig + svix middlewares read it; all other
     // middlewares ignore the field.
     switch (matched) {
-        .receive_webhook => |agent_id| {
-            auth.webhook_agent_id = agent_id;
+        .receive_webhook => |fleet_id| {
+            auth.webhook_fleet_id = fleet_id;
         },
-        .receive_svix_webhook => |agent_id| {
-            auth.webhook_agent_id = agent_id;
+        .receive_svix_webhook => |fleet_id| {
+            auth.webhook_fleet_id = fleet_id;
         },
-        .github_webhook => |agent_id| {
-            auth.webhook_agent_id = agent_id;
+        .github_webhook => |fleet_id| {
+            auth.webhook_fleet_id = fleet_id;
         },
         else => {},
     }

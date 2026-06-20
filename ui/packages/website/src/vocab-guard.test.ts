@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 
 // Vocab guard (website twin of ui/packages/app/tests/vocab-guard.test.ts): the
-// user-facing product noun is "agent". The retired entity noun must never
+// user-facing product noun is "Fleet". The retired entity noun must never
 // resurface as a bare English word in *rendered copy*. This scan extracts
 // user-visible text (string literals + JSX text) across the whole website src
-// tree (Hero, FAQ, Pricing, Agents, CTABlock, PipelineDiagram, …) and fails if a
+// tree (Hero, FAQ, Pricing, Fleets, CTABlock, PipelineDiagram, …) and fails if a
 // multi-word phrase contains the standalone retired noun, so a future regression
 // can't reintroduce it on the marketing site either.
 //
@@ -34,7 +34,7 @@ function isComment(line: string): boolean {
 }
 
 describe("vocab guard — no retired product noun in website copy", () => {
-  it("rendered copy names the agent, never the retired noun", () => {
+  it("rendered copy names the Fleet, never the retired noun", () => {
     const offenders: string[] = [];
     for (const [path, content] of Object.entries(sources)) {
       content.split("\n").forEach((line, i) => {

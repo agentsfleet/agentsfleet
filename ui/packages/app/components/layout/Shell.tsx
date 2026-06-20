@@ -44,14 +44,14 @@ const TOP_NAV: NavEntry[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
 ];
 
-// The live work — what the agents do.
+// The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Agents", href: "/agents", icon: SkullIcon },
+  { label: "Fleets", href: "/fleets", icon: SkullIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the agents are wired to — the model brain and the provider/service
+// What the fleets are wired to — the model brain and the provider/service
 // secrets, unified on one page; plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models & Credentials", href: "/settings/models", icon: CpuIcon },

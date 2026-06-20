@@ -3,7 +3,7 @@
 //! Split from runner_test.zig to keep each file under 500 lines.
 //! Covers:
 //! - DRY helpers — getFloat edge cases
-//! - OWASP Agent Security — credential non-leakage through composeMessage,
+//! - OWASP Fleet Security — credential non-leakage through composeMessage,
 //!        fail-closed execute when api_key / github_token present but message null
 
 const std = @import("std");
@@ -40,10 +40,10 @@ test "getFloat returns null for string value" {
     try std.testing.expect(json.getFloat(obj, "temp") == null);
 }
 
-// ── OWASP Agent Security additions ──────────────────
+// ── OWASP Fleet Security additions ──────────────────
 
 // composeMessage silently ignores unknown context keys.
-// Guards against a caller injecting api_key or github_token into the agent prompt
+// Guards against a caller injecting api_key or github_token into the fleet prompt
 // by using those as context field names — composeMessage only processes the 5
 // documented fields (spec_content, plan_content, memory_context,
 // defects_content, implementation_summary).
@@ -84,10 +84,10 @@ test "composeMessage preserves prompt injection verbatim in known fields (baseli
     try std.testing.expect(composed.len > "work".len);
 }
 
-// execute with api_key in agent_config but null message fails closed.
+// execute with api_key in fleet_config but null message fails closed.
 // Guards against a path where a valid api_key is present but the message
 // validation hasn't run yet — the system must reject before any credential injection.
-test "execute with api_key in agent_config and null message fails closed (startup_posture)" {
+test "execute with api_key in fleet_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
@@ -102,8 +102,8 @@ test "execute with api_key in agent_config and null message fails closed (startu
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
 }
 
-// execute with github_token in agent_config but null message fails closed.
-test "execute with github_token in agent_config and null message fails closed (startup_posture)" {
+// execute with github_token in fleet_config but null message fails closed.
+test "execute with github_token in fleet_config and null message fails closed (startup_posture)" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
@@ -118,7 +118,7 @@ test "execute with github_token in agent_config and null message fails closed (s
 
 // composeMessage with 5 unknown keys plus 1 known key.
 // Verifies the boundary is tight. Six keys produce sections: installed_instructions
-// (prepended) plus the 5 coding-agent append fields (spec_content, plan_content,
+// (prepended) plus the 5 coding-fleet append fields (spec_content, plan_content,
 // memory_context, defects_content, implementation_summary). Everything else is
 // dropped — this test injects 5 unknown keys and one append field (plan_content).
 test "composeMessage allowlist is tight — only the 6 known keys produce sections" {
@@ -205,7 +205,7 @@ test "composed prompt excludes tool secret bytes" {
     defer ctx.object.deinit(alloc);
     try ctx.object.put(alloc, wire.installed_instructions, .{ .string = "fetch the logs" });
     // A tool secret must never render even if mistakenly placed in context — only
-    // installed_instructions + the 5 coding-agent keys are allowlisted.
+    // installed_instructions + the 5 coding-fleet keys are allowlisted.
     try ctx.object.put(alloc, "secrets_map", .{ .string = "ghs_planted_tool_secret" });
 
     const composed = try runner.composeMessage(alloc, "EVENT", ctx);
@@ -287,7 +287,7 @@ test "composeMessage leaks nothing on allocation failure at any append site" {
     // every appendSlice inside composeMessage) and asserts the function returns
     // error.OutOfMemory and frees everything — exhaustive proof that the `parts`
     // errdefer is correct on every OOM path, not just the happy path. Covers the
-    // installed-instructions section + an appended coding-agent section.
+    // installed-instructions section + an appended coding-fleet section.
     const Case = struct {
         fn run(a: std.mem.Allocator) !void {
             var ctx = std.json.Value{ .object = .empty };
@@ -305,10 +305,10 @@ test "composeMessage leaks nothing on allocation failure at any append site" {
 
 test "mapError maps each RunnerError to its FailureClass; unknown → runner_crash" {
     try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.InvalidConfig));
-    try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.AgentInitFailed));
+    try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.FleetInitFailed));
     try std.testing.expectEqual(types.FailureClass.timeout_kill, runner.mapError(runner.RunnerError.Timeout));
     try std.testing.expectEqual(types.FailureClass.oom_kill, runner.mapError(runner.RunnerError.OutOfMemory));
-    try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(runner.RunnerError.AgentRunFailed));
+    try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(runner.RunnerError.FleetRunFailed));
     try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(error.Unexpected));
 }
 
@@ -324,10 +324,10 @@ test "errorCodeForFailure maps every FailureClass to its canonical UZ-EXEC code"
     try std.testing.expectEqualStrings(ec.ERR_EXEC_LEASE_EXPIRED, runner.errorCodeForFailure(.lease_expired));
     try std.testing.expectEqualStrings(ec.ERR_EXEC_RENEWAL_TERMINATED, runner.errorCodeForFailure(.renewal_terminate));
     // policy_deny is latent (no emit site) — mapped to the generic run-failure code.
-    try std.testing.expectEqualStrings(ec.ERR_EXEC_RUNNER_AGENT_RUN, runner.errorCodeForFailure(.policy_deny));
+    try std.testing.expectEqualStrings(ec.ERR_EXEC_RUNNER_FLEET_RUN, runner.errorCodeForFailure(.policy_deny));
 }
 
-test "collectSecrets extracts the llm api_key from agent_config" {
+test "collectSecrets extracts the llm api_key from fleet_config" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
@@ -335,7 +335,7 @@ test "collectSecrets extracts the llm api_key from agent_config" {
     try std.testing.expectEqualStrings("sk-secret", runner.collectSecrets(ac)[0].value);
 }
 
-test "collectSecrets yields an empty value when agent_config is null or the key is absent" {
+test "collectSecrets yields an empty value when fleet_config is null or the key is absent" {
     try std.testing.expectEqualStrings("", runner.collectSecrets(null)[0].value);
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };

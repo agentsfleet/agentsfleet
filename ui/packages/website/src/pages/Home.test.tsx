@@ -3,13 +3,13 @@ import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import Home from "./Home";
 import {
-  AGENT_PILLARS,
+  FLEET_PILLARS,
   CAPABILITY_ITEMS,
   HERO_HEADLINE,
   HOW_IT_WORKS_HEADING,
   KNOWLEDGE_POINTS,
   LOOP_STEPS,
-  PREBUILT_AGENTS,
+  PREBUILT_FLEETS,
   OPERATIONAL_KNOWLEDGE_HEADING,
   PRICING_COPY,
   RUNTIME_GUARANTEES_LABEL,
@@ -79,20 +79,20 @@ describe("Home", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
     const capabilities = screen.getByTestId("core-capabilities");
-    const fleet = screen.getByTestId("prebuilt-agents");
+    const fleet = screen.getByTestId("prebuilt-fleets");
     expectDocumentOrder(hero, capabilities);
     expectDocumentOrder(capabilities, fleet);
   });
 
-  it("renders the prebuilt-agents fleet before How it works", () => {
+  it("renders the prebuilt Fleet catalogue before How it works", () => {
     renderHome();
-    const fleet = screen.getByTestId("prebuilt-agents");
+    const fleet = screen.getByTestId("prebuilt-fleets");
     const howItWorks = screen.getByTestId("how-it-works");
     expectDocumentOrder(fleet, howItWorks);
-    for (const agent of PREBUILT_AGENTS) {
-      expect(screen.getByTestId(`agent-card-${agent.id}`)).toHaveTextContent(agent.name);
+    for (const fleet of PREBUILT_FLEETS) {
+      expect(screen.getByTestId(`fleet-card-${fleet.id}`)).toHaveTextContent(fleet.name);
     }
-    expect(screen.getByTestId("agent-card-coming-soon")).toBeInTheDocument();
+    expect(screen.getByTestId("fleet-card-coming-soon")).toBeInTheDocument();
   });
 
   it("renders How it works with the three-beat flow", () => {
@@ -124,7 +124,7 @@ describe("Home", () => {
         name: RUNTIME_GUARANTEES_LABEL,
       }),
     ).toBeInTheDocument();
-    for (const pillar of AGENT_PILLARS) {
+    for (const pillar of FLEET_PILLARS) {
       expect(screen.getByTestId(`capability-pillar-${pillar.id}`)).toHaveTextContent(
         pillar.title,
       );

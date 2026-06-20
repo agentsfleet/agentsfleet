@@ -1,6 +1,6 @@
 /**
  * logs-events-live — live `logs` + `events` read paths against a freshly
- * installed agent (seeded-credentials session, mirrors
+ * installed fleet (seeded-credentials session, mirrors
  * lifecycle-with-token.spec.ts).
  *
  * Scenario:
@@ -8,10 +8,10 @@
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
  *   - install the platform-ops bundle (prefix-scoped name) — the install
- *     itself generates the first events on the agent's timeline
- *   - `logs --agent <id> --json` returns a bounded, parseable
+ *     itself generates the first events on the fleet's timeline
+ *   - `logs --fleet <id> --json` returns a bounded, parseable
  *     `{items, next_cursor}` envelope; the read is time-bounded via
- *     `runAgentctl`'s `timeoutMs` so a wedged backend can't hang the suite
+ *     `runFleetctl`'s `timeoutMs` so a wedged backend can't hang the suite
  *   - `events <id> --json` cursor walk: page across the paginator until it
  *     stops returning `next_cursor`, asserting (a) no infinite loop — the
  *     walk is capped at MAX_PAGES, (b) cursor monotonicity — a re-emitted
@@ -24,15 +24,15 @@
  *     assertion would flake the moment the timeline is served newest-first.
  *
  * Negative paths (no network residue / structured errors):
- *   - `events` with a missing `<agent_id>` rejected by commander
+ *   - `events` with a missing `<fleet_id>` rejected by commander
  *   - `logs --limit` out of bounds rejected client-side (EVENTS_LIMIT_BOUNDS)
  *
- * Teardown: prefix-scoped `cleanWorkspaceAgents` — only this run's agents
+ * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
  * global emptiness is never asserted.
  *
  * The minted JWT must not appear in any spawn's stdout/stderr
- * (`assertNoSecretLeak` after every `runAgentctl`).
+ * (`assertNoSecretLeak` after every `runFleetctl`).
  *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET`
  * is an https URL; otherwise every test is skipped (local runs skip; CI
@@ -46,7 +46,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak, expectMissingArg } from "./fixtures/negatives.ts";
 import {
@@ -56,8 +56,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   AGENT_FLAG,
   CURSOR_FLAG,
@@ -83,8 +83,8 @@ const NO_COLOR_ENV_KEY = "NO_COLOR" as const;
 const NO_COLOR_ON = "1" as const;
 
 // `logs` is a single bounded HTTP read (not a follow/stream), but cap it
-// anyway so a wedged backend surfaces as a `runAgentctl` timeout rather
-// than hanging the suite. Generous enough for a cold DEV agent's first page.
+// anyway so a wedged backend surfaces as a `runFleetctl` timeout rather
+// than hanging the suite. Generous enough for a cold DEV fleet's first page.
 const LOGS_READ_TIMEOUT_MS = 30_000;
 
 // Out-of-bounds limit: EVENTS_LIMIT_BOUNDS is {min:1, max:500}, so 0 trips
@@ -97,7 +97,7 @@ const CREATED_AT_KEY = "created_at" as const;
 const CURSOR_PROBE_LIMIT = "2" as const;
 
 // Cursor walks fan out a page per round-trip; give them generous live
-// budgets so a cold DEV agent doesn't trip the default test timeout.
+// budgets so a cold DEV fleet doesn't trip the default test timeout.
 const WALK_TIMEOUT_MS = 60_000;
 const CURSOR_ROUNDTRIP_TIMEOUT_MS = 30_000;
 
@@ -112,13 +112,13 @@ if (!isLive) {
     let stateDir = "";
     let env: Record<string, string> = {};
     let workspaceId = "";
-    let agentId = "";
+    let fleetId = "";
 
     async function runWithEnv(
       args: ReadonlyArray<string>,
       timeoutMs?: number,
     ): Promise<RunResult> {
-      const result = await runAgentctl(args, timeoutMs === undefined ? { env } : { env, timeoutMs });
+      const result = await runFleetctl(args, timeoutMs === undefined ? { env } : { env, timeoutMs });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -141,32 +141,32 @@ if (!isLive) {
 
       // Install once for the whole suite — generates the timeline the logs
       // tail and the events walk both read. Prefix-scoped name so teardown
-      // only reaps this run's agent.
-      const installed = await installPlatformOpsAgent({ env });
-      const id = installed.id ?? installed.agent_id;
+      // only reaps this run's fleet.
+      const installed = await installPlatformOpsFleet({ env });
+      const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      agentId = id;
+      fleetId = id;
     });
 
     afterAll(async () => {
       if (env && workspaceId) {
         try {
-          await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
         } catch { /* best-effort teardown — shared DEV tenant */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
     describe("logs tail (bounded)", () => {
-      it("logs --agent <id> --json returns a parseable {items,next_cursor} envelope", async () => {
+      it("logs --fleet <id> --json returns a parseable {items,next_cursor} envelope", async () => {
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, agentId, JSON_FLAG],
+          [LOGS_COMMAND, AGENT_FLAG, fleetId, JSON_FLAG],
           LOGS_READ_TIMEOUT_MS,
         );
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}") as Record<string, unknown>;
         assert.equal(typeof parsed, "object", `logs payload not an object: ${result.stdout}`);
-        // `items` may be absent on a brand-new agent, but when present it
+        // `items` may be absent on a brand-new fleet, but when present it
         // must be an array; `next_cursor`, when present, is a string|null.
         if (ITEMS_KEY in parsed) {
           assert.ok(Array.isArray(parsed[ITEMS_KEY]), `logs ${ITEMS_KEY} not an array: ${result.stdout}`);
@@ -180,7 +180,7 @@ if (!isLive) {
       it("logs honours --limit and never overruns the cap", async () => {
         const limit = 3;
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, agentId, LIMIT_FLAG, String(limit), JSON_FLAG],
+          [LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, String(limit), JSON_FLAG],
           LOGS_READ_TIMEOUT_MS,
         );
         assert.equal(result.code, 0, `logs --limit exited ${result.code}: ${result.stderr}`);
@@ -192,7 +192,7 @@ if (!isLive) {
 
     describe("events cursor walk", () => {
       it("walks pages to exhaustion without an infinite loop", async () => {
-        const walk = await walkEventsCursor(env, agentId, (page, idx) => {
+        const walk = await walkEventsCursor(env, fleetId, (page, idx) => {
           assertEnvelopeShape(page, idx);
           assertTimestampsWellFormed(page, idx);
         });
@@ -207,7 +207,7 @@ if (!isLive) {
       }, WALK_TIMEOUT_MS);
 
       it("emitted cursors are strictly distinct (monotonic, no cycles)", async () => {
-        const walk = await walkEventsCursor(env, agentId);
+        const walk = await walkEventsCursor(env, fleetId);
         const unique = new Set(walk.cursors);
         assert.equal(unique.size, walk.cursors.length,
           `cursor sequence had duplicates: ${JSON.stringify(walk.cursors)}`);
@@ -220,7 +220,7 @@ if (!isLive) {
 
       it("a supplied cursor is accepted and re-paginates deterministically", async () => {
         const first = await runWithEnv(
-          [EVENTS_COMMAND, agentId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
+          [EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(first.code, 0, `events first page exited ${first.code}: ${first.stderr}`);
@@ -228,7 +228,7 @@ if (!isLive) {
         const cursor = typeof firstParsed.next_cursor === "string" ? firstParsed.next_cursor : null;
         if (!cursor) return; // single-page fixture — nothing further to assert.
         const second = await runWithEnv(
-          [EVENTS_COMMAND, agentId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
+          [EVENTS_COMMAND, fleetId, LIMIT_FLAG, CURSOR_PROBE_LIMIT, CURSOR_FLAG, cursor, JSON_FLAG],
           CURSOR_ROUNDTRIP_TIMEOUT_MS,
         );
         assert.equal(second.code, 0, `events --cursor exited ${second.code}: ${second.stderr}`);
@@ -239,14 +239,14 @@ if (!isLive) {
     });
 
     describe("negative paths (no residue)", () => {
-      it("events with no <agent_id> is rejected by commander", async () => {
+      it("events with no <fleet_id> is rejected by commander", async () => {
         const result = await expectMissingArg([EVENTS_COMMAND], env);
         assertNoSecretLeak(result, sessionJwt);
       });
 
       it("logs --limit out of bounds is rejected client-side", async () => {
         const result = await runWithEnv(
-          [LOGS_COMMAND, AGENT_FLAG, agentId, LIMIT_FLAG, OUT_OF_BOUNDS_LIMIT, JSON_FLAG],
+          [LOGS_COMMAND, AGENT_FLAG, fleetId, LIMIT_FLAG, OUT_OF_BOUNDS_LIMIT, JSON_FLAG],
         );
         assert.notEqual(result.code, 0,
           `expected non-zero for out-of-bounds --limit; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -268,7 +268,7 @@ function assertEnvelopeShape(page: EventsEnvelope, pageIndex: number): void {
 
 /**
  * Every `created_at` a row carries must be a finite number (epoch ms — the
- * shape `agent_events.ts` feeds to `new Date(ev.created_at)`). The CLI
+ * shape `fleet_events.ts` feeds to `new Date(ev.created_at)`). The CLI
  * passes the server's row order through verbatim and promises no
  * ascending/descending direction, so this asserts well-formedness only,
  * never ordering — a directional check would flake on a newest-first

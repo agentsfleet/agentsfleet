@@ -1,4 +1,4 @@
-//! GET /v1/fleet/runners — platform-admin operator-plane read of the fleet.
+//! GET /v1/fleets/runners — platform-admin operator-plane read of the fleet.
 //!
 //! Authed by `platformAdmin` (same gate as enrollment). Paginated, read-only.
 //! Each row carries a DERIVED `liveness` (never the stored auth `status`, never

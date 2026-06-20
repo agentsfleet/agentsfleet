@@ -31,7 +31,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { PtyProcess } from "./fixtures/pty.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
@@ -128,7 +128,7 @@ if (!isLive) {
     ): Promise<RunResult> {
       const env = extra?.env ? { ...baseEnv, ...extra.env } : baseEnv;
       const opts = extra?.stdin !== undefined ? { env, stdin: extra.stdin } : { env };
-      const result = await runAgentctl(args, opts);
+      const result = await runFleetctl(args, opts);
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -276,7 +276,7 @@ if (!isLive) {
       beforeEach(freshStateDir);
 
       it("Ctrl-C → exit 130, no credentials.json", async () => {
-        const cli = PtyProcess.spawnAgentctl([CMD_LOGIN, FLAG_NO_OPEN], { env: baseEnv });
+        const cli = PtyProcess.spawnFleetctl([CMD_LOGIN, FLAG_NO_OPEN], { env: baseEnv });
         try {
           await cli.waitForLine((line) => CODE_PROMPT_RE.test(line), HANDSHAKE_TIMEOUT_MS);
           cli.interrupt();
@@ -298,7 +298,7 @@ if (!isLive) {
       beforeEach(freshStateDir);
 
       itHandshake("000000 → re-prompt → real code → exit 0 + credentials.json", async () => {
-        const cli = PtyProcess.spawnAgentctl([CMD_LOGIN, FLAG_NO_OPEN], { env: baseEnv });
+        const cli = PtyProcess.spawnFleetctl([CMD_LOGIN, FLAG_NO_OPEN], { env: baseEnv });
         try {
           const announced = await cli.waitForLine((line) => LOGIN_URL_RE.test(line), HANDSHAKE_TIMEOUT_MS);
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);

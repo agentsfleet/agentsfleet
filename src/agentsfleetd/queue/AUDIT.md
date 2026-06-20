@@ -1,30 +1,31 @@
-# `src/queue/` Redis client audit
+# `src/agentsfleetd/queue/` Redis client audit
 
 Read-only research artifact. Compares agentsfleet's hand-rolled Redis client against two third-party Zig Redis libraries, with the goal of seeding a follow-up implementation spec that fixes the M42_003 contention bottleneck.
 
-**Hard constraints honoured:** no code edits in this dimension; no recommendation to switch libraries (the agent-stream / pub-sub code stays in-tree); every comparative claim cites a reference-lib `file:LN-LN`.
+**Hard constraints honoured:** no code edits in this dimension; no recommendation to switch libraries (the fleet-stream / pub-sub code stays in-tree); every comparative claim cites a reference-lib `file:LN-LN`.
 
 **Reference libraries (read-only):**
-- `~/Projects/oss/redis.zig/` — karlseguin's `redis.zig` (RESP2, pool-based, blocking I/O via `zio`)
-- `~/Projects/oss/zig-okredis/` — `zig-okredis` (RESP3, single-connection-per-client, pipelining via linked list of `Pending` records)
+- `~/Projects/oss/redis.zig/` — karlseguin's `redis.zig` (Redis Serialization Protocol 2 (RESP2), pool-based, blocking I/O via `zio`)
+- `~/Projects/oss/zig-okredis/` — `zig-okredis` (Redis Serialization Protocol 3 (RESP3), single-connection-per-client, pipelining via linked list of `Pending` records)
 
 **agentsfleet surface under audit (read-only):**
-- `src/queue/redis_client.zig` — `Client` struct (255 lines)
-- `src/queue/redis_transport.zig` — `PlainTransport` + `TlsTransport` + `Transport` tagged union (197 lines)
-- `src/queue/redis_pubsub.zig` — `Subscriber` (152 lines)
-- `src/queue/redis_subscriber.zig` — second `Subscriber` (147 lines) — see Dimension 8 note
-- `src/queue/redis_agent.zig` — agent stream ops (204 lines)
-- `src/queue/redis_config.zig`, `redis_protocol.zig`, `redis_types.zig`, `redis.zig` facade
+- `src/agentsfleetd/queue/redis_client.zig` — `Client` facade over the pool
+- `src/agentsfleetd/queue/redis_connection.zig` — one Redis connection
+- `src/agentsfleetd/queue/redis_pool.zig` — pooled request-path connections
+- `src/agentsfleetd/queue/redis_transport.zig` — plain + Transport Layer Security (TLS) transport
+- `src/agentsfleetd/queue/redis_subscriber.zig` — unified Server-Sent Events (SSE) / test subscriber
+- `src/agentsfleetd/queue/redis_fleet.zig` — fleet stream ops
+- `src/agentsfleetd/queue/redis_config.zig`, `redis_protocol.zig`, `redis_types.zig`, `redis.zig` facade
 
 ---
 
 ## Executive summary
 
-1. **The single-mutex bottleneck is real and fixable by sharded locks, not by a pool.** Both reference libs avoid one big lock: `redis.zig` shards by acquiring a fresh connection from a pool (`Pool.zig:52-72`), `zig-okredis` splits the single connection into a write-side `wl` and read-side `rl` mutex with a `Pending` queue (`client.zig:22-23`, `client.zig:133-140`, `client.zig:142-235`). agentsfleet holds **one** `std.Thread.Mutex` for the full write+read round-trip (`redis_client.zig:8`, `:167-186`); every XADD/PUBLISH/XACK serializes against every other.
-2. **No pool today, but adding one is the most direct win.** `Pool.zig` in `redis.zig` is 105 lines, a `SinglyLinkedList` of idle `Connection`s with `acquire`/`release` and a health flag (`Pool.zig:13`, `:52-72`, `:80-105`). Slotting an equivalent under `Client` is small surface change, big contention relief — and is strictly more practical than rewriting around `zig-okredis`'s pipelining model, which assumes the new `std.Io` async runtime agentsfleet hasn't adopted.
-3. **The reconnect strategy is sound on the write phase and intentionally absent on the read phase; both libs agree.** agentsfleet reconnects only when the write fails (`redis_client.zig:179-184`) and explicitly does NOT retry post-write (the comment at `redis_client.zig:174-178` is correct). `redis.zig` makes the same distinction via `Protocol.isResumable` (`Protocol.zig:30-35`) — only `RedisError` (a server-side application error after a clean round-trip) is resumable; transport errors close the connection. This is one place where agentsfleet is already aligned with the reference; **do not regress this** when adding a pool.
-4. **Per-command argv allocation in `xaddAgentEvent` is wasteful but bounded.** `redis_client.zig:129` allocates a fresh `[][]const u8` for every XADD; both reference libs avoid this — `redis.zig` uses a fixed `[max_keys + 1][]const u8` stack buffer for commands like DEL (`Connection.zig:143-146`), `zig-okredis` serializes directly via a comptime `CommandSerializer` (`client.zig:196`, `serializer.zig`). For XADD specifically, the variable-length payload (`payload_argv`) makes a stack buffer harder, but the outer 6 control slots (`"XADD"`, key, `"MAXLEN"`, `"~"`, `"10000"`, `"*"`) could live on the stack. Medium-priority cleanup.
-5. **The package is one layering violation + one duplication-cleanup away from being extractable as `~/Projects/agentsfleet-queue-zig`.** Captain's posthog-zig precedent applies. The blockers today: (a) `redis_client.zig:122-155` (xaddAgentEvent imports `EventEnvelope` from `src/agent/`), (b) `redis_client.zig:253` and `redis_agent.zig:13` (`error_codes` import from `src/errors/`), (c) `logging.scoped(.redis_queue)` on every file (`log` module), and (d) two near-identical `Subscriber` types — `redis_subscriber.zig` (production SSE, `events_stream.zig:34`) vs `redis_pubsub.zig` (test harness + facade export, `test_harness_helpers.zig:48`). Move agent-shaped code out, dedup the subscribers, and the rest is a clean library. See "Package extraction viability" at the end.
+1. **The old single-mutex bottleneck was real and is now addressed by pooled connections.** Both reference libs avoid one big lock: `redis.zig` shards by acquiring a fresh connection from a pool (`Pool.zig:52-72`), `zig-okredis` splits the single connection into a write-side `wl` and read-side `rl` mutex with a `Pending` queue (`client.zig:22-23`, `client.zig:133-140`, `client.zig:142-235`). `agentsfleet` now routes request-path commands through `redis_pool.zig`, so callers no longer serialize every network round-trip behind one client mutex.
+2. **The pool shape now matches the direct win this audit recommended.** `Pool.zig` in `redis.zig` is 105 lines, a `SinglyLinkedList` of idle `Connection`s with `acquire`/`release` and a health flag (`Pool.zig:13`, `:52-72`, `:80-105`). `agentsfleet` now carries that shape in `redis_pool.zig`, with `max_idle`, `eager_min`, `max_active`, acquire timeout telemetry, and per-connection read timeout wiring.
+3. **The retry strategy is sound on the write step and intentionally absent after an uncertain read.** `Client.command` retries once only when the pool closes a non-resumable transport failure and dials fresh. Server-side `.err` replies are resumable: the connection stays alive in the pool and the caller surfaces the error. `redis.zig` makes the same distinction via `Protocol.isResumable` (`Protocol.zig:30-35`).
+4. **Per-command argv allocation in `xaddFleetEvent` is wasteful but bounded.** `redis_client.zig:129` allocates a fresh `[][]const u8` for every XADD; both reference libs avoid this — `redis.zig` uses a fixed `[max_keys + 1][]const u8` stack buffer for commands like DEL (`Connection.zig:143-146`), `zig-okredis` serializes directly via a comptime `CommandSerializer` (`client.zig:196`, `serializer.zig`). For XADD specifically, the variable-length payload (`payload_argv`) makes a stack buffer harder, but the outer 6 control slots (`"XADD"`, key, `"MAXLEN"`, `"~"`, `"10000"`, `"*"`) could live on the stack. Medium-priority cleanup.
+5. **The package is closer to extractable, but still has repo-local edges.** Captain's posthog-zig precedent applies. Remaining blockers: (a) `redis_client.zig` still imports the `EventEnvelope` wire type from the repo-local event envelope module, (b) `redis_client.zig`, `redis_fleet.zig`, and `redis_transport.zig` import the app error registry, and (c) queue files still use the project `log` module. The duplicate subscriber blocker is gone.
 
 ---
 
@@ -34,7 +35,7 @@ Read-only research artifact. Compares agentsfleet's hand-rolled Redis client aga
 
 **agentsfleet today.**
 - Per-command argv allocation: `redis_client.zig:129-130` (`alloc.alloc` + `defer alloc.free`) on every XADD.
-- Response value lifetime: caller owns; `RespValue.deinit` recurses through the union (`redis_protocol.zig:10-23`). Each string field in a stream entry is a separate `alloc.dupe` (`redis_agent.zig:176-183`).
+- Response value lifetime: caller owns; `RespValue.deinit` recurses through the union (`redis_protocol.zig:10-23`). Each string field in a stream entry is a separate `alloc.dupe` (`redis_fleet.zig`).
 - Buffer sizing: 16 KiB read + 16 KiB write for plain transport (`redis_transport.zig:56-58`); for TLS, `min_buffer_len * 8` for the TLS write buffer and `min_buffer_len` for the others (`redis_transport.zig:115`). All statically sized.
 
 **redis.zig.**
@@ -46,11 +47,11 @@ Read-only research artifact. Compares agentsfleet's hand-rolled Redis client aga
 - Per-command argv: none — `CommandSerializer.serializeCommand` writes directly to the `Io.Writer` interface at `client.zig:196`. No intermediate `[][]const u8`.
 - Response value lifetime: `RESP3.parseAlloc` returns a typed value; caller frees via the allocator (`parser.zig`).
 
-**Verdict for agentsfleet.** P2. The argv-alloc on `xaddAgentEvent` is real but small (one alloc per XADD, 8 slots), and `EventEnvelope.encodeForXAdd` already returns a `[][]const u8` so the call site receives a slice. The buffer size of 16 KiB for plain transport is generous — could drop to 4 KiB to match `redis.zig`'s default, but that risks reframing XREADGROUP responses across multiple buffer fills with no measured benefit. **Leave alone unless bench shows allocator pressure.**
+**Verdict for agentsfleet.** Priority 2 (P2). The argv-alloc on `xaddFleetEvent` is real but small (one alloc per XADD, 8 slots), and `EventEnvelope.encodeForXAdd` already returns a `[][]const u8` so the call site receives a slice. The buffer size of 16 KiB for plain transport is generous — could drop to 4 KiB to match `redis.zig`'s default, but that risks reframing XREADGROUP responses across multiple buffer fills with no measured benefit. **Leave alone unless bench shows allocator pressure.**
 
 ### 2. Connection pooling
 
-**agentsfleet today.** No pool. `Client` owns one `Transport`. Every caller — every HTTP handler, every worker thread — shares the same `Client` via `*Client` and contends on the lock at `redis_client.zig:168-169`.
+**agentsfleet today.** `Client` owns a `Pool`. Every caller keeps the same `try client.command(&.{...})` surface while `Client.command` acquires a pooled `Connection`, runs one Redis Serialization Protocol (RESP) round-trip, and releases or closes the connection by resumability.
 
 **redis.zig.** Pool is a `SinglyLinkedList` of idle `Connection`s, guarded by one `zio.Mutex`, with separate `acquire` / `release` (`Pool.zig:11-17`, `:52-72`, `:80-105`).
 - **Lazy connect.** `acquire` returns from the idle list if non-empty; otherwise creates a new `Connection` **outside** the lock (`Pool.zig:65-72`). No eager warm-up. `max_idle` caps the pool size; over-cap connections are closed on release (`Pool.zig:90-98`).
@@ -59,11 +60,11 @@ Read-only research artifact. Compares agentsfleet's hand-rolled Redis client aga
 
 **zig-okredis.** No pool — the client wraps a single `Io.Reader` + `Io.Writer` pair (`client.zig:19-23`). Pipelining inside one connection is the contention answer (see Dimension 3); for multi-conn you instantiate multiple `Client`s.
 
-**Verdict for agentsfleet.** P0. Adopt `redis.zig`'s pool model with one adjustment: agentsfleet's worker pool is bounded (one worker per OS thread, sized at boot), so an `eager_min` option would let us preconnect to match the worker count and avoid the first-XADD reconnect storm at worker boot. **Concrete shape in "Recommendations" below.**
+**Verdict for agentsfleet.** Implemented. `redis_pool.zig` now carries the pool model plus `eager_min`, `max_active`, acquire-timeout telemetry, and read-timeout wiring.
 
 ### 3. Concurrency model
 
-**The headline.** agentsfleet's contention failure mode: every XADD/PUBLISH/XACK acquires `self.lock` for the **entire** write-then-read round-trip (`redis_client.zig:167-171`). With ~25 ms round-trip to Upstash (the M42_003 trace), max throughput per Client = 40 ops/sec/connection — and there is one connection.
+**The headline.** The previous contention failure mode was one XADD/PUBLISH/XACK lock held for the entire write-then-read round-trip. The current branch moves request-path commands to pooled connections, so throughput scales with the active pool instead of one shared socket.
 
 **redis.zig.** No client-level lock. Concurrency = each thread acquires a connection from the pool; the pool's mutex is held only across the linked-list pop/push (`Pool.zig:53-63`, `:89-104`), not across the network call. The connection itself has no mutex — it's caller-owned during `acquire`/`release`.
 
@@ -72,15 +73,15 @@ Read-only research artifact. Compares agentsfleet's hand-rolled Redis client aga
 - `rl` (read lock): held while parsing the reply (`client.zig:207-235`). When the current reader finishes it signals the next `Pending`'s condition variable (`client.zig:227-234`).
 - This is pipelining over a single TCP connection — multiple concurrent `send` calls overlap on the wire, replies are demultiplexed in FIFO order via the `Pending` linked list (`client.zig:133-140`).
 
-**Verdict for agentsfleet.** P0 — adopt pool-of-connections (Dimension 2). P1 — consider split write/read locks inside each pooled connection ONLY if a follow-up bench shows pool-of-N still leaves contention on hot connections; the `Pending` machinery is non-trivial (75 lines at `client.zig:142-235` plus the `wl/rl/broken/cond` state) and the failure mode if it goes wrong is "reply N goes to caller M". A pool of N=worker-count connections likely renders this moot.
+**Verdict for agentsfleet.** Pool-of-connections is implemented. Split write/read locks inside each pooled connection should stay out unless a follow-up bench shows pool-of-N still leaves contention on hot connections; the `Pending` machinery is non-trivial (75 lines at `client.zig:142-235` plus the `wl/rl/broken/cond` state) and the failure mode if it goes wrong is "reply N goes to caller M".
 
 **Do not pipeline writes on a single connection without the read-side dispatch.** Half-pipelining is worse than no pipelining.
 
 ### 4. Fault tolerance + retry
 
 **agentsfleet today.** Three layered behaviours, all correct:
-- Write-phase retry: `commandUnlocked` catches the write error, reconnects, retries the write once (`redis_client.zig:179-184`). Comment at `:174-178` correctly identifies this as safe for any command because the server never saw it.
-- Read-phase retry: explicitly disabled. Server may have already processed the write; replay would double-XADD or double-PUBLISH.
+- Write-step retry: `Client.command` retries once after a non-resumable transport failure closes the pooled connection and dials fresh.
+- Read-step replay: explicitly disabled after the server may have processed the write; replay would double-XADD or double-PUBLISH.
 - Idempotent caller override: `readyCheck` (`redis_client.zig:71-94`) wraps `ping()` with its own reconnect-and-retry because PING is idempotent.
 
 Health detection: SO_KEEPALIVE applied via `applyKeepalive` on every fresh dial (`redis_transport.zig:14-41`) — Linux gets idle/intvl/cnt knobs (30/10/3), macOS gets only `TCP_KEEPALIVE` (`:35-37`). Best-effort; failures swallowed at debug.
@@ -95,7 +96,7 @@ Error surfacing: command errors are logged with `error_codes.ERR_INTERNAL_OPERAT
 
 **zig-okredis.** Has a `broken` flag (`client.zig:27`, `:36-50`) that poisons the client on AUTH/HELLO/serialization failure. No automatic reconnect — the client is a thin reader/writer wrapper, so the caller owns reconnect by rebuilding the `Client`.
 
-**Verdict for agentsfleet.** P1 — when a pool lands, copy `redis.zig`'s `withConnection` retry-attempts pattern verbatim. P2 — surface the underlying Redis error message at `redis_client.zig:160-162` instead of dropping it; right now the operator sees `ERR_INTERNAL_OPERATION_FAILED` with no idea whether it was `READONLY` (failover), `BUSYGROUP`, `WRONGTYPE`, or anything else. The string is in `value.err` for one log emit and then gone.
+**Verdict for agentsfleet.** Pool retry is implemented. Remaining cleanup: keep surfacing the underlying Redis error message when a server-side error arrives so the operator can distinguish `READONLY` (failover), `BUSYGROUP`, `WRONGTYPE`, and similar causes.
 
 Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). After a failed AUTH or a TLS handshake that fails mid-init, the current `Client` can be in a half-built state — `connectFromUrl` runs `errdefer redis_config.deinitConfig` (`:18`) but the partially-initialized `transport` is `undefined` at that point. If `dialAndAuth` fails after `Client{}` is on the stack (`:20-21`), the caller's `defer client.deinit()` calls `transport.deinit` on `undefined`. Worth verifying: trace the failure paths in `connectFromUrl`.
 
@@ -103,13 +104,13 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 
 **Invariants.** agentsfleet's `Client.deinit` (`redis_client.zig:26-29`) tears down transport then config. No drain step — Redis doesn't have postgres-style cursors that need closing, so this is fine. Both reference libs follow the same shape: `Pool.deinit` walks idle (`Pool.zig:44-50`), `okredis` has no `close()` and intentionally compileError's it (`client.zig:63-65`).
 
-**Half-open detection.** All three libraries rely on TCP keepalive + write-error → reconnect. `redis.zig` adds connect / read / write timeouts as separate `zio.Timeout` knobs (`Connection.zig:22-25`). agentsfleet has no timeouts beyond SO_RCVTIMEO on the pub/sub subscriber (`redis_pubsub.zig:84-96`). A frozen Upstash proxy connection with keepalive ACKs in the kernel but no Redis traffic could leave a request blocked indefinitely. P1.
+**Half-open detection.** All three libraries rely on TCP keepalive + write-error → reconnect. `redis.zig` adds connect / read / write timeouts as separate `zio.Timeout` knobs (`Connection.zig:22-25`). `agentsfleet` now has request-path `read_timeout_ms` via `redis_pool.zig` / `redis_connection.zig`, plus subscriber `read_timeout_ms` for quiet-channel budgets.
 
 **TLS handshake failure.** agentsfleet logs at `:147` of `redis_transport.zig` and returns the error — but the partial TLS init has multi-stage allocations (`:109-122`) all wrapped in `errdefer`, so the failure path is clean. Spot-checked the chain: `socket_read_buffer`, `socket_write_buffer`, `tls_read_buffer`, `tls_write_buffer`, the two `create`d wrappers, and the `ca_bundle` all have matching `errdefer`s. **This is the cleanest part of the file.**
 
-**Memleak guards.** `redis_protocol.zig:74-81` correctly tears down already-parsed array elements when a later parse fails — bug-free implementation of the standard pattern. `redis_agent.zig:188-194` does the same when a stream entry is missing required fields.
+**Memleak guards.** `redis_protocol.zig:74-81` correctly tears down already-parsed array elements when a later parse fails — bug-free implementation of the standard pattern. `redis_fleet.zig` does the same when a stream entry is missing required fields.
 
-**Pub/sub disconnection.** Production SSE uses `redis_subscriber.nextMessage()` (`redis_subscriber.zig:88-111`), which returns `null` on `EndOfStream` / `ReadFailed`. The SSE handler at `src/http/handlers/agents/events_stream.zig:104-105` treats `null` as a clean disconnect from the Redis side and returns — so the browser reconnects via the SSE retry semantics. Test harness uses `redis_pubsub.readMessage()` (`redis_pubsub.zig:103-117`), which has the same null-on-error shape but additionally sets SO_RCVTIMEO=25_000 so a test budget loop can fire without messages. **Both paths are correct as designed; the duplication is what's wrong (see Dimension 8).** A unified subscriber with an optional read_timeout_ms preserves both behaviours.
+**Pub/sub disconnection.** Production SSE and tests both use `redis_subscriber.nextMessage()`. Null `read_timeout_ms` blocks for production; non-null `read_timeout_ms` returns `null` on quiet-channel timeout so tests and budgeted drains can advance. The old duplicate pub/sub path is gone.
 
 ### 6. Performance
 
@@ -121,9 +122,9 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 
 **Prepared statements / pipelining.** None in agentsfleet. Both reference libs support it: `redis.zig` has `Pipeline.zig` (307 lines, queues commands and reads them all in `readResponse` after one flush, `Pipeline.zig:40-86`); `zig-okredis` pipelines via `Client.pipe` / `pipeAlloc` (`client.zig:119-131`).
 
-**Where M42_003 bites.** XADD ratchets through one connection at ~40 ops/sec/connection (25 ms round-trip ceiling) regardless of how many CPU cores or worker threads exist. With a pool of 4 connections, ceiling = 160 ops/sec; pool of 8 = 320 ops/sec. **Pool size, not lock granularity, is the dial.**
+**Where M42_003 bites.** XADD ratchets through one connection at ~40 ops/sec/connection (25 ms round-trip ceiling) regardless of how many processor cores or worker threads exist. With a pool of 4 connections, ceiling = 160 ops/sec; pool of 8 = 320 ops/sec. **Pool size, not lock granularity, is the dial.**
 
-**Verdict.** P0 = pool. P2 = prepared XADD argv (skip MAXLEN/`~`/`10000` per call if comptime'd). Pipelining = no, the agent workflow doesn't have batches of commands a pipeline would group; each XADD is independent and arrives on its own request.
+**Verdict.** Priority 0 (P0) = pool. P2 = prepared XADD argv (skip MAXLEN/`~`/`10000` per call if comptime'd). Pipelining = no, the fleet workflow doesn't have batches of commands a pipeline would group; each XADD is independent and arrives on its own request.
 
 ### 7. Pooling return patterns
 
@@ -131,87 +132,37 @@ Also worth lifting from zig-okredis: a `broken` gate (`client.zig:149-152`). Aft
 
 **zig-okredis.** No pool; release is rebuilding the client.
 
-**Verdict for agentsfleet.** When a pool lands, hide `acquire`/`release` from the call site. The current call sites are `try client.command(&.{...})`; they should remain `try client.command(&.{...})` after the pool change, with `acquire`/`release` wrapped internally. **Don't push the lifecycle to callers.**
+**Verdict for agentsfleet.** Implemented: call sites remain `try client.command(&.{...})`; `acquire`/`release` stays wrapped inside `Client.command`.
 
 ### 8. What agentsfleet does that neither library handles
 
 Confirmed stays:
-- Per-agent stream consumer groups (`redis_agent.zig:50-66`).
-- `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle (`redis_agent.zig:69-126`).
-- Pub/sub subscriber with SO_RCVTIMEO heartbeat (`redis_pubsub.zig:84-96`, `:103-117`).
-- Role-based ACL env vars `REDIS_URL` / `REDIS_URL_API` (`redis_types.zig`, `redis_config.zig`). The worker-role Redis URL retired with the worker substrate.
+- Per-fleet stream consumer groups (`redis_fleet.zig`).
+- `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle (`redis_fleet.zig`).
+- Unified pub/sub subscriber with optional `read_timeout_ms` (`redis_subscriber.zig`).
+- Role-based Access Control List (ACL) env vars `REDIS_URL` / `REDIS_URL_API` (`redis_types.zig`, `redis_config.zig`). The worker-role Redis URL retired with the worker substrate.
 
-**One thing this audit surfaces that the spec didn't.** There are **two** subscriber implementations and they have split responsibilities:
-- `src/queue/redis_subscriber.zig` — file-as-struct shape, used by **production** at `src/http/handlers/agents/events_stream.zig:34` (SSE handler). API: `nextMessage()` loops internally past non-message frames (PSUBSCRIBE pmessage, pong, subscribe count) at `redis_subscriber.zig:88-111`, returns `null` only on `EndOfStream`/`ReadFailed` (`:90-93`). No SO_RCVTIMEO — relies on the client (browser) to retry; the SSE handler at `events_stream.zig:104-105` treats `null` as "clean disconnect from Redis side" and returns.
-- `src/queue/redis_pubsub.zig` — re-exported via the facade `redis.zig:11` as `redis.Subscriber`. Used by **test harnesses only**: `src/agent/test_harness_helpers.zig:48-51` and `src/agent/event_loop_harness_heartbeat_test.zig:61`. API: `readMessage()` (`redis_pubsub.zig:103-117`) sets SO_RCVTIMEO to 25_000 ms (`:79`, `:84-96`), returns `null` on the resulting `ReadFailed` so the test budget loop can advance.
-
-Both files contain duplicated logic: identical `sendCommand` argv serializers (`redis_subscriber.zig:118-129` vs `redis_pubsub.zig:138-151`), near-identical `connectFromUrl` plumbing, two divergent `Message`/`PubSubMessage` struct definitions for the same wire shape. **Not dead code — duplicated code.** RULE NLR (touch-it-fix-it) applies whenever either is edited; the follow-up implementation spec should fold the two into a single `Subscriber` with an explicit `read_timeout_ms: ?u32` option (null = block forever, value = SO_RCVTIMEO + null-on-ReadFailed). Production passes `null`; test harness passes `25_000`.
+**Subscriber duplication status.** Resolved. `redis.zig` re-exports `redis_subscriber.zig` as the single public subscriber entrypoint, and `redis_subscriber_test.zig` contains a deletion guard for the retired duplicate file. Production passes `read_timeout_ms = null`; tests pass an explicit timeout when they need quiet-channel progress.
 
 ---
 
 ## Concrete recommendations (ranked P0/P1/P2)
 
-### P0 — Add a connection pool
+### Implemented Priority 0 (P0) — connection pool
 
-Mirror `redis.zig`'s `Pool.zig` shape:
+`redis_pool.zig` and `redis_connection.zig` now mirror `redis.zig`'s pool shape while preserving existing `Client.command` call sites. `Client.command` owns acquire/release, retries once on non-resumable transport failure, and keeps server-side `.err` replies resumable so healthy connections return to the pool.
 
-```zig
-// src/queue/redis_pool.zig (sketch)
-pub const Pool = struct {
-    alloc: std.mem.Allocator,
-    cfg: redis_config.Config,
-    idle: std.SinglyLinkedList = .{},
-    idle_count: usize = 0,
-    max_idle: usize,
-    eager_min: usize, // agentsfleet-specific: pre-warm to N=worker_count
-    mutex: std.Thread.Mutex = .{},
+The pool exposes `max_idle`, `eager_min`, `max_active`, `acquire_timeout_ms`, read-timeout wiring, and stats for active/idle connections, dials, reconnects, poisoned closes, forced closes, and acquire timeouts.
 
-    pub fn acquire(self: *Pool) !*Connection { ... }
-    pub fn release(self: *Pool, conn: *Connection, ok: bool) void { ... }
-};
-```
+### Implemented Priority 0 (P0) — unified subscriber
 
-Wrap acquire/release inside `Client.command` so all existing call sites are unchanged:
+`redis_subscriber.zig` is now the only subscriber implementation. `redis.zig` re-exports it, URL test helpers route through it, and `redis_subscriber_test.zig` guards against reintroducing a duplicate subscriber.
 
-```zig
-pub fn command(self: *Client, argv: []const []const u8) !RespValue {
-    var attempts: usize = 0;
-    while (true) : (attempts += 1) {
-        const conn = try self.pool.acquire();
-        var ok = false;
-        defer self.pool.release(conn, ok);
-        const result = conn.command(argv) catch |err| {
-            if (Protocol.isResumable(err) and attempts == 0) { ok = true; continue; }
-            return err;
-        };
-        ok = true;
-        return result;
-    }
-}
-```
+Production SSE keeps `read_timeout_ms = null`; tests opt into a timeout when a quiet channel should return `null` instead of blocking forever.
 
-Size: `pool` = ~120 lines; `Connection` = the current `Client` body minus the lock = ~200 lines. Net delta: +120, with the lock removed and the pool added.
+### Implemented Priority 1 (P1) — request-path read timeout
 
-Pin `eager_min` to `worker_count` from `src/cmd/serve.zig` so the API never pays first-request reconnect latency. Default `max_idle = 8`, configurable via `REDIS_POOL_MAX_IDLE` env.
-
-Pin `Protocol.isResumable` equivalent: only `error.RedisCommandError` / `error.RedisXackFailed` / etc. (server-level) are resumable; all transport errors (`error.BrokenPipe`, `error.ConnectionResetByPeer`, `error.ReadFailed`) close the connection and let the pool create a fresh one.
-
-### P0 — Fold the two subscribers into one
-
-`redis_subscriber.zig` (production SSE) and `redis_pubsub.zig` (test harness + facade export) have ~85% byte-for-byte overlap and disagree only on `read_timeout_ms`. Unify on `redis_subscriber.zig`'s file-as-struct shape (`redis_subscriber.zig:15`), add an `InitOptions { read_timeout_ms: ?u32 = null }` argument, and:
-
-- Production SSE: `connectFromEnv(alloc, .api, .{})` — block forever on `nextMessage` until message or clean disconnect.
-- Test harness: `connectFromEnv(alloc, .worker, .{ .read_timeout_ms = 25_000 })` — SO_RCVTIMEO fires, `nextMessage` returns `null` so `drainFrames` can advance its budget loop.
-
-Update the facade at `redis.zig:11` to re-export `redis_subscriber.Subscriber`, delete `redis_pubsub.zig`, retarget `test_harness_helpers.zig:48-51` and `event_loop_harness_heartbeat_test.zig:61` to the unified type. Net delta: -147 lines (`redis_pubsub.zig` gone) +20 lines (the option), no behaviour change at either call site.
-
-**Why P0.** Duplication is the highest-leverage cleanup in this audit — and it's a hard prerequisite for package extraction (Captain's "posthog-zig" question below): you cannot ship a library with two near-identical types named `Subscriber` and `PubSubMessage` / `Message`.
-
-### P1 — Add a hard read timeout to the request-path transport
-
-Match `redis.zig`'s `read_timeout` knob (`Connection.zig:23`, `:50-51`). Today agentsfleet has SO_KEEPALIVE (`redis_transport.zig:14-41`) but no per-call timeout on the API connection. An Upstash proxy stall ≥ 60 s would block a worker thread indefinitely.
-
-Reasonable default: `REDIS_REQUEST_TIMEOUT_MS = 5000`. Apply via `setsockopt(SO_RCVTIMEO)` like the pub/sub subscriber does (`redis_pubsub.zig:84-96`), but with a tight bound and emit `error.RedisRequestTimeout` so callers can decide between retry / surface-to-user.
+`REDIS_REQUEST_TIMEOUT_MS` is parsed in `redis_config.zig`, threaded through `Client.connectFromEnvWithOptions`, applied to pooled `Connection`s, and surfaced as `error.RedisRequestTimeout` instead of a generic read failure.
 
 ### P1 — Surface Redis error message instead of dropping it
 
@@ -234,7 +185,7 @@ value.deinit(self.alloc);
 return error.RedisCommandError;
 ```
 
-The string is already in `value.err`; just log it before `value.deinit`. Same change at `:144`/`:148` for `xadd_agent_event_failed`.
+The string is already in `value.err`; just log it before `value.deinit`. Same change at `:144`/`:148` for `xadd_fleet_event_failed`.
 
 ### P1 — Verify `connectFromUrl`'s partial-init story
 
@@ -258,34 +209,33 @@ Slot 1 (stream_key) is per-call. Then `argv[0..6] = XADD_CONTROL; argv[1] = stre
 
 ## Package extraction viability
 
-Captain's question: can `src/queue/` move out into a standalone `agentsfleet-queue-zig` package alongside `posthog-zig`?
+Captain's question: can `src/agentsfleetd/queue/` move out into a standalone `agentsfleet-queue-zig` package alongside `posthog-zig`?
 
 **Reference shape (posthog-zig).** `/Users/kishore/Projects/posthog-zig/build.zig.zon` declares `.name = .posthog`, `.dependencies = .{}`, `.minimum_zig_version = "0.16.0"`, with `paths` enumerating the public payload (`build.zig`, `src/`, `tests/`, and a hand-picked subset of `docs/`). No upstream `src/...` dependencies.
 
-**agentsfleet-queue-zig as proposed.** Inventory of cross-boundary imports in `src/queue/`:
+**agentsfleet-queue-zig as proposed.** Inventory of cross-boundary imports in `src/agentsfleetd/queue/`:
 
-| File | Import | Crosses `src/queue/` boundary? |
+| File | Import | Crosses `src/agentsfleetd/queue/` boundary? |
 |---|---|---|
-| `redis_client.zig:253` | `@import("../errors/error_registry.zig")` | YES |
-| `redis_client.zig:254` | `@import("../agent/event_envelope.zig")` | YES |
-| `redis_client.zig:247` | `@import("log")` | YES (project-wide logger module) |
-| `redis_agent.zig:13` | `@import("../errors/error_registry.zig")` | YES |
-| `redis_agent.zig:9` | `@import("log")` | YES |
-| `redis_transport.zig:3,5` | `@import("log")`, `@import("../errors/error_registry.zig")` | YES |
-| `redis_pubsub.zig:5` | `@import("log")` | YES |
-| `redis_subscriber.zig:142` | `@import("log")` | YES |
+| `redis_client.zig` | `@import("../errors/error_registry.zig")` | Yes |
+| `redis_client.zig` | repo-local event envelope module | Yes |
+| `redis_client.zig` | `@import("log")` | Yes (project-wide logger module) |
+| `redis_fleet.zig` | `@import("../errors/error_registry.zig")` | Yes |
+| `redis_fleet.zig` | `@import("log")` | Yes |
+| `redis_transport.zig` | `@import("log")`, `@import("../errors/error_registry.zig")` | Yes |
+| `redis_subscriber.zig` | `@import("log")` | Yes |
 
 Three things to fix before a clean extraction:
 
-1. **`EventEnvelope` is agent-shaped business logic in a "generic" Redis layer.** `xaddAgentEvent` (`redis_client.zig:122-155`) builds a `agent:{id}:events` stream key and decodes a domain envelope. **Move out of the package**: keep generic `xadd(stream_key, []FV)` in `redis_client.zig`, move the wrapper to `src/agent/redis_events.zig`. Same for `redis_agent.zig` — the stream-key formatting and EventEnvelope decoding belong on the agent side.
+1. **`EventEnvelope` is fleet-shaped business logic in a generic Redis layer.** `xaddFleetEvent` builds a `fleet:{id}:events` stream key and encodes a domain envelope. **Move out of the package**: keep generic `xadd(stream_key, []FV)` in `redis_client.zig`, move the wrapper to `src/agentsfleetd/fleet/redis_events.zig`. Same for `redis_fleet.zig` — the stream-key formatting and EventEnvelope decoding belong on the fleet side.
 
 2. **`error_codes.ERR_INTERNAL_OPERATION_FAILED`** is only used at log sites — not part of the public surface. Two options: (a) drop the error_code embedding inside the package and let the caller log with its own scheme, or (b) define a package-local error registry (`queue_errors.zig`) and let the lead-repo logger remap. **Option (a)** is cleaner — log discipline (LOGGING_STANDARD §error-codes) is a lead-repo concern, not a library concern.
 
 3. **`logging.scoped(.redis_queue)`.** The `log` module is a project-private module declared in `build.zig`. Package-extracted, the queue would use `std.log.scoped(.redis_queue)` directly. One-line change per file, eight files. The logger consumer (the lead repo) wires up `pub const std_options = .{ .logFn = ... }` to route std.log → the project logger.
 
-**Conclusion.** Extraction is feasible — call it ~1 day of work — and produces a library with the same public footprint as posthog-zig: `Pool`, `Client`, `Subscriber`, `Config` types, `RespValue`. The carve-out makes the package usable for any Zig service Captain ships (queue infra is the same shape across products), and the lead repo's `src/agent/redis_events.zig` becomes the only place EventEnvelope semantics live.
+**Conclusion.** Extraction is feasible — call it ~1 day of work — and produces a library with the same public footprint as posthog-zig: `Pool`, `Client`, `Subscriber`, `Config` types, `RespValue`. The carve-out makes the package usable for any Zig service Captain ships (queue infra is the same shape across products), and the lead repo's `src/agentsfleetd/fleet/redis_events.zig` becomes the only place EventEnvelope semantics live.
 
-**Recommendation: do the pool work IN-TREE first (P0 above) so the contention fix lands without waiting on a package split.** Then extract once the surface has stabilized — the package would inherit the pool, not race the pool.
+**Recommendation: keep the pool work in-tree for this Pull Request (PR).** Extract later once the package boundary is free of app error-registry, event-envelope, and logger imports.
 
 ---
 
@@ -293,14 +243,14 @@ Three things to fix before a clean extraction:
 
 | Source | Pattern | Where it lands |
 |---|---|---|
-| `redis.zig/src/Pool.zig:13-17` | `SinglyLinkedList` of idle connections + `idle_count` + `max_idle` cap | New `src/queue/redis_pool.zig` |
-| `redis.zig/src/Pool.zig:52-72` | `acquire`: pop idle under lock, create-outside-lock on miss | Same |
-| `redis.zig/src/Pool.zig:80-105` | `release(conn, ok)`: close on error, close on cap, otherwise push idle | Same |
-| `redis.zig/src/Client.zig:66-110` | `withConnection`: retry loop, `Protocol.isResumable` gate | Refactor `Client.command` |
-| `redis.zig/src/Protocol.zig:30-35` | `isResumable`: server-error → reuse, transport-error → close | New `src/queue/redis_errors.zig` |
-| `redis.zig/src/Connection.zig:22-25,50-51` | `read_timeout` / `write_timeout` / `connect_timeout` as `setTimeout` calls | `Connection.connect` in the refactor |
+| `redis.zig/src/Pool.zig:13-17` | `SinglyLinkedList` of idle connections + `idle_count` + `max_idle` cap | Existing `src/agentsfleetd/queue/redis_pool.zig` |
+| `redis.zig/src/Pool.zig:52-72` | `acquire`: pop idle under lock, create-outside-lock on miss | Existing pool |
+| `redis.zig/src/Pool.zig:80-105` | `release(conn, ok)`: close on error, close on cap, otherwise push idle | Existing pool |
+| `redis.zig/src/Client.zig:66-110` | `withConnection`: retry loop, `Protocol.isResumable` gate | Existing `Client.command` |
+| `redis.zig/src/Protocol.zig:30-35` | `isResumable`: server-error → reuse, transport-error → close | Existing `src/agentsfleetd/queue/redis_errors.zig` |
+| `redis.zig/src/Connection.zig:22-25,50-51` | `read_timeout` / `write_timeout` / `connect_timeout` as timeout calls | Existing `Connection.applyReadTimeout` |
 | `zig-okredis/src/client.zig:22-23,27,149-152` | `broken` poison-pill flag — surface partial-init failure as a clean error | Optional; covered by pool's close-on-failure |
 
 ---
 
-**End of audit.** Recommendations are ordered for incremental landing: P0 first (pool + subscriber dedup), then P1 (timeouts + error surfacing), then optional package extraction.
+**End of audit.** Pool, subscriber deduplication, and request-path read timeout are now landed in-tree. Remaining cleanup is error-message surfacing and optional package extraction.

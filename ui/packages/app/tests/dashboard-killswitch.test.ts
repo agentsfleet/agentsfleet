@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { routerRefresh } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, stopAgentMock, setAgentStatusActionMock } from "./helpers/dashboard-app-mocks";
+import { resetDashboardMocks, stopFleetMock, setFleetStatusActionMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -18,8 +18,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/agents", async () => (await import("./helpers/dashboard-app-mocks")).agentsApiMock());
-vi.mock("@/app/(dashboard)/agents/actions", async () => (await import("./helpers/dashboard-app-mocks")).agentActionsMock());
+vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
+vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
@@ -42,28 +42,28 @@ afterEach(() => {
 describe("KillSwitch component", () => {
   async function renderSwitch(status: string = "active") {
     const { default: KillSwitch } = await import(
-      "../app/(dashboard)/agents/[id]/components/KillSwitch"
+      "../app/(dashboard)/fleets/[id]/components/KillSwitch"
     );
     render(
       React.createElement(KillSwitch, {
         workspaceId: "ws_1",
-        agent: { id: "zom_1", name: "alpha", status, created_at: "2026-04-22T00:00:00Z" },
+        fleet: { id: "zom_1", name: "alpha", status, created_at: "2026-04-22T00:00:00Z" },
       } as never),
     );
   }
 
-  it("renders Killed label when agent is terminal (no actions)", async () => {
+  it("renders Killed label when fleet is terminal (no actions)", async () => {
     await renderSwitch("killed");
     expect(screen.getByText("Killed")).toBeTruthy();
   });
 
-  it("offers Resume + Kill when agent is stopped", async () => {
+  it("offers Resume + Kill when fleet is stopped", async () => {
     await renderSwitch("stopped");
     expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
   });
 
-  it("offers Resume + Kill when agent is paused (auto-halt)", async () => {
+  it("offers Resume + Kill when fleet is paused (auto-halt)", async () => {
     await renderSwitch("paused");
     expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
@@ -78,13 +78,13 @@ describe("KillSwitch component", () => {
     await user.click(within(dialog).getByRole("button", { name }));
   }
 
-  it("active → Stop happy path: click → confirm → setAgentStatusAction(stopped) → refresh", async () => {
+  it("active → Stop happy path: click → confirm → setFleetStatusAction(stopped) → refresh", async () => {
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(setAgentStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped"),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
@@ -95,7 +95,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^resume$/i }));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
-      expect(setAgentStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active"),
     );
   });
 
@@ -105,13 +105,13 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(setAgentStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
+      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
     );
   });
 
   it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
     const { ApiError } = await import("../lib/api/errors");
-    stopAgentMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-AGT-010", "req_x"));
+    stopFleetMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-AGT-010", "req_x"));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
@@ -120,17 +120,17 @@ describe("KillSwitch component", () => {
   });
 
   it("non-409 error keeps dialog open (status rolled back)", async () => {
-    stopAgentMock.mockRejectedValue(new Error("network down"));
+    stopFleetMock.mockRejectedValue(new Error("network down"));
     const user = userEvent.setup({ delay: null });
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() => expect(stopAgentMock).toHaveBeenCalled());
+    await waitFor(() => expect(stopFleetMock).toHaveBeenCalled());
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
   });
 
   it("server action reporting unauth surfaces the error and rolls back the optimistic flip", async () => {
-    setAgentStatusActionMock.mockResolvedValueOnce({
+    setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "Not authenticated",
       status: 401,
@@ -142,11 +142,11 @@ describe("KillSwitch component", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
     );
-    expect(stopAgentMock).not.toHaveBeenCalled();
+    expect(stopFleetMock).not.toHaveBeenCalled();
   });
 
-  it("server action returning empty error string falls back to 'Failed to stop agent' default", async () => {
-    setAgentStatusActionMock.mockResolvedValueOnce({
+  it("server action returning empty error string falls back to 'Failed to stop fleet' default", async () => {
+    setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
       status: 500,
@@ -156,7 +156,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this agent/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this fleet/i),
     );
   });
 
@@ -164,8 +164,8 @@ describe("KillSwitch component", () => {
   // operator-facing sentence reads naturally per action. The Stop case above
   // exercises the Stop verb; the next two pin Resume and Kill so each branch
   // of the static-literal config is hit by patch coverage.
-  it("resume action error path renders 'Couldn't resume this agent' (WS-G verb literal)", async () => {
-    setAgentStatusActionMock.mockResolvedValueOnce({
+  it("resume action error path renders 'Couldn't resume this fleet' (WS-G verb literal)", async () => {
+    setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
       status: 500,
@@ -175,12 +175,12 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^resume$/i }));
     await clickConfirmInDialog(user, /^resume$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this agent/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this fleet/i),
     );
   });
 
-  it("kill action error path renders 'Couldn't kill this agent' (WS-G verb literal)", async () => {
-    setAgentStatusActionMock.mockResolvedValueOnce({
+  it("kill action error path renders 'Couldn't kill this fleet' (WS-G verb literal)", async () => {
+    setFleetStatusActionMock.mockResolvedValueOnce({
       ok: false,
       error: "",
       status: 500,
@@ -190,7 +190,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this agent/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this fleet/i),
     );
   });
 
@@ -205,6 +205,6 @@ describe("KillSwitch component", () => {
     const { within } = await import("@testing-library/react");
     await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(setAgentStatusActionMock).not.toHaveBeenCalled();
+    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
   });
 });

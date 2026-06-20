@@ -57,7 +57,7 @@ Automatic. Open a PR touching `ui/agentsfleet.dev/**` → Vercel posts a preview
 ## Step 4 — Verify (live cutover acceptance)
 
 ```bash
-dig +short A agentsfleet.dev                 # non-empty
+dig +short An agentsfleet.dev                 # non-empty
 curl -fsSL https://agentsfleet.dev -o /tmp/install.sh    # HTTP 200, valid TLS, no --insecure
 curl -fsSL https://agentsfleet.dev | head -1             # -> #!/usr/bin/env bash
 curl -sSI https://agentsfleet.dev/install.sh | grep -i content-type   # -> text/x-shellscript

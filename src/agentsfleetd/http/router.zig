@@ -5,6 +5,7 @@ const model_caps_h = @import("handlers/model_caps.zig");
 const runner_protocol = @import("contract").protocol;
 
 const S_EVENTS = "events";
+const S_FLEETS = "fleets";
 
 pub const Route = @import("routes.zig").Route;
 
@@ -19,6 +20,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
+    if (std.mem.eql(u8, path, "/v1/fleets/bundles")) return .fleet_bundles;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
@@ -28,7 +30,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // the invoke fn enforces POST). `me` resolves from the Bearer token.
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNERS)) return .register_runner;
     if (std.mem.eql(u8, path, runner_protocol.PATH_FLEET_RUNNERS)) return .fleet_runners_list;
-    if (std.mem.eql(u8, path, "/v1/fleet/streams")) return .fleet_streams_list;
+    if (std.mem.eql(u8, path, "/v1/fleets/streams")) return .fleet_streams_list;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_SELF)) return .runner_self;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
@@ -60,10 +62,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // the parse; only `…/leases/{lease_id}/activity` needs segment extraction.
     if (matchers.matchRunnerLeaseActivity(p)) |lease_id| return .{ .runner_activity = lease_id };
     if (matchers.matchRunnerLeaseRenew(p)) |lease_id| return .{ .runner_renew = lease_id };
-    // `…/memory/{agent_id}`: GET hydrates, POST captures (other methods 405 in invoke).
-    if (matchers.matchRunnerMemory(p)) |agent_id| return switch (method) {
-        .GET => .{ .runner_memory_hydrate = agent_id },
-        else => .{ .runner_memory_capture = agent_id },
+    // `…/memory/{fleet_id}`: GET hydrates, POST captures (other methods 405 in invoke).
+    if (matchers.matchRunnerMemory(p)) |fleet_id| return switch (method) {
+        .GET => .{ .runner_memory_hydrate = fleet_id },
+        else => .{ .runner_memory_capture = fleet_id },
     };
 
     // ── Tenant billing: per-charge metering-period drill-down ─────────────
@@ -90,31 +92,33 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
 
-    // ── Workspace + agent + events/stream (deepest shape first) ──────────
-    if (matchers.matchWorkspaceAgentEventsStream(p)) |r| return .{ .workspace_agent_events_stream = r };
+    // ── Workspace + fleet + events/stream (deepest shape first) ──────────
+    if (matchers.matchWorkspaceFleetEventsStream(p)) |r| return .{ .workspace_fleet_events_stream = r };
 
-    // ── Workspace + agent + leaf-id sub-resources ────────────────────────
-    if (matchers.matchWorkspaceAgentGrant(p)) |r| return .{ .revoke_integration_grant = r };
+    // ── Workspace + fleet + leaf-id sub-resources ────────────────────────
+    if (matchers.matchWorkspaceFleetGrant(p)) |r| return .{ .revoke_integration_grant = r };
 
-    // ── Workspace + agent + action ───────────────────────────────────────
-    if (matchers.matchWorkspaceAgentAction(p, S_EVENTS)) |r| return .{ .workspace_agent_events = r };
-    if (matchers.matchWorkspaceAgentAction(p, "messages")) |r| return .{ .workspace_agent_messages = r };
-    if (matchers.matchWorkspaceAgentAction(p, "memories")) |r| return .{ .workspace_agent_memories = r };
-    if (matchers.matchWorkspaceAgentAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
-    if (matchers.matchWorkspaceAgentAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
+    // ── Workspace + fleet + action ───────────────────────────────────────
+    if (matchers.matchWorkspaceFleetAction(p, S_EVENTS)) |r| return .{ .workspace_fleet_events = r };
+    if (matchers.matchWorkspaceFleetAction(p, "messages")) |r| return .{ .workspace_fleet_messages = r };
+    if (matchers.matchWorkspaceFleetAction(p, "memories")) |r| return .{ .workspace_fleet_memories = r };
+    if (matchers.matchWorkspaceFleetAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
+    if (matchers.matchWorkspaceFleetAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
-    if (matchers.matchWorkspaceAgentKeyDelete(p)) |r| return .{ .delete_agent_key = r };
-    if (matchers.matchWorkspaceAgent(p)) |r| return .{ .patch_workspace_agent = r };
+    if (matchers.matchWorkspaceFleetKeyDelete(p)) |r| return .{ .delete_fleet_key = r };
+    if (matchers.matchWorkspaceFleet(p)) |r| return .{ .patch_workspace_fleet = r };
+    if (matchers.matchWorkspaceFleetBundle(p)) |r| return .{ .workspace_fleet_bundle = r };
 
     // ── Approval inbox detail / resolve (colon-noun) ──────────────────────
     if (matchers.matchWorkspaceApprovalResolve(p)) |r| return .{ .workspace_approval_resolve = r };
     if (matchers.matchWorkspaceApprovalGate(p)) |r| return .{ .workspace_approval_detail = r };
 
     // ── Workspace + suffix collections ────────────────────────────────────
-    if (matchers.matchWorkspaceSuffix(p, "agents")) |ws_id| return .{ .workspace_agents = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, S_FLEETS)) |ws_id| return .{ .workspace_fleets = ws_id };
+    if (matchers.matchWorkspaceFleetBundles(p)) |ws_id| return .{ .workspace_fleet_bundles = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "credentials")) |ws_id| return .{ .workspace_credentials = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "agent-keys")) |ws_id| return .{ .agent_keys = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, "fleet-keys")) |ws_id| return .{ .fleet_keys = ws_id };
     if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "approvals")) |ws_id| return .{ .workspace_approvals = ws_id };
 
@@ -154,7 +158,7 @@ test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_1/agents/z_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/fleets/z_1/billing/summary", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
 }
 
@@ -212,29 +216,43 @@ test "match resolves admin platform key routes" {
 
 // ── route tests ───────────────────────────────────────────────────────────────
 
-test "match resolves agent messages route (workspace-scoped)" {
+test "match resolves fleet messages route (workspace-scoped)" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
-        .workspace_agent_messages => |r| {
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
+        .workspace_fleet_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.agent_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
         },
         else => return error.TestExpectedEqual,
     }
-    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
-    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/a/b/messages", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
+    try std.testing.expect(match("/v1/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/a/b/messages", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
 }
 
-test "match resolves agent memories collection (GET/POST)" {
+test "match resolves fleet collection as workspace fleet handler" {
+    switch (match("/v1/workspaces/ws_abc/fleets", .POST).?) {
+        .workspace_fleets => |workspace_id| try std.testing.expectEqualStrings("ws_abc", workspace_id),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "match resolves fleet memories collection shape" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    switch (match("/v1/workspaces/ws_abc/agents/z_xyz/memories", .GET).?) {
-        .workspace_agent_memories => |r| {
+    switch (match("/v1/workspaces/ws_abc/fleets/z_xyz/memories", .GET).?) {
+        .workspace_fleet_memories => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.agent_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/workspaces/ws_abc/fleets/z_xyz/memories", .POST).?) {
+        .workspace_fleet_memories => |r| {
+            try std.testing.expectEqualStrings(ws_id, r.workspace_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
         },
         else => return error.TestExpectedEqual,
     }

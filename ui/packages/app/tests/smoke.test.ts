@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { Agent } from "../lib/types";
+import type { Fleet } from "../lib/types";
 
 describe("smoke: app vitest lane", () => {
   it("validates core runtime contract helpers", () => {
-    const agent: Agent = {
+    const fleet: Fleet = {
       id: "zom_1",
       name: "platform-ops",
       status: "active",
       created_at: 0,
       updated_at: 0,
     };
-    expect(agent.status).toBe("active");
+    expect(fleet.status).toBe("active");
   });
 });

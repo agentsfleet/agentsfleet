@@ -22,6 +22,7 @@ export const routerRefresh = vi.fn();
 export const authMock = vi.fn();
 export const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 export const resolveActiveWorkspace = vi.fn();
+export const listTenantWorkspacesCached = vi.fn().mockResolvedValue({ items: [], total: 0 });
 export const fetchMock = vi.fn();
 export const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
 
@@ -55,7 +56,7 @@ export function clerkServerMock() {
 export function workspaceMock() {
   return {
     resolveActiveWorkspace,
-    listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    listTenantWorkspacesCached,
   };
 }
 
@@ -127,8 +128,8 @@ export function designSystemCore(actual: Record<string, unknown>) {
     Button: ({ children, variant, size, ...rest }: { children: React.ReactNode; variant?: string; size?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) =>
       React.createElement("button", { "data-variant": variant, "data-size": size, ...rest }, children),
     ConfirmDialog: ConfirmDialogMock,
-    EmptyState: ({ title, description }: { title: string; description?: string }) =>
-      React.createElement("div", { "data-empty-state": title }, description),
+    EmptyState: ({ title, description, icon }: { title: string; description?: string; icon?: React.ReactNode }) =>
+      React.createElement("div", { "data-empty-state": title }, icon, description),
     Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => React.createElement("input", props),
     PageHeader: ({ children }: { children: React.ReactNode }) => React.createElement("header", { "data-page-header": "1" }, children),
     PageTitle: ({ children }: { children: React.ReactNode }) => React.createElement("h1", { "data-page-title": "1" }, children),
@@ -136,7 +137,7 @@ export function designSystemCore(actual: Record<string, unknown>) {
   };
 }
 
-// Tabs family + Textarea — used by the agents test shards (AgentConfig).
+// Tabs family + Textarea — used by the fleets test shards (FleetConfig).
 const TabsCtx = React.createContext<{ active: string; setActive: (v: string) => void }>({ active: "", setActive: () => {} });
 
 export function designSystemTabs() {
@@ -199,4 +200,5 @@ export function resetCommonMocks(opts: { pathname?: string } = {}) {
   usePathname.mockReturnValue(opts.pathname ?? "/");
   getTokenFn.mockResolvedValue("token_abc");
   authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_abc") });
+  listTenantWorkspacesCached.mockResolvedValue({ items: [], total: 0 });
 }

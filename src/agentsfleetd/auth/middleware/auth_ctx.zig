@@ -34,9 +34,9 @@ pub const AuthCtx = struct {
     write_error: WriteErrorFn,
 
     // Per-request slot for webhook routes — the dispatcher populates this from
-    // the matched route's agent_id before calling chain.run. The webhook_sig
+    // the matched route's fleet_id before calling chain.run. The webhook_sig
     // and svix middlewares read it; all others ignore it.
-    webhook_agent_id: ?[]const u8 = null,
+    webhook_fleet_id: ?[]const u8 = null,
 
     /// Write a problem+json error response via the host-supplied writer.
     /// The HTTP status comes from the host's error table (middleware does

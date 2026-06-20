@@ -71,7 +71,7 @@ describe("dashboard page inner async components", () => {
   async function withMocks(overrides: {
     token?: string | null;
     workspace?: { id: string; name: string } | null;
-    listAgents?: () => Promise<unknown>;
+    listFleets?: () => Promise<unknown>;
     billing?: () => Promise<unknown>;
     activity?: () => Promise<unknown>;
   } = {}) {
@@ -90,10 +90,10 @@ describe("dashboard page inner async components", () => {
       resolveActiveWorkspace: vi.fn().mockResolvedValue(workspace),
       listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     }));
-    vi.doMock("@/lib/api/agents", () => ({
-      listAgents: overrides.listAgents ?? vi.fn().mockResolvedValue({ items: [], cursor: null }),
-      getAgent: vi.fn(),
-      stopAgent: vi.fn(),
+    vi.doMock("@/lib/api/fleets", () => ({
+      listFleets: overrides.listFleets ?? vi.fn().mockResolvedValue({ items: [], cursor: null }),
+      getFleet: vi.fn(),
+      stopFleet: vi.fn(),
       AGENTSFLEET_STATUS: {
         ACTIVE: "active",
         PAUSED: "paused",
@@ -109,7 +109,7 @@ describe("dashboard page inner async components", () => {
     }));
     vi.doMock("@/lib/api/events", () => ({
       listWorkspaceEvents: overrides.activity ?? vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
-      listAgentEvents: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+      listFleetEvents: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
     }));
     vi.doMock("next/navigation", () => ({
       notFound: vi.fn(() => { throw new Error("notFound"); }),
@@ -131,8 +131,8 @@ describe("dashboard page inner async components", () => {
     expect(await StatusTiles()).toBeNull();
   });
 
-  it("StatusTiles renders counts and hits the listAgents catch branch", async () => {
-    await withMocks({ listAgents: () => Promise.reject(new Error("boom")) });
+  it("StatusTiles renders counts and hits the listFleets catch branch", async () => {
+    await withMocks({ listFleets: () => Promise.reject(new Error("boom")) });
     const { StatusTiles } = await import("../app/(dashboard)/page");
     const element = await StatusTiles();
     expect(element).not.toBeNull();
@@ -145,9 +145,9 @@ describe("dashboard page inner async components", () => {
     expect(element).not.toBeNull();
   });
 
-  it("StatusTiles renders the dollar-formatted balance when agents exist + billing succeeds", async () => {
+  it("StatusTiles renders the dollar-formatted balance when fleets exist + billing succeeds", async () => {
     await withMocks({
-      listAgents: vi.fn().mockResolvedValue({
+      listFleets: vi.fn().mockResolvedValue({
         items: [
           { id: "zom_1", name: "alpha", status: "active", created_at: "2026-04-22T00:00:00Z" },
         ],
@@ -164,9 +164,9 @@ describe("dashboard page inner async components", () => {
     expect(html).toContain("$4.71");
   });
 
-  it("StatusTiles renders the em-dash balance fallback when agents exist + billing is null", async () => {
+  it("StatusTiles renders the em-dash balance fallback when fleets exist + billing is null", async () => {
     await withMocks({
-      listAgents: vi.fn().mockResolvedValue({
+      listFleets: vi.fn().mockResolvedValue({
         items: [
           { id: "zom_1", name: "alpha", status: "active", created_at: "2026-04-22T00:00:00Z" },
         ],

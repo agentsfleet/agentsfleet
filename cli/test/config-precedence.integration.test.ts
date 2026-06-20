@@ -17,7 +17,7 @@
 //
 //   (a) API URL: flag > AGENTSFLEET_API_URL env > API_URL env > creds.api_url
 //       > default — observed on an *authed, workspace-scoped* command (`list`,
-//       cli-tree-agent.ts) via the inbound Host header, not just the `doctor`
+//       cli-tree-fleet.ts) via the inbound Host header, not just the `doctor`
 //       probe. (resolveGlobalApiUrl in cli.ts L91, normalizeApiUrl in url.ts.)
 //   (b) Auth token: which Bearer the CLI actually sends. The headline
 //       behaviour is non-obvious: the Effect-layer
@@ -31,7 +31,7 @@
 //       persisted id is used.
 //
 // `list` makes exactly one `http.request` (no client-side pagination loop —
-// src/commands/agent_list.ts), so every test pins `calls` to length 1: the
+// src/commands/fleet_list.ts), so every test pins `calls` to length 1: the
 // side-effect ledger is asserted in full, not just `calls[0]`, so a stray
 // retry or duplicate request can't hide behind a first-element check.
 
@@ -42,8 +42,8 @@ import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
-// `list` (top-level, cli-tree-agent.ts) is the authed, workspace-scoped
-// surface under test — it GETs /v1/workspaces/<wsId>/agents with a Bearer
+// `list` (top-level, cli-tree-fleet.ts) is the authed, workspace-scoped
+// surface under test — it GETs /v1/workspaces/<wsId>/fleets with a Bearer
 // header and honours --workspace-id.
 const LIST = "list" as const;
 const FLAG_API = "--api" as const;
@@ -74,16 +74,16 @@ const EMPTY_LIST = { items: [] } as const;
 // Single source of the wire path for a `list` against a workspace — used
 // both to register the mock route and to assert the inbound path, so the
 // route key and the expectation can never drift apart.
-const agentsPath = (wsId: string): string => `/v1/workspaces/${wsId}/agents`;
+const fleetsPath = (wsId: string): string => `/v1/workspaces/${wsId}/fleets`;
 const bearer = (token: string): string => `${BEARER_PREFIX}${token}`;
 
 // Routes that answer a `list` against an arbitrary workspace id with an
-// empty agent set, so the command exits 0 and we can read the side-effect
+// empty fleet set, so the command exits 0 and we can read the side-effect
 // ledger rather than an error path.
 function listRoutes(...wsIds: ReadonlyArray<string>): MockRoutes {
   const routes: MockRoutes = {};
   for (const wsId of wsIds) {
-    routes[`GET ${agentsPath(wsId)}`] = () => jsonResponse(200, EMPTY_LIST);
+    routes[`GET ${fleetsPath(wsId)}`] = () => jsonResponse(200, EMPTY_LIST);
   }
   return routes;
 }
@@ -113,7 +113,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
-        expect(calls[0]?.path).toBe(agentsPath(WS_PERSISTED));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_PERSISTED));
       });
     });
   });
@@ -134,7 +134,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
-        expect(calls[0]?.path).toBe(agentsPath(WS_PERSISTED));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_PERSISTED));
       });
     });
   });
@@ -156,7 +156,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
-        expect(calls[0]?.path).toBe(agentsPath(WS_PERSISTED));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_PERSISTED));
       });
     });
   });
@@ -178,7 +178,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
-        expect(calls[0]?.path).toBe(agentsPath(WS_PERSISTED));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_PERSISTED));
       });
     });
   });
@@ -262,7 +262,7 @@ describe("config precedence — active workspace in the request path (authed lis
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.path).toBe(agentsPath(WS_PERSISTED));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_PERSISTED));
       });
     });
   });
@@ -281,9 +281,9 @@ describe("config precedence — active workspace in the request path (authed lis
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
-        expect(calls[0]?.path).toBe(agentsPath(WS_OVERRIDE));
+        expect(calls[0]?.path).toBe(fleetsPath(WS_OVERRIDE));
         // The persisted id must NOT have been used.
-        expect(calls.every((c) => c.path !== agentsPath(WS_PERSISTED))).toBe(true);
+        expect(calls.every((c) => c.path !== fleetsPath(WS_PERSISTED))).toBe(true);
       });
     });
   });

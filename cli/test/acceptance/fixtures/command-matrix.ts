@@ -6,17 +6,17 @@
  * from these exports; nothing inlines a command-string list.
  *
  * If a new command surface lands in `cli/src/program/routes.js`,
- * the implementing agent of THAT change extends the relevant table here
+ * the implementing fleet of THAT change extends the relevant table here
  * and the spec sweeps pick it up automatically.
  */
 
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
-  "agent-key",
+  "fleet-key",
   "grant",
   "tenant",
   "billing",
-  "agent",
+  "fleet",
   "memory",
 ];
 
@@ -41,13 +41,13 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["doctor", "--json"], requiredKey: "checks" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
-  { args: ["agent-key", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["fleet-key", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
-  { args: ["list", "--json"], isList: true, itemsKey: "items", label: "agent list" },
+  { args: ["list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
 ];
 
-export interface PerAgentReadOnlyCommandRow {
+export interface PerFleetReadOnlyCommandRow {
   readonly argsHead: ReadonlyArray<string>;
   readonly isList?: boolean;
   readonly itemsKey?: string;
@@ -55,12 +55,12 @@ export interface PerAgentReadOnlyCommandRow {
   readonly group?: string;
 }
 
-// Read-only commands scoped to a live agent_id. The spec interpolates
-// the §4a-installed agentId via `--agent <id>` before running. Kept
+// Read-only commands scoped to a live fleet_id. The spec interpolates
+// the §4a-installed fleetId via `--fleet <id>` before running. Kept
 // separate from READ_ONLY_COMMANDS (which is workspace-scoped) because
-// `grant list` requires `--agent <id>`; the §4b read-only sweep cannot
+// `grant list` requires `--fleet <id>`; the §4b read-only sweep cannot
 // thread fixture state into a static argv.
-export const PER_AGENTSFLEET_READ_ONLY_COMMANDS: ReadonlyArray<PerAgentReadOnlyCommandRow> = [
+export const PER_AGENTSFLEET_READ_ONLY_COMMANDS: ReadonlyArray<PerFleetReadOnlyCommandRow> = [
   { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
   { argsHead: ["memory", "list"], isList: true, itemsKey: "items", group: "memory" },
 ];
@@ -93,19 +93,19 @@ export interface RequiresIdentifierRow {
 export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // status accepts an optional positional and currently falls back to a
   // workspace-wide list response, so it is not a by-ID not-found probe.
-  { args: ["status"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: false },
-  // kill/stop/resume/logs and grant/agent delete all run validateRequiredId
+  { args: ["status"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: false },
+  // kill/stop/resume/logs and grant/fleet delete all run validateRequiredId
   // — §4c2 sweep relies on validatesClient: true to fire the no-network
   // invariant against an invalid-format id sample.
-  { args: ["kill"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: true },
-  { args: ["stop"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: true },
-  { args: ["resume"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: true },
-  { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "agent_id", apiHits: false, validatesClient: true },
+  { args: ["kill"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["stop"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["resume"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  { args: ["agent-key", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: false, validatesClient: true },
-  // grant delete also requires --agent <id>, so the generic single-ID
-  // matrix cannot exercise it without a live agent fixture.
+  { args: ["fleet-key", "delete"], expectedErrorCode: "UZ-FLEETKEY-001", argName: "key_id", apiHits: false, validatesClient: true },
+  // grant delete also requires --fleet <id>, so the generic single-ID
+  // matrix cannot exercise it without a live fleet fixture.
   { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: false },
 ];
 
@@ -118,19 +118,19 @@ export interface RequiresPositionalArgRow {
 // produce commander's "missing required argument" rejection (matched by
 // `expectMissingArg`'s /missing|required|usage|expected/ regex).
 //
-// `status [agent_id]` and `logs [agent_id]` are optional positionals
+// `status [fleet_id]` and `logs [fleet_id]` are optional positionals
 // — `status` bare exits 0 (workspace-wide fallback) and `logs` bare
-// exits 2 with a domain-specific stem ("logs requires --agent <id>")
+// exits 2 with a domain-specific stem ("logs requires --fleet <id>")
 // that the generic missing-arg regex does not match. They are
-// exercised in §4a's lifecycle walk with a real agentId instead.
+// exercised in §4a's lifecycle walk with a real fleetId instead.
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
-  { args: ["agent-key", "delete"], missingArgName: "key_id" },
+  { args: ["fleet-key", "delete"], missingArgName: "key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
-  { args: ["kill"], missingArgName: "agent_id" },
-  { args: ["stop"], missingArgName: "agent_id" },
-  { args: ["resume"], missingArgName: "agent_id" },
+  { args: ["kill"], missingArgName: "fleet_id" },
+  { args: ["stop"], missingArgName: "fleet_id" },
+  { args: ["resume"], missingArgName: "fleet_id" },
   { args: ["memory", "search"], missingArgName: "query" },
 ];
 

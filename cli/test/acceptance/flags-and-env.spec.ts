@@ -18,7 +18,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
 
-import { runAgentctl, spawnAgentctl, composeEnv } from "./fixtures/cli.js";
+import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
@@ -61,14 +61,14 @@ function waitForExit(child: ChildProcessWithoutNullStreams): Promise<ExitResult>
 
 describe("global flag matrix", () => {
   it("--version --help → --version wins (precedence)", async () => {
-    const result = await runAgentctl(["--version", "--help"], { env: emptyEnv() });
+    const result = await runFleetctl(["--version", "--help"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(result.stdout.includes(pkgVersion), `expected version ${pkgVersion} in stdout: ${result.stdout}`);
     assert.ok(!/usage|commands:/i.test(result.stdout), `--help body leaked into --version output: ${result.stdout}`);
   });
 
   it("--help --version → --version still wins (order-independent)", async () => {
-    const result = await runAgentctl(["--help", "--version"], { env: emptyEnv() });
+    const result = await runFleetctl(["--help", "--version"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(result.stdout.includes(pkgVersion));
     assert.ok(!/usage|commands:/i.test(result.stdout));
@@ -79,7 +79,7 @@ describe("global flag matrix", () => {
   // is what --json currently returns. Assert exit 0 with help content
   // present — the contract the CLI ships.
   it("--help --json exits 0 with help content", async () => {
-    const result = await runAgentctl(["--help", "--json"], { env: emptyEnv() });
+    const result = await runFleetctl(["--help", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(result.stdout.length > 0);
     assert.match(result.stdout, /agentsfleet|usage|commands/i);
@@ -88,7 +88,7 @@ describe("global flag matrix", () => {
 
 describe("NO_COLOR semantics", () => {
   it("NO_COLOR=1 strips ANSI escapes from --help", async () => {
-    const result = await runAgentctl(["--help"], {
+    const result = await runFleetctl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
     });
     assert.equal(result.code, 0);
@@ -102,7 +102,7 @@ describe("telemetry env-var advertisement (--help)", () => {
   // exact bytes; this acceptance assertion confirms the built binary
   // (npm install / dist) renders the same names end-to-end.
   it("advertises AGENTSFLEET_TELEMETRY_DISABLED, DO_NOT_TRACK and POSTHOG knobs", async () => {
-    const result = await runAgentctl(["--help"], {
+    const result = await runFleetctl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
     });
     assert.equal(result.code, 0);
@@ -157,7 +157,7 @@ describe("non-TTY login fast-fails", () => {
       AGENTSFLEET_STATE_DIR: stateDir.dir,
       NO_COLOR: "1",
     });
-    const child = spawnAgentctl(["login", "--no-open", "--force"], { env });
+    const child = spawnFleetctl(["login", "--no-open", "--force"], { env });
     child.stdin.end();
     return child;
   }
@@ -214,7 +214,7 @@ describe("non-TTY login fast-fails", () => {
           AGENTSFLEET_API_KEY: sessionJwt,
           NO_COLOR: "1",
         });
-        const result: RunResult = await runAgentctl(
+        const result: RunResult = await runFleetctl(
           ["--api", target, "workspace", "list", "--json"],
           { env },
         );
@@ -228,7 +228,7 @@ describe("non-TTY login fast-fails", () => {
           AGENTSFLEET_API_KEY: sessionJwt,
           NO_COLOR: "1",
         });
-        const result: RunResult = await runAgentctl(["workspace", "list", "--json"], { env });
+        const result: RunResult = await runFleetctl(["workspace", "list", "--json"], { env });
         assert.equal(result.code, 0, `expected exit 0; stderr=${result.stderr}`);
         assert.doesNotThrow(() => JSON.parse(result.stdout.trim()));
       });

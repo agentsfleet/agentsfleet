@@ -8,7 +8,7 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import { DOCS_URL } from "../config";
-import { AGENT_DEFINITION } from "../lib/copy";
+import { FLEET_DEFINITION } from "../lib/copy";
 import { FAQ_WEDGE_ITEM } from "../lib/marketing-copy";
 import { RATES_DISPLAY } from "../lib/rates";
 
@@ -16,7 +16,7 @@ const items: { q: string; a: ReactNode }[] = [
   FAQ_WEDGE_ITEM,
   {
     q: "What is agentsfleet?",
-    a: `${AGENT_DEFINITION} The platform-ops agent, for example, wakes on a support escalation, gathers evidence from your infrastructure and run logs, captures the recurring problem class, and opens the evidenced fix path for human approval. Reachable via agentsfleet steer for manual investigation.`,
+    a: `${FLEET_DEFINITION} The platform-ops Fleet, for example, wakes on a support escalation, gathers evidence from your infrastructure and run logs, captures the recurring problem class, and opens the evidenced fix path for human approval. Reachable via agentsfleet steer for manual investigation.`,
   },
   {
     q: "What does self-managed mean?",
@@ -24,11 +24,11 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: `${RATES_DISPLAY.FREE_TRIAL_PILL} — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime (${RATES_DISPLAY.RUN_RATE_PER_SEC}, about ${RATES_DISPLAY.RUN_RATE_PER_HOUR}) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while an agent is actually working; idle time and event receipts are ${RATES_DISPLAY.EVENT_RATE}. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise after General Availability (GA).`,
+    a: `${RATES_DISPLAY.FREE_TRIAL_PILL} — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime (${RATES_DISPLAY.RUN_RATE_PER_SEC}, about ${RATES_DISPLAY.RUN_RATE_PER_HOUR}) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while a Fleet is actually working; idle time and event receipts are ${RATES_DISPLAY.EVENT_RATE}. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise after General Availability (GA).`,
   },
   {
     q: "Does the platform default cost more than bringing my own provider key?",
-    a: `The runtime fee is identical both ways — ${RATES_DISPLAY.RUN_RATE_PER_SEC} of active runtime, billed only while an agent is working. The only difference is who pays for model tokens: on the platform default agentsfleet passes your provider's token cost straight through (zero markup); on your own key you pay your provider directly. Bring your own key when you want the billing relationship with your provider — not for a cheaper runtime. Current rates on the Pricing section above.`,
+    a: `The runtime fee is identical both ways — ${RATES_DISPLAY.RUN_RATE_PER_SEC} of active runtime, billed only while a Fleet is working. The only difference is who pays for model tokens: on the platform default agentsfleet passes your provider's token cost straight through (zero markup); on your own key you pay your provider directly. Bring your own key when you want the billing relationship with your provider — not for a cheaper runtime. Current rates on the Pricing section above.`,
   },
   {
     q: "Can I self-host?",
@@ -39,15 +39,15 @@ const items: { q: string; a: ReactNode }[] = [
     a: "Claude Code, Amp, Codex Command-Line Interface (CLI), and OpenCode — same skill, same prompts in every host. Run npm install -g @agentsfleet/cli, then /agentsfleet-install-platform-ops inside any of them.",
   },
   {
-    q: "What if my agent hits the model's context window?",
+    q: "What if my Fleet hits the model's context window?",
     a: (
       <>
         It doesn&apos;t lose the thread. agentsfleet keeps long incidents coherent through three layers
         working together. The runtime watches three signals — a <strong>tool-result window</strong>,{" "}
         <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
-        agent responds by compacting tool results into durable memory via{" "}
+        Fleet responds by compacting tool results into durable memory via{" "}
         <code className="font-mono">memory_store</code>, ending the stage at safe boundaries, and
-        re-entering on a continuation chain (capped at 10) for the next stage. Underneath, the agent
+        re-entering on a continuation chain (capped at 10) for the next stage. Underneath, the Fleet
         loop runs its own rolling-summary compaction once message count or token budget crosses a
         built-in threshold. Net: a 40-tool-call deploy investigation stays reasoned through to a
         Slack diagnosis, not a context-overflow loop.{" "}

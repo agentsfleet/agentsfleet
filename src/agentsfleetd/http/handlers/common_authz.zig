@@ -5,10 +5,10 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const db = @import("../../db/pool.zig");
 const AuthPrincipal = @import("../../auth/principal.zig").AuthPrincipal;
 
-pub fn getAgentWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, agent_id: []const u8) ?[]const u8 {
+pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) ?[]const u8 {
     var q = PgQuery.from(conn.query(
-        \\SELECT workspace_id::text FROM core.agents WHERE id = $1::uuid LIMIT 1
-    , .{agent_id}) catch return null);
+        \\SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid LIMIT 1
+    , .{fleet_id}) catch return null);
     defer q.deinit();
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;

@@ -13,7 +13,7 @@
 
       Sits outside `/v1/webhooks/` (customer data plane) — the auth namespace
       is for signals about the platform's own auth lifecycle, not for events
-      that wake user-defined agents.
+      that wake user-defined Fleets.
     tags:
     - auth-identity-events
     parameters:

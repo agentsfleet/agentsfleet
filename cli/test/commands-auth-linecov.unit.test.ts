@@ -124,7 +124,7 @@ describe("authStatusEffect token summary derivation", () => {
     const { exit, json } = await runJson(
       makeJwt({
         iss: "https://issuer.test",
-        aud: "agent-cli",
+        aud: "fleet-cli",
         sub: "user_42",
         exp: FUTURE_EXP_SEC,
       }),
@@ -132,7 +132,7 @@ describe("authStatusEffect token summary derivation", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     const t = tokenOf(json);
     expect(t["iss"]).toBe("https://issuer.test");
-    expect(t["aud"]).toBe("agent-cli");
+    expect(t["aud"]).toBe("fleet-cli");
     expect(t["sub"]).toBe("user_42");
     expect(t["exp_at"]).toBe(new Date(FUTURE_EXP_SEC * MS_PER_SECOND).toISOString());
     expect(t["expired"]).toBe(false);

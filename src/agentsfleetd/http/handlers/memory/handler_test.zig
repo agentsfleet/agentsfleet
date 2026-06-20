@@ -78,7 +78,7 @@ test "live UZ-MEM codes are stable (002, 003)" {
 
 // ── T3: UZ-MEM-* → correct HTTP status codes ─────────────────────────────────
 
-test "UZ-MEM-002 (agent not found) → HTTP 404 Not Found" {
+test "UZ-MEM-002 (fleet not found) → HTTP 404 Not Found" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
     common.errorResponse(ht.res, ec.ERR_MEM_AGENTSFLEET_NOT_FOUND, "not found", "req-t3b");
@@ -109,9 +109,9 @@ test "UZ-MEM-* error body contains error_code field" {
 // ── Security contract — cross-workspace is 404, never a leaky 403 ────────────
 
 test "cross-workspace access maps to UZ-MEM-002 / 404 (don't leak existence)" {
-    // helpers.zig:resolveAgentInWorkspace returns ERR_MEM_AGENTSFLEET_NOT_FOUND for
-    // an agent in another workspace — indistinguishable from a nonexistent agent.
-    // A 403 would confirm the agent exists; that is why the old 403 "scope
+    // helpers.zig:resolveFleetInWorkspace returns ERR_MEM_AGENTSFLEET_NOT_FOUND for
+    // a Fleet in another workspace — indistinguishable from a nonexistent fleet.
+    // A 403 would confirm the fleet exists; that is why the old 403 "scope
     // denied" memory-scope code was retired.
     const entry = ec.lookup(ec.ERR_MEM_AGENTSFLEET_NOT_FOUND);
     try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);

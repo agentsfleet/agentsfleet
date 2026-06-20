@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_events (
     created_at   BIGINT NOT NULL
 );
 
--- Per-runner history newest-first for GET /v1/fleet/runners/{id}/events.
+-- Per-runner history newest-first for GET /v1/fleets/runners/{id}/events.
 CREATE INDEX IF NOT EXISTS runner_events_runner_idx
     ON fleet.runner_events (runner_id, occurred_at DESC, id DESC);
 

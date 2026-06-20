@@ -17,7 +17,7 @@ export default async function SettingsDefaultsPage() {
       <EmptyState
         icon={<SlidersHorizontalIcon size={32} />}
         title="Defaults"
-        description="Workspace-wide defaults for new agents will live here."
+        description="Workspace-wide defaults for new Fleets will live here."
       />
     </div>
   );

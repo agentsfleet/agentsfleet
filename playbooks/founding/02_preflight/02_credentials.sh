@@ -105,6 +105,12 @@ check_prod() {
   # OIDC_ISSUER is the single source of identity truth.
   check_url_ref "op://$v/clerk-prod/issuer"
   check_ref "op://$v/cloudflare-api-token/credential"
+  # Cloudflare R2 (Fleet Bundle snapshot storage). Missing any of
+  # these fails the gate — the daemon also fails loud at boot if unset.
+  check_ref "op://$v/cloudflare-r2/account-id"
+  check_ref "op://$v/cloudflare-r2/access-key-id"
+  check_ref "op://$v/cloudflare-r2/secret-access-key"
+  check_ref "op://$v/cloudflare-r2/bucket"
   check_ref "op://$v/npm-publish-token/credential"
   check_ref "op://$v/vercel-bypass-website/credential"
   check_ref "op://$v/vercel-bypass-agents/credential"
@@ -163,6 +169,12 @@ check_dev() {
   check_ref "op://$v/grafana-dev/instance-id"
   check_ref "op://$v/grafana-dev/api-key"
   check_ref "op://$v/cloudflare-tunnel-dev/credential"
+  # Cloudflare R2 (Fleet Bundle snapshot storage). Missing any of
+  # these fails the gate — the daemon also fails loud at boot if unset.
+  check_ref "op://$v/cloudflare-r2/account-id"
+  check_ref "op://$v/cloudflare-r2/access-key-id"
+  check_ref "op://$v/cloudflare-r2/secret-access-key"
+  check_ref "op://$v/cloudflare-r2/bucket"
 
   check_distinct \
     "op://$v/planetscale-dev/migrator-connection-string" \

@@ -1,7 +1,7 @@
-//! GET /v1/fleet/streams — platform-admin listing of this instance's live
+//! GET /v1/fleets/streams — platform-admin listing of this instance's live
 //! SSE streams (operator diagnostics for the stream cap and shutdown drain).
 //!
-//! Rows come straight from the StreamRegistry: workspace, agent, and start
+//! Rows come straight from the StreamRegistry: workspace, fleet, and start
 //! time per live stream. The registry's client fd never leaves the process.
 //! Fleet-plane endpoint — like the rest of /v1/fleet it is deliberately
 //! absent from the public OpenAPI document (customer surface only).

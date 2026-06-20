@@ -40,7 +40,7 @@ test.describe("Auth theming", () => {
   });
 
   test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
-    await page.goto("/agents");
+    await page.goto("/fleets");
     await page.waitForTimeout(MS_PER_SECOND);
 
     expect(new URL(page.url()).hostname).toBe(EXPECTED_HOSTNAME);
@@ -57,7 +57,7 @@ test.describe("Auth theming", () => {
     );
 
     const body = page.locator("body");
-    await expect(body).toContainText(/agentsfleet|Agents|Dashboard/);
+    await expect(body).toContainText(/agentsfleet|Fleets|Dashboard/);
     // --bg #0a0d0e (Operational Restraint) → rgb(10, 13, 14)
     expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
   });

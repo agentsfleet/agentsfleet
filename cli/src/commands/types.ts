@@ -98,7 +98,7 @@ export interface CommandDeps {
   ) => void;
   saveCredentials: (cred: Credentials) => Promise<void> | void;
   saveWorkspaces: (workspaces: Workspaces) => Promise<void> | void;
-  // Optional SSE injector — agent_steer uses this for the live event
+  // Optional SSE injector — fleet_steer uses this for the live event
   // tail; tests override it with a fake to assert frame handling. The
   // wrapper in handlers-bind.js omits it; commands fall back to the
   // real `streamGet` from `lib/sse.ts` when absent.

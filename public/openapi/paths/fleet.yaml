@@ -20,7 +20,7 @@
               $ref: ../components/schemas.yaml#/components/schemas/RunnerRegisterResponse
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/fleet/runners:
+/v1/fleets/runners:
   get:
     operationId: list_fleet_runners
     summary: List fleet runners
@@ -81,7 +81,7 @@
                   type: integer
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/fleet/runners/{id}:
+/v1/fleets/runners/{id}:
   patch:
     operationId: patch_fleet_runner
     summary: Administer a fleet runner
@@ -136,7 +136,7 @@
                   - revoked
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/fleet/runners/{id}/events:
+/v1/fleets/runners/{id}/events:
   get:
     operationId: list_fleet_runner_events
     summary: List fleet runner events

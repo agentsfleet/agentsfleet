@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Vocab guard: the user-facing product noun is "agent". The retired entity noun
+// Vocab guard: the user-facing product noun is "Fleet". The retired entity noun
 // "zombie" — retired in the entity cutover — must never resurface as a bare
 // English word in *rendered copy*. This scan extracts user-visible text (string
 // literals + JSX text) and fails if a multi-word phrase contains the standalone
@@ -37,7 +37,7 @@ function isComment(line: string): boolean {
 }
 
 describe("vocab guard — no user-facing 'zombie' product noun", () => {
-  it("rendered copy names the agent, never the retired noun 'zombie'", () => {
+  it("rendered copy names the Fleet, never the retired noun 'zombie'", () => {
     const offenders: string[] = [];
     for (const root of ROOTS) {
       for (const file of walk(root)) {

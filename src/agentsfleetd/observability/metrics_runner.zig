@@ -43,7 +43,7 @@ const LAST_SEEN_NAME = "agentsfleet_runner_last_seen_seconds";
 const LAST_SEEN_HELP = "Seconds since a runner was last seen (report or heartbeat); computed at render.";
 const ACTIVE_LEASES_NAME = "agentsfleet_runner_active_leases";
 const ACTIVE_LEASES_HELP = "Leases a runner currently holds (best-effort; abandoned leases self-heal on restart).";
-// The agent_memory_* families (GLOBAL, unlabelled — per-agent labels would
+// The fleet_memory_* families (GLOBAL, unlabelled — per-fleet labels would
 // explode cardinality) live in metrics_memory.zig; renderPrometheus appends them.
 // Prometheus exposition format strings are single-sourced there (RULE UFS).
 const FMT_HELP_TYPE = metrics_memory.FMT_HELP_TYPE;
@@ -262,7 +262,7 @@ fn renderGaugeFamilies(writer: anytype) !void {
     }
 }
 
-/// Render every per-runner family plus the agent_memory_* families. Emits
+/// Render every per-runner family plus the fleet_memory_* families. Emits
 /// nothing until a runner has been seen or a memory counter has moved.
 pub fn renderPrometheus(writer: anytype) !void {
     if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0 and !metrics_memory.anyActive()) return;

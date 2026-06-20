@@ -62,26 +62,26 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
   },
 ] as const;
 
-// The hero owns "A fleet, ready to run." now, so the prebuilt-agents wall gets
+// The hero owns "A fleet, ready to run." now, so the prebuilt-fleets wall gets
 // its own heading. "Meet the fleet" matches the hero's secondary CTA, which
 // anchors to this section.
-export const AGENTS_SECTION_HEADING = "Meet the fleet.";
+export const FLEETS_SECTION_HEADING = "Meet the fleet.";
 
-export const AGENTS_SECTION_LEDE =
+export const FLEETS_SECTION_LEDE =
   "Prebuilt and proven. Install one, point it at your stack, and it works the same day — every action gated, every run a replayable log. More teammates join the fleet over time.";
 
-export type AgentIntegration = {
+export type FleetIntegration = {
   label: string;
   icon: string;
 };
 
-export type PrebuiltAgent = {
+export type PrebuiltFleet = {
   id: string;
   category: string;
   name: string;
   description: string;
-  integrations: readonly AgentIntegration[];
-  // Roadmap/forward-looking agents (not yet a shipped prebuilt) render a
+  integrations: readonly FleetIntegration[];
+  // Roadmap/forward-looking fleets (not yet a shipped prebuilt) render a
   // "coming soon" badge and a waitlist CTA instead of "Try it".
   comingSoon?: boolean;
 };
@@ -91,9 +91,9 @@ const INTEGRATION_ICONS = {
   fly: { label: "Fly.io", icon: "/logos/fly.svg" },
   grafana: { label: "Grafana", icon: "/logos/grafana.svg" },
   slack: { label: "Slack", icon: "/logos/slack.svg" },
-} as const satisfies Record<string, AgentIntegration>;
+} as const satisfies Record<string, FleetIntegration>;
 
-export const PREBUILT_AGENTS: readonly PrebuiltAgent[] = [
+export const PREBUILT_FLEETS: readonly PrebuiltFleet[] = [
   {
     id: "auto-reviewer",
     category: "Code review",
@@ -126,23 +126,23 @@ export const PREBUILT_AGENTS: readonly PrebuiltAgent[] = [
   },
 ] as const;
 
-export type AgentPillar = {
+export type FleetPillar = {
   id: string;
   eyebrow: string;
   title: string;
   description: string;
 };
 
-// The three behavioral capabilities. Moved out of the prebuilt-agents wall and
+// The three behavioral capabilities. Moved out of the prebuilt-fleets wall and
 // into Core Capabilities (design-consultation decision) — they describe what
 // every teammate is, not which prebuilts exist.
-export const AGENT_PILLARS: readonly AgentPillar[] = [
+export const FLEET_PILLARS: readonly FleetPillar[] = [
   {
     id: "sandbox",
     eyebrow: "Isolated",
     title: "A private machine per run",
     description:
-      "Every agent runs in its own clean sandbox — a dedicated shell, tools, and scratch space. It clones the workspace, reads the context, writes the patch, and runs the checks without trampling anyone else's environment.",
+      "Every Fleet runs in its own clean sandbox — a dedicated shell, tools, and scratch space. It clones the workspace, reads the context, writes the patch, and runs the checks without trampling anyone else's environment.",
   },
   {
     id: "learns",
@@ -291,7 +291,7 @@ export const PRICING_PLANS = [
 ] as const;
 
 export const FAQ_WEDGE_ITEM = {
-  q: "What does the agent read?",
+  q: "What does the Fleet read?",
   a: "Signals, telemetry, code, and control-plane state — only the sources you allow-list. It uses them to classify the problem, produce evidence, and stop at human approval before merge or deploy.",
 } as const;
 

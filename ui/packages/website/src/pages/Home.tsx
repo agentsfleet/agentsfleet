@@ -1,7 +1,7 @@
 import Hero from "../components/Hero";
 import FeatureSection from "../components/FeatureSection";
 import OperationalKnowledgeSection from "../components/OperationalKnowledgeSection";
-import PrebuiltAgents from "../components/PrebuiltAgents";
+import PrebuiltFleets from "../components/PrebuiltFleets";
 import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
@@ -15,7 +15,7 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import {
-  AGENT_PILLARS,
+  FLEET_PILLARS,
   CAPABILITY_HEADING,
   CAPABILITY_ITEMS,
   RUNTIME_GUARANTEES_LABEL,
@@ -26,7 +26,7 @@ export default function Home() {
     <div data-testid="home-page">
       <Hero />
       <CoreCapabilitiesSection />
-      <PrebuiltAgents />
+      <PrebuiltFleets />
       <HowItWorks />
       <OperationalKnowledgeSection />
 
@@ -51,7 +51,7 @@ function CoreCapabilitiesSection() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {AGENT_PILLARS.map((pillar) => (
+            {FLEET_PILLARS.map((pillar) => (
               <Card
                 key={pillar.id}
                 className="flex flex-col gap-2"

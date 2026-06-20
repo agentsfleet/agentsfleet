@@ -2,7 +2,7 @@
 //!
 //! Shared by both build graphs: the runner produces it (engine → child stdout
 //! `result` frame → parent), and `agentsfleetd`'s `report` verb consumes it to write
-//! the durable `core.agent_events` row. One canonical type, so the runner's
+//! the durable `core.fleet_events` row. One canonical type, so the runner's
 //! output and the control plane's write can never drift (it superseded the
 //! pre-cutover sidecar's `StageResult` at the M80 cutover).
 
@@ -46,7 +46,7 @@ pub const ExecutionResult = struct {
     cpu_throttled_ms: u64 = 0,
     /// Cumulative token splits for the whole run (defaults 0: an older child
     /// omits them and the report settles run-fee-only — wire-compatible both
-    /// directions). `cached_input_tokens` stays 0 until the agent layer
+    /// directions). `cached_input_tokens` stays 0 until the fleet layer
     /// surfaces cache reads separately from prompt tokens.
     input_tokens: u64 = 0,
     cached_input_tokens: u64 = 0,

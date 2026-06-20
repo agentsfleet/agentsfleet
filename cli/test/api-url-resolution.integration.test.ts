@@ -225,7 +225,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   // regression guard that an ambient API_URL is ignored, never resolved.
   describe("full precedence matrix", () => {
     const FLAG = "https://flag.example";
-    const ZENV = "https://agent-env.example";
+    const ZENV = "https://fleet-env.example";
     const AENV = "https://api-url-env.example";
     const CREDS = "https://saved-creds.example";
     const DEFAULT = "https://api.agentsfleet.net";

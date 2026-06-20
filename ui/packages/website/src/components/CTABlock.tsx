@@ -6,7 +6,7 @@ import { CTA_COPY } from "../lib/marketing-copy";
 /*
  * CTABlock — restrained closing CTA on the human landing page. Mono headline,
  * sans lede, two-button row (quickstart + pricing). Speaks to the operator who
- * landed here, not the machine API — that pitch lives on /agents.
+ * landed here, not the machine API — that pitch lives on /fleets.
  */
 export default function CTABlock() {
   return (

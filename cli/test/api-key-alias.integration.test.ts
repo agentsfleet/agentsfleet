@@ -116,9 +116,9 @@ test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path reques
     const err = bufferStream();
     let authHeader: string | undefined;
     // `list` runs through the Effect http-client (handlers-bind). Capture the
-    // Authorization header it sends on the workspace /agents request.
+    // Authorization header it sends on the workspace /fleets request.
     const fetchImpl = asFetchOverride(async (url, init): Promise<ResponseLike> => {
-      if (url.includes("/agents")) {
+      if (url.includes("/fleets")) {
         const headers = init?.headers as Record<string, string> | undefined;
         authHeader = headers?.Authorization;
       }

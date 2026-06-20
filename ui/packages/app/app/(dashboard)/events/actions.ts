@@ -3,17 +3,17 @@
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
   listWorkspaceEvents as apiListWorkspaceEvents,
-  listAgentEvents as apiListAgentEvents,
+  listFleetEvents as apiListFleetEvents,
   type EventsPage,
   type EventsQuery,
 } from "@/lib/api/events";
 
-export async function listAgentEventsAction(
+export async function listFleetEventsAction(
   workspaceId: string,
-  agentId: string,
-  opts?: Omit<EventsQuery, "agent_id">,
+  fleetId: string,
+  opts?: Omit<EventsQuery, "fleet_id">,
 ): Promise<ActionResult<EventsPage>> {
-  return withToken((t) => apiListAgentEvents(workspaceId, agentId, t, opts));
+  return withToken((t) => apiListFleetEvents(workspaceId, fleetId, t, opts));
 }
 
 export async function listWorkspaceEventsAction(

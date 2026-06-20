@@ -35,7 +35,7 @@ const ALLOC = std.testing.allocator;
 // suite so cross-test teardown can never race shared rows.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9a01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9f01";
 const MODEL_CAPS_UID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
@@ -92,23 +92,23 @@ fn seedRunner(conn: *pg.Conn) !void {
 // Affinity holds the authoritative metering cursor the renewal CTE diffs against.
 fn seedAffinity(conn: *pg.Conn, m_in: i64, m_cached: i64, m_out: i64, last_metered: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO fleet.runner_affinity (id, agent_id, last_runner_id, fencing_seq,
+        \\INSERT INTO fleet.runner_affinity (id, fleet_id, last_runner_id, fencing_seq,
         \\   leased_until, metered_input_tokens, metered_cached_tokens, metered_output_tokens,
         \\   last_metered_at_ms, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, $5, $6, $7, $8, 0, 0)
-        \\ON CONFLICT (agent_id) DO UPDATE SET fencing_seq = 1,
+        \\ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = 1,
         \\   metered_input_tokens = EXCLUDED.metered_input_tokens,
         \\   metered_cached_tokens = EXCLUDED.metered_cached_tokens,
         \\   metered_output_tokens = EXCLUDED.metered_output_tokens,
         \\   last_metered_at_ms = EXCLUDED.last_metered_at_ms
-    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
+    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, clock.nowMillis() + 600_000, m_in, m_cached, m_out, last_metered });
 }
 
 fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
     const now = clock.nowMillis();
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -116,7 +116,7 @@ fn seedActiveLease(conn: *pg.Conn, last_metered: i64) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform', $7, $8,
         \\        0, 0, 0, $9, 1, $10, 'active', $11, $11)
         \\ON CONFLICT (id) DO UPDATE SET fencing_token = 1, status = 'active'
-    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
+    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, EVENT_ID, PROVIDER, MODEL, last_metered, now + 60_000, now - 60_000 });
 }
 
 fn seedBalance(conn: *pg.Conn) !void {
@@ -153,9 +153,9 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 
 fn teardown(conn: *pg.Conn) void {
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.agent_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     // Drop this suite's catalogue row and reseat the process-global cache so
     // later suites in the same run never see the private pair.
@@ -246,8 +246,8 @@ const Cursor = struct { m_in: i64, m_cached: i64, m_out: i64 };
 fn readAffinityCursor(conn: *pg.Conn) !Cursor {
     var q = PgQuery.from(try conn.query(
         \\SELECT metered_input_tokens, metered_cached_tokens, metered_output_tokens
-        \\FROM fleet.runner_affinity WHERE agent_id = $1::uuid
-    , .{AGENTSFLEET_ID}));
+        \\FROM fleet.runner_affinity WHERE fleet_id = $1::uuid
+    , .{FLEET_ID}));
     defer q.deinit();
     const row = (try q.next()) orelse return error.AffinityRowMissing;
     return .{ .m_in = try row.get(i64, 0), .m_cached = try row.get(i64, 1), .m_out = try row.get(i64, 2) };

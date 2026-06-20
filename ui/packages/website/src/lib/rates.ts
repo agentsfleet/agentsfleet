@@ -25,7 +25,7 @@ export const NANOS_PER_USD = 1_000_000_000n;
 export const STARTER_CREDIT_NANOS = 5n * NANOS_PER_USD;
 export const EVENT_NANOS = 0n;
 // Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
-// postures while an agent is actively running. Replaces the former flat
+// postures while a Fleet is actively running. Replaces the former flat
 // per-stage fees — runtime is metered by the second, not per stage.
 export const RUN_NANOS_PER_SEC = 100_000n;
 
@@ -49,7 +49,7 @@ export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
   EVENT_RATE: "free",
   // Run rate shown as the per-second billing unit and its hourly equivalent.
-  // Usage-based: only billed while an agent is actively running, identical
+  // Usage-based: only billed while a Fleet is actively running, identical
   // under both postures (RUN_NANOS_PER_SEC = 100_000n → $0.0001/sec, ×3600/1e9
   // → $0.36/hr).
   RUN_RATE_PER_SEC: "$0.0001/sec",

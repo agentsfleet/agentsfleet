@@ -1,4 +1,4 @@
-//! PATCH /v1/fleet/runners/{id} — platform-admin runner operator plane.
+//! PATCH /v1/fleets/runners/{id} — platform-admin runner operator plane.
 
 const std = @import("std");
 const clock = @import("common").clock;

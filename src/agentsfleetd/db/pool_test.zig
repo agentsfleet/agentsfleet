@@ -333,7 +333,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    const schema_checks = [_][]const u8{ "core", "agent", "billing", "vault", "audit", "ops_ro" };
+    const schema_checks = [_][]const u8{ "core", "fleet", "billing", "vault", "audit", "ops_ro" };
     inline for (schema_checks) |schema_name| {
         var schema_q = PgQuery.from(try db_ctx.conn.query(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",
@@ -606,7 +606,7 @@ test "integration: readonly roles cannot read vault.secrets" {
 
 // Grant-equivalence regression for the worker-substrate retirement: api_runtime
 // is the sole data-plane role, and the lease/report path INSERTs/UPDATEs these
-// tables through the api pool. INSERT+UPDATE on agent_sessions and agent_events
+// tables through the api pool. INSERT+UPDATE on fleet_sessions and fleet_events
 // formerly lived only on the removed worker role; the collapse must move them
 // onto api_runtime. has_table_privilege evaluates the named role directly, so
 // this proves the grant without a superuser bypass (the real statements are
@@ -619,16 +619,16 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     // The full lease/report write set: the per-event lifecycle tables
-    // (events/sessions/agents), metering + approval writes, and the billing
-    // ledger the report path debits. agent_sessions + agent_events were the
+    // (events/sessions/fleets), metering + approval writes, and the billing
+    // ledger the report path debits. fleet_sessions + fleet_events were the
     // two formerly granted to worker_runtime only — the rest api_runtime always
     // held; covering all of them keeps the guard faithful to the write path.
     const write_set = [_][]const u8{
-        "core.agents",
-        "core.agent_events",
-        "core.agent_sessions",
-        "core.agent_execution_telemetry",
-        "core.agent_approval_gates",
+        "core.fleets",
+        "core.fleet_events",
+        "core.fleet_sessions",
+        "core.fleet_execution_telemetry",
+        "core.fleet_approval_gates",
         "billing.tenant_billing",
     };
     inline for (write_set) |tbl| {

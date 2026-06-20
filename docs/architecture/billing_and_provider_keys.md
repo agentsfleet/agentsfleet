@@ -14,9 +14,9 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 ## 1. The two postures
 
-One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs an agent on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying agentsfleet for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
+One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a Fleet on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying agentsfleet for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
 
-A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per agent):
+A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per fleet):
 
 - **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user (one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`agentsfleetd`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
 - **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
@@ -64,7 +64,7 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 > **The run debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta and records it in **three places**, all inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none; `FOR UPDATE` on the lease+slot serialises same-lease renewals so a retry-in-flight charges ≈0). §4.2 is the charge function.
 >
 > ```
->  ONE event → the agent runs in a sandbox, renewing as it works:
+>  ONE event → the fleet runs in a sandbox, renewing as it works:
 >    t0 ─renew─ renew ─renew─ … ─report(settle)─►   each tick meters the slice since the last:
 >      slice = run_fee + token_cost
 >        run_fee    = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000   (both postures, ms-precision)
@@ -77,13 +77,13 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 >      ③ BREAKDOWN  INSERT fleet.metering_periods(event_id, slice_seq, …)     per-RENEWAL detail (new table)
 >
 >    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
->    dormant agent: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
+>    dormant fleet: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
 >    idempotent: cumulative-token diff vs the lease cursor → a fail-safe retry charges ≈0
 > ```
 
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT agent_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
+| 1 | **Receive** | Right after `INSERT fleet_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
 | 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `computeStageCharge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-caps cache. self-managed: the run fee only (tokens recorded, not charged). |
 
 Why two debit points and not one:
@@ -91,7 +91,7 @@ Why two debit points and not one:
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
 - **Run captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-**Telemetry rows (M80_010).** `core.agent_execution_telemetry` is keyed `(event_id, charge_type)` — one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals (the `UNIQUE (event_id, charge_type)` constraint means the `stage` row is updated in place, never multiplied; the run is billed under `charge_type = stage`). The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
+**Telemetry rows (M80_010).** `core.fleet_execution_telemetry` is keyed `(event_id, charge_type)` — one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals (the `UNIQUE (event_id, charge_type)` constraint means the `stage` row is updated in place, never multiplied; the run is billed under `charge_type = stage`). The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
 
 **Run metering — three layers.** The run debit follows the real run instead of a one-shot estimate. On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts; the server charges the **delta** since the lease's last-metered cursor — `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms-precision) plus (platform only) the per-token cost of the token delta — and applies three guard-gated writes (① debit the **wallet** `balance_nanos`, clamped at 0; ② accumulate the per-event `stage` **ledger** row; ③ INSERT the per-renewal `fleet.metering_periods` **breakdown** row), advancing the cursor, all atomically inside M80_006's fenced renewal CTE. The breakdown's `slice_seq` (the per-event slice number) comes from a `meter_slice_seq` counter **on the affinity slot** — `+1`, written back in the same fenced statement — not from a `MAX(slice_seq)` read of `metering_periods`: the slot row is `FOR UPDATE`-locked, so a blocked concurrent renew re-reads the committed counter (EvalPlanQual) and the next slice is monotonic, whereas an unlocked `MAX` subquery reads a stale statement snapshot and two racing renews would collide on the same `slice_seq`. The ledger ② and breakdown ③ record `charged = LEAST(slice, balance)` — the actual debit — so the audit rows equal the wallet drain even on the slice that exhausts the wallet. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens; that settle is **fused into the report claim** — the lease's `active→reported` flip and the final-slice charge ride ONE fenced CTE under `FOR UPDATE OF l, a`, so a reclaim racing the report cannot strand the final slice on the `MAX_RUNTIME` cap path. Properties: same-lease renewals are serialised (`FOR UPDATE` on the lease+slot), so a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a negative Δ clamps to 0 (never credits); the wallet debit is `GREATEST(0, …)` (never negative) and a balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`, run terminates); a lost/fenced-out renewal writes none of the three.
 
@@ -157,7 +157,7 @@ pub fn computeStageCharge(
 }
 ```
 
-One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfleetd/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the agent.
+One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfleetd/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
 
 Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `audits/cross-tier-rates.sh` so a bump surfaces immediately.
 
@@ -198,11 +198,11 @@ total_nanos = EVENT_NANOS                              // receive
 
 ```mermaid
 flowchart TD
-    A([XREADGROUP unblocks]) --> B[INSERT agent_events status=received]
+    A([XREADGROUP unblocks]) --> B[INSERT fleet_events status=received]
     B --> C[Resolve posture<br/>tenant_provider.resolveActiveProvider]
     C --> D[Estimate event cost:<br/>receive + worst-case run]
     D --> E{balance_nanos<br/>≥ estimate?}
-    E -->|no| Block[UPDATE agent_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
+    E -->|no| Block[UPDATE fleet_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
     E -->|yes| F[DEDUCT RECEIVE<br/>UPDATE balance_nanos -=<br/>compute_receive_charge<br/>INSERT telemetry charge_type=receive]
     F --> G[Approval gate]
@@ -211,7 +211,7 @@ flowchart TD
     H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner forks NullClaw child]
     J --> Renew[Runner /renew ticks<br/>meter slice Δ → wallet/ledger/breakdown §3]
     Renew --> K[Runner reports result]
-    K --> L[UPDATE agent_events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
+    K --> L[UPDATE fleet_events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
     L --> X2([XACK])
 ```
 
@@ -232,7 +232,7 @@ When the gate blocks, the user's surfaces show:
 
 - **`agentsfleet events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line pointer: *Credits exhausted. See https://app.agentsfleet.net/settings/billing.*
 - **`agentsfleet billing show`** — balance reads `$0.00`; below it, the most recent N event rows showing where the credits went.
-- **Dashboard `/agents/{id}/events`** — the row renders with a red *Blocked: balance* chip linking to the billing page.
+- **Dashboard `/fleets/{id}/events`** — the row renders with a red *Blocked: balance* chip linking to the billing page.
 - **Dashboard `/settings/billing`** — empty-balance hero state. The Purchase Credits button is visible but disabled in v2.0 with a tooltip *"Coming in v2.1 — contact support for a top-up."*. The Usage tab still shows the historical drain.
 
 The blocked row is **terminal** (XACKed, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they either re-trigger from the source (push another commit, send another steer) or use the resume affordance, which writes an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
@@ -291,8 +291,8 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 
 - HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
-- The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
-- Persisted event rows — `core.agent_events`, `agent_execution_telemetry`, anything else under `core.*`.
+- The fleet's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
+- Persisted event rows — `core.fleet_events`, `fleet_execution_telemetry`, anything else under `core.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
 The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, `agentsfleetd` logs, runner logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
@@ -331,7 +331,7 @@ The single source of truth for model context caps **and per-model token rates**.
 
 For billing specifically: the API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached per-model token rates — never makes a network call on the hot path.
 
-Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-agent reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
+Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-fleet reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 
 ```
 GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json
@@ -354,7 +354,7 @@ GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json?mo
 }
 ```
 
-The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-agent keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider add` validates membership, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-fleet keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider add` validates membership, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
@@ -364,7 +364,7 @@ Properties:
 - **Pricing visibility caveat.** The token-rate columns are in the same public-but-unguessable response. Anyone who finds the URL can read our platform margins. Acknowledged-controversial — the alternative (auth-required pricing endpoint) breaks the "hot, unauthenticated, cacheable" property that lets `tenant provider add` resolve at low latency. We accept the trade-off for now and revisit if a competitor uses our pricing strategically.
 - **Hard-coded in clients.** `agentsfleet` and the install-skill embed the URL at build time. Rotation is a coordinated CLI + skill release, on a quarterly cadence or sooner if abuse is detected. Old keys serve `410 Gone` for ~30 days, then `404`.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (one request per second sustained, burst of ten) at the edge.
-- **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only agent owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
+- **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only fleet owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
 - **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_providers` (self-managed) or the synth-default constant (platform). The token-rate cache is refreshed on API boot and on a slow background timer; the hot path never makes a network call.
 
 ---
@@ -376,12 +376,12 @@ The billing dashboard mirrors Amp's settings page in shape. Layout and what ship
 ### 11.1 Balance card
 
 - Large display: `$X.XX USD` (the balance_nanos value formatted as dollars).
-- Subtitle: `Covers all your agent events.`
+- Subtitle: `Covers all your fleet events.`
 - **Purchase Credits** button — present, **disabled in v2.0** with a tooltip *"Coming in v2.1 — contact support for a top-up."* The button moves to enabled in v2.1 once the Stripe integration ships.
 
 ### 11.2 Tabs — Usage / Invoices / Payment Method
 
-- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by agent / time range. Each row shows event_id, agent, timestamp, posture, model (under platform), tokens (under platform), receive nanos, run nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
+- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by fleet / time range. Each row shows event_id, fleet, timestamp, posture, model (under platform), tokens (under platform), receive nanos, run nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
 - **Invoices** (shipped as empty state in v2.0). Renders *"No invoices yet — invoicing arrives with Purchase Credits in v2.1."*
 - **Payment Method** (shipped as empty state in v2.0). Renders *"No payment method on file — coming in v2.1."*
 
@@ -393,7 +393,7 @@ Hidden entirely in v2.0. Re-introduced in v2.1 alongside Stripe.
 
 Everything on the page is sourced from rows the runtime already writes:
 - `core.tenant_billing.balance_nanos` for the headline.
-- `core.agent_execution_telemetry` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
+- `core.fleet_execution_telemetry` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
 - No Stripe, no purchase tables, no invoicing tables — those land in v2.1.
 
 ---

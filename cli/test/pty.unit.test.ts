@@ -85,7 +85,7 @@ const TIMED_OUT_MARKER = "timed out";
  */
 function spawnPty(args: ReadonlyArray<string>): PtyProcess {
   const env = composeEnv({ NO_COLOR: "1" });
-  return PtyProcess.spawnAgentctl(args, { env, binary: BINARY_MODE });
+  return PtyProcess.spawnFleetctl(args, { env, binary: BINARY_MODE });
 }
 
 describe("PtyProcess — waitForLine resolution", () => {

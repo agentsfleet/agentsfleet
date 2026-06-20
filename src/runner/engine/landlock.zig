@@ -185,7 +185,6 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
     if (result != 0) return LandlockError.RuleAddFailed;
 }
 
-
 test "applyPolicy returns UnsupportedPlatform on non-linux" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;
     try std.testing.expectError(LandlockError.UnsupportedPlatform, applyPolicy("/tmp/test"));
