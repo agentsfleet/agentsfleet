@@ -4,16 +4,18 @@
 //! lease). Lives in src/lib so the agentsfleetd (put) and runner (get) build
 //! graphs share one type identity (eng-review; src/lib gating approved).
 //!
-//! Credentials come from the environment (vault-fed at deploy): R2_ACCOUNT_ID,
-//! R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET. `fromEnv` fails loud
-//! (MissingR2Config) if any is unset/empty — the preflight credential gate and
-//! this boot path both enforce presence. Secret values are never logged (VLT).
+//! Credentials (vault-fed at deploy) are read from the environment by the CALLER
+//! and passed to `init` as a `Config`: this module imports only z3 + std and
+//! cannot reach the daemon's `std.process.Init`-based env reader (Zig 0.16 removed
+//! the direct env-read APIs). The boot path resolves R2_ACCOUNT_ID,
+//! R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET and constructs the client only
+//! when all are present. Secret values are never logged (VLT).
 
 const R2 = @This();
 
-// Stored-allocator pattern: R2 owns the heap config strings (env-read + the
-// built endpoint + bucket) that back the z3 client's borrowed []const u8 config
-// fields, plus the z3 client itself. `deinit` frees every owned field.
+// Stored-allocator pattern: R2 owns the heap config strings (the built endpoint +
+// duped credentials) that back the z3 client's borrowed []const u8 config fields,
+// plus the z3 client itself. `deinit` frees every owned field.
 alloc: std.mem.Allocator,
 client: z3.S3Client,
 bucket: []const u8,
@@ -23,33 +25,37 @@ secret_access_key: []const u8,
 endpoint: []const u8,
 
 pub const Error = error{
-    MissingR2Config,
     R2InitFailed,
     R2PutFailed,
     R2GetFailed,
     R2NotFound,
 };
 
+/// Resolved R2 credentials. The caller reads these from the environment (via the
+/// daemon's env reader) and passes them here; this module never touches env.
+pub const Config = struct {
+    account_id: []const u8,
+    access_key_id: []const u8,
+    secret_access_key: []const u8,
+    bucket: []const u8,
+};
+
 // R2 fixes the AWS SigV4 region label to "auto". Account endpoints address the
 // bucket in the path (path-style), so virtual_host_style stays false.
 const REGION = "auto";
-const ENV_ACCOUNT = "R2_ACCOUNT_ID";
-const ENV_ACCESS_KEY = "R2_ACCESS_KEY_ID";
-const ENV_SECRET_KEY = "R2_SECRET_ACCESS_KEY";
-const ENV_BUCKET = "R2_BUCKET";
 const HTTP_2XX: u16 = 100; // status / HTTP_2XX == 2 → 2xx family
 
-/// Build an R2 client from the environment. `io` is the caller's io interface
-/// (e.g. `constants.globalIo()`). Returns MissingR2Config if any required env
-/// var is unset/empty. Caller owns the result and must call `deinit`.
-pub fn fromEnv(alloc: std.mem.Allocator, io: std.Io) (Error || std.mem.Allocator.Error)!R2 {
-    const account_id = readEnv(alloc, ENV_ACCOUNT) orelse return Error.MissingR2Config;
+/// Build an R2 client from resolved credentials. `io` is the caller's io interface
+/// (e.g. `constants.globalIo()`). Dupes every config string into owned storage —
+/// the caller retains ownership of `cfg`. Caller owns the result and must `deinit`.
+pub fn init(alloc: std.mem.Allocator, io: std.Io, cfg: Config) (Error || std.mem.Allocator.Error)!R2 {
+    const account_id = try alloc.dupe(u8, cfg.account_id);
     errdefer alloc.free(account_id);
-    const access_key_id = readEnv(alloc, ENV_ACCESS_KEY) orelse return Error.MissingR2Config;
+    const access_key_id = try alloc.dupe(u8, cfg.access_key_id);
     errdefer alloc.free(access_key_id);
-    const secret_access_key = readEnv(alloc, ENV_SECRET_KEY) orelse return Error.MissingR2Config;
+    const secret_access_key = try alloc.dupe(u8, cfg.secret_access_key);
     errdefer alloc.free(secret_access_key);
-    const bucket = readEnv(alloc, ENV_BUCKET) orelse return Error.MissingR2Config;
+    const bucket = try alloc.dupe(u8, cfg.bucket);
     errdefer alloc.free(bucket);
 
     const endpoint = try std.fmt.allocPrint(alloc, "https://{s}.r2.cloudflarestorage.com", .{account_id});
@@ -83,8 +89,8 @@ pub fn deinit(self: *R2) void {
     self.alloc.free(self.bucket);
 }
 
-/// Put an object (the immutable bundle snapshot). Keys are content-hash
-/// addressed, so re-putting identical bytes is idempotent.
+/// Put an object (the immutable bundle snapshot). Keys are content-hash addressed,
+/// so re-putting identical bytes is idempotent.
 pub fn put(self: *R2, key: []const u8, body: []const u8) Error!void {
     var resp = self.client.putObject(self.bucket, key, body, .{}) catch return Error.R2PutFailed;
     defer resp.deinit();
@@ -99,17 +105,6 @@ pub fn get(self: *R2, alloc: std.mem.Allocator, key: []const u8) Error![]u8 {
     if (status == 404) return Error.R2NotFound;
     if (status / HTTP_2XX != 2) return Error.R2GetFailed;
     return alloc.dupe(u8, resp.body) catch return Error.R2GetFailed;
-}
-
-// Reads an env var into owned memory; null when unset OR empty (empty is treated
-// as missing so a blank deploy var fails the same as an absent one).
-fn readEnv(alloc: std.mem.Allocator, name: []const u8) ?[]const u8 {
-    const v = std.process.getEnvVarOwned(alloc, name) catch return null;
-    if (v.len == 0) {
-        alloc.free(v);
-        return null;
-    }
-    return v;
 }
 
 const std = @import("std");
