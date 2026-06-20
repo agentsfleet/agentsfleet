@@ -1,5 +1,5 @@
 //! Admin platform LLM key management — operational/bootstrap-only surface.
-//! Primary callers are humans/agents driving environment provisioning via
+//! Primary callers are humans/fleets driving environment provisioning via
 //! `playbooks/operations/admin_bootstrap/001_playbook.md` (steps 3 + 8 +
 //! rollback step 4). No first-party UI/CLI consumes these routes; if you add
 //! one, drop the playbook reference.

@@ -1,4 +1,4 @@
-//! GET /v1/fleet/runners/{id}/events — platform-admin runner history.
+//! GET /v1/fleets/runners/{id}/events — platform-admin runner history.
 
 const std = @import("std");
 const httpz = @import("httpz");

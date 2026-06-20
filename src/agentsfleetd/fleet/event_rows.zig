@@ -1,14 +1,14 @@
-//! event_rows.zig — every durable `core.agent_events` / `core.agent_sessions`
+//! event_rows.zig — every durable `core.fleet_events` / `core.fleet_sessions`
 //! write the runner control-plane verbs make: the received-row INSERT (lease),
 //! the terminal-status UPDATE (report), and the session checkpoint UPSERT
 //! (report).
 //!
 //! The received INSERT was lifted from the worker's `event_loop_writepath_rows`
-//! at the M80 cutover — it keeps its `*AgentSession` + `*AgentEvent` params
+//! at the M80 cutover — it keeps its `*FleetSession` + `*FleetEvent` params
 //! because the lease verb has a real session + acquired event. The terminal +
 //! checkpoint writers were narrowed to the few fields they read (the report
-//! path has a `agent_id` + `event_id` + `ExecutionResult`, never a full
-//! `AgentSession`), so the partial-struct/`undefined` shims the worker forced
+//! path has a `fleet_id` + `event_id` + `ExecutionResult`, never a full
+//! `FleetSession`), so the partial-struct/`undefined` shims the worker forced
 //! are gone. Each write is best-effort + logged (non-atomic, mirroring the
 //! deleted finalize); row-equivalence with the direct path is the invariant.
 
@@ -21,18 +21,18 @@ const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 const logging = @import("log");
-const redis_agent = @import("../queue/redis_agent.zig");
-const AgentSession = @import("agent_session.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
+const FleetSession = @import("fleet_session.zig");
 
 const log = logging.scoped(.runner_report_rows);
 
 const ExecutionResult = contract.execution_result.ExecutionResult;
 
-/// `core.agent_events.status` terminal values a runner report can produce
+/// `core.fleet_events.status` terminal values a runner report can produce
 /// (app-enforced, no SQL CHECK — RULE STS). `gate_blocked`/`dead_lettered` are
 /// agentsfleetd-side and never runner-reported.
 pub const STATUS_PROCESSED = "processed";
-pub const STATUS_AGENT_ERROR = "agent_error";
+pub const STATUS_FLEET_ERROR = "fleet_error";
 /// Non-terminal ingress status; the guarded blocked-transition keys on it.
 pub const STATUS_RECEIVED = "received";
 /// agentsfleetd-side terminal status for lease-path gate refusals (scenario 03).
@@ -52,15 +52,15 @@ const FIELD_ORIGINAL_EVENT_ID = "original_event_id";
 
 /// INSERT the `received` event row at lease issue (the lease verb's first
 /// durable write, mirroring the deleted worker's write path step 1). Keeps the
-/// full `*AgentSession` + `*AgentEvent` because the lease has both. Idempotent
-/// via the (agent_id, event_id) PK; returns false on the conflict no-op so the
+/// full `*FleetSession` + `*FleetEvent` because the lease has both. Idempotent
+/// via the (fleet_id, event_id) PK; returns false on the conflict no-op so the
 /// caller can tell a re-delivered stream entry from a first delivery (and skip
 /// the receive debit + the duplicate `event_received` frame).
 pub fn insertReceivedRow(
     alloc: Allocator,
     pool: *pg.Pool,
-    session: *AgentSession,
-    event: *const redis_agent.AgentEvent,
+    session: *FleetSession,
+    event: *const redis_fleet.FleetEvent,
 ) !bool {
     const conn = try pool.acquire();
     defer pool.release(conn);
@@ -81,14 +81,14 @@ pub fn insertReceivedRow(
     };
 
     const affected = try conn.exec(
-        \\INSERT INTO core.agent_events
-        \\  (uid, agent_id, event_id, workspace_id, actor, event_type,
+        \\INSERT INTO core.fleet_events
+        \\  (uid, fleet_id, event_id, workspace_id, actor, event_type,
         \\   status, request_json, resumes_event_id, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $10, $7::jsonb, $8, $9, $9)
-        \\ON CONFLICT (agent_id, event_id) DO NOTHING
+        \\ON CONFLICT (fleet_id, event_id) DO NOTHING
     , .{
         uid,
-        session.agent_id,
+        session.fleet_id,
         event.event_id,
         session.workspace_id,
         event.actor,
@@ -109,18 +109,18 @@ pub fn insertReceivedRow(
 /// rows affected (0 = the row was already terminal; the XACK is still owed).
 pub fn markBlocked(
     pool: *pg.Pool,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     event_id: []const u8,
     failure_label: []const u8,
 ) !i64 {
     const conn = try pool.acquire();
     defer pool.release(conn);
     const affected = try conn.exec(
-        \\UPDATE core.agent_events
+        \\UPDATE core.fleet_events
         \\SET status = $3, failure_label = $4, updated_at = $5
-        \\WHERE agent_id = $1::uuid AND event_id = $2 AND status = $6
+        \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6
     , .{
-        agent_id,
+        fleet_id,
         event_id,
         STATUS_GATE_BLOCKED,
         failure_label,
@@ -138,12 +138,12 @@ pub fn markBlocked(
 /// conflicting insert but is treated as a proceed.
 pub const RowClass = enum { absent, received, terminal };
 
-pub fn classifyStatus(pool: *pg.Pool, agent_id: []const u8, event_id: []const u8) !RowClass {
+pub fn classifyStatus(pool: *pg.Pool, fleet_id: []const u8, event_id: []const u8) !RowClass {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT status FROM core.agent_events WHERE agent_id = $1::uuid AND event_id = $2
-    , .{ agent_id, event_id }));
+        \\SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
+    , .{ fleet_id, event_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return .absent;
     const status = try row.get([]const u8, 0);
@@ -157,18 +157,18 @@ pub fn classifyStatus(pool: *pg.Pool, agent_id: []const u8, event_id: []const u8
 /// reason the runner did not report). Best-effort (failures logged, not raised).
 pub fn markTerminal(
     pool: *pg.Pool,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     event_id: []const u8,
     result: ExecutionResult,
     wall_ms: u64,
 ) void {
     const conn = pool.acquire() catch |err| {
-        log.warn("terminal_acquire_failed", .{ .agent_id = agent_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("terminal_acquire_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
     };
     defer pool.release(conn);
     const now_ms = clock.nowMillis();
-    const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
+    const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_FLEET_ERROR;
     const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
     // Guarded on `status = 'received'`: a terminal row is never reopened
     // (spec Invariant 2 — same one-way-door discipline as markBlocked). The
@@ -176,11 +176,11 @@ pub fn markTerminal(
     // means the row was already terminal (a re-delivery whose XACK was lost)
     // and is logged rather than silently overwriting the settled result.
     const affected = conn.exec(
-        \\UPDATE core.agent_events
+        \\UPDATE core.fleet_events
         \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
-        \\WHERE agent_id = $1::uuid AND event_id = $2 AND status = $9
+        \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $9
     , .{
-        agent_id,
+        fleet_id,
         event_id,
         status_text,
         result.content,
@@ -190,30 +190,30 @@ pub fn markTerminal(
         failure_label,
         STATUS_RECEIVED,
     }) catch |err| {
-        log.warn("terminal_update_failed", .{ .agent_id = agent_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("terminal_update_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
     };
     if ((affected orelse 0) == 0) {
-        log.warn("terminal_write_skipped_nonreceived", .{ .agent_id = agent_id, .event_id = event_id });
+        log.warn("terminal_write_skipped_nonreceived", .{ .fleet_id = fleet_id, .event_id = event_id });
     }
 }
 
-/// UPSERT the session resume cursor. Reads only `agent_id` + the pre-built
+/// UPSERT the session resume cursor. Reads only `fleet_id` + the pre-built
 /// `context_json` ({last_event_id, last_response}).
-pub fn checkpointAgentSession(alloc: Allocator, pool: *pg.Pool, agent_id: []const u8, context_json: []const u8) !void {
-    const row_id = try id_format.generateAgentId(alloc);
+pub fn checkpointFleetSession(alloc: Allocator, pool: *pg.Pool, fleet_id: []const u8, context_json: []const u8) !void {
+    const row_id = try id_format.generateFleetId(alloc);
     defer alloc.free(row_id);
     const now_ms = clock.nowMillis();
     const conn = try pool.acquire();
     defer pool.release(conn);
     _ = try conn.exec(
-        \\INSERT INTO core.agent_sessions (id, agent_id, context_json, checkpoint_at, created_at, updated_at)
+        \\INSERT INTO core.fleet_sessions (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $4, $4)
-        \\ON CONFLICT (agent_id) DO UPDATE
+        \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET context_json = EXCLUDED.context_json,
         \\      checkpoint_at = EXCLUDED.checkpoint_at,
         \\      updated_at = EXCLUDED.updated_at
-    , .{ row_id, agent_id, context_json, now_ms });
+    , .{ row_id, fleet_id, context_json, now_ms });
 }
 
 /// Truncate a response to a JSON-safe length on a UTF-8 boundary so the

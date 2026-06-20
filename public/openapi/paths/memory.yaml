@@ -1,9 +1,9 @@
-/v1/workspaces/{workspace_id}/agents/{agent_id}/memories:
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories:
   get:
-    operationId: list_agent_memories
-    summary: List or search memory entries for a agent
+    operationId: list_fleet_memories
+    summary: List or search memory entries for a fleet
     description: >
-      Returns memory entries for the agent. Without `query` this lists most-recent
+      Returns memory entries for the fleet. Without `query` this lists most-recent
       entries (optionally filtered by `category`). With `query`, performs case-insensitive
       LIKE search across both `key` and `content` (LIKE metacharacters in `query` are
       escaped — a query of `%` does NOT return every entry).
@@ -16,7 +16,7 @@
       schema:
         type: string
         format: uuid
-    - name: agent_id
+    - name: fleet_id
       in: path
       required: true
       schema:

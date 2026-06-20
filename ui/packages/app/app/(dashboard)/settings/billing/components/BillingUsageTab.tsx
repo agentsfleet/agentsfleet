@@ -23,7 +23,7 @@ export type BillingUsageTabProps = {
 
 /**
  * Read-only Usage tab — newest-first per-event drain history with
- * cursor-based "Load more" pagination. CSV export and agent/time filters
+ * cursor-based "Load more" pagination. Comma-Separated Values (CSV) export and Fleet/time filters
  * aren't built yet; this surface stays read-only on purpose so we can ship
  * without a dependency on a chart/filter primitive.
  *
@@ -99,7 +99,7 @@ export default function BillingUsageTab({
       <EmptyState
         icon={<ActivityIcon size={28} />}
         title="No billable events yet"
-        description="Charges appear here once your agents start running."
+        description="Charges appear here once your Fleets start running."
       />
     );
   }

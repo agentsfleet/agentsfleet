@@ -31,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV, UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoConnectionError, assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -144,7 +144,7 @@ if (!isLive) {
       extraEnv?: Record<string, string>,
     ): Promise<RunResult> {
       const composed = extraEnv ? { ...env, ...extraEnv } : env;
-      const result = await runAgentctl(args, { env: composed, stdin: "" });
+      const result = await runFleetctl(args, { env: composed, stdin: "" });
       assertNoCredentialLeak(result, sessionJwt);
       return result;
     }
@@ -154,7 +154,7 @@ if (!isLive) {
     // observed connection error would prove the guard was bypassed.
     async function runUnroutable(args: ReadonlyArray<string>): Promise<RunResult> {
       const unroutable = { ...env, [ENV_API_URL]: UNROUTABLE_API_URL };
-      const result = await runAgentctl(args, { env: unroutable, stdin: "" });
+      const result = await runFleetctl(args, { env: unroutable, stdin: "" });
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout}`);
       assertNoConnectionError(result, args);
       assertNoCredentialLeak(result, sessionJwt);

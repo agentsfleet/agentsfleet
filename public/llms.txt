@@ -1,8 +1,8 @@
-# agentsfleet — Agent Delivery Control Plane
+# agentsfleet — Fleet Delivery Control Plane
 
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json
-- Agent manifest: /agents (JSON Linked Data)
+- agentsfleet manifest: /agentsfleet-manifest.json (JSON Linked Data)
 - Skill description: /skill.md
 - Health/status: /heartbeat
 - Documentation: /docs
@@ -11,18 +11,21 @@
 https://agentsfleet.net/v1
 
 ## Operations (operationId: method path)
-Status transitions ride PATCH on the agent resource — body {status: "active"|"stopped"|"killed"}.
+Status transitions ride PATCH on the fleet resource — body {status: "active"|"stopped"|"killed"}.
 "paused" is a platform-only state set by the anomaly gate; not callable from the API.
-- create_agent:        POST   /v1/workspaces/{workspace_id}/agents
-- update_agent:        PATCH  /v1/workspaces/{workspace_id}/agents/{agent_id}     # body: {config_json}
-- stop_agent:          PATCH  /v1/workspaces/{workspace_id}/agents/{agent_id}     # body: {status:"stopped"}    — halt session, resumable
-- resume_agent:        PATCH  /v1/workspaces/{workspace_id}/agents/{agent_id}     # body: {status:"active"}     — resume from stopped/paused
-- kill_agent:          PATCH  /v1/workspaces/{workspace_id}/agents/{agent_id}     # body: {status:"killed"}     — terminal mark (irreversible)
-- delete_agent:        DELETE /v1/workspaces/{workspace_id}/agents/{agent_id}     # hard-purge; precondition status='killed'
-- post_agent_message:  POST   /v1/workspaces/{workspace_id}/agents/{agent_id}/messages   # steer / chat
-- list_agent_events:   GET    /v1/workspaces/{workspace_id}/agents/{agent_id}/events
-- stream_agent_events: GET    /v1/workspaces/{workspace_id}/agents/{agent_id}/events/stream
-- ingest_agent_webhook: POST  /v1/webhooks/{agent_id}
+- create_fleet:        POST   /v1/workspaces/{workspace_id}/fleets
+- list_fleet_bundles: GET /v1/fleets/bundles
+- import_fleet_bundle: POST   /v1/workspaces/{workspace_id}/fleets/bundles/snapshots
+- get_fleet_bundle:    GET    /v1/workspaces/{workspace_id}/fleets/bundles/snapshots/{bundle_id}
+- update_fleet:        PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {config_json}
+- stop_fleet:          PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"stopped"}    — halt session, resumable
+- resume_fleet:        PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"active"}     — resume from stopped/paused
+- kill_fleet:          PATCH  /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # body: {status:"killed"}     — terminal mark (irreversible)
+- delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge; precondition status='killed'
+- post_fleet_message:  POST   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   # steer / chat
+- list_fleet_events:   GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
+- stream_fleet_events: GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream
+- ingest_fleet_webhook: POST  /v1/webhooks/{fleet_id}
 - get_tenant_billing:         GET /v1/tenants/me/billing
 - get_tenant_billing_charges: GET /v1/tenants/me/billing/charges
 - get_tenant_metering_periods: GET /v1/tenants/me/billing/charges/{event_id}/telemetry
@@ -31,10 +34,10 @@ Status transitions ride PATCH on the agent resource — body {status: "active"|"
 Bearer token: Authorization: Bearer <api_key>
 
 ## Execution model
-A Agent is a long-lived, event-driven autonomous worker scoped to a workspace.
-Inbound events arrive via `POST /v1/webhooks/{agent_id}` (or other configured
-triggers) and are appended to the Agent's event stream. The control plane
+A Fleet is a long-lived, event-driven autonomous worker scoped to a workspace.
+Inbound events arrive via `POST /v1/webhooks/{fleet_id}` (or other configured
+triggers) and are appended to the Fleet's event stream. The control plane
 (`agentsfleetd`) assigns each event to a host-resident `agentsfleet-runner` via a lease;
-the runner runs the Agent's loop, which can call tools, update state,
-and emit further events. Operators steer or kill running Agents through the
+the runner runs the Fleet's loop, which can call tools, update state,
+and emit further events. Operators steer or kill running Fleets through the
 control-plane endpoints above.

@@ -42,12 +42,12 @@ test "executions split by outcome" {
     mr.observeRunnerExecution("r1", .processed);
     mr.observeRunnerExecution("r1", .processed);
     mr.observeRunnerExecution("r1", .processed);
-    mr.observeRunnerExecution("r1", .agent_error);
+    mr.observeRunnerExecution("r1", .fleet_error);
 
     var buf: [8192]u8 = undefined;
     const out = try render(&buf);
     try std.testing.expect(contains(out, "agentsfleet_runner_executions_total{runner_id=\"r1\",outcome=\"processed\"} 3"));
-    try std.testing.expect(contains(out, "agentsfleet_runner_executions_total{runner_id=\"r1\",outcome=\"agent_error\"} 1"));
+    try std.testing.expect(contains(out, "agentsfleet_runner_executions_total{runner_id=\"r1\",outcome=\"fleet_error\"} 1"));
 }
 
 test "a seen runner renders a last_seen_seconds series" {
@@ -111,6 +111,6 @@ test "cardinality overflow routes to _other with the reason preserved" {
     try std.testing.expect(contains(text, "agentsfleet_runner_failures_overflow_total 1"));
 }
 
-// The agent_memory_* family tests moved to metrics_memory_test.zig with the
+// The fleet_memory_* family tests moved to metrics_memory_test.zig with the
 // module split; renderPrometheus still composes those families after the
 // runner ones, pinned there through this same render entry point.

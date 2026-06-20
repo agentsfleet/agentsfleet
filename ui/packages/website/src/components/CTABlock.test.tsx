@@ -23,7 +23,7 @@ describe("CTABlock", () => {
   it("speaks to the operator, not the machine API", () => {
     renderCtaBlock();
     expect(screen.getByText(CTA_COPY.lede)).toBeInTheDocument();
-    // The OpenAPI / machine-surface pitch belongs on /agents, not the human closer.
+    // The OpenAPI / machine-surface pitch belongs on /fleets, not the human closer.
     expect(screen.queryByText(/openapi 3\.1/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/machine surface/i)).not.toBeInTheDocument();
   });

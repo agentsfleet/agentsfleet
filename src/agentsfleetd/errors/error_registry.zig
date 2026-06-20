@@ -98,7 +98,7 @@ pub const ERR_SSE_STREAM_CAP = "UZ-API-002";
 // SCORING
 // ENTITLEMENT
 // AGENT
-pub const ERR_AGENT_NOT_FOUND = "UZ-AGENT-001";
+pub const ERR_FLEET_KEY_NOT_FOUND = "UZ-FLEETKEY-001";
 // PROFILE
 // WEBHOOK
 pub const ERR_WEBHOOK_NO_AGENT = "UZ-WH-001";
@@ -121,6 +121,10 @@ pub const ERR_AGENTSFLEET_NOT_FOUND = "UZ-AGT-009";
 pub const ERR_AGENTSFLEET_ALREADY_TERMINAL = "UZ-AGT-010";
 pub const ERR_AGENTSFLEET_NAME_MISMATCH = "UZ-AGT-011";
 pub const ERR_AGENTSFLEET_PAUSED_INGRESS = "UZ-AGT-012";
+// Fleet Bundle
+pub const ERR_FLEET_BUNDLE_INVALID = "UZ-BUNDLE-001";
+pub const ERR_FLEET_BUNDLE_NOT_FOUND = "UZ-BUNDLE-002";
+pub const ERR_FLEET_BUNDLE_CREDENTIALS_MISSING = "UZ-BUNDLE-003";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -153,8 +157,8 @@ pub const ERR_EXEC_RENEWAL_TERMINATED = "UZ-EXEC-008";
 pub const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
 pub const ERR_EXEC_CRASH = "UZ-EXEC-010";
 pub const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
-pub const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
-pub const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
+pub const ERR_EXEC_RUNNER_FLEET_INIT = "UZ-EXEC-012";
+pub const ERR_EXEC_RUNNER_FLEET_RUN = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
 // RELAY
 // APPROVAL
@@ -190,10 +194,10 @@ pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 pub const MSG_BODY_REQUIRED = "Request body required";
 pub const MSG_MALFORMED_JSON = "Malformed JSON";
 pub const MSG_MISSING_FIELDS = "event_id and type are required";
-pub const MSG_AGENTSFLEET_NOT_FOUND = "Agent not found";
-pub const MSG_AGENTSFLEET_NOT_ACTIVE = "Agent is not active";
-// Agent CRUD messages
-pub const MSG_AGENTSFLEET_NAME_EXISTS = "Agent already exists in this workspace. Use `agentsfleet kill` first.";
+pub const MSG_AGENTSFLEET_NOT_FOUND = "Fleet not found";
+pub const MSG_AGENTSFLEET_NOT_ACTIVE = "Fleet is not active";
+// Fleet CRUD messages
+pub const MSG_AGENTSFLEET_NAME_EXISTS = "Fleet already exists in this workspace. Use `agentsfleet kill` first.";
 pub const MSG_AGENTSFLEET_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, budget; `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars.";
 pub const MSG_AGENTSFLEET_NAME_MISMATCH = "SKILL.md `name:` must match TRIGGER.md `name:`.";
 pub const MSG_AGENTSFLEET_SKILL_INVALID = "SKILL.md frontmatter is invalid. Required: name (kebab, 1-64 chars), description, version (semver MAJOR.MINOR.PATCH).";
@@ -222,9 +226,9 @@ pub const DEDUP_TTL_SECONDS: u32 = 86400;
 pub const WEBHOOK_DEDUP_KEY_PREFIX = "webhook:dedup:";
 pub const WEBHOOK_EVENT_TYPE = "webhook_received";
 pub const STATUS_DUPLICATE = "duplicate";
-/// Webhook 200-ignored reason for a paused/non-active agent:
-/// sender retry queues add no value for an intentionally paused agent.
-pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "agent_paused";
+/// Webhook 200-ignored reason for a paused/non-active fleet:
+/// sender retry queues add no value for an intentionally paused fleet.
+pub const IGNORED_REASON_AGENTSFLEET_PAUSED = "fleet_paused";
 pub const STATUS_ACCEPTED = "accepted";
 // Slack signature constants
 pub const SLACK_SIG_VERSION = "v0";
@@ -235,11 +239,11 @@ pub const SLACK_MAX_TS_DRIFT_SECONDS: i64 = 300;
 pub const GATE_DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
 /// Upper bound for a configured gate timeout — larger values clamp + warn.
 pub const GATE_TIMEOUT_MS_MAX: u64 = 86_400_000;
-pub const GATE_ANOMALY_KEY_PREFIX = "agent:anomaly:";
-pub const GATE_PENDING_KEY_PREFIX = "agent:gate:pending:";
-pub const GATE_RESPONSE_KEY_PREFIX = "agent:gate:response:";
+pub const GATE_ANOMALY_KEY_PREFIX = "fleet:anomaly:";
+pub const GATE_PENDING_KEY_PREFIX = "fleet:gate:pending:";
+pub const GATE_RESPONSE_KEY_PREFIX = "fleet:gate:response:";
 /// event_id → "action_id|deadline_ms" ref the async lease-path gate check reads.
-pub const GATE_EVENT_REF_KEY_PREFIX = "agent:gate:byevent:";
+pub const GATE_EVENT_REF_KEY_PREFIX = "fleet:gate:byevent:";
 pub const GATE_PENDING_TTL_SECONDS: u32 = 7200;
 pub const GATE_DECISION_APPROVE = "approve";
 pub const GATE_DECISION_DENY = "deny";

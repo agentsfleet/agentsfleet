@@ -1,7 +1,7 @@
 //! GET /v1/workspaces/{ws}/approvals — workspace-scoped approval-gate inbox.
 //!
 //! Returns pending gates oldest-first (oldest is most urgent). Optional
-//! filters: agent_id, gate_kind, status. Cursor pagination over
+//! filters: fleet_id, gate_kind, status. Cursor pagination over
 //! (requested_at, id) so concurrent inserts don't cause silent skips.
 
 const std = @import("std");
@@ -12,8 +12,8 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const approval_gate_db = @import("../../../agent/approval_gate_db.zig");
-const keyset_cursor = @import("../../../agent/keyset_cursor.zig");
+const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
+const keyset_cursor = @import("../../../fleet_runtime/keyset_cursor.zig");
 
 const log = logging.scoped(.http_approvals_list);
 
@@ -59,7 +59,7 @@ pub fn innerListApprovals(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []co
     const filter = approval_gate_db.ListFilter{
         .workspace_id = workspace_id,
         .status = qs.get("status"),
-        .agent_id = qs.get("agent_id"),
+        .fleet_id = qs.get("fleet_id"),
         .gate_kind = qs.get("gate_kind"),
     };
 
@@ -78,8 +78,8 @@ pub fn innerListApprovals(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []co
 
 const ListItemJson = struct {
     gate_id: []const u8,
-    agent_id: []const u8,
-    agent_name: []const u8,
+    fleet_id: []const u8,
+    fleet_name: []const u8,
     workspace_id: []const u8,
     action_id: []const u8,
     tool_name: []const u8,
@@ -110,8 +110,8 @@ fn writeResponse(hx: hx_mod.Hx, rows: []approval_gate_db.PendingRow, limit: u32)
         parsed_evidence[i] = evidence_value;
         items[i] = .{
             .gate_id = row.gate_id,
-            .agent_id = row.agent_id,
-            .agent_name = row.agent_name,
+            .fleet_id = row.fleet_id,
+            .fleet_name = row.fleet_name,
             .workspace_id = row.workspace_id,
             .action_id = row.action_id,
             .tool_name = row.tool_name,

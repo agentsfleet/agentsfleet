@@ -12,7 +12,7 @@ const contract = @import("contract");
 const client_mod = @import("control_plane_client.zig");
 const protocol = contract.protocol;
 
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
 
 /// Activity frames batch per POST: flush at this many frames…
 pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
@@ -23,7 +23,7 @@ pub const ACTIVITY_FLUSH_WINDOW_MS: i64 = 1_000;
 
 /// Batches the `activity` frames the sandboxed child streams and forwards them
 /// to the control plane per flush window — one POST per batch, not per frame
-/// (a chatty agent run no longer costs one round-trip per tool call). Frames
+/// (a chatty fleet run no longer costs one round-trip per tool call). Frames
 /// serialize on arrival (their slices are only valid during `forward`); the
 /// flush fires at the frame/byte caps, when the oldest buffered frame exceeds
 /// the window (driven by the supervisor tick), and finally at end of run.
@@ -88,7 +88,7 @@ pub const MemoryForwarder = struct {
     alloc: std.mem.Allocator,
     cp: *client_mod,
     runner_token: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     lease_id: []const u8,
     fencing_token: u64,
     deadline_ms: u31,
@@ -96,7 +96,7 @@ pub const MemoryForwarder = struct {
     pub fn forward(ctx: *anyopaque, payload: []const u8) void {
         const self: *MemoryForwarder = @ptrCast(@alignCast(ctx));
         const parsed = std.json.parseFromSlice([]protocol.MemoryDelta, self.alloc, payload, .{}) catch {
-            log.warn("memory_frame_parse_failed", .{ .agent_id = self.agent_id });
+            log.warn("memory_frame_parse_failed", .{ .fleet_id = self.fleet_id });
             return;
         };
         defer parsed.deinit();
@@ -105,8 +105,8 @@ pub const MemoryForwarder = struct {
             .fencing_token = self.fencing_token,
             .memory = parsed.value,
         };
-        self.cp.memoryCapture(self.alloc, self.runner_token, self.agent_id, req, self.deadline_ms) catch |err|
-            log.warn("memory_capture_post_failed", .{ .agent_id = self.agent_id, .err = @errorName(err) });
+        self.cp.memoryCapture(self.alloc, self.runner_token, self.fleet_id, req, self.deadline_ms) catch |err|
+            log.warn("memory_capture_post_failed", .{ .fleet_id = self.fleet_id, .err = @errorName(err) });
     }
 };
 

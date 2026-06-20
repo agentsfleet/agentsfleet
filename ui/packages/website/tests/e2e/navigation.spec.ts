@@ -1,33 +1,33 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Navigation edge cases. The Humans/Agents mode-switch tab pill was
+ * Navigation edge cases. The Humans/Fleets mode-switch tab pill was
  * removed in M64_003 (Mockup A simplified topbar), so all related
  * tests are dropped — both routes still exist as regular nav links.
  */
 
 test.describe("Footer navigation", () => {
-  test("footer agents link navigates to /agents", async ({ page }) => {
+  test("footer fleets link navigates to /fleets", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("contentinfo").getByRole("link", { name: /^agents$/i }).click();
-    await expect(page).toHaveURL(/\/agents/);
+    await page.getByRole("contentinfo").getByRole("link", { name: /^fleets$/i }).click();
+    await expect(page).toHaveURL(/\/fleets/);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for autonomous agents.",
+      "This page is for autonomous Fleets.",
     );
   });
 
   test("footer pricing link navigates to home pricing anchor", async ({ page }) => {
-    await page.goto("/agents");
+    await page.goto("/fleets");
     await page.getByRole("contentinfo").getByRole("link", { name: /^pricing$/i }).click();
     await expect(page).toHaveURL(/\/#pricing$/);
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
-  test("footer fleet link navigates to the prebuilt-agents anchor", async ({ page }) => {
-    await page.goto("/agents");
+  test("footer fleet link navigates to the prebuilt-fleets anchor", async ({ page }) => {
+    await page.goto("/fleets");
     await page.getByRole("contentinfo").getByRole("link", { name: /^fleet$/i }).click();
     await expect(page).toHaveURL(/\/#operational-loop$/);
-    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
+    await expect(page.getByTestId("prebuilt-fleets")).toBeVisible();
   });
 
   test("footer privacy link navigates to /privacy", async ({ page }) => {
@@ -61,10 +61,10 @@ test.describe("Footer navigation", () => {
 });
 
 test.describe("Direct URL navigation", () => {
-  test("direct nav to /agents renders the agents heading", async ({ page }) => {
-    await page.goto("/agents");
+  test("direct nav to /fleets renders the fleets heading", async ({ page }) => {
+    await page.goto("/fleets");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for autonomous agents.",
+      "This page is for autonomous Fleets.",
     );
   });
 
@@ -92,10 +92,10 @@ test.describe("SPA routing — no full page reloads", () => {
     await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
-  test("footer agents link is a real anchor (React Router Link)", async ({ page }) => {
+  test("footer fleets link is a real anchor (React Router Link)", async ({ page }) => {
     await page.goto("/");
-    const agentsLink = page.getByRole("contentinfo").getByRole("link", { name: /^agents$/i });
-    await expect(agentsLink).toHaveAttribute("href", "/agents");
+    const agentsLink = page.getByRole("contentinfo").getByRole("link", { name: /^fleets$/i });
+    await expect(agentsLink).toHaveAttribute("href", "/fleets");
   });
 
   test("footer pricing link points at home anchor", async ({ page }) => {
@@ -105,29 +105,29 @@ test.describe("SPA routing — no full page reloads", () => {
   });
 });
 
-test.describe("Agents page — install block", () => {
-  test("install agentsfleet block is visible on /agents", async ({ page }) => {
-    await page.goto("/agents");
+test.describe("Fleets page — install block", () => {
+  test("install agentsfleet block is visible on /fleets", async ({ page }) => {
+    await page.goto("/fleets");
     await expect(page.getByRole("heading", { name: /install agentsfleet/i })).toBeVisible();
   });
 
   test("npm install command is readable in install block", async ({ page }) => {
-    await page.goto("/agents");
+    await page.goto("/fleets");
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toContainText("npm install -g @agentsfleet/cli");
   });
 
   test("read the docs button links to docs", async ({ page }) => {
-    await page.goto("/agents");
+    await page.goto("/fleets");
     await expect(page.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
     );
   });
 
-  test("start an agent button is visible; no dashboard link", async ({ page }) => {
-    await page.goto("/agents");
-    await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
+  test("start a Fleet button is visible; no dashboard link", async ({ page }) => {
+    await page.goto("/fleets");
+    await expect(page.getByRole("link", { name: /start a Fleet/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /open dashboard/i })).toHaveCount(0);
   });
 });

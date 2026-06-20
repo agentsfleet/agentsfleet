@@ -1,4 +1,4 @@
-# Editing the OpenAPI spec (agents, read this first)
+# Editing the OpenAPI spec (fleets, read this first)
 
 ## Hard rule
 
@@ -29,15 +29,15 @@ Copy-paste-ready. After each, run `make openapi` before committing — it chains
 
 **Router ↔ openapi.json parity is reviewer-enforced** — there is no mechanical gate. When you add, rename, or remove a route, both surfaces must move in the same diff and the reviewer verifies it. See `docs/REST_API_DESIGN_GUIDELINES.md` §6.
 
-### Rename a path (e.g. `/v1/external-agents` → `/v1/agent-keys`)
+### Rename a path (e.g. `/v1/external-fleets` → `/v1/fleet-keys`)
 
 ```bash
 # 1. Find the owning path file.
-grep -rl "external-agents:" public/openapi/paths/
+grep -rl "external-fleets:" public/openapi/paths/
 
 # 2. Rename the path key inside that YAML file.
 #    Edit public/openapi/paths/<tag>.yaml and change
-#      /v1/external-agents:         →  /v1/agent-keys:
+#      /v1/external-fleets:         →  /v1/fleet-keys:
 
 # 3. Update the $ref in root.yaml (the JSON-pointer fragment uses ~1 for /).
 #    Edit public/openapi/root.yaml and change the corresponding line.
@@ -93,11 +93,11 @@ make openapi
 make openapi
 ```
 
-## Cross-reference: agent-facing public surfaces
+## Cross-reference: fleet-facing public surfaces
 
-See [`../AGENTS.md`](../AGENTS.md) for the full index of machine-readable files agentsfleet publishes — `openapi.json`, `llms.txt`, `skill.md`, `agent-manifest.json`, `heartbeat`.
+See [`../AGENTS.md`](../AGENTS.md) for the full index of machine-readable files agentsfleet publishes — `openapi.json`, `llms.txt`, `skill.md`, `agentsfleet-manifest.json`, `heartbeat`.
 
-If a rename/add/remove changes the **operation surface**, update `public/llms.txt` and `public/skill.md` operation tables in the same commit so the agent-facing discovery docs stay in sync with the bundled OpenAPI.
+If a rename/add/remove changes the **operation surface**, update `public/llms.txt` and `public/skill.md` operation tables in the same commit so the fleet-facing discovery docs stay in sync with the bundled OpenAPI.
 
 ## Related specs
 

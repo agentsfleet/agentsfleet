@@ -24,7 +24,7 @@ const SAMPLE_STAGE_NANOS = 1_000_000 as const;
 
 const SAMPLE: GroupedEvent = {
   event_id: "evt_1",
-  agent_id: "z_1",
+  fleet_id: "z_1",
   posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",
   recorded_at: SAMPLE_RECORDED_AT_MS,

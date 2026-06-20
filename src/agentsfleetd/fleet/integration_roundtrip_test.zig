@@ -24,7 +24,7 @@ const api_key = @import("../auth/api_key.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_agent = @import("../queue/redis_agent.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
@@ -36,7 +36,7 @@ const LARGE_BALANCE_NANOS: i64 = 1000000000000;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dd011";
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dda01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddb01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddc01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dde01";
 const LEASE_OLD_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddf01";
@@ -52,7 +52,7 @@ const SOURCE_MD =
     \\name: roundtrip-bot
     \\---
     \\
-    \\You are a round-trip test agent.
+    \\You are a round-trip test fleet.
 ;
 
 // SAFETY: populated by configureRegistry before the chain reads it.
@@ -80,28 +80,28 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token:
     , .{ runner_id, host_id, hash[0..] });
 }
 
-fn seedActiveAgent(conn: *pg.Conn) !void {
-    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "roundtrip-bot", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
+fn seedActiveFleet(conn: *pg.Conn) !void {
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "roundtrip-bot", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
 }
 
 fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (agent_id) DO UPDATE
+        \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, AGENTSFLEET_ID, last_runner_id, fencing_seq, leased_until });
+    , .{ AFFINITY_ID, FLEET_ID, last_runner_id, fencing_seq, leased_until });
 }
 
 fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fencing_token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -109,7 +109,7 @@ fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, 
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ lease_id, runner_id, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
+    , .{ lease_id, runner_id, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, clock.nowMillis() + 60_000 });
 }
 
 fn fundLargeBalance(conn: *pg.Conn) !void {
@@ -122,10 +122,10 @@ fn fundLargeBalance(conn: *pg.Conn) !void {
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
-    const id = try h.queue.xaddAgentEvent(.{
+    try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_ID);
+    const id = try h.queue.xaddFleetEvent(.{
         .event_id = "",
-        .agent_id = AGENTSFLEET_ID,
+        .fleet_id = FLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:test-user",
         .event_type = .chat,
@@ -196,7 +196,7 @@ fn reportAs(h: *TestHarness, token: []const u8, lease_id: []const u8, event_id: 
 
 fn reportFailureAs(h: *TestHarness, token: []const u8, lease_id: []const u8, event_id: []const u8, fencing_token: u64, reason: []const u8) !harness_mod.Response {
     const body = try std.fmt.allocPrint(ALLOC,
-        \\{{"lease_id":"{s}","event_id":"{s}","fencing_token":{d},"outcome":"agent_error","failure_reason":"{s}","response_text":"killed","tokens":0,"telemetry":{{"time_to_first_token_ms":0,"wall_ms":50}},"checkpoint":{{"last_event_id":"{s}","last_response":""}}}}
+        \\{{"lease_id":"{s}","event_id":"{s}","fencing_token":{d},"outcome":"fleet_error","failure_reason":"{s}","response_text":"killed","tokens":0,"telemetry":{{"time_to_first_token_ms":0,"wall_ms":50}},"checkpoint":{{"last_event_id":"{s}","last_response":""}}}}
     , .{ lease_id, event_id, fencing_token, reason, event_id });
     defer ALLOC.free(body);
     const req = try (try h.post(protocol.PATH_RUNNER_REPORTS).bearer(token)).json(body);
@@ -207,8 +207,8 @@ fn reportFailureAs(h: *TestHarness, token: []const u8, lease_id: []const u8, eve
 /// in-function so the row-backed slice never outlives the query.
 fn failureLabelMatches(conn: *pg.Conn, event_id: []const u8, expected: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
-        "SELECT failure_label FROM core.agent_events WHERE agent_id = $1::uuid AND event_id = $2",
-        .{ AGENTSFLEET_ID, event_id },
+        "SELECT failure_label FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2",
+        .{ FLEET_ID, event_id },
     ));
     defer q.deinit();
     const row = try q.next() orelse return error.EventRowMissing;
@@ -240,13 +240,13 @@ fn delStream(h: *TestHarness, comptime key: []const u8) void {
 }
 
 fn cleanupAll(h: *TestHarness, conn: *pg.Conn) void {
-    delStream(h, "agent:" ++ AGENTSFLEET_ID ++ ":events");
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    delStream(h, "fleet:" ++ FLEET_ID ++ ":events");
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id = $1::uuid", .{FLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_A_ID, RUNNER_B_ID });
-    execIgnore(conn, "DELETE FROM core.agent_events WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM core.fleet_events WHERE fleet_id = $1::uuid", .{FLEET_ID});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownAgents(conn, WORKSPACE_ID);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }
@@ -268,10 +268,10 @@ test "single runner completes a full lease then renew then report round-trip" {
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
-    try seedActiveAgent(conn);
+    try seedActiveFleet(conn);
     try publishFreshEvent(h);
 
-    // 1. Lease — the runner polls and is assigned the agent's event.
+    // 1. Lease — the runner polls and is assigned the fleet's event.
     const lv = try leaseAs(h, RUNNER_A_TOKEN);
     defer lv.free();
     try std.testing.expect(lv.present);
@@ -307,10 +307,10 @@ test "a failed runner report persists the granular failure_label and increments 
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
-    try seedActiveAgent(conn);
+    try seedActiveFleet(conn);
     try publishFreshEvent(h);
 
-    // Lease (inserts the received core.agent_events row), then report a FAILURE
+    // Lease (inserts the received core.fleet_events row), then report a FAILURE
     // carrying the granular reason.
     const lv = try leaseAs(h, RUNNER_A_TOKEN);
     defer lv.free();
@@ -332,7 +332,7 @@ test "a failed runner report persists the granular failure_label and increments 
     try metrics_runner.renderPrometheus(&aw.writer);
     const metrics = aw.written();
     const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"runner_crash\"";
-    const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"agent_error\"";
+    const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"fleet_error\"";
     try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, failure_needle));
     try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, exec_needle));
 }
@@ -351,7 +351,7 @@ test "the reclaim chain enforces monotonic token ordering across runners" {
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN); // dead holder
     try seedRunner(conn, RUNNER_B_ID, "roundtrip-b", RUNNER_B_TOKEN); // reclaimer
-    try seedActiveAgent(conn);
+    try seedActiveFleet(conn);
     // A holds an expired affinity (claimable) at token 1 + its still-active lease
     // carrying the durable event envelope to re-lease.
     try seedAffinity(conn, RUNNER_A_ID, 1, 0);

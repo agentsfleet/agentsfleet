@@ -29,7 +29,7 @@ const log = logging.scoped(.runner_supervisor);
 ///
 /// The child inherits ONLY the allowlisted environment (filtered from `daemon_env`
 /// via `environ_map`), so `AGENTSFLEET_RUNNER_TOKEN` and every other daemon-only var
-/// never reach a prompt-injectable agent. `argv[0]` is asserted absolute before
+/// never reach a prompt-injectable fleet. `argv[0]` is asserted absolute before
 /// spawn so a relative path can never be resolved via the parent `$PATH`.
 pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8, egress: ?sandbox.EgressFiles) !std.process.Child {
     const argv = try sandbox.buildArgv(io, alloc, cfg, workspace_path, egress);
@@ -93,7 +93,7 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
 /// signal is the only thing that actually kills it; it also covers the
 /// enroll-succeeds-then-races path. Safe against pid reuse because this always
 /// runs BEFORE the supervisor's single `wait()` — the target is still an
-/// un-reaped (agent-at-most) pid. `ESRCH` (group already gone via the cgroup
+/// un-reaped (fleet-at-most) pid. `ESRCH` (group already gone via the cgroup
 /// kill) is harmless.
 pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup) void {
     if (scope.*) |*s| s.kill() catch |err|

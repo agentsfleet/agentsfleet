@@ -22,7 +22,7 @@ import { CREDENTIAL_NAME_MAX, parseCredentialDataObject } from "../lib/credentia
 
 export type EditCredentialDialogProps = {
   workspaceId: string;
-  /** The credential being edited. Its name is the reference key agents resolve. */
+  /** The credential being edited. Its name is the reference key Fleets resolve. */
   name: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -163,7 +163,7 @@ export default function EditCredentialDialog({
                 autoComplete="off"
               />
               <Alert variant="warning" className="text-xs">
-                Renaming breaks agents that reference{" "}
+                Renaming breaks Fleets that reference{" "}
                 <code>{`\${secrets.${name}...}`}</code> — they fail to resolve until you update them.
                 The old name is removed once the new one is stored.
               </Alert>

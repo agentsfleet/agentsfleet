@@ -8,9 +8,9 @@
  *
  * Confirmed against source (do not re-guess):
  *   - src/lib/repl.ts            — STEER_REPL_PROMPT = "> "; SIGINT → exit 130.
- *   - src/commands/agent_steer_events.ts — content frames render as
+ *   - src/commands/fleet_steer_events.ts — content frames render as
  *                                   `[claw] …` / `[tool] …`.
- *   - src/commands/agent_steer.ts — terminal line `event <id> processed`
+ *   - src/commands/fleet_steer.ts — terminal line `event <id> processed`
  *                                   (success) or `event <id> terminated with
  *                                   status: …` / `did not complete (…)`.
  *   - src/errors/index.ts        — InterruptedError → exit 130 (SIGINT).
@@ -34,10 +34,10 @@ export const STEER_REPL_PROMPT_RE = /^>\s?/m;
 // `String.match` collapses a non-global regex to a single hit.
 export const STEER_REPL_PROMPT_COUNT_RE = /^>\s?/gm;
 
-// Streamed content frames emitted mid-turn (agent_steer_events.ts).
+// Streamed content frames emitted mid-turn (fleet_steer_events.ts).
 export const STEER_STREAM_FRAME_RE = /\[(?:claw|tool)\]/g;
 
-// Terminal per-turn render (agent_steer.ts renderOutcome, non-JSON mode):
+// Terminal per-turn render (fleet_steer.ts renderOutcome, non-JSON mode):
 //   success  → `event <id> processed`
 //   terminal → `event <id> terminated with status: …`
 //   timeout  → `event <id> still in flight after …`

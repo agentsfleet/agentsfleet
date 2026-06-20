@@ -16,18 +16,18 @@ test {
     _ = @import("config/load.zig");
     _ = @import("config/balance_policy.zig");
     _ = @import("config/runtime.zig");
-    _ = @import("agent/config.zig");
-    _ = @import("agent/yaml_frontmatter.zig");
+    _ = @import("fleet_runtime/config.zig");
+    _ = @import("fleet_runtime/yaml_frontmatter.zig");
     _ = @import("http/route_matchers.zig");
-    _ = @import("agent/activity_publisher.zig");
-    _ = @import("agent/metering.zig");
+    _ = @import("fleet_runtime/activity_publisher.zig");
+    _ = @import("fleet_runtime/metering.zig");
     _ = @import("util/strings/string_builder.zig");
     // Runner control-plane verbs' per-event prep, lifted from the deleted worker.
-    _ = @import("fleet/agent_session.zig");
+    _ = @import("fleet/fleet_session.zig");
     _ = @import("fleet/event_rows.zig");
     _ = @import("fleet/service_activity.zig");
     _ = @import("fleet/approval_gate.zig");
-    _ = @import("agent/approval_gate_async.zig");
+    _ = @import("fleet_runtime/approval_gate_async.zig");
     _ = @import("fleet/context_resolve.zig");
     _ = @import("fleet/secrets_resolve.zig");
     _ = @import("fleet/secrets_resolve_test.zig");
@@ -44,9 +44,9 @@ test {
     _ = @import("http/runner_enrollment_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
-    _ = @import("agent/webhook_verify.zig");
-    _ = @import("agent/webhook_verify_test.zig");
-    _ = @import("agent/webhook/normalizer/github.zig");
+    _ = @import("fleet_runtime/webhook_verify.zig");
+    _ = @import("fleet_runtime/webhook_verify_test.zig");
+    _ = @import("fleet_runtime/webhook/normalizer/github.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
@@ -84,21 +84,22 @@ test {
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");
     _ = @import("queue/redis_subscriber_test.zig");
-    // Persistent Agent Memory — role isolation + selection policy + adapter write-path tests.
-    _ = @import("memory/agent_memory_role_test.zig");
-    _ = @import("memory/agent_memory_test.zig");
-    _ = @import("memory/agent_memory_integration_test.zig");
-    // Agent CRUD, activity, router
-    _ = @import("http/handlers/agents/api.zig");
-    _ = @import("http/handlers/agents/api_integration_test.zig");
-    _ = @import("http/handlers/agents/create.zig");
-    _ = @import("http/handlers/agents/list.zig");
-    _ = @import("http/handlers/agents/patch.zig");
-    _ = @import("http/handlers/agents/patch_body_fields_integration_test.zig");
-    _ = @import("http/handlers/agents/patch_concurrent_integration_test.zig");
-    _ = @import("http/handlers/agents/delete.zig");
-    // Agent execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
-    _ = @import("state/agent_telemetry_store.zig");
+    // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
+    _ = @import("memory/fleet_memory_role_test.zig");
+    _ = @import("memory/fleet_memory_test.zig");
+    _ = @import("memory/fleet_memory_integration_test.zig");
+    // Fleet CRUD, activity, router
+    _ = @import("http/handlers/fleets/api.zig");
+    _ = @import("http/handlers/fleets/api_integration_test.zig");
+    _ = @import("http/handlers/fleets/create.zig");
+    _ = @import("http/handlers/fleets/list.zig");
+    _ = @import("http/handlers/fleets/patch.zig");
+    _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");
+    _ = @import("http/handlers/fleets/patch_concurrent_integration_test.zig");
+    _ = @import("http/handlers/fleets/delete.zig");
+    _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
+    // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
+    _ = @import("state/fleet_telemetry_store.zig");
     _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
     _ = @import("http/handlers/workspaces/create_integration_test.zig");
     _ = @import("http/handlers/tenant_workspaces.zig");
@@ -108,7 +109,7 @@ test {
     _ = @import("http/test_harness_test.zig");
     // Integration grant API
     _ = @import("http/handlers/integration_grants/handler.zig");
-    _ = @import("http/handlers/api_keys/agent.zig");
+    _ = @import("http/handlers/api_keys/fleet.zig");
     _ = @import("http/handlers/api_keys/tenant.zig");
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
@@ -120,17 +121,17 @@ test {
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");
-    _ = @import("agent/notifications/grant_notifier.zig");
-    _ = @import("http/handlers/agents/messages.zig");
-    // Chat ingress — POST /v1/.../agents/{id}/messages
-    _ = @import("http/handlers/agents/messages_integration_test.zig");
+    _ = @import("fleet_runtime/notifications/grant_notifier.zig");
+    _ = @import("http/handlers/fleets/messages.zig");
+    // Chat ingress — POST /v1/.../fleets/{id}/messages
+    _ = @import("http/handlers/fleets/messages_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/memory_fencing_test.zig");
     _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
-    _ = @import("http/handlers/agents/events_integration_test.zig");
+    _ = @import("http/handlers/fleets/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
-    _ = @import("http/handlers/agents/sse_streaming_integration_test.zig");
-    _ = @import("http/handlers/agents/backpressure_integration_test.zig");
+    _ = @import("http/handlers/fleets/sse_streaming_integration_test.zig");
+    _ = @import("http/handlers/fleets/backpressure_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)
@@ -141,9 +142,9 @@ test {
     _ = @import("types/id_format_test.zig");
     // billing/credit edge, idempotency + concurrency coverage
     _ = @import("state/tenant_billing_edge_test.zig");
-    _ = @import("agent/metering_edge_test.zig");
-    _ = @import("agent/metering_idempotent_test.zig");
-    _ = @import("agent/metering_concurrency_test.zig");
+    _ = @import("fleet_runtime/metering_edge_test.zig");
+    _ = @import("fleet_runtime/metering_idempotent_test.zig");
+    _ = @import("fleet_runtime/metering_concurrency_test.zig");
     // fleet lease/renewal concurrency + roundtrip integration coverage
     _ = @import("fleet/renewal_edge_test.zig");
     _ = @import("fleet/renewal_malformed_test.zig");

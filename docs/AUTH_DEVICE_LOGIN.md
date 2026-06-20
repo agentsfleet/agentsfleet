@@ -271,11 +271,11 @@ sequenceDiagram
     participant CLI as agentsfleet
     participant API as Zig backend
 
-    CLI->>API: GET /v1/agents/{id}/events<br/>Authorization: Bearer <user-jwt>
+    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events<br/>Authorization: Bearer <user-jwt>
     Note over API: bearer_or_api_key:<br/>JWKS verify (cached 6h),<br/>iss + aud + exp checks,<br/>→ AuthPrincipal{ mode=jwt_oidc, user_id, tenant_id, … }
     API-->>CLI: 200 events
 
-    CLI->>API: GET /v1/agents/{id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
+    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
     API-->>CLI: 200 text/event-stream (long-lived)
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```

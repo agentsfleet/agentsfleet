@@ -5,7 +5,7 @@
 //! - cpu.max: CPU quota/period throttling
 //! - pids.max: process/thread cap (fork-bomb / runaway-spawn bound)
 //!
-//! The cgroup is created under /sys/fs/cgroup/agent.runner/ and
+//! The cgroup is created under /sys/fs/cgroup/fleet.runner/ and
 //! cleaned up when the session is destroyed.
 //! Linux-only; no-ops on other platforms.
 
@@ -17,7 +17,7 @@ alloc: std.mem.Allocator,
 /// through Io. Borrowed from the daemon's Threaded; never owned/closed here.
 io: std.Io,
 
-const CGROUP_BASE = "/sys/fs/cgroup/agent.runner";
+const CGROUP_BASE = "/sys/fs/cgroup/fleet.runner";
 const S_THROTTLED_USEC = "throttled_usec ";
 const S_D = "{d}";
 const S_S_S = "{s}/{s}";
@@ -104,7 +104,7 @@ pub fn addProcess(self: *const CgroupScope, pid: std.posix.pid_t) !void {
     file.writeStreamingAll(self.io, pid_str) catch return CgroupError.CgroupMoveFailed;
 }
 
-/// Atomically SIGKILL every process in the scope (bwrap + agent + any
+/// Atomically SIGKILL every process in the scope (bwrap + Fleet + any
 /// sub-tool it spawned) via cgroup.kill — the kill switch for a wall-clock
 /// timeout, a heartbeat-carried revocation, or teardown. Atomic and
 /// PID-chase-free, so no process escapes. Needs cgroup v2 kernel >= 5.14;

@@ -14,7 +14,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 const ROUTING_TEST_TIMEOUT_MS = 90_000;
 const ROUTING_TIMEOUT_MS = 30_000;
 const PUBLIC_AUTH_ROUTES = ["/sign-in", "/sign-up"] as const;
-const PROTECTED_ROUTES = ["/", "/agents", "/events", "/settings/billing"] as const;
+const PROTECTED_ROUTES = ["/", "/fleets", "/events", "/settings/billing"] as const;
 
 test.describe("auth routing", () => {
   test.setTimeout(ROUTING_TEST_TIMEOUT_MS);

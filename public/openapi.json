@@ -3,7 +3,7 @@
   "info": {
     "title": "agentsfleet Control Plane API",
     "version": "1.0.0",
-    "description": "Agent automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.",
+    "description": "Fleet automation control plane — webhook-driven fleet execution in a bwrap+landlock sandbox.",
     "contact": {
       "name": "agentsfleet",
       "url": "https://agentsfleet.net"
@@ -51,21 +51,21 @@
     },
     {
       "name": "auth-identity-events",
-      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer agents.",
+      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer fleets.",
       "x-mintlify": {
         "navigation": "Auth Identity Events"
       }
     },
     {
-      "name": "Agents",
-      "description": "Agent management and webhook ingestion — create, configure, and operate event-driven agents",
+      "name": "Fleets",
+      "description": "Fleet management and webhook ingestion — create, configure, and operate event-driven fleets",
       "x-mintlify": {
-        "navigation": "Agents"
+        "navigation": "Fleets"
       }
     },
     {
       "name": "Memory",
-      "description": "Persistent agent memory — list and search key-value entries scoped to an agent (read-only; entries are written by the runner plane, not this API)",
+      "description": "Persistent Fleet memory — list and search key-value entries scoped to a Fleet (read-only; entries are written by the runner plane, not this API)",
       "x-mintlify": {
         "navigation": "Memory"
       }
@@ -93,16 +93,16 @@
     },
     {
       "name": "Integration Grants",
-      "description": "Agent runtime permission grants for third-party services (Slack, GitHub, etc.)",
+      "description": "Fleet runtime permission grants for third-party services (Slack, GitHub, etc.)",
       "x-mintlify": {
         "navigation": "Integration Grants"
       }
     },
     {
-      "name": "Agent Keys",
-      "description": "Per-agent API keys for LangGraph/CrewAI/Composio agents to call the Execute endpoint. Workspace-scoped.",
+      "name": "Fleet Keys",
+      "description": "Per-Fleet API keys for LangGraph/CrewAI/Composio Fleets to call the execute endpoint. Workspace-scoped.",
       "x-mintlify": {
-        "navigation": "Agent Keys"
+        "navigation": "Fleet Keys"
       }
     },
     {
@@ -114,7 +114,7 @@
     },
     {
       "name": "Webhooks",
-      "description": "Approval-gate webhooks invoked by humans to unblock a paused agent",
+      "description": "Approval-gate webhooks invoked by humans to unblock a paused fleet",
       "x-mintlify": {
         "navigation": "Webhooks"
       }
@@ -131,6 +131,13 @@
       "description": "Runner fleet operator plane — enroll, list, and administer sandbox runners. Operator/admin-scoped.",
       "x-mintlify": {
         "navigation": "Fleet"
+      }
+    },
+    {
+      "name": "Fleet Bundles",
+      "description": "Workspace-scoped fleet source bundles imported from templates, uploads, or GitHub.",
+      "x-mintlify": {
+        "navigation": "Fleet Bundles"
       }
     },
     {
@@ -819,11 +826,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/memories": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories": {
       "get": {
-        "operationId": "list_agent_memories",
-        "summary": "List or search memory entries for a agent",
-        "description": "Returns memory entries for the agent. Without `query` this lists most-recent entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry).\n",
+        "operationId": "list_fleet_memories",
+        "summary": "List or search memory entries for a fleet",
+        "description": "Returns memory entries for the fleet. Without `query` this lists most-recent entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry).\n",
         "tags": [
           "Memory"
         ],
@@ -838,7 +845,7 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -922,7 +929,7 @@
       "post": {
         "operationId": "auth_identity_event_clerk",
         "summary": "Clerk user.created auth-plane event",
-        "description": "Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent\nidentity-lifecycle types) via Svix; the signature is verified inline\nagainst `CLERK_WEBHOOK_SECRET`. On success the handler atomically\nprovisions a personal account (tenant + user + owner membership + default\nworkspace + zero-cent credit state + audit row). Idempotent on\n`oidc_subject` — replays return `created:false` with no new rows.\nNon-`user.created` event types are 200-ignored so Clerk stops retrying.\n\nSits outside `/v1/webhooks/` (customer data plane) — the auth namespace\nis for signals about the platform's own auth lifecycle, not for events\nthat wake user-defined agents.\n",
+        "description": "Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent\nidentity-lifecycle types) via Svix; the signature is verified inline\nagainst `CLERK_WEBHOOK_SECRET`. On success the handler atomically\nprovisions a personal account (tenant + user + owner membership + default\nworkspace + zero-cent credit state + audit row). Idempotent on\n`oidc_subject` — replays return `created:false` with no new rows.\nNon-`user.created` event types are 200-ignored so Clerk stops retrying.\n\nSits outside `/v1/webhooks/` (customer data plane) — the auth namespace\nis for signals about the platform's own auth lifecycle, not for events\nthat wake user-defined Fleets.\n",
         "tags": [
           "auth-identity-events"
         ],
@@ -1034,20 +1041,20 @@
         "security": []
       }
     },
-    "/v1/webhooks/svix/{agent_id}": {
+    "/v1/webhooks/svix/{fleet_id}": {
       "post": {
         "operationId": "receive_svix_webhook",
         "summary": "Receive a Svix-signed webhook (Clerk events)",
-        "description": "Ingress endpoint for Svix-signed webhooks (e.g. Clerk user lifecycle events). Signature is verified by the webhook auth middleware against the workspace's Svix secret before the handler runs. Body shape is event-specific and defined by the upstream issuer; the server validates the envelope and dispatches to the agent's event log.",
+        "description": "Ingress endpoint for Svix-signed webhooks (e.g. Clerk user lifecycle events). Signature is verified by the webhook auth middleware against the workspace's Svix secret before the handler runs. Body shape is event-specific and defined by the upstream issuer; the server validates the envelope and dispatches to the fleet's event log.",
         "tags": [
           "Webhooks"
         ],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent receiving the webhook.",
+            "description": "UUIDv7 of the fleet receiving the webhook.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1095,7 +1102,7 @@
         },
         "responses": {
           "200": {
-            "description": "Not enqueued, intentionally. Two shapes: duplicate delivery (`{\"status\": \"duplicate\"}` — same body `event_id` within the 24-hour dedup window) or event ignored (`{\"ignored\": \"agent_paused\"}` — agent is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
+            "description": "Not enqueued, intentionally. Two shapes: duplicate delivery (`{\"status\": \"duplicate\"}` — same body `event_id` within the 24-hour dedup window) or event ignored (`{\"ignored\": \"fleet_paused\"}` — fleet is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1107,7 +1114,7 @@
                     },
                     "ignored": {
                       "type": "string",
-                      "description": "Reason the event was ignored (e.g. `agent_paused`)."
+                      "description": "Reason the event was ignored (e.g. `fleet_paused`)."
                     }
                   }
                 }
@@ -1145,20 +1152,20 @@
         "security": []
       }
     },
-    "/v1/webhooks/{agent_id}": {
+    "/v1/webhooks/{fleet_id}": {
       "post": {
         "operationId": "receive_webhook",
-        "summary": "Deliver an inbound webhook event to an Agent",
-        "description": "Delivers an inbound event to the agent identified by `agent_id`. The agent is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the agent's `trigger.source` (e.g. vault row `agent:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A webhook for a paused agent returns 200 `{ignored: \"agent_paused\"}` without consuming the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the agent's Redis stream and returns 202.",
+        "summary": "Deliver an inbound webhook event to a Fleet",
+        "description": "Delivers an inbound event to the fleet identified by `fleet_id`. The fleet is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the fleet's `trigger.source` (e.g. vault row `fleet:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A webhook for a paused fleet returns 200 `{ignored: \"fleet_paused\"}` without consuming the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the fleet's Redis stream and returns 202.",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the target agent. Obtained from `POST /v1/workspaces/{workspace_id}/agents` or `agentsfleet install --from <path>`.",
+            "description": "UUIDv7 of the target fleet. Obtained from `POST /v1/workspaces/{workspace_id}/fleets` or `agentsfleet install --from <path>`.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1188,7 +1195,7 @@
                   "data": {
                     "type": "object",
                     "additionalProperties": true,
-                    "description": "Event payload — any JSON object. Passed as-is into the agent event loop."
+                    "description": "Event payload — any JSON object. Passed as-is into the fleet event loop."
                   }
                 }
               }
@@ -1197,7 +1204,7 @@
         },
         "responses": {
           "200": {
-            "description": "Not enqueued, intentionally. Two shapes: duplicate event (`{\"status\": \"duplicate\"}` — already processed within the 24-hour dedup window) or event ignored (`{\"ignored\": \"agent_paused\"}` — agent is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
+            "description": "Not enqueued, intentionally. Two shapes: duplicate event (`{\"status\": \"duplicate\"}` — already processed within the 24-hour dedup window) or event ignored (`{\"ignored\": \"fleet_paused\"}` — fleet is paused; the dedup slot is not consumed, so redelivery after resume processes normally).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1209,7 +1216,7 @@
                     },
                     "ignored": {
                       "type": "string",
-                      "description": "Reason the event was ignored (e.g. `agent_paused`)."
+                      "description": "Reason the event was ignored (e.g. `fleet_paused`)."
                     }
                   }
                 }
@@ -1217,7 +1224,7 @@
             }
           },
           "202": {
-            "description": "Event accepted and enqueued for the agent.",
+            "description": "Event accepted and enqueued for the fleet.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1250,7 +1257,7 @@
             }
           },
           "401": {
-            "description": "Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured` (agent has no recognized provider, OR the workspace has no matching `agent:<source>` vault credential, OR the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path); `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).",
+            "description": "Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured` (fleet has no recognized provider, OR the workspace has no matching `fleet:<source>` vault credential, OR the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path); `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1260,7 +1267,7 @@
             }
           },
           "404": {
-            "description": "No active agent is configured for this source (UZ-WH-001).",
+            "description": "No active fleet is configured for this source (UZ-WH-001).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1276,20 +1283,20 @@
         "security": []
       }
     },
-    "/v1/webhooks/{agent_id}/approval": {
+    "/v1/webhooks/{fleet_id}/approval": {
       "post": {
         "operationId": "approval_webhook",
-        "summary": "Resolve a agent approval gate",
-        "description": "Called by a human (via email link or Slack action) to approve or reject a paused agent. Body is HMAC-signed by the issuer; the signature is verified against the agent's webhook secret.",
+        "summary": "Resolve a fleet approval gate",
+        "description": "Called by a human (via email link or Slack action) to approve or reject a paused fleet. Body is HMAC-signed by the issuer; the signature is verified against the fleet's webhook secret.",
         "tags": [
           "Webhooks"
         ],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1361,7 +1368,7 @@
         "security": []
       }
     },
-    "/v1/webhooks/{agent_id}/grant-approval": {
+    "/v1/webhooks/{fleet_id}/grant-approval": {
       "post": {
         "operationId": "grant_approval_webhook",
         "summary": "Approve or reject an integration grant request",
@@ -1371,10 +1378,10 @@
         ],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1450,20 +1457,20 @@
         "security": []
       }
     },
-    "/v1/webhooks/{agent_id}/github": {
+    "/v1/webhooks/{fleet_id}/github": {
       "post": {
         "operationId": "github_webhook",
         "summary": "Ingest a GitHub Actions webhook",
-        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `agent:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the agent event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
+        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `fleet:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the fleet event stream; other events return 200. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
         "tags": [
           "Webhooks"
         ],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent that owns this webhook receiver.",
+            "description": "UUIDv7 of the fleet that owns this webhook receiver.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -1510,7 +1517,7 @@
         },
         "responses": {
           "200": {
-            "description": "Duplicate delivery (idempotency hit) or event ignored (agent paused, non-workflow_run, non-completed action, or non-failure conclusion). Body distinguishes the two via the `deduped` or `ignored` field. The `agent_paused` ignore does not consume the dedup slot, so redelivery after resume processes normally.",
+            "description": "Duplicate delivery (idempotency hit) or event ignored (fleet paused, non-workflow_run, non-completed action, or non-failure conclusion). Body distinguishes the two via the `deduped` or `ignored` field. The `fleet_paused` ignore does not consume the dedup slot, so redelivery after resume processes normally.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1521,7 +1528,7 @@
                     },
                     "ignored": {
                       "type": "string",
-                      "description": "Reason the event was filtered out (e.g. `non_failure_conclusion`, `agent_paused`)."
+                      "description": "Reason the event was filtered out (e.g. `non_failure_conclusion`, `fleet_paused`)."
                     }
                   }
                 }
@@ -1630,7 +1637,7 @@
       "get": {
         "operationId": "get_tenant_billing",
         "summary": "Tenant billing snapshot",
-        "description": "Returns the tenant-scoped billing row created at signup. The single row carries the credit-pool balance shared across every workspace the tenant owns. Two-rate metering in nanos: events are free (both postures); stages cost $0.001 (platform) or $0.0001 (self-managed). Debited by the worker as agent runs complete.\n",
+        "description": "Returns the tenant-scoped billing row created at signup. The single row carries the credit-pool balance shared across every workspace the tenant owns. Two-rate metering in nanos: events are free (both postures); stages cost $0.001 (platform) or $0.0001 (self-managed). Debited by the worker as fleet runs complete.\n",
         "tags": [
           "Billing"
         ],
@@ -1703,7 +1710,7 @@
       "get": {
         "operationId": "get_tenant_billing_charges",
         "summary": "Tenant credit-pool charges",
-        "description": "Returns the newest-first slice of `agent_execution_telemetry` rows for the caller's tenant. Two rows per event under the credit-pool model (`charge_type` ∈ `receive`, `stage`); the dashboard groups them by `event_id` to show one line per event with both charges. Limit-only paging is sufficient for the v2.0 Settings → Billing Usage tab; deeper history pages with Stripe billing in v2.1.\n",
+        "description": "Returns the newest-first slice of `fleet_execution_telemetry` rows for the caller's tenant. Two rows per event under the credit-pool model (`charge_type` ∈ `receive`, `stage`); the dashboard groups them by `event_id` to show one line per event with both charges. Limit-only paging is sufficient for the v2.0 Settings → Billing Usage tab; deeper history pages with Stripe billing in v2.1.\n",
         "tags": [
           "Billing"
         ],
@@ -1756,7 +1763,7 @@
                           "id",
                           "tenant_id",
                           "workspace_id",
-                          "agent_id",
+                          "fleet_id",
                           "event_id",
                           "charge_type",
                           "posture",
@@ -1774,7 +1781,7 @@
                           "workspace_id": {
                             "type": "string"
                           },
-                          "agent_id": {
+                          "fleet_id": {
                             "type": "string"
                           },
                           "event_id": {
@@ -1838,7 +1845,7 @@
       "get": {
         "operationId": "get_tenant_metering_periods",
         "summary": "Tenant metering periods for one charge",
-        "description": "Returns the oldest-first renewal slices behind one `stage` charge. The route is scoped to the caller's tenant through the matching `agent_execution_telemetry` row; unknown or foreign `event_id` values return an empty `items` list.\n",
+        "description": "Returns the oldest-first renewal slices behind one `stage` charge. The route is scoped to the caller's tenant through the matching `fleet_execution_telemetry` row; unknown or foreign `event_id` values return an empty `items` list.\n",
         "tags": [
           "Billing"
         ],
@@ -2182,7 +2189,7 @@
                   "name": {
                     "type": "string",
                     "maxLength": 64,
-                    "description": "Credential identifier referenced from a agent's `credentials:` list."
+                    "description": "Credential identifier referenced from a Fleet's `credentials:` list."
                   },
                   "data": {
                     "type": "object",
@@ -2579,13 +2586,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agent-keys": {
+    "/v1/workspaces/{workspace_id}/fleet-keys": {
       "get": {
-        "operationId": "list_agent_keys",
-        "summary": "List agent keys in a workspace",
-        "description": "Returns agent-key metadata only — never returns `key_hash`.",
+        "operationId": "list_fleet_keys",
+        "summary": "List fleet keys in a workspace",
+        "description": "Returns fleet-key metadata only — never returns `key_hash`.",
         "tags": [
-          "Agent Keys"
+          "Fleet Keys"
         ],
         "parameters": [
           {
@@ -2614,7 +2621,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/AgentKey"
+                        "$ref": "#/components/schemas/FleetKey"
                       }
                     },
                     "total": {
@@ -2641,11 +2648,11 @@
         }
       },
       "post": {
-        "operationId": "create_agent_key",
-        "summary": "Issue an agent key for a agent",
-        "description": "Creates a new `agt_a` agent key bound to a specific agent. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
+        "operationId": "create_fleet_key",
+        "summary": "Issue a Fleet key for a Fleet",
+        "description": "Creates a new `agt_a` Fleet key bound to a specific Fleet. **The raw key is returned once.** Only the SHA-256 hash is persisted — the key cannot be retrieved again.",
         "tags": [
-          "Agent Keys"
+          "Fleet Keys"
         ],
         "parameters": [
           {
@@ -2666,11 +2673,11 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "agent_id",
+                  "fleet_id",
                   "name"
                 ],
                 "properties": {
-                  "agent_id": {
+                  "fleet_id": {
                     "type": "string",
                     "format": "uuid"
                   },
@@ -2695,18 +2702,18 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "agent_key_id",
+                    "fleet_key_id",
                     "key"
                   ],
                   "properties": {
-                    "agent_key_id": {
+                    "fleet_key_id": {
                       "type": "string"
                     },
                     "workspace_id": {
                       "type": "string",
                       "format": "uuid"
                     },
-                    "agent_id": {
+                    "fleet_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -2744,13 +2751,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agent-keys/{agent_key_id}": {
+    "/v1/workspaces/{workspace_id}/fleet-keys/{fleet_key_id}": {
       "delete": {
-        "operationId": "delete_agent_key",
-        "summary": "Revoke an agent key",
-        "description": "Revokes the agent key immediately. Subsequent requests with the key receive 401.",
+        "operationId": "delete_fleet_key",
+        "summary": "Revoke a Fleet key",
+        "description": "Revokes the Fleet key immediately. Subsequent requests with the key receive 401.",
         "tags": [
-          "Agent Keys"
+          "Fleet Keys"
         ],
         "parameters": [
           {
@@ -2764,7 +2771,7 @@
             }
           },
           {
-            "name": "agent_key_id",
+            "name": "fleet_key_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -2791,13 +2798,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents": {
+    "/v1/workspaces/{workspace_id}/fleets": {
       "get": {
-        "operationId": "list_agents",
-        "summary": "List agents in a workspace",
-        "description": "Returns agents the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
+        "operationId": "list_fleets",
+        "summary": "List fleets in a workspace",
+        "description": "Returns fleets the caller has access to in the given workspace. Keyset paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first page; pass the response `cursor` back verbatim to fetch the next page. `cursor` is `null` when the last page has been reached. Response envelope follows the RAD §8 `items`/`total` convention (`total` is the size of this page, not a global count).\n",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -2814,7 +2821,7 @@
             "name": "cursor",
             "in": "query",
             "required": false,
-            "description": "Opaque page cursor from a prior response's `cursor` field, formatted `{created_at_epoch_ms}:{agent_id}`. Omit for the first page.\n",
+            "description": "Opaque page cursor from a prior response's `cursor` field, formatted `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.\n",
             "schema": {
               "type": "string"
             }
@@ -2848,7 +2855,7 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/AgentSummary"
+                        "$ref": "#/components/schemas/FleetSummary"
                       }
                     },
                     "total": {
@@ -2880,11 +2887,11 @@
         }
       },
       "post": {
-        "operationId": "create_agent",
-        "summary": "Create an agent",
-        "description": "Creates a new agent from a TRIGGER.md (deployment manifest) and a SKILL.md (agent instructions). The server is the single parser of TRIGGER.md frontmatter — `name` and the persisted `config_json` are derived server-side. The CLI (`agentsfleet install --from <path>`) sends the two markdown files as raw bytes; no YAML parsing happens client-side.",
+        "operationId": "create_fleet",
+        "summary": "Create a Fleet",
+        "description": "Creates a new Fleet from direct SKILL.md bytes or from a stored Fleet Bundle snapshot. Optional TRIGGER.md bytes override the bundle trigger; otherwise the stored trigger is used, and if absent the server generates a default API trigger. The server is the single parser of trigger frontmatter — `name` and the persisted `config_json` are derived server-side. The Command-Line Interface (CLI) sends markdown files as raw bytes; no frontmatter parsing happens client-side.",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -2904,20 +2911,33 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "trigger_markdown",
-                  "source_markdown"
+                "anyOf": [
+                  {
+                    "required": [
+                      "source_markdown"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "bundle_id"
+                    ]
+                  }
                 ],
                 "properties": {
+                  "bundle_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional Fleet Bundle Universally Unique Identifier (UUID). When present, the install uses the stored bundle snapshot through this same fleets endpoint."
+                  },
                   "trigger_markdown": {
                     "type": "string",
                     "maxLength": 65536,
-                    "description": "TRIGGER.md raw bytes — YAML frontmatter (`name`, `trigger`, `tools`, `credentials`, `network`, `budget`, `gates`) between `---` delimiters. Server parses this to derive `name` and the persisted `config_json`."
+                    "description": "Optional TRIGGER.md raw bytes — frontmatter (`name`, `trigger`, `tools`, `credentials`, `network`, `budget`, `gates`) between `---` delimiters. When omitted, the server derives a default API trigger from SKILL.md and persists the generated `config_json`."
                   },
                   "source_markdown": {
                     "type": "string",
                     "maxLength": 65536,
-                    "description": "SKILL.md raw bytes — the agent instructions, stored as-is."
+                    "description": "SKILL.md raw bytes — the fleet instructions, stored as-is."
                   }
                 }
               }
@@ -2932,18 +2952,18 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "agent_id",
+                    "fleet_id",
                     "name",
                     "status"
                   ],
                   "properties": {
-                    "agent_id": {
+                    "fleet_id": {
                       "type": "string",
                       "format": "uuid"
                     },
                     "name": {
                       "type": "string",
-                      "description": "Agent name parsed from TRIGGER.md frontmatter — the canonical identifier the user will see in `agentsfleet status` and CLI output."
+                      "description": "Fleet name parsed from TRIGGER.md frontmatter or the generated default trigger — the canonical identifier the user will see in `agentsfleet status` and CLI output."
                     },
                     "status": {
                       "type": "string"
@@ -2953,7 +2973,7 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "Map of each webhook trigger's source → its delivery URL (`{api_url}/v1/webhooks/{agent_id}/{source}`). Empty object when the agent declares no webhook triggers."
+                      "description": "Map of each webhook trigger's source → its delivery URL (`{api_url}/v1/webhooks/{fleet_id}/{source}`). Empty object when the fleet declares no webhook triggers."
                     }
                   }
                 }
@@ -2975,19 +2995,149 @@
           "409": {
             "$ref": "#/components/responses/Error"
           },
+          "424": {
+            "$ref": "#/components/responses/Error"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}": {
-      "patch": {
-        "operationId": "patch_agent",
-        "summary": "Update agent config or drive its status FSM",
-        "description": "Partial update of an agent. Body fields are optional and presence-based:\n\n- `config_json` — replace the agent's config blob whole; publishes\n  `agent_config_changed`.\n- `trigger_markdown` — replace the agent's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of\n  `config_json`. The agent's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the agent's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  agent's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.agents`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed agent returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active agent).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
+    "/v1/fleets/bundles": {
+      "get": {
+        "operationId": "list_fleet_bundles",
+        "summary": "List Fleet Bundles",
+        "description": "Returns first-party Fleet Bundle templates that can be imported into a workspace. Template rows contain only metadata and requirement hints; they do not carry credential values.",
         "tags": [
-          "Agents"
+          "Fleet Bundles"
+        ],
+        "responses": {
+          "200": {
+            "description": "Template metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetBundleTemplate"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/bundles/snapshots": {
+      "post": {
+        "operationId": "import_fleet_bundle",
+        "summary": "Import a Fleet Bundle",
+        "description": "Validates and stores a workspace-scoped Fleet Bundle snapshot from uploaded Markdown, a GitHub source reference, or a first-party template reference. The import response previews credentials, tools, network hosts, and support-file names without returning support-file content.",
+        "tags": [
+          "Fleet Bundles"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Universally Unique Identifier v7 (UUIDv7) of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source_kind",
+                  "skill_markdown"
+                ],
+                "properties": {
+                  "source_kind": {
+                    "type": "string",
+                    "enum": [
+                      "template",
+                      "upload",
+                      "github"
+                    ]
+                  },
+                  "source_ref": {
+                    "type": "string",
+                    "maxLength": 512,
+                    "description": "Template identifier, upload label, or GitHub locator used for operator traceability."
+                  },
+                  "skill_markdown": {
+                    "type": "string",
+                    "maxLength": 65536,
+                    "description": "Raw SKILL.md bytes. Required for the stored snapshot."
+                  },
+                  "trigger_markdown": {
+                    "type": "string",
+                    "maxLength": 65536,
+                    "description": "Optional TRIGGER.md raw bytes. When omitted, installing the bundle uses the server-generated default API trigger."
+                  },
+                  "support_files": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/FleetBundleSupportFile"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Bundle imported and stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetBundleDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/bundles/snapshots/{bundle_id}": {
+      "get": {
+        "operationId": "get_fleet_bundle",
+        "summary": "Get a Fleet Bundle preview",
+        "description": "Returns the stored Fleet Bundle snapshot metadata and requirement preview for a workspace. Support-file contents and credential values are never returned.",
+        "tags": [
+          "Fleet Bundles"
         ],
         "parameters": [
           {
@@ -3001,10 +3151,69 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "bundle_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the Fleet Bundle.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bundle preview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetBundleDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}": {
+      "patch": {
+        "operationId": "patch_fleet",
+        "summary": "Update Fleet config or drive its status FSM",
+        "description": "Partial update of a Fleet. Body fields are optional and presence-based:\n\n- `config_json` — replace the fleet's config blob whole; publishes\n  `fleet_config_changed`.\n- `trigger_markdown` — replace the fleet's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of\n  `config_json`. The fleet's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the fleet's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  fleet's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.fleets`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed fleet returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active fleet).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3020,7 +3229,7 @@
                 "properties": {
                   "config_json": {
                     "type": "string",
-                    "description": "The new agent config as a JSON string. Validated server-side.\nMutually exclusive with `trigger_markdown`.\n"
+                    "description": "The new fleet config as a JSON string. Validated server-side.\nMutually exclusive with `trigger_markdown`.\n"
                   },
                   "trigger_markdown": {
                     "type": "string",
@@ -3028,7 +3237,7 @@
                   },
                   "source_markdown": {
                     "type": "string",
-                    "description": "The full SKILL.md to persist; the server reparses the\nfrontmatter and overlays the tools / credentials / network /\nbudget halves of `config_json`. The reparsed `name` must\nmatch the agent's current name. Must be non-empty.\n"
+                    "description": "The full SKILL.md to persist; the server reparses the\nfrontmatter and overlays the tools / credentials / network /\nbudget halves of `config_json`. The reparsed `name` must\nmatch the fleet's current name. Must be non-empty.\n"
                   },
                   "status": {
                     "type": "string",
@@ -3052,7 +3261,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "agent_id": {
+                    "fleet_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -3098,11 +3307,11 @@
         }
       },
       "delete": {
-        "operationId": "delete_agent",
-        "summary": "Hard-delete a agent and cascade its history",
-        "description": "Hard-purge a agent. Removes the `core.agents` row and cascades every\nper-agent record across PG schemas (events, telemetry, sessions,\napproval gates, integration grants, agent keys, memory entries) plus\nbest-effort DELs the Redis event stream.\n\nTwo-step lifecycle for safety: kill first (PATCH `{status:\"killed\"}`),\nthen delete. Returns 409 if the agent is not yet `killed`.\n\nOperator-minimum role required (RULE BIL — destructive lifecycle).\n",
+        "operationId": "delete_fleet",
+        "summary": "Hard-delete a fleet and cascade its history",
+        "description": "Hard-purge a fleet. Removes the `core.fleets` row and cascades every\nper-fleet record across PostgreSQL (PG) schemas (events, telemetry, sessions,\napproval gates, integration grants, fleet keys, memory entries) plus\nbest-effort DELs the Redis event stream.\n\nTwo-step lifecycle for safety: kill first (PATCH `{status:\"killed\"}`),\nthen delete. Returns 409 if the fleet is not yet `killed`.\n\nOperator-minimum role required (RULE BIL — destructive lifecycle).\n",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -3116,10 +3325,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3128,7 +3337,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Agent purged."
+            "description": "Fleet purged."
           },
           "401": {
             "$ref": "#/components/responses/Error"
@@ -3148,10 +3357,10 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/integration-grants": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants": {
       "get": {
         "operationId": "list_integration_grants",
-        "summary": "List integration grants for a agent",
+        "summary": "List integration grants for a fleet",
         "description": "Returns pending, approved, and revoked grants, newest first.",
         "tags": [
           "Integration Grants"
@@ -3168,10 +3377,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3220,11 +3429,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/integration-grants/{grant_id}": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}": {
       "delete": {
         "operationId": "revoke_integration_grant",
         "summary": "Revoke an integration grant",
-        "description": "Immediately revokes a grant. A revoked grant blocks the agent on its next execute attempt against the affected service.",
+        "description": "Immediately revokes a grant. A revoked grant blocks the fleet on its next execute attempt against the affected service.",
         "tags": [
           "Integration Grants"
         ],
@@ -3240,10 +3449,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3278,11 +3487,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/integration-requests": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-requests": {
       "post": {
         "operationId": "request_integration_grant",
         "summary": "Request a new integration grant",
-        "description": "Called by a agent (or on its behalf) to request permission to use a third-party integration (e.g. Slack, Gmail). Creates a pending grant that a human approves via the grant-approval webhook.",
+        "description": "Called by a fleet (or on its behalf) to request permission to use a third-party integration (e.g. Slack, Gmail). Creates a pending grant that a human approves via the grant-approval webhook.",
         "tags": [
           "Integration Grants"
         ],
@@ -3298,10 +3507,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3356,7 +3565,7 @@
                         "approved"
                       ]
                     },
-                    "agent_id": {
+                    "fleet_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -3392,7 +3601,7 @@
                         "pending"
                       ]
                     },
-                    "agent_id": {
+                    "fleet_id": {
                       "type": "string",
                       "format": "uuid"
                     },
@@ -3426,13 +3635,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/messages": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages": {
       "post": {
-        "operationId": "post_agent_message",
-        "summary": "Post a chat message to a agent",
-        "description": "Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `agent:{id}:events`. The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter frames for the message they just sent. Same single-ingress contract as webhook and continuation events — no separate \"queued vs instant\" mode.",
+        "operationId": "post_fleet_message",
+        "summary": "Post a chat message to a fleet",
+        "description": "Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `fleet:{id}:events`. The Redis stream entry id IS the canonical event_id and is returned to the caller so Server-Sent Events (SSE) consumers can filter frames for the message they just sent. Same single-ingress rule as webhook and continuation events — no separate \"queued vs instant\" mode.",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -3446,10 +3655,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
-            "description": "UUIDv7 of the agent.",
+            "description": "UUIDv7 of the fleet.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3515,7 +3724,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "Agent is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing work that would strand. The problem-details body carries `current_state` naming the actual agent status (e.g. `paused`). Resume with `agentsfleet resume <agent>`, then retry.",
+            "description": "Fleet is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing work that would strand. The problem-details body carries `current_state` naming the actual fleet status (e.g. `paused`). Resume with `agentsfleet resume <fleet>`, then retry.",
             "$ref": "#/components/responses/Error"
           },
           "default": {
@@ -3524,13 +3733,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/events": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events": {
       "get": {
-        "operationId": "list_agent_events",
-        "summary": "List a agent's event history",
-        "description": "Cursor-paginated list of operator-visible events for one agent, newest first. Each row is a `core.agent_events` entry — the durable record produced by the worker write path on every steer, webhook, cron, or continuation event. Filter by actor glob (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and `cursor=` are mutually exclusive.\n",
+        "operationId": "list_fleet_events",
+        "summary": "List a fleet's event history",
+        "description": "Cursor-paginated list of operator-visible events for one fleet, newest first. Each row is a `core.fleet_events` entry — the durable record produced by the worker write path on every steer, webhook, cron, or continuation event. Filter by actor glob (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and `cursor=` are mutually exclusive.\n",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -3543,7 +3752,7 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3606,7 +3815,7 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "description": "One agent_events row."
+                        "description": "One fleet_events row."
                       }
                     },
                     "next_cursor": {
@@ -3624,13 +3833,13 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/agents/{agent_id}/events/stream": {
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream": {
       "get": {
-        "operationId": "stream_agent_events",
-        "summary": "Subscribe to a agent's live activity stream (SSE)",
-        "description": "Server-Sent Events tail of the Redis pub/sub channel `agent:{id}:activity`. The server fans the channel out from one shared subscription and forwards each PUBLISH frame as one SSE event with id (per-connection monotonic counter), event (frame kind), and data (JSON payload) lines. Frame kinds - event_received, tool_call_started, tool_call_progress, chunk, tool_call_completed, event_complete. Sequence ids reset to 0 on every new stream and the server ignores `Last-Event-ID`. Concurrent streams per instance are capped - above the cap the request is rejected with 503 (code UZ-API-002) and a Retry-After header. Clients reconnect by calling GET /events with a cursor to backfill the durable record, then re-open this stream. Authentication this slice is Bearer-only (CLI / programmatic). Browser cookie auth lands with the dashboard slice.\n",
+        "operationId": "stream_fleet_events",
+        "summary": "Subscribe to a fleet's live activity stream (SSE)",
+        "description": "Server-Sent Events tail of the Redis pub/sub channel `fleet:{id}:activity`. The server fans the channel out from one shared subscription and forwards each PUBLISH frame as one SSE event with id (per-connection monotonic counter), event (frame kind), and data (JSON payload) lines. Frame kinds - event_received, tool_call_started, tool_call_progress, chunk, tool_call_completed, event_complete. Sequence ids reset to 0 on every new stream and the server ignores `Last-Event-ID`. Concurrent streams per instance are capped - above the cap the request is rejected with 503 (code UZ-API-002) and a Retry-After header. Clients reconnect by calling GET /events with a cursor to backfill the durable record, then re-open this stream. Authentication this slice is Bearer-only (CLI / programmatic). Browser cookie auth lands with the dashboard slice.\n",
         "tags": [
-          "Agents"
+          "Fleets"
         ],
         "parameters": [
           {
@@ -3643,7 +3852,7 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3679,7 +3888,7 @@
       "get": {
         "operationId": "list_workspace_events",
         "summary": "List a workspace's aggregate event history",
-        "description": "Cursor-paginated list of operator-visible events across every agent in the workspace, newest first. Replaces the deleted activity endpoint. Optional `agent_id` filter narrows to one agent. Same query shape as the per-agent endpoint - `actor` glob, `since=` (duration or RFC 3339), and a `cursor` mutually exclusive with `since`.\n",
+        "description": "Cursor-paginated list of operator-visible events across every fleet in the workspace, newest first. Replaces the deleted activity endpoint. Optional `fleet_id` filter narrows to one fleet. Same query shape as the per-fleet endpoint - `actor` glob, `since=` (duration or RFC 3339), and a `cursor` mutually exclusive with `since`.\n",
         "tags": [
           "Workspaces"
         ],
@@ -3694,10 +3903,10 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "query",
             "required": false,
-            "description": "Drill down to one agent within the workspace.",
+            "description": "Drill down to one fleet within the workspace.",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -3779,7 +3988,7 @@
       "get": {
         "operationId": "list_workspace_approvals",
         "summary": "List pending approval gates for a workspace",
-        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the agent's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by agent, gate kind, or\nstatus. Cursor pagination over (requested_at, id) so concurrent\ninserts don't cause silent skips.\n",
+        "description": "Returns approval gates oldest-first (oldest is most urgent). Each row\nsurfaces the fleet's proposed action, gathered evidence, blast-radius\nassessment, and timeout countdown. Filter by fleet, gate kind, or\nstatus. Cursor pagination over (requested_at, id) so concurrent\ninserts don't cause silent skips.\n",
         "tags": [
           "Approvals"
         ],
@@ -3803,7 +4012,7 @@
             }
           },
           {
-            "name": "agent_id",
+            "name": "fleet_id",
             "in": "query",
             "required": false,
             "schema": {
@@ -4105,7 +4314,7 @@
         }
       }
     },
-    "/v1/fleet/runners": {
+    "/v1/fleets/runners": {
       "get": {
         "operationId": "list_fleet_runners",
         "summary": "List fleet runners",
@@ -4193,7 +4402,7 @@
         }
       }
     },
-    "/v1/fleet/runners/{id}": {
+    "/v1/fleets/runners/{id}": {
       "patch": {
         "operationId": "patch_fleet_runner",
         "summary": "Administer a fleet runner",
@@ -4274,7 +4483,7 @@
         }
       }
     },
-    "/v1/fleet/runners/{id}/events": {
+    "/v1/fleets/runners/{id}/events": {
       "get": {
         "operationId": "list_fleet_runner_events",
         "summary": "List fleet runner events",
@@ -4567,12 +4776,12 @@
           "title": {
             "type": "string",
             "description": "Short human-readable label, same for every occurrence of this code",
-            "example": "Agent not found"
+            "example": "Fleet not found"
           },
           "detail": {
             "type": "string",
             "description": "Instance-specific context describing what went wrong",
-            "example": "No agent with id 'abc123' in this workspace."
+            "example": "No fleet with id 'abc123' in this workspace."
           },
           "error_code": {
             "type": "string",
@@ -4585,7 +4794,7 @@
           },
           "current_state": {
             "type": "string",
-            "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused agent (UZ-AGT-012).",
+            "description": "Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).",
             "example": "paused"
           }
         }
@@ -4751,20 +4960,20 @@
           }
         }
       },
-      "AgentKey": {
+      "FleetKey": {
         "type": "object",
         "required": [
-          "agent_key_id",
-          "agent_id",
+          "fleet_key_id",
+          "fleet_id",
           "name",
           "created_at"
         ],
         "properties": {
-          "agent_key_id": {
+          "fleet_key_id": {
             "type": "string",
             "format": "uuid"
           },
-          "agent_id": {
+          "fleet_id": {
             "type": "string",
             "format": "uuid"
           },
@@ -4785,9 +4994,9 @@
           }
         }
       },
-      "AgentTrigger": {
+      "FleetTrigger": {
         "type": "object",
-        "description": "A single trigger projected into the agent list row.",
+        "description": "A single trigger projected into the fleet list row.",
         "oneOf": [
           {
             "type": "object",
@@ -4847,7 +5056,7 @@
           }
         ]
       },
-      "AgentSummary": {
+      "FleetSummary": {
         "type": "object",
         "required": [
           "id",
@@ -4889,18 +5098,184 @@
             "nullable": true,
             "description": "Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.",
             "items": {
-              "$ref": "#/components/schemas/AgentTrigger"
+              "$ref": "#/components/schemas/FleetTrigger"
             }
           },
           "events_processed": {
             "type": "integer",
             "format": "int64",
-            "description": "Lifetime count of events this agent has processed (rows in `core.agent_events`)."
+            "description": "Lifetime count of events this fleet has processed (rows in `core.fleet_events`)."
           },
           "budget_used_nanos": {
             "type": "integer",
             "format": "int64",
-            "description": "Cumulative credit this agent has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `agent_execution_telemetry.credit_deducted_nanos`."
+            "description": "Cumulative credit this fleet has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `fleet_execution_telemetry.credit_deducted_nanos`."
+          }
+        }
+      },
+      "FleetBundleTemplate": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "required_credentials",
+          "required_tools",
+          "network_hosts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "required_credentials": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "required_tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "network_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FleetBundleSupportFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 65536
+          }
+        }
+      },
+      "FleetBundleRequirements": {
+        "type": "object",
+        "required": [
+          "credentials",
+          "tools",
+          "network_hosts",
+          "support_files",
+          "trigger_present"
+        ],
+        "properties": {
+          "credentials": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "network_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "support_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "trigger_present": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FleetBundleSupportFileSummary": {
+        "type": "object",
+        "required": [
+          "path",
+          "size_bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FleetBundleDetail": {
+        "type": "object",
+        "required": [
+          "bundle_id",
+          "name",
+          "source_kind",
+          "source_ref",
+          "validation_status",
+          "content_hash",
+          "snapshot_key",
+          "requirements",
+          "support_files"
+        ],
+        "properties": {
+          "bundle_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "template",
+              "upload",
+              "github"
+            ]
+          },
+          "source_ref": {
+            "type": "string"
+          },
+          "validation_status": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string",
+            "description": "SHA-256 content hash of the imported snapshot."
+          },
+          "snapshot_key": {
+            "type": "string",
+            "description": "Content-addressed snapshot key for runner materialization."
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/FleetBundleRequirements"
+          },
+          "support_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetBundleSupportFileSummary"
+            }
           }
         }
       },
@@ -4958,7 +5333,7 @@
         "type": "object",
         "required": [
           "gate_id",
-          "agent_id",
+          "fleet_id",
           "workspace_id",
           "action_id",
           "status",
@@ -4970,11 +5345,11 @@
             "type": "string",
             "format": "uuid"
           },
-          "agent_id": {
+          "fleet_id": {
             "type": "string",
             "format": "uuid"
           },
-          "agent_name": {
+          "fleet_name": {
             "type": "string"
           },
           "workspace_id": {
@@ -4997,15 +5372,15 @@
           },
           "proposed_action": {
             "type": "string",
-            "description": "Human-readable summary of what the agent wants to do."
+            "description": "Human-readable summary of what the fleet wants to do."
           },
           "evidence": {
             "type": "object",
-            "description": "Agent-gathered context (free-form). Rendered as expandable JSON tree."
+            "description": "Fleet-gathered context (free-form). Rendered as expandable JSON tree."
           },
           "blast_radius": {
             "type": "string",
-            "description": "Agent's assessment of the action's reach."
+            "description": "Fleet's assessment of the action's reach."
           },
           "status": {
             "type": "string",

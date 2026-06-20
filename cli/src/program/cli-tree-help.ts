@@ -14,7 +14,7 @@ interface EnvVar {
 
 const ENV_VARS: readonly EnvVar[] = [
   { name: "AGENTSFLEET_API_URL", desc: "API base URL (overridden by --api)" },
-  { name: "AGENTSFLEET_DASHBOARD_URL", desc: "Dashboard base URL for login (overrides API-derived default)" },
+  { name: "AGENTSFLEET_DASHBOARD_URL", desc: "Dashboard base URL (login verify page)" },
   { name: "AGENTSFLEET_API_KEY", desc: "Service API key (overrides stored login)" },
   { name: "AGENTSFLEET_STATE_DIR", desc: "Directory for local CLI state files" },
   { name: "NO_COLOR", desc: "Any non-empty value disables color" },

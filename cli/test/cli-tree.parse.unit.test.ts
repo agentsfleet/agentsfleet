@@ -1,7 +1,7 @@
-// Parser-level unit tests for buildProgram (top-level + non-agent tree).
+// Parser-level unit tests for buildProgram (top-level + non-fleet tree).
 // Drives commander directly with a no-op handlers tree so every actionFor()
-// closure fires for its argv. Companion file cli-tree.agent.unit.test.js
-// covers the agent / credential subtree.
+// closure fires for its argv. Companion file cli-tree.fleet.unit.test.js
+// covers the fleet / credential subtree.
 
 import { test, expect } from "bun:test";
 import { CommanderError, type Help } from "commander";
@@ -89,50 +89,50 @@ test("workspace delete <id> captures required positional", async () => {
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
 
-// ── Agent-key tree ────────────────────────────────────────────────────────
+// ── Fleet-key tree ────────────────────────────────────────────────────────
 
-test("agent-key add accepts --workspace / --agent / --name / --description", async () => {
+test("fleet-key add accepts --workspace / --fleet / --name / --description", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
-    "agent-key", "add",
+    "fleet-key", "add",
     "--workspace", VALID_ID,
-    "--agent",    VALID_ID,
+    "--fleet",    VALID_ID,
     "--name",      "scout",
     "--description", "for scouting",
   ], handlers);
-  expect(calls[0]?.name).toBe("agent-key.add");
+  expect(calls[0]?.name).toBe("fleet-key.add");
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
-  expect(calls[0]?.frame.parsed.options.agent).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.fleet).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.name).toBe("scout");
   expect(calls[0]?.frame.parsed.options.description).toBe("for scouting");
 });
 
-test("agent-key list with --workspace dispatches", async () => {
+test("fleet-key list with --workspace dispatches", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["agent-key", "list", "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("agent-key.list");
+  await dispatch(["fleet-key", "list", "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("fleet-key.list");
 });
 
-test("agent-key delete <id> with --workspace captures both", async () => {
+test("fleet-key delete <id> with --workspace captures both", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["agent-key", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
-  expect(calls[0]?.name).toBe("agent-key.delete");
+  await dispatch(["fleet-key", "delete", VALID_ID, "--workspace", VALID_ID], handlers);
+  expect(calls[0]?.name).toBe("fleet-key.delete");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
   expect(calls[0]?.frame.parsed.options.workspace).toBe(VALID_ID);
 });
 
 // ── Grant tree ──────────────────────────────────────────────────────────
 
-test("grant list dispatches with --agent option", async () => {
+test("grant list dispatches with --fleet option", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["grant", "list", "--agent", VALID_ID], handlers);
+  await dispatch(["grant", "list", "--fleet", VALID_ID], handlers);
   expect(calls[0]?.name).toBe("grant.list");
-  expect(calls[0]?.frame.parsed.options.agent).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.fleet).toBe(VALID_ID);
 });
 
-test("grant delete <id> with --agent captures both", async () => {
+test("grant delete <id> with --fleet captures both", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["grant", "delete", VALID_ID, "--agent", VALID_ID], handlers);
+  await dispatch(["grant", "delete", VALID_ID, "--fleet", VALID_ID], handlers);
   expect(calls[0]?.name).toBe("grant.delete");
   expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
@@ -267,10 +267,10 @@ test("helpFactory is deferred — not invoked at construction, fires when help r
 
 // ── Default help factory closure fires when no helpFactory is injected ───
 
-test("default createHelp (() => new AgentHelp()) renders --help when no factory is supplied", async () => {
+test("default createHelp (() => new FleetHelp()) renders --help when no factory is supplied", async () => {
   const { handlers } = makeSpyTree();
   const state = { exitCode: 0 };
-  // No helpFactory → buildProgram installs the default `() => new AgentHelp()`
+  // No helpFactory → buildProgram installs the default `() => new FleetHelp()`
   // closure. Rendering --help invokes it, covering that arrow.
   const program = buildProgram({ handlers, version: "0.0.0-test", state });
   program.exitOverride();

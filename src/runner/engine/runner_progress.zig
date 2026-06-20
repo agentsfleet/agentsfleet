@@ -2,13 +2,13 @@
 //!
 //! Bridges the NullClaw `Observer` vtable + per-token `StreamCallback` into the
 //! `contract.activity.ActivityFrame` shape the live tail consumes. NullClaw
-//! fires these synchronously on the same thread that called `agent.runSingle`,
+//! fires these synchronously on the same thread that called `fleet.runSingle`,
 //! so writes to the pipe are sequential — no locking, no concurrent producers.
 //!
 //! Args redaction: docs/architecture/ mandates that any secret bytes substituted
 //! into tool arguments are replaced with the canonical `${secrets.NAME.FIELD}`
 //! placeholder before the frame leaves this child. The redactor is constructed
-//! in runner.execute from the known agent_config secrets (LLM api_key, GitHub
+//! in runner.execute from the known fleet_config secrets (LLM api_key, GitHub
 //! token); runner.zig is the only file that knows the secret VALUES, and they
 //! never escape into an `ActivityFrame`.
 
@@ -53,14 +53,14 @@ pub const Secret = struct {
 };
 
 /// Adapter object that holds the per-call writer, allocator, and the
-/// list of secrets to redact. Must outlive the agent run; runner.zig
-/// stack-allocates one for the duration of `agent.runSingle`.
+/// list of secrets to redact. Must outlive the fleet run; runner.zig
+/// stack-allocates one for the duration of `fleet.runSingle`.
 pub const Adapter = struct {
     writer: *const ProgressWriter,
     alloc: Allocator,
     secrets: []const Secret,
     /// L1 context-lifecycle: every Nth completed tool call, emit a
-    /// structured log line so observers can confirm the agent's
+    /// structured log line so observers can confirm the fleet's
     /// SKILL.md "snapshot every N tools" cadence is being prompted.
     /// 0 disables the cadence (tests + non-streaming paths).
     memory_checkpoint_every: u32 = 0,
@@ -70,25 +70,25 @@ pub const Adapter = struct {
     /// no-op, never a hard error. Borrowed; the engine owns its lifetime.
     memory_capturer: ?*inrun_memory.MemoryCapturer = null,
     /// Source of the cumulative split accessors for `usage` frames; set by
-    /// runner.zig after agent init (null in tests/non-streaming → emit no-ops).
+    /// runner.zig after fleet init (null in tests/non-streaming → emit no-ops).
     /// Borrowed for the run; NullClaw fires the metric on the run thread.
-    agent: ?*const nullclaw.agent.Agent = null,
+    fleet: ?*const nullclaw.agent.Agent = null,
     /// L2 context-lifecycle: once the cumulative completed-tool count
     /// crosses this threshold, log a `tool_window_exceeded` line each
-    /// subsequent call. SKILL.md prose tells the agent to compact
+    /// subsequent call. SKILL.md prose tells the fleet to compact
     /// findings via memory_store + memory_forget once the threshold
     /// is hit; the runtime log lets on-call confirm the prompt
     /// landed. 0 disables. NullClaw doesn't expose mid-loop
-    /// conversation mutation, so the agent — not the runtime —
+    /// conversation mutation, so the fleet — not the runtime —
     /// drops oldest tool results by consolidating into memory.
     tool_window: u32 = 0,
     /// L3 context-lifecycle: fraction of the model's context cap (0.0..1.0)
-    /// at which the agent is told to snapshot + chunk. Computed at every
+    /// at which the fleet is told to snapshot + chunk. Computed at every
     /// `llm_response` observer event against `prompt_tokens /
     /// context_cap_tokens`. Crossing the threshold logs a structured
     /// `chunk_threshold_breached` line and bumps `chunk_threshold_logs`.
     /// 0.0 disables the layer. NullClaw doesn't expose mid-loop
-    /// interrupt, so the runtime cannot force a chunk — the agent does
+    /// interrupt, so the runtime cannot force a chunk — the fleet does
     /// it via SKILL prose ("when context fills, return content='needs
     /// continuation'"). Spec §6 wires this gap as observability + prose.
     stage_chunk_threshold: f32 = 0.0,
@@ -98,7 +98,7 @@ pub const Adapter = struct {
     /// fill ratio — when 0, L3 short-circuits (no ratio, no log).
     context_cap_tokens: u32 = 0,
     /// Mutable counters — bumped by the observer thread (NullClaw fires
-    /// events on the same thread that called `agent.runSingle`, so no
+    /// events on the same thread that called `fleet.runSingle`, so no
     /// atomics needed).
     tool_call_count: u32 = 0,
     nudges_emitted: u32 = 0,
@@ -106,7 +106,7 @@ pub const Adapter = struct {
     chunk_threshold_logs: u32 = 0,
     last_prompt_tokens: u32 = 0,
 
-    /// NullClaw Observer view of this adapter. Pass to `Agent.fromConfig`.
+    /// NullClaw Observer view of this adapter. Pass to `Fleet.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
         return .{
             .ptr = self,
@@ -114,7 +114,7 @@ pub const Adapter = struct {
         };
     }
 
-    /// `(stream_callback, stream_ctx)` pair to set on the Agent.
+    /// `(stream_callback, stream_ctx)` pair to set on the Fleet.
     pub fn streamCallback(self: *Adapter) struct {
         cb: providers.StreamCallback,
         ctx: *anyopaque,
@@ -122,15 +122,15 @@ pub const Adapter = struct {
         return .{ .cb = streamCallbackThunk, .ctx = self };
     }
 
-    /// Write one cumulative `usage` frame from the agent's split accessors.
-    /// Fires on every tokens_used metric (each turn/summary fold — the agent
+    /// Write one cumulative `usage` frame from the fleet's split accessors.
+    /// Fires on every tokens_used metric (each turn/summary fold — the fleet
     /// folds before it emits the metric) and once more at run end from
     /// runner.zig; best-effort like every progress frame.
     pub fn emitUsage(self: *Adapter) void {
-        const agent = self.agent orelse return;
+        const fleet = self.fleet orelse return;
         const snap = pipe_proto.UsageSnapshot{
-            .input_tokens = agent.promptTokensUsed(),
-            .output_tokens = agent.completionTokensUsed(),
+            .input_tokens = fleet.promptTokensUsed(),
+            .output_tokens = fleet.completionTokensUsed(),
         };
         const payload = snap.encode();
         pipe_proto.writeFrame(self.writer.fd, .usage, &payload) catch |err|
@@ -160,7 +160,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // NullClaw exposes the tool name at start but not the args —
             // emit `tool_call_started` with an empty redacted args object
             // so live tail shows the tool kicking off; the args appear
-            // in the durable record (agent_events.request_json) and in
+            // in the durable record (fleet_events.request_json) and in
             // the `tool_call_completed` follow-up frame's UI affordances.
             const frame = ActivityFrame{
                 .tool_call_started = .{ .name = b.tool, .args_redacted = "{}" },
@@ -185,7 +185,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             };
             self.writer.write(done_frame);
             self.tool_call_count += 1;
-            // L1 nudge: SKILL.md prose tells the agent to snapshot via
+            // L1 nudge: SKILL.md prose tells the fleet to snapshot via
             // memory_store on this cadence. The runtime side just logs
             // the threshold hit so on-call can confirm the prompt is
             // landing — actual prompt engineering is in the skill.
@@ -206,7 +206,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // L2 window: once the cumulative count crosses the window
             // threshold, every subsequent call emits a structured line
             // so on-call can spot a runaway incident in the activity
-            // stream. The agent compacts findings via memory_store at
+            // stream. The fleet compacts findings via memory_store at
             // the SKILL prose's direction — the runtime doesn't drop
             // anything from the conversation itself.
             if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
@@ -223,10 +223,10 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // interrupt, so we observe instead of force. After every
             // LLM round-trip, compute fill = prompt_tokens / cap. When
             // it crosses the configured threshold, emit a structured
-            // log. SKILL.md prose tells the agent to write a snapshot
+            // log. SKILL.md prose tells the fleet to write a snapshot
             // and end with content='needs continuation' on the next
             // turn — the runtime can see the prompt tokens but not
-            // halt the loop, so the agent owns the chunk decision.
+            // halt the loop, so the fleet owns the chunk decision.
             const prompt: u32 = b.prompt_tokens orelse 0;
             self.last_prompt_tokens = prompt;
             if (self.stage_chunk_threshold > 0.0 and self.context_cap_tokens > 0 and prompt > 0) {
@@ -243,7 +243,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 }
             }
         },
-        else => {}, // agent_start / agent_end / llm_request / heartbeat / etc. are not on the substrate
+        else => {}, // fleet_start / fleet_end / llm_request / heartbeat / etc. are not on the substrate
     }
 }
 
@@ -271,7 +271,7 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     const redacted = redactBytes(self.alloc, chunk.delta, self.secrets) catch chunk.delta;
     defer if (redacted.ptr != chunk.delta.ptr) self.alloc.free(redacted);
     const frame = ActivityFrame{
-        .agent_response_chunk = .{ .text = redacted },
+        .fleet_response_chunk = .{ .text = redacted },
     };
     self.writer.write(frame);
 }

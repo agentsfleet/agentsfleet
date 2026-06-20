@@ -1,12 +1,12 @@
 //! Lease reclaim — re-leasing an expired holder's event from Postgres alone.
 //!
-//! When `affinity.claim` wins a agent whose prior claim had expired, the dead
+//! When `affinity.claim` wins a fleet whose prior claim had expired, the dead
 //! holder's still-`active` lease row carries the durable event envelope + the
 //! billing context. `reclaimPriorActive` selects that row (locked), marks it
 //! `expired`, and returns it in ONE atomic statement, so the caller can re-lease
 //! the SAME event under the fresh higher fencing token — no Redis re-read (the
 //! envelope is durable in Postgres) and no re-billing (the original lease already
-//! debited). If there is no prior active lease the agent is simply free and the
+//! debited). If there is no prior active lease the fleet is simply free and the
 //! caller takes a fresh event instead.
 //!
 //! Arena allocator (`hx.alloc`): every returned slice is arena-dup'd and freed
@@ -33,30 +33,30 @@ pub const PriorLease = struct {
     model: []const u8,
 };
 
-/// Atomically reclaim the agent's latest `active` lease: one statement selects
+/// Atomically reclaim the fleet's latest `active` lease: one statement selects
 /// that row (locked `FOR UPDATE`), marks it `expired`, and returns its event
 /// envelope + billing context — so the find and the expire cannot be split by a
 /// concurrent write. The returned columns are the pre-update envelope (the UPDATE
 /// only touches status/updated_at), re-leased under the fresh higher fencing
-/// token: no Redis re-read, no re-billing. Null when the agent has no active
+/// token: no Redis re-read, no re-billing. Null when the fleet has no active
 /// lease ⇒ it is free and the caller takes a fresh event. Called only after
 /// `affinity.claim` won, so the row found here is unambiguously the reclaimed
 /// holder. All slices arena-dup'd before drain.
-pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, agent_id: []const u8) !?PriorLease {
+pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) !?PriorLease {
     const now_ms = clock.nowMillis();
     var q = PgQuery.from(try conn.query(
         \\UPDATE fleet.runner_leases AS l
         \\SET status = $3, updated_at = $4
         \\WHERE l.id = (
         \\    SELECT id FROM fleet.runner_leases
-        \\    WHERE agent_id = $1::uuid AND status = $2
+        \\    WHERE fleet_id = $1::uuid AND status = $2
         \\    ORDER BY fencing_token DESC LIMIT 1
         \\    FOR UPDATE
         \\)
         \\RETURNING l.id::text, l.event_id, l.actor, l.event_type, l.request_json,
         \\          l.event_created_at, l.workspace_id::text, l.tenant_id::text,
         \\          l.posture, l.model
-    , .{ agent_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
+    , .{ fleet_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return .{

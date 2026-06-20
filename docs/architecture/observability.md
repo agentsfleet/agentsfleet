@@ -19,9 +19,9 @@ happens, where does the signal go, and who owns it.*
 All of `agentsfleetd`'s telemetry lives under `src/agentsfleetd/observability/`. Four
 independent signal paths, each with a different consumer:
 
-- **Prometheus metrics (pull).** The `agent_*` metric families — counters,
+- **Prometheus metrics (pull).** The `fleet_*` metric families — counters,
   histograms, and gauges for API and Server-Sent Events (SSE) backpressure and
-  in-flight depth, the signup funnel, `agent_triggered_total`, the runner fleet,
+  in-flight depth, the signup funnel, `fleet_triggered_total`, the runner fleet,
   and the Redis pool — render at the pull endpoint
   `GET /metrics` (`src/agentsfleetd/http/handlers/health.zig`, via `metrics_render.zig`).
   Nothing pushes; Prometheus scrapes.
@@ -32,7 +32,7 @@ independent signal paths, each with a different consumer:
   (logs to Loki, traces to Tempo), gated on the `GRAFANA_OTLP_*` environment. Every
   structured log line fans out to the OTLP sink in addition to stderr. **There is no
   OTel collector** — the app exports straight to Grafana Cloud with no intermediary
-  hop. Dashboards live in `deploy/grafana/`; the scrape/agent setup is in
+  hop. Dashboards live in `deploy/grafana/`; the scrape/fleet setup is in
   `playbooks/operations/observability/`.
 
 - **PostHog — product analytics.** A nullable client (see

@@ -13,10 +13,10 @@ import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { doctorEffect } from "../commands/core-ops.ts";
 import {
-  agentAddEffectFromArgs,
-  agentListEffectFromArgs,
-  agentDeleteEffectFromArgs,
-} from "../commands/agent_key.ts";
+  fleetAddEffectFromArgs,
+  fleetListEffectFromArgs,
+  fleetDeleteEffectFromArgs,
+} from "../commands/fleet_key.ts";
 import {
   grantListEffectFromArgs,
   grantDeleteEffectFromArgs,
@@ -27,7 +27,7 @@ import {
   tenantProviderDeleteEffect,
 } from "../commands/tenant.ts";
 import { billingShowEffectFromArgs } from "../commands/billing.ts";
-import { buildAgentHandlers } from "./handlers-bind-agent.ts";
+import { buildFleetHandlers } from "./handlers-bind-fleet.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import { buildMemoryHandlers } from "./handlers-bind-memory.ts";
 
@@ -109,10 +109,10 @@ function stdinFromCtx(ctx: LifecycleCtx): NodeJS.ReadableStream | undefined {
 // commander's preAction has fired, so --no-open / --json / --api
 // global flags are captured.
 //
-// `name` is the wrap-site label ("agent.add", "workspace.list", ...).
+// `name` is the wrap-site label ("fleet.add", "workspace.list", ...).
 // Split into commandPath so CommandRuntime carries it (the span name
-// becomes `cli.agent.add`, the analytics command label becomes
-// "agent add").
+// becomes `cli.fleet.add`, the analytics command label becomes
+// "fleet add").
 function mainLayerForCtx(lifecycle: Lifecycle, name: string): ReturnType<typeof mainLayerFor> {
   const streams = streamsFromCtx(lifecycle.ctx);
   const stdin = stdinFromCtx(lifecycle.ctx);
@@ -203,20 +203,20 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     },
     doctor: wrapE("doctor", doctorEffect),
     workspace: buildWorkspaceHandlers(wrapE, wrapEFn),
-    agentKey: {
+    fleetKey: {
       add: wrapEffectFn(
-        "agent-key.add",
+        "fleet-key.add",
         (frame) => {
           const opts = frame.parsed.options;
-          return agentAddEffectFromArgs({
+          return fleetAddEffectFromArgs({
             workspaceId:
               optString(opts, "workspace") ??
               optString(opts, "workspaceId") ??
               optString(opts, "workspace-id"),
-            agentId:
-              optString(opts, "agent") ??
-              optString(opts, "agentId") ??
-              optString(opts, "agent-id"),
+            fleetId:
+              optString(opts, "fleet") ??
+              optString(opts, "fleetId") ??
+              optString(opts, "fleet-id"),
             name: optString(opts, "name"),
             description: optString(opts, "description"),
           });
@@ -224,9 +224,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
       list: wrapEffectFn(
-        "agent-key.list",
+        "fleet-key.list",
         (frame) =>
-          agentListEffectFromArgs(
+          fleetListEffectFromArgs(
             optString(frame.parsed.options, "workspace") ??
               optString(frame.parsed.options, "workspaceId") ??
               optString(frame.parsed.options, "workspace-id"),
@@ -234,15 +234,15 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
       delete: wrapEffectFn(
-        "agent-key.delete",
+        "fleet-key.delete",
         (frame) =>
-          agentDeleteEffectFromArgs(
+          fleetDeleteEffectFromArgs(
             optString(frame.parsed.options, "workspace") ??
               optString(frame.parsed.options, "workspaceId") ??
               optString(frame.parsed.options, "workspace-id"),
             frame.parsed.positionals[0],
-            optString(frame.parsed.options, "agent-key-id") ??
-              optString(frame.parsed.options, "agentKeyId"),
+            optString(frame.parsed.options, "fleet-key-id") ??
+              optString(frame.parsed.options, "fleetKeyId"),
           ),
         lifecycle,
       ),
@@ -253,9 +253,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         (frame) =>
           grantListEffectFromArgs(
             frame.parsed.positionals[0],
-            optString(frame.parsed.options, "agent") ??
-              optString(frame.parsed.options, "agentId") ??
-              optString(frame.parsed.options, "agent-id"),
+            optString(frame.parsed.options, "fleet") ??
+              optString(frame.parsed.options, "fleetId") ??
+              optString(frame.parsed.options, "fleet-id"),
           ),
         lifecycle,
       ),
@@ -263,9 +263,9 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         "grant.delete",
         (frame) =>
           grantDeleteEffectFromArgs(
-            optString(frame.parsed.options, "agent") ??
-              optString(frame.parsed.options, "agentId") ??
-              optString(frame.parsed.options, "agent-id"),
+            optString(frame.parsed.options, "fleet") ??
+              optString(frame.parsed.options, "fleetId") ??
+              optString(frame.parsed.options, "fleet-id"),
             frame.parsed.positionals[0],
           ),
         lifecycle,
@@ -297,7 +297,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         lifecycle,
       ),
     },
-    agent: buildAgentHandlers(wrapE, wrapEFn),
+    fleet: buildFleetHandlers(wrapE, wrapEFn),
     memory: buildMemoryHandlers(wrapEFn, () => stdoutIsTtyFromCtx(lifecycle.ctx)),
   };
 }

@@ -21,7 +21,7 @@ const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
 
 /// Backoff (ms) on control-plane transport errors; lease polls use server-supplied retry_after_ms.
 const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
@@ -166,7 +166,6 @@ const TickFanout = struct {
     }
 };
 
-
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 fn executeAndReport(
@@ -199,11 +198,11 @@ fn executeAndReport(
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
 
-    // Hydrate the agent's prior memory over the trusted plane BEFORE the fork so
+    // Hydrate the fleet's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
     // and holds no token. A hydrate miss degrades to empty memory, never blocks.
-    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.agent_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
-        log.warn("memory_hydrate_failed", .{ .agent_id = payload.event.agent_id, .err = @errorName(err) });
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.fleet_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
+        log.warn("memory_hydrate_failed", .{ .fleet_id = payload.event.fleet_id, .err = @errorName(err) });
         break :blk null;
     };
     defer if (hydrated) |h| h.deinit();
@@ -213,7 +212,7 @@ fn executeAndReport(
         .alloc = alloc,
         .cp = cp,
         .runner_token = runner_token,
-        .agent_id = payload.event.agent_id,
+        .fleet_id = payload.event.fleet_id,
         .lease_id = payload.lease_id,
         .fencing_token = payload.fencing_token,
         .deadline_ms = cfg.cp_deadlines.default_ms,
@@ -278,9 +277,9 @@ fn cleanupWorkspace(io: std.Io, path: []const u8) void {
 }
 
 /// Map a child's clean-exit flag to the reported outcome. A failed execution
-/// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
+/// (incl. a fail-closed sandbox setup) is reported as `fleet_error`.
 pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
-    return if (exit_ok) .processed else .agent_error;
+    return if (exit_ok) .processed else .fleet_error;
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's

@@ -67,21 +67,21 @@ const TestWebhookSig = webhook_sig.WebhookSig(*TestLookupCtx);
 fn runMw(
     mw: *TestWebhookSig,
     ht: anytype,
-    agent_id: ?[]const u8,
+    fleet_id: ?[]const u8,
 ) !chain.Outcome {
     var ctx = auth_ctx.AuthCtx{
         .alloc = testing.allocator,
         .res = ht.res,
         .req_id = "req_test",
         .write_error = Fixtures.writeError,
-        .webhook_agent_id = agent_id,
+        .webhook_fleet_id = fleet_id,
     };
     return mw.execute(&ctx, ht.req);
 }
 
 // ── Fail-closed: missing scheme / credential / lookup ────────────────
 
-test "no agent_id slot → UZ-WH-020 .short_circuit" {
+test "no fleet_id slot → UZ-WH-020 .short_circuit" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{};
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -94,7 +94,7 @@ test "no agent_id slot → UZ-WH-020 .short_circuit" {
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-test "lookup returned null (agent not found) → UZ-WH-020" {
+test "lookup returned null (fleet not found) → UZ-WH-020" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{ .should_return_null = true };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -102,7 +102,7 @@ test "lookup returned null (agent not found) → UZ-WH-020" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, "agent-xyz");
+    const outcome = try runMw(&mw, &ht, "fleet-xyz");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
@@ -115,7 +115,7 @@ test "lookup errored (DB unavailable) → UZ-WH-020" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
@@ -132,7 +132,7 @@ test "no signature scheme configured → UZ-WH-020 (Bearer ignored)" {
     defer ht.deinit();
     ht.header("authorization", "Bearer some-token");
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
@@ -173,7 +173,7 @@ test "Jira valid HMAC → .next" {
     ht.header("x-jira-hook-signature", sig);
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.next, outcome);
     try testing.expectEqual(@as(usize, 0), Fixtures.write_count);
 }
@@ -194,7 +194,7 @@ test "tampered body → UZ-WH-010 .short_circuit" {
     ht.header("x-jira-hook-signature", sig);
     ht.body("{\"issue\":{\"key\":\"TAMPERED\"}}");
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
@@ -227,7 +227,7 @@ test "stale timestamp → UZ-WH-011 .short_circuit" {
     ht.header("x-custom-ts", stale_ts);
     ht.body("body");
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_TIMESTAMP_STALE, Fixtures.last_code);
 }
@@ -252,7 +252,7 @@ test "scheme configured + secret null → UZ-WH-020 .short_circuit" {
     // here would have silently downgraded auth.)
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
@@ -276,7 +276,7 @@ test "scheme configured + sig_header missing → UZ-WH-010 .short_circuit" {
     ht.header("authorization", "Bearer would-have-worked-pre-cleanup");
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
@@ -301,7 +301,7 @@ test "HMAC empty secret (attacker-computable) → .short_circuit" {
     ht.header("x-jira-hook-signature", sig);
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "agent-abc");
+    const outcome = try runMw(&mw, &ht, "fleet-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }

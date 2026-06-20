@@ -33,7 +33,7 @@ const ec = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
-const metering = @import("../agent/metering.zig");
+const metering = @import("../fleet_runtime/metering.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const LEASE_NOT_FOUND_DETAIL = "No lease matches this lease_id for the runner";
 

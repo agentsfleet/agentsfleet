@@ -12,7 +12,7 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
-const approval_gate_db = @import("../../../agent/approval_gate_db.zig");
+const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
 
 const log = logging.scoped(.http_approvals_detail);
 
@@ -70,8 +70,8 @@ pub fn innerGetApproval(
 
     hx.ok(.ok, .{
         .gate_id = row.gate_id,
-        .agent_id = row.agent_id,
-        .agent_name = row.agent_name,
+        .fleet_id = row.fleet_id,
+        .fleet_name = row.fleet_name,
         .workspace_id = row.workspace_id,
         .action_id = row.action_id,
         .tool_name = row.tool_name,

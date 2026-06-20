@@ -39,7 +39,7 @@ test.describe("workspace create", () => {
     createdEmail = email;
 
     await signUpAs(page, email, PASSWORD, { requireWorkspaceSession: true });
-    await page.goto("/agents");
+    await page.goto("/fleets");
 
     const switcher = page.getByTestId("workspace-switcher");
     await expect(switcher).toBeVisible();

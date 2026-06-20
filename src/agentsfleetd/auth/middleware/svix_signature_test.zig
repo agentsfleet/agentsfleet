@@ -53,7 +53,7 @@ fn runMw(mw: *TestSvix, ht: anytype) !chain.Outcome {
         .res = ht.res,
         .req_id = "req_test",
         .write_error = Fixtures.writeError,
-        .webhook_agent_id = "agent-abc",
+        .webhook_fleet_id = "fleet-abc",
     };
     return mw.execute(&ctx, ht.req);
 }

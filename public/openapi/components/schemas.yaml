@@ -29,11 +29,11 @@ components:
         title:
           type: string
           description: Short human-readable label, same for every occurrence of this code
-          example: Agent not found
+          example: Fleet not found
         detail:
           type: string
           description: Instance-specific context describing what went wrong
-          example: No agent with id 'abc123' in this workspace.
+          example: No fleet with id 'abc123' in this workspace.
         error_code:
           type: string
           description: Machine-readable error code
@@ -44,7 +44,7 @@ components:
         current_state:
           type: string
           description: Present only on 409 conflict responses (RFC 7807 extension). Names the resource state that
-            forbade the requested transition, e.g. `paused` when steering a paused agent (UZ-AGT-012).
+            forbade the requested transition, e.g. `paused` when steering a paused fleet (UZ-AGT-012).
           example: paused
     TenantApiKey:
       type: object
@@ -74,18 +74,18 @@ components:
           type: integer
           format: int64
           nullable: true
-    AgentKey:
+    FleetKey:
       type: object
       required:
-      - agent_key_id
-      - agent_id
+      - fleet_key_id
+      - fleet_id
       - name
       - created_at
       properties:
-        agent_key_id:
+        fleet_key_id:
           type: string
           format: uuid
-        agent_id:
+        fleet_id:
           type: string
           format: uuid
         name:
@@ -195,7 +195,7 @@ components:
           type: boolean
           description: True if the Redis queue backend is reachable
       additionalProperties: false
-    AgentSummary:
+    FleetSummary:
       type: object
       required:
       - id
@@ -230,18 +230,136 @@ components:
           nullable: true
           description: Projected from config_json `x-agentsfleet.triggers`; null when the row has no triggers entry.
           items:
-            $ref: '#/components/schemas/AgentTrigger'
+            $ref: '#/components/schemas/FleetTrigger'
         events_processed:
           type: integer
           format: int64
-          description: Lifetime count of events this agent has processed (rows in `core.agent_events`).
+          description: Lifetime count of events this fleet has processed (rows in `core.fleet_events`).
         budget_used_nanos:
           type: integer
           format: int64
-          description: Cumulative credit this agent has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `agent_execution_telemetry.credit_deducted_nanos`.
-    AgentTrigger:
+          description: Cumulative credit this fleet has consumed, in nanos (1 nano = 1/1,000,000,000 USD). Sum of its `fleet_execution_telemetry.credit_deducted_nanos`.
+    FleetBundleTemplate:
       type: object
-      description: A single trigger projected into the agent list row.
+      required:
+      - id
+      - name
+      - description
+      - required_credentials
+      - required_tools
+      - network_hosts
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        required_credentials:
+          type: array
+          items:
+            type: string
+        required_tools:
+          type: array
+          items:
+            type: string
+        network_hosts:
+          type: array
+          items:
+            type: string
+    FleetBundleSupportFile:
+      type: object
+      required:
+      - path
+      - content
+      properties:
+        path:
+          type: string
+          maxLength: 160
+        content:
+          type: string
+          maxLength: 65536
+    FleetBundleSupportFileSummary:
+      type: object
+      required:
+      - path
+      - size_bytes
+      properties:
+        path:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+    FleetBundleRequirements:
+      type: object
+      required:
+      - credentials
+      - tools
+      - network_hosts
+      - support_files
+      - trigger_present
+      properties:
+        credentials:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: string
+        network_hosts:
+          type: array
+          items:
+            type: string
+        support_files:
+          type: array
+          items:
+            type: string
+        trigger_present:
+          type: boolean
+    FleetBundleDetail:
+      type: object
+      required:
+      - bundle_id
+      - name
+      - source_kind
+      - source_ref
+      - validation_status
+      - content_hash
+      - snapshot_key
+      - requirements
+      - support_files
+      properties:
+        bundle_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        source_kind:
+          type: string
+          enum:
+          - template
+          - upload
+          - github
+        source_ref:
+          type: string
+        validation_status:
+          type: string
+        content_hash:
+          type: string
+          description: SHA-256 content hash of the imported snapshot.
+        snapshot_key:
+          type: string
+          description: Content-addressed snapshot key for runner materialization.
+        requirements:
+          $ref: '#/components/schemas/FleetBundleRequirements'
+        support_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FleetBundleSupportFileSummary'
+    FleetTrigger:
+      type: object
+      description: A single trigger projected into the fleet list row.
       oneOf:
       - type: object
         required:

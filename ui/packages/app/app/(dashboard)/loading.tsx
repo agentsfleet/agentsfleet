@@ -3,7 +3,7 @@ import { Skeleton } from "@agentsfleet/design-system";
 // Dashboard-wide fallback skeleton. Routes without their own loading.tsx
 // (Dashboard, Runners) get instant feedback on navigation instead of hanging
 // on the previous page while the server renders. Closer loading.tsx boundaries
-// (settings, agents, credentials, events, approvals, api-keys) still win.
+// (settings, fleets, credentials, events, approvals, api-keys) still win.
 export default function DashboardLoading() {
   return (
     <div className="space-y-6" aria-busy="true" aria-live="polite">

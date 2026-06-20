@@ -116,8 +116,8 @@ async function waitForTenantWorkspace(page: Page, email: string, sessionJwt: str
   const deadline = Date.now() + SESSION_METADATA_TIMEOUT_MS;
   let lastApiState = "not checked";
   while (Date.now() < deadline) {
-    await page.goto("/agents");
-    await page.getByRole("heading", { name: /agents/i }).first().waitFor({ timeout: 5_000 });
+    await page.goto("/fleets");
+    await page.getByRole("heading", { name: /fleets/i }).first().waitFor({ timeout: 5_000 });
     const apiState = await readWorkspaceApiState(page, sessionJwt);
     lastApiState = apiState.label;
     if ((await page.getByText(NO_WORKSPACE_TEXT).count()) === 0 && apiState.workspaceId) {

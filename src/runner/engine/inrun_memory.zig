@@ -1,10 +1,10 @@
-//! In-run agent-memory store — non-durable SQLite `:memory:` plus capture/seed.
+//! In-run fleet-memory store — non-durable SQLite `:memory:` plus capture/seed.
 //!
 //! Durable memory is the control plane's job (Postgres, written via the runner
-//! push). The child holds only a NON-durable working store the agent recalls and
+//! push). The child holds only a NON-durable working store the fleet recalls and
 //! remembers against during one run: NullClaw's SQLite engine run file-less
 //! (`db_path = ":memory:"`), so no on-disk memory file is ever created and no
-//! credential/URL/DSN reaches the sandboxed agent. The store is seeded at run
+//! credential/URL/DSN reaches the sandboxed fleet. The store is seeded at run
 //! start from memory the parent hydrated over the trusted plane and flushed back
 //! out via `.memory` frames the parent forwards.
 //!
@@ -56,7 +56,7 @@ pub fn initRuntime(alloc: std.mem.Allocator, workspace_path: []const u8) ?memory
         return null;
     };
     // `_db_path = null`: the `:memory:` literal is static, so deinit must not try
-    // to free it. Minimal keyword-mode runtime — the agent drives the `Memory`
+    // to free it. Minimal keyword-mode runtime — the fleet drives the `Memory`
     // vtable directly (store/recall/list), never `MemoryRuntime.search`.
     return memory_mod.MemoryRuntime{
         .memory = instance.memory,
@@ -86,9 +86,9 @@ pub fn initRuntime(alloc: std.mem.Allocator, workspace_path: []const u8) ?memory
     };
 }
 
-/// Seed the in-run store with the agent's prior memory the parent hydrated.
+/// Seed the in-run store with the fleet's prior memory the parent hydrated.
 /// Best-effort per entry: a single store failure is logged and skipped so a bad
-/// row never aborts the run before the agent even starts. Content is never logged.
+/// row never aborts the run before the fleet even starts. Content is never logged.
 pub fn seed(mem: Memory, entries: []const protocol.MemoryDelta) void {
     var seeded: usize = 0;
     for (entries) |e| {
@@ -104,7 +104,7 @@ pub fn seed(mem: Memory, entries: []const protocol.MemoryDelta) void {
 /// Flushes the in-run store out to the parent: enumerates every entry, drops
 /// NullClaw-internal bootstrap/autosave keys, and writes the survivors as one
 /// `.memory` frame on the progress fd. The parent forwards the frame to
-/// `POST /v1/runners/me/memory/{agent_id}`. Best-effort by contract — a capture
+/// `POST /v1/runners/me/memory/{fleet_id}`. Best-effort by contract — a capture
 /// blip never fails the run (the durable record is the next checkpoint / run end).
 pub const MemoryCapturer = struct {
     mem: Memory,

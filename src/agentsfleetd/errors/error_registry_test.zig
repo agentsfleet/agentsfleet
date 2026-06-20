@@ -81,7 +81,7 @@ test "UZ-REQ-002 stays 413 (payload too large, pinned)" {
     );
 }
 
-test "UZ-AGT-009 stays 404 (agent not found, pinned)" {
+test "UZ-AGT-009 stays 404 (fleet not found, pinned)" {
     try std.testing.expectEqual(
         std.http.Status.not_found,
         reg.lookup(reg.ERR_AGENTSFLEET_NOT_FOUND).http_status,
@@ -172,7 +172,7 @@ test "lookup never returns null — unknown codes return UNKNOWN" {
 test "lookup returns correct entry for known code" {
     const entry = reg.lookup("UZ-AGT-009");
     try std.testing.expectEqual(std.http.Status.not_found, entry.http_status);
-    try std.testing.expectEqualStrings("Agent not found", entry.title);
+    try std.testing.expectEqualStrings("Fleet not found", entry.title);
     try std.testing.expect(entry.hint.len > 0);
     try std.testing.expect(std.mem.startsWith(u8, entry.docs_uri, reg.ERROR_DOCS_BASE));
 }
@@ -232,7 +232,6 @@ test "startup hints reference 'agentsfleetd doctor' or env vars" {
     }
 }
 
-
 // ── Entry struct has exactly 5 fields ─────────────────────────────────────
 
 test "Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
@@ -275,7 +274,7 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
 }
 
-test "AgentSession size pinned at 320 bytes" {
-    const AgentSession = @import("../fleet/agent_session.zig");
-    try std.testing.expectEqual(@as(usize, 320), @sizeOf(AgentSession));
+test "FleetSession size pinned at 320 bytes" {
+    const FleetSession = @import("../fleet/fleet_session.zig");
+    try std.testing.expectEqual(@as(usize, 320), @sizeOf(FleetSession));
 }

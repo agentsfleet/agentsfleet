@@ -1,7 +1,7 @@
 // aiToolLayer coverage. The layer wraps @vercel/detect-agent with an
 // Effect.promise + timeoutOption + catch fallback. Tests mock the
 // package via bun:test mock.module so the detection, timeout, and
-// rejection paths can all be exercised without env-var side effects.
+// rejection paths can all be exercised without environment-variable side effects.
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { Effect, Option } from "effect";

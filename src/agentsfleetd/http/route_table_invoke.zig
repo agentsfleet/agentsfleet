@@ -11,8 +11,8 @@ const hx_mod = @import("handlers/hx.zig");
 const health = @import("handlers/health.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
-const agent_api = @import("handlers/agents/api.zig");
-const agent_creds = @import("handlers/agents/credentials.zig");
+const fleet_api = @import("handlers/fleets/api.zig");
+const fleet_creds = @import("handlers/fleets/credentials.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
@@ -21,22 +21,26 @@ const admin_keys = @import("handlers/admin/platform_keys.zig");
 const memory = @import("handlers/memory/handler.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
-const agent_keys_h = @import("handlers/api_keys/agent.zig");
+const fleet_keys_h = @import("handlers/api_keys/fleet.zig");
 const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
-const agent_messages = @import("handlers/agents/messages.zig");
+const fleet_messages = @import("handlers/fleets/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const events_invokes = @import("route_table_invoke_events.zig");
-pub const invokeAgentEvents = events_invokes.invokeAgentEvents;
-pub const invokeAgentEventsStream = events_invokes.invokeAgentEventsStream;
+pub const invokeFleetEvents = events_invokes.invokeFleetEvents;
+pub const invokeFleetEventsStream = events_invokes.invokeFleetEventsStream;
 pub const invokeWorkspaceEvents = events_invokes.invokeWorkspaceEvents;
 const approvals_invokes = @import("route_table_invoke_approvals.zig");
 pub const invokeWorkspaceApprovals = approvals_invokes.invokeWorkspaceApprovals;
 pub const invokeWorkspaceApprovalDetail = approvals_invokes.invokeWorkspaceApprovalDetail;
 pub const invokeWorkspaceApprovalResolve = approvals_invokes.invokeWorkspaceApprovalResolve;
+const bundle_invokes = @import("route_table_invoke_fleet_bundles.zig");
+pub const invokeFleetBundles = bundle_invokes.invokeFleetBundles;
+pub const invokeFleetBundleImports = bundle_invokes.invokeFleetBundleImports;
+pub const invokeFleetBundleGet = bundle_invokes.invokeFleetBundleGet;
 
 const Hx = hx_mod.Hx;
 
@@ -200,22 +204,22 @@ pub const invokeApprovalWebhook = webhooks_invokes.invokeApprovalWebhook;
 pub const invokeGrantApprovalWebhook = webhooks_invokes.invokeGrantApprovalWebhook;
 pub const invokeGithubWebhook = webhooks_invokes.invokeGithubWebhook;
 
-// ── Agent CRUD ───────────────────────────────────────────────────────────
+// ── Fleet create/read/update/delete ──────────────────────────────────────
 
-pub fn invokeWorkspaceAgents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const workspace_id = route.workspace_agents;
+pub fn invokeWorkspaceFleets(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const workspace_id = route.workspace_fleets;
     switch (req.method) {
-        .POST => agent_api.innerCreateAgent(hx.*, req, workspace_id),
-        .GET => agent_api.innerListAgents(hx.*, req, workspace_id),
+        .POST => fleet_api.innerCreateFleet(hx.*, req, workspace_id),
+        .GET => fleet_api.innerListFleets(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
 
-pub fn invokePatchWorkspaceAgent(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const r = route.patch_workspace_agent;
+pub fn invokePatchWorkspaceFleet(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.patch_workspace_fleet;
     switch (req.method) {
-        .PATCH => agent_api.innerPatchAgent(hx.*, req, r.workspace_id, r.agent_id),
-        .DELETE => agent_api.innerDeleteAgent(hx.*, req, r.workspace_id, r.agent_id),
+        .PATCH => fleet_api.innerPatchFleet(hx.*, req, r.workspace_id, r.fleet_id),
+        .DELETE => fleet_api.innerDeleteFleet(hx.*, req, r.workspace_id, r.fleet_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -223,8 +227,8 @@ pub fn invokePatchWorkspaceAgent(hx: *Hx, req: *httpz.Request, route: router.Rou
 pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const workspace_id = route.workspace_credentials;
     switch (req.method) {
-        .POST => agent_creds.innerStoreCredential(hx.*, req, workspace_id),
-        .GET => agent_creds.innerListCredentials(hx.*, req, workspace_id),
+        .POST => fleet_creds.innerStoreCredential(hx.*, req, workspace_id),
+        .GET => fleet_creds.innerListCredentials(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -235,28 +239,28 @@ pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: rout
         return;
     }
     const r = route.delete_workspace_credential;
-    agent_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
+    fleet_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
 
-// ── Agent messages (chat ingress) ────────────────────────────────────────
+// ── Fleet messages (chat ingress) ────────────────────────────────────────
 
-pub fn invokeAgentMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeFleetMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    const r = route.workspace_agent_messages;
-    agent_messages.innerAgentMessagesPost(hx.*, req, r.workspace_id, r.agent_id);
+    const r = route.workspace_fleet_messages;
+    fleet_messages.innerFleetMessagesPost(hx.*, req, r.workspace_id, r.fleet_id);
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────
 // /memories collection — GET (list-or-search) only. The write verbs are retired
 // (capture flows through the runner plane); POST answers 405, by-key DELETE 404.
 
-pub fn invokeAgentMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const r = route.workspace_agent_memories;
+pub fn invokeFleetMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_fleet_memories;
     switch (req.method) {
-        .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.agent_id),
+        .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.fleet_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
@@ -269,7 +273,7 @@ pub fn invokeRequestGrant(hx: *Hx, req: *httpz.Request, route: router.Route) voi
         return;
     }
     const r = route.request_integration_grant;
-    grants.innerRequestGrant(hx.*, req, r.workspace_id, r.agent_id);
+    grants.innerRequestGrant(hx.*, req, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -278,7 +282,7 @@ pub fn invokeListGrants(hx: *Hx, req: *httpz.Request, route: router.Route) void 
         return;
     }
     const r = route.list_integration_grants;
-    grants_ws.innerListGrants(hx.*, r.workspace_id, r.agent_id);
+    grants_ws.innerListGrants(hx.*, r.workspace_id, r.fleet_id);
 }
 
 pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -287,26 +291,26 @@ pub fn invokeRevokeGrant(hx: *Hx, req: *httpz.Request, route: router.Route) void
         return;
     }
     const r = route.revoke_integration_grant;
-    grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.agent_id, r.grant_id);
+    grants_ws.innerRevokeGrant(hx.*, r.workspace_id, r.fleet_id, r.grant_id);
 }
 
-// ── Agent keys ────────────────────────────────────────────────────────────
+// ── Fleet keys ────────────────────────────────────────────────────────────
 
-pub fn invokeAgentKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeFleetKeys(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     switch (req.method) {
-        .POST => agent_keys_h.innerCreateAgentKey(hx.*, req, route.agent_keys),
-        .GET => agent_keys_h.innerListAgentKeys(hx.*, route.agent_keys),
+        .POST => fleet_keys_h.innerCreateFleetKey(hx.*, req, route.fleet_keys),
+        .GET => fleet_keys_h.innerListFleetKeys(hx.*, route.fleet_keys),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }
 
-pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeDeleteFleetKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .DELETE) {
         common.respondMethodNotAllowed(hx.res);
         return;
     }
-    const r = route.delete_agent_key;
-    agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_key_id);
+    const r = route.delete_fleet_key;
+    fleet_keys_h.innerDeleteFleetKey(hx.*, r.workspace_id, r.fleet_key_id);
 }
 
 // ── Runner control plane — split to route_table_invoke_runner.zig (RULE FLL) ──

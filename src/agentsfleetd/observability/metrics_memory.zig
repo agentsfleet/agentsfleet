@@ -1,11 +1,11 @@
-//! Global durable-memory telemetry — every `agent_memory_*` Prometheus family:
+//! Global durable-memory telemetry — every `fleet_memory_*` Prometheus family:
 //! the capture/hydrate loop counters plus the memory-loss counters (hydration
 //! window drops, cap evictions, capture truncations/skips, zero-hit searches).
 //! Split out of metrics_runner.zig (which renders these via renderFamilies) to
 //! keep both files under the length cap.
 //!
-//! All families are GLOBAL (unlabelled): per-agent labels would explode
-//! cardinality. The agent scope rides the structured log line, never a metric
+//! All families are GLOBAL (unlabelled): per-fleet labels would explode
+//! cardinality. The fleet scope rides the structured log line, never a metric
 //! label — the inc* functions take counts only, so no identifier can leak in.
 //! Lock-free atomic counters, no allocator, no database on the scrape path.
 //! Counters are monotonic: only fetchAdd is exposed (resetForTest excepted).
@@ -13,23 +13,23 @@
 
 const std = @import("std");
 
-const MEM_CAPTURED_NAME = "agent_memory_entries_captured_total";
+const MEM_CAPTURED_NAME = "fleet_memory_entries_captured_total";
 const MEM_CAPTURED_HELP = "Durable memory entries persisted via the runner-plane capture push.";
-const MEM_PUSH_FAIL_NAME = "agent_memory_push_failures_total";
+const MEM_PUSH_FAIL_NAME = "fleet_memory_push_failures_total";
 const MEM_PUSH_FAIL_HELP = "Memory capture pushes that failed to persist (ERR_MEM_UNAVAILABLE).";
-const MEM_HYDRATION_NAME = "agent_memory_hydration_window_entries";
+const MEM_HYDRATION_NAME = "fleet_memory_hydration_window_entries";
 const MEM_HYDRATION_HELP = "Entry count in the most recent hydration window served to a runner.";
-const HYDRATION_DROPPED_ENTRIES_NAME = "agent_memory_hydration_dropped_entries_total";
+const HYDRATION_DROPPED_ENTRIES_NAME = "fleet_memory_hydration_dropped_entries_total";
 const HYDRATION_DROPPED_ENTRIES_HELP = "Durable entries dropped from hydration replies by the byte-budget window (cold tail stays in Postgres).";
-const HYDRATION_DROPPED_BYTES_NAME = "agent_memory_hydration_dropped_bytes_total";
+const HYDRATION_DROPPED_BYTES_NAME = "fleet_memory_hydration_dropped_bytes_total";
 const HYDRATION_DROPPED_BYTES_HELP = "Bytes (key+content+category) dropped from hydration replies by the byte-budget window.";
-const CAP_EVICTIONS_NAME = "agent_memory_cap_evictions_total";
-const CAP_EVICTIONS_HELP = "Durable entries deleted by the per-agent cap eviction after a capture push.";
-const CAPTURE_TRUNCATED_NAME = "agent_memory_capture_truncated_total";
+const CAP_EVICTIONS_NAME = "fleet_memory_cap_evictions_total";
+const CAP_EVICTIONS_HELP = "Durable entries deleted by the per-fleet cap eviction after a capture push.";
+const CAPTURE_TRUNCATED_NAME = "fleet_memory_capture_truncated_total";
 const CAPTURE_TRUNCATED_HELP = "Capture pushes truncated at the push byte budget (tail deltas not persisted).";
-const CAPTURE_SKIPPED_NAME = "agent_memory_capture_skipped_total";
+const CAPTURE_SKIPPED_NAME = "fleet_memory_capture_skipped_total";
 const CAPTURE_SKIPPED_HELP = "Capture deltas skipped by validation (oversized or empty key, content, or category).";
-const SEARCH_ZERO_HITS_NAME = "agent_memory_search_zero_hits_total";
+const SEARCH_ZERO_HITS_NAME = "fleet_memory_search_zero_hits_total";
 const SEARCH_ZERO_HITS_HELP = "Tenant memory searches that returned zero rows (recall-miss signal).";
 
 // Prometheus exposition format strings — single-sourced (RULE UFS); the format
@@ -78,7 +78,7 @@ pub fn incHydrationDropped(entries: usize, dropped_bytes: usize) void {
     _ = g_hydration_dropped_bytes_total.fetchAdd(@intCast(dropped_bytes), .monotonic); // safe because: independent counter
 }
 
-/// The per-agent cap eviction after a capture push deleted `n` rows.
+/// The per-fleet cap eviction after a capture push deleted `n` rows.
 pub fn incCapEvictions(n: u64) void {
     if (n == 0) return;
     _ = g_cap_evictions_total.fetchAdd(n, .monotonic); // safe because: independent counter

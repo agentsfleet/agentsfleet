@@ -1,0 +1,225 @@
+// Workspace credential API handlers.
+//
+// POST   /v1/workspaces/{ws}/credentials             → innerStoreCredential
+// GET    /v1/workspaces/{ws}/credentials             → innerListCredentials
+// DELETE /v1/workspaces/{ws}/credentials/{name}      → innerDeleteCredential
+
+const std = @import("std");
+const httpz = @import("httpz");
+const pg = @import("pg");
+const logging = @import("log");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const common = @import("../common.zig");
+const hx_mod = @import("../hx.zig");
+const ec = @import("../../../errors/error_registry.zig");
+const id_format = @import("../../../types/id_format.zig");
+const vault = @import("../../../state/vault.zig");
+const credential_key = @import("../../../fleet_runtime/credential_key.zig");
+const workspace_guards = @import("../../workspace_guards.zig");
+
+const log = logging.scoped(.fleet_credentials_api);
+const API_ACTOR = "api";
+
+pub const Context = common.Context;
+
+const S_AGENT = "fleet:";
+
+const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
+const MAX_CREDENTIAL_NAME_LEN: usize = 64;
+
+// ── Store Credential ──────────────────────────────────────────────────
+
+// workspace_id comes from URL path; body is `{name, data: <JSON-object>}`.
+const CredentialBody = struct {
+    name: []const u8,
+    data: std.json.Value,
+};
+
+pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
+    const body = req.body() orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_BODY_REQUIRED);
+        return;
+    };
+    if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return;
+
+    const parsed = std.json.parseFromSlice(CredentialBody, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_MALFORMED_JSON);
+        return;
+    };
+    defer parsed.deinit();
+    const cred = parsed.value;
+
+    if (!validateCredentialName(hx, cred.name)) return;
+    vault.validateObject(cred.data) catch {
+        hx.fail(ec.ERR_VAULT_DATA_INVALID, ec.MSG_CREDENTIAL_DATA_REQUIRED);
+        return;
+    };
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    // Credential endpoints require operator-minimum role.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
+
+    storeCredentialJsonOnConn(conn, hx.alloc, workspace_id, cred) catch |err| switch (err) {
+        error.DataTooLarge => {
+            hx.fail(ec.ERR_VAULT_DATA_TOO_LARGE, ec.MSG_CREDENTIAL_DATA_TOO_LARGE);
+            return;
+        },
+        else => {
+            log.err("store_failed", .{ .err = @errorName(err), .name = cred.name, .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        },
+    };
+
+    log.info("stored", .{ .name = cred.name, .workspace = workspace_id });
+    hx.ok(.created, .{ .name = cred.name });
+}
+
+fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
+    if (name.len == 0 or name.len > MAX_CREDENTIAL_NAME_LEN) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_CREDENTIAL_NAME_REQUIRED);
+        return false;
+    }
+    return true;
+}
+
+fn storeCredentialJsonOnConn(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    cred: CredentialBody,
+) !void {
+    // Stringify once: serves both the size pre-flight (so the API surfaces a
+    // precise 400 rather than letting the DB layer truncate) and the bytes
+    // we hand to the vault envelope. innerStoreCredential already ran
+    // vault.validateObject on cred.data, so the JSON shape is known good.
+    const plaintext = try std.json.Stringify.valueAlloc(alloc, cred.data, .{});
+    defer alloc.free(plaintext);
+    if (plaintext.len > MAX_CREDENTIAL_DATA_LEN) return error.DataTooLarge;
+
+    const key_name = try credential_key.allocKeyName(alloc, cred.name);
+    defer alloc.free(key_name);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
+}
+
+// ── Delete Credential ─────────────────────────────────────────────────
+
+pub fn innerDeleteCredential(
+    hx: hx_mod.Hx,
+    req: *httpz.Request,
+    workspace_id: []const u8,
+    credential_name: []const u8,
+) void {
+    _ = req;
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
+    if (!validateCredentialName(hx, credential_name)) return;
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
+
+    const key_name = credential_key.allocKeyName(hx.alloc, credential_name) catch {
+        common.internalOperationError(hx.res, "Allocation failed", hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(key_name);
+
+    const removed = vault.deleteCredential(conn, workspace_id, key_name) catch |err| {
+        log.err("delete_failed", .{ .err = @errorName(err), .name = credential_name, .req_id = hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    log.info("deleted", .{ .name = credential_name, .workspace = workspace_id, .removed = removed });
+    hx.res.status = 204;
+}
+
+// ── List Credentials ──────────────────────────────────────────────────
+
+pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+    _ = req;
+    if (!id_format.isSupportedWorkspaceId(workspace_id)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
+        return;
+    }
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    // RULE BIL: credential endpoints require operator-minimum role.
+    const actor = hx.principal.user_id orelse API_ACTOR;
+    const access = workspace_guards.enforce(hx.res, hx.req_id, conn, hx.alloc, hx.principal, workspace_id, actor, .{
+        .minimum_role = .operator,
+    }) orelse return;
+    defer access.deinit(hx.alloc);
+
+    const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
+        log.err("list_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+
+    hx.ok(.ok, .{ .credentials = creds });
+}
+
+const CredentialListRow = struct {
+    name: []const u8,
+    created_at: i64,
+};
+
+fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace_id: []const u8) ![]CredentialListRow {
+    // Query vault.secrets for fleet-prefixed keys (fleet:{name}).
+    var q = PgQuery.from(try conn.query(
+        \\SELECT key_name, created_at FROM vault.secrets
+        \\WHERE workspace_id = $1::uuid AND key_name LIKE 'fleet:%'
+        \\ORDER BY key_name ASC
+    , .{workspace_id}));
+    defer q.deinit();
+
+    var rows: std.ArrayList(CredentialListRow) = .empty;
+    errdefer {
+        for (rows.items) |r| alloc.free(r.name);
+        rows.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        const raw_name = try row.get([]const u8, 0);
+        // Strip "fleet:" prefix for display
+        const display_name = if (std.mem.startsWith(u8, raw_name, S_AGENT))
+            raw_name[S_AGENT.len..]
+        else
+            raw_name;
+        const name = try alloc.dupe(u8, display_name);
+        errdefer alloc.free(name);
+        try rows.append(alloc, .{
+            .name = name,
+            .created_at = try row.get(i64, 1),
+        });
+    }
+    return rows.toOwnedSlice(alloc);
+}

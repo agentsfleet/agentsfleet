@@ -64,7 +64,7 @@ export type RunnerSort = (typeof RUNNER_SORTS)[number];
 
 export const DEFAULT_PAGE_SIZE = 25;
 export const DEFAULT_SORT: RunnerSort = "-created_at";
-const FLEET_RUNNERS_PATH = "/v1/fleet/runners";
+const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
 const RUNNERS_ENROLLMENT_PATH = "/v1/runners";
 
 export interface RunnerListItem {

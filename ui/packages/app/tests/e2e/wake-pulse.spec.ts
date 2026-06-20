@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test";
 
 // Wake-pulse smoke — verifies the brand-mark currency rule end to end
 // at the unauthenticated surface. The signed-in dashboard pulse tests
-// (agent list rows pulsing only on `state === 'live'`, capped at 5)
-// require a Clerk test user + seeded agents; covered by the vitest
+// (Fleet list rows pulsing only on `state === 'live'`, capped at 5)
+// require a Clerk test user + seeded Fleets; covered by the vitest
 // suite (tests/dashboard-coverage.test.ts > "wake-pulse fires only on
 // active rows", "wake-pulse cap"). This spec asserts the brand-mark's
 // always-alive contract holds in the rendered DOM.

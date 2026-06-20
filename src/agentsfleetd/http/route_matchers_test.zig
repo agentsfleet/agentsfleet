@@ -65,58 +65,89 @@ test "matchWorkspaceCredential: workspace_id and credential_name" {
     try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials", &buf)) == null);
 }
 
-test "matchWorkspaceAgentKeyDelete: workspace_id and agent_key_id" {
+test "matchWorkspaceFleetKeyDelete: workspace_id and fleet_key_id" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceAgentKeyDelete(parse("/v1/workspaces/ws1/agent-keys/ag1", &buf)).?;
+    const r = matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/ws1/fleet-keys/ag1", &buf)).?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("ag1", r.agent_key_id);
-    try std.testing.expect(matchers.matchWorkspaceAgentKeyDelete(parse("/v1/workspaces/ws1/agent-keys/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentKeyDelete(parse("/v1/workspaces//agent-keys/ag1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentKeyDelete(parse("/v1/workspaces/a/b/agent-keys/ag1", &buf)) == null);
+    try std.testing.expectEqualStrings("ag1", r.fleet_key_id);
+    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/ws1/fleet-keys/", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces//fleet-keys/ag1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetKeyDelete(parse("/v1/workspaces/a/b/fleet-keys/ag1", &buf)) == null);
 }
 
-test "matchWorkspaceAgentGrant: ws_id, agent_id, grant_id" {
+test "matchWorkspaceFleetGrant: ws_id, fleet_id, grant_id" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceAgentGrant(parse("/v1/workspaces/ws1/agents/z1/integration-grants/g1", &buf)).?;
+    const r = matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets/z1/integration-grants/g1", &buf)).?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("z1", r.agent_id);
+    try std.testing.expectEqualStrings("z1", r.fleet_id);
     try std.testing.expectEqualStrings("g1", r.grant_id);
-    try std.testing.expect(matchers.matchWorkspaceAgentGrant(parse("/v1/workspaces/ws1/agents/z1/integration-grants/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentGrant(parse("/v1/workspaces//agents/z1/integration-grants/g1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentGrant(parse("/v1/workspaces/ws1/agents//integration-grants/g1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentGrant(parse("/v1/workspaces/ws1/agents/z1/x/integration-grants/g1", &buf)) == null);
+    const f = matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets/z1/integration-grants/g1", &buf)).?;
+    try std.testing.expectEqualStrings("ws1", f.workspace_id);
+    try std.testing.expectEqualStrings("z1", f.fleet_id);
+    try std.testing.expectEqualStrings("g1", f.grant_id);
+    try std.testing.expect(matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets/z1/integration-grants/", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces//fleets/z1/integration-grants/g1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets//integration-grants/g1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetGrant(parse("/v1/workspaces/ws1/fleets/z1/x/integration-grants/g1", &buf)) == null);
 }
 
-test "matchWorkspaceAgent: workspace_id and agent_id extracted" {
+test "matchWorkspaceFleet: workspace_id and fleet_id extracted" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceAgent(parse("/v1/workspaces/ws_1/agents/z_1", &buf)).?;
+    const r = matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/z_1", &buf)).?;
     try std.testing.expectEqualStrings("ws_1", r.workspace_id);
-    try std.testing.expectEqualStrings("z_1", r.agent_id);
-    try std.testing.expect(matchers.matchWorkspaceAgent(parse("/v1/workspaces/ws_1/agents/", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgent(parse("/v1/workspaces//agents/z_1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgent(parse("/v1/workspaces/a/b/agents/z_1", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceAgent(parse("/v1/workspaces/ws_1/agents/z_1/extra", &buf)) == null);
+    try std.testing.expectEqualStrings("z_1", r.fleet_id);
+    const f = matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/z_1", &buf)).?;
+    try std.testing.expectEqualStrings("ws_1", f.workspace_id);
+    try std.testing.expectEqualStrings("z_1", f.fleet_id);
+    try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces//fleets/z_1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces/a/b/fleets/z_1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/z_1/extra", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleet(parse("/v1/workspaces/ws_1/fleets/bundles", &buf)) == null);
 }
 
-test "matchWorkspaceAgentAction: /messages extracts ws_id + agent_id" {
+test "matchWorkspaceFleetBundles: workspace collection and detail" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceAgentAction(parse("/v1/workspaces/ws1/agents/z1/messages", &buf), "messages").?;
+    const ws_id = matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots", &buf)).?;
+    try std.testing.expectEqualStrings("ws_1", ws_id);
+
+    const detail = matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots/bundle_1", &buf)).?;
+    try std.testing.expectEqualStrings("ws_1", detail.workspace_id);
+    try std.testing.expectEqualStrings("bundle_1", detail.bundle_id);
+
+    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleet-bundles", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleet-bundles/bundle_1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces/ws_1/fleets/bundles", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/bundle_1", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetBundles(parse("/v1/workspaces//fleets/bundles", &buf)) == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetBundle(parse("/v1/workspaces/ws_1/fleets/bundles/snapshots/", &buf)) == null);
+}
+
+test "matchWorkspaceFleetAction: /messages extracts ws_id + fleet_id" {
+    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
+    const r = matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets/z1/messages", &buf), "messages").?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
-    try std.testing.expectEqualStrings("z1", r.agent_id);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/workspaces/ws1/agents//messages", &buf), "messages") == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/workspaces//agents/z1/messages", &buf), "messages") == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/workspaces/ws1/agents/a/b/messages", &buf), "messages") == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/workspaces/a/b/agents/z1/messages", &buf), "messages") == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/workspaces/ws1/agents/z1/other-action", &buf), "messages") == null);
-    try std.testing.expect(matchers.matchWorkspaceAgentAction(parse("/v1/agents/z1/messages", &buf), "messages") == null);
+    try std.testing.expectEqualStrings("z1", r.fleet_id);
+    const f = matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets/z1/messages", &buf), "messages").?;
+    try std.testing.expectEqualStrings("ws1", f.workspace_id);
+    try std.testing.expectEqualStrings("z1", f.fleet_id);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets//messages", &buf), "messages") == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/workspaces//fleets/z1/messages", &buf), "messages") == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets/a/b/messages", &buf), "messages") == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/a/b/fleets/z1/messages", &buf), "messages") == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/workspaces/ws1/fleets/z1/other-action", &buf), "messages") == null);
+    try std.testing.expect(matchers.matchWorkspaceFleetAction(parse("/v1/fleets/z1/messages", &buf), "messages") == null);
 }
 
-test "matchWorkspaceAgentEventsStream: 7-segment shape" {
+test "matchWorkspaceFleetEventsStream: 7-segment shape" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    const r = matchers.matchWorkspaceAgentEventsStream(parse("/v1/workspaces/ws_abc/agents/z_123/events/stream", &buf)).?;
+    const r = matchers.matchWorkspaceFleetEventsStream(parse("/v1/workspaces/ws_abc/fleets/z_123/events/stream", &buf)).?;
     try std.testing.expectEqualStrings("ws_abc", r.workspace_id);
-    try std.testing.expectEqualStrings("z_123", r.agent_id);
-    try std.testing.expect(matchers.matchWorkspaceAgentEventsStream(parse("/v1/workspaces/ws_abc/agents/z_123/events", &buf)) == null);
+    try std.testing.expectEqualStrings("z_123", r.fleet_id);
+    const f = matchers.matchWorkspaceFleetEventsStream(parse("/v1/workspaces/ws_abc/fleets/z_123/events/stream", &buf)).?;
+    try std.testing.expectEqualStrings("ws_abc", f.workspace_id);
+    try std.testing.expectEqualStrings("z_123", f.fleet_id);
+    try std.testing.expect(matchers.matchWorkspaceFleetEventsStream(parse("/v1/workspaces/ws_abc/fleets/z_123/events", &buf)) == null);
 }
 
 test "matchWebhook: HMAC-only 2-segment form" {
@@ -125,7 +156,7 @@ test "matchWebhook: HMAC-only 2-segment form" {
     const r1 = matchers.matchWebhook(parse("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", &buf)).?;
     try std.testing.expectEqualStrings(id, r1);
     // 3-segment forms are matched per-action by matchWebhookAction; matchWebhook
-    // rejects them outright (the URL-embedded-secret variant was removed in M43).
+    // rejects them outright (the URL-embedded-secret variant was removed earlier).
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kR7x2mN", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks", &buf)) == null);
@@ -158,7 +189,7 @@ test "matchWebhookAction: /approval, /grant-approval, /github; rejects /svix/* p
     try std.testing.expect(matchers.matchWebhookAction(parse("/v1/webhooks/svix/approval", &buf), "approval") == null);
 }
 
-test "matchSvixWebhook: /v1/webhooks/svix/{agent_id}" {
+test "matchSvixWebhook: /v1/webhooks/svix/{fleet_id}" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     try std.testing.expectEqualStrings(
         "zid_1",

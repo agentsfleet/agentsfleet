@@ -5,13 +5,13 @@ import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { listAgentEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
-  listAgentEventsActionMock: vi.fn(),
+const { listFleetEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
+  listFleetEventsActionMock: vi.fn(),
   listWorkspaceEventsActionMock: vi.fn(),
 }));
 
 vi.mock("@/app/(dashboard)/events/actions", () => ({
-  listAgentEventsAction: listAgentEventsActionMock,
+  listFleetEventsAction: listFleetEventsActionMock,
   listWorkspaceEventsAction: listWorkspaceEventsActionMock,
 }));
 
@@ -37,7 +37,7 @@ function row(over: Partial<EventRow> = {}): EventRow {
   const now = Date.UTC(2026, 3, 28, 10, 30, 0);
   return {
     event_id: "evt_1",
-    agent_id: "zomb_1234567890ab",
+    fleet_id: "zomb_1234567890ab",
     workspace_id: "ws_1",
     actor: "alice@example.com",
     event_type: "chat",
@@ -58,11 +58,11 @@ function row(over: Partial<EventRow> = {}): EventRow {
 function renderList(
   initial: EventsPage,
   scope:
-    | { kind: "agent"; workspaceId: string; agentId: string }
+    | { kind: "fleet"; workspaceId: string; fleetId: string }
     | { kind: "workspace"; workspaceId: string } = {
-    kind: "agent",
+    kind: "fleet",
     workspaceId: "ws_1",
-    agentId: "zomb_1",
+    fleetId: "zomb_1",
   },
   extra: { emptyTitle?: string; emptyDescription?: string } = {},
 ) {
@@ -85,7 +85,7 @@ describe("EventsList", () => {
   it("respects custom empty copy", () => {
     renderList(
       { items: [], next_cursor: null },
-      { kind: "agent", workspaceId: "ws_1", agentId: "zomb_1" },
+      { kind: "fleet", workspaceId: "ws_1", fleetId: "zomb_1" },
       { emptyTitle: "Nothing Here", emptyDescription: "yet" },
     );
     expect(screen.getByText(/Nothing Here/)).toBeTruthy();
@@ -96,7 +96,7 @@ describe("EventsList", () => {
     renderList({
       items: [
         row({ event_id: "a", status: "processed", response_text: "first event" }),
-        row({ event_id: "b", status: "agent_error", response_text: null, failure_label: "boom" }),
+        row({ event_id: "b", status: "fleet_error", response_text: null, failure_label: "boom" }),
         row({ event_id: "c", status: "gate_blocked", response_text: null }),
         row({ event_id: "d", status: "received", response_text: "rec" }),
         row({ event_id: "e", status: "weird-unknown", response_text: "fallback variant" }),
@@ -127,10 +127,10 @@ describe("EventsList", () => {
     expect(txt).not.toMatch(/\s\s/);
   });
 
-  it("renders short agent id only in workspace scope, full label in aria", () => {
+  it("renders short fleet id only in workspace scope, full label in aria", () => {
     renderList(
       {
-        items: [row({ agent_id: "zomb_abcdefghijkl" })],
+        items: [row({ fleet_id: "zomb_abcdefghijkl" })],
         next_cursor: null,
       },
       { kind: "workspace", workspaceId: "ws_1" },
@@ -139,9 +139,9 @@ describe("EventsList", () => {
     expect(screen.getByText(/zomb…ijkl/)).toBeTruthy();
   });
 
-  it("does not render agent id suffix in agent scope", () => {
+  it("does not render fleet id suffix in fleet scope", () => {
     renderList({
-      items: [row({ agent_id: "zomb_abcdefghijkl" })],
+      items: [row({ fleet_id: "zomb_abcdefghijkl" })],
       next_cursor: null,
     });
     expect(screen.queryByText(/zomb…ijkl/)).toBeNull();
@@ -150,7 +150,7 @@ describe("EventsList", () => {
   it("shortId returns the id verbatim when length <= 12", () => {
     renderList(
       {
-        items: [row({ agent_id: "abc12345" })],
+        items: [row({ fleet_id: "abc12345" })],
         next_cursor: null,
       },
       { kind: "workspace", workspaceId: "ws_1" },
@@ -175,8 +175,8 @@ describe("EventsList", () => {
     expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}(\s?[ap]m)?$/i);
   });
 
-  it("loadMore (agent scope) appends items and updates cursor", async () => {
-    listAgentEventsActionMock.mockResolvedValueOnce({
+  it("loadMore (fleet scope) appends items and updates cursor", async () => {
+    listFleetEventsActionMock.mockResolvedValueOnce({
       ok: true,
       data: {
         items: [row({ event_id: "p2", response_text: "page two" })],
@@ -189,8 +189,8 @@ describe("EventsList", () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listAgentEventsActionMock).toHaveBeenCalled());
-    expect(listAgentEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
+    await waitFor(() => expect(listFleetEventsActionMock).toHaveBeenCalled());
+    expect(listFleetEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
       cursor: "cur_1",
     });
     await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
@@ -220,7 +220,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
-    listAgentEventsActionMock.mockResolvedValueOnce({
+    listFleetEventsActionMock.mockResolvedValueOnce({
       ok: false,
       error: "Not authenticated",
       status: 401,
@@ -234,7 +234,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore surfaces error message when the action returns an error", async () => {
-    listAgentEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
+    listFleetEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
@@ -244,7 +244,7 @@ describe("EventsList", () => {
   });
 
   it("loadMore falls back to default message when the action returns an empty error", async () => {
-    listAgentEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    listFleetEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));

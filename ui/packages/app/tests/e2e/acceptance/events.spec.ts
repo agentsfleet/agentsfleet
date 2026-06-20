@@ -1,7 +1,7 @@
 /**
  * events.spec.ts — workspace events page renders for an authenticated user.
  *
- * Spec called for "trigger via POST /v1/webhooks/{agent_id} → poll /events
+ * Spec called for "trigger via POST /v1/webhooks/{fleet_id} → poll /events
  * → row appears". The webhook handler requires:
  *   - a workspace credential keyed by `trigger.source` so HMAC verification
  *     can resolve a secret;
@@ -10,7 +10,7 @@
  *     stream entry.
  *
  * Both are heavyweight fixture dependencies that the M64_005 harness
- * doesn't yet ship (the `trigger.source` field is unset on seedAgent's
+ * doesn't yet ship (the `trigger.source` field is unset on seedFleet's
  * minimal trigger spec). Pulling them into this spec would couple the e2e
  * surface to credential plumbing this milestone deliberately scoped out.
  *

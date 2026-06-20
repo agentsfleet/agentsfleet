@@ -87,7 +87,7 @@ describe("website analytics", () => {
     expect(props.path).toBeDefined();
   });
 
-  it("captures agent-safe CTA navigation events", async () => {
+  it("captures Fleet-safe CTA navigation events", async () => {
     ctaOnClick("→ read quickstart")?.();
     ctaOnClick("view pricing")?.();
     await flushAnalyticsForTests();

@@ -8,7 +8,7 @@ import AxeBuilder from "@axe-core/playwright";
  *
  * The structural rules in DISABLED_RULES_PENDING_CLEANUP are known
  * violations on the current marketing pages (heading hierarchy +
- * missing h1 on /agents, /privacy, /terms). Disabled to keep the gate
+ * missing h1 on /fleets, /privacy, /terms). Disabled to keep the gate
  * live for every other axe rule until the marketing-page cleanup pass
  * lands. Each rule should be removed from this list (one PR per rule)
  * as the underlying markup is fixed.
@@ -16,12 +16,12 @@ import AxeBuilder from "@axe-core/playwright";
 
 const DISABLED_RULES_PENDING_CLEANUP = [
   "heading-order", // Home: h1 → h3 skips h2
-  "page-has-heading-one", // /agents, /privacy, /terms: no <h1>
+  "page-has-heading-one", // /fleets, /privacy, /terms: no <h1>
 ];
 
 const ROUTES: Array<{ path: string; label: string }> = [
   { path: "/", label: "Home" },
-  { path: "/agents", label: "Agents" },
+  { path: "/fleets", label: "Fleets" },
   { path: "/privacy", label: "Privacy" },
   { path: "/terms", label: "Terms" },
 ];

@@ -17,7 +17,7 @@ const runner_progress = @import("runner_progress.zig");
 const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.runner);
-const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
@@ -35,7 +35,7 @@ pub fn redactedFinalReply(
     return alloc.dupe(u8, redacted);
 }
 
-/// Holds the runtime LLM provider bundle for the agent loop.
+/// Holds the runtime LLM provider bundle for the fleet loop.
 /// `inner` owns the real `RuntimeProviderBundle`.
 /// Caller defers `deinit()` to release the optional.
 pub const ProviderBundle = struct {
@@ -49,21 +49,21 @@ pub const ProviderBundle = struct {
         self: *@This(),
         alloc: std.mem.Allocator,
         cfg: *Config,
-    ) error{AgentInitFailed}!providers.Provider {
+    ) error{FleetInitFailed}!providers.Provider {
         self.inner = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, cfg) catch {
-            log.err("provider_init_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
-            return error.AgentInitFailed;
+            log.err("provider_init_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+            return error.FleetInitFailed;
         };
         return self.inner.?.provider();
     }
 };
 
-/// Apply agent_config JSON overrides to the NullClaw Config.
+/// Apply fleet_config JSON overrides to the NullClaw Config.
 /// Only overrides fields that are present in the JSON object.
 ///
 /// NullClaw Config uses: default_model, default_provider, default_temperature,
 /// temperature (convenience alias), max_tokens (convenience alias).
-pub fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
+pub fn applyFleetConfig(cfg: *Config, ac: std.json.Value) void {
     if (ac != .object) return;
     if (json.getStr(ac, wire.model)) |model| cfg.default_model = model;
     if (json.getStr(ac, wire.provider)) |prov| cfg.default_provider = prov;
@@ -73,7 +73,7 @@ pub fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
     }
     if (json.getInt(ac, wire.max_tokens)) |mt| cfg.max_tokens = @intCast(mt);
     // system_prompt is not a Config field — it's passed via the message.
-    // The agent receives it as part of the composed message from composeMessage().
+    // The fleet receives it as part of the composed message from composeMessage().
 }
 
 /// Inject an LLM API key into NullClaw Config for cfg.default_provider.
@@ -155,12 +155,12 @@ pub const INSTALLED_INSTRUCTIONS_LABEL = "Installed instructions";
 /// Blank line between a markdown section heading and its body (RULE UFS).
 const HEADING_GAP = "\n\n";
 
-/// Compose the agent message: the installed `SKILL.md` instructions render
-/// FIRST (the agent's installed behaviour frames the trigger), then the trigger
-/// event message, then any appended coding-agent context sections.
+/// Compose the fleet message: the installed `SKILL.md` instructions render
+/// FIRST (the fleet's installed behaviour frames the trigger), then the trigger
+/// event message, then any appended coding-fleet context sections.
 ///
 /// The runner does NOT interpret context semantics — it concatenates allowlisted
-/// fields as markdown sections so the agent receives full context. Only known
+/// fields as markdown sections so the fleet receives full context. Only known
 /// keys render, so a secret accidentally placed in `context` never reaches the
 /// prompt.
 pub fn composeMessage(
@@ -213,7 +213,7 @@ pub fn composeMessage(
 
 test "redactBytes scrubs the lease-delivered provider api_key from a frame" {
     // Invariant: the provider key (now sourced from policy.api_key, captured by
-    // collectSecrets as agent_config.api_key) never reaches an activity frame.
+    // collectSecrets as fleet_config.api_key) never reaches an activity frame.
     const alloc = std.testing.allocator;
     const secrets = [_]runner_progress.Secret{
         .{ .value = "fw_live_provider_key", .placeholder = "${secrets.llm.api_key}" },

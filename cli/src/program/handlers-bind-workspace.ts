@@ -4,7 +4,7 @@
 // provides the MainLayer.
 
 import type { WorkspaceHandlers } from "./cli-tree-types.ts";
-import type { WrapE, WrapEFn } from "./handlers-bind-agent.ts";
+import type { WrapE, WrapEFn } from "./handlers-bind-fleet.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
 import {
   workspaceAddEffect,

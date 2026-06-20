@@ -10,7 +10,7 @@
  * on ordinary network jitter against the shared DEV tenant. The budget
  * rationale lives on PER_COMMAND_BUDGET_MS below.
  *
- * It also walks the `events` cursor pages on a freshly-seeded agent to
+ * It also walks the `events` cursor pages on a freshly-seeded fleet to
  * prove the pagination read-path stays bounded per page.
  *
  * Identity / hydration mirror lifecycle-with-token.spec.ts exactly: mint a
@@ -23,7 +23,7 @@
  * `AGENTSFLEET_ACCEPTANCE_TARGET` is an https URL; otherwise every test is
  * skipped — matches the unit runner's local invariant.
  *
- * Mutating state (the seeded agent for the events walk) is run-prefix
+ * Mutating state (the seeded fleet for the events walk) is run-prefix
  * scoped via ACCEPTANCE_RUN_PREFIX and torn down in afterAll. No global
  * emptiness is ever asserted.
  */
@@ -35,7 +35,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -45,8 +45,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
@@ -69,7 +69,7 @@ const PER_COMMAND_BUDGET_MS = 10_000;
 // own runtime and guards against an unterminated pagination loop.
 const MAX_EVENT_PAGES = 3;
 
-// Small page size so a freshly-seeded agent (few events) still exercises
+// Small page size so a freshly-seeded fleet (few events) still exercises
 // the cursor mechanics rather than returning everything in page one.
 const EVENT_PAGE_LIMIT = 2;
 
@@ -99,7 +99,7 @@ interface MeasuredCommand {
 }
 
 const MEASURED_COMMANDS: ReadonlyArray<MeasuredCommand> = [
-  { label: "agent list --json", args: [COMMAND_LIST, FLAG_JSON], requiredKey: KEY_ITEMS, isList: true },
+  { label: "fleet list --json", args: [COMMAND_LIST, FLAG_JSON], requiredKey: KEY_ITEMS, isList: true },
   { label: "doctor --json", args: [COMMAND_DOCTOR, FLAG_JSON], requiredKey: KEY_CHECKS },
 ];
 
@@ -124,10 +124,10 @@ function p50Of(samples: ReadonlyArray<number>): number {
   return sorted[mid] as number;
 }
 
-function eventsArgs(agentId: string, cursor: string | null): ReadonlyArray<string> {
+function eventsArgs(fleetId: string, cursor: string | null): ReadonlyArray<string> {
   return [
     COMMAND_EVENTS,
-    agentId,
+    fleetId,
     FLAG_LIMIT,
     String(EVENT_PAGE_LIMIT),
     FLAG_JSON,
@@ -148,7 +148,7 @@ if (!isLive) {
     let workspaceId = "";
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
-      const result = await runAgentctl(args, { env, timeoutMs: SPAWN_TIMEOUT_MS });
+      const result = await runFleetctl(args, { env, timeoutMs: SPAWN_TIMEOUT_MS });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -156,8 +156,8 @@ if (!isLive) {
     // One events page fetch: spawn, assert exit 0 + `items` array + budget,
     // and surface the next cursor (null when the server stops paging). Kept
     // module-adjacent so the cursor-walk test body stays under the length cap.
-    async function fetchEventsPage(agentId: string, cursor: string | null, pageNo: number): Promise<EventsPage> {
-      const result = await runWithEnv(eventsArgs(agentId, cursor));
+    async function fetchEventsPage(fleetId: string, cursor: string | null, pageNo: number): Promise<EventsPage> {
+      const result = await runWithEnv(eventsArgs(fleetId, cursor));
       assert.equal(result.code, 0, `events page ${pageNo} exited ${result.code}: ${result.stderr}`);
       const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown; next_cursor?: unknown };
       assert.ok(
@@ -193,7 +193,7 @@ if (!isLive) {
     afterAll(async () => {
       if (env && workspaceId) {
         try {
-          await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
         } catch { /* best-effort teardown — never fail the suite on cleanup */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
@@ -232,20 +232,20 @@ if (!isLive) {
       }, SPAWN_TIMEOUT_MS * SAMPLE_COUNT + 5_000);
     }
 
-    // Cursor-walk throughput: seed one agent, then page `events` with a
+    // Cursor-walk throughput: seed one fleet, then page `events` with a
     // small limit. Each page fetch must exit 0, carry an `items` array,
     // and clear the per-command budget. The walk terminates when the
     // server stops returning `next_cursor` or after MAX_EVENT_PAGES —
     // whichever comes first — so a broken (never-terminating) cursor
     // contract surfaces as a bounded, asserted failure rather than a hang.
     describe("events cursor-walk throughput", () => {
-      let agentId = "";
+      let fleetId = "";
 
       beforeAll(async () => {
-        const installed = await installPlatformOpsAgent({ env });
-        const id = installed.id ?? installed.agent_id;
+        const installed = await installPlatformOpsFleet({ env });
+        const id = installed.id ?? installed.fleet_id;
         if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-        agentId = id;
+        fleetId = id;
       });
 
       it(`walks <= ${MAX_EVENT_PAGES} pages, each page under ${PER_COMMAND_BUDGET_MS}ms`, async () => {
@@ -254,7 +254,7 @@ if (!isLive) {
         let pages = 0;
 
         while (pages < MAX_EVENT_PAGES) {
-          const page = await fetchEventsPage(agentId, cursor, pages + 1);
+          const page = await fetchEventsPage(fleetId, cursor, pages + 1);
           pageDurations.push(page.durationMs);
           pages += 1;
           // null next_cursor is the documented "no more pages" terminator.

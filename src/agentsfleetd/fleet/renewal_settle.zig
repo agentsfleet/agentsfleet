@@ -26,7 +26,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
-const telemetry = @import("../state/agent_telemetry_store.zig");
+const telemetry = @import("../state/fleet_telemetry_store.zig");
 const renewal = @import("renewal.zig");
 
 const MS_PER_SECOND: i64 = 1000;
@@ -59,14 +59,14 @@ pub const SettleOutcome = struct {
 // flipped a row (the report-won signal).
 const CLAIM_SETTLE_SQL =
     \\WITH probe AS (
-    \\    SELECT l.id, l.agent_id, l.workspace_id, l.tenant_id, l.event_id,
+    \\    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
     \\           l.posture, l.model, l.fencing_token, a.fencing_seq, a.meter_slice_seq,
     \\           GREATEST(0, $3::bigint - a.last_metered_at_ms)      AS d_ms,
     \\           GREATEST(0, $4::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $5::bigint - a.metered_cached_tokens)   AS d_cached,
     \\           GREATEST(0, $6::bigint - a.metered_output_tokens)   AS d_out
     \\    FROM fleet.runner_leases l
-    \\    JOIN fleet.runner_affinity a ON a.agent_id = l.agent_id
+    \\    JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
     \\    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $12
     \\    FOR UPDATE OF l, a
     \\), bal AS (
@@ -104,8 +104,8 @@ const CLAIM_SETTLE_SQL =
     \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $6),
     \\        last_metered_at_ms = $3, updated_at = $3,
     \\        meter_slice_seq = g.next_seq
-    \\    FROM guard g WHERE a.agent_id = g.agent_id
-    \\    RETURNING a.agent_id
+    \\    FROM guard g WHERE a.fleet_id = g.fleet_id
+    \\    RETURNING a.fleet_id
     \\), wallet AS (
     \\    UPDATE billing.tenant_billing tb
     \\    SET balance_nanos = GREATEST(0, tb.balance_nanos - g.slice),
@@ -116,22 +116,22 @@ const CLAIM_SETTLE_SQL =
     \\    FROM guard g WHERE tb.tenant_id = g.tenant_id
     \\    RETURNING tb.tenant_id
     \\), ledger AS (
-    \\    INSERT INTO core.agent_execution_telemetry
-    \\      (uid, id, tenant_id, workspace_id, agent_id, event_id, charge_type, posture,
+    \\    INSERT INTO core.fleet_execution_telemetry
+    \\      (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
     \\       model, credit_deducted_nanos, token_count_input, token_count_output,
     \\       wall_ms, recorded_at)
     \\    SELECT $16::uuid, 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
-    \\           g.agent_id::text, g.event_id, $11, g.posture, g.model,
+    \\           g.fleet_id::text, g.event_id, $11, g.posture, g.model,
     \\           g.charged, g.d_in, g.d_out, g.d_ms, $3
     \\    FROM guard g
     \\    ON CONFLICT (event_id, charge_type) DO UPDATE SET
-    \\        credit_deducted_nanos = core.agent_execution_telemetry.credit_deducted_nanos
+    \\        credit_deducted_nanos = core.fleet_execution_telemetry.credit_deducted_nanos
     \\            + EXCLUDED.credit_deducted_nanos,
-    \\        token_count_input  = COALESCE(core.agent_execution_telemetry.token_count_input, 0)
+    \\        token_count_input  = COALESCE(core.fleet_execution_telemetry.token_count_input, 0)
     \\            + EXCLUDED.token_count_input,
-    \\        token_count_output = COALESCE(core.agent_execution_telemetry.token_count_output, 0)
+    \\        token_count_output = COALESCE(core.fleet_execution_telemetry.token_count_output, 0)
     \\            + EXCLUDED.token_count_output,
-    \\        wall_ms = COALESCE(core.agent_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
+    \\        wall_ms = COALESCE(core.fleet_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
     \\    RETURNING event_id
     \\), breakdown AS (
     \\    INSERT INTO fleet.metering_periods

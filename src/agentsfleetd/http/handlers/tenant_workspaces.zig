@@ -64,7 +64,7 @@ const WS_TAIL = std.fmt.comptimePrint(
 const SQL_BY_SUBJECT_OR_CLAIM = WS_HEAD ++ "COALESCE(" ++ DB_TENANT_OF_SUBJECT ++ ", $2::uuid)" ++ WS_TAIL;
 // $1 = oidc_subject, no claim available.
 const SQL_BY_SUBJECT = WS_HEAD ++ DB_TENANT_OF_SUBJECT ++ WS_TAIL;
-// $1 = tenant_id claim, no user subject (e.g. agent/API-key principal).
+// $1 = tenant_id claim, no user subject (e.g. fleet/API-key principal).
 const SQL_BY_TENANT = WS_HEAD ++ "$1::uuid" ++ WS_TAIL;
 
 fn fetchWorkspacesForPrincipal(conn: *pg.Conn, alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]WorkspaceRow {

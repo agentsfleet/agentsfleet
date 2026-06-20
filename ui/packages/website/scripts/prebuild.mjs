@@ -31,7 +31,7 @@ const llmsFullTxt = resolve(dstDir, "llms-full.txt");
 
 // `ui/packages/website/public/` may not exist on a fresh checkout — git
 // doesn't track empty directories, and the legacy v1 public files
-// (agent-manifest.json, heartbeat, llms.txt, skill.md) were removed in
+// (agentsfleet-manifest.json, heartbeat, llms.txt, skill.md) were removed in
 // the M49_001 v1-surface cleanup. Recreate the dir before the copy so
 // neither dev checkouts nor Continuous Integration (CI) ENOENT here.
 mkdirSync(dstDir, { recursive: true });

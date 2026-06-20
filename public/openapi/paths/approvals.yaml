@@ -4,8 +4,8 @@
     summary: List pending approval gates for a workspace
     description: |
       Returns approval gates oldest-first (oldest is most urgent). Each row
-      surfaces the agent's proposed action, gathered evidence, blast-radius
-      assessment, and timeout countdown. Filter by agent, gate kind, or
+      surfaces the fleet's proposed action, gathered evidence, blast-radius
+      assessment, and timeout countdown. Filter by fleet, gate kind, or
       status. Cursor pagination over (requested_at, id) so concurrent
       inserts don't cause silent skips.
     tags:
@@ -20,7 +20,7 @@
       required: false
       description: Defaults to "pending". Supply "approved", "denied", "timed_out" to query terminal states.
       schema: { type: string }
-    - name: agent_id
+    - name: fleet_id
       in: query
       required: false
       schema: { type: string, format: uuid }
@@ -185,11 +185,11 @@ components:
   schemas:
     ApprovalGate:
       type: object
-      required: [gate_id, agent_id, workspace_id, action_id, status, requested_at, timeout_at]
+      required: [gate_id, fleet_id, workspace_id, action_id, status, requested_at, timeout_at]
       properties:
         gate_id: { type: string, format: uuid }
-        agent_id: { type: string, format: uuid }
-        agent_name: { type: string }
+        fleet_id: { type: string, format: uuid }
+        fleet_name: { type: string }
         workspace_id: { type: string, format: uuid }
         action_id: { type: string, format: uuid }
         tool_name: { type: string }
@@ -199,13 +199,13 @@ components:
           description: Classification driving UI grouping. Empty string when not classified.
         proposed_action:
           type: string
-          description: Human-readable summary of what the agent wants to do.
+          description: Human-readable summary of what the fleet wants to do.
         evidence:
           type: object
-          description: Agent-gathered context (free-form). Rendered as expandable JSON tree.
+          description: Fleet-gathered context (free-form). Rendered as expandable JSON tree.
         blast_radius:
           type: string
-          description: Agent's assessment of the action's reach.
+          description: Fleet's assessment of the action's reach.
         status:
           type: string
           enum: [pending, approved, denied, timed_out, auto_killed]

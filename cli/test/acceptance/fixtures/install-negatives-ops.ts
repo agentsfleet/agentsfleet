@@ -3,8 +3,8 @@
  *
  * Two distinct bundle needs, two distinct builders:
  *
- *   1. Malformed bundles (missing SKILL.md / missing TRIGGER.md) and a
- *      nonexistent path — these only ever exercise the CLI's *client-side*
+ *   1. Malformed bundles (missing SKILL.md) and a
+ *      nonexistent path — these only ever exercise the Command-Line Interface (CLI)'s *client-side*
  *      loader (`loadSkillFromPath`), which throws its typed
  *      `SkillLoadError` codes BEFORE any HTTP call. The bundle contents
  *      are irrelevant past "which file is absent", so these stay minimal.
@@ -22,8 +22,8 @@
  *      frontmatter template placeholders — mirroring `seed.ts`'s
  *      `createInstallFixture`, which is the one proven-good install path.
  *
- * Every emitted name is prefixed so `cleanWorkspaceAgents` reclaims any
- * agent this run actually managed to create.
+ * Every emitted name is prefixed so `cleanWorkspaceFleets` reclaims any
+ * fleet this run actually managed to create.
  */
 
 import crypto from "node:crypto";
@@ -46,10 +46,9 @@ export const EXIT_SERVER_ERROR = 3;
 // stderr via `ConfigError.message` (`<code>: <detail>`).
 export const ERR_PATH_NOT_FOUND = "ERR_PATH_NOT_FOUND";
 export const ERR_SKILL_MISSING = "ERR_SKILL_MISSING";
-export const ERR_TRIGGER_MISSING = "ERR_TRIGGER_MISSING";
 
-// Server conflict code for a duplicate agent name within a workspace
-// (mirrors `core` schema `uq_agents_workspace_name` →
+// Server conflict code for a duplicate fleet name within a workspace
+// (mirrors `core` schema `uq_fleets_workspace_id_name` →
 // `error_entries.zig` / `error_registry.zig` UZ-AGT-006, a 409). The CLI
 // surfaces it as a ServerError (exit 3) carrying this code in stderr.
 export const ERR_AGENTSFLEET_NAME_TAKEN = "UZ-AGT-006";
@@ -60,7 +59,7 @@ export const ERR_AGENTSFLEET_NAME_TAKEN = "UZ-AGT-006";
 // (`{{slack_channel}}`, `{{cron_schedule}}`, …) live outside frontmatter
 // and never reach the config parser, so they are left untouched — exactly
 // as `seed.ts` does.
-const SAMPLE_NAME = "platform-ops-agent";
+const SAMPLE_NAME = "platform-ops-fleet";
 const FRONTMATTER_NAME_LINE = `name: ${SAMPLE_NAME}`;
 const TOKEN_MODEL = "{{model}}";
 const TOKEN_CONTEXT_CAP = "{{context_cap_tokens}}";
@@ -93,7 +92,7 @@ export interface NamedBundle {
  * A complete, SERVER-VALID bundle with a STABLE prefixed name, built by
  * copying the canonical `platform-ops-sample` and rewriting only the
  * frontmatter `name:` plus the two frontmatter template tokens. Installing
- * the returned dir twice trips `uq_agents_workspace_name` → UZ-AGT-006.
+ * the returned dir twice trips `uq_fleets_workspace_id_name` → UZ-AGT-006.
  */
 export async function makeNamedBundle(runPrefix = ACCEPTANCE_RUN_PREFIX): Promise<NamedBundle> {
   const sourceDir = path.join(WORKTREE_ROOT, PLATFORM_OPS_SAMPLE_DIR);
@@ -129,15 +128,6 @@ export async function makeSkillMissingBundle(): Promise<string> {
   return dir;
 }
 
-/**
- * A directory with SKILL.md but no TRIGGER.md → ERR_TRIGGER_MISSING.
- * Contents never reach the server (the loader throws first).
- */
-export async function makeTriggerMissingBundle(): Promise<string> {
-  const dir = await mkBundleDir();
-  await fs.writeFile(path.join(dir, SKILL_FILENAME), "# skill stub\n", { mode: 0o644 });
-  return dir;
-}
 
 /**
  * An absolute path guaranteed not to exist on disk → ERR_PATH_NOT_FOUND.

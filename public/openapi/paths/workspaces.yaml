@@ -48,9 +48,9 @@
     summary: List a workspace's aggregate event history
     description: >
       Cursor-paginated list of operator-visible events across every
-      agent in the workspace, newest first. Replaces the deleted
-      activity endpoint. Optional `agent_id` filter narrows to one
-      agent. Same query shape as the per-agent endpoint - `actor`
+      fleet in the workspace, newest first. Replaces the deleted
+      activity endpoint. Optional `fleet_id` filter narrows to one
+      fleet. Same query shape as the per-fleet endpoint - `actor`
       glob, `since=` (duration or RFC 3339), and a `cursor` mutually
       exclusive with `since`.
     tags:
@@ -62,10 +62,10 @@
       schema:
         type: string
         format: uuid
-    - name: agent_id
+    - name: fleet_id
       in: query
       required: false
-      description: Drill down to one agent within the workspace.
+      description: Drill down to one fleet within the workspace.
       schema:
         type: string
         format: uuid

@@ -19,7 +19,7 @@ const USAGE_PLAN_ID = "usage";
 
 /*
  * Pricing — one simple story: free during the trial, then a single
- * usage-based run rate billed by the second only while an agent is actually
+ * usage-based run rate billed by the second only while a Fleet is actually
  * working (same rate on the platform or your own provider key), and the model
  * bill is always yours. No struck-through gradient, no staged billing grid,
  * no tier-extras list — those buried the "it's free right now" headline. Rate
