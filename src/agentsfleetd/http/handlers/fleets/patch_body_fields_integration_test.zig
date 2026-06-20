@@ -23,6 +23,7 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 
 const MS_PER_SECOND = 1_000;
 const EVAL_BRANCH_QUOTA = 100_000;
@@ -290,7 +291,7 @@ test "integration: PATCH source_markdown only — overlays source body, leaves t
     cleanup(c);
 }
 
-test "integration: PATCH rejects an oversized source_markdown (same 64KiB cap as create)" {
+test "integration: PATCH rejects an oversized source_markdown (same cap as create)" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -300,9 +301,10 @@ test "integration: PATCH rejects an oversized source_markdown (same 64KiB cap as
     const url = try patchUrl();
     defer ALLOC.free(url);
 
-    // 64KiB + 1 of JSON-safe filler — one byte over the create-time cap. The body
-    // now rides every lease, so PATCH must reject it like create does.
-    const filler = try ALLOC.alloc(u8, 64 * 1024 + 1);
+    // One byte over the source-markdown cap. The body now rides every lease, so
+    // PATCH must reject it like create does. Tracks the named cap so a future bump
+    // can't silently strand this boundary test.
+    const filler = try ALLOC.alloc(u8, markdown_limits.MAX_SOURCE_LEN + 1);
     defer ALLOC.free(filler);
     @memset(filler, 'a');
     const body = try std.fmt.allocPrint(ALLOC, "{{\"source_markdown\":\"{s}\"}}", .{filler});
@@ -313,7 +315,7 @@ test "integration: PATCH rejects an oversized source_markdown (same 64KiB cap as
     try r.expectStatus(.bad_request);
 }
 
-test "integration: PATCH rejects an oversized trigger_markdown (same 64KiB cap as create)" {
+test "integration: PATCH rejects an oversized trigger_markdown (same cap as create)" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -323,11 +325,11 @@ test "integration: PATCH rejects an oversized trigger_markdown (same 64KiB cap a
     const url = try patchUrl();
     defer ALLOC.free(url);
 
-    // 64KiB + 1 of filler — one byte over the create-time cap, mirroring the
-    // source_markdown case so the 1..64KiB cap parity is guarded on BOTH fields
-    // (a future regression dropping one guard would surface here). The size guard
-    // fires before any reparse, so the cap — not a parse error — is the rejecter.
-    const filler = try ALLOC.alloc(u8, 64 * 1024 + 1);
+    // One byte over the trigger-markdown cap, mirroring the source_markdown case so
+    // cap parity is guarded on BOTH fields (a future regression dropping one guard
+    // would surface here). The size guard fires before any reparse, so the cap —
+    // not a parse error — is the rejecter.
+    const filler = try ALLOC.alloc(u8, markdown_limits.MAX_TRIGGER_LEN + 1);
     defer ALLOC.free(filler);
     @memset(filler, 'a');
     const body = try std.fmt.allocPrint(ALLOC, "{{\"trigger_markdown\":\"{s}\"}}", .{filler});

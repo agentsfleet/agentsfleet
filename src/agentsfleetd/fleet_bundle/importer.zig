@@ -87,7 +87,7 @@ pub fn prepare(alloc: std.mem.Allocator, body: ImportBody) (std.mem.Allocator.Er
 
     const content_hash = try allocContentHash(alloc, body);
     errdefer alloc.free(content_hash);
-    const snapshot_key = try std.fmt.allocPrint(alloc, "fleet-bundles/sha256/{s}.json", .{content_hash});
+    const snapshot_key = try std.fmt.allocPrint(alloc, "fleet-bundles/sha256/{s}.tar", .{content_hash});
     errdefer alloc.free(snapshot_key);
 
     return .{
@@ -188,10 +188,10 @@ fn containsCredentialShape(content: []const u8) bool {
 fn allocContentHash(alloc: std.mem.Allocator, body: ImportBody) ![]const u8 {
     const Sha256 = std.crypto.hash.sha2.Sha256;
     var hasher = Sha256.init(.{});
-    hasher.update(body.source_kind);
-    hasher.update(&.{0});
-    hasher.update(body.source_ref);
-    hasher.update(&.{0});
+    // Content-only identity: hash the bundle CONTENT (skill + trigger + support
+    // files), never source_kind/source_ref — so the same bundle imported via
+    // template, github, or paste dedupes to one snapshot. source_ref stays a
+    // metadata column on the row, out of the content identity.
     hasher.update(body.skill_markdown);
     hasher.update(&.{0});
     if (body.trigger_markdown) |tm| hasher.update(tm);
