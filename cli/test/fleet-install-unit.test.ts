@@ -195,6 +195,118 @@ describe("installEffectFromFlags — no source", () => {
   });
 });
 
+const TEMPLATE_BUNDLE_ID = "01900000-0000-7000-8000-0000000bund1";
+const TEMPLATE_FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
+
+describe("installEffectFromFlags — template JSON mode", () => {
+  test("prints structured install output in JSON mode", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, true, requests, {
+          bundle_id: TEMPLATE_BUNDLE_ID,
+          fleet_id: TEMPLATE_FLEET_ID,
+          name: "t1",
+          webhook_urls: {},
+          requirements: { trigger_present: true },
+        })),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(captured.join("\n")).toContain("\"status\":\"installed\"");
+  });
+});
+
+describe("installEffectFromFlags — webhook URLs", () => {
+  test("prints webhook URLs when the create response carries them", async () => {
+    const dir = await makeSkillOnlyDir();
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    try {
+      const exit = await Effect.runPromiseExit(
+        installEffectFromFlags({ fromPath: dir }).pipe(
+          Effect.provide(makeLayer(captured, false, requests, {
+            fleet_id: "01900000-0000-7000-8000-0000000a91d1",
+            name: "skill-only-install",
+            webhook_urls: { github: "https://api.example/webhooks/github" },
+          })),
+        ),
+      );
+      expect(Exit.isSuccess(exit)).toBe(true);
+      const out = captured.join("\n");
+      expect(out).toContain("Webhook URLs");
+      expect(out).toContain("github: https://api.example/webhooks/github");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("installEffectFromFlags — template requirements preview", () => {
+  test("prints credentials, tools and network hosts, plus the generated-trigger note", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, false, requests, {
+          bundle_id: TEMPLATE_BUNDLE_ID,
+          fleet_id: TEMPLATE_FLEET_ID,
+          name: "t1",
+          webhook_urls: {},
+          requirements: {
+            credentials: ["github"],
+            tools: ["github_review_comment"],
+            network_hosts: ["api.github.com"],
+            trigger_present: false,
+          },
+        })),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const out = captured.join("\n");
+    expect(out).toContain("Credentials: github");
+    expect(out).toContain("Tools: github_review_comment");
+    expect(out).toContain("Network hosts: api.github.com");
+    expect(out).toContain("Generated default API wake");
+  });
+
+  test("tolerates a snapshot with no requirements field", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, false, requests, {
+          bundle_id: TEMPLATE_BUNDLE_ID,
+          fleet_id: TEMPLATE_FLEET_ID,
+          name: "t1",
+          webhook_urls: {},
+        })),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(captured.join("\n")).toContain("t1 is live.");
+  });
+});
+
+describe("installEffectFromFlags — snapshot without bundle_id", () => {
+  test("fails with a ConfigError when the import returns no bundle_id", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "t1" }).pipe(
+        Effect.provide(makeLayer(captured, false, requests, {
+          requirements: { trigger_present: true },
+        })),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(JSON.stringify(exit.cause)).toContain("did not return a bundle_id");
+    }
+  });
+});
+
 describe("installEffectFromFlags — both sources", () => {
   test("--from and --template together are rejected as mutually exclusive", async () => {
     const captured: string[] = [];
