@@ -148,7 +148,7 @@ fn supervise(
         // Best-effort terminal reap (the normal path sets `reaped`); the child may
         // already be gone. Can't propagate from a defer, so log and move on.
         if (child.wait(io)) |_| {} else |err| {
-            log.warn("reap_wait_failed", .{ .error_code = client_errors.ERR_EXEC_CRASH, .err = @errorName(err) });
+            log.warn("reap_wait_failed", .{ .err = @errorName(err) });
         }
     };
 
@@ -172,7 +172,7 @@ fn supervise(
         log.warn("lease_terminated_by_renewal", .{ .error_code = client_errors.ERR_EXEC_RENEWAL_TERMINATED, .lease_id = payload.lease_id });
         child_process.killChild(child.id.?, &scope);
     } else if (outcome.timed_out) {
-        log.warn("lease_timed_out", .{ .error_code = client_errors.ERR_EXEC_LEASE_EXPIRED, .lease_id = payload.lease_id });
+        log.warn("lease_timed_out", .{ .error_code = client_errors.ERR_EXEC_TIMEOUT_KILL, .lease_id = payload.lease_id });
         child_process.killChild(child.id.?, &scope);
     }
 

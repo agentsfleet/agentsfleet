@@ -65,7 +65,7 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
     defer access.deinit(hx.alloc);
 
     const outcome = purgeFleetOnConn(conn, workspace_id, fleet_id) catch |err| {
-        log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
+        log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

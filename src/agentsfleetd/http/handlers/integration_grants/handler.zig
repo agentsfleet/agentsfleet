@@ -91,7 +91,7 @@ fn fleetFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
         \\UPDATE core.fleet_keys SET last_used_at = $1 WHERE key_hash = $2
-    , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 
     return .{
         .fleet_id = alloc.dupe(u8, fleet_id) catch return null,

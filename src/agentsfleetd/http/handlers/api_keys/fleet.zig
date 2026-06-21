@@ -201,7 +201,7 @@ pub fn innerListFleetKeys(hx: Hx, workspace_id: []const u8) void {
             .description = description,
             .created_at = created_at,
             .last_used_at = last_used,
-        }) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = fleets.items, .total = fleets.items.len });

@@ -181,7 +181,7 @@ fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) !PageRows 
             continue;
         }
         const item = readItem(alloc, row, now_ms) catch |err| {
-            log.warn("row_decode_skipped", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            log.warn("row_decode_skipped", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err) });
             continue;
         };
         try items.append(alloc, item);

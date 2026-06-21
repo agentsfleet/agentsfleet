@@ -93,7 +93,7 @@ pub fn recordGatePending(
     detail: ActionDetail,
 ) void {
     insertPendingRow(pool, alloc, fleet_id, workspace_id, action_id, detail) catch |err| {
-        log.err("record_pending_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .action_id = action_id });
+        log.err("record_pending_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .action_id = action_id });
     };
 }
 
@@ -116,7 +116,7 @@ pub fn resolveGateDecision(
         .reason = detail,
     };
     var outcome = args.atomic(pool, sink_alloc) catch |err| {
-        log.err("resolve_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .action_id = action_id });
+        log.err("resolve_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .action_id = action_id });
         return;
     };
     outcome.deinit(sink_alloc);

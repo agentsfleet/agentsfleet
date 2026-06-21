@@ -81,7 +81,7 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
         return;
     }
     if (!creditsCover(hx, lease)) {
-        log.debug("renew_no_credits", .{ .error_code = ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, .runner_id = runner_id, .lease_id = lease_id });
+        log.warn("renew_no_credits", .{ .error_code = ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, .runner_id = runner_id, .lease_id = lease_id });
         hx.fail(ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, "Tenant balance can no longer fund this run; not renewed");
         return;
     }
@@ -134,11 +134,11 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
             hx.ok(.ok, protocol.RenewResponse{ .lease_expires_at = until });
         },
         .max_runtime => |cap| {
-            log.debug("renew_max_runtime", .{ .error_code = ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, .runner_id = runner_id, .lease_id = lease_id, .hard_cap = cap });
+            log.warn("renew_max_runtime", .{ .error_code = ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, .runner_id = runner_id, .lease_id = lease_id, .hard_cap = cap });
             hx.fail(ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, "Lease reached the hard max runtime; not renewed");
         },
         .lost => {
-            log.debug("renew_lost", .{ .error_code = ec.ERR_RUN_LEASE_LOST, .runner_id = runner_id, .lease_id = lease_id });
+            log.warn("renew_lost", .{ .error_code = ec.ERR_RUN_LEASE_LOST, .runner_id = runner_id, .lease_id = lease_id });
             hx.fail(ec.ERR_RUN_LEASE_LOST, "Lease was reassigned before this renewal; terminate the child");
         },
     }

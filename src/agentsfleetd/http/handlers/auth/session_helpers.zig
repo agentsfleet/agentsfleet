@@ -213,7 +213,6 @@ fn onVerifyNotApproved(hx: hx_mod.Hx, session_id: []const u8, scratch: RequestSc
 pub fn failFromStoreError(hx: hx_mod.Hx, err: anyerror, session_id: ?[]const u8) void {
     var rbuf: [REDACT_BUF_LEN]u8 = undefined;
     const redacted = if (session_id) |sid| redactSid(&rbuf, sid) else "";
-    log.warn("auth_session_store_error", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .session_id = redacted, .req_id = hx.req_id });
 
     const code: []const u8 = switch (err) {
         session_store.Error.InvalidPublicKey => error_codes.ERR_INVALID_PUBLIC_KEY,
@@ -228,6 +227,7 @@ pub fn failFromStoreError(hx: hx_mod.Hx, err: anyerror, session_id: ?[]const u8)
         session_store.Error.SessionAborted => error_codes.ERR_SESSION_ABORTED,
         else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
     };
+    log.warn("auth_session_store_error", .{ .error_code = code, .err = @errorName(err), .session_id = redacted, .req_id = hx.req_id });
     hx.fail(code, @errorName(err));
 }
 

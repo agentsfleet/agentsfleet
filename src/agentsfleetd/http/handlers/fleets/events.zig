@@ -62,7 +62,7 @@ pub fn innerListEvents(
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
             return;
         }
-        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

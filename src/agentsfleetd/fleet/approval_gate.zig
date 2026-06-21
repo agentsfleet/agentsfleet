@@ -168,7 +168,7 @@ fn requestNewGate(
     approval_gate_async.recordEventGateRef(redis, session.fleet_id, event.event_id, action_id, deadline_ms) catch |err| {
         // Without the ref the lease path could never resolve this gate —
         // fail toward unavailable like the requestApproval failure above.
-        log.warn("gate_ref_record_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.warn("gate_ref_record_fail", .{ .error_code = error_codes.ERR_APPROVAL_REDIS_UNAVAILABLE, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .blocked = .unavailable };
     };
 
@@ -223,7 +223,7 @@ fn pauseFleet(pool: *pg.Pool, fleet_id: []const u8) void {
     defer pool.release(conn);
     _ = conn.exec(
         \\UPDATE core.fleets SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
-    , .{ clock.nowMillis(), fleet_id }) catch |err| log.warn("ignored_error", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    , .{ clock.nowMillis(), fleet_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 }
 
 fn cleanupPendingKey(redis: *queue_redis.Client, fleet_id: []const u8, action_id: []const u8) void {

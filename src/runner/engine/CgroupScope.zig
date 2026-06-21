@@ -204,7 +204,7 @@ pub fn destroy(self: *CgroupScope, limits: types.ResourceLimits) CgroupMetrics {
 
     // Remove the cgroup directory (must be empty of processes first).
     std.Io.Dir.cwd().deleteTree(self.io, self.path) catch |err| {
-        log.warn("cleanup_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = self.path, .err = @errorName(err) });
+        log.warn("cleanup_failed", .{ .path = self.path, .err = @errorName(err) });
     };
 
     log.debug("cgroup_destroyed", .{ .path = self.path, .peak_bytes = peak, .cpu_throttled_ms = result.cpu_throttled_ms });

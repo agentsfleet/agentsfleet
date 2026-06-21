@@ -86,7 +86,7 @@ pub fn claimFleet(
     errdefer if (bundle_content_hash) |bch| alloc.free(bch);
 
     if (!status.isRunnable()) {
-        log.warn("fleet_event_loop_claim_skipped", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id_input });
+        log.warn("fleet_event_loop_claim_skipped", .{ .error_code = error_codes.ERR_AGENTSFLEET_PAUSED_INGRESS, .fleet_id = fleet_id_input });
         // errdefer on workspace_id and source_markdown fires automatically —
         // no manual free here (would be a double-free).
         return error.FleetNotActive;
@@ -158,7 +158,7 @@ pub fn clearExecutionActive(alloc: Allocator, session: *Self, pool: *pg.Pool) vo
         \\UPDATE core.fleet_sessions
         \\SET execution_id = NULL, execution_started_at = NULL
         \\WHERE fleet_id = $1::uuid
-    , .{session.fleet_id}) catch |err| log.warn("ignored_error", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    , .{session.fleet_id}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 }
 
 const std = @import("std");

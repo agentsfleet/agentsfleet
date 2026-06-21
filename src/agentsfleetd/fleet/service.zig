@@ -77,7 +77,7 @@ pub fn leaseNext(hx: Hx) void {
     };
 
     issueLease(hx, runner_id, &session, acq, billed) catch |err| {
-        log.err("lease_issue_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .err = @errorName(err) });
+        log.err("lease_issue_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = acq.fleet_id, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
 }
@@ -108,7 +108,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
         if (session.config.credentials.len == 0) break :blk null;
         break :blk secrets_resolve.resolveSecretsMap(hx.alloc, hx.ctx.pool, session.workspace_id, session.config.credentials) catch |err| {
             if (err == error.CredentialNotFound) {
-                log.warn("lease_secret_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .event_id = acq.event_id });
+                log.warn("lease_secret_missing", .{ .error_code = ec.ERR_AGENTSFLEET_CREDENTIAL_MISSING, .fleet_id = acq.fleet_id, .event_id = acq.event_id });
                 billing.blockEvent(hx, acq.fleet_id, acq.event_id, rows.LABEL_SECRET_MISSING);
             } else {
                 log.warn("lease_secrets_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .event_id = acq.event_id, .err = @errorName(err) });

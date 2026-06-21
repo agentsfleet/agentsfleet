@@ -44,7 +44,7 @@ const DB_PATH_IN_MEMORY: [*:0]const u8 = ":memory:";
 /// caller then runs with no recall (degrade, never block the run).
 pub fn initRuntime(alloc: std.mem.Allocator, workspace_path: []const u8) ?memory_mod.MemoryRuntime {
     const desc = memory_mod.findBackend(S_SQLITE) orelse {
-        log.warn("backend_disabled", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .backend = S_SQLITE });
+        log.warn("backend_disabled", .{ .backend = S_SQLITE });
         return null;
     };
     // Bypass resolvePaths (which would join a `workspace/memory.db` file path)
@@ -95,7 +95,7 @@ pub fn seed(mem: Memory, entries: []const protocol.MemoryDelta) void {
     var seeded: usize = 0;
     for (entries) |e| {
         mem.store(e.key, e.content, MemoryCategory.fromString(e.category), null) catch {
-            log.warn("seed_entry_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .key_len = e.key.len });
+            log.warn("seed_entry_failed", .{ .key_len = e.key.len });
             continue;
         };
         seeded += 1;
@@ -137,7 +137,7 @@ pub const MemoryCapturer = struct {
             // Always keep at least one real (non-internal) entry; past the budget,
             // stop and log — never a silent zero-count frame (mirrors the server window).
             if (deltas.items.len > 0 and bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
-                log.warn("capture_truncated", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .kept = deltas.items.len, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
+                log.warn("capture_truncated", .{ .kept = deltas.items.len, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
                 break;
             }
             deltas.append(a, .{ .key = e.key, .content = e.content, .category = cat }) catch break;
@@ -145,7 +145,7 @@ pub const MemoryCapturer = struct {
 
         const json = std.json.Stringify.valueAlloc(a, deltas.items, .{}) catch return;
         pipe_proto.writeFrame(self.fd, .memory, json) catch |err|
-            log.warn("capture_frame_write_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN, .err = @errorName(err) });
+            log.warn("capture_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
         // debug: a checkpoint can fire many times on a long run — keep it off info.
         log.debug("memory_captured_frame", .{ .count = deltas.items.len });
     }

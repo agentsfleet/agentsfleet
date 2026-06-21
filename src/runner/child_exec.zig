@@ -31,6 +31,7 @@ const LeasePayload = contract.protocol.LeasePayload;
 const RunnerChildInput = contract.protocol.RunnerChildInput;
 const MemoryDelta = contract.protocol.MemoryDelta;
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
 
@@ -115,7 +116,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     else
         runEngine(env_map, alloc, workspace, parsed.value.lease, parsed.value.hydrated_memory);
     writeResult(alloc, result) catch |err| {
-        log.err("result_write_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
+        log.err("result_write_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
     return 0;

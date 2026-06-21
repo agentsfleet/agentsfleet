@@ -56,7 +56,7 @@ pub fn parseGatePolicy(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Err
             .integer => |i| if (i <= 0)
                 ec.GATE_DEFAULT_TIMEOUT_MS
             else if (i > @as(i64, @intCast(ec.GATE_TIMEOUT_MS_MAX))) clamped: {
-                log.warn("gate_timeout_clamped", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .configured_ms = i, .max_ms = ec.GATE_TIMEOUT_MS_MAX });
+                log.warn("gate_timeout_clamped", .{ .error_code = ec.ERR_AGENTSFLEET_INVALID_CONFIG, .configured_ms = i, .max_ms = ec.GATE_TIMEOUT_MS_MAX });
                 break :clamped ec.GATE_TIMEOUT_MS_MAX;
             } else @intCast(i),
             else => ec.GATE_DEFAULT_TIMEOUT_MS,
