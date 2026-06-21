@@ -135,7 +135,7 @@ pub fn awaitEmpty(self: *Self) void {
         common.sleepNanos(AWAIT_EMPTY_POLL_MS * std.time.ns_per_ms);
     }
     if (self.count() > 0) {
-        log.warn("drain_incomplete", .{ .live_streams = self.count() });
+        log.warn("drain_incomplete", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .live_streams = self.count() });
     }
 }
 
@@ -173,6 +173,7 @@ fn freeEntry(self: *Self, entry: Entry) void {
 const std = @import("std");
 const common = @import("common");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const metrics = @import("../observability/metrics.zig");
 const log = logging.scoped(.stream_registry);
 

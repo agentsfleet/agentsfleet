@@ -21,6 +21,7 @@ const providers = nullclaw.providers;
 const contract = @import("contract");
 const pipe_proto = @import("../pipe_proto.zig");
 const inrun_memory = @import("inrun_memory.zig");
+const client_errors = @import("client_errors.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 
@@ -36,7 +37,7 @@ pub const ProgressWriter = struct {
     pub fn write(self: *const ProgressWriter, frame: ActivityFrame) void {
         const json = std.json.Stringify.valueAlloc(self.alloc, frame, .{}) catch return;
         defer self.alloc.free(json);
-        pipe_proto.writeFrame(self.fd, .activity, json) catch |err| log.warn("activity_frame_write_failed", .{ .err = @errorName(err) });
+        pipe_proto.writeFrame(self.fd, .activity, json) catch |err| log.warn("activity_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
     }
 };
 
@@ -134,7 +135,7 @@ pub const Adapter = struct {
         };
         const payload = snap.encode();
         pipe_proto.writeFrame(self.writer.fd, .usage, &payload) catch |err|
-            log.warn("usage_frame_write_failed", .{ .err = @errorName(err) });
+            log.warn("usage_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
     }
 
     fn fromPtr(ptr: *anyopaque) *Adapter {
@@ -193,7 +194,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 self.tool_call_count % self.memory_checkpoint_every == 0)
             {
                 self.nudges_emitted += 1;
-                log.info("memory_checkpoint_due", .{
+                log.debug("memory_checkpoint_due", .{
                     .tool_count = self.tool_call_count,
                     .every = self.memory_checkpoint_every,
                     .nudges_emitted = self.nudges_emitted,
@@ -211,7 +212,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // anything from the conversation itself.
             if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
                 self.window_exceeded_logs += 1;
-                log.info("tool_window_exceeded", .{
+                log.debug("tool_window_exceeded", .{
                     .tool_count = self.tool_call_count,
                     .window = self.tool_window,
                     .excess = self.tool_call_count - self.tool_window,
@@ -233,7 +234,7 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 const ratio: f32 = @as(f32, @floatFromInt(prompt)) / @as(f32, @floatFromInt(self.context_cap_tokens));
                 if (ratio >= self.stage_chunk_threshold) {
                     self.chunk_threshold_logs += 1;
-                    log.info("chunk_threshold_breached", .{
+                    log.debug("chunk_threshold_breached", .{
                         .prompt_tokens = prompt,
                         .cap_tokens = self.context_cap_tokens,
                         .ratio = ratio,

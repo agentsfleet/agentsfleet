@@ -33,6 +33,8 @@ const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.fleet_api);
 const API_ACTOR = "api";
+/// Best-effort rollback/cleanup failure that is logged and swallowed (RULE UFS — 2 sites).
+const EVENT_IGNORED_ERROR = "ignored_error";
 
 const Hx = hx_mod.Hx;
 
@@ -63,7 +65,7 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
     defer access.deinit(hx.alloc);
 
     const outcome = purgeFleetOnConn(conn, workspace_id, fleet_id) catch |err| {
-        log.err("delete_failed", .{ .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
+        log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -76,10 +78,10 @@ pub fn innerDeleteFleet(hx: Hx, _: *httpz.Request, workspace_id: []const u8, fle
             cleanupRedisStream(hx.ctx.queue, fleet_id) catch |err| {
                 log.warn(
                     "delete_redis_cleanup_failed",
-                    .{ .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "pg_row_purged_stream_orphaned_until_ttl" },
+                    .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "pg_row_purged_stream_orphaned_until_ttl" },
                 );
             };
-            log.info("purged", .{ .id = fleet_id, .workspace = workspace_id, .actor = actor });
+            log.debug("purged", .{ .id = fleet_id, .workspace = workspace_id, .actor = actor });
             hx.res.status = 204;
         },
         .not_killed => hx.fail(ec.ERR_AGENTSFLEET_ALREADY_TERMINAL, "Fleet must be killed before delete (PATCH status=killed first)"),
@@ -113,7 +115,7 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     // conn.rollback(), not exec("ROLLBACK") — exec short-circuits on a
     // FAIL-state connection after a statement error, leaving the session
     // stuck in the aborted transaction (signup_bootstrap.zig precedent).
-    errdefer conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+    errdefer conn.rollback() catch |err| log.warn(EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
 
     _ = try conn.exec(
@@ -151,7 +153,7 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
         break :blk (try del.next()) != null;
     };
     if (!purged) {
-        _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+        _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn(EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return .not_killed;
     }
     _ = try conn.exec("COMMIT", .{});

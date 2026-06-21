@@ -294,6 +294,7 @@ comptime {
         .{ ERR_APIKEY_REVOKED, auth_codes.ERR_APIKEY_REVOKED },
         .{ ERR_RUN_INVALID_RUNNER_TOKEN, auth_codes.ERR_RUN_INVALID_RUNNER_TOKEN },
         .{ ERR_RUN_ADMIN_STATE_BLOCKED, auth_codes.ERR_RUN_ADMIN_STATE_BLOCKED },
+        .{ ERR_INTERNAL_OPERATION_FAILED, auth_codes.ERR_INTERNAL_OPERATION_FAILED },
     };
     for (pairs) |p| {
         if (!std.mem.eql(u8, p[0], p[1]))

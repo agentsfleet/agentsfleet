@@ -146,7 +146,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
             hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
-        log.err("create_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
+        log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -154,7 +154,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     create_stream.ensureEventStream(hx.ctx.queue, fleet_id) catch |err| {
         log.err(
             "create_stream_setup_failed",
-            .{ .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "rolling_back_pg_row" },
+            .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "rolling_back_pg_row" },
         );
         // Roll back the PG row so the caller can retry cleanly without leaving
         // an orphan behind. If the rollback also fails (rare — PG flapping in
@@ -163,7 +163,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
             log.err(
                 "create_rollback_failed",
-                .{ .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
+                .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
             );
         };
         common.internalOperationError(hx.res, "event-stream setup failed; install rolled back", hx.req_id);
@@ -181,7 +181,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         return;
     };
 
-    log.info("created", .{ .id = fleet_id, .name = parsed.config.name, .workspace = workspace_id });
+    log.debug("created", .{ .id = fleet_id, .name = parsed.config.name, .workspace = workspace_id });
     hx.ok(.created, .{
         .fleet_id = fleet_id,
         .name = parsed.config.name,

@@ -27,3 +27,7 @@ pub const ERR_APIKEY_REVOKED = "UZ-APIKEY-004";
 // Runner plane — unknown tokens stay invalid; known non-active runners are distinct.
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
 pub const ERR_RUN_ADMIN_STATE_BLOCKED = "UZ-RUN-009";
+// Generic internal-operation failure — auth-plane log records for internal
+// operational failures (JWKS/Clerk fetch, thread spawn) that are NOT auth-domain
+// outcomes. Mirrors `error_registry.ERR_INTERNAL_OPERATION_FAILED`.
+pub const ERR_INTERNAL_OPERATION_FAILED = "UZ-INTERNAL-003";

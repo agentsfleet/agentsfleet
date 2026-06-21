@@ -23,6 +23,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 /// acquirer. Every other DELETE on the gates table still raises.
 pub const SET_GATE_PURGE_BYPASS_SQL = "SET LOCAL fleet.allow_gate_purge = 'on'";
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 
 const log = logging.scoped(.approval_gate_db);
 
@@ -92,7 +93,7 @@ pub fn recordGatePending(
     detail: ActionDetail,
 ) void {
     insertPendingRow(pool, alloc, fleet_id, workspace_id, action_id, detail) catch |err| {
-        log.err("record_pending_fail", .{ .err = @errorName(err), .action_id = action_id });
+        log.err("record_pending_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .action_id = action_id });
     };
 }
 
@@ -115,7 +116,7 @@ pub fn resolveGateDecision(
         .reason = detail,
     };
     var outcome = args.atomic(pool, sink_alloc) catch |err| {
-        log.err("resolve_fail", .{ .err = @errorName(err), .action_id = action_id });
+        log.err("resolve_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .action_id = action_id });
         return;
     };
     outcome.deinit(sink_alloc);

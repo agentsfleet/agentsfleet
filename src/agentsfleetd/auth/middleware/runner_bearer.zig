@@ -92,13 +92,13 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
         return .short_circuit;
     };
     const row = maybe_row orelse {
-        log.info(S_AUTH_REJECTED, .{ .reason = "unknown" });
+        log.debug(S_AUTH_REJECTED, .{ .reason = "unknown" });
         ctx.fail(errors.ERR_RUN_INVALID_RUNNER_TOKEN, S_INVALID_OR_MISSING_TOKEN);
         return .short_circuit;
     };
 
     if (!row.active) {
-        log.info(S_AUTH_REJECTED, .{ .reason = "non_active", .runner_id = row.runner_id });
+        log.debug(S_AUTH_REJECTED, .{ .reason = "non_active", .runner_id = row.runner_id });
         ctx.alloc.free(row.runner_id);
         ctx.fail(errors.ERR_RUN_ADMIN_STATE_BLOCKED, S_RUNNER_ADMIN_STATE_BLOCKED);
         return .short_circuit;

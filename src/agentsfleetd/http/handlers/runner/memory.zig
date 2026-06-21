@@ -89,7 +89,7 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, fleet_id: []const u
         return;
     };
     if (body.fencing_token < live_seq) {
-        log.info("memory_push_fenced", .{ .fleet_id = fleet_id, .fencing_token = body.fencing_token, .live_seq = live_seq });
+        log.debug("memory_push_fenced", .{ .fleet_id = fleet_id, .fencing_token = body.fencing_token, .live_seq = live_seq });
         hx.fail(ec.ERR_RUN_STALE_FENCING_TOKEN, "Lease superseded by a newer holder; memory push rejected");
         return;
     }
@@ -121,7 +121,7 @@ pub fn innerRunnerMemoryCapture(hx: Hx, req: *httpz.Request, fleet_id: []const u
     metrics_memory.incCapEvictions(evicted);
 
     metrics_memory.incMemoryCaptured(counts.stored);
-    log.info("memory_captured", .{ .fleet_id = fleet_id, .stored = counts.stored, .skipped = counts.skipped, .evicted = evicted, .swept = swept });
+    log.debug("memory_captured", .{ .fleet_id = fleet_id, .stored = counts.stored, .skipped = counts.skipped, .evicted = evicted, .swept = swept });
     hx.ok(.ok, .{ .stored = counts.stored, .skipped = counts.skipped, .request_id = hx.req_id });
 }
 
@@ -146,7 +146,7 @@ fn storeDeltas(hx: Hx, conn: *pg.Conn, fleet_id: []const u8, deltas: []const pro
         if (bytes > protocol.MAX_MEMORY_PUSH_BYTES) {
             // Truncate, don't drop the whole push (Failure Modes: oversized deltas).
             metrics_memory.incCaptureTruncated();
-            log.warn("memory_push_truncated", .{ .fleet_id = fleet_id, .stored = counts.stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
+            log.warn("memory_push_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .stored = counts.stored, .cap = protocol.MAX_MEMORY_PUSH_BYTES });
             break;
         }
         const id = h.genId(hx.alloc);
@@ -211,7 +211,7 @@ pub fn innerRunnerMemoryHydrate(hx: Hx, fleet_id: []const u8) void {
     // the same formula the Compactor budgets on.
     const dropped_bytes = adapter.sumBytes(rows[entries.len..]);
     metrics_memory.incHydrationDropped(rows.len - entries.len, dropped_bytes);
-    log.info("memory_hydrated", .{ .fleet_id = fleet_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
+    log.debug("memory_hydrated", .{ .fleet_id = fleet_id, .count = entries.len, .dropped = rows.len - entries.len, .dropped_bytes = dropped_bytes });
     hx.ok(.ok, protocol.MemoryHydrateResponse{ .memory = entries });
 }
 

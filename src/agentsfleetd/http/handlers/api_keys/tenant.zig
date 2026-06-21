@@ -142,7 +142,7 @@ fn performCreate(
         return error.DbError;
     };
 
-    log.info("created", .{
+    log.debug("created", .{
         .tenant_id = tenant_id,
         .actor_user_id = user_id,
         .api_key_id = id,
@@ -230,7 +230,7 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
         return;
     }
 
-    log.info("revoked", .{
+    log.debug("revoked", .{
         .tenant_id = tenant_id,
         .actor_user_id = user_id,
         .api_key_id = id,
@@ -288,7 +288,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
         return;
     }
 
-    log.info("deleted", .{
+    log.debug("deleted", .{
         .tenant_id = tenant_id,
         .actor_user_id = user_id,
         .api_key_id = key_id,

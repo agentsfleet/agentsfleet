@@ -18,6 +18,7 @@ const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
@@ -140,7 +141,7 @@ pub fn buildToolsFromSpec(
 
     const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy);
     for (result.skipped) |name| {
-        log.warn("tool_skipped", .{ .name = name });
+        log.warn("tool_skipped", .{ .error_code = ERR_TOOL_UNKNOWN, .name = name });
         alloc.free(name);
     }
     alloc.free(result.skipped);

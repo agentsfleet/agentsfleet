@@ -95,7 +95,7 @@ fn publishOne(
 /// status filter: an expired lease still resolves (cosmetic frames are harmless).
 fn loadTarget(hx: Hx, runner_id: []const u8, lease_id: []const u8) ?Target {
     return loadTargetInner(hx, runner_id, lease_id) catch |err| {
-        log.warn("activity_lease_load_failed", .{ .lease_id = lease_id, .err = @errorName(err) });
+        log.warn("activity_lease_load_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .lease_id = lease_id, .err = @errorName(err) });
         return null;
     };
 }

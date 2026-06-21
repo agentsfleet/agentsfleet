@@ -65,7 +65,7 @@ pub fn leaseNext(hx: Hx) void {
     const acq = assign.select(hx, runner_id) orelse return replyNoWork(hx);
 
     var session = FleetSession.claimFleet(hx.alloc, acq.fleet_id, hx.ctx.pool) catch |err| {
-        log.info("lease_claim_unavailable", .{ .fleet_id = acq.fleet_id, .err = @errorName(err) });
+        log.debug("lease_claim_unavailable", .{ .fleet_id = acq.fleet_id, .err = @errorName(err) });
         releaseClaim(hx, acq.fleet_id, acq.fencing_token);
         return replyNoWork(hx);
     };
@@ -77,7 +77,7 @@ pub fn leaseNext(hx: Hx) void {
     };
 
     issueLease(hx, runner_id, &session, acq, billed) catch |err| {
-        log.err("lease_issue_failed", .{ .fleet_id = acq.fleet_id, .err = @errorName(err) });
+        log.err("lease_issue_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
 }
@@ -95,7 +95,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
     defer if (resolved) |*r| r.deinit(hx.alloc);
 
     const ev_type = event_envelope.EventType.fromSlice(acq.event_type) orelse {
-        log.warn("lease_unknown_event_type", .{ .fleet_id = acq.fleet_id, .event_type = acq.event_type });
+        log.warn("lease_unknown_event_type", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .event_type = acq.event_type });
         releaseClaim(hx, acq.fleet_id, acq.fencing_token);
         return replyNoWork(hx);
     };
@@ -108,10 +108,10 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
         if (session.config.credentials.len == 0) break :blk null;
         break :blk secrets_resolve.resolveSecretsMap(hx.alloc, hx.ctx.pool, session.workspace_id, session.config.credentials) catch |err| {
             if (err == error.CredentialNotFound) {
-                log.warn("lease_secret_missing", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id });
+                log.warn("lease_secret_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .event_id = acq.event_id });
                 billing.blockEvent(hx, acq.fleet_id, acq.event_id, rows.LABEL_SECRET_MISSING);
             } else {
-                log.warn("lease_secrets_resolve_failed", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .err = @errorName(err) });
+                log.warn("lease_secrets_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = acq.fleet_id, .event_id = acq.event_id, .err = @errorName(err) });
             }
             releaseClaim(hx, acq.fleet_id, acq.fencing_token);
             return replyNoWork(hx);
@@ -131,7 +131,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
     try lease_row.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
-    log.info("lease_issued", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
+    log.debug("lease_issued", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
     hx.ok(.ok, protocol.LeaseResponse{
         .lease = .{
             .lease_id = lease_id,
@@ -161,12 +161,12 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
 /// Caller owns the result and must `deinit` (secureZero) after `hx.ok`.
 fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.ResolvedProvider {
     const conn = hx.ctx.pool.acquire() catch |err| {
-        log.warn("lease_provider_acquire_failed", .{ .err = @errorName(err) });
+        log.warn("lease_provider_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return null;
     };
     defer hx.ctx.pool.release(conn);
     return tenant_provider.resolveActiveProvider(hx.alloc, conn, tenant_id) catch |err| {
-        log.warn("lease_provider_key_resolve_failed", .{ .err = @errorName(err) });
+        log.warn("lease_provider_key_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return null;
     };
 }
@@ -195,7 +195,7 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
     if (entries) |list| {
         var obj: std.json.ObjectMap = .empty;
         for (list) |entry| {
-            obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
+            obj.put(alloc, entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         }
         secrets_map = .{ .object = obj };
     }
@@ -214,7 +214,7 @@ fn releaseClaim(hx: Hx, fleet_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
     affinity.release(conn, fleet_id, token) catch |err| {
-        log.warn("lease_claim_release_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("lease_claim_release_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
     };
 }
 

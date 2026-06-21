@@ -6,6 +6,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 
 const config_types = @import("config_types.zig");
 const webhook_verify = @import("webhook_verify.zig");
@@ -76,7 +77,7 @@ pub fn parseFleetTriggers(
     items: []const std.json.Value,
 ) (Allocator.Error || FleetConfigError)![]const FleetTrigger {
     if (items.len == 0 or items.len > MAX_TRIGGERS_PER_AGENT) {
-        log.warn("triggers_count_out_of_bounds", .{ .count = items.len, .max = MAX_TRIGGERS_PER_AGENT });
+        log.warn("triggers_count_out_of_bounds", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .count = items.len, .max = MAX_TRIGGERS_PER_AGENT });
         return FleetConfigError.InvalidFieldType;
     }
     var out = try alloc.alloc(FleetTrigger, items.len);
@@ -97,7 +98,9 @@ pub fn parseFleetTriggers(
         if (trig == .cron) {
             cron_count += 1;
             if (cron_count > 1) {
-                log.warn("multiple_cron_triggers_rejected", .{});
+                log.warn("multiple_cron_triggers_rejected", .{
+                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                });
                 return FleetConfigError.InvalidTriggerType;
             }
         }
@@ -109,7 +112,7 @@ pub fn parseFleetTriggers(
                 .api => true,
             };
             if (conflict) {
-                log.warn("duplicate_trigger_tuple", .{ .index = idx });
+                log.warn("duplicate_trigger_tuple", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .index = idx });
                 return FleetConfigError.InvalidTriggerType;
             }
         }
@@ -125,12 +128,14 @@ fn parseEvents(
     const arr = switch (val) {
         .array => |a| a,
         else => {
-            log.warn("events_must_be_array", .{});
+            log.warn("events_must_be_array", .{
+                .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            });
             return FleetConfigError.InvalidFieldType;
         },
     };
     if (arr.items.len == 0 or arr.items.len > MAX_EVENTS_PER_TRIGGER) {
-        log.warn("events_count_out_of_bounds", .{ .count = arr.items.len, .max = MAX_EVENTS_PER_TRIGGER });
+        log.warn("events_count_out_of_bounds", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .count = arr.items.len, .max = MAX_EVENTS_PER_TRIGGER });
         return FleetConfigError.InvalidFieldType;
     }
     var out = try alloc.alloc([]const u8, arr.items.len);
@@ -143,17 +148,21 @@ fn parseEvents(
         const s = switch (item) {
             .string => |str| str,
             else => {
-                log.warn("events_entry_not_string", .{});
+                log.warn("events_entry_not_string", .{
+                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                });
                 return FleetConfigError.InvalidFieldType;
             },
         };
         if (s.len == 0 or s.len > MAX_EVENT_NAME_LEN) {
-            log.warn("events_entry_length_out_of_bounds", .{ .len = s.len, .max = MAX_EVENT_NAME_LEN });
+            log.warn("events_entry_length_out_of_bounds", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .len = s.len, .max = MAX_EVENT_NAME_LEN });
             return FleetConfigError.InvalidFieldType;
         }
         for (s) |c| {
             if (std.ascii.isWhitespace(c)) {
-                log.warn("events_entry_has_whitespace", .{});
+                log.warn("events_entry_has_whitespace", .{
+                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                });
                 return FleetConfigError.InvalidFieldType;
             }
         }

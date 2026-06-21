@@ -49,7 +49,7 @@ pub fn innerListFleets(hx: Hx, req: *httpz.Request, workspace_id: []const u8) vo
             hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
             return;
         }
-        log.err("list_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
+        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

@@ -89,7 +89,7 @@ pub fn execute(
     const result = executeInner(env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
-        log.err("failed", .{
+        log.err("runner_execute_failed", .{
             .error_code = errorCodeForFailure(failure),
             .err = @errorName(err),
             .wall_seconds = elapsed,
@@ -99,7 +99,7 @@ pub fn execute(
 
     const elapsed = elapsedSeconds(start);
 
-    log.info("done", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
+    log.debug("runner_execute_completed", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
 
     return .{
         .content = result.content,

@@ -195,7 +195,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, fleet_id: []const 
     const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, fleet_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";
 
-    log.info("decision_recorded", .{
+    log.debug("decision_recorded", .{
         .fleet_id = fleet_id,
         .workspace_id = workspace_id,
         .grant_id = body.grant_id,

@@ -6,6 +6,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
+const ec = @import("../../../errors/error_registry.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
 const redis_fleet = @import("../../../queue/redis_fleet.zig");
 
@@ -38,7 +39,7 @@ pub fn ensureEventStream(redis: *queue_redis.Client, fleet_id: []const u8) !void
             const sleep_ms = installBackoffMs(attempt) orelse return err;
             log.warn(
                 "create_stream_setup_retry",
-                .{ .attempt = attempt + 1, .err = @errorName(err), .fleet_id = fleet_id, .sleep_ms = sleep_ms },
+                .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .attempt = attempt + 1, .err = @errorName(err), .fleet_id = fleet_id, .sleep_ms = sleep_ms },
             );
             constants.sleepNanos(@as(u64, sleep_ms) * std.time.ns_per_ms);
             continue;

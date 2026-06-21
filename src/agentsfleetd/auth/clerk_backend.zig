@@ -17,6 +17,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
+const ec = @import("auth_codes");
 
 const log = logging.scoped(.clerk_backend);
 
@@ -155,7 +156,7 @@ fn freeFetchJob(job: *FetchJob) void {
 fn fetchWorker(job: *FetchJob) void {
     defer freeFetchJob(job);
     runFetchBlocking(std.heap.c_allocator, job.url, job.auth_header, job.payload) catch |err| {
-        log.warn("fetch_failed", .{ .err = @errorName(err), .url = job.url });
+        log.warn("fetch_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .url = job.url });
     };
 }
 
@@ -184,7 +185,7 @@ fn postMetadataMerge(
     errdefer freeFetchJob(job);
 
     const thread = std.Thread.spawn(.{}, fetchWorker, .{job}) catch |err| {
-        log.warn("thread_spawn_failed", .{ .err = @errorName(err) });
+        log.warn("thread_spawn_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return PatchError.RequestFailed;
     };
     thread.detach();
@@ -259,7 +260,7 @@ pub fn mapStatus(status: u16, url: []const u8) PatchError!void {
     if (status >= 200 and status < 300) return;
     if (status == 401 or status == 403) return PatchError.Unauthorized;
     if (status == 404) return PatchError.NotFound;
-    log.warn("unexpected_status", .{ .status = status, .url = url });
+    log.warn("unexpected_status", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .status = status, .url = url });
     return PatchError.UnexpectedStatus;
 }
 

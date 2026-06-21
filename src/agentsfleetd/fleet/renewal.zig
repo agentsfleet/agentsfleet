@@ -30,6 +30,7 @@
 
 const pg = @import("pg");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const constants = @import("common");
 const protocol = @import("contract").protocol;
@@ -73,7 +74,7 @@ pub fn buildMeterInputs(
     cum_output: u32,
 ) MeterInputs {
     const rates = tenant_billing.resolveRenewSliceRates(provider, posture, model, now_ms) orelse blk: {
-        log.warn("meter_rate_missing_run_fee_only", .{ .provider = provider, .model = model });
+        log.warn("meter_rate_missing_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model });
         break :blk tenant_billing.SliceRates{ .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
     };
     return .{

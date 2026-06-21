@@ -23,9 +23,11 @@ const contract = @import("contract");
 const constants = @import("common");
 const child_supervisor = @import("../child_supervisor.zig");
 const pipe_proto = @import("../pipe_proto.zig");
+const client_errors = @import("../engine/client_errors.zig");
 
 const LeasePayload = contract.protocol.LeasePayload;
 const log = logging.scoped(.fleet_runner);
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 /// A u32 token-split triple ready for the wire — the explicit carrier the renew
 /// body AND the report splits both map from, so neither path borrows the other's
@@ -117,7 +119,7 @@ pub fn RenewDriver(comptime Client: type) type {
             // garbage/extreme deadline from the wire must not panic the tick loop.
             if (self.deadline_ms > now_ms +| constants.RENEWAL_WINDOW_MS) return .keep;
             const res = self.cp.renew(self.alloc, self.runner_token, self.lease_id, renewRequestFrom(usage), self.renew_deadline_ms) catch |err| {
-                log.warn("renew_failed_retry", .{ .lease_id = self.lease_id, .err = @errorName(err) });
+                log.warn("renew_failed_retry", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = self.lease_id, .err = @errorName(err) });
                 return .keep;
             };
             switch (res) {
@@ -127,7 +129,7 @@ pub fn RenewDriver(comptime Client: type) type {
                     return .{ .extend = new_deadline };
                 },
                 .terminal => |status| {
-                    log.info("lease_renew_terminal", .{ .lease_id = self.lease_id, .status = status });
+                    log.warn("lease_renew_terminal", .{ .error_code = client_errors.ERR_EXEC_RENEWAL_TERMINATED, .lease_id = self.lease_id, .status = status });
                     return .terminate;
                 },
             }

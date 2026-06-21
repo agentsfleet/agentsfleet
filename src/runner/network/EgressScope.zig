@@ -95,7 +95,7 @@ pub fn create(alloc: std.mem.Allocator, plan: *const Plan) Error!EgressScope {
         log.debug("egress_preclean_skipped", .{ .err = @errorName(err) });
 
     try installRuleset(plan, addrs);
-    log.info("egress_created", .{ .host_if = plan.host_ifname, .allow_count = addrs.len });
+    log.debug("egress_created", .{ .host_if = plan.host_ifname, .allow_count = addrs.len });
     return .{ .plan = plan };
 }
 
@@ -117,7 +117,7 @@ pub fn attachChild(self: *const EgressScope, pid: std.posix.pid_t) Error!void {
     const t = std.Thread.spawn(.{}, ChildNetnsSetup.run, .{&setup}) catch return error.AttachFailed;
     t.join();
     try setup.result;
-    log.info("egress_attached", .{ .pid = pid });
+    log.debug("egress_attached", .{ .pid = pid });
 }
 
 /// Idempotent teardown: drop the nft table (rules/sets/chains with it) and
@@ -129,7 +129,7 @@ pub fn destroy(self: *EgressScope) void {
     deleteTable(self.plan.worker_index) catch |err|
         log.debug("nft_teardown_skipped", .{ .err = @errorName(err) });
     deleteVeth(self.plan.host_ifname);
-    log.info("egress_destroyed", .{ .host_if = self.plan.host_ifname });
+    log.debug("egress_destroyed", .{ .host_if = self.plan.host_ifname });
 }
 
 /// Capability probe: can this host open the netlink sockets at all?
@@ -147,7 +147,7 @@ fn installRuleset(plan: *const Plan, addrs: []const [4]u8) Error!void {
     // Reject an oversize allowlist up front with a clear signal, before it
     // overflows the transaction buffer into an opaque BufferTooSmall.
     if (addrs.len > MAX_ALLOWLIST_IPS) {
-        log.err("egress_allowlist_too_large", .{ .count = addrs.len, .max = MAX_ALLOWLIST_IPS });
+        log.err("egress_allowlist_too_large", .{ .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED, .count = addrs.len, .max = MAX_ALLOWLIST_IPS });
         return error.AllowListTooLarge;
     }
 
@@ -332,3 +332,4 @@ const nfnetlink_rule = @import("nfnetlink_rule.zig");
 const std = @import("std");
 const builtin = @import("builtin");
 const log = @import("log").scoped(.egress_scope);
+const client_errors = @import("../engine/client_errors.zig");

@@ -19,6 +19,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -62,7 +63,7 @@ pub const Acquired = struct {
 /// pass. Errors are logged and collapse to null (the runner backs off + re-polls).
 pub fn select(hx: Hx, runner_id: []const u8) ?Acquired {
     return selectInner(hx, runner_id) catch |err| {
-        log.warn("assign_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn("assign_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
         return null;
     };
 }
@@ -119,7 +120,7 @@ fn tryCandidate(hx: Hx, conn: *pg.Conn, runner_id: []const u8, fleet_id: []const
         .won => |w| w,
     };
     if (try reclaim.reclaimPriorActive(conn, hx.alloc, fleet_id)) |prior| {
-        log.info("lease_reclaimed", .{ .fleet_id = fleet_id, .event_id = prior.event_id, .lease_id = prior.lease_id, .fencing_token = won.token, .runner_id = runner_id });
+        log.debug("lease_reclaimed", .{ .fleet_id = fleet_id, .event_id = prior.event_id, .lease_id = prior.lease_id, .fencing_token = won.token, .runner_id = runner_id });
         return fromReclaim(fleet_id, won, prior);
     }
     return acquireFresh(hx, conn, fleet_id, won, runner_id);
@@ -133,7 +134,7 @@ fn tryCandidate(hx: Hx, conn: *pg.Conn, runner_id: []const u8, fleet_id: []const
 fn acquireFresh(hx: Hx, conn: *pg.Conn, fleet_id: []const u8, won: affinity.Won, runner_id: []const u8) !?Acquired {
     _ = runner_id;
     redis_fleet.ensureFleetConsumerGroup(hx.ctx.queue, fleet_id) catch |err| {
-        log.warn("assign_group_ensure_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("assign_group_ensure_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
         try affinity.release(conn, fleet_id, won.token);
         return null;
     };
@@ -145,7 +146,7 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, fleet_id: []const u8, won: affinity.Won,
     // degraded. Release the claim and deliver nothing; the next poll retries
     // (consistent with the fresh-read error path below).
     var maybe_event = redis_fleet.xreadgroupFleetPending(hx.ctx.queue, fleet_id, consumer_id) catch |err| {
-        log.warn("assign_pel_read_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("assign_pel_read_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
         try affinity.release(conn, fleet_id, won.token);
         return null;
     };
@@ -153,7 +154,7 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, fleet_id: []const u8, won: affinity.Won,
         log.debug("assign_pel_redelivered", .{ .fleet_id = fleet_id, .event_id = ev.event_id });
     } else {
         maybe_event = redis_fleet.xreadgroupFleetOnce(hx.ctx.queue, fleet_id, consumer_id) catch |err| {
-            log.warn("assign_xreadgroup_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+            log.warn("assign_xreadgroup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
             try affinity.release(conn, fleet_id, won.token);
             return null;
         };

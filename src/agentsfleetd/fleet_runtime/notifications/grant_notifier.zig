@@ -9,6 +9,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
+const ec = @import("../../errors/error_registry.zig");
 const pg = @import("pg");
 const queue_redis = @import("../../queue/redis.zig");
 const approval_slack = @import("../approval_gate_slack.zig");
@@ -44,6 +45,7 @@ fn storeNonceToRedis(
     }) catch return;
     queue.setEx(key, nonce, GRANT_NOTIFY_TTL_SECONDS) catch |err| {
         log.warn("nonce_fail", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .grant_id = grant_id,
             .err = @errorName(err),
         });
@@ -116,6 +118,7 @@ fn storeToRedis(
     }) catch return;
     queue.setEx(key, payload, GRANT_NOTIFY_TTL_SECONDS) catch |err| {
         log.warn("redis_fail", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
             .fleet_id = fleet_id,
             .grant_id = grant_id,
             .err = @errorName(err),
@@ -135,7 +138,7 @@ fn logDashboard(
 ) void {
     _ = pool;
     _ = alloc;
-    log.info("requested", .{ .fleet_id = fleet_id, .workspace_id = workspace_id, .service = service, .grant_id = grant_id });
+    log.debug("requested", .{ .fleet_id = fleet_id, .workspace_id = workspace_id, .service = service, .grant_id = grant_id });
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -156,7 +159,7 @@ pub fn notifyGrantRequest(
     reason: []const u8,
 ) void {
     const nonce_arr = generateNonce() catch {
-        log.warn("nonce_entropy_fail", .{ .grant_id = grant_id });
+        log.warn("nonce_entropy_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .grant_id = grant_id });
         logDashboard(pool, alloc, fleet_id, workspace_id, grant_id, service);
         return;
     };
@@ -164,7 +167,7 @@ pub fn notifyGrantRequest(
     storeNonceToRedis(queue, grant_id, nonce);
 
     const slack_msg = buildGrantSlackMessage(alloc, fleet_name, service, reason, grant_id, nonce) catch |err| {
-        log.warn("build_fail", .{ .err = @errorName(err) });
+        log.warn("build_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         logDashboard(pool, alloc, fleet_id, workspace_id, grant_id, service);
         return;
     };
@@ -173,7 +176,7 @@ pub fn notifyGrantRequest(
     storeToRedis(queue, fleet_id, grant_id, slack_msg);
     logDashboard(pool, alloc, fleet_id, workspace_id, grant_id, service);
 
-    log.info("sent", .{
+    log.debug("sent", .{
         .fleet_id = fleet_id,
         .service = service,
         .grant_id = grant_id,

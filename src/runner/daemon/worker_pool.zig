@@ -54,7 +54,7 @@ pub const Pool = struct {
     /// its exit path) or the workers would never leave their poll loop.
     pub fn join(self: Pool) void {
         for (self.threads) |t| t.join();
-        log.info("worker_pool_joined", .{ .workers = self.threads.len });
+        log.debug("worker_pool_joined", .{ .workers = self.threads.len });
         self.alloc.free(self.threads);
     }
 };
@@ -90,7 +90,7 @@ pub fn spawn(
         };
         threads[spawned] = try std.Thread.spawn(.{}, workerLoop, .{ctx});
     }
-    log.info("worker_pool_spawned", .{ .workers = cfg.worker_count });
+    log.debug("worker_pool_spawned", .{ .workers = cfg.worker_count });
     return .{ .alloc = alloc, .threads = threads };
 }
 
@@ -106,11 +106,11 @@ fn workerLoop(ctx: WorkerContext) void {
 
     var cp = client_mod.init(alloc, ctx.io, ctx.cfg.control_plane_url);
     defer cp.deinit();
-    log.info("worker_started", .{ .index = ctx.index });
+    log.debug("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
         loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map);
     }
-    log.info("worker_stopped", .{ .index = ctx.index });
+    log.debug("worker_stopped", .{ .index = ctx.index });
 }
 
 // Tests live in worker_pool_test.zig (unit: spawn/join lifecycle) and

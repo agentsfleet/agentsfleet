@@ -25,6 +25,7 @@ const S_OOM_KILL = "oom_kill ";
 const S_PIDS_MAX = "max ";
 const BYTES_PER_KIB = 1024;
 const log = logging.scoped(.runner_cgroup);
+const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
 
 pub const CgroupError = error{
     UnsupportedPlatform,
@@ -57,14 +58,14 @@ pub fn create(
     // Ensure base directory exists.
     std.Io.Dir.createDirAbsolute(io, CGROUP_BASE, .default_dir) catch |err| {
         if (err != error.PathAlreadyExists) {
-            log.err("base_create_failed", .{ .path = CGROUP_BASE, .err = @errorName(err) });
+            log.err("base_create_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = CGROUP_BASE, .err = @errorName(err) });
             return CgroupError.CgroupCreateFailed;
         }
     };
 
     // Create scope directory.
     std.Io.Dir.createDirAbsolute(io, path, .default_dir) catch |err| {
-        log.err("scope_create_failed", .{ .path = path, .err = @errorName(err) });
+        log.err("scope_create_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = path, .err = @errorName(err) });
         return CgroupError.CgroupCreateFailed;
     };
 
@@ -83,7 +84,7 @@ pub fn create(
     // bumps pids.events, which wasPidsExhausted() reads to attribute the failure.
     try scope.writeControl("pids.max", limits.pids_limit);
 
-    log.info("created", .{ .path = path, .memory_mb = limits.memory_limit_mb, .cpu_pct = limits.cpu_limit_percent, .pids_max = limits.pids_limit });
+    log.debug("cgroup_created", .{ .path = path, .memory_mb = limits.memory_limit_mb, .cpu_pct = limits.cpu_limit_percent, .pids_max = limits.pids_limit });
 
     return scope;
 }
@@ -203,10 +204,10 @@ pub fn destroy(self: *CgroupScope, limits: types.ResourceLimits) CgroupMetrics {
 
     // Remove the cgroup directory (must be empty of processes first).
     std.Io.Dir.cwd().deleteTree(self.io, self.path) catch |err| {
-        log.warn("cleanup_failed", .{ .path = self.path, .err = @errorName(err) });
+        log.warn("cleanup_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .path = self.path, .err = @errorName(err) });
     };
 
-    log.info("destroyed", .{ .path = self.path, .peak_bytes = peak, .cpu_throttled_ms = result.cpu_throttled_ms });
+    log.debug("cgroup_destroyed", .{ .path = self.path, .peak_bytes = peak, .cpu_throttled_ms = result.cpu_throttled_ms });
     self.alloc.free(self.path);
     return result;
 }
@@ -256,3 +257,4 @@ const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 const types = @import("types.zig");
+const client_errors = @import("client_errors.zig");

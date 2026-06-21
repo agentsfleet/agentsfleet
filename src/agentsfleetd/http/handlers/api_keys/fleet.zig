@@ -132,7 +132,7 @@ pub fn innerCreateFleetKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         return;
     };
 
-    log.info("created", .{
+    log.debug("created", .{
         .fleet_key_id = fleet_key_id,
         .workspace_id = workspace_id,
         .fleet_id = body.fleet_id,
@@ -201,7 +201,7 @@ pub fn innerListFleetKeys(hx: Hx, workspace_id: []const u8) void {
             .description = description,
             .created_at = created_at,
             .last_used_at = last_used,
-        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+        }) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = fleets.items, .total = fleets.items.len });
@@ -238,6 +238,6 @@ pub fn innerDeleteFleetKey(hx: Hx, workspace_id: []const u8, fleet_key_id: []con
         return;
     }
 
-    log.info("deleted", .{ .fleet_key_id = fleet_key_id, .workspace_id = workspace_id });
+    log.debug("deleted", .{ .fleet_key_id = fleet_key_id, .workspace_id = workspace_id });
     hx.noContent();
 }

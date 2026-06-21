@@ -21,6 +21,7 @@ const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const contract = @import("contract");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const FleetSession = @import("fleet_session.zig");
 
@@ -163,7 +164,7 @@ pub fn markTerminal(
     wall_ms: u64,
 ) void {
     const conn = pool.acquire() catch |err| {
-        log.warn("terminal_acquire_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("terminal_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
     };
     defer pool.release(conn);
@@ -190,11 +191,11 @@ pub fn markTerminal(
         failure_label,
         STATUS_RECEIVED,
     }) catch |err| {
-        log.warn("terminal_update_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("terminal_update_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
     };
     if ((affected orelse 0) == 0) {
-        log.warn("terminal_write_skipped_nonreceived", .{ .fleet_id = fleet_id, .event_id = event_id });
+        log.warn("terminal_write_skipped_nonreceived", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id });
     }
 }
 

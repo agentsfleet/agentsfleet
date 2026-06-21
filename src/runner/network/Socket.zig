@@ -107,7 +107,7 @@ fn countAcks(buf: []const u8) Error!u32 {
             if (mlen < NLMSG_HDRLEN + 4) return error.MalformedFrame;
             const err_no = std.mem.readInt(i32, buf[off + NLMSG_HDRLEN ..][0..4], native_endian);
             if (err_no != 0) {
-                log.err("kernel_refused", .{ .errno = err_no });
+                log.err("kernel_refused", .{ .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED, .errno = err_no });
                 return error.KernelRefused;
             }
             acks += 1;
@@ -176,3 +176,4 @@ const std = @import("std");
 const builtin = @import("builtin");
 const native_endian = builtin.cpu.arch.endian();
 const log = @import("log").scoped(.egress_socket);
+const client_errors = @import("../engine/client_errors.zig");

@@ -85,7 +85,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, fleet_id: []cons
             .approved_at = approved_at,
             .revoked_at = revoked_at,
             .reason = reason,
-        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+        }) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = grants.items, .total = grants.items.len });
@@ -142,7 +142,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, fleet_id: []con
         return;
     }
 
-    log.info("revoked", .{ .fleet_id = fleet_id, .grant_id = grant_id });
+    log.debug("revoked", .{ .fleet_id = fleet_id, .grant_id = grant_id });
     hx.noContent();
 }
 

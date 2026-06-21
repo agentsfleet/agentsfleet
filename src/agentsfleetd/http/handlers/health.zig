@@ -3,6 +3,7 @@ const httpz = @import("httpz");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const metrics = @import("../../observability/metrics.zig");
 const logging = @import("log");
+const ec = @import("../../errors/error_registry.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const build_options = @import("build_options");
@@ -32,7 +33,7 @@ fn databaseHealthy(ctx: *Context) bool {
 
 fn queueHealthy(ctx: *Context) bool {
     ctx.queue.readyCheck() catch |err| {
-        log.warn("readyz.redis_check_failed", .{ .err = @errorName(err) });
+        log.warn("readyz_redis_check_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return false;
     };
     return true;
