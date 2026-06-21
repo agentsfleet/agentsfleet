@@ -55,6 +55,13 @@ pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
 /// an operator's `status` check can never mask a dead runner's liveness.
 pub const PATH_RUNNER_SELF = PATH_RUNNERS ++ "/me";
 
+/// GET /v1/runners/me/bundles/{content_hash} — runner-plane Fleet Bundle snapshot
+/// download. The daemon proxies the immutable canonical tar from object storage
+/// (the runner holds no datastore credentials). Collection prefix; the runner
+/// appends the `{content_hash}` segment, mirroring `PATH_RUNNER_MEMORY`. The daemon
+/// matcher keys on the `bundles` segment (`route_matchers_runner.zig`).
+pub const PATH_RUNNER_BUNDLES = PATH_RUNNERS ++ "/me/bundles";
+
 /// GET /v1/fleets/runners — platform-admin operator-plane read of the whole
 /// fleet (paginated). The `/v1/fleet/...` namespace is the operator plane;
 /// `/v1/runners` is enrollment + the runner self-plane. Distinct prefix so the
