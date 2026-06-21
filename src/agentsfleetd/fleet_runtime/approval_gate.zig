@@ -125,7 +125,7 @@ fn evaluateCondition(condition: []const u8, context: ?std.json.Value) bool {
     // (config_gates via gate_condition.isValid → UZ-APPROVAL-005) now rejects
     // these for stored policies, so in practice only directly-constructed
     // GateRules reach this branch.
-    log.warn("invalid_condition", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .condition = condition });
+    log.warn("invalid_condition", .{ .error_code = ec.ERR_APPROVAL_CONDITION_INVALID, .condition = condition });
     return true;
 }
 

@@ -116,12 +116,12 @@ pub const Verifier = struct {
         const header = try std.json.parseFromSlice(Header, alloc, header_raw, .{ .ignore_unknown_fields = true });
         defer header.deinit();
         if (!std.mem.eql(u8, header.value.alg, "RS256")) {
-            log.warn("unsupported_alg", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .alg = header.value.alg });
+            log.warn("unsupported_alg", .{ .error_code = ec.ERR_UNAUTHORIZED, .alg = header.value.alg });
             return VerifyError.UnsupportedAlgorithm;
         }
         const kid = header.value.kid orelse {
             log.warn("missing_kid", .{
-                .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                .error_code = ec.ERR_UNAUTHORIZED,
             });
             return VerifyError.MissingKeyId;
         };
@@ -139,7 +139,7 @@ pub const Verifier = struct {
         defer alloc.free(signing_input);
 
         verifyRs256(signing_input, signature, key.modulus, key.exponent) catch {
-            log.warn("signature_invalid", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .kid = kid });
+            log.warn("signature_invalid", .{ .error_code = ec.ERR_UNAUTHORIZED, .kid = kid });
             return VerifyError.SignatureInvalid;
         };
 
@@ -240,7 +240,7 @@ pub const Verifier = struct {
         };
         defer self.alloc.free(raw);
         var parsed = parseJwks(self.alloc, raw) catch |err| {
-            log.warn("jwks_parse_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            log.warn("jwks_parse_failed", .{ .error_code = ec.ERR_AUTH_UNAVAILABLE, .err = @errorName(err) });
             return err;
         };
         parsed.fetched_at_ms = clock.nowMillis();

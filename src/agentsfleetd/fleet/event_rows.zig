@@ -191,11 +191,11 @@ pub fn markTerminal(
         failure_label,
         STATUS_RECEIVED,
     }) catch |err| {
-        log.warn("terminal_update_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("terminal_update_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
         return;
     };
     if ((affected orelse 0) == 0) {
-        log.warn("terminal_write_skipped_nonreceived", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id });
+        log.warn("terminal_write_skipped_nonreceived", .{ .fleet_id = fleet_id, .event_id = event_id });
     }
 }
 

@@ -202,7 +202,7 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .model = lease.model,
     }, 0, body.tokens, wall_ms, clock.nowMillis() - @as(i64, @intCast(wall_ms)));
     event_rows.checkpointFleetSession(alloc, pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
-        log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .err = @errorName(err) });
+        log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
     };
     redis_fleet.xackFleet(hx.ctx.queue, lease.fleet_id, lease.event_id) catch |err| {
         log.warn("report_xack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .event_id = lease.event_id, .err = @errorName(err) });
@@ -239,6 +239,6 @@ fn releaseAffinity(hx: Hx, fleet_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
     affinity.release(conn, fleet_id, token) catch |err| {
-        log.warn("report_claim_release_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("report_claim_release_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .err = @errorName(err) });
     };
 }

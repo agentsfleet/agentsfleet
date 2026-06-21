@@ -146,7 +146,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
             hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
             return;
         }
-        log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .req_id = hx.req_id });
+        log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -163,7 +163,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         deleteFleetRow(conn, workspace_id, fleet_id) catch |rollback_err| {
             log.err(
                 "create_rollback_failed",
-                .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
+                .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err), .fleet_id = fleet_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
             );
         };
         common.internalOperationError(hx.res, "event-stream setup failed; install rolled back", hx.req_id);

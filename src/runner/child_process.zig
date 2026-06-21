@@ -102,7 +102,7 @@ pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup) void {
     if (scope.*) |*s| s.kill() catch |err|
         log.warn("cgroup_kill_failed_fallback_signal", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
     std.posix.kill(-pid, std.posix.SIG.KILL) catch |err|
-        log.warn("child_group_kill_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
+        log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────

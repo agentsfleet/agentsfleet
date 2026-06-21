@@ -130,7 +130,7 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
         .invalid_required_tags => return hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
         .name_mismatch => return hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH),
         .lock_timeout => {
-            log.warn("patch_lock_timeout", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .req_id = hx.req_id });
+            log.warn("patch_lock_timeout", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .fleet_id = fleet_id, .req_id = hx.req_id });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },

@@ -121,7 +121,7 @@ pub const Verifier = struct {
         log.debug("provider_selected", .{ .provider = @tagName(self.provider) });
 
         const verified = self.inner.verifyAndDecode(alloc, authorization) catch |err| {
-            log.warn("verification_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+            log.warn("verification_failed", .{ .error_code = ec.ERR_UNAUTHORIZED, .err = @errorName(err) });
             return err;
         };
         errdefer {

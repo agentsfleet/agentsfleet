@@ -56,7 +56,7 @@ pub fn resolveBilling(hx: Hx, session: *FleetSession, acq: assign.Acquired) ?Bil
 /// XACK is still owed.
 pub fn blockEvent(hx: Hx, fleet_id: []const u8, event_id: []const u8, label: []const u8) void {
     const affected = rows.markBlocked(hx.ctx.pool, fleet_id, event_id, label) catch |err| {
-        log.warn("lease_block_write_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
+        log.warn("lease_block_write_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
         return;
     };
     var scratch = activity_publisher.Scratch.init(hx.alloc);
@@ -227,12 +227,12 @@ const TenantResolution = union(enum) {
 /// `event_loop_writepath_resolve.resolveTenantAndProvider`'s drain order.
 fn resolveTenant(alloc: std.mem.Allocator, pool: *pg.Pool, workspace_id: []const u8) TenantResolution {
     const conn = pool.acquire() catch |err| {
-        log.warn("lease_resolve_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+        log.warn("lease_resolve_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .err = @errorName(err) });
         return .{ .failed_transient = {} };
     };
     defer pool.release(conn);
     const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
-        log.err("lease_tenant_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .workspace_id = workspace_id, .err = @errorName(err) });
+        log.err("lease_tenant_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .workspace_id = workspace_id, .err = @errorName(err) });
         return if (err == error.WorkspaceNotFound) .{ .failed_permanent = {} } else .{ .failed_transient = {} };
     };
     const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| {

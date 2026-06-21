@@ -70,7 +70,7 @@ pub const CallWatchdog = struct {
         if (self.thread == null and !self.exit) {
             self.thread = std.Thread.spawn(.{}, loop, .{self}) catch blk: {
                 // No watchdog thread → this call runs unbounded; visible, rare.
-                log.warn("cp_watchdog_spawn_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS });
+                log.warn("cp_watchdog_spawn_failed", .{});
                 break :blk null;
             };
         }

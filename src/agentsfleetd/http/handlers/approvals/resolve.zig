@@ -69,7 +69,7 @@ pub fn innerResolveApproval(
     // resolve core uses to wake the worker). Also enforces workspace scope
     // and gives us a 404 path that doesn't reveal cross-workspace existence.
     const maybe_row = approval_gate_db.getByGateId(hx.ctx.pool, hx.alloc, gate_id, workspace_id) catch |err| {
-        log.err("resolve_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .gate_id = gate_id });
+        log.err("resolve_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .gate_id = gate_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -96,7 +96,7 @@ pub fn innerResolveApproval(
         .by = by,
         .reason = reason,
     }) catch |err| {
-        log.err("resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .gate_id = gate_id });
+        log.err("resolve_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .gate_id = gate_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -173,5 +173,5 @@ fn writeAlreadyResolved(hx: hx_mod.Hx, r: approval_gate_db.ResolvedRow) void {
         .outcome = r.outcome.toSlice(),
         .resolved_at = r.resolved_at,
         .resolved_by = r.resolved_by,
-    }, .{}) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
+    }, .{}) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 }
