@@ -254,7 +254,7 @@ pub fn isTerminalRenewStatus(status: u16) bool {
     return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
-const PostResult = struct { status: u16, body: []u8 };
+pub const PostResult = struct { status: u16, body: []u8 };
 
 /// Pin the pooled connection the next fetch will use (get-or-create, then
 /// release back to the free list so the fetch pops the same one) and return
@@ -300,9 +300,11 @@ fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []con
     return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
 }
 
-/// One bearer-authed GET (no body) on the persistent client. Returns the status
-/// + response body (owned by `alloc`). Used by the read-only `getSelf` verb.
-fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
+/// One bearer-authed GET (no body) on the persistent client. Returns the status +
+/// response body (owned by `alloc`). The shared GET primitive: wrapped by the
+/// read-only `getSelf`/`memoryHydrate` verbs and consumed by `bundle_extract` for
+/// the Fleet Bundle snapshot download.
+pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
     if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
     defer self.watchdog.disarm();
 
