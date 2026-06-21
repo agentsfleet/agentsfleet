@@ -201,7 +201,7 @@ describe("help DX surfaces (real binary)", () => {
     return emptyEnv({ AGENTSFLEET_TELEMETRY_DISABLED: "1" });
   }
 
-  it("--help lists the top-level commands and the env-var matrix", async () => {
+  it("--help lists the top-level commands and the env-var docs pointer", async () => {
     const result = await runFleetctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
@@ -210,25 +210,8 @@ describe("help DX surfaces (real binary)", () => {
     for (const command of ["install", "status", "steer", "workspace", "memory"]) {
       assert.ok(out.includes(command), `help missing "${command}" command`);
     }
-    // The env-var matrix is appended after the command list.
-    assert.match(out, /Environment variables:/);
-  });
-
-  it("--help aligns every environment-variable description to one column", async () => {
-    const result = await runFleetctl(["--help"], { env: helpEnv() });
-    assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const lines = stripAnsi(result.stdout).split("\n");
-    const start = lines.indexOf("Environment variables:");
-    assert.ok(start >= 0, "no Environment variables section in --help");
-    const columns: number[] = [];
-    for (const line of lines.slice(start + 1)) {
-      const match = /^ {2}(\S+)( +)(\S.*)$/.exec(line);
-      const name = match?.[1];
-      const gap = match?.[2];
-      if (name !== undefined && gap !== undefined) columns.push(2 + name.length + gap.length);
-    }
-    assert.ok(columns.length >= 10, `expected ≥10 env rows, got ${columns.length}`);
-    assert.equal(new Set(columns).size, 1, `env descriptions misaligned: columns=${columns.join(",")}`);
+    // Env vars are documented externally; help carries a one-line pointer.
+    assert.match(out, /Environment variables: https:\/\/docs\.agentsfleet\.net\/cli\/configuration/);
   });
 
   it("--help stays within 80 columns through the real binary", async () => {
