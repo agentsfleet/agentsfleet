@@ -1,5 +1,5 @@
 // Wire-format constants for billing endpoints. Mirrors the canonical
-// definitions in src/state/agent_telemetry_store.zig (`ChargeType`) and
+// definitions in src/state/fleet_telemetry_store.zig (`ChargeType`) and
 // src/state/tenant_provider.zig (`Mode`). Keep values verbatim — the API
 // rejects anything else.
 
@@ -24,7 +24,7 @@ export const NANOS_PER_USD = 1_000_000_000;
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;
 // Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
-// postures while an agent is actively running. Replaces the former flat
+// postures while a Fleet is actively running. Replaces the former flat
 // per-stage fees.
 export const RUN_NANOS_PER_SEC = 100_000;
 

@@ -52,7 +52,7 @@ pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
 }
 
 /// Delete workspace. CASCADE removes everything that FKs `core.workspaces` —
-/// vault.secrets, integration_grants, agent_keys, memory_entries, agents,
+/// vault.secrets, integration_grants, fleet_keys, memory_entries, fleets,
 /// and downstream telemetry / event rows.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
@@ -122,52 +122,52 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
 // M10_001: seedSpec, seedRun, teardownRuns, teardownSpecs removed.
 // Tables core.specs and core.runs were dropped in pipeline v1 removal.
 
-// ── Agent helpers (event loop integration tests) ─────────────
+// ── Fleet helpers (event loop integration tests) ─────────────
 
-/// Insert a minimal agent row. Workspace must exist. Idempotent.
-pub fn seedAgent(
+/// Insert a minimal fleet row. Workspace must exist. Idempotent.
+pub fn seedFleet(
     conn: *pg.Conn,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     workspace_id: []const u8,
     name: []const u8,
     config_json: []const u8,
     source_markdown: []const u8,
 ) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.agents
+        \\INSERT INTO core.fleets
         \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1, $2, $3, $4, $5, 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
-    , .{ agent_id, workspace_id, name, source_markdown, config_json });
+    , .{ fleet_id, workspace_id, name, source_markdown, config_json });
 }
 
-/// Insert a agent session checkpoint. Agent must exist. Idempotent.
-pub fn seedAgentSession(
+/// Insert a fleet session checkpoint. Fleet must exist. Idempotent.
+pub fn seedFleetSession(
     conn: *pg.Conn,
     session_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     context_json: []const u8,
 ) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.agent_sessions
-        \\  (id, agent_id, context_json, checkpoint_at, created_at, updated_at)
+        \\INSERT INTO core.fleet_sessions
+        \\  (id, fleet_id, context_json, checkpoint_at, created_at, updated_at)
         \\VALUES ($1, $2, $3, 0, 0, 0)
-        \\ON CONFLICT (agent_id) DO UPDATE
+        \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET context_json = EXCLUDED.context_json
-    , .{ session_id, agent_id, context_json });
+    , .{ session_id, fleet_id, context_json });
 }
 
-/// Delete agents for a workspace. Cascades to agent_sessions (FK).
-pub fn teardownAgents(conn: *pg.Conn, workspace_id: []const u8) void {
-    // Sessions first (FK to agents), then agents.
+/// Delete fleets for a workspace. Cascades to fleet_sessions (FK).
+pub fn teardownFleets(conn: *pg.Conn, workspace_id: []const u8) void {
+    // Sessions first (FK to fleets), then fleets.
     _ = conn.exec(
-        \\DELETE FROM core.agent_sessions s
-        \\USING core.agents z
-        \\WHERE s.agent_id = z.id
+        \\DELETE FROM core.fleet_sessions s
+        \\USING core.fleets z
+        \\WHERE s.fleet_id = z.id
         \\  AND z.workspace_id = $1
     , .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec(
-        "DELETE FROM core.agents WHERE workspace_id = $1",
+        "DELETE FROM core.fleets WHERE workspace_id = $1",
         .{workspace_id},
     ) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
@@ -232,7 +232,7 @@ pub fn seedPlatformProviderWithKey(
     try storeVaultJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.
-    const key_id = try id_format.generateAgentId(alloc);
+    const key_id = try id_format.generateFleetId(alloc);
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
@@ -256,7 +256,7 @@ pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
-    _ = conn.exec("DELETE FROM core.agent_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
 }
 
 // ── Shared DB connection ────────────────────────────────────────────────

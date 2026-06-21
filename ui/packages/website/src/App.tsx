@@ -9,7 +9,7 @@ import { HERO_PRIMARY_LABEL } from "./lib/marketing-copy";
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
  * stays lean. Vite code-splits each React.lazy import by default. */
-const Agents = lazy(() => import("./pages/Agents"));
+const Fleets = lazy(() => import("./pages/Fleets"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
@@ -42,8 +42,8 @@ export default function App() {
             <NavLink to="/" end className={NAV_LINK_CLASS}>
               home
             </NavLink>
-            <NavLink to="/agents" className={NAV_LINK_CLASS}>
-              agents
+            <NavLink to="/fleets" className={NAV_LINK_CLASS}>
+              fleets
             </NavLink>
             <a href="/#pricing" className={NAV_LINK_CLASS}>
               pricing
@@ -88,7 +88,7 @@ export default function App() {
              * Preserve the old URL for external links + indexed pages with a
              * client-side redirect to the anchor. */}
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
-            <Route path="/agents" element={<Agents />} />
+            <Route path="/fleets" element={<Fleets />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/_design-system" element={<DesignSystemGallery />} />

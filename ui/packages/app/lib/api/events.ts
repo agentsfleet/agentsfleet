@@ -1,18 +1,18 @@
 import { request } from "./client";
 import { requestWithRetry, type RetryOptions } from "./retry";
 
-// Operator-visible event rows from `core.agent_events`. Mirrors the
+// Operator-visible event rows from `core.fleet_events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
 // dashboard renders the same shape it queries.
 
-export type EventStatus = "received" | "processed" | "agent_error" | "gate_blocked";
+export type EventStatus = "received" | "processed" | "fleet_error" | "gate_blocked";
 export type EventType = "chat" | "webhook" | "cron" | "continuation";
 export type EventStatusValue = EventStatus | (string & {});
 export type EventTypeValue = EventType | (string & {});
 
 export type EventRow = {
   event_id: string;
-  agent_id: string;
+  fleet_id: string;
   workspace_id: string;
   actor: string;
   event_type: EventTypeValue;
@@ -39,7 +39,7 @@ export type EventsQuery = {
   cursor?: string;
   actor?: string;
   since?: string;
-  agent_id?: string;
+  fleet_id?: string;
   limit?: number;
 };
 
@@ -49,21 +49,21 @@ function buildQuery(opts?: EventsQuery): string {
   if (opts.cursor) params.set("cursor", opts.cursor);
   if (opts.actor) params.set("actor", opts.actor);
   if (opts.since) params.set("since", opts.since);
-  if (opts.agent_id) params.set("agent_id", opts.agent_id);
+  if (opts.fleet_id) params.set("fleet_id", opts.fleet_id);
   if (opts.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : "";
 }
 
-export async function listAgentEvents(
+export async function listFleetEvents(
   workspaceId: string,
-  agentId: string,
+  fleetId: string,
   token: string,
-  opts?: Omit<EventsQuery, "agent_id">,
+  opts?: Omit<EventsQuery, "fleet_id">,
   retry?: RetryOptions,
 ): Promise<EventsPage> {
   return requestWithRetry<EventsPage>(
-    `/v1/workspaces/${workspaceId}/agents/${agentId}/events${buildQuery(opts)}`,
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
     retry,
@@ -82,10 +82,10 @@ export async function listWorkspaceEvents(
   );
 }
 
-// Live progress frames published on `agent:{id}:activity` (Redis pub/sub),
+// Live progress frames published on `fleet:{id}:activity` (Redis pub/sub),
 // fanned out to subscribers as SSE messages by the backend handler. The
 // backend authoritatively shapes these — keep `FRAME_KIND` in sync with
-// the KIND_* constants in src/agent/activity_publisher.zig.
+// the KIND_* constants in src/agentsfleetd/fleet_runtime/activity_publisher.zig.
 export const FRAME_KIND = {
   EVENT_RECEIVED: "event_received",
   TOOL_CALL_STARTED: "tool_call_started",
@@ -125,9 +125,9 @@ export type LiveFrame =
 // Same-origin URL for the SSE stream. The path is intercepted by the
 // Next Route Handler at app/backend/.../events/stream/route.ts which
 // injects the api-audience Bearer token server-side.
-export function streamAgentEventsUrl(workspaceId: string, agentId: string): string {
+export function streamFleetEventsUrl(workspaceId: string, fleetId: string): string {
   return (
     `/backend/v1/workspaces/${encodeURIComponent(workspaceId)}` +
-    `/agents/${encodeURIComponent(agentId)}/events/stream`
+    `/fleets/${encodeURIComponent(fleetId)}/events/stream`
   );
 }

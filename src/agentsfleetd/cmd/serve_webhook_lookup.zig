@@ -1,16 +1,16 @@
-//! Webhook-sig lookup: resolves Bearer token + per-agent HMAC scheme/secret
-//! for the webhook_sig middleware. Lives in `src/cmd/` so it can import both
-//! `src/auth/` and `src/agent/`.
+//! Webhook-sig lookup: resolves Bearer token + per-fleet HMAC scheme/secret
+//! for the webhook_sig middleware. Lives in `src/agentsfleetd/cmd/` so it can
+//! import both auth middleware and the fleet runtime registry.
 //!
-//! Secret resolution: each agent declares one or more `triggers[].source`
+//! Secret resolution: each fleet declares one or more `triggers[].source`
 //! entries (e.g. `github`). Each names an HMAC scheme and a workspace
-//! credential. The credential is stored at vault key `agent:<source>`
+//! credential. The credential is stored at vault key `fleet:<source>`
 //! (overridable via `triggers[].credential_name`) and decodes to a JSON
 //! object whose `webhook_secret` field is the HMAC key.
 //!
-//! Multi-webhook-per-agent URL routing (`{source}` segment in the webhook
+//! Multi-webhook-per-fleet URL routing (`{source}` segment in the webhook
 //! URL) lands with the install + list response slice. Until then the URL
-//! carries `agent_id` alone and the queries below pull the first webhook
+//! carries `fleet_id` alone and the queries below pull the first webhook
 //! trigger from the `triggers[]` array.
 
 const std = @import("std");
@@ -18,8 +18,8 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const crypto_store = @import("../secrets/crypto_store.zig");
 const vault = @import("../state/vault.zig");
-const credential_key = @import("../agent/credential_key.zig");
-const webhook_verify = @import("../agent/webhook_verify.zig");
+const credential_key = @import("../fleet_runtime/credential_key.zig");
+const webhook_verify = @import("../fleet_runtime/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const logging = @import("log");
 
@@ -33,13 +33,13 @@ const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
 pub fn lookup(
     pool: *pg.Pool,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?LookupResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchHmacRow(conn, alloc, agent_id)) orelse return null;
+    const row_data = (try fetchHmacRow(conn, alloc, fleet_id)) orelse return null;
     defer freeHmacRow(alloc, row_data);
 
     var scheme: ?SignatureScheme = null;
@@ -67,17 +67,17 @@ pub fn lookup(
 }
 
 /// Svix middleware lookup. Fetches the Clerk-style `signature.secret_ref` from
-/// the agent's config_json and resolves it to the `whsec_<base64>` secret via
+/// the fleet's config_json and resolves it to the `whsec_<base64>` secret via
 /// the workspace vault. Middleware handles prefix stripping + base64 decoding.
 pub fn lookupSvix(
     pool: *pg.Pool,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     alloc: std.mem.Allocator,
 ) anyerror!?SvixLookupResult {
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchSvixRow(conn, alloc, agent_id)) orelse return null;
+    const row_data = (try fetchSvixRow(conn, alloc, fleet_id)) orelse return null;
     defer freeSvixRow(alloc, row_data);
 
     const sig_json = row_data.signature_json orelse return .{ .secret = null };
@@ -119,7 +119,7 @@ const SvixRow = struct {
     signature_json: ?[]const u8,
 };
 
-fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !?HmacRow {
+fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, fleet_id: []const u8) !?HmacRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->>'source'
@@ -130,8 +130,8 @@ fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !
         \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
-        \\FROM core.agents z WHERE z.id = $1::uuid
-    , .{agent_id}));
+        \\FROM core.fleets z WHERE z.id = $1::uuid
+    , .{fleet_id}));
     defer q.deinit();
 
     const row = try q.next() orelse return null;
@@ -147,15 +147,15 @@ fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !
     };
 }
 
-fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, agent_id: []const u8) !?SvixRow {
+fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, fleet_id: []const u8) !?SvixRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT z.workspace_id::text,
         \\       (SELECT trig->'signature'
         \\          FROM jsonb_array_elements(z.config_json->'x-agentsfleet'->'triggers') trig
         \\          WHERE trig->>'type' = 'webhook'
         \\          LIMIT 1)
-        \\FROM core.agents z WHERE z.id = $1::uuid
-    , .{agent_id}));
+        \\FROM core.fleets z WHERE z.id = $1::uuid
+    , .{fleet_id}));
     defer q.deinit();
 
     const row = try q.next() orelse return null;

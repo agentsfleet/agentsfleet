@@ -141,7 +141,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     const final_name = insertAndProvision(conn, hx, workspace_id, tenant_id, name, now_ms) orelse return;
 
-    log.info("workspace_created", .{
+    log.debug("workspace_created", .{
         .workspace_id = workspace_id,
         .tenant_id = tenant_id,
         .name = final_name,

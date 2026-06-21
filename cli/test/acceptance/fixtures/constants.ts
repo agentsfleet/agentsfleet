@@ -32,7 +32,7 @@ export const AGENTSFLEET_STATUS = {
 
 // `terminated` is a third post-kill resting state alongside `killed` /
 // `errored`. The lifecycle suite accepts any of the three after
-// `killAgent`. Omitting it would land terminated agents in the
+// `killFleet`. Omitting it would land terminated fleets in the
 // teardown `live` list, where the kill retry trips UZ-AGT-010.
 export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.killed,
@@ -40,7 +40,7 @@ export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.terminated,
 ];
 
-export const PLATFORM_OPS_SAMPLE_DIR = "samples/fixtures/platform-ops-sample";
+export const PLATFORM_OPS_SAMPLE_DIR = "tests/fixtures/fleetbundle/platform-ops";
 
 export const LOGIN_POLL_MS = 500;
 
@@ -74,9 +74,9 @@ export const API_URL_DEV = "https://api-dev.agentsfleet.net";
 export const DASHBOARD_URL_PROD = "https://app.agentsfleet.net";
 export const DASHBOARD_URL_DEV = "https://app-dev.agentsfleet.net";
 
-// Per-process acceptance run identifier — every agent created by this
+// Per-process acceptance run identifier — every fleet created by this
 // run is named `${ACCEPTANCE_RUN_PREFIX}-…`; every list/teardown
 // assertion filters by it. Eliminates shared-DEV-tenant contention:
-// the assertion becomes "no agents from MY run remain" instead of
+// the assertion becomes "no fleets from MY run remain" instead of
 // "the tenant is globally empty" (which is never true).
 export const ACCEPTANCE_RUN_PREFIX = `acc-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;

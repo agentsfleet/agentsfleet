@@ -1,5 +1,5 @@
-// All agent-scoped paths are workspace-scoped. Identity (workspace_id,
-// agent_id, grant_id) goes in the URL path; query params are reserved
+// All fleet-scoped paths are workspace-scoped. Identity (workspace_id,
+// fleet_id, grant_id) goes in the URL path; query params are reserved
 // for pagination (page, limit, cursor) and search.
 
 export const WORKSPACES_PATH = "/v1/workspaces/";
@@ -14,56 +14,67 @@ export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 
+// First-party Fleet template catalog — global (not workspace-scoped),
+// metadata only. Mirrors the dashboard's `listFleetTemplates`. The
+// SKILL.md/TRIGGER.md content is fetched server-side at snapshot time.
+export const FLEET_BUNDLES_PATH = "/v1/fleets/bundles";
+
 // Healthz body envelope — the server's `{status: "ok"}` response.
 export const HEALTHZ_STATUS_OK = "ok";
 
 const enc = (s: string): string => encodeURIComponent(s);
 
-// Workspace-scoped agent collection.
-export const wsAgentsPath = (wsId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents`;
+// Workspace-scoped fleet collection.
+export const wsFleetsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets`;
 
-// Workspace-scoped single agent.
-export const wsAgentPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}`;
+// Workspace-scoped single fleet.
+export const wsFleetPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}`;
 
-// Workspace-scoped per-agent chat messages (POST → 202 with event_id).
-export const wsAgentMessagesPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/messages`;
+// Workspace-scoped Fleet Bundle snapshot import (POST → content-addressed
+// snapshot with bundle_id + parsed requirements). The server fetches and
+// validates the source for `template`/`github` kinds.
+export const wsFleetBundleSnapshotsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/bundles/snapshots`;
 
-// Workspace-scoped per-agent event history.
-export const wsAgentEventsPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/events`;
+// Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
+export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/messages`;
 
-// Workspace-scoped per-agent SSE live tail.
-export const wsAgentEventsStreamPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/events/stream`;
+// Workspace-scoped per-fleet event history.
+export const wsFleetEventsPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events`;
 
-// Workspace-scoped per-agent durable-memory entries (read-only).
-export const wsAgentMemoriesPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/memories`;
+// Workspace-scoped per-fleet SSE live tail.
+export const wsFleetEventsStreamPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/events/stream`;
+
+// Workspace-scoped per-fleet durable-memory entries (read-only).
+export const wsFleetMemoriesPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/memories`;
 
 // Workspace-aggregate event history.
 export const wsEventsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/events`;
 
-// Workspace-scoped credentials vault (workspace-level, not per-agent).
+// Workspace-scoped credentials vault (workspace-level, not per-fleet).
 export const wsCredentialsPath = (wsId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/credentials`;
 
 export const wsCredentialPath = (wsId: string, name: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/credentials/${enc(name)}`;
 
-// Workspace-scoped integration grant routes (per agent).
-export const wsGrantRequestPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/integration-requests`;
+// Workspace-scoped integration grant routes (per fleet).
+export const wsGrantRequestPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-requests`;
 
-export const wsGrantsListPath = (wsId: string, agentId: string): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/integration-grants`;
+export const wsGrantsListPath = (wsId: string, fleetId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-grants`;
 
 export const wsGrantPath = (
   wsId: string,
-  agentId: string,
+  fleetId: string,
   grantId: string,
 ): string =>
-  `${WORKSPACES_PATH}${enc(wsId)}/agents/${enc(agentId)}/integration-grants/${enc(grantId)}`;
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}/integration-grants/${enc(grantId)}`;

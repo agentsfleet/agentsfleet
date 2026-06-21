@@ -35,6 +35,12 @@ const S_CONFIG_ALLOC_FAILED = "startup.config_alloc_failed";
 
 pub const CLERK_WEBHOOK_SECRET_ENV = "CLERK_WEBHOOK_SECRET";
 pub const APPROVAL_SIGNING_SECRET_ENV = "APPROVAL_SIGNING_SECRET";
+// Cloudflare R2 credentials (vault-fed at deploy). Read here at boot and passed
+// to the env-agnostic R2 client as a Config.
+pub const R2_ACCOUNT_ID_ENV = "R2_ACCOUNT_ID";
+pub const R2_ACCESS_KEY_ID_ENV = "R2_ACCESS_KEY_ID";
+pub const R2_SECRET_ACCESS_KEY_ENV = "R2_SECRET_ACCESS_KEY";
+pub const R2_BUCKET_ENV = "R2_BUCKET";
 
 /// Fail-closed resolution for secrets. Returns an owned copy the caller must
 /// free, `null` when the var is genuinely unset, or propagates

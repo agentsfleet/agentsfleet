@@ -12,7 +12,7 @@
  *   - invalid-format identifier rejected client-side, no network
  *   - missing-required-arg sweep over REQUIRES_POSITIONAL_ARG
  *
- * WS-E #C1 regression fires after every `runAgentctl` call: the minted
+ * WS-E #C1 regression fires after every `runFleetctl` call: the minted
  * JWT must not appear in stdout/stderr.
  *
  * Live-only: the entire suite registers only when
@@ -37,7 +37,7 @@ import {
   REQUIRES_POSITIONAL_ARG,
 } from "./fixtures/command-matrix.ts";
 import { ACCEPTANCE_RUN_PREFIX, TERMINAL_STATUSES, UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import {
   expectInvalidArgValue,
@@ -52,12 +52,12 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
-  killAgent,
-  resumeAgent,
-  stopAgent,
+  killFleet,
+  resumeFleet,
+  stopFleet,
   expectStatus,
 } from "./fixtures/lifecycle.ts";
 
@@ -114,7 +114,7 @@ if (!isLive) {
       extraEnv?: Record<string, string>,
     ): Promise<RunResult> {
       const composed = extraEnv ? { ...env, ...extraEnv } : env;
-      const result = await runAgentctl(args, { env: composed });
+      const result = await runFleetctl(args, { env: composed });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -141,31 +141,31 @@ if (!isLive) {
 
     afterAll(async () => {
       if (env && workspaceId) {
-        try { await cleanWorkspaceAgents(env, { workspaceId }); } catch { /* best-effort teardown */ }
+        try { await cleanWorkspaceFleets(env, { workspaceId }); } catch { /* best-effort teardown */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // Full lifecycle walk against a freshly-installed agent.
+    // Full lifecycle walk against a freshly-installed fleet.
     describe("lifecycle walk", () => {
-      let agentId: string = "";
+      let fleetId: string = "";
 
       it("install platform-ops bundle", async () => {
-        const installed = await installPlatformOpsAgent({ env });
-        assert.ok(installed.id || installed.agent_id, `install response missing id: ${JSON.stringify(installed)}`);
-        const id = installed.id ?? installed.agent_id;
+        const installed = await installPlatformOpsFleet({ env });
+        assert.ok(installed.id || installed.fleet_id, `install response missing id: ${JSON.stringify(installed)}`);
+        const id = installed.id ?? installed.fleet_id;
         if (!id) throw new Error("install missing id");
-        agentId = id;
+        fleetId = id;
       });
 
-      // Per-agent read-only sweep — runs against the live agentId so
-      // commands like `grant list` (which require `--agent <id>`) get
+      // Per-fleet read-only sweep — runs against the live fleetId so
+      // commands like `grant list` (which require `--fleet <id>`) get
       // exercised inside the lifecycle suite instead of forcing
       // fixture state into the workspace-wide READ_ONLY_COMMANDS table.
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
-        const label = `${row.argsHead.join(" ")} --agent <id>`;
+        const label = `${row.argsHead.join(" ")} --fleet <id>`;
         it(`${label} exits 0 with parseable JSON`, async () => {
-          const args = [...row.argsHead, "--agent", agentId, "--json"];
+          const args = [...row.argsHead, "--fleet", fleetId, "--json"];
           const result = await runWithEnv(args);
           // Strict: a 503 here means api-dev's memory backend (the
           // memory_runtime Postgres role/grant from schema 002+013) is not
@@ -182,16 +182,16 @@ if (!isLive) {
       }
 
       it("status reports active", async () => {
-        const payload = await expectStatus(env, agentId, ["active", "starting", "running"]);
+        const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
         assert.equal(typeof payload.status, "string");
       });
 
-      it("status exposes per-agent events_processed and budget_used_nanos", async () => {
-        // End-to-end: the real server aggregates these from core.agent_events
-        // and agent_execution_telemetry, and the CLI surfaces them in the list
-        // row that backs `agentsfleet status`. A freshly-installed agent may
+      it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
+        // End-to-end: the real server aggregates these from core.fleet_events
+        // and fleet_execution_telemetry, and the CLI surfaces them in the list
+        // row that backs `agentsfleet status`. A freshly-installed fleet may
         // have 0 of each — the contract is the fields exist and are numeric.
-        const payload = await expectStatus(env, agentId, ["active", "starting", "running"]);
+        const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
         assert.equal(
           typeof payload.events_processed,
           "number",
@@ -208,10 +208,10 @@ if (!isLive) {
 
       it("logs --json returns a parseable envelope", async () => {
         // `--since` lives on `events`, NOT `logs` (`logs` only takes
-        // `--agent`, `--limit`, `--cursor`); commander would exit 1 on
+        // `--fleet`, `--limit`, `--cursor`); commander would exit 1 on
         // an unknown flag. The recency bound here was misplaced — the
-        // intent is just to exercise the read path on a real agent.
-        const result = await runWithEnv(["logs", "--agent", agentId, "--json"]);
+        // intent is just to exercise the read path on a real fleet.
+        const result = await runWithEnv(["logs", "--fleet", fleetId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
@@ -225,24 +225,24 @@ if (!isLive) {
       });
 
       it("stop → resume → kill walks state", async () => {
-        await stopAgent(env, agentId);
-        await expectStatus(env, agentId, ["paused", "stopped"]);
-        await resumeAgent(env, agentId);
-        await expectStatus(env, agentId, ["active", "running", "starting"]);
-        await killAgent(env, agentId);
-        await expectStatus(env, agentId, ["killed", "errored", "terminated"]);
+        await stopFleet(env, fleetId);
+        await expectStatus(env, fleetId, ["paused", "stopped"]);
+        await resumeFleet(env, fleetId);
+        await expectStatus(env, fleetId, ["active", "running", "starting"]);
+        await killFleet(env, fleetId);
+        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
       }, 30_000);
 
-      it("kill is idempotent on a terminal agent", async () => {
-        const result = await runWithEnv(["kill", agentId, "--json"]);
+      it("kill is idempotent on a terminal fleet", async () => {
+        const result = await runWithEnv(["kill", fleetId, "--json"]);
         // Either succeed silently, surface an already-terminal stem, or report
-        // not-found after the terminal transition hides the agent from writes.
+        // not-found after the terminal transition hides the fleet from writes.
         // What's not acceptable is re-emitting `status: active` later. The
         // status assertion below catches that.
         if (result.code !== 0) {
           assert.match(result.stderr + result.stdout, /UZ-AGT-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
         }
-        await expectStatus(env, agentId, ["killed", "errored", "terminated"]);
+        await expectStatus(env, fleetId, ["killed", "errored", "terminated"]);
       });
     });
 
@@ -265,16 +265,16 @@ if (!isLive) {
     });
 
     // Prefix-scoped post-teardown emptiness — shared DEV tenants carry
-    // residual agents, so the contract is "none of MY run's agents
+    // residual fleets, so the contract is "none of MY run's fleets
     // remain alive", not "the workspace is globally empty". Terminal
     // (killed/errored/terminated) rows still surface in the list and
     // prove teardown worked — filter them out before asserting.
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      it(`agent list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
+      it(`fleet list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await runWithEnv(["list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
@@ -285,7 +285,7 @@ if (!isLive) {
           !TERMINAL_STATUSES.includes(z.status ?? ""),
         );
         assert.equal(mineLive.length, 0,
-          `expected zero live agents starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mineLive.length}: ${JSON.stringify(mineLive)}`);
+          `expected zero live fleets starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mineLive.length}: ${JSON.stringify(mineLive)}`);
       });
     });
 
@@ -302,8 +302,8 @@ if (!isLive) {
     });
 
     // Invalid-format ID rejected client-side; no network call fires.
-    // Today only workspace use/delete run `validateRequiredId`. The agent /
-    // agent / grant handlers send invalid strings straight to the API —
+    // Today only workspace use/delete run `validateRequiredId`. The fleet /
+    // fleet / grant handlers send invalid strings straight to the API —
     // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
     // remaining ID-taking handlers, then this sweep widens automatically).
     describe("invalid-format ID — client-side rejection, no network", () => {
@@ -324,7 +324,7 @@ if (!isLive) {
               AGENTSFLEET_STATE_DIR: stateDir,
               NO_COLOR: "1",
             });
-            const result = await runAgentctl([...row.args, sample, "--json"], { env: unroutable });
+            const result = await runFleetctl([...row.args, sample, "--json"], { env: unroutable });
             assert.notEqual(result.code, 0, `expected non-zero exit; stdout=${result.stdout} stderr=${result.stderr}`);
             assertNoConnectionError(result, [...row.args, sample]);
             assertNoSecretLeak(result, sessionJwt);
@@ -349,20 +349,20 @@ if (!isLive) {
     });
 
     // Coverage check — every COMMAND_GROUP exercised somewhere in this suite
-    // (workspace-wide read-only sweep + per-agent sweep together cover
-    // workspace/agent/grant/tenant/billing/agent).
+    // (workspace-wide read-only sweep + per-fleet sweep together cover
+    // workspace/fleet/grant/tenant/billing/fleet).
     it("touch every COMMAND_GROUP via the read-only sweep", () => {
       const exercised = new Set<string>();
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
         if (!head) continue;
-        if (head === "list" || head === "doctor") exercised.add("agent");
+        if (head === "list" || head === "doctor") exercised.add("fleet");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {
         if (row.group) exercised.add(row.group);
       }
-      const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "agent");
+      const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "fleet");
       assert.deepEqual(missing, [], `command groups missing from read-only sweep: ${missing.join(",")}`);
     });
   });

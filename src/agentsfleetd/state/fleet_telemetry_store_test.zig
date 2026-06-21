@@ -1,0 +1,121 @@
+// Integration tests for fleet_telemetry_store.zig.
+
+const std = @import("std");
+const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const store = @import("fleet_telemetry_store.zig");
+const tenant_provider = @import("tenant_provider.zig");
+const base = @import("../db/test_fixtures.zig");
+const uc1 = @import("../db/test_fixtures_uc1.zig");
+const MS_PER_SECOND = 1000;
+
+const ALLOC = std.testing.allocator;
+const WS_A = "0195b4ba-8d3a-7f13-8abc-aa1900000001";
+const AGENTSFLEET_A = "fleet-telem-a";
+const PLATFORM_MODEL = tenant_provider.PLATFORM_DEFAULT_MODEL;
+
+fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, recorded_at: i64) !void {
+    try store.insertTelemetry(conn, ALLOC, .{
+        .tenant_id = base.TEST_TENANT_ID,
+        .workspace_id = workspace_id,
+        .fleet_id = fleet_id,
+        .event_id = event_id,
+        .charge_type = .stage,
+        .posture = .platform,
+        .model = PLATFORM_MODEL,
+        .credit_deducted_nanos = 2,
+        .recorded_at = recorded_at,
+    });
+}
+
+fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, recorded_at: i64) !void {
+    try store.insertTelemetry(conn, ALLOC, .{
+        .tenant_id = base.TEST_TENANT_ID,
+        .workspace_id = workspace_id,
+        .fleet_id = fleet_id,
+        .event_id = event_id,
+        .charge_type = .receive,
+        .posture = .platform,
+        .model = PLATFORM_MODEL,
+        .credit_deducted_nanos = 1,
+        .recorded_at = recorded_at,
+    });
+}
+
+fn teardownTelemetry(conn: *pg.Conn, workspace_id: []const u8) void {
+    _ = conn.exec("DELETE FROM core.fleet_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+// ── Insert: idempotent on (event_id, charge_type) ───────────────────────────
+
+test "insert_telemetry_idempotent_on_event_charge" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_A);
+    defer uc1.teardown(db_ctx.conn, WS_A);
+    defer teardownTelemetry(db_ctx.conn, WS_A);
+
+    const evt = "evt-idem-aa19-0001";
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND); // duplicate — no-op
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry WHERE workspace_id = $1 AND event_id = $2",
+        .{ WS_A, evt },
+    ));
+    defer q.deinit();
+    const row = (try q.next()).?;
+    try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+}
+
+// ── Insert: receive + stage rows coexist for the same event_id ──────────────
+
+test "insert_telemetry_two_rows_per_event" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_A);
+    defer uc1.teardown(db_ctx.conn, WS_A);
+    defer teardownTelemetry(db_ctx.conn, WS_A);
+
+    const evt = "evt-two-aa19-0001";
+    try seedReceiveRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
+    try seedStageRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, 2000);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT COUNT(*)::BIGINT FROM core.fleet_execution_telemetry WHERE event_id = $1",
+        .{evt},
+    ));
+    defer q.deinit();
+    const row = (try q.next()).?;
+    try std.testing.expectEqual(@as(i64, 2), try row.get(i64, 0));
+}
+
+// ── Insert: receive row has NULL token counts ───────────────────────────────
+
+test "insert_receive_has_null_tokens_and_wall_ms" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_A);
+    defer uc1.teardown(db_ctx.conn, WS_A);
+    defer teardownTelemetry(db_ctx.conn, WS_A);
+
+    const evt = "evt-rcv-aa19-0001";
+    try seedReceiveRow(db_ctx.conn, WS_A, AGENTSFLEET_A, evt, MS_PER_SECOND);
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT token_count_input, token_count_output, wall_ms
+        \\FROM core.fleet_execution_telemetry
+        \\WHERE event_id = $1 AND charge_type = 'receive'
+    , .{evt}));
+    defer q.deinit();
+    const row = (try q.next()).?;
+    try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 0));
+    try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 1));
+    try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 2));
+}

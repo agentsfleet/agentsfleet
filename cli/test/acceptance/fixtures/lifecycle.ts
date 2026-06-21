@@ -1,63 +1,63 @@
 /**
  * Shared lifecycle action helpers — stop / resume / kill / expectStatus.
  *
- * Each helper composes a `runAgentctl` call, asserts exit 0, and
+ * Each helper composes a `runFleetctl` call, asserts exit 0, and
  * (for status) returns the parsed JSON envelope.
  */
 
-import { runAgentctl } from "./cli.js";
+import { runFleetctl } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
 
-export interface AgentRow {
+export interface FleetRow {
   readonly id?: string;
-  readonly agent_id?: string;
+  readonly fleet_id?: string;
   readonly name?: string;
   readonly status?: string;
   readonly workspace_id?: string;
   readonly [key: string]: unknown;
 }
 
-async function lifecycleAction(verb: string, agentId: string, env: Env): Promise<unknown> {
-  const result = await runAgentctl([verb, agentId, "--json"], { env });
+async function lifecycleAction(verb: string, fleetId: string, env: Env): Promise<unknown> {
+  const result = await runFleetctl([verb, fleetId, "--json"], { env });
   if (result.code !== 0) {
-    throw new Error(`${verb} ${agentId} exited ${result.code}: ${result.stderr.trim()}`);
+    throw new Error(`${verb} ${fleetId} exited ${result.code}: ${result.stderr.trim()}`);
   }
   return result.stdout.trim() ? JSON.parse(result.stdout.trim()) : null;
 }
 
-export const stopAgent = (env: Env, id: string): Promise<unknown> => lifecycleAction("stop", id, env);
-export const resumeAgent = (env: Env, id: string): Promise<unknown> => lifecycleAction("resume", id, env);
-export const killAgent = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
+export const stopFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("stop", id, env);
+export const resumeFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("resume", id, env);
+export const killFleet = (env: Env, id: string): Promise<unknown> => lifecycleAction("kill", id, env);
 
-export async function getStatus(env: Env, agentId: string): Promise<AgentRow> {
-  // `agentsfleet status` ignores positional args and lists all agents in the
+export async function getStatus(env: Env, fleetId: string): Promise<FleetRow> {
+  // `agentsfleet status` ignores positional args and lists all fleets in the
   // current workspace (server returns `{items: [...], total}`). Filter
-  // client-side. Surface in Discovery: the CLI lacks a per-agent GET-by-id
+  // client-side. Surface in Discovery: the CLI lacks a per-fleet GET-by-id
   // command — adding one belongs in a follow-on CLI hygiene PR.
-  const result = await runAgentctl(["list", "--json"], { env });
+  const result = await runFleetctl(["list", "--json"], { env });
   if (result.code !== 0) {
-    throw new Error(`list (for status of ${agentId}) exited ${result.code}: ${result.stderr.trim()}`);
+    throw new Error(`list (for status of ${fleetId}) exited ${result.code}: ${result.stderr.trim()}`);
   }
   const payload = JSON.parse(result.stdout.trim() || "{}") as { items?: unknown };
-  const items: AgentRow[] = Array.isArray(payload.items) ? (payload.items as AgentRow[]) : [];
-  const match = items.find((z) => z.id === agentId || z.agent_id === agentId);
+  const items: FleetRow[] = Array.isArray(payload.items) ? (payload.items as FleetRow[]) : [];
+  const match = items.find((z) => z.id === fleetId || z.fleet_id === fleetId);
   if (!match) {
-    throw new Error(`agent ${agentId} not found in workspace list: ${result.stdout.slice(0, 400)}`);
+    throw new Error(`fleet ${fleetId} not found in workspace list: ${result.stdout.slice(0, 400)}`);
   }
   return match;
 }
 
 export async function expectStatus(
   env: Env,
-  agentId: string,
+  fleetId: string,
   expected: string | ReadonlyArray<string>,
-): Promise<AgentRow> {
-  const payload = await getStatus(env, agentId);
+): Promise<FleetRow> {
+  const payload = await getStatus(env, fleetId);
   const actual = payload.status;
   const allowed: ReadonlyArray<string> = Array.isArray(expected) ? expected : [expected as string];
   if (actual === undefined || !allowed.includes(actual)) {
-    throw new Error(`expected status ${allowed.join("|")}, got ${actual} for ${agentId}`);
+    throw new Error(`expected status ${allowed.join("|")}, got ${actual} for ${fleetId}`);
   }
   return payload;
 }

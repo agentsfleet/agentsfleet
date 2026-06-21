@@ -82,7 +82,7 @@ fn testMemoryForwarder(c: *client_mod) forwarders.MemoryForwarder {
         .alloc = testing.allocator,
         .cp = c,
         .runner_token = "agt_rtest",
-        .agent_id = "z_test",
+        .fleet_id = "z_test",
         .lease_id = "lease_test",
         .fencing_token = 7,
         .deadline_ms = client_mod.ACTIVITY_DEADLINE_MS,

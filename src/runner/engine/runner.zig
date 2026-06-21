@@ -1,18 +1,18 @@
-//! NullClaw runner module — bridges the runner handler to agent execution.
+//! NullClaw runner module — bridges the runner handler to fleet execution.
 //!
-//! The runner is agent-agnostic: it receives a NullClaw config, tool spec,
-//! and message from the RPC layer, builds the runtime, executes the agent,
+//! The runner is fleet-agnostic: it receives a NullClaw config, tool spec,
+//! and message from the RPC layer, builds the runtime, executes the fleet,
 //! and returns an ExecutionResult. It does NOT know about echo/scout/warden.
 //!
 //! Sandbox enforcement: Landlock (filesystem) and cgroups (memory/CPU) apply
 //! at the process level. NullClaw's tools run within this boundary.
 //!
 //! Call chain:
-//!   runner.execute(alloc, workspace_path, agent_config, tools_spec, message, context, policy)
+//!   runner.execute(alloc, workspace_path, fleet_config, tools_spec, message, context, policy)
 //!     -> Config from params + env defaults
 //!     -> build tool set from spec
-//!     -> Agent.fromConfig()
-//!     -> agent.runSingle(composed_message)
+//!     -> Fleet.fromConfig()
+//!     -> fleet.runSingle(composed_message)
 //!     -> capture result
 //!   <- ExecutionResult
 
@@ -22,7 +22,7 @@ const logging = @import("log");
 const nullclaw = @import("nullclaw");
 
 const Config = nullclaw.config.Config;
-const Agent = nullclaw.agent.Agent;
+const Fleet = nullclaw.agent.Agent;
 const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
 const observability = nullclaw.observability;
@@ -40,34 +40,34 @@ const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.runner);
 
-const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
-const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_EXEC_RUNNER_FLEET_RUN = client_errors.ERR_EXEC_RUNNER_FLEET_RUN;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
 const S_SECRETS_LLM_API_KEY = "${secrets.llm.api_key}";
 
 pub const RunnerError = error{
     InvalidConfig,
-    AgentInitFailed,
-    AgentRunFailed,
+    FleetInitFailed,
+    FleetRunFailed,
     Timeout,
     OutOfMemory,
 };
 
-/// Execute a NullClaw agent from RPC parameters.
+/// Execute a NullClaw fleet from RPC parameters.
 ///
 /// This is the main entry point called by the handler. It:
-/// 1. Validates required params (message, agent_config with model)
-/// 2. Builds a NullClaw Config from env defaults + agent_config overrides
+/// 1. Validates required params (message, fleet_config with model)
+/// 2. Builds a NullClaw Config from env defaults + fleet_config overrides
 /// 3. Builds tools from the tools spec array
 /// 4. Composes the message with context fields
-/// 5. Runs the agent synchronously
+/// 5. Runs the fleet synchronously
 /// 6. Returns an ExecutionResult with content, tokens, wall time
 pub fn execute(
     env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
-    agent_config: ?std.json.Value,
+    fleet_config: ?std.json.Value,
     tools_spec: ?std.json.Value,
     message: ?[]const u8,
     context: ?std.json.Value,
@@ -86,10 +86,10 @@ pub fn execute(
 
     const start = clock.nowMillis();
 
-    const result = executeInner(env_map, alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
+    const result = executeInner(env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
-        log.err("failed", .{
+        log.err("runner_execute_failed", .{
             .error_code = errorCodeForFailure(failure),
             .err = @errorName(err),
             .wall_seconds = elapsed,
@@ -99,7 +99,7 @@ pub fn execute(
 
     const elapsed = elapsedSeconds(start);
 
-    log.info("done", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
+    log.debug("runner_execute_completed", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
 
     return .{
         .content = result.content,
@@ -120,17 +120,17 @@ const InnerResult = struct {
 };
 
 /// Cumulative split mapping at the engine boundary: prompt-side → input,
-/// completion-side → output. Cached-input stays 0 downstream until the agent
+/// completion-side → output. Cached-input stays 0 downstream until the fleet
 /// layer surfaces cache reads separately from prompt tokens.
-pub fn usageSplits(agent: *const Agent) struct { input: u64, output: u64 } {
-    return .{ .input = agent.promptTokensUsed(), .output = agent.completionTokensUsed() };
+pub fn usageSplits(fleet: *const Fleet) struct { input: u64, output: u64 } {
+    return .{ .input = fleet.promptTokensUsed(), .output = fleet.completionTokensUsed() };
 }
 
 fn executeInner(
     env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
-    agent_config: ?std.json.Value,
+    fleet_config: ?std.json.Value,
     tools_spec: ?std.json.Value,
     message: []const u8,
     context: ?std.json.Value,
@@ -138,17 +138,17 @@ fn executeInner(
     progress_fd: ?std.posix.fd_t,
     hydrated_memory: []const protocol.MemoryDelta,
 ) !InnerResult {
-    // 1. Build config from env defaults + agent_config overrides.
+    // 1. Build config from env defaults + fleet_config overrides.
     var cfg = Config.load(alloc) catch {
-        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
-        return RunnerError.AgentInitFailed;
+        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+        return RunnerError.FleetInitFailed;
     };
     defer cfg.deinit();
     cfg.workspace_dir = workspace_path;
 
-    // Apply agent_config overrides (model, temperature, max_tokens, api_key).
-    if (agent_config) |ac| {
-        applyAgentConfig(&cfg, ac);
+    // Apply fleet_config overrides (model, temperature, max_tokens, api_key).
+    if (fleet_config) |ac| {
+        applyFleetConfig(&cfg, ac);
         // Inject api_key from RPC payload into NullClaw Config so the
         // runner never reads ANTHROPIC_API_KEY (or any other provider
         // key) from the process environment.
@@ -163,12 +163,12 @@ fn executeInner(
     // 2. Build provider (real LLM bundle, or a stub in test builds).
     var provider_bundle: runner_helpers.ProviderBundle = .{};
     defer provider_bundle.deinit();
-    const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.AgentInitFailed;
+    const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.FleetInitFailed;
 
     // 3. Build tools from spec (or allTools as fallback).
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
-        log.err("tool_build_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
-        return RunnerError.AgentInitFailed;
+        log.err("tool_build_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+        return RunnerError.FleetInitFailed;
     };
     defer tools_mod.deinitTools(alloc, tools);
 
@@ -188,12 +188,12 @@ fn executeInner(
     var capturer = makeCapturer(progress_fd, mem_opt, alloc);
 
     // 5. Observer + live-tail sink. With a progress fd, the redacting Adapter
-    // is the agent's observer AND per-token stream callback so tool-call and
+    // is the fleet's observer AND per-token stream callback so tool-call and
     // response-chunk frames stream to the parent; without one, fall back to the
     // env-selected log/noop observer. `writer`/`adapter` are stack-owned here
     // because the Adapter's observer vtable captures `&adapter` for the run.
     var obs_runtime = runner_observer.init(env_map);
-    var secrets_list = collectSecrets(agent_config);
+    var secrets_list = collectSecrets(fleet_config);
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var writer: runner_progress.ProgressWriter = undefined;
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
@@ -206,32 +206,32 @@ fn executeInner(
         if (policy) |p| adapter.memory_checkpoint_every = p.context.memory_checkpoint_every;
     }
 
-    // 6. Create agent.
-    var agent = Agent.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
-        log.err("agent_init_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
-        return RunnerError.AgentInitFailed;
+    // 6. Create fleet.
+    var fleet = Fleet.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
+        log.err("fleet_init_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
+        return RunnerError.FleetInitFailed;
     };
-    defer agent.deinit();
+    defer fleet.deinit();
     if (progress_fd != null) {
         const sc = adapter.streamCallback();
-        agent.stream_callback = sc.cb;
-        agent.stream_ctx = sc.ctx;
-        adapter.agent = &agent; // usage frames read the cumulative split accessors
+        fleet.stream_callback = sc.cb;
+        fleet.stream_ctx = sc.ctx;
+        adapter.fleet = &fleet; // usage frames read the cumulative split accessors
     }
 
     // 7. Compose message with context fields.
     const composed = composeMessage(alloc, message, context) catch {
-        log.err("message_compose_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_RUN });
-        return RunnerError.AgentRunFailed;
+        log.err("message_compose_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN });
+        return RunnerError.FleetRunFailed;
     };
     defer if (composed.ptr != message.ptr) alloc.free(composed);
 
-    // 8. Run agent + redact terminal reply (see runner_helpers).
-    const response = agent.runSingle(composed) catch {
-        log.err("agent_run_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_RUN });
-        return RunnerError.AgentRunFailed;
+    // 8. Run fleet + redact terminal reply (see runner_helpers).
+    const response = fleet.runSingle(composed) catch {
+        log.err("fleet_run_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_RUN });
+        return RunnerError.FleetRunFailed;
     };
-    const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.AgentRunFailed;
+    const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.FleetRunFailed;
 
     // Run-end capture: flush the final memory state so a run that wrote memory
     // without crossing a mid-run checkpoint is still persisted by the parent.
@@ -239,10 +239,10 @@ fn executeInner(
     // Terminal usage frame — covers any token fold after the last metric emit.
     if (progress_fd != null) adapter.emitUsage();
 
-    const splits = usageSplits(&agent);
+    const splits = usageSplits(&fleet);
     return .{
         .content = owned,
-        .token_count = agent.tokensUsed(),
+        .token_count = fleet.tokensUsed(),
         .input_tokens = splits.input,
         .output_tokens = splits.output,
     };
@@ -261,7 +261,7 @@ fn makeCapturer(
     return .{ .mem = mem, .fd = fd, .alloc = alloc };
 }
 
-/// Pick the agent's observer. With a progress fd, init the caller-owned
+/// Pick the fleet's observer. With a progress fd, init the caller-owned
 /// `writer`/`adapter` in place (so the returned observer's vtable, which
 /// captures `&adapter`, stays valid for the run) and return the redacting
 /// Adapter's observer; otherwise the env-selected backend.
@@ -280,13 +280,13 @@ fn selectObserver(
 }
 
 // Delegate to runner_helpers.zig (split for RULE FLL).
-const applyAgentConfig = runner_helpers.applyAgentConfig;
+const applyFleetConfig = runner_helpers.applyFleetConfig;
 const injectProviderApiKey = runner_helpers.injectProviderApiKey;
 const buildToolsFromSpec = runner_helpers.buildToolsFromSpec;
 pub const composeMessage = runner_helpers.composeMessage;
 
 /// Collect the known secret values + canonical placeholders from
-/// agent_config so the progress adapter can redact them out of tool
+/// fleet_config so the progress adapter can redact them out of tool
 /// arguments before they cross the RPC boundary. The returned array is
 /// stack-storage; the adapter borrows it for the duration of the run.
 /// Secrets with empty values are still returned but the redactor
@@ -297,8 +297,8 @@ pub const composeMessage = runner_helpers.composeMessage;
 /// here, and extend the array length. `collectSecrets` is `pub` so the
 /// extraction shape is unit-testable from `runner_test.zig` —
 /// reviewers should add a row to those tests for every new slot.
-pub fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
-    const ac = agent_config orelse return .{
+pub fn collectSecrets(fleet_config: ?std.json.Value) [1]runner_progress.Secret {
+    const ac = fleet_config orelse return .{
         .{ .value = "", .placeholder = S_SECRETS_LLM_API_KEY },
     };
     return .{
@@ -310,10 +310,10 @@ pub fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
 pub fn mapError(err: anyerror) types.FailureClass {
     return switch (err) {
         RunnerError.InvalidConfig => .startup_posture,
-        RunnerError.AgentInitFailed => .startup_posture,
+        RunnerError.FleetInitFailed => .startup_posture,
         RunnerError.Timeout => .timeout_kill,
         RunnerError.OutOfMemory => .oom_kill,
-        RunnerError.AgentRunFailed => .runner_crash,
+        RunnerError.FleetRunFailed => .runner_crash,
         else => .runner_crash,
     };
 }

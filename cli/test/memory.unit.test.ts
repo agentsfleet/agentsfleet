@@ -26,7 +26,7 @@ import {
   runWith,
 } from "./helpers-memory-layers.ts";
 
-const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
+const FLEET_ID = "01900000-0000-7000-8000-0000005e4e72";
 
 // The wire shape: numeric epoch milliseconds (schema/013 BIGINT).
 const FIXTURE_ITEMS = [
@@ -42,7 +42,7 @@ const FIXTURE_ENVELOPE = {
 };
 
 describe("memory — ValidationError guards", () => {
-  test("list fails with ValidationError when --agent is missing", async () => {
+  test("list fails with ValidationError when --fleet is missing", async () => {
     const cap = newCapture();
     const exit = await runWith(
       memoryListEffectFromFlags({}),
@@ -51,12 +51,12 @@ describe("memory — ValidationError guards", () => {
     const err = failureOf(exit);
     expect(err).toBeInstanceOf(ValidationError);
     if (err instanceof ValidationError) {
-      expect(err.detail).toMatch(/--agent <id> is required/);
+      expect(err.detail).toMatch(/--fleet <id> is required/);
       expect(err.suggestion).toMatch(/agentsfleet memory list/);
     }
   });
 
-  test("search fails with ValidationError when --agent is missing", async () => {
+  test("search fails with ValidationError when --fleet is missing", async () => {
     const cap = newCapture();
     const exit = await runWith(
       memorySearchEffectFromArgs("acme", {}),
@@ -72,7 +72,7 @@ describe("memory — ValidationError guards", () => {
   test("search fails with ValidationError when the query is empty", async () => {
     const cap = newCapture();
     const exit = await runWith(
-      memorySearchEffectFromArgs("  ", { agentId: AGENTSFLEET_ID }),
+      memorySearchEffectFromArgs("  ", { fleetId: FLEET_ID }),
       { http: httpLayerFailing(new NetworkError({ detail: "unused", suggestion: "unused", url: "unused" })), cap },
     );
     const err = failureOf(exit);
@@ -88,11 +88,11 @@ describe("test_memory_list_table_newest_first", () => {
     const cap = newCapture();
     const paths: string[] = [];
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(paths[0]).toBe(`/v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/memories`);
+    expect(paths[0]).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/memories`);
     expect(cap.tables).toHaveLength(1);
     const rows = cap.tables[0]?.rows ?? [];
     expect(rows.map((r) => r["key"])).toEqual(["acme_contact", "deploy_window", "greeting_style"]);
@@ -106,7 +106,7 @@ describe("test_memory_list_table_newest_first", () => {
     const cap = newCapture();
     const reversed = { ...FIXTURE_ENVELOPE, items: [...FIXTURE_ITEMS].reverse() };
     await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { http: httpLayerReturning(reversed, []), cap },
     );
     const rows = cap.tables[0]?.rows ?? [];
@@ -120,7 +120,7 @@ describe("test_memory_search_matches", () => {
     const paths: string[] = [];
     const oneMatch = { items: [FIXTURE_ITEMS[0]], total: 1, request_id: "req_mem_search" };
     const exit = await runWith(
-      memorySearchEffectFromArgs("acme", { agentId: AGENTSFLEET_ID }),
+      memorySearchEffectFromArgs("acme", { fleetId: FLEET_ID }),
       { http: httpLayerReturning(oneMatch, paths), cap },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -133,7 +133,7 @@ describe("test_memory_search_matches", () => {
   test("padded query is trimmed at the boundary before hitting the wire", async () => {
     const paths: string[] = [];
     await runWith(
-      memorySearchEffectFromArgs("  acme  ", { agentId: AGENTSFLEET_ID }),
+      memorySearchEffectFromArgs("  acme  ", { fleetId: FLEET_ID }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap: newCapture() },
     );
     expect(paths[0]).toContain("?query=acme");
@@ -144,7 +144,7 @@ describe("test_memory_search_matches", () => {
     const cap = newCapture();
     const paths: string[] = [];
     await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID, category: "daily", limit: "5" }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID, category: "daily", limit: "5" }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap },
     );
     expect(paths[0]).toContain("category=daily");
@@ -152,7 +152,7 @@ describe("test_memory_search_matches", () => {
 
     const searchPaths: string[] = [];
     await runWith(
-      memorySearchEffectFromArgs("acme", { agentId: AGENTSFLEET_ID, limit: "7" }),
+      memorySearchEffectFromArgs("acme", { fleetId: FLEET_ID, limit: "7" }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, searchPaths), cap: newCapture() },
     );
     expect(searchPaths[0]).toContain("query=acme");
@@ -165,7 +165,7 @@ describe("memory — JSON mode passthrough", () => {
   test("jsonMode prints the envelope verbatim (no table, no info lines)", async () => {
     const cap = newCapture();
     await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { jsonMode: true, http: httpLayerReturning(FIXTURE_ENVELOPE, []), cap },
     );
     expect(cap.jsons).toHaveLength(1);
@@ -177,7 +177,7 @@ describe("memory — JSON mode passthrough", () => {
   test("stdoutIsTty=false (piped) prints the envelope even without --json", async () => {
     const cap = newCapture();
     await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID, stdoutIsTty: false }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID, stdoutIsTty: false }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, []), cap },
     );
     expect(cap.jsons).toHaveLength(1);
@@ -187,7 +187,7 @@ describe("memory — JSON mode passthrough", () => {
   test("a malformed envelope (items not an array) renders as empty instead of crashing", async () => {
     const cap = newCapture();
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID, stdoutIsTty: true }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID, stdoutIsTty: true }),
       { http: httpLayerReturning({ items: 5, total: 5, request_id: "req_mem_bad" }, []), cap },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -198,7 +198,7 @@ describe("memory — JSON mode passthrough", () => {
   test("empty result on a terminal prints the friendly line + docs pointer and succeeds", async () => {
     const cap = newCapture();
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID, stdoutIsTty: true }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID, stdoutIsTty: true }),
       { http: httpLayerReturning({ items: [], total: 0, request_id: "req_mem_empty" }, []), cap },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -211,16 +211,16 @@ describe("memory — JSON mode passthrough", () => {
 describe("memory — ServerError suggestion remap", () => {
   const serverError = (code: string): ServerError =>
     new ServerError({
-      detail: "agent not found",
+      detail: "fleet not found",
       suggestion: "verify the request payload and retry",
       code,
       status: 404,
       requestId: "req_mem_err",
     });
 
-  test("UZ-MEM-002 remaps to the agent-listing suggestion", async () => {
+  test("UZ-MEM-002 remaps to the fleet-listing suggestion", async () => {
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { http: httpLayerFailing(serverError("UZ-MEM-002")), cap: newCapture() },
     );
     const err = failureOf(exit);
@@ -234,7 +234,7 @@ describe("memory — ServerError suggestion remap", () => {
 
   test("UZ-MEM-003 remaps to the retry suggestion", async () => {
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { http: httpLayerFailing(serverError("UZ-MEM-003")), cap: newCapture() },
     );
     const err = failureOf(exit);
@@ -247,7 +247,7 @@ describe("memory — ServerError suggestion remap", () => {
 
   test("other server codes keep the transport suggestion untouched", async () => {
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID }),
       { http: httpLayerFailing(serverError("UZ-AUTH-003")), cap: newCapture() },
     );
     const err = failureOf(exit);
@@ -270,7 +270,7 @@ describe("memory — workspace resolution", () => {
       save: () => Effect.die("should not be called"),
     });
     const exit = await runWith(
-      memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID, workspaceId: overrideWs }),
+      memoryListEffectFromFlags({ fleetId: FLEET_ID, workspaceId: overrideWs }),
       { http: httpLayerReturning(FIXTURE_ENVELOPE, paths), cap, workspaces: dieStore },
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -282,7 +282,7 @@ describe("memory — workspace resolution", () => {
       load: Effect.succeed({ current_workspace_id: null, items: [] }),
       save: () => Effect.die("should not be called"),
     });
-    const exit = await runWith(memoryListEffectFromFlags({ agentId: AGENTSFLEET_ID }), {
+    const exit = await runWith(memoryListEffectFromFlags({ fleetId: FLEET_ID }), {
       http: httpLayerFailing(new NetworkError({ detail: "unused", suggestion: "unused", url: "unused" })),
       cap: newCapture(),
       workspaces: emptyStore,

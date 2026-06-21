@@ -43,7 +43,7 @@ describe("App", () => {
     const nav = screen.getByRole("navigation", { name: /primary/i });
     expect(within(nav).getByRole("link", { name: /home/i })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /pricing/i })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: /agents/i })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: /fleets/i })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /docs/i })).toHaveAttribute(
       "href",
       "https://docs.agentsfleet.net",
@@ -90,8 +90,8 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders agents page at /agents", async () => {
-    renderApp("/agents");
+  it("renders fleets page at /fleets", async () => {
+    renderApp("/fleets");
     expect(
       await screen.findByRole("heading", { level: 1 }),
     ).toBeInTheDocument();

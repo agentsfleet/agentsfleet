@@ -5,43 +5,43 @@ import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000010c105";
-const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000007090c5";
+const FLEET_ID = "01900000-0000-7000-8000-0000007090c5";
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
 describe("logs (paginated event tail)", () => {
-  test("`logs <agent_id>` with no events prints the empty-state message and exits 0", async () => {
+  test("`logs <fleet_id>` with no events prints the empty-state message and exits 0", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", AGENTSFLEET_ID],
+          ["logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no events yet/i);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.method).toBe("GET");
-        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`);
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`);
         // The default limit=20 query is preserved on the wire.
         expect(calls[0]?.search).toContain("limit=20");
       });
     });
   });
 
-  test("`logs <agent_id>` with events prints one row per event with timestamp + actor + summary", async () => {
+  test("`logs <fleet_id>` with events prints one row per event with timestamp + actor + summary", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
-        [`GET /v1/workspaces/${WS_ID}/agents/${AGENTSFLEET_ID}/events`]:
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]:
           () => jsonResponse(200, {
             items: [
               { created_at: 1700000000000, actor: "user",   status: "processed", response_text: "Hello, world." },
-              { created_at: 1700000060000, actor: "agent",  status: "processed", response_text: "Acknowledged. Working on it." },
+              { created_at: 1700000060000, actor: "fleet",  status: "processed", response_text: "Acknowledged. Working on it." },
               { created_at: 1700000120000, actor: "system", status: "gate_blocked", response_text: null },
             ],
             next_cursor: "cur_next_page",
@@ -51,14 +51,14 @@ describe("logs (paginated event tail)", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", AGENTSFLEET_ID],
+          ["logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
         // Every actor and summary appears.
         expect(text).toContain("user");
-        expect(text).toContain("agent");
+        expect(text).toContain("fleet");
         expect(text).toContain("system");
         expect(text).toContain("Hello, world.");
         expect(text).toContain("Acknowledged");
@@ -71,7 +71,7 @@ describe("logs (paginated event tail)", () => {
     });
   });
 
-  test("`logs` with no agent_id exits ValidationError (4) with a missing-argument error", async () => {
+  test("`logs` with no fleet_id exits ValidationError (4) with a missing-argument error", async () => {
     await authedScope(async () => {
       // No mock routes — the CLI's argument validation must fire before any
       // outbound fetch, otherwise the test traps an unexpected request.
@@ -86,7 +86,7 @@ describe("logs (paginated event tail)", () => {
         // The pre-Effect path returned 2 via writeError(MISSING_ARGUMENT, …); the
         // Effect dispatcher now classifies missing positionals as ValidationError.
         expect(code).toBe(4);
-        expect(err.read()).toMatch(/agent/i);
+        expect(err.read()).toMatch(/fleet/i);
         expect(calls).toHaveLength(0);
       });
     });

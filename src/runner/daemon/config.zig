@@ -33,8 +33,8 @@ workspace_base: []const u8,
 network_policy: network.Mode,
 /// Number of concurrent worker threads the daemon runs (env
 /// `RUNNER_WORKER_COUNT`). Each worker independently leases → executes → reports;
-/// the per-agent `affinity.claim` keeps two off the same agent. Default 1 is
-/// today's single-agent-per-host behaviour; clamped to `[1, MAX_WORKER_COUNT]`
+/// the per-fleet `affinity.claim` keeps two off the same fleet. Default 1 is
+/// today's single-fleet-per-host behaviour; clamped to `[1, MAX_WORKER_COUNT]`
 /// so a fat-fingered value can't fork unbounded children. Capacity-aware sizing
 /// is out of scope — the operator sizes N to the host.
 worker_count: u32,
@@ -83,7 +83,7 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
     const worker_count = switch (parseWorkerCount(worker_count_raw)) {
         .value => |v| v,
         .invalid => blk: {
-            log.warn("runner_worker_count_invalid", .{ .raw = worker_count_raw.?, .fallback = DEFAULT_WORKER_COUNT });
+            log.warn("runner_worker_count_invalid", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .raw = worker_count_raw.?, .fallback = DEFAULT_WORKER_COUNT });
             break :blk DEFAULT_WORKER_COUNT;
         },
     };
@@ -115,7 +115,7 @@ fn loadDeadlines(env_map: *const std.process.Environ.Map) client_mod.Deadlines {
     d.activity_ms = resolveDeadline(env_map, ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS, d.activity_ms);
     d.renew_ms = resolveDeadline(env_map, ENV_RUNNER_CP_RENEW_DEADLINE_MS, d.renew_ms);
     if (d.renew_ms + common_constants.RENEWAL_TICK_MS >= common_constants.RENEWAL_WINDOW_MS) {
-        log.warn("runner_cp_renew_deadline_clamped", .{ .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
+        log.warn("runner_cp_renew_deadline_clamped", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
         d.renew_ms = client_mod.RENEW_DEADLINE_MS;
     }
     return d;
@@ -126,7 +126,7 @@ fn resolveDeadline(env_map: *const std.process.Environ.Map, name: []const u8, de
     return switch (parseDeadlineMs(raw, default)) {
         .value => |v| v,
         .invalid => blk: {
-            log.warn("runner_cp_deadline_invalid", .{ .env = name, .raw = raw.?, .fallback_ms = default });
+            log.warn("runner_cp_deadline_invalid", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .env = name, .raw = raw.?, .fallback_ms = default });
             break :blk default;
         },
     };
@@ -224,10 +224,11 @@ const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 const common_constants = @import("common");
 const client_mod = @import("control_plane_client.zig");
+const client_errors = @import("../engine/client_errors.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
 
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
 
 /// Environment variable names — single-sourced (RULE UFS).
 pub const ENV_AGENTSFLEET_API_URL = "AGENTSFLEET_API_URL";
@@ -254,7 +255,7 @@ const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
 const DEFAULT_WORKSPACE_BASE = "/tmp/agentsfleet-runner";
 
 /// Worker-pool sizing bounds (RULE UFS: the clamp is single-sourced). Default 1
-/// = today's one-agent-per-host daemon; MAX caps a misconfigured value so the
+/// = today's one-fleet-per-host daemon; MAX caps a misconfigured value so the
 /// pool can never fork unbounded children on one host.
 pub const DEFAULT_WORKER_COUNT: u32 = 1;
 pub const MIN_WORKER_COUNT: u32 = 1;

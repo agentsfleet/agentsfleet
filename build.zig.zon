@@ -1,6 +1,6 @@
 .{
     .name = .agentsfleetd,
-    .version = "0.9.0",
+    .version = "0.9.1",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
@@ -58,6 +58,10 @@
         .zig_yaml = .{
             .url = "git+https://github.com/agentsfleet/zig-yaml.git?ref=v0.3.0-dev-af.1#11e8c661ca0730194e224b17d7418dfca0bd4841",
             .hash = "zig_yaml-0.3.0-C1161n-rAgDc4O9pSMh-qdZcbCYCyoenayg3WpzM1Z8R",
+        },
+        .z3 = .{
+            .url = "https://codeberg.org/fellowtraveler/z3/archive/6170f82ac8dbc377167adc818b2ec45b0cd30b9c.tar.gz",
+            .hash = "z3-0.4.0-N25-cCCMAQAJwdfivwRrCFccaGnnVPk7TnWKn4S7U-5a",
         },
     },
     .paths = .{

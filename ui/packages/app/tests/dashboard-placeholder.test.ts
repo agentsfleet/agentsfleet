@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
-import { mockAuthOnce as mockAuth, resolveActiveWorkspace as resolveActiveWorkspaceMock } from "./helpers/dashboard-mocks";
+import {
+  mockAuthOnce as mockAuth,
+  resolveActiveWorkspace as resolveActiveWorkspaceMock,
+  listTenantWorkspacesCached as listTenantWorkspacesCachedMock,
+} from "./helpers/dashboard-mocks";
 import {
   resetDashboardMocks,
   listCredentialsMock,
@@ -26,8 +30,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/agents", async () => (await import("./helpers/dashboard-app-mocks")).agentsApiMock());
-vi.mock("@/app/(dashboard)/agents/actions", async () => (await import("./helpers/dashboard-app-mocks")).agentActionsMock());
+vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
+vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/lib/api/model_caps", async () => (await import("./helpers/dashboard-app-mocks")).modelCapsMock());
@@ -54,7 +58,7 @@ describe("placeholder pages", () => {
     // this route is a redirect. Its list/empty rendering is covered by
     // tests/models-credentials-page.test.ts and credentials-components.test.ts.
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    expect(() => Page()).toThrow("redirect:/settings/models#credentials");
+    expect(() => Page()).toThrow("redirect:/settings/models?tab=credentials#credentials");
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
@@ -126,7 +130,8 @@ describe("placeholder pages", () => {
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Settings");
+    expect(m).toContain("Workspace");
+    expect(m).toContain("New workspace");
     expect(m).toContain("Production");
     expect(m).toContain("ws_xyz");
   });
@@ -136,8 +141,30 @@ describe("placeholder pages", () => {
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Settings");
+    expect(m).toContain("Workspace");
     expect(m).toContain("—");
+  });
+
+  it("settings page falls back to the active workspace when listing workspaces fails", async () => {
+    mockAuth({ token: "tkn", userId: "usr_42" });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_fallback", name: "Fallback" });
+    listTenantWorkspacesCachedMock.mockRejectedValueOnce(new Error("api-down"));
+    const { default: Page } = await import("../app/(dashboard)/settings/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Fallback");
+    expect(m).toContain("ws_fallback");
+  });
+
+  it("settings page renders the tenant workspace list when available", async () => {
+    mockAuth({ token: "tkn", userId: "usr_42" });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_active", name: "Active" });
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
+      items: [{ id: "ws_listed", name: "Listed" }],
+      total: 1,
+    });
+    const { default: Page } = await import("../app/(dashboard)/settings/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Listed");
   });
 
   it("provider settings page renders selector with current config and empty credentials", async () => {
@@ -154,7 +181,7 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Models");
-    expect(m).toContain(PROVIDER_MODE.platform);
+    expect(m).toContain("Platform defaults");
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
 
@@ -226,7 +253,7 @@ describe("placeholder pages", () => {
     listTenantBillingChargesMock.mockResolvedValue({
       items: [
         {
-          id: "tel_1", tenant_id: "t", workspace_id: "w", agent_id: "z",
+          id: "tel_1", tenant_id: "t", workspace_id: "w", fleet_id: "z",
           event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform,
           model: "kimi-k2.6", credit_deducted_nanos: 1,
           token_count_input: null, token_count_output: null, wall_ms: null, recorded_at: 1,

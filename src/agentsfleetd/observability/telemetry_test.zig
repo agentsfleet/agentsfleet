@@ -63,10 +63,10 @@ test "T1: all event types can be captured without error" {
     t.capture(telemetry.WorkspaceCreated, .{ .distinct_id = "u", .workspace_id = "w", .tenant_id = "t", .request_id = "r" });
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
-    t.capture(telemetry.AgentTriggered, .{ .distinct_id = "w", .workspace_id = "w", .agent_id = "z", .event_id = "e", .source = "webhook" });
-    t.capture(telemetry.AgentCompleted, .{ .distinct_id = "w", .workspace_id = "w", .agent_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
+    t.capture(telemetry.FleetTriggered, .{ .distinct_id = "w", .workspace_id = "w", .fleet_id = "z", .event_id = "e", .source = "webhook" });
+    t.capture(telemetry.FleetCompleted, .{ .distinct_id = "w", .workspace_id = "w", .fleet_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
     try telemetry.TestBackend.assertCount(11);
-    try telemetry.TestBackend.assertLastEventIs(.agent_completed);
+    try telemetry.TestBackend.assertLastEventIs(.fleet_completed);
 }
 
 // ── T2: Edge cases ──────────────────────────────────────────────────
@@ -184,7 +184,7 @@ test "T7: EventKind has exactly 11 variants" {
 test "T7: EventKind tagName matches expected event name strings" {
     try std.testing.expectEqualStrings("server_started", @tagName(telemetry.EventKind.server_started));
     try std.testing.expectEqualStrings("auth_rejected", @tagName(telemetry.EventKind.auth_rejected));
-    try std.testing.expectEqualStrings("agent_completed", @tagName(telemetry.EventKind.agent_completed));
+    try std.testing.expectEqualStrings("fleet_completed", @tagName(telemetry.EventKind.fleet_completed));
 }
 
 test "T7: each event struct kind constant matches its EventKind variant" {
@@ -225,7 +225,7 @@ test "T11: RecordedEvent is stack-allocated, no heap" {
     try std.testing.expect(size <= 256);
 }
 
-// agent-specific telemetry tests live in telemetry_agent_test.zig.
+// fleet-specific telemetry tests live in telemetry_fleet_test.zig.
 comptime {
-    _ = @import("telemetry_agent_test.zig");
+    _ = @import("telemetry_fleet_test.zig");
 }

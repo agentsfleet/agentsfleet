@@ -1,6 +1,6 @@
 /**
  * Owned fixture for the `logs-events-live` slice — a bounded cursor walk
- * over the `events <agent_id> --json` paginator.
+ * over the `events <fleet_id> --json` paginator.
  *
  * The shared fixtures (cli.js, teardown.ts, lifecycle.ts) stay untouched;
  * the cursor-walk loop and its envelope shape live here because no other
@@ -15,14 +15,14 @@
  *   - per-page exit-0 + parseable `{items, next_cursor}` envelope
  */
 
-import { runAgentctl } from "./cli.js";
+import { runFleetctl } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
 
 export const EVENTS_COMMAND = "events" as const;
 export const LOGS_COMMAND = "logs" as const;
 export const JSON_FLAG = "--json" as const;
-export const AGENT_FLAG = "--agent" as const;
+export const AGENT_FLAG = "--fleet" as const;
 export const LIMIT_FLAG = "--limit" as const;
 export const CURSOR_FLAG = "--cursor" as const;
 
@@ -35,7 +35,7 @@ export const NEXT_CURSOR_KEY = "next_cursor" as const;
 // is treated as a failure by the caller.
 export const MAX_PAGES = 25;
 
-// Small page size so even a lightly-seeded agent produces >1 page when it
+// Small page size so even a lightly-seeded fleet produces >1 page when it
 // has history, exercising the cursor hand-off. Stays inside the CLI's
 // EVENTS_LIMIT_BOUNDS (1..500).
 export const PAGE_LIMIT = 5;
@@ -69,13 +69,13 @@ export type PageVisitor = (envelope: EventsEnvelope, pageIndex: number) => void;
  */
 export async function fetchEventsPage(
   env: Env,
-  agentId: string,
+  fleetId: string,
   cursor: string | null,
 ): Promise<EventsEnvelope> {
-  const args = [EVENTS_COMMAND, agentId, LIMIT_FLAG, String(PAGE_LIMIT)];
+  const args = [EVENTS_COMMAND, fleetId, LIMIT_FLAG, String(PAGE_LIMIT)];
   if (cursor) args.push(CURSOR_FLAG, cursor);
   args.push(JSON_FLAG);
-  const result = await runAgentctl(args, { env });
+  const result = await runFleetctl(args, { env });
   if (result.code !== 0) {
     throw new Error(`events page exited ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`);
   }
@@ -95,7 +95,7 @@ export async function fetchEventsPage(
  */
 export async function walkEventsCursor(
   env: Env,
-  agentId: string,
+  fleetId: string,
   visit?: PageVisitor,
 ): Promise<CursorWalkResult> {
   const seen = new Set<string>();
@@ -106,7 +106,7 @@ export async function walkEventsCursor(
   let exhausted = false;
 
   for (pages = 0; pages < MAX_PAGES; pages += 1) {
-    const page = await fetchEventsPage(env, agentId, cursor);
+    const page = await fetchEventsPage(env, fleetId, cursor);
     if (visit) visit(page, pages);
     totalItems += page.items.length;
     const next = page.nextCursor;

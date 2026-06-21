@@ -96,7 +96,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
                 <Input placeholder="fly" {...field} />
               </FormControl>
               <FormDescription>
-                Agents reference this by name — <code>{"${secrets.<name>.<field>}"}</code>.
+                Fleets reference this by name — <code>{"${secrets.<name>.<field>}"}</code>.
               </FormDescription>
               <FormMessage />
             </FormItem>

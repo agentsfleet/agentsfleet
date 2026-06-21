@@ -3,7 +3,7 @@
  *
  * Ensures the fixture user has at least two workspaces, then exercises the
  * header WorkspaceSwitcher: open the menu, pick the non-active workspace,
- * and assert the active label updates and the URL stays `/agents` (the
+ * and assert the active label updates and the URL stays `/fleets` (the
  * switch is a cookie write + revalidate, not a route change).
  *
  * Spec calls for the `admin` fixture (memberships in both fixture tenants)
@@ -16,21 +16,21 @@
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
-import { cleanWorkspaceAgents } from "./fixtures/teardown";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 const SECOND_WORKSPACE_NAME = "fixture-secondary";
 const SWITCH_TIMEOUT_MS = 10_000;
 
 test.describe("multi-workspace switcher", () => {
-  test("switcher swaps workspace + URL stays /agents", async ({ page }) => {
+  test("switcher swaps workspace + URL stays /fleets", async ({ page }) => {
     const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const secondary = await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
     expect(secondary.id).not.toEqual(primary);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto("/agents");
-    await expect(page).toHaveURL(/\/agents(\?|$)/);
+    await page.goto("/fleets");
+    await expect(page).toHaveURL(/\/fleets(\?|$)/);
 
     // The switcher's visible text is the *active* workspace name (e.g.
     // "default", "fixture-secondary"), so a getByRole({ name: ... }) match
@@ -45,8 +45,8 @@ test.describe("multi-workspace switcher", () => {
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
 
     // The Server Action writes the cookie + revalidatePath('/'); the
-    // listing re-fetches but the URL stays /agents.
-    await expect(page).toHaveURL(/\/agents(\?|$)/, { timeout: SWITCH_TIMEOUT_MS });
+    // listing re-fetches but the URL stays /fleets.
+    await expect(page).toHaveURL(/\/fleets(\?|$)/, { timeout: SWITCH_TIMEOUT_MS });
     await expect(switcher).toContainText(secondary.name ?? secondary.id, {
       timeout: SWITCH_TIMEOUT_MS,
     });
@@ -54,6 +54,6 @@ test.describe("multi-workspace switcher", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceAgents(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
   });
 });

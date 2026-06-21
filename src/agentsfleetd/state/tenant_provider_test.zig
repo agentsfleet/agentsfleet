@@ -12,7 +12,7 @@ const tenant_provider = @import("tenant_provider.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
-const credential_key = @import("../agent/credential_key.zig");
+const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -48,7 +48,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
 
     // Generate a UUIDv7 (required by ck_platform_llm_keys_uid_uuidv7).
     const id_format = @import("../types/id_format.zig");
-    const key_id = try id_format.generateAgentId(alloc);
+    const key_id = try id_format.generateFleetId(alloc);
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
@@ -77,7 +77,7 @@ fn seedSelfManagedCredential(
     try base.storeVaultJson(alloc, conn, ws_id, name, value);
 }
 
-fn seedAgentCredential(
+fn seedFleetCredential(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     ws_id: []const u8,
@@ -196,7 +196,7 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
 }
 
-test "resolveActiveProvider accepts dashboard agent-prefixed credential rows" {
+test "resolveActiveProvider accepts dashboard fleet-prefixed credential rows" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -206,7 +206,7 @@ test "resolveActiveProvider accepts dashboard agent-prefixed credential rows" {
     defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
     const credential_ref = "dashboard-provider-key";
-    try seedAgentCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, credential_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
+    try seedFleetCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, credential_ref, TP_TEST_PROVIDER, "fw_DASHBOARD_abc", "accounts/fireworks/models/kimi-k2.6");
 
     try tenant_provider.upsertSelfManaged(
         ALLOC,

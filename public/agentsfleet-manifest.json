@@ -1,0 +1,102 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "agentsfleet",
+  "description": "Fleet Delivery Control Plane — long-lived, event-driven autonomous workers (Fleets) scoped to a workspace.",
+  "url": "https://agentsfleet.net",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux",
+  "apiDocumentation": "/openapi.json",
+  "machineReadable": {
+    "manifest": "/agentsfleet-manifest.json",
+    "openapi": "/openapi.json",
+    "llms": "/llms.txt",
+    "skill": "/skill.md"
+  },
+  "operations": [
+    {
+      "operationId": "create_fleet",
+      "method": "POST",
+      "path": "/v1/workspaces/{workspace_id}/fleets",
+      "description": "Provision a new Fleet in the given workspace. Returns the fleet_id used for subsequent operations.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "patch_fleet",
+      "method": "PATCH",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+      "description": "Partial update of a Fleet. Body fields are optional and presence-based: config_json (replace config) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "delete_fleet",
+      "method": "DELETE",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
+      "description": "Hard-delete a Fleet and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the fleet before deleting. Returns 204 on success, 409 if not yet killed.",
+      "actionClass": "critical"
+    },
+    {
+      "operationId": "post_fleet_message",
+      "method": "POST",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
+      "description": "Post a chat message to a running Fleet's loop.",
+      "actionClass": "sensitive"
+    },
+    {
+      "operationId": "list_fleet_events",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
+      "description": "List the Fleet's event history with pagination.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "stream_fleet_events",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
+      "description": "Server-Sent Events stream of new events as they arrive.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_billing",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing",
+      "description": "Read the caller tenant's credit-pool balance, exhaustion state, and free-trial window.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_billing_charges",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/charges",
+      "description": "List newest-first credit-pool charge telemetry rows for the caller tenant.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "get_tenant_metering_periods",
+      "method": "GET",
+      "path": "/v1/tenants/me/billing/charges/{event_id}/telemetry",
+      "description": "Read the per-renewal metering slices behind one tenant charge.",
+      "actionClass": "safe"
+    },
+    {
+      "operationId": "ingest_fleet_webhook",
+      "method": "POST",
+      "path": "/v1/webhooks/{fleet_id}",
+      "description": "Deliver an inbound event to a Fleet. Body must be Hash-Based Message Authentication Code with Secure Hash Algorithm 256 (HMAC-SHA256) signed with the workspace credential matching the Fleet's trigger.source (e.g. vault row fleet:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
+      "actionClass": "sensitive"
+    }
+  ],
+  "authentication": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "format": "Bearer <api_key>"
+  },
+  "revenue": {
+    "model": "self-managed + credit-pool runtime metering",
+    "description": "Users may supply their own Large Language Model (LLM) API keys. agentsfleet meters hosted execution against a credit pool: event receipts are free, active runtime is $0.0001/sec under both postures, and platform-managed posture also adds provider token costs. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
+  },
+  "policyClasses": {
+    "safe": ["list_fleet_events", "stream_fleet_events", "get_tenant_billing", "get_tenant_billing_charges", "get_tenant_metering_periods"],
+    "sensitive": ["create_fleet", "patch_fleet", "post_fleet_message", "ingest_fleet_webhook"],
+    "critical": ["delete_fleet"]
+  }
+}

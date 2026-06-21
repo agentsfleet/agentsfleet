@@ -22,6 +22,7 @@ const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const FailureClass = @import("execution_result.zig").FailureClass;
 const runner_events = @import("runner_events.zig");
+const memory = @import("protocol_memory.zig");
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -39,14 +40,14 @@ pub const RUNNER_TOKEN_PREFIX = "agt_r";
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
 pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
-/// GET + POST /v1/runners/me/memory/{agent_id} — durable agent-memory hydrate +
-/// capture, keyed by the agent. The runner names the agent because it may hold
+/// GET + POST /v1/runners/me/memory/{fleet_id} — durable fleet-memory hydrate +
+/// capture, keyed by the fleet. The runner names the fleet because it may hold
 /// several concurrent leases; the server authorizes by verifying the runner holds
-/// a live lease for that agent (IDOR-safe — the client never reaches a agent it
+/// a live lease for that fleet (IDOR-safe — the client never reaches a fleet it
 /// does not lease). The POST fences the write via `fencing_token` in the body,
-/// like `/reports`. (`agent_id` is our identifier end to end — the durable memory
+/// like `/reports`. (`fleet_id` is our identifier end to end — the durable memory
 /// rows key off it directly, with no legacy instance_id prefix.) This is the collection
-/// prefix; the router appends the `{agent_id}` segment. See
+/// prefix; the router appends the `{fleet_id}` segment. See
 /// `docs/architecture/runner_fleet.md` §Memory continuity.
 pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
 /// GET /v1/runners/me — read-only self status (`me` resolves from the token).
@@ -54,11 +55,18 @@ pub const PATH_RUNNER_MEMORY = PATH_RUNNERS ++ "/me/memory";
 /// an operator's `status` check can never mask a dead runner's liveness.
 pub const PATH_RUNNER_SELF = PATH_RUNNERS ++ "/me";
 
-/// GET /v1/fleet/runners — platform-admin operator-plane read of the whole
+/// GET /v1/runners/me/bundles/{content_hash} — runner-plane Fleet Bundle snapshot
+/// download. The daemon proxies the immutable canonical tar from object storage
+/// (the runner holds no datastore credentials). Collection prefix; the runner
+/// appends the `{content_hash}` segment, mirroring `PATH_RUNNER_MEMORY`. The daemon
+/// matcher keys on the `bundles` segment (`route_matchers_runner.zig`).
+pub const PATH_RUNNER_BUNDLES = PATH_RUNNERS ++ "/me/bundles";
+
+/// GET /v1/fleets/runners — platform-admin operator-plane read of the whole
 /// fleet (paginated). The `/v1/fleet/...` namespace is the operator plane;
 /// `/v1/runners` is enrollment + the runner self-plane. Distinct prefix so the
 /// two never collide in the matcher.
-pub const PATH_FLEET_RUNNERS = "/v1/fleet/runners";
+pub const PATH_FLEET_RUNNERS = "/v1/fleets/runners";
 
 /// Trailing segment of the per-lease activity sub-resource. `lease_id` is a path
 /// param — `POST /v1/runners/me/leases/{lease_id}/activity` — so this can't be a
@@ -106,9 +114,9 @@ pub const SandboxTier = enum { landlock_full, container_nested, macos_seatbelt, 
 pub const SecretDelivery = enum { @"inline", scoped, proxy };
 
 /// Terminal execution result the runner reports. Mirrors the
-/// `core.agent_events.status` values a runner can produce —
+/// `core.fleet_events.status` values a runner can produce —
 /// `gate_blocked`/`dead_lettered` are `agentsfleetd`-side and never runner-reported.
-pub const Outcome = enum { processed, agent_error };
+pub const Outcome = enum { processed, fleet_error };
 
 /// Heartbeat reply status. `ok` is the only S0 value; `drain`/`stop` are
 /// reserved for fleet failover so that workstream needn't recut the type.
@@ -124,7 +132,7 @@ pub const AdminState = enum { active, cordoned, draining, drained, revoked };
 /// (RULE UFS). Used by register (insert) and the runnerBearer lookup (active gate).
 pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
 
-/// Platform-admin mutation actions for `PATCH /v1/fleet/runners/{id}`. These
+/// Platform-admin mutation actions for `PATCH /v1/fleets/runners/{id}`. These
 /// are wire enum values, so std.json accepts/serializes the tag names verbatim.
 pub const RunnerAdminAction = enum { cordon, drain, revoke };
 
@@ -214,7 +222,7 @@ pub const LeasePayload = struct {
     secret_delivery: SecretDelivery,
     event: EventEnvelope,
     policy: ExecutionPolicy,
-    /// The installed agent's behaviour prose (the `SKILL.md` body after
+    /// The installed fleet's behaviour prose (the `SKILL.md` body after
     /// frontmatter extraction), so the sandboxed NullClaw turn runs the
     /// installed behaviour and not a generic chat. Soft reasoning input —
     /// hard tool/secret policy stays in `policy`. Additive + defaulted so a
@@ -222,6 +230,22 @@ pub const LeasePayload = struct {
     /// omits the field gets `""` (rollout is runners-first — an older runner
     /// reading a newer lease rejects the unknown field and runs no work).
     instructions: []const u8 = "",
+    /// Content-addressed reference to the installed Fleet Bundle's canonical
+    /// snapshot in object storage. Present only when the fleet was created from a
+    /// bundle; the runner GETs `/v1/runners/me/bundles/{content_hash}` to
+    /// materialize support files into the sandbox workspace. Additive + defaulted
+    /// with the same rollout-safety as `instructions`: a new runner reading an
+    /// older lease gets null and skips the download (an older runner reading a
+    /// newer lease rejects the unknown field — runners-first rollout).
+    bundle: ?BundleManifest = null,
+};
+
+/// The downloadable half of a bundle-backed lease: the content hash addresses the
+/// immutable canonical tar in object storage. The hash's presence on the lease is
+/// the "has bundle" signal; a `404` from the download means the bundle is
+/// skill-only (no support files were stored) and the runner proceeds with none.
+pub const BundleManifest = struct {
+    content_hash: []const u8,
 };
 
 /// POST /v1/runners/me/leases (Bearer runner_token, long-poll). Always 200:
@@ -238,7 +262,7 @@ pub const ReportTelemetry = struct {
     wall_ms: u64,
 };
 
-/// Session resume cursor written to `core.agent_sessions.context_json`.
+/// Session resume cursor written to `core.fleet_sessions.context_json`.
 pub const ReportCheckpoint = struct {
     last_event_id: []const u8,
     last_response: []const u8,
@@ -246,7 +270,7 @@ pub const ReportCheckpoint = struct {
 
 /// POST /v1/runners/me/reports (Bearer runner_token) — one batched write keyed
 /// by `event_id`. `fencing_token` is echoed and recorded, and the control plane
-/// verifies it at report: a reclaimed holder (token below the agent's live
+/// verifies it at report: a reclaimed holder (token below the fleet's live
 /// fencing sequence) is fenced UZ-RUN-005. No runner_id: the token owns the identity.
 pub const ReportRequest = struct {
     lease_id: []const u8,
@@ -257,10 +281,10 @@ pub const ReportRequest = struct {
     /// `FailureClass` carried verbatim (std.json renders it via @tagName).
     /// Optional + defaulted so a mixed-version fleet is safe: an older runner
     /// omits it and the control plane treats absent as "reason unknown". The
-    /// coarse `outcome` above stays the binary processed/agent_error verdict.
+    /// coarse `outcome` above stays the binary processed/fleet_error verdict.
     failure_reason: ?FailureClass = null,
     response_text: []const u8,
-    /// Billing token count → `agent_execution_telemetry.token_count`.
+    /// Billing token count → `fleet_execution_telemetry.token_count`.
     tokens: u64,
     /// The runner's **cumulative** token counts for the whole run (NOT deltas) —
     /// the same three fields `RenewRequest` carries, so the report-settle can
@@ -282,66 +306,21 @@ pub const ReportResponse = struct {
     ok: bool,
 };
 
-/// Upper bound on the total memory bytes (sum of key+content+category over every
-/// delta) one push may carry. The runner caps what it surfaces; the control plane
-/// rejects beyond this. Oversized memory is truncated + logged, never silently
-/// dropped whole. Single-sourced (RULE UFS) — both build graphs key off it.
-pub const MAX_MEMORY_PUSH_BYTES: usize = 256 * 1024; // 256 KiB
-
-/// Hard ceiling on the durable memory entries one agent may accumulate across all
-/// its runs. The per-push cap bounds a single push; this bounds the unbounded
-/// growth a long-lived (or adversarial) agent would otherwise build up — `enforceCap`
-/// evicts beyond it server-side, tier-ordered: coldest non-core rows first, `core`
-/// rows only when no non-core row remains. A backstop, not the primary bound
-/// (stable-key overwrite + `memory_forget` are the agent's own).
-pub const MAX_MEMORY_ENTRIES_PER_AGENT: usize = 1000;
-
-/// Byte budget for one hydration window. The `GET` Compactor is category-pinned:
-/// every `core` entry that fits hydrates first (newest-first), then the newest
-/// non-core entries fill the remainder of this budget; the dropped entries stay
-/// durable in Postgres, unhydrated. Bounds the payload a run seeds into the child
-/// regardless of how large the durable set has grown.
-pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
-
-/// One durable agent-memory item on the wire — the unit of both capture (POST
-/// body) and hydrate (GET response). Carries no scope: the agent is the
-/// `{agent_id}` path segment, server-validated against the runner's live lease.
-/// One shape for a memory item, shared agentsfleetd <-> runner (RULE UFS).
-pub const MemoryDelta = struct {
-    key: []const u8,
-    content: []const u8,
-    category: []const u8,
-};
-
-/// POST /v1/runners/me/memory/{agent_id} (Bearer runner_token) — capture the
-/// run's memory for the path's agent. `lease_id` + `fencing_token` ride the body
-/// exactly like `ReportRequest`: the control plane loads that lease, verifies the
-/// runner owns it, cross-checks `lease.agent_id == {agent_id}`, and fences the
-/// write — a reclaimed holder (token below the agent's live fencing seq) is
-/// rejected UZ-RUN-005. The scope (`agent_id`) is server-derived; each delta is
-/// upserted (`ON CONFLICT (key, agent_id) DO UPDATE`), so a retried push is idempotent.
-pub const MemoryPushRequest = struct {
-    lease_id: []const u8,
-    fencing_token: u64,
-    memory: []const MemoryDelta,
-};
-
-/// GET /v1/runners/me/memory/{agent_id} reply — a compacted hydration window of
-/// the path agent's durable memory (category-pinned under `HYDRATE_WINDOW_BYTES`:
-/// `core` entries first, then newest non-core; the dropped entries stay in
-/// Postgres), which the runner parent seeds into the child's in-run store at run
-/// start. The runner names the agent it holds in its `LeasePayload`; the server
-/// returns memory only for a agent the runner holds a live lease for.
-pub const MemoryHydrateResponse = struct {
-    memory: []const MemoryDelta,
-};
+// Durable fleet-memory wire sub-protocol lives in `protocol_memory.zig` (RULE
+// FLL); re-exported here so `protocol.MemoryDelta` (and siblings) are unchanged.
+pub const MAX_MEMORY_PUSH_BYTES = memory.MAX_MEMORY_PUSH_BYTES;
+pub const MAX_MEMORY_ENTRIES_PER_AGENT = memory.MAX_MEMORY_ENTRIES_PER_AGENT;
+pub const HYDRATE_WINDOW_BYTES = memory.HYDRATE_WINDOW_BYTES;
+pub const MemoryDelta = memory.MemoryDelta;
+pub const MemoryPushRequest = memory.MemoryPushRequest;
+pub const MemoryHydrateResponse = memory.MemoryHydrateResponse;
 
 /// What the runner parent pipes down the child's stdin: the lease to execute,
-/// plus the agent's prior memory the parent already hydrated over the trusted
-/// plane (`GET /v1/runners/me/memory/{agent_id}`). The child seeds its
+/// plus the fleet's prior memory the parent already hydrated over the trusted
+/// plane (`GET /v1/runners/me/memory/{fleet_id}`). The child seeds its
 /// non-durable in-run store from `hydrated_memory` and never makes a network
 /// call of its own — hydration rides the parent (which holds the `agt_r` token),
-/// so no credential, URL, or DSN reaches the sandboxed agent. The wrapper keeps
+/// so no credential, URL, or DSN reaches the sandboxed fleet. The wrapper keeps
 /// the lease shape unchanged while letting capture/hydrate flow parent-only.
 pub const RunnerChildInput = struct {
     lease: LeasePayload,

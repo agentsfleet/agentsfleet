@@ -3,7 +3,7 @@
  * install via dashboard UI → observe → bill → halt.
  *
  * End-to-end UI-driven: the operator never leaves the browser. signup goes
- * through Clerk's hosted form, install goes through /agents/new, every
+ * through Clerk's hosted form, install goes through /fleets/new, every
  * lifecycle transition is a real click in the dashboard. No API short-cuts.
  *
  * DEV-only — Clerk PROD almost certainly does not have test mode enabled, so
@@ -12,7 +12,7 @@
  *
  * Why this spec exists: the persistent-fixture suite covers each lifecycle
  * slice individually but no spec walks a fresh operator from "I just signed
- * up" through to "I just killed a agent I observed running." The dashboard's
+ * up" through to "I just killed a fleet I observed running." The dashboard's
  * route-guard chain (workspace auto-provision, starter credit, empty-state →
  * populated transition) only runs on a brand-new tenant — that surface is
  * uncovered without this spec.
@@ -24,12 +24,12 @@ import { installViaUI } from "./fixtures/install-ui";
 import {
   expectDetailKilled,
   expectRowState,
-  killAgent,
-  resumeAgent,
-  stopAgent,
+  killFleet,
+  resumeFleet,
+  stopFleet,
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
-import { cleanWorkspaceAgents } from "./fixtures/teardown";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -54,7 +54,7 @@ test.describe("signup → install → lifecycle", () => {
 
   test.afterEach(async () => {
     if (cleanupSession) {
-      await cleanWorkspaceAgents(
+      await cleanWorkspaceFleets(
         { sessionJwt: cleanupSession.sessionJwt },
         cleanupSession.workspaceId,
       ).catch(() => undefined);
@@ -81,47 +81,47 @@ test.describe("signup → install → lifecycle", () => {
     if (!signup.workspaceId) throw new Error("signup did not return a workspace id");
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId: signup.workspaceId };
 
-    // Dashboard /agents renders auto-provisioned workspace + empty state.
+    // Dashboard /fleets renders auto-provisioned workspace + empty state.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
-    await page.goto("/agents");
-    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
+    await page.goto("/fleets");
+    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no agents yet/i)).toBeVisible();
+    await expect(page.getByText(/no fleets yet/i)).toBeVisible();
 
     // Install via dashboard form. Browser-driven; no API short-cut.
     const name = uniqueName();
-    const agentId = await installViaUI(page, name);
+    const fleetId = await installViaUI(page, name);
 
-    // Post-install: the form redirects to /agents/${id}. Recent Activity
+    // Post-install: the form redirects to /fleets/${id}. Recent Activity
     // section is the section-scaffolding assertion (matches logs-detail's
     // downgrade — section presence, not payload contents).
-    await expect(page).toHaveURL(new RegExp(`/agents/${agentId}(\\?|$)`));
+    await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}(\\?|$)`));
     await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "live");
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "live");
 
     // Billing page renders the balance card (starter credit).
     await page.goto("/settings/billing");
     await expect(page.getByTestId("balance-headline")).toBeVisible();
 
     // Lifecycle: Stop → Resume → Kill, each via the AlertDialog confirm.
-    await page.goto(`/agents/${agentId}`);
-    await stopAgent(page);
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "parked");
+    await page.goto(`/fleets/${fleetId}`);
+    await stopFleet(page);
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "parked");
 
-    await page.goto(`/agents/${agentId}`);
-    await resumeAgent(page);
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "live");
+    await page.goto(`/fleets/${fleetId}`);
+    await resumeFleet(page);
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "live");
 
-    await page.goto(`/agents/${agentId}`);
-    await killAgent(page);
+    await page.goto(`/fleets/${fleetId}`);
+    await killFleet(page);
     await expectDetailKilled(page);
-    await page.goto("/agents");
-    await expectRowState(page, agentId, "failed");
+    await page.goto("/fleets");
+    await expectRowState(page, fleetId, "failed");
   });
 });

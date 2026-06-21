@@ -21,7 +21,7 @@ const Config = @import("daemon/config.zig");
 const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 const LANDLOCK_FULL = @tagName(contract.protocol.SandboxTier.landlock_full);
 const CONTAINER_NESTED = @tagName(contract.protocol.SandboxTier.container_nested);
-const WORKSPACE = "/tmp/agent-ws-edge";
+const WORKSPACE = "/tmp/fleet-ws-edge";
 
 /// Build a daemon Config struct literal for argv tests. buildArgv reads only
 /// `sandbox_tier`; the other slices are inert placeholders, never freed here
@@ -174,7 +174,7 @@ test "should detach the controlling terminal with --new-session in the bwrap pre
     defer sandbox_args.freeArgv(alloc, argv);
 
     // --new-session sits among the namespace flags, BEFORE the bwrap `--`
-    // separator, so the agent has no controlling terminal (no TIOCSTI vector).
+    // separator, so the fleet has no controlling terminal (no TIOCSTI vector).
     const ns = indexOfStr(argv, "--new-session");
     try std.testing.expect(ns != null);
     const sep = indexOfStr(argv, "--").?;

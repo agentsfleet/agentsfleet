@@ -6,7 +6,7 @@ pub fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateAgentId(alloc: std.mem.Allocator) ![]const u8 {
+pub fn generateFleetId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
@@ -38,7 +38,11 @@ pub fn generateRunnerAffinityId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn isSupportedAgentId(id: []const u8) bool {
+pub fn generateFleetBundleId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn isSupportedFleetId(id: []const u8) bool {
     return isUuidV7(id);
 }
 

@@ -93,13 +93,13 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         return .short_circuit;
     };
     const row = maybe_row orelse {
-        log.info(S_AUTH_REJECTED, .{ .reason = "unknown", .key_prefix = TENANT_KEY_PREFIX });
+        log.err(S_AUTH_REJECTED, .{ .reason = "unknown", .key_prefix = TENANT_KEY_PREFIX, .error_code = errors.ERR_UNAUTHORIZED });
         ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
         return .short_circuit;
     };
 
     if (!row.active) {
-        log.info(S_AUTH_REJECTED, .{ .reason = "revoked", .api_key_id = row.api_key_id });
+        log.err(S_AUTH_REJECTED, .{ .reason = "revoked", .api_key_id = row.api_key_id, .error_code = ERR_APIKEY_REVOKED });
         freeRow(ctx.alloc, row);
         ctx.fail(ERR_APIKEY_REVOKED, "API key has been revoked");
         return .short_circuit;

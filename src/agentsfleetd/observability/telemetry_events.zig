@@ -10,7 +10,7 @@ const S_REQUEST_ID = "request_id";
 const S_WORKSPACE_ID = "workspace_id";
 const S_MESSAGE = "message";
 const S_TENANT_ID = "tenant_id";
-const S_AGENTSFLEET_ID = "agent_id";
+const S_FLEET_ID = "fleet_id";
 const S_EVENT_ID = "event_id";
 
 pub const EventKind = enum {
@@ -22,8 +22,8 @@ pub const EventKind = enum {
     workspace_created,
     auth_login_completed,
     auth_rejected,
-    agent_triggered,
-    agent_completed,
+    fleet_triggered,
+    fleet_completed,
     signup_bootstrapped,
 };
 
@@ -171,29 +171,29 @@ pub const AuthRejected = struct {
     }
 };
 
-pub const AgentTriggered = struct {
+pub const FleetTriggered = struct {
     distinct_id: []const u8,
     workspace_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     event_id: []const u8,
     source: []const u8,
 
-    pub const kind: EventKind = .agent_triggered;
+    pub const kind: EventKind = .fleet_triggered;
 
     pub fn properties(self: @This()) [4]posthog.Property {
         return .{
             .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
-            .{ .key = S_AGENTSFLEET_ID, .value = .{ .string = self.agent_id } },
+            .{ .key = S_FLEET_ID, .value = .{ .string = self.fleet_id } },
             .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "source", .value = .{ .string = self.source } },
         };
     }
 };
 
-pub const AgentCompleted = struct {
+pub const FleetCompleted = struct {
     distinct_id: []const u8,
     workspace_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     event_id: []const u8,
     tokens: u64,
     wall_ms: u64,
@@ -201,12 +201,12 @@ pub const AgentCompleted = struct {
     /// ms to first token. 0 if the runner did not report.
     time_to_first_token_ms: u64 = 0,
 
-    pub const kind: EventKind = .agent_completed;
+    pub const kind: EventKind = .fleet_completed;
 
     pub fn properties(self: @This()) [7]posthog.Property {
         return .{
             .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
-            .{ .key = S_AGENTSFLEET_ID, .value = .{ .string = self.agent_id } },
+            .{ .key = S_FLEET_ID, .value = .{ .string = self.fleet_id } },
             .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
             .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },

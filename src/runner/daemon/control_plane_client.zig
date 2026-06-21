@@ -7,7 +7,7 @@
 //! Uses the high-level `std.http.Client.fetch` (cross-platform; the manual
 //! `open()`/`readVec()` path is Linux-broken under Zig 0.15) over ONE
 //! persistent `std.http.Client` per owner (keep-alive connection reuse —
-//! a chatty agent run no longer pays a TCP/TLS handshake per frame).
+//! a chatty fleet run no longer pays a TCP/TLS handshake per frame).
 //!
 //! Every verb takes a required `deadline_ms`: a per-client watchdog
 //! (call_deadline.zig) shuts the in-flight pooled socket down at the bound,
@@ -121,13 +121,13 @@ pub fn report(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8,
     if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
 }
 
-/// GET /v1/runners/me/memory/{agent_id} → the agent's prior memory (a
+/// GET /v1/runners/me/memory/{fleet_id} → the fleet's prior memory (a
 /// compacted recency window). The parent seeds the child's in-run store from
 /// this; the sandboxed child never makes the call. `.alloc_always` so the
 /// returned deltas outlive `res.body` (freed here) — they ride the child input.
 /// Caller deinits the parsed value after the run.
-pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, agent_id: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.MemoryHydrateResponse) {
-    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, agent_id });
+pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, fleet_id: []const u8, deadline_ms: u31) !std.json.Parsed(protocol.MemoryHydrateResponse) {
+    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, fleet_id });
     defer alloc.free(path);
     const res = try self.get(alloc, path, runner_token, deadline_ms);
     defer alloc.free(res.body);
@@ -136,12 +136,12 @@ pub fn memoryHydrate(self: *LoopbackClient, alloc: Allocator, runner_token: []co
         ClientError.MalformedResponse;
 }
 
-/// POST /v1/runners/me/memory/{agent_id} → capture the run's memory for the
-/// agent. `lease_id` + `fencing_token` ride the body (like `report`) so the
+/// POST /v1/runners/me/memory/{fleet_id} → capture the run's memory for the
+/// fleet. `lease_id` + `fencing_token` ride the body (like `report`) so the
 /// control plane fences the write. Only the 2xx status matters to the caller;
 /// the daemon swallows + logs a failure (a memory blip never fails the run).
-pub fn memoryCapture(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, agent_id: []const u8, req: protocol.MemoryPushRequest, deadline_ms: u31) !void {
-    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, agent_id });
+pub fn memoryCapture(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, fleet_id: []const u8, req: protocol.MemoryPushRequest, deadline_ms: u31) !void {
+    const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ protocol.PATH_RUNNER_MEMORY, fleet_id });
     defer alloc.free(path);
     const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
     defer alloc.free(payload);
@@ -254,7 +254,7 @@ pub fn isTerminalRenewStatus(status: u16) bool {
     return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
-const PostResult = struct { status: u16, body: []u8 };
+pub const PostResult = struct { status: u16, body: []u8 };
 
 /// Pin the pooled connection the next fetch will use (get-or-create, then
 /// release back to the free list so the fetch pops the same one) and return
@@ -300,9 +300,11 @@ fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []con
     return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
 }
 
-/// One bearer-authed GET (no body) on the persistent client. Returns the status
-/// + response body (owned by `alloc`). Used by the read-only `getSelf` verb.
-fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
+/// One bearer-authed GET (no body) on the persistent client. Returns the status +
+/// response body (owned by `alloc`). The shared GET primitive: wrapped by the
+/// read-only `getSelf`/`memoryHydrate` verbs and consumed by `bundle_extract` for
+/// the Fleet Bundle snapshot download.
+pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
     if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
     defer self.watchdog.disarm();
 

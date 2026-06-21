@@ -14,13 +14,13 @@ const client_errors = @import("engine/client_errors.zig");
 const context_budget = @import("engine/context_budget.zig");
 
 const Config = nullclaw.config.Config;
-const WORKSPACE = "/tmp/agent-ws-bridge";
+const WORKSPACE = "/tmp/fleet-ws-bridge";
 
 /// nullclaw.config.Config requires `workspace_dir` + `config_path` (no defaults);
 /// every other field (tools, autonomy, …) defaults. Builders read only the
 /// defaulted sub-configs, so static paths here suffice.
 fn defaultCfg() Config {
-    return .{ .allocator = std.testing.allocator, .workspace_dir = WORKSPACE, .config_path = "/tmp/agent-cfg.toml" };
+    return .{ .allocator = std.testing.allocator, .workspace_dir = WORKSPACE, .config_path = "/tmp/fleet-cfg.toml" };
 }
 
 /// Build a tools-spec JSON array of `{ "name": <n> }` objects on `alloc`.

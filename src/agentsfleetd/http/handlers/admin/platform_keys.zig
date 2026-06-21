@@ -1,5 +1,5 @@
 //! Admin platform LLM key management — operational/bootstrap-only surface.
-//! Primary callers are humans/agents driving environment provisioning via
+//! Primary callers are humans/fleets driving environment provisioning via
 //! `playbooks/operations/admin_bootstrap/001_playbook.md` (steps 3 + 8 +
 //! rollback step 4). No first-party UI/CLI consumes these routes; if you add
 //! one, drop the playbook reference.
@@ -99,7 +99,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    log.info("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
+    log.debug("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
 
     hx.ok(.ok, .{
         .provider = input.provider,
@@ -135,7 +135,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
         return;
     };
 
-    log.info("admin_platform_key_deactivated", .{ .provider = provider });
+    log.debug("admin_platform_key_deactivated", .{ .provider = provider });
 
     hx.ok(.ok, .{
         .provider = provider,

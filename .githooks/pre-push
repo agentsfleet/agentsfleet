@@ -12,7 +12,6 @@
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
-#   - test-unit-bundle         (tests/template-substitution/*, tests/agentsfleet-postinstall/*, samples/fixtures/platform-ops-sample/*, cli/scripts/postinstall.mjs)
 #
 # Moved to CI (.github/workflows/{test-integration,memleak}.yml):
 #   - test-integration         — worker integration vs real Postgres + Redis
@@ -40,7 +39,6 @@ needs_test_cli=0
 needs_test_website=0
 needs_test_app=0
 needs_test_design_system=0
-needs_test_bundle=0
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
@@ -57,12 +55,10 @@ while IFS= read -r f; do
       # DS is consumed by app — test both when DS changes.
       needs_test_design_system=1
       needs_test_app=1 ;;
-    tests/template-substitution/*|tests/agentsfleet-postinstall/*|samples/fixtures/platform-ops-sample/*|cli/scripts/postinstall.mjs)
-      needs_test_bundle=1 ;;
   esac
 done <<< "$pushed_files"
 
-any_needed=$(( needs_test_zig + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system + needs_test_bundle ))
+any_needed=$(( needs_test_zig + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-push: no test-relevant files since $upstream_ref — nothing to run"
@@ -88,7 +84,6 @@ launch() {
 [ "$needs_test_website"       = 1 ] && launch test-unit-website        make test-unit-website
 [ "$needs_test_app"           = 1 ] && launch test-unit-app            make test-unit-app
 [ "$needs_test_design_system" = 1 ] && launch test-unit-design-system  make test-unit-design-system
-[ "$needs_test_bundle"        = 1 ] && launch test-unit-bundle         make test-unit-bundle
 
 failed_names=()
 for i in "${!pids[@]}"; do

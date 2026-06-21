@@ -1,5 +1,5 @@
 //! Grant approval webhook handler.
-//! POST /v1/webhooks/{agent_id}/grant-approval
+//! POST /v1/webhooks/{fleet_id}/grant-approval
 //!
 //! Called by the Slack/Discord notification provider after the human clicks
 //! Approve or Deny. The nonce is required for authenticity — it is generated
@@ -72,12 +72,12 @@ fn verifyAndConsumeNonce(
     };
 }
 
-fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, agent_id: []const u8) []const u8 {
+fn fetchWorkspaceId(pool: *pg.Pool, alloc: std.mem.Allocator, fleet_id: []const u8) []const u8 {
     const conn = pool.acquire() catch return "";
     defer pool.release(conn);
     var q = PgQuery.from(conn.query(
-        \\SELECT workspace_id::text FROM core.agents WHERE id = $1::uuid LIMIT 1
-    , .{agent_id}) catch return "");
+        \\SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid LIMIT 1
+    , .{fleet_id}) catch return "");
     defer q.deinit();
     const row_opt = q.next() catch return "";
     const row = row_opt orelse return "";
@@ -89,7 +89,7 @@ fn applyDecision(
     hx: hx_mod.Hx,
     conn: *pg.Conn,
     grant_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     is_approved: bool,
     now_ms: i64,
 ) bool {
@@ -97,8 +97,8 @@ fn applyDecision(
         _ = conn.exec(
             \\UPDATE core.integration_grants
             \\SET status = $1, approved_at = $2
-            \\WHERE grant_id = $3 AND agent_id = $4::uuid AND status = $5
-        , .{ STATUS_APPROVED, now_ms, grant_id, agent_id, STATUS_PENDING }) catch {
+            \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
+        , .{ STATUS_APPROVED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return false;
         };
@@ -106,8 +106,8 @@ fn applyDecision(
         _ = conn.exec(
             \\UPDATE core.integration_grants
             \\SET status = $1, revoked_at = $2
-            \\WHERE grant_id = $3 AND agent_id = $4::uuid AND status = $5
-        , .{ STATUS_REVOKED, now_ms, grant_id, agent_id, STATUS_PENDING }) catch {
+            \\WHERE grant_id = $3 AND fleet_id = $4::uuid AND status = $5
+        , .{ STATUS_REVOKED, now_ms, grant_id, fleet_id, STATUS_PENDING }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return false;
         };
@@ -115,11 +115,11 @@ fn applyDecision(
     return true;
 }
 
-pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const u8) void {
+pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, fleet_id: []const u8) void {
     const raw_body = req.body() orelse {
         log.warn("no_body", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
@@ -128,7 +128,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     const parsed = std.json.parseFromSlice(GrantApprovalBody, hx.alloc, raw_body, .{}) catch |err| {
         log.warn("malformed_json", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
             .err = @errorName(err),
         });
@@ -141,7 +141,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     if (body.grant_id.len == 0) {
         log.warn("missing_grant_id", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_INVALID_REQUEST, "grant_id required");
@@ -150,7 +150,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     if (body.nonce.len == 0) {
         log.warn("missing_nonce", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_INVALID_REQUEST, "nonce required");
@@ -161,7 +161,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     if (!is_approved and !is_denied) {
         log.warn("invalid_decision", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
             .decision = body.decision,
         });
@@ -175,7 +175,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     if (!verifyAndConsumeNonce(hx.ctx.queue, body.grant_id, body.nonce)) {
         log.warn("nonce_invalid", .{
             .error_code = ec.ERR_INVALID_REQUEST,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
             .grant_id = body.grant_id,
         });
@@ -190,13 +190,13 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, agent_id: []const 
     defer hx.ctx.pool.release(conn);
 
     const now_ms = clock.nowMillis();
-    if (!applyDecision(hx, conn, body.grant_id, agent_id, is_approved, now_ms)) return;
+    if (!applyDecision(hx, conn, body.grant_id, fleet_id, is_approved, now_ms)) return;
 
-    const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, agent_id);
+    const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, fleet_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";
 
-    log.info("decision_recorded", .{
-        .agent_id = agent_id,
+    log.debug("decision_recorded", .{
+        .fleet_id = fleet_id,
         .workspace_id = workspace_id,
         .grant_id = body.grant_id,
         .decision = body.decision,

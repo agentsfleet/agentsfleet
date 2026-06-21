@@ -20,7 +20,7 @@ test "encodeForXAdd produces 5 field/value pairs in canonical order" {
     const alloc = std.testing.allocator;
     const env = EventEnvelope{
         .event_id = "1729874000000-0",
-        .agent_id = "zb-1",
+        .fleet_id = "zb-1",
         .workspace_id = "ws-1",
         .actor = "steer:kishore",
         .event_type = .chat,
@@ -42,4 +42,3 @@ test "encodeForXAdd produces 5 field/value pairs in canonical order" {
     try std.testing.expectEqualStrings("created_at", argv[8]);
     try std.testing.expectEqualStrings("1745568000000", argv[9]);
 }
-

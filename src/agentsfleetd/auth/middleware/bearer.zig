@@ -14,4 +14,3 @@ pub fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
     if (std.mem.trim(u8, provided, " \t\r\n").len == 0) return null;
     return provided;
 }
-

@@ -7,7 +7,7 @@ import {
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
-import { cleanWorkspaceAgents } from "./fixtures/teardown";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
 const AUDIT_URL = "/acceptance-audit/workspace-fetches";
 const NOT_FOUND_STATUS = 404;
@@ -47,10 +47,10 @@ test.describe("workspace fetch dedupe", () => {
     await signInAs(page, FIXTURE_KEY.regular);
 
     test.skip(!(await resetAudit(page)), "workspace fetch audit route is disabled");
-    await page.goto("/agents");
-    await expect(page).toHaveURL(/\/agents(\?|$)/);
+    await page.goto("/fleets");
+    await expect(page).toHaveURL(/\/fleets(\?|$)/);
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expectWorkspaceFetchesWithinLimit(page, "agents render");
+    await expectWorkspaceFetchesWithinLimit(page, "fleets render");
 
     await resetAudit(page);
     await page.getByRole("link", { name: "Events" }).click();
@@ -70,6 +70,6 @@ test.describe("workspace fetch dedupe", () => {
 
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceAgents(FIXTURE_KEY.regular, ws);
+    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws);
   });
 });

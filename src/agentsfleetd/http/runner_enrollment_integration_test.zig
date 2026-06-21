@@ -202,7 +202,7 @@ test "register: the mint records last_seen_at = 0 (never connected → registere
     try std.testing.expectEqual(protocol.RUNNER_LAST_SEEN_NEVER, try row.get(i64, 0));
 }
 
-// ── Operator-plane fleet read (GET /v1/fleet/runners) ────────────────────────
+// ── Operator-plane fleet read (GET /v1/fleets/runners) ────────────────────────
 // Same platform-admin gate as enrollment; read-only; derives liveness and never
 // leaks the token hash or the raw agt_r.
 

@@ -1,4 +1,4 @@
-// POST /v1/webhooks/{agent_id}/approval — Slack interactive payload callback.
+// POST /v1/webhooks/{fleet_id}/approval — Slack interactive payload callback.
 //
 // Receives Slack button clicks (approve/deny) for the approval gate.
 // Validates the payload, resolves the pending action in Redis, and
@@ -18,8 +18,8 @@ const logging = @import("log");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
-const approval_gate = @import("../../../agent/approval_gate.zig");
-const resolver = @import("../../../agent/approval_gate_resolver.zig");
+const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
+const resolver = @import("../../../fleet_runtime/approval_gate_resolver.zig");
 
 const log = logging.scoped(.http_approval);
 
@@ -48,7 +48,7 @@ const ApprovalPayload = struct {
     decision: ApprovalDecision,
 };
 
-pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, agent_id: []const u8) void {
+pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, fleet_id: []const u8) void {
     // Verify request signature (HMAC-SHA256) if signing secret is configured.
     // Without this, any actor who knows the URL can submit approve/deny.
     if (!verifyRequestSignature(hx, req)) return;
@@ -65,18 +65,18 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, agent_id: []const u8) 
         .deny => .denied,
     };
 
-    // agent_id from the URL is bound into the SQL WHERE clause inside
-    // resolve(), so a payload whose action_id belongs to a different agent
+    // fleet_id from the URL is bound into the SQL WHERE clause inside
+    // resolve(), so a payload whose action_id belongs to a different fleet
     // returns .not_found without mutating the row.
     var outcome = approval_gate.resolve(hx.ctx.pool, hx.ctx.queue, hx.alloc, .{
         .action_id = payload.action_id,
-        .agent_id_filter = agent_id,
+        .fleet_id_filter = fleet_id,
         .outcome = gate_status,
         .by = resolver.SLACK_WEBHOOK,
     }) catch {
         log.err("resolve_fail", .{
             .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .action_id = payload.action_id,
         });
         common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
@@ -94,13 +94,13 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, agent_id: []const u8) 
     }
 
     switch (outcome) {
-        .resolved => log.info(S_RESOLVED, .{
-            .agent_id = agent_id,
+        .resolved => log.debug(S_RESOLVED, .{
+            .fleet_id = fleet_id,
             .action_id = payload.action_id,
             .decision = decision_str,
         }),
-        .already_resolved => |r| log.info("already_resolved", .{
-            .agent_id = agent_id,
+        .already_resolved => |r| log.debug("already_resolved", .{
+            .fleet_id = fleet_id,
             .action_id = payload.action_id,
             .prior_outcome = r.outcome.toSlice(),
             .prior_by = r.resolved_by,

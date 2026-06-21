@@ -1,8 +1,9 @@
 //! nfnetlink_rule_test.zig — the golden oracle for the rule builders.
 //!
 //! Each test reconstructs the exact wire bytes real `nft` sent the kernel from
-//! the embedded `--debug=mnl` capture (`fixtures/captured/*.mnl.txt`, see
-//! fixtures/README.md for provenance) and requires our builder's payload —
+//! the embedded `--debug=mnl` capture (`tests/fixtures/runner/network/captured/*.mnl.txt`,
+//! wired as named @embedFile imports by build_fixtures.zig; see that dir's
+//! README.md for provenance) and requires our builder's payload —
 //! everything after the 16-byte `nlmsghdr` (whose seq/flags legitimately
 //! differ) — to match byte-for-byte. No transcription: the fixture file IS the
 //! expected value, parsed at test time. A parser regression cannot pass
@@ -98,7 +99,7 @@ test "newRuleDnsDrop(udp) byte-matches the nft oracle" {
     var buf: [512]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     rule.newRuleDnsDrop(&mb, TABLE, FWD, IFNAME, .udp, SEQ);
-    try expectMatchesOracle(@embedFile("fixtures/captured/06_rule_drop_dns_udp.mnl.txt"), try mb.finish());
+    try expectMatchesOracle(@embedFile("06_rule_drop_dns_udp.mnl.txt"), try mb.finish());
 }
 
 test "newRuleDnsDrop(tcp) byte-matches the nft oracle" {
@@ -106,7 +107,7 @@ test "newRuleDnsDrop(tcp) byte-matches the nft oracle" {
     var buf: [512]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     rule.newRuleDnsDrop(&mb, TABLE, FWD, IFNAME, .tcp, SEQ);
-    try expectMatchesOracle(@embedFile("fixtures/captured/07_rule_drop_dns_tcp.mnl.txt"), try mb.finish());
+    try expectMatchesOracle(@embedFile("07_rule_drop_dns_tcp.mnl.txt"), try mb.finish());
 }
 
 test "newRuleAllowSet byte-matches the nft oracle" {
@@ -114,7 +115,7 @@ test "newRuleAllowSet byte-matches the nft oracle" {
     var buf: [512]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     rule.newRuleAllowSet(&mb, TABLE, FWD, IFNAME, SET, SET_ID, SEQ);
-    try expectMatchesOracle(@embedFile("fixtures/captured/08_rule_allow_set.mnl.txt"), try mb.finish());
+    try expectMatchesOracle(@embedFile("08_rule_allow_set.mnl.txt"), try mb.finish());
 }
 
 test "newRuleCtReturn byte-matches the nft oracle" {
@@ -122,7 +123,7 @@ test "newRuleCtReturn byte-matches the nft oracle" {
     var buf: [512]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     rule.newRuleCtReturn(&mb, TABLE, FWD, IFNAME, SEQ);
-    try expectMatchesOracle(@embedFile("fixtures/captured/09_rule_ct_return.mnl.txt"), try mb.finish());
+    try expectMatchesOracle(@embedFile("09_rule_ct_return.mnl.txt"), try mb.finish());
 }
 
 test "newRuleMasquerade byte-matches the nft oracle" {
@@ -130,7 +131,7 @@ test "newRuleMasquerade byte-matches the nft oracle" {
     var buf: [512]u8 = undefined;
     var mb = MessageBuilder.init(&buf);
     rule.newRuleMasquerade(&mb, TABLE, NAT, .{ 10, 69, 0, 0 }, 30, IFNAME, SEQ);
-    try expectMatchesOracle(@embedFile("fixtures/captured/10_rule_masquerade.mnl.txt"), try mb.finish());
+    try expectMatchesOracle(@embedFile("10_rule_masquerade.mnl.txt"), try mb.finish());
 }
 
 test "fixture parser fails loudly on a malformed dump" {

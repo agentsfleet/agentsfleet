@@ -5,8 +5,8 @@
  * here so the operator sees a consistent voice + an actionable next step.
  *
  * Pattern (Captain's call):
- *   - Second person, present tense — "Couldn't delete this agent" beats
- *     "Failed to delete agent".
+ *   - Second person, present tense — "Couldn't delete this Fleet" beats
+ *     "Failed to delete Fleet".
  *   - One line, ending on the next action the operator can take.
  *   - The UZ-XXX-NNN code is surfaced for support but never the lead;
  *     callers render it as a small monospaced trailer beneath the title.
@@ -23,7 +23,7 @@ export interface ErrorInput {
   /**
    * What the operator was trying to do, in present-tense lowercase. Used
    * to construct the fallback when no errorCode matches. Examples:
-   *   "delete this agent", "store the credential", "load more events".
+   *   "delete this Fleet", "store the credential", "load more events".
    */
   action: string;
 }
@@ -76,7 +76,7 @@ const CODE_MAP = {
     body: "Pick a different name, or delete the existing one first.",
   },
   "UZ-AGT-009": {
-    title: "That agent is in a state that blocks this action",
+    title: "That Fleet is in a state that blocks this action",
     body: "Check the current status on the detail page and try the right transition.",
   },
   "UZ-AUTH-001": {
@@ -85,7 +85,7 @@ const CODE_MAP = {
   },
   "UZ-AUTH-021": {
     title: "You need platform-admin access for that",
-    body: "Only a agentsfleet platform admin can enroll or view runners.",
+    body: "Only an agentsfleet platform admin can enroll or view runners.",
   },
   "UZ-REQ-001": {
     title: "That request wasn't valid",
@@ -163,3 +163,9 @@ export function presentErrorString(input: ErrorInput): string {
   if (!p.body) return p.title;
   return `${p.title}. ${p.body}`;
 }
+
+// Shown when Fleet creation returns 409 — the name (derived from SKILL.md
+// frontmatter) collides with an existing teammate. Shared by both the paste
+// form and the gallery install flow so the two paths surface the same hint.
+export const FLEET_NAME_CONFLICT_MESSAGE =
+  "That teammate name already exists in this workspace.";

@@ -85,7 +85,7 @@ pub fn run(
     defer alloc.free(lease_json);
 
     return supervise(io, alloc, cfg, env_map, workspace_path, payload, lease_json, sink, mem_sink, renew_hook) catch |err| {
-        log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+        log.err("supervise_failed", .{ .error_code = client_errors.ERR_EXEC_CRASH, .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
 }
@@ -160,7 +160,7 @@ fn supervise(
     // Feed the lease (incl. inline secrets) in, then EOF the child's stdin. Null
     // the File after closing so the terminal `wait` does not double-close it.
     child.stdin.?.writeStreamingAll(io, lease_json) catch |err|
-        log.warn("lease_write_failed", .{ .err = @errorName(err) });
+        log.warn("lease_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
     child.stdin.?.close(io);
     child.stdin = null;
 
@@ -169,10 +169,10 @@ fn supervise(
     // child.stdout is closed by the terminal `wait` below — no manual close.
 
     if (outcome.terminated) {
-        log.warn("lease_terminated_by_renewal", .{ .lease_id = payload.lease_id });
+        log.warn("lease_terminated_by_renewal", .{ .error_code = client_errors.ERR_EXEC_RENEWAL_TERMINATED, .lease_id = payload.lease_id });
         child_process.killChild(child.id.?, &scope);
     } else if (outcome.timed_out) {
-        log.warn("lease_timed_out", .{ .lease_id = payload.lease_id });
+        log.warn("lease_timed_out", .{ .error_code = client_errors.ERR_EXEC_TIMEOUT_KILL, .lease_id = payload.lease_id });
         child_process.killChild(child.id.?, &scope);
     }
 
@@ -180,7 +180,7 @@ fn supervise(
     // (wait() asserts id != null and nulls it on success).
     reaped = true;
     const term = child.wait(io) catch |err| {
-        log.err("child_wait_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+        log.err("child_wait_failed", .{ .error_code = client_errors.ERR_EXEC_CRASH, .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.runner_crash);
     };
     return classify(alloc, outcome, term, &scope);

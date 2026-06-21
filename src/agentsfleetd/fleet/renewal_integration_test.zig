@@ -37,7 +37,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7a01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7f01";
 const EVENT_ID = "evt-renew-1"; // matches seedLease; metering rows keyed by it
@@ -59,20 +59,20 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (agent_id) DO UPDATE
+        \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
-    , .{ AFFINITY_ID, AGENTSFLEET_ID, RUNNER_ID, fencing_seq, leased_until });
+    , .{ AFFINITY_ID, FLEET_ID, RUNNER_ID, fencing_seq, leased_until });
 }
 
 /// Seed an active lease for the runner with a given fencing_token + created_at.
 fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -80,7 +80,7 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, RUNNER_ID, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
+    , .{ LEASE_ID, RUNNER_ID, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -92,9 +92,9 @@ fn teardown(conn: *pg.Conn) void {
     // delete; clear them so a re-seeded case starts the per-event slice counter
     // clean (the affinity counter resets, so a leftover slice_seq would collide).
     execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    execIgnore(conn, "DELETE FROM core.agent_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.fleet_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
@@ -105,7 +105,7 @@ fn teardown(conn: *pg.Conn) void {
 /// read/write on a conn while a result is open).
 fn readDeadlines(conn: *pg.Conn) !struct { lease: i64, affinity: i64 } {
     const lease_until = try readBigint(conn, "SELECT lease_expires_at FROM fleet.runner_leases WHERE id = $1::uuid", LEASE_ID);
-    const aff_until = try readBigint(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE agent_id = $1::uuid", AGENTSFLEET_ID);
+    const aff_until = try readBigint(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", FLEET_ID);
     return .{ .lease = lease_until, .affinity = aff_until };
 }
 

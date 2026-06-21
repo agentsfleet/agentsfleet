@@ -29,9 +29,9 @@ const OIDC_HAPPY: []const u8 = "oidc-clerk-http-happy-01";
 const OIDC_REPLAY: []const u8 = "oidc-clerk-http-replay-02";
 const OIDC_DELETE_AGENTS: []const u8 = "oidc-clerk-http-del-agt-03";
 
-// Valid UUIDv7 (version char '7' at position 15) for the seeded agent row;
-// satisfies core.agents' ck_agents_uid_uuidv7 CHECK.
-const SEED_AGENTSFLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
+// Valid UUIDv7 (version char '7' at position 15) for the seeded fleet row;
+// satisfies core.fleets' ck_fleets_uid_uuidv7 CHECK.
+const SEED_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
 
 fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -45,13 +45,13 @@ fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
-    // FK-safe order: agents first (reference workspaces, no cascade), then
+    // FK-safe order: fleets first (reference workspaces, no cascade), then
     // workspaces/memberships (reference tenant/user), then users + tenants in
     // a CTE so the RETURNING clause can feed the tenant delete after users are
     // gone. core.users.tenant_id → core.tenants has no ON DELETE CASCADE, so
     // tenants cannot drop while users reference them.
     _ = conn.exec(
-        \\DELETE FROM core.agents
+        \\DELETE FROM core.fleets
         \\WHERE workspace_id IN (
         \\  SELECT workspace_id FROM core.workspaces
         \\  WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1))
@@ -121,12 +121,12 @@ fn fetchWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []co
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
-fn insertAgent(conn: *pg.Conn, workspace_id: []const u8, agent_id: []const u8) !void {
+fn insertFleet(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8) !void {
     _ = try conn.exec(
-        \\INSERT INTO core.agents
+        \\INSERT INTO core.fleets
         \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, 'purge-victim', '# z', '{}'::jsonb, 'active', 0, 0)
-    , .{ agent_id, workspace_id });
+    , .{ fleet_id, workspace_id });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -474,7 +474,7 @@ test "clerk webhook: replay of same user.created returns created:false with no n
     try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, OIDC_REPLAY));
 }
 
-test "clerk webhook: user.deleted purges an account that still owns agents" {
+test "clerk webhook: user.deleted purges an account that still owns fleets" {
     const h = startHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -503,7 +503,7 @@ test "clerk webhook: user.deleted purges an account that still owns agents" {
         try resp.expectStatus(.ok);
     }
 
-    // Seed a agent in the account's workspace. core.agents.workspace_id has
+    // Seed a fleet in the account's workspace. core.fleets.workspace_id has
     // no ON DELETE CASCADE, so without child-first cleanup the workspace delete
     // throws an FK violation and the webhook 500s (Clerk then retries forever).
     {
@@ -511,7 +511,7 @@ test "clerk webhook: user.deleted purges an account that still owns agents" {
         defer h.releaseConn(conn);
         const ws = try fetchWorkspaceId(conn, ALLOC, OIDC_DELETE_AGENTS);
         defer ALLOC.free(ws);
-        try insertAgent(conn, ws, SEED_AGENTSFLEET_ID);
+        try insertFleet(conn, ws, SEED_FLEET_ID);
     }
 
     // user.deleted must purge the whole account without an FK violation.

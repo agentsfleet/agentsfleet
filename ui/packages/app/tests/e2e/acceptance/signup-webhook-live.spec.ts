@@ -58,10 +58,10 @@ test.describe("signup webhook live", () => {
       requireWorkspaceSession: true,
     });
 
-    await page.goto("/agents");
-    await expect(page).toHaveURL((url) => url.pathname === "/agents");
-    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
+    await page.goto("/fleets");
+    await expect(page).toHaveURL((url) => url.pathname === "/fleets");
+    await expect(page.getByRole("heading", { name: /fleets/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no agents yet/i)).toBeVisible();
+    await expect(page.getByText(/no fleets yet/i)).toBeVisible();
   });
 });

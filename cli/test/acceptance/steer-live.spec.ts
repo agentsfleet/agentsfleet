@@ -1,12 +1,12 @@
 /**
- * steer-live — one-shot `steer` against a freshly-installed live agent.
+ * steer-live — one-shot `steer` against a freshly-installed live fleet.
  *
  * Scenario (seeded-credentials session, mirrors lifecycle-with-token.spec.ts):
  *   - mint a Clerk session JWT via the admin path
  *   - hydrate workspaces.json directly from the API (the CLI only
  *     hydrates inside the login flow)
  *   - install the platform-ops bundle (prefix-scoped name)
- *   - drive `steer <agent_id> <message> --json` non-interactively — the
+ *   - drive `steer <fleet_id> <message> --json` non-interactively — the
  *     spawned child's stdin is a pipe AND a positional message is
  *     supplied, so `shouldEnterSteerRepl` (message===undefined && tty)
  *     stays false and the command runs a single turn (no REPL drive)
@@ -23,16 +23,16 @@
  *         `renderError` stem on stderr. Tolerated as long as the minted
  *         JWT never leaks.
  *
- * Negative paths (no network residue beyond the already-installed agent):
+ * Negative paths (no network residue beyond the already-installed fleet):
  *   - whitespace-only message rejected client-side ("message is required")
- *   - missing `<agent_id>` rejected by commander before any network call
+ *   - missing `<fleet_id>` rejected by commander before any network call
  *
- * Teardown: prefix-scoped `cleanWorkspaceAgents` — only this run's agents
+ * Teardown: prefix-scoped `cleanWorkspaceFleets` — only this run's fleets
  * are killed; shared-tenant residue from other runs is left untouched and
  * global emptiness is never asserted.
  *
  * The minted JWT must not appear in any spawn's stdout/stderr
- * (`assertNoSecretLeak` after every `runAgentctl`).
+ * (`assertNoSecretLeak` after every `runFleetctl`).
  *
  * Live-only: registers real tests only when `AGENTSFLEET_ACCEPTANCE_TARGET`
  * is an https URL; otherwise every test is skipped (local runs skip; CI
@@ -46,7 +46,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -56,8 +56,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
 const isLive = target.startsWith("https://");
@@ -82,7 +82,7 @@ const BACKSLASH = "\\" as const;
 
 // The SSE round-trip falls back to a ~60s poll window before declaring a
 // timeout, then renders. Budget well above that so a slow-but-valid turn
-// reads as `complete`; `runAgentctl` *throws* TimeoutError if the child
+// reads as `complete`; `runFleetctl` *throws* TimeoutError if the child
 // outlives this, so it must exceed the CLI's own internal cap.
 const STEER_TIMEOUT_MS = 180_000;
 
@@ -174,15 +174,15 @@ if (!isLive) {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
   });
 } else {
-  describe("steer-live — one-shot steer against a live agent", () => {
+  describe("steer-live — one-shot steer against a live fleet", () => {
     let sessionJwt = "";
     let stateDir = "";
     let env: Record<string, string> = {};
     let workspaceId = "";
-    let agentId = "";
+    let fleetId = "";
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
-      const result = await runAgentctl(args, { env, timeoutMs: STEER_TIMEOUT_MS });
+      const result = await runFleetctl(args, { env, timeoutMs: STEER_TIMEOUT_MS });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -203,36 +203,36 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      const installed = await installPlatformOpsAgent({ env });
-      const id = installed.id ?? installed.agent_id;
+      const installed = await installPlatformOpsFleet({ env });
+      const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
-      agentId = id;
+      fleetId = id;
     }, STEER_TIMEOUT_MS);
 
     afterAll(async () => {
       if (env && workspaceId) {
         try {
-          await cleanWorkspaceAgents(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
         } catch { /* best-effort teardown; never fail the run on cleanup */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
     it("steer <id> <message> --json is accepted and emits a structured envelope", async () => {
-      assert.ok(agentId, "agent was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, agentId, ONE_SHOT_MESSAGE, JSON_FLAG]);
+      assert.ok(fleetId, "fleet was not installed in beforeAll");
+      const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
       assertSteerAccepted(result);
     }, STEER_TIMEOUT_MS);
 
     it("steer <id> with a whitespace-only message is rejected client-side", async () => {
-      assert.ok(agentId, "agent was not installed in beforeAll");
-      const result = await runWithEnv([STEER_COMMAND, agentId, WHITESPACE_MESSAGE, JSON_FLAG]);
+      assert.ok(fleetId, "fleet was not installed in beforeAll");
+      const result = await runWithEnv([STEER_COMMAND, fleetId, WHITESPACE_MESSAGE, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(`${result.stderr}\n${result.stdout}`, /message is required/i,
         `expected "message is required" stem; got stdout=${result.stdout} stderr=${result.stderr}`);
     });
 
-    it("steer with no <agent_id> exits non-zero with a usage stem", async () => {
+    it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {
       const result = await runWithEnv([STEER_COMMAND, JSON_FLAG]);
       assert.notEqual(result.code, 0, `expected non-zero; stdout=${result.stdout} stderr=${result.stderr}`);
       assert.match(`${result.stderr}\n${result.stdout}`.toLowerCase(), /missing|required|usage|expected/,

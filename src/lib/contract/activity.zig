@@ -4,7 +4,7 @@
 //! (a batch of `ActivityFrame`s). The runner builds frames from NullClaw observer
 //! events inside the sandboxed child, streams them to its parent over the lease
 //! pipe, and the parent forwards them to `agentsfleetd`, which `PUBLISH`es each to
-//! `agent:{id}:activity` for the Server-Sent-Events (SSE) live tail.
+//! `fleet:{id}:activity` for the Server-Sent-Events (SSE) live tail.
 //!
 //! Two planes, kept apart on purpose: activity is ephemeral + best-effort (a
 //! dropped frame is cosmetic), while `report` is the durable system of record.
@@ -25,7 +25,7 @@ const std = @import("std");
 /// UI spinner survives a slow tool.
 pub const ActivityFrame = union(enum) {
     tool_call_started: ToolCallStarted,
-    agent_response_chunk: AgentResponseChunk,
+    fleet_response_chunk: FleetResponseChunk,
     tool_call_completed: ToolCallCompleted,
     tool_call_progress: ToolCallProgress,
 
@@ -35,7 +35,7 @@ pub const ActivityFrame = union(enum) {
         name: []const u8,
         args_redacted: []const u8,
     };
-    pub const AgentResponseChunk = struct {
+    pub const FleetResponseChunk = struct {
         text: []const u8,
     };
     pub const ToolCallCompleted = struct {
@@ -75,7 +75,7 @@ test "ActivityFrame round-trips through std.json as a tagged union" {
 test "ActivityRequest carries a batch of mixed frames" {
     const alloc = std.testing.allocator;
     const frames = [_]ActivityFrame{
-        .{ .agent_response_chunk = .{ .text = "thinking" } },
+        .{ .fleet_response_chunk = .{ .text = "thinking" } },
         .{ .tool_call_completed = .{ .name = "fly_status", .ms = 8210 } },
         .{ .tool_call_progress = .{ .name = "deploy", .elapsed_ms = 4000 } },
     };
@@ -88,7 +88,7 @@ test "ActivityRequest carries a batch of mixed frames" {
     defer parsed.deinit();
 
     try std.testing.expectEqual(@as(usize, 3), parsed.value.frames.len);
-    try std.testing.expect(parsed.value.frames[0] == .agent_response_chunk);
+    try std.testing.expect(parsed.value.frames[0] == .fleet_response_chunk);
     try std.testing.expectEqual(@as(i64, 8210), parsed.value.frames[1].tool_call_completed.ms);
     try std.testing.expectEqual(@as(i64, 4000), parsed.value.frames[2].tool_call_progress.elapsed_ms);
 }

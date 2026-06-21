@@ -16,7 +16,7 @@ BEGIN
         'api_runtime',
         'memory_runtime',
         'ops_readonly_human',
-        'ops_readonly_agent'
+        'ops_readonly_fleet'
     ]
     LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = r) THEN
@@ -29,11 +29,11 @@ $$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- db_migrator: full DDL authority (control plane only)
-GRANT ALL ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory TO db_migrator;
-GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory TO db_migrator;
+GRANT ALL ON SCHEMA public, core, fleet, billing, vault, audit, ops_ro, memory TO db_migrator;
+GRANT ALL ON ALL TABLES IN SCHEMA core, fleet, billing, vault, audit, ops_ro, memory TO db_migrator;
 
 -- Runtime roles: data access only
-GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime;
+GRANT USAGE ON SCHEMA core, fleet, billing, vault, audit TO api_runtime;
 
 -- Pipeline v1 removed. Grants to dropped tables removed:
 -- core.specs, core.runs, core.run_transitions, core.artifacts,
@@ -68,28 +68,28 @@ CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
 GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime;
-REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_agent;
+REVOKE ALL ON vault.secrets FROM ops_readonly_human, ops_readonly_fleet;
 
 -- Read-only principals are strictly routed to ops_ro + audit
-GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;
+GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_fleet;
 
 -- No runtime/read-only DDL in app schemas
-REVOKE CREATE ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory
-FROM api_runtime, memory_runtime, ops_readonly_human, ops_readonly_agent;
+REVOKE CREATE ON SCHEMA public, core, fleet, billing, vault, audit, ops_ro, memory
+FROM api_runtime, memory_runtime, ops_readonly_human, ops_readonly_fleet;
 
 -- Remove default PUBLIC table visibility in authoritative app schemas.
-REVOKE ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA core, fleet, billing, vault, audit, ops_ro, memory FROM PUBLIC;
 
-ALTER ROLE api_runtime SET search_path = core, agent, billing, vault, audit, public;
+ALTER ROLE api_runtime SET search_path = core, fleet, billing, vault, audit, public;
 ALTER ROLE ops_readonly_human SET search_path = ops_ro, audit, public;
-ALTER ROLE ops_readonly_agent SET search_path = ops_ro, audit, public;
+ALTER ROLE ops_readonly_fleet SET search_path = ops_ro, audit, public;
 
 -- Keep local-superuser test connections deterministic when role-specific
 -- URLs are not used (e.g. HANDLER_DB_TEST_URL in CI/dev Docker).
 DO $$
 BEGIN
     EXECUTE format(
-        'ALTER DATABASE %I SET search_path = core,agent,billing,vault,audit,public',
+        'ALTER DATABASE %I SET search_path = core,fleet,billing,vault,audit,public',
         current_database()
     );
 END

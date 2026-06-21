@@ -4,22 +4,22 @@
  * Fixture rows are conceptually tagged with `x-test-fixture: true` for
  * cleanup discrimination. agentsfleetd does not
  * currently read that header, but each fixture user has its own dedicated
- * tenant + workspace — every agent in that workspace is a fixture row by
+ * tenant + workspace — every fleet in that workspace is a fixture row by
  * construction. Per-spec cleanup deletes everything in the fixture user's
  * workspace; no extra discriminator needed today.
  */
 import { clientFor, type ClientHandle } from "./api-client";
-import type { FixtureKey, AgentStatus } from "./constants";
+import type { FixtureKey, FleetStatus } from "./constants";
 
 export interface Workspace {
   id: string;
   name: string | null;
 }
 
-export interface Agent {
+export interface Fleet {
   id: string;
   name: string;
-  status?: AgentStatus;
+  status?: FleetStatus;
 }
 
 interface ListResp<T> {
@@ -46,10 +46,7 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 }
 
 function triggerMd(name: string): string {
-  // Minimum valid shape for create_agent. Mirrors
-  // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md: `triggers`
-  // is a list, and `type: api` is rejected by the parser (config_helpers.zig)
-  // — use a single `cron` trigger, the smallest valid shape.
+  // Use cron here so seeded fleets keep a concrete wake rule.
   return [
     "---",
     `name: ${name}`,
@@ -69,7 +66,7 @@ function triggerMd(name: string): string {
 
 function skillMd(name: string): string {
   // SKILL.md frontmatter requires name (kebab), description, version (semver).
-  // Mirrors samples/fixtures/frontmatter/bundles/name_mismatch/SKILL.md.
+  // Mirrors tests/fixtures/fleetbundle/skill/name_mismatch/SKILL.md.
   return [
     "---",
     `name: ${name}`,
@@ -79,39 +76,39 @@ function skillMd(name: string): string {
     "",
     `# ${name}`,
     "",
-    "Body for fixture agent used by e2e harness.",
+    "Body for fixture fleet used by e2e harness.",
     "",
   ].join("\n");
 }
 
-export interface SeedAgentOpts {
+export interface SeedFleetOpts {
   name: string;
 }
 
-interface CreateAgentResp {
-  agent_id: string;
+interface CreateFleetResp {
+  fleet_id: string;
   name: string;
   status: string;
 }
 
-export async function seedAgent(
+export async function seedFleet(
   key: FixtureKey,
   workspaceId: string,
-  opts: SeedAgentOpts,
-): Promise<Agent> {
+  opts: SeedFleetOpts,
+): Promise<Fleet> {
   const c = clientFor(key);
-  // create_agent returns `agent_id`; list_agents items have `id`. Normalize
-  // to the listing shape so callers can compare against listAgents output.
-  const resp = await c.post<CreateAgentResp>(`/v1/workspaces/${workspaceId}/agents`, {
+  // create_fleet returns `fleet_id`; list_fleets items have `id`. Normalize
+  // to the listing shape so callers can compare against listFleets output.
+  const resp = await c.post<CreateFleetResp>(`/v1/workspaces/${workspaceId}/fleets`, {
     trigger_markdown: triggerMd(opts.name),
     source_markdown: skillMd(opts.name),
   });
-  return { id: resp.agent_id, name: resp.name };
+  return { id: resp.fleet_id, name: resp.name };
 }
 
-export async function listAgents(handle: ClientHandle, workspaceId: string): Promise<Agent[]> {
+export async function listFleets(handle: ClientHandle, workspaceId: string): Promise<Fleet[]> {
   const c = clientFor(handle);
-  const res = await c.get<ListResp<Agent>>(`/v1/workspaces/${workspaceId}/agents`);
+  const res = await c.get<ListResp<Fleet>>(`/v1/workspaces/${workspaceId}/fleets`);
   return res.items;
 }
 

@@ -9,7 +9,7 @@ const protocol = @import("contract").protocol;
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
-const redis_agent = @import("../queue/redis_agent.zig");
+const redis_fleet = @import("../queue/redis_fleet.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -24,7 +24,7 @@ const BODY_CORDON = "{\"action\":\"cordon\"}";
 
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6a01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6c01";
 const SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e6d01";
 const RUNNER_TOKEN_BODY_HEX_CHARS: usize = 64;
 const RUNNER_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "e" ** RUNNER_TOKEN_BODY_HEX_CHARS;
@@ -64,7 +64,7 @@ const SOURCE_MD =
     \\name: runner-events-bot
     \\---
     \\
-    \\You are a runner event test agent.
+    \\You are a runner event test fleet.
 ;
 
 const TEST_JWKS =
@@ -112,15 +112,15 @@ fn seedFleetWork(conn: anytype) !void {
         \\  SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
     , .{ base.TEST_TENANT_ID, LARGE_BALANCE_NANOS });
     try seedRunner(conn);
-    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "runner-events-agent", CONFIG_NO_GATES, SOURCE_MD);
-    try base.seedAgentSession(conn, SESSION_ID, AGENTSFLEET_ID, "{}");
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "runner-events-fleet", CONFIG_NO_GATES, SOURCE_MD);
+    try base.seedFleetSession(conn, SESSION_ID, FLEET_ID, "{}");
 }
 
 fn publishFreshEvent(h: *TestHarness) !void {
-    try redis_agent.ensureAgentConsumerGroup(&h.queue, AGENTSFLEET_ID);
-    const id = try h.queue.xaddAgentEvent(.{
+    try redis_fleet.ensureFleetConsumerGroup(&h.queue, FLEET_ID);
+    const id = try h.queue.xaddFleetEvent(.{
         .event_id = "",
-        .agent_id = AGENTSFLEET_ID,
+        .fleet_id = FLEET_ID,
         .workspace_id = WORKSPACE_ID,
         .actor = "steer:runner-events",
         .event_type = .chat,
@@ -206,12 +206,12 @@ fn cleanupRegister(conn: anytype) void {
 }
 
 fn cleanupFleetWork(h: *TestHarness, conn: anytype) void {
-    var resp = h.queue.command(&.{ "DEL", "agent:" ++ AGENTSFLEET_ID ++ ":events" }) catch null;
+    var resp = h.queue.command(&.{ "DEL", "fleet:" ++ FLEET_ID ++ ":events" }) catch null;
     if (resp) |*r| r.deinit(h.queue.alloc);
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID}) catch |err|
         std.log.warn("cleanup runner ignored: {s}", .{@errorName(err)});
     base.teardownPlatformProvider(conn, WORKSPACE_ID);
-    base.teardownAgents(conn, WORKSPACE_ID);
+    base.teardownFleets(conn, WORKSPACE_ID);
     base.teardownWorkspace(conn, WORKSPACE_ID);
     base.teardownTenant(conn);
 }

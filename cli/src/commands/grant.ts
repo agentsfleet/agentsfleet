@@ -1,7 +1,7 @@
 // Integration Grant CLI commands — Effect-shaped.
 //
-// agentsfleet grant list   --agent <id>              → list grants for a agent
-// agentsfleet grant delete --agent <id> <grant_id>   → revoke a grant immediately
+// agentsfleet grant list   --fleet <id>              → list grants for a fleet
+// agentsfleet grant delete --fleet <id> <grant_id>   → revoke a grant immediately
 
 import { Effect } from "effect";
 import { CliConfig } from "../services/config.ts";
@@ -57,8 +57,8 @@ const requireValidId = (
 };
 
 export const grantListEffectFromArgs = (
-  agentIdPositional: string | undefined,
-  agentIdFlag: string | undefined,
+  fleetIdPositional: string | undefined,
+  fleetIdFlag: string | undefined,
 ): Effect.Effect<
   void,
   CliError,
@@ -70,14 +70,14 @@ export const grantListEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const agentId = yield* requireFlag(
-      agentIdFlag ?? agentIdPositional,
-      "grant list requires --agent <id>",
-      "pass --agent <agent_id>",
+    const fleetId = yield* requireFlag(
+      fleetIdFlag ?? fleetIdPositional,
+      "grant list requires --fleet <id>",
+      "pass --fleet <fleet_id>",
     );
 
     const res = yield* http.request<GrantListResponse>({
-      path: wsGrantsListPath(workspaceId, agentId),
+      path: wsGrantsListPath(workspaceId, fleetId),
       token,
     });
     const grants = res.items ?? [];
@@ -113,7 +113,7 @@ export const grantListEffectFromArgs = (
   });
 
 export const grantDeleteEffectFromArgs = (
-  agentIdFlag: string | undefined,
+  fleetIdFlag: string | undefined,
   grantIdPositional: string | undefined,
 ): Effect.Effect<
   void,
@@ -126,12 +126,12 @@ export const grantDeleteEffectFromArgs = (
     const http = yield* HttpClient;
     const workspaceId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
-    const agentIdRaw = yield* requireFlag(
-      agentIdFlag,
+    const fleetIdRaw = yield* requireFlag(
+      fleetIdFlag,
       GRANT_DELETE_USAGE_ERROR,
-      "pass --agent <agent_id> <grant_id>",
+      "pass --fleet <fleet_id> <grant_id>",
     );
-    const agentId = yield* requireValidId(agentIdRaw, "agent_id");
+    const fleetId = yield* requireValidId(fleetIdRaw, "fleet_id");
     const grantIdRaw = yield* requireFlag(
       grantIdPositional,
       GRANT_DELETE_USAGE_ERROR,
@@ -140,7 +140,7 @@ export const grantDeleteEffectFromArgs = (
     const grantId = yield* requireValidId(grantIdRaw, GRANT_ID_FIELD);
 
     yield* http.request<unknown>({
-      path: wsGrantPath(workspaceId, agentId, grantId),
+      path: wsGrantPath(workspaceId, fleetId, grantId),
       method: "DELETE",
       token,
     });
@@ -149,8 +149,8 @@ export const grantDeleteEffectFromArgs = (
       yield* output.printJson({ deleted: true, grant_id: grantId });
     } else {
       yield* output.success(
-        `Grant ${grantId} deleted. The agent can no longer use this integration; further attempts will be denied.`,
+        `Grant ${grantId} deleted. The fleet can no longer use this integration; further attempts will be denied.`,
       );
     }
   });
-const GRANT_DELETE_USAGE_ERROR = "grant delete requires --agent <id> <grant_id>" as const;
+const GRANT_DELETE_USAGE_ERROR = "grant delete requires --fleet <id> <grant_id>" as const;

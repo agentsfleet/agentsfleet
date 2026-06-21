@@ -23,7 +23,7 @@ fn putCredential(
     var obj: std.json.ObjectMap = .empty;
     defer obj.deinit(alloc);
     for (fields) |f| try obj.put(alloc, f.k, .{ .string = f.v });
-    const key_name = try std.fmt.allocPrint(alloc, "agent:{s}", .{name});
+    const key_name = try std.fmt.allocPrint(alloc, "fleet:{s}", .{name});
     defer alloc.free(key_name);
     try base.storeVaultJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj });
 }

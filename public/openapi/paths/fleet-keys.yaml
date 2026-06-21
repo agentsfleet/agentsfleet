@@ -1,0 +1,143 @@
+/v1/workspaces/{workspace_id}/fleet-keys:
+  get:
+    operationId: list_fleet_keys
+    summary: List fleet keys in a workspace
+    description: Returns fleet-key metadata only — never returns `key_hash`.
+    tags:
+    - Fleet Keys
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetKey
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_fleet_key
+    summary: Issue a Fleet key for a Fleet
+    description: Creates a new `agt_a` Fleet key bound to a specific Fleet. **The raw key is returned once.** Only the SHA-256
+      hash is persisted — the key cannot be retrieved again.
+    tags:
+    - Fleet Keys
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - fleet_id
+            - name
+            properties:
+              fleet_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+                maxLength: 64
+              description:
+                type: string
+                maxLength: 256
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - fleet_key_id
+              - key
+              properties:
+                fleet_key_id:
+                  type: string
+                workspace_id:
+                  type: string
+                  format: uuid
+                fleet_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                key:
+                  type: string
+                  description: Raw `agt_a` API key. Shown once — store securely.
+                created_at:
+                  type: integer
+                  format: int64
+                message:
+                  type: string
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleet-keys/{fleet_key_id}:
+  delete:
+    operationId: delete_fleet_key
+    summary: Revoke a Fleet key
+    description: Revokes the Fleet key immediately. Subsequent requests with the key receive 401.
+    tags:
+    - Fleet Keys
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_key_id
+      in: path
+      required: true
+      schema:
+        type: string
+    responses:
+      '204':
+        description: No Content
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error

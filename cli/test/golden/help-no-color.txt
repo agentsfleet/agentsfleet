@@ -17,23 +17,23 @@ Commands:
   auth                         Inspect authentication state
   doctor                       Diagnose CLI configuration and connectivity
   workspace                    Manage workspaces
-  agent-key                    Manage agent API keys
+  fleet-key                    Manage fleet API keys
   grant                        Manage integration grants
   tenant                       Tenant-scoped commands
   billing                      Tenant billing dashboard
-  install [options]            Register an agent from a local skill bundle
-  agent                        Agent management subcommands
-  list [options]               List agents in the active workspace (paginated)
-  status [agent_id]            Show agent status (workspace-wide if no id)
-  stop <agent_id>              Halt the running session (resumable)
-  resume <agent_id>            Resume from stopped or auto-paused
-  kill <agent_id>              Mark terminal (irreversible)
-  delete <agent_id>            Hard-delete a killed agent
-  logs [options] [agent_id]    Tail agent activity
-  events [options] <agent_id>  Page through historical events
-  steer <agent_id> [message]   Send a message; stream the response
+  install [options]            Register a Fleet from a local skill bundle
+  fleet                        Fleet management subcommands
+  list [options]               List fleets in the active workspace (paginated)
+  status [fleet_id]            Show fleet status (workspace-wide if no id)
+  stop <fleet_id>              Halt the running session (resumable)
+  resume <fleet_id>            Resume from stopped or auto-paused
+  kill <fleet_id>              Mark terminal (irreversible)
+  delete <fleet_id>            Hard-delete a killed fleet
+  logs [options] [fleet_id]    Tail fleet activity
+  events [options] <fleet_id>  Page through historical events
+  steer <fleet_id> [message]   Send a message; stream the response
   credential                   Workspace credential vault
-  memory                       Inspect an agent's durable memory (read-only)
+  memory                       Inspect a Fleet's durable memory (read-only)
   help [command]               display help for command
 
 Environment variables: https://docs.agentsfleet.net/cli/configuration

@@ -46,7 +46,7 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
             </span>
           </CardTitle>
           <CardDescription className="mt-1">
-            Covers all your agent events.
+            Covers all your Fleet events.
           </CardDescription>
         </div>
         <PurchaseCreditsButton />
@@ -54,7 +54,7 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
       {isExhausted ? (
         <CardContent>
           <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New agent events are gate-blocked until you
+            Balance exhausted. New Fleet events are gate-blocked until you
             top up — contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support

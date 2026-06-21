@@ -2,9 +2,9 @@
 //! (`loop.runLoop`) owns the host heartbeat and spawns this pool once it is live;
 //! each worker thread then runs the existing `loop.pollAndProcess` (lease →
 //! execute → report) verbatim, lifting per-host throughput from one concurrent
-//! agent to `cfg.worker_count`. No control-plane change is needed for
-//! correctness: the per-agent `affinity.claim` admits exactly one of N racing
-//! pollers, so two workers never run the same agent.
+//! fleet to `cfg.worker_count`. No control-plane change is needed for
+//! correctness: the per-fleet `affinity.claim` admits exactly one of N racing
+//! pollers, so two workers never run the same fleet.
 //!
 //! Each worker owns an INDEPENDENT allocator scope (its own `DebugAllocator`) and
 //! a fresh control-plane client, so there is no cross-worker allocator mutex to
@@ -24,7 +24,7 @@ const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const loop = @import("loop.zig");
 
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
 
 /// Spawn failure: either the threads handle could not be allocated, or the OS
 /// refused a thread. The caller (control loop) logs and exits; workers already
@@ -54,7 +54,7 @@ pub const Pool = struct {
     /// its exit path) or the workers would never leave their poll loop.
     pub fn join(self: Pool) void {
         for (self.threads) |t| t.join();
-        log.info("worker_pool_joined", .{ .workers = self.threads.len });
+        log.debug("worker_pool_joined", .{ .workers = self.threads.len });
         self.alloc.free(self.threads);
     }
 };
@@ -90,7 +90,7 @@ pub fn spawn(
         };
         threads[spawned] = try std.Thread.spawn(.{}, workerLoop, .{ctx});
     }
-    log.info("worker_pool_spawned", .{ .workers = cfg.worker_count });
+    log.debug("worker_pool_spawned", .{ .workers = cfg.worker_count });
     return .{ .alloc = alloc, .threads = threads };
 }
 
@@ -106,11 +106,11 @@ fn workerLoop(ctx: WorkerContext) void {
 
     var cp = client_mod.init(alloc, ctx.io, ctx.cfg.control_plane_url);
     defer cp.deinit();
-    log.info("worker_started", .{ .index = ctx.index });
+    log.debug("worker_started", .{ .index = ctx.index });
     while (!ctx.stop.load(.seq_cst) and !ctx.drain.load(.seq_cst)) {
         loop.pollAndProcess(ctx.io, alloc, &cp, ctx.cfg.runner_token, ctx.cfg, ctx.env_map);
     }
-    log.info("worker_stopped", .{ .index = ctx.index });
+    log.debug("worker_stopped", .{ .index = ctx.index });
 }
 
 // Tests live in worker_pool_test.zig (unit: spawn/join lifecycle) and

@@ -8,7 +8,7 @@
 // sessions.zig + session_helpers.zig):
 //
 //   POST /v1/auth/sessions
-//     201 { session_id, request_id }
+//     201 { session_id, login_url, request_id }
 //   GET  /v1/auth/sessions/{id}
 //     200 { status: "pending"|"verification_pending",
 //           cli_public_key, token_name, expires_at_ms }

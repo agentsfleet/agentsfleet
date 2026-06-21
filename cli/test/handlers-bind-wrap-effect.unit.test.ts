@@ -15,6 +15,7 @@ import type { CommandCtx, CommandDeps, Workspaces } from "../src/commands/types.
 
 const minimalCtx = (): CommandCtx => ({
   apiUrl: "https://api.test.local",
+  dashboardUrl: "https://dash.test.local",
   token: null,
   apiKey: null,
   authRole: null,

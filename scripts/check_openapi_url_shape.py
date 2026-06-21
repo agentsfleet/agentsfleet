@@ -2,14 +2,14 @@
 """REST §1 — every URL path's final segment must be plural-noun shaped.
 
 The rule (from docs/REST_API_DESIGN_GUIDELINES.md §1):
-  - Plural noun for collections:        /products, /agents/{id}/events
+  - Plural noun for collections:        /products, /fleets/{id}/events
   - Path parameter at the leaf:         /products/{id}
   - Colon-noun operation (use sparingly): /approvals/{id}:approve
 
 Anything else (bare verbs like /steer, /pause, /kill, /sync) violates §1.
 
 This script is the mechanical gate so the rule survives context resets,
-agent swaps, and human commits — not just LLM judgment in the moment.
+fleet swaps, and human commits — not just LLM judgment in the moment.
 
 Source of truth: public/openapi.json (already bundled by `make openapi`).
 
@@ -37,19 +37,21 @@ TOP_LEVEL_ALLOW: set[str] = {
 # it could be a verb". Every entry needs a one-line justification.
 NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     # Resource collections (plural nouns, end-of-path):
-    "events",            # agent_events resource
-    "messages",          # chat messages collection (per-agent ingress)
-    "memories",          # memory entries collection (per-agent scratchpad)
+    "events",            # fleet_events resource
+    "messages",          # chat messages collection (per-fleet ingress)
+    "memories",          # memory entries collection (per-fleet scratchpad)
     "credentials",       # core.credentials
-    "agents",           # core.agents
+    "fleets",           # core.fleets
+    "bundles",           # Fleet Bundle catalog/import nested under /fleets by product vocabulary
+    "snapshots",         # immutable workspace-owned Fleet Bundle source copies
     "workspaces",        # core.workspaces
-    "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleet/runners)
+    "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleets/runners)
     "api-keys",          # api keys collection
-    "agent-keys",        # agent keys collection
+    "fleet-keys",        # fleet keys collection
     "platform-keys",     # admin platform keys
     "sessions",          # auth sessions
     "tenants",           # tenant resource
-    "telemetry",         # agent_execution_telemetry rows
+    "telemetry",         # fleet_execution_telemetry rows
     "billing",           # billing summary view
     "charges",           # credit-pool charge rows (receive + stage per event)
     "diagnostics",       # tenant doctor block (provider posture, resolver state)

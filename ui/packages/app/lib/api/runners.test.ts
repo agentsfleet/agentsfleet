@@ -28,7 +28,7 @@ describe("listRunners", () => {
   it("reads the platform-admin operator-plane path with default paging", async () => {
     await listRunners("tok");
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleet/runners?page=1&page_size=${DEFAULT_PAGE_SIZE}&sort=${DEFAULT_SORT}`,
+      `/v1/fleets/runners?page=1&page_size=${DEFAULT_PAGE_SIZE}&sort=${DEFAULT_SORT}`,
       { method: "GET" },
       "tok",
     );
@@ -37,7 +37,7 @@ describe("listRunners", () => {
   it("passes through explicit page + sort", async () => {
     await listRunners("tok", { page: 2, sort: "host_id" });
     expect(requestMock).toHaveBeenCalledWith(
-      "/v1/fleet/runners?page=2&page_size=25&sort=host_id",
+      "/v1/fleets/runners?page=2&page_size=25&sort=host_id",
       { method: "GET" },
       "tok",
     );
@@ -58,7 +58,7 @@ describe("updateRunnerAdminState", () => {
     requestMock.mockResolvedValueOnce({ id: "runner-1", admin_state: "cordoned" });
     await updateRunnerAdminState("tok", "runner-1", "cordon");
     expect(requestMock).toHaveBeenCalledWith(
-      "/v1/fleet/runners/runner-1",
+      "/v1/fleets/runners/runner-1",
       { method: "PATCH", body: JSON.stringify({ action: "cordon" }) },
       "tok",
     );
@@ -69,7 +69,7 @@ describe("listRunnerEvents", () => {
   it("reads runner activity with default paging", async () => {
     await listRunnerEvents("tok", "runner-1");
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleet/runners/runner-1/events?page=1&page_size=${DEFAULT_PAGE_SIZE}`,
+      `/v1/fleets/runners/runner-1/events?page=1&page_size=${DEFAULT_PAGE_SIZE}`,
       { method: "GET" },
       "tok",
     );
@@ -84,7 +84,7 @@ describe("listRunnerEvents", () => {
       until: 20,
     });
     expect(requestMock).toHaveBeenCalledWith(
-      `/v1/fleet/runners/runner-1/events?page=2&page_size=${DEFAULT_PAGE_SIZE}&event_type=runner_online&since=10&until=20`,
+      `/v1/fleets/runners/runner-1/events?page=2&page_size=${DEFAULT_PAGE_SIZE}&event_type=runner_online&since=10&until=20`,
       { method: "GET" },
       "tok",
     );

@@ -78,11 +78,11 @@ test "queue constants: consumer prefix is stable" {
     try std.testing.expectEqualStrings("agentsfleetd", queue_consts.consumer_prefix);
 }
 
-// pin test: literal is the contract — install/lease/report (redis_agent.zig)
+// pin test: literal is the contract — install/lease/report (redis_fleet.zig)
 // all reference this one constant, so pinning the value pins the group used by
-// every step. Renamed from "agent_workers" (worker-substrate retirement).
-test "queue constants: agent consumer group reflects the lease path" {
-    try std.testing.expectEqualStrings("agent_lease", queue_consts.agent_consumer_group);
+// every step. Renamed from "fleet_workers" (worker-substrate retirement).
+test "queue constants: fleet consumer group reflects the lease path" {
+    try std.testing.expectEqualStrings("fleet_lease", queue_consts.fleet_consumer_group);
 }
 
 test "queue constants: XAUTOCLAIM cursor seed and batch size" {

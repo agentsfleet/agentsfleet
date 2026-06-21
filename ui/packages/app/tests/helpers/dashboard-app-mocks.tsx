@@ -20,11 +20,11 @@ export type ActionResult<T> =
 // ── Shared mock fns ─────────────────────────────────────────────────────────
 export const setActiveWorkspaceMock = vi.fn().mockResolvedValue(undefined);
 export const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, data: { workspace_id: "ws_new", name: "fresh-name" } });
-export const stopAgentMock = vi.fn();
-export const listAgentsMock = vi.fn();
+export const stopFleetMock = vi.fn();
+export const listFleetsMock = vi.fn();
 export const getTenantBillingMock = vi.fn();
 export const listWorkspaceEventsMock = vi.fn();
-export const listAgentEventsMock = vi.fn();
+export const listFleetEventsMock = vi.fn();
 export const listTenantBillingChargesMock = vi.fn();
 export const getTenantProviderMock = vi.fn();
 export const setTenantProviderSelfManagedMock = vi.fn();
@@ -33,54 +33,56 @@ export const listCredentialsMock = vi.fn();
 export const createCredentialMock = vi.fn();
 export const deleteCredentialMock = vi.fn();
 export const getModelCapsMock = vi.fn();
+export const listFleetTemplatesMock = vi.fn();
+export const importBundleSnapshotMock = vi.fn();
 
-export const setAgentStatusActionMock = vi.fn<
+export const setFleetStatusActionMock = vi.fn<
   (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
 >(async (ws, zid, status) => {
   try {
-    return { ok: true, data: await stopAgentMock(ws, zid, status, "tok") };
+    return { ok: true, data: await stopFleetMock(ws, zid, status, "tok") };
   } catch (e) {
     const err = e as Error & { status?: number };
     return { ok: false, error: err.message ?? String(e), status: err.status };
   }
 });
-export const listAgentsActionMock = vi.fn<
+export const listFleetsActionMock = vi.fn<
   (ws: string, opts?: unknown) => Promise<ActionResult<unknown>>
 >(async (ws, opts) => {
   try {
-    return { ok: true, data: await listAgentsMock(ws, "tok", opts) };
+    return { ok: true, data: await listFleetsMock(ws, "tok", opts) };
   } catch (e) {
     return { ok: false, error: (e as Error).message ?? String(e) };
   }
 });
-export const deleteAgentActionMock = vi.fn<() => Promise<ActionResult<void>>>(
+export const deleteFleetActionMock = vi.fn<() => Promise<ActionResult<void>>>(
   async () => ({ ok: true, data: undefined }),
 );
-export const installAgentActionMock = vi.fn<
-  () => Promise<ActionResult<{ agent_id: string }>>
->(async () => ({ ok: true, data: { agent_id: "z_test" } }));
+export const installFleetActionMock = vi.fn<
+  () => Promise<ActionResult<{ fleet_id: string }>>
+>(async () => ({ ok: true, data: { fleet_id: "z_test" } }));
 
 // ── Module factories (delegated to from each shard's vi.mock call) ───────────
-export function agentsApiMock() {
+export function fleetsApiMock() {
   return {
-    listAgents: listAgentsMock,
-    setAgentStatus: stopAgentMock,
-    stopAgent: (ws: string, id: string, tok: string) => stopAgentMock(ws, id, "stopped", tok),
-    resumeAgent: (ws: string, id: string, tok: string) => stopAgentMock(ws, id, "active", tok),
-    killAgent: (ws: string, id: string, tok: string) => stopAgentMock(ws, id, "killed", tok),
-    getAgent: vi.fn(),
-    installAgent: vi.fn(),
-    deleteAgent: vi.fn(),
+    listFleets: listFleetsMock,
+    setFleetStatus: stopFleetMock,
+    stopFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "stopped", tok),
+    resumeFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "active", tok),
+    killFleet: (ws: string, id: string, tok: string) => stopFleetMock(ws, id, "killed", tok),
+    getFleet: vi.fn(),
+    installFleet: vi.fn(),
+    deleteFleet: vi.fn(),
     AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed" },
   };
 }
 
-export function agentActionsMock() {
+export function fleetActionsMock() {
   return {
-    setAgentStatusAction: setAgentStatusActionMock,
-    listAgentsAction: listAgentsActionMock,
-    deleteAgentAction: deleteAgentActionMock,
-    installAgentAction: installAgentActionMock,
+    setFleetStatusAction: setFleetStatusActionMock,
+    listFleetsAction: listFleetsActionMock,
+    deleteFleetAction: deleteFleetActionMock,
+    installFleetAction: installFleetActionMock,
   };
 }
 
@@ -112,11 +114,20 @@ export function billingUsageTabMock() {
 }
 
 export function eventsMock() {
-  return { listWorkspaceEvents: listWorkspaceEventsMock, listAgentEvents: listAgentEventsMock };
+  return { listWorkspaceEvents: listWorkspaceEventsMock, listFleetEvents: listFleetEventsMock };
 }
 
 export function credentialsApiMock() {
   return { listCredentials: listCredentialsMock, createCredential: createCredentialMock, deleteCredential: deleteCredentialMock };
+}
+
+export function fleetBundlesMock() {
+  return {
+    listFleetTemplates: listFleetTemplatesMock,
+    listFleetTemplatesCached: listFleetTemplatesMock,
+    importBundleSnapshot: importBundleSnapshotMock,
+    getBundleSnapshot: vi.fn(),
+  };
 }
 
 export function modelCapsMock() {
@@ -153,7 +164,7 @@ export function resetDashboardMocks() {
   authMock.mockReset();
   authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_abc"), userId: "usr_1", sessionClaims: null });
   resolveActiveWorkspace.mockResolvedValue({ id: "ws_1", name: "Alpha" });
-  listAgentsMock.mockResolvedValue({
+  listFleetsMock.mockResolvedValue({
     items: [
       { id: "zom_1", name: "alpha-bot", status: "active", created_at: "2026-04-22T00:00:00Z" },
       { id: "zom_2", name: "beta-bot", status: "paused", created_at: "2026-04-22T00:00:01Z" },
@@ -164,12 +175,13 @@ export function resetDashboardMocks() {
   });
   getTenantBillingMock.mockResolvedValue({ balance_nanos: 5 * NANOS_PER_USD, is_exhausted: false, exhausted_at: null });
   listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-  listAgentEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+  listFleetEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   getModelCapsMock.mockResolvedValue({
     version: "2026-04-29",
     models: [],
     rates: { run_nanos_per_sec: 0, event_nanos: 0 },
     billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   });
-  stopAgentMock.mockResolvedValue(undefined);
+  stopFleetMock.mockResolvedValue(undefined);
+  listFleetTemplatesMock.mockResolvedValue({ items: [] });
 }

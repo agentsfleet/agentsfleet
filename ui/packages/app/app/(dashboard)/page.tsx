@@ -1,17 +1,31 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@agentsfleet/design-system";
-import { listAgents, AGENTSFLEET_STATUS } from "@/lib/api/agents";
+import {
+  Button,
+  Card,
+  PageHeader,
+  PageTitle,
+  Section,
+  SectionLabel,
+  StatusCard,
+  Skeleton,
+} from "@agentsfleet/design-system";
+import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
+import type { FleetTemplate } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
-import { AGENT_DEFINITION } from "@/lib/copy";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
+import { TemplateCard } from "./fleets/new/TemplateCard";
 
 export const dynamic = "force-dynamic";
+
+const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 export async function StatusTiles() {
   const { getToken } = await auth();
@@ -24,21 +38,24 @@ export async function StatusTiles() {
   // Request the server max (100) so the Active/Paused/Stopped tiles don't
   // silently under-report for workspaces above the 20-default page size.
   // A dedicated summary endpoint will replace this client-side rollup once it
-  // ships; until then 100 matches what the /agents list page uses.
-  const [agents, billing] = await Promise.all([
-    listAgents(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
+  // ships; until then 100 matches what the /fleets list page uses.
+  const [fleets, billing] = await Promise.all([
+    listFleets(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
     getTenantBilling(token).catch(() => null),
   ]);
 
-  const active = agents.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
-  const paused = agents.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
-  const stopped = agents.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
+  const active = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
+  const paused = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
+  const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
-  if (agents.length === 0) {
+  if (fleets.length === 0) {
+    const templates = await listFleetTemplatesCached(token)
+      .then((response) => response.items)
+      .catch(() => []);
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} />
+        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
       </>
     );
   }
@@ -60,27 +77,61 @@ export async function StatusTiles() {
   );
 }
 
-function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
+// First-run card: curated templates lead, each deep-linking
+// to the preselected install flow; importing from GitHub or pasting a SKILL.md
+// sits below as the secondary path.
+function FirstInstallCard({
+  balanceNanos,
+  templates,
+}: {
+  balanceNanos: number | null;
+  templates: FleetTemplate[];
+}) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
-    <Section aria-label="Install your first agent" className="mb-8">
-      <SectionLabel>First wake</SectionLabel>
-      <p className="mt-1 mb-3 max-w-prose text-sm text-muted-foreground">
-        {AGENT_DEFINITION}
-      </p>
-      <p className="mb-6 max-w-prose text-sm text-muted-foreground">
-        {credits != null && credits > 0
-          ? `$${credits} of free credit is sitting in your balance, waiting on a wake. Install an agent from your terminal and trigger one.`
-          : "Install an agent from your terminal — point it at a SKILL.md and a TRIGGER.md, and it'll wake on the matching event."}
-      </p>
-      <InstallBlock
-        title="Install your first agent"
-        command="agentsfleet install --from ./platform-ops"
-        actions={[
-          { label: "Read the docs", to: "https://docs.agentsfleet.net/quickstart", variant: "default", external: true },
-          { label: "Or paste SKILL.md manually", to: "/agents/new", variant: "ghost" },
-        ]}
-      />
+    <Section aria-label="Start your fleet" className="mb-8">
+      <Card className="space-y-6 p-6 sm:p-8">
+        <div className="space-y-3">
+          <SectionLabel>Next step</SectionLabel>
+          <h2 className="font-mono text-heading text-foreground">Start your fleet</h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Pick a template to begin — connect what it needs, then create. Each one
+            installs from a single <code className="font-mono">SKILL.md</code>.
+          </p>
+          {credits != null && credits > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              ${credits} free credit is ready for that first run.
+            </p>
+          ) : null}
+        </div>
+
+        {templates.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {templates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                action={
+                  <Button asChild size="sm">
+                    <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-3 border-t border-border pt-5">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+              Quick start
+            </a>
+          </Button>
+        </div>
+      </Card>
     </Section>
   );
 }

@@ -6,7 +6,7 @@
 // a populated Hx directly.
 //
 // Usage (post-M18_002):
-//   fn innerCreateAgent(hx: Hx, req: *httpz.Request) void { ... }
+//   fn innerCreateFleet(hx: Hx, req: *httpz.Request) void { ... }
 //   // Route registered in route_table.zig with bearer policy.
 //   // Dispatcher builds Hx from AuthCtx and calls invokeXxx.
 

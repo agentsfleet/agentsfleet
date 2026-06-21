@@ -22,12 +22,12 @@ const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
-const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_agent_event_failed";
+const S_XADD_AGENTSFLEET_EVENT_FAILED = "xadd_fleet_event_failed";
 
-// XADD argv slots for `xaddAgentEvent` — lifted to file scope so the
+// XADD argv slots for `xaddFleetEvent` — lifted to file scope so the
 // compile-folded prefix is a single comptime slice instead of six slot
 // assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
-// agent:{id}:events stream's retention (~10k approximate trim); `*`
+// fleet:{id}:events stream's retention (~10k approximate trim); `*`
 // asks Redis to generate the stream entry id (which IS the event_id).
 const XADD_VERB: []const u8 = "XADD";
 const XADD_MAXLEN_KEYWORD: []const u8 = "MAXLEN";
@@ -35,7 +35,7 @@ const XADD_MAXLEN_APPROX: []const u8 = "~";
 const XADD_MAXLEN_AGENTSFLEET_EVENTS: []const u8 = "10000";
 const XADD_AUTO_ID: []const u8 = "*";
 
-/// Compile-folded tail for `XADD agent:{id}:events MAXLEN ~ 10000 * …`.
+/// Compile-folded tail for `XADD fleet:{id}:events MAXLEN ~ 10000 * …`.
 /// Slot 0 = `XADD`, slot 1 = stream key (runtime), slots 2..6 = this slice.
 const XADD_AGENTSFLEET_TRIM_TAIL: []const []const u8 = &.{
     XADD_MAXLEN_KEYWORD,
@@ -185,15 +185,15 @@ pub fn setNx(self: *Self, key: []const u8, value: []const u8, ttl_seconds: u32) 
     };
 }
 
-/// XADD an EventEnvelope onto `agent:{envelope.agent_id}:events`. The Redis
+/// XADD an EventEnvelope onto `fleet:{envelope.fleet_id}:events`. The Redis
 /// stream entry id IS the canonical event_id; this function returns it
 /// allocated via `self.alloc` so the caller (e.g. `POST /messages`) can
 /// surface it in the response body for SSE correlation.
 ///
 /// Stream is trimmed approximately to MAXLEN 10000 entries.
-pub fn xaddAgentEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
+pub fn xaddFleetEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
     var stream_key_buf: [128]u8 = undefined;
-    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "agent:{s}:events", .{envelope.agent_id});
+    const stream_key = try std.fmt.bufPrint(&stream_key_buf, "fleet:{s}:events", .{envelope.fleet_id});
 
     const payload_argv = try envelope.encodeForXAdd(self.alloc);
     defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
@@ -210,16 +210,16 @@ pub fn xaddAgentEvent(self: *Self, envelope: EventEnvelope) ![]u8 {
 
     const id_str = switch (resp) {
         .bulk => |v| v orelse {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .agent_id = envelope.agent_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = envelope.fleet_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
         else => {
-            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .agent_id = envelope.agent_id, .actor = envelope.actor });
+            log.err(S_XADD_AGENTSFLEET_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = envelope.fleet_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
     };
     const owned_id = try self.alloc.dupe(u8, id_str);
-    log.debug("xadd_agent_event", .{ .agent_id = envelope.agent_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
+    log.debug("xadd_fleet_event", .{ .fleet_id = envelope.fleet_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
     return owned_id;
 }
 
@@ -293,7 +293,7 @@ pub fn commandAllowError(self: *Self, argv: []const []const u8) !redis_protocol.
 /// Buffer size for `stableConsumerId`: prefix + '-' + max hostname.
 pub const CONSUMER_ID_BUF_LEN: usize = queue_consts.consumer_prefix.len + 1 + std.posix.HOST_NAME_MAX;
 
-/// Stable consumer identity for the agent event streams: one per agentsfleetd
+/// Stable consumer identity for the fleet event streams: one per agentsfleetd
 /// instance (host-derived, timestamp-free), so delivered-but-unacked entries
 /// stay recoverable in this consumer's PEL and group cardinality stays
 /// bounded — the retired per-probe minting orphaned every entry. The memcpys
@@ -303,7 +303,7 @@ pub fn stableConsumerId(buf: *[CONSUMER_ID_BUF_LEN]u8) []const u8 {
     var host_buf: [std.posix.HOST_NAME_MAX]u8 = undefined;
     // gethostname failure collapses this instance onto the shared `localhost`
     // consumer (one PEL for any such instance). Correctness is unaffected — the
-    // per-agent Postgres affinity claim is the only lease serializer — but
+    // per-fleet Postgres affinity claim is the only lease serializer — but
     // recovery attribution blurs, so the fallback is loud.
     const host = std.posix.gethostname(&host_buf) catch |err| blk: {
         log.warn("consumer_id_hostname_fallback", .{ .err = @errorName(err) });

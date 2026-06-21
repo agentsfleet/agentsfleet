@@ -10,24 +10,21 @@
 // See `docs/REST_API_DESIGN_GUIDELINES.md` §7 (Matcher style — segment-based).
 
 const std = @import("std");
-const runner_protocol = @import("contract").protocol;
 const webhook = @import("route_matchers_webhook.zig");
 const billing = @import("route_matchers_billing.zig");
 const fleet = @import("route_matchers_fleet.zig");
+const bundles = @import("route_matchers_fleet_bundles.zig");
+const runner_m = @import("route_matchers_runner.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
-const S_AGENTS = "agents";
+const S_FLEETS = "fleets";
+const S_BUNDLES = "bundles";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
-const S_RUNNERS = "runners";
-const S_ME = "me";
-const S_LEASES = "leases";
-const S_MEMORY = "memory";
-
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
 const APPROVAL_ACTION_APPROVE = ":approve";
@@ -77,7 +74,7 @@ pub const Path = struct {
     }
 
     /// Return the segment at `idx` if present and non-empty. Use this for
-    /// path-parameter slots (workspace_id, agent_id, etc.) — empty segments
+    /// path-parameter slots (workspace_id, fleet_id, etc.) — empty segments
     /// from `//` or trailing slashes get rejected at the matcher.
     pub fn param(self: Self, idx: usize) ?[]const u8 {
         if (idx >= self.segs.len) return null;
@@ -134,13 +131,17 @@ pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
 pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
-// suffix ∈ {"agents", "credentials", "agent-keys", "events", "approvals"}.
+// suffix ∈ {"fleets", "credentials", "fleet-keys", "events", "approvals"}.
 
 pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
     if (!p.eq(0, S_WORKSPACES)) return null;
     if (!p.eq(2, suffix)) return null;
     return p.param(1);
+}
+
+fn isFleetRuntimeSegment(p: Path, idx: usize) bool {
+    return p.eq(idx, S_FLEETS) and (idx + 1 >= p.segs.len or !p.eq(idx + 1, S_BUNDLES));
 }
 
 // ── /workspaces/{ws}/credentials/{name} ────────────────────────────────────
@@ -158,91 +159,91 @@ pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     return .{ .workspace_id = ws, .credential_name = name };
 }
 
-// ── /workspaces/{ws}/agent-keys/{agent_key_id} ─────────────────────────────────
+// ── /workspaces/{ws}/fleet-keys/{fleet_key_id} ─────────────────────────────────
 
-pub const WorkspaceAgentKeyRoute = struct {
+pub const WorkspaceFleetKeyRoute = struct {
     workspace_id: []const u8,
-    agent_key_id: []const u8,
+    fleet_key_id: []const u8,
 };
 
-pub fn matchWorkspaceAgentKeyDelete(p: Path) ?WorkspaceAgentKeyRoute {
+pub fn matchWorkspaceFleetKeyDelete(p: Path) ?WorkspaceFleetKeyRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "agent-keys")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "fleet-keys")) return null;
     const ws = p.param(1) orelse return null;
-    const agent_key_id = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .agent_key_id = agent_key_id };
+    const fleet_key_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .fleet_key_id = fleet_key_id };
 }
 
-// ── /workspaces/{ws}/agents/{agent_id} ───────────────────────────────────
+// ── /workspaces/{ws}/fleets/{fleet_id} ───────────────────────────────────
 
-pub const WorkspaceAgentRoute = struct {
+pub const WorkspaceFleetRoute = struct {
     workspace_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
 };
 
-pub fn matchWorkspaceAgent(p: Path) ?WorkspaceAgentRoute {
+pub fn matchWorkspaceFleet(p: Path) ?WorkspaceFleetRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
     const ws = p.param(1) orelse return null;
-    const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .agent_id = zid };
+    const fleet_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .fleet_id = fleet_id };
 }
 
-// ── /workspaces/{ws}/agents/{agent_id}/{action} ──────────────────────────
+// ── /workspaces/{ws}/fleets/{fleet_id}/{action} ──────────────────────────
 // action ∈ {"events", "messages", "memories",
 // "integration-requests", "integration-grants"}.
 
-pub fn matchWorkspaceAgentAction(p: Path, action: []const u8) ?WorkspaceAgentRoute {
+pub fn matchWorkspaceFleetAction(p: Path, action: []const u8) ?WorkspaceFleetRoute {
     if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
     if (!p.eq(4, action)) return null;
     const ws = p.param(1) orelse return null;
-    const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .agent_id = zid };
+    const fleet_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .fleet_id = fleet_id };
 }
 
-// ── /workspaces/{ws}/agents/{agent_id}/events/stream ─────────────────────
+// ── /workspaces/{ws}/fleets/{fleet_id}/events/stream ─────────────────────
 // Distinct shape (6 segments) from the bare /events action (5 segments).
 
-pub fn matchWorkspaceAgentEventsStream(p: Path) ?WorkspaceAgentRoute {
+pub fn matchWorkspaceFleetEventsStream(p: Path) ?WorkspaceFleetRoute {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
     if (!p.eq(4, "events") or !p.eq(5, "stream")) return null;
     const ws = p.param(1) orelse return null;
-    const zid = p.param(3) orelse return null;
-    return .{ .workspace_id = ws, .agent_id = zid };
+    const fleet_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .fleet_id = fleet_id };
 }
 
-// ── /workspaces/{ws}/agents/{agent_id}/{leaf_segment}/{leaf_id} ──────────
-// Per-agent sub-resource leaves. Each route gets its own typed struct with a
+// ── /workspaces/{ws}/fleets/{fleet_id}/{leaf_segment}/{leaf_id} ──────────
+// Per-Fleet sub-resource leaves. Each route gets its own typed struct with a
 // semantically named leaf field; the parsing logic is shared via a private
 // helper.
 
-const AgentLeafView = struct {
+const FleetLeafView = struct {
     workspace_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     leaf: []const u8,
 };
 
-fn matchAgentLeaf(p: Path, leaf_segment: []const u8) ?AgentLeafView {
+fn matchFleetLeaf(p: Path, leaf_segment: []const u8) ?FleetLeafView {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_AGENTS)) return null;
+    if (!p.eq(0, S_WORKSPACES) or !isFleetRuntimeSegment(p, 2)) return null;
     if (!p.eq(4, leaf_segment)) return null;
     const ws = p.param(1) orelse return null;
-    const zid = p.param(3) orelse return null;
+    const fleet_id = p.param(3) orelse return null;
     const leaf = p.param(5) orelse return null;
-    return .{ .workspace_id = ws, .agent_id = zid, .leaf = leaf };
+    return .{ .workspace_id = ws, .fleet_id = fleet_id, .leaf = leaf };
 }
 
-pub const WorkspaceAgentGrantRoute = struct {
+pub const WorkspaceFleetGrantRoute = struct {
     workspace_id: []const u8,
-    agent_id: []const u8,
+    fleet_id: []const u8,
     grant_id: []const u8,
 };
 
-pub fn matchWorkspaceAgentGrant(p: Path) ?WorkspaceAgentGrantRoute {
-    const v = matchAgentLeaf(p, "integration-grants") orelse return null;
-    return .{ .workspace_id = v.workspace_id, .agent_id = v.agent_id, .grant_id = v.leaf };
+pub fn matchWorkspaceFleetGrant(p: Path) ?WorkspaceFleetGrantRoute {
+    const v = matchFleetLeaf(p, "integration-grants") orelse return null;
+    return .{ .workspace_id = v.workspace_id, .fleet_id = v.fleet_id, .grant_id = v.leaf };
 }
 
 // ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
@@ -307,34 +308,16 @@ pub const matchWebhook = webhook.matchWebhook;
 
 pub const matchFleetRunner = fleet.matchFleetRunner;
 pub const matchFleetRunnerEvents = fleet.matchFleetRunnerEvents;
+pub const WorkspaceFleetBundleRoute = bundles.WorkspaceFleetBundleRoute;
+pub const matchWorkspaceFleetBundles = bundles.matchWorkspaceFleetBundles;
+pub const matchWorkspaceFleetBundle = bundles.matchWorkspaceFleetBundle;
 
-/// Match `/runners/me/leases/{lease_id}/activity` (the only runner verb with a
-/// path param). `me` is the self-plane segment; identity is the Bearer token.
-/// The `activity` suffix is single-sourced from the wire contract (RULE UFS).
-pub fn matchRunnerLeaseActivity(p: Path) ?[]const u8 {
-    if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
-    if (!p.eq(4, runner_protocol.RUNNER_LEASE_ACTIVITY_SUFFIX)) return null;
-    return p.param(3);
-}
-
-/// `GET|POST /v1/runners/me/memory/{agent_id}` — runner-plane memory hydrate +
-/// capture. 4 segments after the v1 strip; the agent is the leaf. The method
-/// (GET hydrate vs POST capture) is disambiguated by the router, not here.
-pub fn matchRunnerMemory(p: Path) ?[]const u8 {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_MEMORY)) return null;
-    return p.param(3);
-}
-
-/// `POST /v1/runners/me/leases/{lease_id}/renew` — same shape as activity, keyed
-/// on the `renew` suffix segment (single-sourced from the wire contract).
-pub fn matchRunnerLeaseRenew(p: Path) ?[]const u8 {
-    if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
-    if (!p.eq(4, runner_protocol.RUNNER_LEASE_RENEW_SUFFIX)) return null;
-    return p.param(3);
-}
+// Runner control-plane matchers live in `route_matchers_runner.zig` (RULE FLL);
+// re-exported here so `matchers.matchRunner*` is unchanged for the router.
+pub const matchRunnerLeaseActivity = runner_m.matchRunnerLeaseActivity;
+pub const matchRunnerMemory = runner_m.matchRunnerMemory;
+pub const matchRunnerBundles = runner_m.matchRunnerBundles;
+pub const matchRunnerLeaseRenew = runner_m.matchRunnerLeaseRenew;
 
 test {
     _ = @import("route_matchers_test.zig");

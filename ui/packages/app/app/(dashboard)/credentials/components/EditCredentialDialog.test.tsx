@@ -65,7 +65,7 @@ describe("EditCredentialDialog", () => {
     renderDialog();
 
     fireEvent.click(screen.getByRole("button", { name: /advanced — rename/i }));
-    expect(screen.getByText(/renaming breaks agents/i)).toBeTruthy();
+    expect(screen.getByText(/renaming breaks Fleets/i)).toBeTruthy();
 
     enterData('{"api_token": "FLY"}');
     fireEvent.change(screen.getByLabelText(/new name/i), { target: { value: "fly-prod" } });

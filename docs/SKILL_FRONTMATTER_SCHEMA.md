@@ -1,16 +1,16 @@
 # SKILL.md / TRIGGER.md Frontmatter Schema
 
-Canonical reference for the YAML frontmatter on the two files that make up a agent bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
+Canonical reference for the YAML frontmatter on the two files that make up a Fleet Bundle. The parser, integration tests, and `M49 install-skill` generator all derive from this document.
 
-> Audience: implementing agents, parser authors, test writers. End-user docs live at `docs.agentsfleet.net/concepts/skill-frontmatter`.
+> Audience: implementing fleets, parser authors, test writers. End-user docs live at `docs.agentsfleet.net/concepts/skill-frontmatter`.
 
 ---
 
 ## The two-file model
 
-A agent bundle is a directory containing exactly two files:
+A Fleet Bundle is a directory containing exactly two files:
 
-- **`SKILL.md`** — the **SOUL**. Authoring metadata in the frontmatter; prose body that becomes the agent's system prompt at execution time. The runtime never structurally interprets the body.
+- **`SKILL.md`** — the **SOUL**. Authoring metadata in the frontmatter; prose body that becomes the fleet's system prompt at execution time. The runtime never structurally interprets the body.
 - **`TRIGGER.md`** — the **CONTRACT**. Identity at the top level; runtime configuration (security/cost boundaries, tool grants, trigger sources) under an `x-agentsfleet:` block. The runtime parses this file before any LLM call.
 
 The split exists because the two files have different audiences and different review bars. SKILL.md is iterated like a prompt — frequent edits, prose review. TRIGGER.md is a security/cost contract — every edit is privileged (network egress, credential scope, budget caps) and benefits from file-level CODEOWNERS, `git log` per concern, and standalone audit.
@@ -21,7 +21,7 @@ The split exists because the two files have different audiences and different re
 
 ```yaml
 ---
-name: platform-ops-agent              # required
+name: platform-ops-fleet              # required
 description: Diagnoses platform health from fly.io and upstash...   # required
 version: 0.1.0                         # required, semver
 when_to_use: When operators want a read-only platform sweep    # optional
@@ -30,7 +30,7 @@ author: agentsfleet                      # optional
 model: claude-sonnet-4-6               # optional
 ---
 
-You are Platform Ops Agent. You diagnose problems in a small production
+You are Platform Ops Fleet. You diagnose problems in a small production
 platform...
 ```
 
@@ -50,7 +50,7 @@ platform...
 
 ### Body
 
-Plain markdown prose. Goes verbatim into the agent's system prompt. No structural parsing — the prose is the contract with the LLM.
+Plain markdown prose. Goes verbatim into the fleet's system prompt. No structural parsing — the prose is the contract with the LLM.
 
 ---
 
@@ -58,7 +58,7 @@ Plain markdown prose. Goes verbatim into the agent's system prompt. No structura
 
 ```yaml
 ---
-name: platform-ops-agent
+name: platform-ops-fleet
 
 x-agentsfleet:
   trigger:
@@ -112,7 +112,7 @@ x-agentsfleet:
 | `schedule` | per `type` | string | Cron expression; required for `type: cron` |
 | `signature` | optional | object | Webhook signature config (`secret_ref` etc.); applies only to `type: webhook` |
 
-Behavioral schedules (e.g. "every 30 min during incident windows") live in SKILL.md prose. The agent owns scheduling via the `cron_add` tool.
+Behavioral schedules (e.g. "every 30 min during incident windows") live in SKILL.md prose. The fleet owns scheduling via the `cron_add` tool.
 
 #### `tools`
 
@@ -120,7 +120,7 @@ Behavioral schedules (e.g. "every 30 min during incident windows") live in SKILL
 
 #### `credentials`
 
-`string[]`. Each entry is a credential name that must exist in the operator's vault under the same name with the M45 structured `type` discriminator. Empty list is allowed (agent does no authenticated egress).
+`string[]`. Each entry is a credential name that must exist in the operator's vault under the same name with the M45 structured `type` discriminator. Empty list is allowed (fleet does no authenticated egress).
 
 #### `network`
 
@@ -143,7 +143,7 @@ Caps do not compose (`daily * 30 ≠ monthly`). First trip blocks further runs. 
 
 ## Cross-file invariant
 
-`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/.../agents`). Mismatch → `name_mismatch` error pointing at both values.
+`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/.../fleets`). Mismatch → `name_mismatch` error pointing at both values.
 
 The directory basename is **not** the canonical name — it's a fallback hint for human-readable CLI output if the server response omits the name.
 
@@ -184,7 +184,7 @@ The frontmatter exists for the parts of the system that are **not** the LLM. The
 
 2. **Credential scope.** `credentials:` gates which secrets get injected. If the model decided per-run, a prompt-injection attack could expand scope by talking the model into "I need stripe too." Static declaration = static blast radius.
 
-3. **Pre-LLM decisions.** Cron scheduling, budget caps, trigger registration all happen *before* any model call. The HTTP handler that registers a agent cannot afford a 200ms + $0.001 LLM call to figure out the schedule.
+3. **Pre-LLM decisions.** Cron scheduling, budget caps, trigger registration all happen *before* any model call. The HTTP handler that registers a fleet cannot afford a 200ms + $0.001 LLM call to figure out the schedule.
 
 4. **Auditability.** A reviewer scanning a TRIGGER.md sees in 5 seconds: this thing can spend $1/day, hit two domains, and use these two credentials. If those facts were in prose, you would need to re-run the LLM to audit a skill — and trust the audit run matched the runtime run.
 
@@ -197,8 +197,8 @@ The honest critique that informed the M46 trim: most YAML config in skill-style 
 ## See also
 
 - `docs/ARCHITECTURE.md` §8.1 (Authoring), §10 (capabilities)
-- `samples/fixtures/platform-ops-sample/` — canonical shipped example
-- `samples/fixtures/frontmatter/` — minimal/full/broken parser fixtures
-- `src/agent/config_parser.zig` — parser implementation
-- `src/agent/yaml_frontmatter.zig` — YAML→JSON converter
+- `tests/fixtures/fleetbundle/platform-ops/` — canonical example bundle
+- `tests/fixtures/fleetbundle/skill/` and `tests/fixtures/fleetbundle/trigger/` — minimal/full/broken parser fixtures
+- `src/fleet/config_parser.zig` — parser implementation
+- `src/fleet/yaml_frontmatter.zig` — YAML→JSON converter
 - `~/Projects/docs/concepts/skill-frontmatter` — end-user reference (mintlify)

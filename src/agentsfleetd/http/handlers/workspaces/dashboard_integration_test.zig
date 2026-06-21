@@ -1,5 +1,5 @@
 // HTTP integration tests for M12_001 dashboard endpoints (activity feed,
-// agent stop, billing summaries — per-agent and per-workspace).
+// fleet stop, billing summaries — per-fleet and per-workspace).
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 //
@@ -7,7 +7,7 @@
 // docs/ZIG_RULES.md "HTTP Integration Tests — Use TestHarness".
 //
 // Workspace and tenant IDs are fixed to match the embedded JWT tokens.
-// Agent, activity-event, and telemetry IDs are generated per call so
+// Fleet, activity-event, and telemetry IDs are generated per call so
 // concurrent or repeated runs never conflict on primary keys. No cleanup
 // function is needed: make down && make up resets the DB between runs, and
 // unique IDs within a run prevent PK collisions.
@@ -38,14 +38,14 @@ const TOKEN_OPERATOR =
 
 // Per-call unique IDs to prevent PK conflicts across runs.
 const TestFixtures = struct {
-    agent_active: []const u8,
-    agent_empty: []const u8,
-    agent_nonexistent: []const u8,
+    fleet_active: []const u8,
+    fleet_empty: []const u8,
+    fleet_nonexistent: []const u8,
 
     fn deinit(self: TestFixtures, alloc: std.mem.Allocator) void {
-        alloc.free(self.agent_active);
-        alloc.free(self.agent_empty);
-        alloc.free(self.agent_nonexistent);
+        alloc.free(self.fleet_active);
+        alloc.free(self.fleet_empty);
+        alloc.free(self.fleet_nonexistent);
     }
 };
 
@@ -61,12 +61,12 @@ fn makeHarness(alloc: std.mem.Allocator) !*TestHarness {
 }
 
 fn makeFixtures(alloc: std.mem.Allocator) !TestFixtures {
-    const active = try id_format.generateAgentId(alloc);
+    const active = try id_format.generateFleetId(alloc);
     errdefer alloc.free(active);
-    const empty = try id_format.generateAgentId(alloc);
+    const empty = try id_format.generateFleetId(alloc);
     errdefer alloc.free(empty);
-    const nonexistent = try id_format.generateAgentId(alloc);
-    return .{ .agent_active = active, .agent_empty = empty, .agent_nonexistent = nonexistent };
+    const nonexistent = try id_format.generateFleetId(alloc);
+    return .{ .fleet_active = active, .fleet_empty = empty, .fleet_nonexistent = nonexistent };
 }
 
 fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
@@ -86,18 +86,18 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     , .{ TEST_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
 }
 
-fn seedAgents(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {
-    const agents = [_]struct { id: []const u8, suffix: []const u8 }{
-        .{ .id = fx.agent_active, .suffix = "active" },
-        .{ .id = fx.agent_empty, .suffix = "empty" },
+fn seedFleets(conn: *pg.Conn, alloc: std.mem.Allocator, fx: TestFixtures, now_ms: i64) !void {
+    const fleets = [_]struct { id: []const u8, suffix: []const u8 }{
+        .{ .id = fx.fleet_active, .suffix = "active" },
+        .{ .id = fx.fleet_empty, .suffix = "empty" },
     };
-    for (agents) |z| {
-        // Derive name from the unique agent id so two test functions in the
+    for (fleets) |z| {
+        // Derive name from the unique fleet id so two test functions in the
         // same run don't collide on UNIQUE (workspace_id, name).
-        const name = try std.fmt.allocPrint(alloc, "agent-dash-{s}-{s}", .{ z.suffix, z.id });
+        const name = try std.fmt.allocPrint(alloc, "fleet-dash-{s}-{s}", .{ z.suffix, z.id });
         defer alloc.free(name);
         _ = try conn.exec(
-            \\INSERT INTO core.agents
+            \\INSERT INTO core.fleets
             \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
             \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, '{}'::jsonb, 'active', $4, $4)
@@ -119,9 +119,9 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
     defer h.releaseConn(conn);
     const now_ms = clock.nowMillis();
     try seedWorkspace(conn, now_ms);
-    try seedAgents(conn, alloc, fx, now_ms);
+    try seedFleets(conn, alloc, fx, now_ms);
 
-    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents/{s}", .{ TEST_WORKSPACE_ID, fx.agent_active });
+    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets/{s}", .{ TEST_WORKSPACE_ID, fx.fleet_active });
     defer alloc.free(stop_url);
     const stop_body = "{\"status\":\"stopped\"}";
 
@@ -142,7 +142,7 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"status\":\"stopped\""));
     }
-    { // re-stopping an already-stopped agent → 409 UZ-AGT-010 (no transition)
+    { // re-stopping an already-stopped fleet → 409 UZ-AGT-010 (no transition)
         var req = h.request(.PATCH, stop_url);
         req = try req.bearer(TOKEN_OPERATOR);
         req = try req.json(stop_body);
@@ -151,8 +151,8 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
         try r.expectStatus(.conflict);
         try std.testing.expect(r.bodyContains("UZ-AGT-010"));
     }
-    { // nonexistent agent → 404 UZ-AGT-009
-        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/agents/{s}", .{ TEST_WORKSPACE_ID, fx.agent_nonexistent });
+    { // nonexistent fleet → 404 UZ-AGT-009
+        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets/{s}", .{ TEST_WORKSPACE_ID, fx.fleet_nonexistent });
         defer alloc.free(missing);
         var req = h.request(.PATCH, missing);
         req = try req.bearer(TOKEN_OPERATOR);

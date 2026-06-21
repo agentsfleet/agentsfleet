@@ -1,4 +1,4 @@
--- Runner fleet control plane (agent-runner split). The `fleet` schema holds
+-- Runner fleet control plane (fleet-runner split). The `fleet` schema holds
 -- runner identity and — in later migrations — leases, heartbeats, executions,
 -- and fleet-level policy/regions. It is deliberately separate from `core` (the
 -- tenant data plane) so the control plane and data plane do not share a trust

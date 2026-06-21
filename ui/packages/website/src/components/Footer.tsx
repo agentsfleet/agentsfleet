@@ -35,7 +35,7 @@ export default function Footer() {
           <List variant="plain" className="m-0 flex flex-col gap-1 space-y-0">
             <ListItem><a href={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK}>fleet</a></ListItem>
             <ListItem><a href="/#pricing" className={COL_LINK}>pricing</a></ListItem>
-            <ListItem><Link to="/agents" className={COL_LINK}>agents</Link></ListItem>
+            <ListItem><Link to="/fleets" className={COL_LINK}>fleets</Link></ListItem>
           </List>
         </div>
 

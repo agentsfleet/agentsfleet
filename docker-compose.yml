@@ -47,7 +47,7 @@ services:
       - redis-tls:/tls
       - redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --tls --insecure -a agentsfleet ping"]
+      test: ["CMD-SHELL", "redis-cli --tls --insecure -a agentsfleet --no-auth-warning ping"]
       interval: 5s
       timeout: 5s
       retries: 20

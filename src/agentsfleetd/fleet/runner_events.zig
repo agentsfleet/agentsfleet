@@ -3,6 +3,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -13,7 +14,7 @@ const log = logging.scoped(.fleet_runner_events);
 pub const META_HOST_ID = "host_id";
 pub const META_SANDBOX_TIER = "sandbox_tier";
 pub const META_LEASE_ID = "lease_id";
-pub const META_AGENTSFLEET_ID = "agent_id";
+pub const META_FLEET_ID = "fleet_id";
 pub const META_AGENTSFLEET_EVENT_ID = "event_id";
 pub const META_KIND = "kind";
 pub const META_FROM_ADMIN_STATE = "from_admin_state";
@@ -109,11 +110,11 @@ pub fn appendLeaseReleasedBestEffort(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,
-    agent_id: []const u8,
-    agent_event_id: []const u8,
+    fleet_id: []const u8,
+    fleet_event_id: []const u8,
 ) void {
-    appendLeaseReleased(pool, alloc, runner_id, lease_id, agent_id, agent_event_id) catch |err| {
-        log.warn("lease_released_event_failed", .{ .runner_id = runner_id, .lease_id = lease_id, .err = @errorName(err) });
+    appendLeaseReleased(pool, alloc, runner_id, lease_id, fleet_id, fleet_event_id) catch |err| {
+        log.warn("lease_released_event_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .lease_id = lease_id, .err = @errorName(err) });
     };
 }
 
@@ -122,8 +123,8 @@ fn appendLeaseReleased(
     alloc: std.mem.Allocator,
     runner_id: []const u8,
     lease_id: []const u8,
-    agent_id: []const u8,
-    agent_event_id: []const u8,
+    fleet_id: []const u8,
+    fleet_event_id: []const u8,
 ) !void {
     const event_row_id = try id_format.generateRunnerEventId(alloc);
     defer alloc.free(event_row_id);
@@ -143,10 +144,10 @@ fn appendLeaseReleased(
         now_ms,
         META_LEASE_ID,
         lease_id,
-        META_AGENTSFLEET_ID,
-        agent_id,
+        META_FLEET_ID,
+        fleet_id,
         META_AGENTSFLEET_EVENT_ID,
-        agent_event_id,
+        fleet_event_id,
     });
 }
 

@@ -1,5 +1,5 @@
 //! Engine-input assembly for the `__execute` child — turns a `LeasePayload`
-//! into the agent_config / tools_spec / message args and the installed-
+//! into the fleet_config / tools_spec / message args and the installed-
 //! instructions reasoning context. Split from `child_exec.zig` to keep that
 //! file under the RULE FLL line limit; consumed only by `child_exec.runEngine`.
 
@@ -17,24 +17,24 @@ const LeasePayload = contract.protocol.LeasePayload;
 /// Engine-call args resolved from the lease. `deinit` releases the two JSON
 /// containers (caller-owned allocator pattern).
 pub const CallArgs = struct {
-    /// NON-OWNING view of `agent_obj` (the same backing map) — never `deinit`
-    /// this; it is freed only via `agent_obj`. Null when the policy contributed
-    /// no agent-config keys.
-    agent_config: ?std.json.Value,
+    /// NON-OWNING view of `fleet_obj` (the same backing map) — never `deinit`
+    /// this; it is freed only via `fleet_obj`. Null when the policy contributed
+    /// no fleet-config keys.
+    fleet_config: ?std.json.Value,
     /// NON-OWNING view of `tools_arr` — never `deinit` this; freed via `tools_arr`.
     tools_spec: ?std.json.Value,
     /// Borrows either `req_parsed`'s arena (the parsed-string path) or
     /// `payload.event.request_json` (every fallback path). Path-dependent, so it
     /// is valid only until `deinit` — never use it after the struct is freed.
     message: ?[]const u8,
-    /// Owns the `agent_config` backing map.
-    agent_obj: std.json.ObjectMap,
+    /// Owns the `fleet_config` backing map.
+    fleet_obj: std.json.ObjectMap,
     /// Owns the `tools_spec` backing array.
     tools_arr: std.json.Array,
     req_parsed: ?std.json.Parsed(std.json.Value),
 
     pub fn deinit(self: CallArgs, alloc: std.mem.Allocator) void {
-        var a = self.agent_obj;
+        var a = self.fleet_obj;
         a.deinit(alloc);
         var t = self.tools_arr;
         t.deinit();
@@ -42,17 +42,17 @@ pub const CallArgs = struct {
     }
 };
 
-/// Build engine args from the leased policy + event. Agent-config keys reuse
+/// Build engine args from the leased policy + event. Fleet-config keys reuse
 /// the `wire` constants the engine reads them back with (RULE UFS). Fails closed
-/// on allocation failure: a partial `agent_config` never escapes — the caller
+/// on allocation failure: a partial `fleet_config` never escapes — the caller
 /// reports a startup-posture failure instead of invoking the model with a
 /// half-built config (e.g. a provider with no key). Caller owns the returned
 /// value (deinit with the same allocator).
 pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutOfMemory}!CallArgs {
-    var agent_obj: std.json.ObjectMap = .empty;
-    errdefer agent_obj.deinit(alloc);
+    var fleet_obj: std.json.ObjectMap = .empty;
+    errdefer fleet_obj.deinit(alloc);
     if (payload.policy.context.model.len > 0)
-        try agent_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model });
+        try fleet_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model });
     // Provider + key are the authoritative resolved values delivered on the
     // lease (the key the tenant is billed for) — atomic: the resolver always
     // produces both or neither. A half-populated pair is a malformed lease; we
@@ -63,10 +63,10 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
     // engine. `secrets_map` carries tool credentials only — a tool secret named
     // "llm" is NOT the provider key.
     if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
-        try agent_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
-        try agent_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
+        try fleet_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
+        try fleet_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
-        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .agent_id = payload.event.agent_id });
+        log.warn("fleet_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .fleet_id = payload.event.fleet_id });
     }
 
     var tools_arr = std.json.Array.init(alloc);
@@ -93,10 +93,10 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
     };
 
     return .{
-        .agent_config = if (agent_obj.count() > 0) .{ .object = agent_obj } else null,
+        .fleet_config = if (fleet_obj.count() > 0) .{ .object = fleet_obj } else null,
         .tools_spec = if (tools_arr.items.len > 0) .{ .array = tools_arr } else null,
         .message = message,
-        .agent_obj = agent_obj,
+        .fleet_obj = fleet_obj,
         .tools_arr = tools_arr,
         .req_parsed = req_parsed,
     };

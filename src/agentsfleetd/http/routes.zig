@@ -45,51 +45,54 @@ pub const Route = union(enum) {
     list_tenant_workspaces,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
-    /// POST /v1/webhooks/{agent_id} — generic per-agent webhook receiver.
+    fleet_bundles, // GET /v1/fleets/bundles
+    /// POST /v1/webhooks/{fleet_id} — generic per-fleet webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by the matching `triggers[].source`.
     receive_webhook: []const u8,
-    // Clerk / Svix signed webhooks — /v1/webhooks/svix/{agent_id}.
+    // Clerk / Svix signed webhooks — /v1/webhooks/svix/{fleet_id}.
     receive_svix_webhook: []const u8,
     // Clerk user.created signup event — /v1/auth/identity-events/clerk.
-    // Internal auth-plane endpoint (no agent_id), kept out of /v1/webhooks/.
+    // Internal auth-plane endpoint (no fleet_id), kept out of /v1/webhooks/.
     auth_identity_event_clerk,
-    // Agent approval gate callback
+    // Fleet approval gate callback
     approval_webhook: []const u8,
-    // Grant approval webhook — /v1/webhooks/{agent_id}/grant-approval
+    // Grant approval webhook — /v1/webhooks/{fleet_id}/grant-approval
     grant_approval_webhook: []const u8,
-    /// POST /v1/webhooks/{agent_id}/github — GitHub Actions ingest. HMAC via
-    /// the workspace's `agent:github` credential; handler filters to
+    /// POST /v1/webhooks/{fleet_id}/github — GitHub Actions ingest. HMAC via
+    /// the workspace's `fleet:github` credential; handler filters to
     /// workflow_run/failure and XADDs the M42 envelope.
     github_webhook: []const u8,
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
-    // Agent CRUD + activity + credentials (workspace-scoped)
-    workspace_agents: []const u8, // GET|POST /v1/workspaces/{ws}/agents
-    patch_workspace_agent: matchers.WorkspaceAgentRoute, // PATCH /v1/workspaces/{ws}/agents/{id} (config_json + status:killed)
+    // Fleet create/read/update/delete (CRUD), workspace-scoped.
+    workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
+    patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
-    // Chat ingress — POST /v1/workspaces/{ws}/agents/{id}/messages
-    workspace_agent_messages: matchers.WorkspaceAgentRoute,
-    // Per-agent event history + SSE live tail
-    workspace_agent_events: matchers.WorkspaceAgentRoute, // GET /v1/workspaces/{ws}/agents/{id}/events
-    workspace_agent_events_stream: matchers.WorkspaceAgentRoute, // GET /v1/workspaces/{ws}/agents/{id}/events/stream (SSE)
+    workspace_fleet_bundles: []const u8, // POST /v1/workspaces/{ws}/fleets/bundles/snapshots
+    workspace_fleet_bundle: matchers.WorkspaceFleetBundleRoute, // GET /v1/workspaces/{ws}/fleets/bundles/snapshots/{bundle_id}
+    // Chat ingress — POST /v1/workspaces/{ws}/fleets/{id}/messages
+    workspace_fleet_messages: matchers.WorkspaceFleetRoute,
+    // Per-Fleet event history + Server-Sent Events (SSE) live tail
+    workspace_fleet_events: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events
+    workspace_fleet_events_stream: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/events/stream
     // Workspace-aggregate event history
     workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
     // Approval inbox (workspace-scoped pending-gate surface)
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // External-agent memory API — workspace-scoped resource collection (read-only).
-    workspace_agent_memories: matchers.WorkspaceAgentRoute, // GET (list-or-search); write verbs retired
+    // External-fleet memory API — workspace-scoped resource collection (read-only).
+    workspace_fleet_memories: matchers.WorkspaceFleetRoute, // GET (list-or-search); write verbs retired
     // Integration grant CRUD (workspace-scoped)
-    request_integration_grant: matchers.WorkspaceAgentRoute, // POST /v1/workspaces/{ws}/agents/{id}/integration-requests
-    list_integration_grants: matchers.WorkspaceAgentRoute, // GET  /v1/workspaces/{ws}/agents/{id}/integration-grants
-    revoke_integration_grant: matchers.WorkspaceAgentGrantRoute, // DELETE /v1/workspaces/{ws}/agents/{id}/integration-grants/{grant_id}
-    // Workspace agent-key management
-    agent_keys: []const u8, // POST|GET /v1/workspaces/{ws}/agent-keys
-    delete_agent_key: matchers.WorkspaceAgentKeyRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_key_id}
+    request_integration_grant: matchers.WorkspaceFleetRoute, // POST /v1/workspaces/{ws}/fleets/{id}/integration-requests
+    list_integration_grants: matchers.WorkspaceFleetRoute, // GET /v1/workspaces/{ws}/fleets/{id}/integration-grants
+    revoke_integration_grant: matchers.WorkspaceFleetGrantRoute, // DELETE /v1/workspaces/{ws}/fleets/{id}/integration-grants/{grant_id}
+    // Workspace fleet-key management
+    fleet_keys: []const u8, // POST|GET /v1/workspaces/{ws}/fleet-keys
+    delete_fleet_key: matchers.WorkspaceFleetKeyRoute, // DELETE /v1/workspaces/{ws}/fleet-keys/{fleet_key_id}
     // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}
@@ -98,16 +101,17 @@ pub const Route = union(enum) {
     // gated by runnerBearer. `activity` is the only one with a path param
     // ({lease_id}); the rest resolve `me` from the token (no runner_id in path).
     register_runner, // POST /v1/runners
-    fleet_runners_list, // GET /v1/fleet/runners (platform-admin operator-plane read)
-    fleet_runner_patch: []const u8, // PATCH /v1/fleet/runners/{id}
-    fleet_runner_events: []const u8, // GET /v1/fleet/runners/{id}/events
-    fleet_streams_list, // GET /v1/fleet/streams (platform-admin — live SSE streams on this instance)
+    fleet_runners_list, // GET /v1/fleets/runners (platform-admin operator-plane read)
+    fleet_runner_patch: []const u8, // PATCH /v1/fleets/runners/{id}
+    fleet_runner_events: []const u8, // GET /v1/fleets/runners/{id}/events
+    fleet_streams_list, // GET /v1/fleets/streams (platform-admin — live SSE streams on this instance)
     runner_self, // GET /v1/runners/me (read-only — no last_seen bump)
     runner_heartbeat, // POST /v1/runners/me/heartbeats
     runner_lease, // POST /v1/runners/me/leases
     runner_report, // POST /v1/runners/me/reports
     runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
     runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
-    runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{agent_id}
-    runner_memory_capture: []const u8, // POST /v1/runners/me/memory/{agent_id}
+    runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{fleet_id}
+    runner_memory_capture: []const u8, // POST /v1/runners/me/memory/{fleet_id}
+    runner_bundle: []const u8, // GET /v1/runners/me/bundles/{content_hash}
 };

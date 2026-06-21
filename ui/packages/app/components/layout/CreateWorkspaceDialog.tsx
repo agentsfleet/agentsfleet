@@ -21,9 +21,10 @@ import { presentErrorString } from "@/lib/errors";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreated?: (workspaceName: string) => void;
 };
 
-export default function CreateWorkspaceDialog({ open, onOpenChange }: Props) {
+export default function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: Props) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -59,6 +60,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange }: Props) {
         return;
       }
       setName("");
+      onCreated?.(result.data.name);
       onOpenChange(false);
       // The action already revalidated the layout (active-workspace switch);
       // refresh the client tree so the switcher reflects the new workspace.
@@ -72,7 +74,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            A workspace isolates agents and credentials; billing rolls up to
+            A workspace isolates teammates and credentials; billing rolls up to
             your tenant. Leave the name blank to have one generated.
           </DialogDescription>
         </DialogHeader>

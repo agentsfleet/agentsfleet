@@ -10,12 +10,12 @@ const input = @import("child_exec_input.zig");
 const wire = @import("engine/wire.zig");
 const testLease = @import("child_exec_test_fixtures.zig").testLease;
 
-test "buildCallArgs injects the policy provider and api_key into agent_config" {
+test "buildCallArgs injects the policy provider and api_key into fleet_config" {
     const alloc = testing.allocator;
     const payload = testLease(.{ .provider = "fireworks", .api_key = "fw_secret_key" });
     var args = try input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
+    const ac = args.fleet_config.?.object;
     try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
     try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
 }
@@ -48,8 +48,8 @@ test "buildCallArgs treats an llm-named tool secret as a tool secret, not the pr
     const payload = testLease(.{ .secrets_map = sm.value, .context = .{ .model = "claude-x" } });
     var args = try input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
-    try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string); // agent_config is populated…
+    const ac = args.fleet_config.?.object;
+    try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string); // fleet_config is populated…
     try testing.expect(ac.get(wire.api_key) == null); // …but the llm tool secret is NOT promoted to the provider key
     try testing.expect(ac.get(wire.provider) == null);
 }
@@ -61,7 +61,7 @@ test "buildCallArgs injects neither half of an incomplete provider key pair" {
     const payload = testLease(.{ .api_key = "fw_orphan_key", .context = .{ .model = "claude-x" } });
     var args = try input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
-    const ac = args.agent_config.?.object;
+    const ac = args.fleet_config.?.object;
     try testing.expect(ac.get(wire.api_key) == null);
     try testing.expect(ac.get(wire.provider) == null);
 }
@@ -93,7 +93,7 @@ test "buildCallArgs never yields a half-built provider/key pair under OOM (atomi
     // `put` succeeded, the function returns error.OutOfMemory (the `try` below
     // propagates it before the `if`) and the errdefer frees the partial map — is
     // proven by checkAllAllocationFailures asserting zero leak at every alloc site.
-    // Together: a provider-without-key agent_config (the "wrong provider" hazard)
+    // Together: a provider-without-key fleet_config (the "wrong provider" hazard)
     // can never escape, even under memory pressure.
     try testing.checkAllAllocationFailures(testing.allocator, struct {
         fn run(a: std.mem.Allocator) !void {
@@ -104,7 +104,7 @@ test "buildCallArgs never yields a half-built provider/key pair under OOM (atomi
             });
             var args = try input.buildCallArgs(a, payload);
             defer args.deinit(a);
-            if (args.agent_config) |cfg| {
+            if (args.fleet_config) |cfg| {
                 const has_provider = cfg.object.get(wire.provider) != null;
                 const has_key = cfg.object.get(wire.api_key) != null;
                 try testing.expectEqual(has_provider, has_key);
@@ -117,7 +117,7 @@ test "buildCallArgs assembles a complete engine config from a production-shaped 
     const alloc = testing.allocator;
     // The integration seam the engine consumes: a full lease (model + atomic
     // provider/key + tools + a request carrying a message) must produce an
-    // agent_config and tools_spec that carry every field intact — a regression
+    // fleet_config and tools_spec that carry every field intact — a regression
     // guard so the fail-closed refactor never silently drops a field on success.
     const payload = testLease(.{
         .provider = "fireworks",
@@ -128,7 +128,7 @@ test "buildCallArgs assembles a complete engine config from a production-shaped 
     var args = try input.buildCallArgs(alloc, payload);
     defer args.deinit(alloc);
 
-    const ac = args.agent_config.?.object;
+    const ac = args.fleet_config.?.object;
     try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string);
     try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
     try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
@@ -179,14 +179,14 @@ test "buildCallArgs uses the raw body when the request JSON is not an object" {
     try testing.expectEqualStrings("[1,2,3]", args.message.?);
 }
 
-test "buildCallArgs yields null agent_config and tools_spec for an empty policy" {
+test "buildCallArgs yields null fleet_config and tools_spec for an empty policy" {
     const alloc = testing.allocator;
     // No model, no provider/key, no tools → the `count() > 0`/`items.len > 0`
     // guards take their null side; a mutant that wraps an empty object/array
     // (e.g. `if (true)`) is caught here.
     var args = try input.buildCallArgs(alloc, testLease(.{}));
     defer args.deinit(alloc);
-    try testing.expect(args.agent_config == null);
+    try testing.expect(args.fleet_config == null);
     try testing.expect(args.tools_spec == null);
     try testing.expectEqualStrings("hi", args.message.?); // message still resolves
 }

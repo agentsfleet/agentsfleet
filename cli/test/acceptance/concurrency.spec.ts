@@ -18,7 +18,7 @@
  *      storm and proves it still parses and is identical to the seed.
  *
  * Read-only throughout — nothing the storms run mutates the shared DEV
- * tenant, so no per-agent teardown is required beyond the defensive
+ * tenant, so no per-fleet teardown is required beyond the defensive
  * prefix-scoped sweep in afterAll (kept for symmetry with the lifecycle
  * specs; it is a no-op here).
  *
@@ -37,7 +37,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX, ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -47,7 +47,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   boundedAll,
   CONCURRENCY_WIDTH,
@@ -112,7 +112,7 @@ if (!isLive) {
       args: ReadonlyArray<string>,
       env: Record<string, string>,
     ): Promise<RunResult> {
-      const result = await runAgentctl(args, { env });
+      const result = await runFleetctl(args, { env });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -126,11 +126,11 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      // Read-only suite — no agents are created, so the sweep is a no-op
+      // Read-only suite — no fleets are created, so the sweep is a no-op
       // guard against a stray fixture. Best-effort: never fail teardown.
       const survivor = stateDirs[0];
       if (survivor && sessionJwt && apiUrl) {
-        try { await cleanWorkspaceAgents(envFor(survivor), { runPrefix: ACCEPTANCE_RUN_PREFIX }); }
+        try { await cleanWorkspaceFleets(envFor(survivor), { runPrefix: ACCEPTANCE_RUN_PREFIX }); }
         catch { /* best-effort teardown */ }
       }
       await Promise.all(

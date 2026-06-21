@@ -1,7 +1,7 @@
 //! `svix_signature` middleware (M28_001 §5).
 //!
 //! Verifies Svix v1 multi-sig HMAC-SHA256 for Clerk (and any future Svix-
-//! signed provider) webhooks. Route path `/v1/webhooks/svix/{agent_id}`
+//! signed provider) webhooks. Route path `/v1/webhooks/svix/{fleet_id}`
 //! selects this middleware statically; no per-request provider switch.
 //!
 //! Crypto core lives in the sibling `auth/crypto/svix_verify.zig` and is
@@ -22,6 +22,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
 const sv = @import("../crypto/svix_verify.zig");
 const logging = @import("log");
+const ec = @import("auth_codes");
 
 const AuthCtx = auth_ctx.AuthCtx;
 
@@ -34,7 +35,7 @@ fn defaultNowSeconds() i64 {
 const log = logging.scoped(.svix);
 
 /// Owned lookup result. `secret` is the `whsec_<base64>` string loaded from
-/// vault for the target agent — the verifier handles prefix stripping and
+/// vault for the target fleet — the verifier handles prefix stripping and
 /// base64 decoding internally.
 pub const SvixLookupResult = struct {
     const Self = @This();
@@ -66,10 +67,10 @@ pub fn SvixSignature(comptime LookupCtx: type) type {
         }
 
         pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
-            const agent_id = ctx.webhook_agent_id orelse return failSig(ctx);
+            const fleet_id = ctx.webhook_fleet_id orelse return failSig(ctx);
 
-            const result_opt = self.lookup_fn(self.lookup_ctx, agent_id, ctx.alloc) catch |err| {
-                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .agent_id = agent_id, .err = @errorName(err) });
+            const result_opt = self.lookup_fn(self.lookup_ctx, fleet_id, ctx.alloc) catch |err| {
+                log.warn("lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .req_id = ctx.req_id, .fleet_id = fleet_id, .err = @errorName(err) });
                 return failSig(ctx);
             };
             const result = result_opt orelse return failSig(ctx);

@@ -12,10 +12,10 @@
 // then exits 2.
 
 import { Command, Option as CommanderOption, type Help } from "commander";
-import { AgentHelp, styleTagline } from "./help.ts";
+import { FleetHelp, styleTagline } from "./help.ts";
 import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
-import { buildAgentTree } from "./cli-tree-agent.ts";
+import { buildFleetTree } from "./cli-tree-fleet.ts";
 import { buildMemoryTree } from "./cli-tree-memory.ts";
 import { helpTail } from "./cli-tree-help.ts";
 import type {
@@ -83,7 +83,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
 
   // commander 14: configureHelp() ignores unknown keys (incl. helpFactory);
   // the supported override is createHelp, invoked on each Command's --help.
-  program.createHelp = helpFactory ?? ((): Help => new AgentHelp());
+  program.createHelp = helpFactory ?? ((): Help => new FleetHelp());
 
   program
     .name("agentsfleet")
@@ -136,11 +136,11 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .action(actionFor(COMMAND_DOCTOR, (frame) => runHandler(state, frame, handlers.doctor)));
 
   buildWorkspaceTree(program, handlers, state);
-  buildAgentKeyTree(program, handlers, state);
+  buildFleetKeyTree(program, handlers, state);
   buildGrantTree(program, handlers, state);
   buildTenantTree(program, handlers, state);
   buildBillingTree(program, handlers, state);
-  buildAgentTree(program, handlers, state, { actionFor, runHandler });
+  buildFleetTree(program, handlers, state, { actionFor, runHandler });
   buildMemoryTree(program, handlers, state, { actionFor, runHandler });
 
   return program;
@@ -177,28 +177,28 @@ function buildWorkspaceTree(program: Command, handlers: Handlers, state: Program
     .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
 }
 
-function buildAgentKeyTree(program: Command, handlers: Handlers, state: ProgramState): void {
-  const agentKey = program
-    .command("agent-key")
-    .description("Manage agent API keys");
+function buildFleetKeyTree(program: Command, handlers: Handlers, state: ProgramState): void {
+  const fleetKey = program
+    .command("fleet-key")
+    .description("Manage fleet API keys");
 
-  agentKey.command(COMMAND_ADD)
-    .description("Mint an agent API key for the workspace")
+  fleetKey.command(COMMAND_ADD)
+    .description("Mint a Fleet API key for the workspace")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .option(FLAG_AGENTSFLEET_ID, "Agent ID this key is bound to", parseIdOption)
-    .option("--name <name>", "Human-readable agent key name")
+    .option(FLAG_FLEET_ID, "Fleet ID this key is bound to", parseIdOption)
+    .option("--name <name>", "Human-readable fleet key name")
     .option("--description <desc>", "Optional description")
-    .action(actionFor("agent-key.add", (frame) => runHandler(state, frame, handlers.agentKey.add)));
+    .action(actionFor("fleet-key.add", (frame) => runHandler(state, frame, handlers.fleetKey.add)));
 
-  agentKey.command(COMMAND_LIST)
-    .description("List agent API keys")
+  fleetKey.command(COMMAND_LIST)
+    .description("List fleet API keys")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("agent-key.list", (frame) => runHandler(state, frame, handlers.agentKey.list)));
+    .action(actionFor("fleet-key.list", (frame) => runHandler(state, frame, handlers.fleetKey.list)));
 
-  agentKey.command("delete <agent_key_id>")
-    .description("Revoke an agent API key")
+  fleetKey.command("delete <fleet_key_id>")
+    .description("Revoke a Fleet API key")
     .option(FLAG_WORKSPACE_ID, WORKSPACE_ID, parseIdOption)
-    .action(actionFor("agent-key.delete", (frame) => runHandler(state, frame, handlers.agentKey.delete)));
+    .action(actionFor("fleet-key.delete", (frame) => runHandler(state, frame, handlers.fleetKey.delete)));
 }
 
 function buildGrantTree(program: Command, handlers: Handlers, state: ProgramState): void {
@@ -207,13 +207,13 @@ function buildGrantTree(program: Command, handlers: Handlers, state: ProgramStat
     .description("Manage integration grants");
 
   grant.command(COMMAND_LIST)
-    .description("List integration grants for an agent")
-    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
+    .description("List integration grants for a Fleet")
+    .option(FLAG_FLEET_ID, FLEET_ID, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
   grant.command("delete <grant_id>")
     .description("Revoke an integration grant")
-    .option(FLAG_AGENTSFLEET_ID, AGENTSFLEET_ID, parseIdOption)
+    .option(FLAG_FLEET_ID, FLEET_ID, parseIdOption)
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
@@ -252,9 +252,9 @@ function buildBillingTree(program: Command, handlers: Handlers, state: ProgramSt
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
 const FLAG_WORKSPACE_ID = "--workspace <id>" as const;
-const FLAG_AGENTSFLEET_ID = "--agent <id>" as const;
+const FLAG_FLEET_ID = "--fleet <id>" as const;
 const WORKSPACE_ID = "Workspace ID" as const;
-const AGENTSFLEET_ID = "Agent ID" as const;
+const FLEET_ID = "Fleet ID" as const;
 const COMMAND_ADD = "add" as const;
 const COMMAND_DOCTOR = "doctor" as const;
 const COMMAND_LIST = "list" as const;

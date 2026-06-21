@@ -1,6 +1,6 @@
-// aiToolLayer — resolves the agent (Claude Code, Cursor, etc.) wrapping
-// this CLI invocation via @vercel/detect-agent (env-var inspection of
-// well-known agent signals). Mirrors supabase
+// aiToolLayer — resolves the tool (Claude Code, Cursor, etc.) wrapping
+// this Command-Line Interface (CLI) invocation via @vercel/detect-agent
+// (environment-variable inspection of well-known tool signals). Mirrors supabase
 // apps/cli/src/shared/telemetry/ai-tool.layer.ts; adds a 250ms timeout
 // so a hung determineAgent never blocks CLI startup.
 
@@ -10,7 +10,7 @@ import { AiTool } from "./ai-tool.service.ts";
 
 const DETECT_TIMEOUT_MS = 250;
 
-function normalizeAgentName(name: string): string {
+function normalizeToolName(name: string): string {
   return name.replace(/-/g, "_");
 }
 
@@ -33,7 +33,7 @@ export const aiToolLayer = Layer.effect(
         onSome: (result) =>
           AiTool.of({
             name: result.isAgent
-              ? Option.some(normalizeAgentName(result.agent.name))
+              ? Option.some(normalizeToolName(result.agent.name))
               : Option.none(),
           }),
       }),

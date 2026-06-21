@@ -23,7 +23,7 @@ describe("FAQ", () => {
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
     expect(screen.getByText("Can I self-host?")).toBeInTheDocument();
     expect(screen.getByText("Which coding agents work for the install skill?")).toBeInTheDocument();
-    expect(screen.getByText("What if my agent hits the model's context window?")).toBeInTheDocument();
+    expect(screen.getByText("What if my Fleet hits the model's context window?")).toBeInTheDocument();
   });
 
   it("answers are hidden by default", () => {
@@ -77,12 +77,12 @@ describe("FAQ", () => {
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
   });
 
-  it("defines the agent at first touch: 'What is agentsfleet?' opens to the explicit definition", async () => {
+  it("defines the Fleet at first touch: 'What is agentsfleet?' opens to the explicit definition", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
     await user.click(screen.getByText("What is agentsfleet?"));
     expect(
-      screen.getByText(/An agent is a long-lived runtime you install once/i),
+      screen.getByText(/A Fleet is a long-lived runtime you install once/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/not a one-shot prompt/i)).toBeInTheDocument();
   });

@@ -27,7 +27,7 @@ It is meant for work that:
 agentsfleet v2 is not:
 
 - a general-purpose personal assistant in the cloud
-- a generic coding-agent orchestration product
+- a generic coding-fleet orchestration product
 - a broad "AI can automate anything" platform
 - just a chat UI over tools
 
@@ -39,7 +39,7 @@ Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
 - **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's NullClaw child uses it for the inference call only. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
-- **Markdown-defined.** Operational behaviour lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
+- **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
 
@@ -47,9 +47,9 @@ The `/agentsfleet-install-platform-ops` skill ([`user_flow.md`](./user_flow.md) 
 
 ### The first problem we solve
 
-The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to manually bounce between CI, logs, infra dashboards, chat, and shell history while also remembering what they already tried. The agent should take ownership of that outcome: gather evidence, explain what is wrong, preserve the timeline, request approval when necessary, and continue until resolved or blocked.
+The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to manually bounce between CI, logs, infra dashboards, chat, and shell history while also remembering what they already tried. The fleet should take ownership of that outcome: gather evidence, explain what is wrong, preserve the timeline, request approval when necessary, and continue until resolved or blocked.
 
-The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer** — one agent that wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence, posts a diagnosis to Slack, and is also reachable via `agentsfleet steer` for manual investigation.
+The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer** — one fleet that wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence, posts a diagnosis to Slack, and is also reachable via `agentsfleet steer` for manual investigation.
 
 ---
 
@@ -68,7 +68,7 @@ Existing tooling captures pieces of the workflow but not the whole outcome:
 
 What is missing is a long-lived runtime that owns the outcome end-to-end.
 
-The v2 MVP solves that gap. An agent receives an operational trigger, reasons over it in natural language, gathers evidence with the right tools, persists the full attempt history, resumes if interrupted, asks for approval when needed, and continues until the outcome is resolved or clearly blocked.
+The v2 MVP solves that gap. A Fleet receives an operational trigger, reasons over it in natural language, gathers evidence with the right tools, persists the full attempt history, resumes if interrupted, asks for approval when needed, and continues until the outcome is resolved or clearly blocked.
 
 The MVP wedge is:
 
@@ -79,7 +79,7 @@ The MVP wedge is:
 - approvals where needed
 - one flagship workflow
 
-The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails, the agent wakes from the webhook, gathers the right evidence from Fly.io, Upstash, Redis, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same agent can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
+The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails, the fleet wakes from the webhook, gathers the right evidence from Fly.io, Upstash, Redis, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same fleet can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
 
 ---
 
@@ -124,9 +124,9 @@ Counterarguments:
 - A deterministic deploy watcher plus logs fetcher may solve enough of the problem without an LLM.
 - The hard part may be trust, approvals, and evidence quality, not reasoning.
 - The market is adjacent to incident automation and AI SRE tooling, which already exist.
-- If the agent mostly summarizes logs but does not move the outcome forward, the product will feel ornamental.
+- If the fleet mostly summarizes logs but does not move the outcome forward, the product will feel ornamental.
 
-That is why the MVP bar is strict: the agent must make a real operational outcome faster and safer to complete, not merely easier to read about.
+That is why the MVP bar is strict: the fleet must make a real operational outcome faster and safer to complete, not merely easier to read about.
 
 ---
 
@@ -139,12 +139,12 @@ agentsfleet v2 should be judged on one promise:
 For the MVP, that means:
 
 - a trigger arrives from webhook (GH Actions failure), cron, or operator steer
-- the agent gathers the right evidence
-- the agent reasons over the situation using LLM + constrained tools
+- the fleet gathers the right evidence
+- the fleet reasons over the situation using LLM + constrained tools
 - every step is persisted with actor provenance
-- the agent context is bounded (rolling window + memory checkpoints + run chunking)
+- the fleet context is bounded (rolling window + memory checkpoints + run chunking)
 - risky steps are approval-gated
-- the agent can resume after interruption
+- the fleet can resume after interruption
 - the operator resumes from state, not memory
 
 If the product cannot prove that loop on a real GH Actions deploy failure and a real approval-gated destructive workflow, the thesis is not validated.
@@ -165,8 +165,8 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the agent's webhook ingest URL (today `POST /v1/webhooks/{agent_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
+- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the fleet's webhook ingest URL (today `POST /v1/webhooks/{fleet_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **Steer.** A direct operator instruction via `agentsfleet steer <agent_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
+- **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
-All three flow through the same reasoning loop. The agent does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
+All three flow through the same reasoning loop. The fleet does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.

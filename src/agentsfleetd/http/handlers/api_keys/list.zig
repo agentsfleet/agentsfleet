@@ -139,7 +139,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageRo
             .created_at = row.get(i64, 3) catch continue,
             .last_used_at = row.get(i64, 4) catch null,
             .revoked_at = row.get(i64, 5) catch null,
-        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+        }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     }
     return .{ .items = items.toOwnedSlice(hx.alloc) catch &[_]ListRow{}, .total = total };
 }
