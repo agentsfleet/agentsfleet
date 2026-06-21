@@ -18,6 +18,24 @@ test("install accepts --from <path>", async () => {
   expect(calls[0]?.frame.parsed.options.from).toBe("/tmp/skill");
 });
 
+test("install accepts --template <id> and --name <name>", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(
+    ["install", "--template", "github-pr-reviewer", "--name", "pr-frontend"],
+    handlers,
+  );
+  expect(calls[0]?.name).toBe("fleet.install");
+  expect(calls[0]?.frame.parsed.options.template).toBe("github-pr-reviewer");
+  expect(calls[0]?.frame.parsed.options.name).toBe("pr-frontend");
+});
+
+test("templates dispatches with no options", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["templates"], handlers);
+  expect(calls[0]?.name).toBe("fleet.templates");
+  expect(calls[0]?.frame.parsed.positionals).toHaveLength(0);
+});
+
 test("fleet update <id> accepts --from <path>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["fleet", "update", VALID_ID, "--from", "/tmp/skill"], handlers);

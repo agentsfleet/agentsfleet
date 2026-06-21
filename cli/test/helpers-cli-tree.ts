@@ -67,6 +67,7 @@ export function makeSpyTree(): SpyTree {
       show: spy("billing.show"),
     },
     fleet: {
+      templates: spy("fleet.templates"),
       install: spy("fleet.install"),
       update: spy("fleet.update"),
       list: spy("fleet.list"),

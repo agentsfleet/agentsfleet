@@ -20,6 +20,7 @@ import {
   installEffectFromFlags,
   updateEffectFromArgs,
 } from "../commands/fleet_install.ts";
+import { templatesEffect } from "../commands/fleet_templates.ts";
 import { listEffectFromFlags } from "../commands/fleet_list.ts";
 import { logsEffectFromFlags } from "../commands/fleet_logs.ts";
 import { eventsEffectFromFlags } from "../commands/fleet_events.ts";
@@ -45,9 +46,15 @@ export const buildFleetHandlers = (
   wrapE: WrapE,
   wrapEFn: WrapEFn,
 ): Handlers[typeof AGENT] => ({
+  templates: wrapE("fleet.templates", templatesEffect),
   install: wrapEFn(
     "fleet.install",
-    (frame) => installEffectFromFlags(optString(frame.parsed.options, FIELD_FROM)),
+    (frame) =>
+      installEffectFromFlags({
+        fromPath: optString(frame.parsed.options, FIELD_FROM),
+        templateId: optString(frame.parsed.options, FIELD_TEMPLATE),
+        name: optString(frame.parsed.options, FIELD_NAME),
+      }),
   ),
   update: wrapEFn(
     "fleet.update",
@@ -140,5 +147,7 @@ export const buildFleetHandlers = (
 });
 const FIELD_CURSOR = "cursor" as const;
 const FIELD_FROM = "from" as const;
+const FIELD_TEMPLATE = "template" as const;
+const FIELD_NAME = "name" as const;
 const FIELD_LIMIT = "limit" as const;
 const AGENT = "fleet" as const;

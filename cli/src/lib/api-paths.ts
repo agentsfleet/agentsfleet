@@ -14,6 +14,11 @@ export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 
+// First-party Fleet template catalog — global (not workspace-scoped),
+// metadata only. Mirrors the dashboard's `listFleetTemplates`. The
+// SKILL.md/TRIGGER.md content is fetched server-side at snapshot time.
+export const FLEET_BUNDLES_PATH = "/v1/fleets/bundles";
+
 // Healthz body envelope — the server's `{status: "ok"}` response.
 export const HEALTHZ_STATUS_OK = "ok";
 
@@ -26,6 +31,12 @@ export const wsFleetsPath = (wsId: string): string =>
 // Workspace-scoped single fleet.
 export const wsFleetPath = (wsId: string, fleetId: string): string =>
   `${WORKSPACES_PATH}${enc(wsId)}/fleets/${enc(fleetId)}`;
+
+// Workspace-scoped Fleet Bundle snapshot import (POST → content-addressed
+// snapshot with bundle_id + parsed requirements). The server fetches and
+// validates the source for `template`/`github` kinds.
+export const wsFleetBundleSnapshotsPath = (wsId: string): string =>
+  `${WORKSPACES_PATH}${enc(wsId)}/fleets/bundles/snapshots`;
 
 // Workspace-scoped per-fleet chat messages (POST → 202 with event_id).
 export const wsFleetMessagesPath = (wsId: string, fleetId: string): string =>

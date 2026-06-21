@@ -150,7 +150,7 @@ describe("installEffectFromFlags — SKILL.md-only bundle", () => {
     const requests: HttpRequestInput[] = [];
     try {
       const exit = await Effect.runPromiseExit(
-        installEffectFromFlags(dir).pipe(
+        installEffectFromFlags({ fromPath: dir }).pipe(
           Effect.provide(makeLayer(captured, false, requests, {
             fleet_id: "01900000-0000-7000-8000-0000000a91d1",
             name: "skill-only-install",
@@ -167,30 +167,77 @@ describe("installEffectFromFlags — SKILL.md-only bundle", () => {
   });
 });
 
-describe("installEffectFromFlags — missing --from path (lines 68-73)", () => {
-  test("empty fromPath string produces ValidationError", async () => {
+describe("installEffectFromFlags — no source", () => {
+  test("empty fromPath string produces ValidationError naming both sources", async () => {
     const captured: string[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags("").pipe(
+      installEffectFromFlags({ fromPath: "" }).pipe(
         Effect.provide(makeLayer(captured)),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("--from <path> is required");
+      expect(JSON.stringify(exit.cause)).toContain("a source is required");
     }
   });
 
-  test("null fromPath produces ValidationError", async () => {
+  test("empty flags object produces ValidationError naming both sources", async () => {
     const captured: string[] = [];
     const exit = await Effect.runPromiseExit(
-      installEffectFromFlags(null).pipe(
+      installEffectFromFlags({}).pipe(
         Effect.provide(makeLayer(captured)),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(JSON.stringify(exit.cause)).toContain("--from <path> is required");
+      expect(JSON.stringify(exit.cause)).toContain("--from <path> or --template <id>");
     }
+  });
+});
+
+describe("installEffectFromFlags — both sources", () => {
+  test("--from and --template together are rejected as mutually exclusive", async () => {
+    const captured: string[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ fromPath: "/x", templateId: "t" }).pipe(
+        Effect.provide(makeLayer(captured)),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(JSON.stringify(exit.cause)).toContain("mutually exclusive");
+    }
+  });
+});
+
+describe("installEffectFromFlags — template source", () => {
+  test("imports a snapshot then creates with bundle_id + name override", async () => {
+    const captured: string[] = [];
+    const requests: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(
+      installEffectFromFlags({ templateId: "github-pr-reviewer", name: "pr-reviewer-frontend" }).pipe(
+        Effect.provide(
+          makeLayer(captured, false, requests, {
+            // snapshot import + fleet create both return this stub
+            bundle_id: "01900000-0000-7000-8000-0000000bun01",
+            fleet_id: "01900000-0000-7000-8000-0000000f1ee7",
+            name: "pr-reviewer-frontend",
+            webhook_urls: {},
+            requirements: { credentials: ["github"], trigger_present: true },
+          }),
+        ),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    // first request imports the template snapshot
+    expect(requests[0]?.body).toEqual({
+      source_kind: "template",
+      source_ref: "github-pr-reviewer",
+    });
+    // second request creates the fleet from the snapshot, carrying the override
+    expect(requests[1]?.body).toEqual({
+      bundle_id: "01900000-0000-7000-8000-0000000bun01",
+      name: "pr-reviewer-frontend",
+    });
   });
 });
