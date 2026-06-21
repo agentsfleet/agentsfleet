@@ -16,6 +16,7 @@
 const std = @import("std");
 const constants = @import("common");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const queue_consts = @import("../queue/constants.zig");
@@ -42,20 +43,20 @@ pub const SweepStats = struct {
 
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
 pub fn run(pool: *pg.Pool, queue: *queue_redis.Client, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
-    log.info(LOG_SWEEPER_STARTED, .{ .interval_ms = queue_consts.fleet_reclaim_interval_ms, .min_idle_ms = queue_consts.fleet_xautoclaim_min_idle_ms_int, .batch_limit = SWEEP_BATCH_LIMIT });
+    log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = queue_consts.fleet_reclaim_interval_ms, .min_idle_ms = queue_consts.fleet_xautoclaim_min_idle_ms_int, .batch_limit = SWEEP_BATCH_LIMIT });
     while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown.request() release-store.
         const stats = sweepOnce(pool, queue, alloc) catch |err| {
-            log.warn(LOG_SWEEP_FAILED, .{ .err = @errorName(err) });
+            log.warn(LOG_SWEEP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
             continue;
         };
-        if (stats.reclaimed_entries > 0) log.info("sweep_completed", .{
+        if (stats.reclaimed_entries > 0) log.debug("sweep_completed", .{
             .scanned_agents = stats.scanned_agents,
             .reclaimed_entries = stats.reclaimed_entries,
         });
         sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
     }
-    log.info(LOG_SWEEPER_STOPPED, .{});
+    log.debug(LOG_SWEEPER_STOPPED, .{});
 }
 
 /// Execute one bounded sweep. Tests call this directly.
@@ -81,12 +82,12 @@ fn reclaimFleetStrays(queue: *queue_redis.Client, fleet_id: []const u8, consumer
     var i: usize = 0;
     while (i < SWEEP_CLAIM_LIMIT) : (i += 1) {
         var event = (redis_fleet.xautoclaimFleet(queue, fleet_id, consumer_id) catch |err| {
-            log.warn("reclaim_claim_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+            log.warn("reclaim_claim_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
             return reclaimed;
         }) orelse return reclaimed;
         defer event.deinit(queue.alloc);
         reclaimed += 1;
-        log.info("reclaim_swept", .{ .fleet_id = fleet_id, .event_id = event.event_id, .actor = event.actor });
+        log.debug("reclaim_swept", .{ .fleet_id = fleet_id, .event_id = event.event_id, .actor = event.actor });
     }
     return reclaimed;
 }

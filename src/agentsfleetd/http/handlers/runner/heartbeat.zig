@@ -36,13 +36,13 @@ pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
 /// Best-effort liveness bump — a DB blip must not fail the heartbeat reply.
 fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch |err| {
-        log.warn("heartbeat_acquire_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn("heartbeat_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
         return;
     };
     defer hx.ctx.pool.release(conn);
     const now_ms = clock.nowMillis();
     const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch |err| {
-        log.warn("heartbeat_online_event_id_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn("heartbeat_online_event_id_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
         bumpOnly(conn, runner_id, now_ms);
         return;
     };
@@ -72,7 +72,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
         protocol.RUNNER_LAST_SEEN_NEVER,
         constants.RUNNER_OFFLINE_AFTER_MS,
     }) catch |err| {
-        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
         bumpOnly(conn, runner_id, now_ms);
     };
 }
@@ -81,6 +81,6 @@ fn bumpOnly(conn: anytype, runner_id: []const u8, now_ms: i64) void {
     _ = conn.exec(
         \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
     , .{ runner_id, now_ms }) catch |err| {
-        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn(LOG_EVENT_HEARTBEAT_BUMP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
     };
 }

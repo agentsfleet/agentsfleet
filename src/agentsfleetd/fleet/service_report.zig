@@ -87,11 +87,11 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         return;
     };
     if (!settled.claimed) {
-        log.info("report_fenced", .{ .fleet_id = lease.fleet_id, .lease_id = body.lease_id, .fencing_token = lease.fencing_token, .runner_id = runner_id });
+        log.debug("report_fenced", .{ .fleet_id = lease.fleet_id, .lease_id = body.lease_id, .fencing_token = lease.fencing_token, .runner_id = runner_id });
         hx.fail(ec.ERR_RUN_STALE_FENCING_TOKEN, "Lease superseded by a newer holder; report rejected");
         return;
     }
-    log.info("report_settled", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
+    log.debug("report_settled", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
 
     finalize(hx, runner_id, lease, body);
     // Per-runner telemetry (best-effort, in-memory — never gates the report).
@@ -133,7 +133,7 @@ fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: proto
 /// ownership check (a runner can only report its own lease).
 fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) ?Lease {
     return loadLeaseInner(hx, runner_id, lease_id) catch |err| {
-        log.warn("report_lease_load_failed", .{ .lease_id = lease_id, .err = @errorName(err) });
+        log.warn("report_lease_load_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .lease_id = lease_id, .err = @errorName(err) });
         return null;
     };
 }
@@ -202,14 +202,14 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .model = lease.model,
     }, 0, body.tokens, wall_ms, clock.nowMillis() - @as(i64, @intCast(wall_ms)));
     event_rows.checkpointFleetSession(alloc, pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
-        log.warn("report_checkpoint_failed", .{ .fleet_id = lease.fleet_id, .err = @errorName(err) });
+        log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .err = @errorName(err) });
     };
     redis_fleet.xackFleet(hx.ctx.queue, lease.fleet_id, lease.event_id) catch |err| {
-        log.warn("report_xack_failed", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .err = @errorName(err) });
+        log.warn("report_xack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = lease.fleet_id, .event_id = lease.event_id, .err = @errorName(err) });
     };
     releaseAffinity(hx, lease.fleet_id, lease.fencing_token);
     runner_events.appendLeaseReleasedBestEffort(hx.ctx.pool, hx.alloc, runner_id, body.lease_id, lease.fleet_id, lease.event_id);
-    log.info("report_finalized", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .lease_id = body.lease_id });
+    log.debug("report_finalized", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .lease_id = body.lease_id });
 }
 
 /// Reproduce the `context_json` the direct path wrote: `{last_event_id,
@@ -239,6 +239,6 @@ fn releaseAffinity(hx: Hx, fleet_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
     affinity.release(conn, fleet_id, token) catch |err| {
-        log.warn("report_claim_release_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("report_claim_release_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
     };
 }

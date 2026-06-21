@@ -73,7 +73,7 @@ pub fn innerCreateAuthSession(hx: hx_mod.Hx, req: *httpz.Request) void {
     );
 
     var rbuf: [helpers.REDACT_BUF_LEN]u8 = undefined;
-    log.info("auth_session_created", .{ .session_id = helpers.redactSid(&rbuf, session_id), .req_id = hx.req_id });
+    log.debug("auth_session_created", .{ .session_id = helpers.redactSid(&rbuf, session_id), .req_id = hx.req_id });
     hx.ok(.created, .{ .session_id = session_id, .login_url = login_url, .request_id = hx.req_id });
 }
 
@@ -159,6 +159,7 @@ fn finishApprove(hx: hx_mod.Hx, session_id: []const u8, clerk_user_id: []const u
     var maybe_parsed = hx.ctx.auth_sessions.get(session_id) catch |err| blk: {
         var wbuf: [helpers.REDACT_BUF_LEN]u8 = undefined;
         log.warn("auth_session_approve_audit_lookup_failed", .{
+            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
             .session_id = helpers.redactSid(&wbuf, session_id),
             .req_id = hx.req_id,
             .err = @errorName(err),
@@ -178,7 +179,7 @@ fn finishApprove(hx: hx_mod.Hx, session_id: []const u8, clerk_user_id: []const u
         hx.req_id,
     );
     var rbuf: [helpers.REDACT_BUF_LEN]u8 = undefined;
-    log.info("auth_session_approved", .{ .session_id = helpers.redactSid(&rbuf, session_id), .req_id = hx.req_id });
+    log.debug("auth_session_approved", .{ .session_id = helpers.redactSid(&rbuf, session_id), .req_id = hx.req_id });
     hx.ok(.ok, .{ .request_id = hx.req_id });
 }
 
@@ -271,7 +272,7 @@ pub fn innerDeleteAllAuthSessions(hx: hx_mod.Hx, req: *httpz.Request) void {
         common.internalOperationError(hx.res, "Bulk session abort failed", hx.req_id);
         return;
     };
-    log.info("auth_sessions_bulk_aborted", .{ .clerk_user_id = clerk_user_id, .count = count, .req_id = hx.req_id });
+    log.debug("auth_sessions_bulk_aborted", .{ .clerk_user_id = clerk_user_id, .count = count, .req_id = hx.req_id });
     hx.ok(.ok, .{ .aborted_count = count });
 }
 

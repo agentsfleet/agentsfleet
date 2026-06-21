@@ -125,7 +125,7 @@ fn evaluateCondition(condition: []const u8, context: ?std.json.Value) bool {
     // (config_gates via gate_condition.isValid → UZ-APPROVAL-005) now rejects
     // these for stored policies, so in practice only directly-constructed
     // GateRules reach this branch.
-    log.warn("invalid_condition", .{ .condition = condition });
+    log.warn("invalid_condition", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .condition = condition });
     return true;
 }
 
@@ -172,7 +172,7 @@ pub fn requestApproval(
 
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
 
-    log.info("requested", .{
+    log.debug("requested", .{
         .fleet_id = fleet_id,
         .action_id = action_id,
         .tool = detail.tool,
@@ -196,7 +196,7 @@ pub fn resolveApproval(
     });
     try redis.setEx(response_key, decision, ec.GATE_PENDING_TTL_SECONDS);
 
-    log.info("resolved", .{ .action_id = action_id, .decision = decision });
+    log.debug("resolved", .{ .action_id = action_id, .decision = decision });
 }
 
 // ── Channel-agnostic resolve core ──────────────────────────────────────
@@ -238,7 +238,7 @@ pub fn resolve(
     return switch (db_outcome) {
         .resolved => |row| blk: {
             resolveApproval(redis, args.action_id, decisionString(args.outcome)) catch |err| {
-                log.warn("resolve_redis_fail", .{ .action_id = args.action_id, .err = @errorName(err) });
+                log.warn("resolve_redis_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .action_id = args.action_id, .err = @errorName(err) });
             };
             break :blk .{ .resolved = row };
         },

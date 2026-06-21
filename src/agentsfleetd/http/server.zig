@@ -104,7 +104,7 @@ pub const Server = struct {
 
     /// Block until stop() is called from another thread.
     pub fn listen(self: *Self) !void {
-        log.info("listening", .{ .interface = self.cfg.interface, .port = self.cfg.port });
+        log.debug("listening", .{ .interface = self.cfg.interface, .port = self.cfg.port });
         try self.inner.listen();
     }
 

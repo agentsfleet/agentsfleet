@@ -81,7 +81,7 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
         return;
     }
     if (!creditsCover(hx, lease)) {
-        log.info("renew_no_credits", .{ .error_code = ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, .runner_id = runner_id, .lease_id = lease_id });
+        log.debug("renew_no_credits", .{ .error_code = ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, .runner_id = runner_id, .lease_id = lease_id });
         hx.fail(ec.ERR_RUN_LEASE_RENEWAL_NO_CREDITS, "Tenant balance can no longer fund this run; not renewed");
         return;
     }
@@ -130,15 +130,15 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
     switch (outcome) {
         .renewed => |until| {
             bumpLastSeen(hx, runner_id);
-            log.info("lease_renewed", .{ .runner_id = runner_id, .lease_id = lease_id, .lease_expires_at = until });
+            log.debug("lease_renewed", .{ .runner_id = runner_id, .lease_id = lease_id, .lease_expires_at = until });
             hx.ok(.ok, protocol.RenewResponse{ .lease_expires_at = until });
         },
         .max_runtime => |cap| {
-            log.info("renew_max_runtime", .{ .error_code = ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, .runner_id = runner_id, .lease_id = lease_id, .hard_cap = cap });
+            log.debug("renew_max_runtime", .{ .error_code = ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, .runner_id = runner_id, .lease_id = lease_id, .hard_cap = cap });
             hx.fail(ec.ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME, "Lease reached the hard max runtime; not renewed");
         },
         .lost => {
-            log.info("renew_lost", .{ .error_code = ec.ERR_RUN_LEASE_LOST, .runner_id = runner_id, .lease_id = lease_id });
+            log.debug("renew_lost", .{ .error_code = ec.ERR_RUN_LEASE_LOST, .runner_id = runner_id, .lease_id = lease_id });
             hx.fail(ec.ERR_RUN_LEASE_LOST, "Lease was reassigned before this renewal; terminate the child");
         },
     }
@@ -163,7 +163,7 @@ fn creditsCover(hx: Hx, lease: Lease) bool {
 /// a transient DB fault (the caller maps it to a retryable 5xx, not a 404).
 fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     return loadLeaseInner(hx, runner_id, lease_id) catch |err| {
-        log.warn("renew_lease_load_failed", .{ .lease_id = lease_id, .err = @errorName(err) });
+        log.warn("renew_lease_load_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .lease_id = lease_id, .err = @errorName(err) });
         return err;
     };
 }
@@ -196,7 +196,7 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
     _ = conn.exec(
         \\UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid
     , .{ runner_id, now_ms }) catch |err| {
-        log.warn("renew_last_seen_bump_failed", .{ .runner_id = runner_id, .err = @errorName(err) });
+        log.warn("renew_last_seen_bump_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .err = @errorName(err) });
     };
 }
 

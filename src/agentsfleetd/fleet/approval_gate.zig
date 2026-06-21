@@ -100,7 +100,7 @@ fn handleApprovalFlow(
         if (maybe_ref) |ref| return evaluatePendingGate(alloc, session, pool, redis, &ref);
     } else |err| {
         // Redis blip: stay pending rather than re-notify or fail the gate.
-        log.warn("gate_ref_lookup_fail", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.warn("gate_ref_lookup_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .pending = {} };
     }
     return requestNewGate(alloc, session, event, pool, redis, gates);
@@ -147,7 +147,7 @@ fn requestNewGate(
         detail,
         "", // callback_url resolved at delivery time by the notification provider
     ) catch |err| {
-        log.warn("slack_msg_build_fail", .{ .err = @errorName(err) });
+        log.warn("slack_msg_build_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return .{ .blocked = .unavailable };
     };
     defer alloc.free(slack_msg);
@@ -168,11 +168,11 @@ fn requestNewGate(
     approval_gate_async.recordEventGateRef(redis, session.fleet_id, event.event_id, action_id, deadline_ms) catch |err| {
         // Without the ref the lease path could never resolve this gate —
         // fail toward unavailable like the requestApproval failure above.
-        log.warn("gate_ref_record_fail", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.warn("gate_ref_record_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return .{ .blocked = .unavailable };
     };
 
-    log.info("gate_pending", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .action_id = action_id });
+    log.debug("gate_pending", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .action_id = action_id });
     return .{ .pending = {} };
 }
 
@@ -185,7 +185,7 @@ fn evaluatePendingGate(
 ) GateCheckResult {
     const eval = approval_gate_async.evaluateRef(redis, ref, clock.nowMillis()) catch |err| {
         // Redis blip: a transient read failure must not deny an approved gate.
-        log.warn("gate_decision_read_fail", .{ .fleet_id = session.fleet_id, .err = @errorName(err) });
+        log.warn("gate_decision_read_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .err = @errorName(err) });
         return .{ .pending = {} };
     };
     switch (eval) {
@@ -215,7 +215,7 @@ fn evaluatePendingGate(
 fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *FleetSession, event_type: []const u8, detail: []const u8) void {
     _ = pool;
     _ = alloc;
-    log.info("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
+    log.debug("gate_event", .{ .fleet_id = session.fleet_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
 fn pauseFleet(pool: *pg.Pool, fleet_id: []const u8) void {
@@ -223,7 +223,7 @@ fn pauseFleet(pool: *pg.Pool, fleet_id: []const u8) void {
     defer pool.release(conn);
     _ = conn.exec(
         \\UPDATE core.fleets SET status = 'paused', updated_at = $1 WHERE id = $2::uuid
-    , .{ clock.nowMillis(), fleet_id }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+    , .{ clock.nowMillis(), fleet_id }) catch |err| log.warn("ignored_error", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 }
 
 fn cleanupPendingKey(redis: *queue_redis.Client, fleet_id: []const u8, action_id: []const u8) void {
@@ -241,7 +241,7 @@ fn storeNotificationPayload(redis: *queue_redis.Client, fleet_id: []const u8, ac
         fleet_id, action_id,
     }) catch return;
     redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {
-        log.warn("notify_store_fail", .{ .err = @errorName(err) });
+        log.warn("notify_store_fail", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
 }
 

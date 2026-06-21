@@ -128,7 +128,7 @@ fn startStreamThread(hx: Hx, fleet_id: []const u8, reg_id: u64) bool {
     // thread — the handler-pool thread returns immediately (see the module
     // header for why a stream must never park a pool thread).
     hx.res.startEventStream(job, streamThreadMain) catch |err| {
-        log.warn("sse_start_failed", .{ .err = @errorName(err) });
+        log.warn("sse_start_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         job.destroy();
         return false;
     };
@@ -178,7 +178,7 @@ const StreamJob = struct {
         const job = alloc.create(StreamJob) catch return error.OutOfMemory;
         errdefer alloc.destroy(job);
         const sub = ctx.hub.subscribe(name) catch |err| {
-            log.warn("hub_subscribe_failed", .{ .channel = name, .err = @errorName(err) });
+            log.warn("hub_subscribe_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .channel = name, .err = @errorName(err) });
             return err;
         };
         job.* = .{ .ctx = ctx, .sub = sub, .reg_id = reg_id };

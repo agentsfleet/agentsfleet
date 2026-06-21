@@ -99,7 +99,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    log.info("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
+    log.debug("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
 
     hx.ok(.ok, .{
         .provider = input.provider,
@@ -135,7 +135,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
         return;
     };
 
-    log.info("admin_platform_key_deactivated", .{ .provider = provider });
+    log.debug("admin_platform_key_deactivated", .{ .provider = provider });
 
     hx.ok(.ok, .{
         .provider = provider,

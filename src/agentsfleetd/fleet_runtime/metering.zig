@@ -21,6 +21,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
@@ -87,13 +88,13 @@ pub fn balanceCoversEstimate(
     if (policy != .stop) return true;
 
     const conn = pool.acquire() catch |err| {
-        log.warn("gate_acquire_fail", .{ .tenant_id = tenant_id, .err = @errorName(err) });
+        log.warn("gate_acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     };
     defer pool.release(conn);
 
     const billing = (tenant_billing.getBilling(conn, alloc, tenant_id) catch |err| {
-        log.warn("gate_billing_load_fail", .{ .tenant_id = tenant_id, .err = @errorName(err) });
+        log.warn("gate_billing_load_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     }) orelse return true;
     defer alloc.free(@constCast(billing.grant_source));
@@ -140,7 +141,7 @@ pub fn emitDeliverySpan(
     epoch_wall_time_ms: i64,
 ) void {
     if (epoch_wall_time_ms <= 0) {
-        log.warn("skip_delivery_span", .{ .reason = "non_positive_epoch", .fleet_id = ctx.fleet_id });
+        log.warn("skip_delivery_span", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "non_positive_epoch", .fleet_id = ctx.fleet_id });
         return;
     }
 
@@ -174,35 +175,36 @@ fn debitAndInsert(
     policy: balance_policy.Policy,
 ) DebitOutcome {
     const conn = pool.acquire() catch |err| {
-        log.warn("acquire_fail", .{ .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        log.warn("acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     defer pool.release(conn);
 
     _ = conn.exec("BEGIN", .{}) catch |err| {
-        log.warn("begin_fail", .{ .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        log.warn("begin_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     var tx_open = true;
     defer if (tx_open) {
-        conn.rollback() catch |err| log.warn(ROLLBACK_FAIL_EVENT, .{ .err = @errorName(err) });
+        conn.rollback() catch |err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
 
     if (nanos > 0) {
         _ = tenant_billing.debit(conn, tenant_id, nanos) catch |err| switch (err) {
             error.CreditExhausted => {
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
-                    log.warn("mark_exhausted_fail", .{ .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
+                    log.warn("mark_exhausted_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
-                _ = conn.exec(S_COMMIT, .{}) catch |commit_err| log.warn(COMMIT_FAIL_EVENT, .{ .err = @errorName(commit_err) });
+                _ = conn.exec(S_COMMIT, .{}) catch |commit_err| log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(commit_err) });
                 tx_open = false;
                 onExhaustedDebit(ctx.fleet_id, tenant_id, charge_type, nanos, policy);
                 return .{ .exhausted = {} };
             },
             error.TenantBillingMissing => {
-                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .err = @errorName(rollback_err) });
+                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err) });
                 tx_open = false;
                 log.err("missing_tenant_billing", .{
+                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
                     .fleet_id = ctx.fleet_id,
                     .tenant_id = tenant_id,
                     .workspace_id = ctx.workspace_id,
@@ -211,9 +213,9 @@ fn debitAndInsert(
                 return .{ .missing_tenant_billing = {} };
             },
             else => {
-                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .err = @errorName(rollback_err) });
+                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err) });
                 tx_open = false;
-                log.warn("debit_fail", .{ .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(err) });
+                log.warn("debit_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(err) });
                 return .{ .db_error = {} };
             },
         };
@@ -233,14 +235,14 @@ fn debitAndInsert(
         .wall_ms = null,
         .recorded_at = clock.nowMillis(),
     }) catch |err| {
-        conn.rollback() catch |rb_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .err = @errorName(rb_err) });
+        conn.rollback() catch |rb_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rb_err) });
         tx_open = false;
-        log.warn("telemetry_insert_fail", .{ .fleet_id = ctx.fleet_id, .event_id = ctx.event_id, .charge_type = charge_type.label(), .err = @errorName(err) });
+        log.warn("telemetry_insert_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .event_id = ctx.event_id, .charge_type = charge_type.label(), .err = @errorName(err) });
         return .{ .db_error = {} };
     };
 
     _ = conn.exec(S_COMMIT, .{}) catch |err| {
-        log.warn(COMMIT_FAIL_EVENT, .{ .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     tx_open = false;
@@ -256,7 +258,7 @@ fn onExhaustedDebit(
     nanos: i64,
     policy: balance_policy.Policy,
 ) void {
-    log.info("exhausted", .{
+    log.debug("exhausted", .{
         .fleet_id = fleet_id,
         .tenant_id = tenant_id,
         .charge_type = charge_type.label(),

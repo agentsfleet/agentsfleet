@@ -87,7 +87,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         // CDNs / HTTP/2 proxies that may strip or reject 204+body per
         // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
         // body when an operator inspects "Recent Deliveries".
-        log.info("ignored_event", .{
+        log.debug("ignored_event", .{
             .fleet_id = fleet_id,
             .delivery = delivery,
             .event = event,
@@ -117,7 +117,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
     // The triggered metric is not incremented — nothing was accepted.
     const status = fleet_config.FleetStatus.fromSlice(fleet.status) orelse .stopped;
     if (!status.isRunnable()) {
-        log.info("fleet_not_active", .{
+        log.debug("fleet_not_active", .{
             .fleet_id = fleet_id,
             .status = fleet.status,
             .delivery = delivery,
@@ -153,7 +153,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
         return;
     }
     if (!decision.?.ingest) {
-        log.info("filter_ignored", .{
+        log.debug("filter_ignored", .{
             .fleet_id = fleet_id,
             .delivery = delivery,
             .reason = decision.?.reason,
@@ -211,7 +211,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, fleet_id: []const u
     defer hx.ctx.alloc.free(new_event_id);
 
     recordAccepted(hx.ctx.telemetry, fleet.workspace_id, fleet_id, delivery);
-    log.info("accepted", .{
+    log.debug("accepted", .{
         .fleet_id = fleet_id,
         .delivery = delivery,
         .stream_event_id = new_event_id,
@@ -246,7 +246,7 @@ fn claimDedupSlot(hx: Hx, fleet_id: []const u8, delivery: []const u8, dedup_key:
 /// Best-effort: on a DEL failure the slot expires at its TTL (logged).
 fn releaseDedupSlot(hx: Hx, fleet_id: []const u8, dedup_key: []const u8) void {
     hx.ctx.queue.del(dedup_key) catch |err| {
-        log.warn("dedup_release_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("dedup_release_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
     };
 }
 

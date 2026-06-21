@@ -125,7 +125,7 @@ fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, paylo
         return false;
     };
     defer hx.ctx.alloc.free(new_event_id);
-    log.info("enqueued", .{
+    log.debug("enqueued", .{
         .fleet_id = fleet_id,
         .stream_event_id = new_event_id,
         .sender_event_id = payload.event_id,
@@ -139,7 +139,7 @@ fn dedupAndEnqueue(hx: Hx, fleet_id: []const u8, workspace_id: []const u8, paylo
 /// Best-effort: on a DEL failure the slot expires at its TTL (logged).
 fn releaseDedupSlot(hx: Hx, fleet_id: []const u8, dedup_key: []const u8) void {
     hx.ctx.queue.del(dedup_key) catch |err| {
-        log.warn("dedup_release_failed", .{ .fleet_id = fleet_id, .err = @errorName(err) });
+        log.warn("dedup_release_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
     };
 }
 
@@ -191,7 +191,7 @@ fn deliverToFleet(hx: Hx, fleet_id: []const u8, payload: WebhookPayload) void {
     // The triggered metric is not incremented — nothing was accepted.
     const status = fleet_config.FleetStatus.fromSlice(fleet.status) orelse .stopped;
     if (!status.isRunnable()) {
-        log.info("fleet_not_active", .{
+        log.debug("fleet_not_active", .{
             .fleet_id = fleet_id,
             .status = fleet.status,
             .event_id = payload.event_id,
@@ -206,7 +206,7 @@ fn deliverToFleet(hx: Hx, fleet_id: []const u8, payload: WebhookPayload) void {
 
     recordWebhookAccepted(hx.ctx.telemetry, fleet.workspace_id, fleet_id, payload.event_id, source_label);
 
-    log.info("accepted", .{
+    log.debug("accepted", .{
         .fleet_id = fleet_id,
         .event_id = payload.event_id,
         .type = payload.type,

@@ -78,13 +78,13 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
             return;
         },
         else => {
-            log.err("store_failed", .{ .err = @errorName(err), .name = cred.name, .req_id = hx.req_id });
+            log.err("store_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = cred.name, .req_id = hx.req_id });
             common.internalDbError(hx.res, hx.req_id);
             return;
         },
     };
 
-    log.info("stored", .{ .name = cred.name, .workspace = workspace_id });
+    log.debug("stored", .{ .name = cred.name, .workspace = workspace_id });
     hx.ok(.created, .{ .name = cred.name });
 }
 
@@ -149,11 +149,11 @@ pub fn innerDeleteCredential(
     defer hx.alloc.free(key_name);
 
     const removed = vault.deleteCredential(conn, workspace_id, key_name) catch |err| {
-        log.err("delete_failed", .{ .err = @errorName(err), .name = credential_name, .req_id = hx.req_id });
+        log.err("delete_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .name = credential_name, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    log.info("deleted", .{ .name = credential_name, .workspace = workspace_id, .removed = removed });
+    log.debug("deleted", .{ .name = credential_name, .workspace = workspace_id, .removed = removed });
     hx.res.status = 204;
 }
 
@@ -180,7 +180,7 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     defer access.deinit(hx.alloc);
 
     const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
-        log.err("list_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
+        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

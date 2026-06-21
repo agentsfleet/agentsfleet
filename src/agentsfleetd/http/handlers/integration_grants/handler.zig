@@ -91,7 +91,7 @@ fn fleetFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u8
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
         \\UPDATE core.fleet_keys SET last_used_at = $1 WHERE key_hash = $2
-    , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
+    , .{ clock.nowMillis(), computed_hash }) catch |err| log.warn("ignored_error", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 
     return .{
         .fleet_id = alloc.dupe(u8, fleet_id) catch return null,
@@ -201,7 +201,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED);
         if (!is_terminal) {
             // pending or approved — idempotent return.
-            log.info("already_exists", .{ .fleet_id = fleet_id, .service = body.service, .status = existing_st });
+            log.debug("already_exists", .{ .fleet_id = fleet_id, .service = body.service, .status = existing_st });
             hx.ok(.ok, .{
                 .grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id,
                 .fleet_id = fleet_id,
@@ -224,7 +224,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
-        log.info("re_requested", .{ .fleet_id = fleet_id, .service = body.service, .grant_id = existing_id });
+        log.debug("re_requested", .{ .fleet_id = fleet_id, .service = body.service, .grant_id = existing_id });
 
         // Notify for the re-request using the existing grant_id.
         const existing_grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id;
@@ -265,7 +265,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     };
 
-    log.info("requested", .{ .fleet_id = fleet_id, .service = body.service, .grant_id = grant_id });
+    log.debug("requested", .{ .fleet_id = fleet_id, .service = body.service, .grant_id = grant_id });
 
     grant_notifier.notifyGrantRequest(
         hx.ctx.pool,

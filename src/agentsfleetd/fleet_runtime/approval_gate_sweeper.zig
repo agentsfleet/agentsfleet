@@ -22,6 +22,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const approval_gate = @import("approval_gate.zig");
 const resolver = @import("approval_gate_resolver.zig");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 
 const log = logging.scoped(.approval_gate_sweeper);
 
@@ -40,14 +41,14 @@ pub fn run(
     alloc: Allocator,
     shutdown: *std.atomic.Value(bool),
 ) void {
-    log.info("started", .{ .interval_s = SCAN_INTERVAL_NS / std.time.ns_per_s, .batch_limit = BATCH_LIMIT });
+    log.debug("started", .{ .interval_s = SCAN_INTERVAL_NS / std.time.ns_per_s, .batch_limit = BATCH_LIMIT });
     while (!shutdown.load(.acquire)) {
         sweepOnce(pool, redis, alloc) catch |err| {
-            log.warn("sweep_failed", .{ .err = @errorName(err) });
+            log.warn("sweep_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         };
         sleepInterruptible(shutdown, SCAN_INTERVAL_NS);
     }
-    log.info("shutdown", .{});
+    log.debug("shutdown", .{});
 }
 
 fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void {
@@ -56,7 +57,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
 
     if (expired.len == 0) return;
 
-    log.info("expired_batch", .{ .count = expired.len });
+    log.debug("expired_batch", .{ .count = expired.len });
     for (expired) |action_id| {
         var outcome = approval_gate.resolve(pool, redis, alloc, .{
             .action_id = action_id,
@@ -64,7 +65,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
             .by = RESOLVER,
             .reason = "auto-timeout",
         }) catch |err| {
-            log.warn("resolve_failed", .{ .action_id = action_id, .err = @errorName(err) });
+            log.warn("resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .action_id = action_id, .err = @errorName(err) });
             continue;
         };
         defer switch (outcome) {
@@ -73,7 +74,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
             .not_found => {},
         };
         switch (outcome) {
-            .resolved => log.info("timed_out", .{ .action_id = action_id }),
+            .resolved => log.debug("timed_out", .{ .action_id = action_id }),
             .already_resolved => |r| log.debug("race_lost", .{ .action_id = action_id, .winning_outcome = r.outcome.toSlice(), .winning_by = r.resolved_by }),
             .not_found => log.debug("row_disappeared", .{ .action_id = action_id }),
         }

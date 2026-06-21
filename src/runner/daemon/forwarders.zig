@@ -10,9 +10,11 @@ const logging = @import("log");
 const contract = @import("contract");
 
 const client_mod = @import("control_plane_client.zig");
+const client_errors = @import("../engine/client_errors.zig");
 const protocol = contract.protocol;
 
 const log = logging.scoped(.fleet_runner);
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 /// Activity frames batch per POST: flush at this many frames…
 pub const ACTIVITY_BATCH_MAX_FRAMES: usize = 16;
@@ -96,7 +98,7 @@ pub const MemoryForwarder = struct {
     pub fn forward(ctx: *anyopaque, payload: []const u8) void {
         const self: *MemoryForwarder = @ptrCast(@alignCast(ctx));
         const parsed = std.json.parseFromSlice([]protocol.MemoryDelta, self.alloc, payload, .{}) catch {
-            log.warn("memory_frame_parse_failed", .{ .fleet_id = self.fleet_id });
+            log.warn("memory_frame_parse_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .fleet_id = self.fleet_id });
             return;
         };
         defer parsed.deinit();
@@ -106,7 +108,7 @@ pub const MemoryForwarder = struct {
             .memory = parsed.value,
         };
         self.cp.memoryCapture(self.alloc, self.runner_token, self.fleet_id, req, self.deadline_ms) catch |err|
-            log.warn("memory_capture_post_failed", .{ .fleet_id = self.fleet_id, .err = @errorName(err) });
+            log.warn("memory_capture_post_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .fleet_id = self.fleet_id, .err = @errorName(err) });
     }
 };
 

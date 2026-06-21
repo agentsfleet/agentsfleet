@@ -83,7 +83,7 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
     const worker_count = switch (parseWorkerCount(worker_count_raw)) {
         .value => |v| v,
         .invalid => blk: {
-            log.warn("runner_worker_count_invalid", .{ .raw = worker_count_raw.?, .fallback = DEFAULT_WORKER_COUNT });
+            log.warn("runner_worker_count_invalid", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .raw = worker_count_raw.?, .fallback = DEFAULT_WORKER_COUNT });
             break :blk DEFAULT_WORKER_COUNT;
         },
     };
@@ -115,7 +115,7 @@ fn loadDeadlines(env_map: *const std.process.Environ.Map) client_mod.Deadlines {
     d.activity_ms = resolveDeadline(env_map, ENV_RUNNER_CP_ACTIVITY_DEADLINE_MS, d.activity_ms);
     d.renew_ms = resolveDeadline(env_map, ENV_RUNNER_CP_RENEW_DEADLINE_MS, d.renew_ms);
     if (d.renew_ms + common_constants.RENEWAL_TICK_MS >= common_constants.RENEWAL_WINDOW_MS) {
-        log.warn("runner_cp_renew_deadline_clamped", .{ .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
+        log.warn("runner_cp_renew_deadline_clamped", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .configured_ms = d.renew_ms, .fallback_ms = client_mod.RENEW_DEADLINE_MS });
         d.renew_ms = client_mod.RENEW_DEADLINE_MS;
     }
     return d;
@@ -126,7 +126,7 @@ fn resolveDeadline(env_map: *const std.process.Environ.Map, name: []const u8, de
     return switch (parseDeadlineMs(raw, default)) {
         .value => |v| v,
         .invalid => blk: {
-            log.warn("runner_cp_deadline_invalid", .{ .env = name, .raw = raw.?, .fallback_ms = default });
+            log.warn("runner_cp_deadline_invalid", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .env = name, .raw = raw.?, .fallback_ms = default });
             break :blk default;
         },
     };
@@ -224,6 +224,7 @@ const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 const common_constants = @import("common");
 const client_mod = @import("control_plane_client.zig");
+const client_errors = @import("../engine/client_errors.zig");
 const network = @import("../network/Policy.zig");
 const logging = @import("log");
 

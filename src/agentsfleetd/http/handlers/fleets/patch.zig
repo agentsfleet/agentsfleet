@@ -116,7 +116,7 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     }
 
     const outcome = patchFleetInTxn(hx.alloc, conn, workspace_id, fleet_id, body) catch |err| {
-        log.err("patch_db_failed", .{ .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
+        log.err("patch_db_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -130,7 +130,7 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
         .invalid_required_tags => return hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
         .name_mismatch => return hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH),
         .lock_timeout => {
-            log.warn("patch_lock_timeout", .{ .fleet_id = fleet_id, .req_id = hx.req_id });
+            log.warn("patch_lock_timeout", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .req_id = hx.req_id });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },
@@ -139,7 +139,7 @@ pub fn innerPatchFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8, fl
     // No control-stream signal: `agentsfleetd` resolves a fleet's status + config
     // fresh from Postgres on every lease, so the PATCH'd row (already committed
     // above) takes effect on the next lease with nothing to notify.
-    log.info("patched", .{ .id = fleet_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
+    log.debug("patched", .{ .id = fleet_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
     if (body.status) |s| {
         hx.ok(.ok, .{ .fleet_id = fleet_id, .status = s, .config_revision = revision });
     } else {
@@ -211,7 +211,7 @@ fn patchFleetInTxn(
     _ = try conn.exec("BEGIN", .{});
     var tx_open = true;
     defer if (tx_open) {
-        conn.rollback() catch |err| log.warn("rollback_fail", .{ .err = @errorName(err) });
+        conn.rollback() catch |err| log.warn("rollback_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
 
     _ = conn.exec("SET LOCAL lock_timeout = '5s'", .{}) catch |err| return mapPgErr(conn, err);

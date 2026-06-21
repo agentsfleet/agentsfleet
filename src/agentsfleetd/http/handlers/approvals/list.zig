@@ -64,14 +64,14 @@ pub fn innerListApprovals(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []co
     };
 
     var result = approval_gate_db.listPending(hx.ctx.pool, hx.alloc, filter, cursor, limit) catch |err| {
-        log.err("list_failed", .{ .err = @errorName(err), .workspace_id = workspace_id });
+        log.err("list_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .workspace_id = workspace_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
     defer result.deinit(hx.alloc);
 
     writeResponse(hx, result.items, limit) catch |err| {
-        log.err("list_response_failed", .{ .err = @errorName(err) });
+        log.err("list_response_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
 }

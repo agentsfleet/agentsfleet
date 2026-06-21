@@ -94,12 +94,12 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, fleet_id: []const u8) 
     }
 
     switch (outcome) {
-        .resolved => log.info(S_RESOLVED, .{
+        .resolved => log.debug(S_RESOLVED, .{
             .fleet_id = fleet_id,
             .action_id = payload.action_id,
             .decision = decision_str,
         }),
-        .already_resolved => |r| log.info("already_resolved", .{
+        .already_resolved => |r| log.debug("already_resolved", .{
             .fleet_id = fleet_id,
             .action_id = payload.action_id,
             .prior_outcome = r.outcome.toSlice(),

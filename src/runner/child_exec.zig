@@ -22,6 +22,7 @@ const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
 const seccomp = @import("engine/seccomp.zig");
 const context_budget = @import("engine/context_budget.zig");
+const client_errors = @import("engine/client_errors.zig");
 const input = @import("child_exec_input.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
@@ -29,6 +30,9 @@ const log = logging.scoped(.runner_exec);
 const LeasePayload = contract.protocol.LeasePayload;
 const RunnerChildInput = contract.protocol.RunnerChildInput;
 const MemoryDelta = contract.protocol.MemoryDelta;
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
+const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
 
 /// argv subcommand selecting child-execute mode (vs the daemon loop).
 pub const SUBCOMMAND = "__execute";
@@ -57,7 +61,7 @@ const CONFIG_BUILD_FAILED_MESSAGE = "engine configuration could not be assembled
 /// with it); never returns an error — every failure maps to an exit code.
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator) u8 {
     const workspace = flagValue(argv, WORKSPACE_FLAG_PREFIX) orelse {
-        log.err("no_workspace_flag", .{});
+        log.err("no_workspace_flag", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
         return SANDBOX_FAIL_EXIT;
     };
 
@@ -69,23 +73,23 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     // later cap-drop removes the userns CAP_SYS_ADMIN it rides today.
     if (hasFlag(argv, SANDBOXED_FLAG)) {
         applyNoNewPrivs() catch |err| {
-            log.err("no_new_privs_failed_fail_closed", .{ .err = @errorName(err) });
+            log.err("no_new_privs_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
             return SANDBOX_FAIL_EXIT;
         };
         landlock.applyPolicy(workspace) catch |err| {
-            log.err("landlock_failed_fail_closed", .{ .err = @errorName(err) });
+            log.err("landlock_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
             return SANDBOX_FAIL_EXIT;
         };
         // Syscall wall atop Landlock — establish failure fails closed; a runtime
         // trap exits SECCOMP_VIOLATION_EXIT -> landlock_deny (see seccomp.zig).
         seccomp.applyFilter() catch |err| {
-            log.err("seccomp_failed_fail_closed", .{ .err = @errorName(err) });
+            log.err("seccomp_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
             return SANDBOX_FAIL_EXIT;
         };
     }
 
     const input_json = readStdin(alloc) catch |err| {
-        log.err("lease_read_failed", .{ .err = @errorName(err) });
+        log.err("lease_read_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
     defer alloc.free(input_json);
@@ -96,7 +100,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     const parsed = std.json.parseFromSlice(RunnerChildInput, alloc, input_json, .{
         .ignore_unknown_fields = true,
     }) catch |err| {
-        log.err("lease_parse_failed", .{ .err = @errorName(err) });
+        log.err("lease_parse_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
     defer parsed.deinit();
@@ -111,7 +115,7 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     else
         runEngine(env_map, alloc, workspace, parsed.value.lease, parsed.value.hydrated_memory);
     writeResult(alloc, result) catch |err| {
-        log.err("result_write_failed", .{ .err = @errorName(err) });
+        log.err("result_write_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return GENERIC_FAIL_EXIT;
     };
     return 0;
@@ -135,7 +139,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // window where an older `agentsfleetd` omits the field; either way the fleet runs
     // its playbook or nothing, never a generic chat.
     if (payload.instructions.len == 0) {
-        log.warn("no_installed_instructions_fail_closed", .{ .fleet_id = payload.event.fleet_id });
+        log.warn("no_installed_instructions_fail_closed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .fleet_id = payload.event.fleet_id });
         return noInstructionsResult();
     }
 
@@ -147,7 +151,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // exhaustion, NOT a missing playbook, so report configBuildFailed rather than
     // sending the operator to chase a missing SKILL.md. Fail closed either way.
     var ctx_obj = input.buildInstructionsContext(alloc, payload.instructions) catch |err| {
-        log.err("installed_instructions_ctx_failed_fail_closed", .{ .err = @errorName(err) });
+        log.err("installed_instructions_ctx_failed_fail_closed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return configBuildFailedResult();
     };
     defer ctx_obj.deinit(alloc);
@@ -157,7 +161,7 @@ fn runEngine(env_map: *const std.process.Environ.Map, alloc: std.mem.Allocator, 
     // startup-posture failure. buildCallArgs is atomic, so a half-built
     // fleet_config (e.g. provider-without-key) never reaches the engine.
     var args = input.buildCallArgs(alloc, payload) catch |err| {
-        log.err("call_args_build_failed_fail_closed", .{ .err = @errorName(err), .fleet_id = payload.event.fleet_id });
+        log.err("call_args_build_failed_fail_closed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err), .fleet_id = payload.event.fleet_id });
         return configBuildFailedResult();
     };
     defer args.deinit(alloc);

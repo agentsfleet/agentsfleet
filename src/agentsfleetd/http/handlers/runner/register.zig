@@ -112,7 +112,7 @@ fn performRegister(hx: Hx, conn: *pg.Conn, body: protocol.RegisterRequest) Regis
         runner_events.META_SANDBOX_TIER,
     }) catch return error.DbError;
 
-    log.info("registered", .{
+    log.debug("registered", .{
         .runner_id = runner_id,
         .host_id = body.host_id,
         .sandbox_tier = @tagName(body.sandbox_tier),

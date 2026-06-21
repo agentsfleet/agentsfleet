@@ -10,8 +10,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const logging = @import("log");
 const pipe_proto = @import("../pipe_proto.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.runner_seccomp);
+const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
 
 const SeccompError = error{ UnsupportedPlatform, FilterInstallFailed };
 
@@ -108,10 +110,10 @@ pub fn applyFilter() SeccompError!void {
     const prog = SockFprog{ .len = @intCast(PROGRAM.len), .filter = &PROGRAM };
     const rc = std.os.linux.prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, @intFromPtr(&prog), 0, 0);
     if (rc != 0) {
-        log.err("seccomp_filter_install_failed", .{ .rc = rc });
+        log.err("seccomp_filter_install_failed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .rc = rc });
         return SeccompError.FilterInstallFailed;
     }
-    log.info("applied", .{ .denied = DENIED.len });
+    log.debug("seccomp_applied", .{ .denied = DENIED.len });
 }
 
 test "applyFilter returns UnsupportedPlatform off-linux" {

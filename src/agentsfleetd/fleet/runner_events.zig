@@ -3,6 +3,7 @@
 const std = @import("std");
 const clock = @import("common").clock;
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -113,7 +114,7 @@ pub fn appendLeaseReleasedBestEffort(
     fleet_event_id: []const u8,
 ) void {
     appendLeaseReleased(pool, alloc, runner_id, lease_id, fleet_id, fleet_event_id) catch |err| {
-        log.warn("lease_released_event_failed", .{ .runner_id = runner_id, .lease_id = lease_id, .err = @errorName(err) });
+        log.warn("lease_released_event_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .runner_id = runner_id, .lease_id = lease_id, .err = @errorName(err) });
     };
 }
 

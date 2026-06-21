@@ -5,6 +5,7 @@ const std = @import("std");
 const jwks = @import("jwks.zig");
 const claims = @import("claims.zig");
 const logging = @import("log");
+const ec = @import("auth_codes");
 const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.auth);
@@ -120,7 +121,7 @@ pub const Verifier = struct {
         log.debug("provider_selected", .{ .provider = @tagName(self.provider) });
 
         const verified = self.inner.verifyAndDecode(alloc, authorization) catch |err| {
-            log.warn("verification_failed", .{ .err = @errorName(err) });
+            log.warn("verification_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             return err;
         };
         errdefer {
@@ -134,7 +135,7 @@ pub const Verifier = struct {
         };
         alloc.free(verified.claims_json);
 
-        log.info("verification_ok", .{ .sub = verified.subject, .iss = verified.issuer });
+        log.debug("verification_ok", .{ .sub = verified.subject, .iss = verified.issuer });
 
         return .{
             .subject = verified.subject,

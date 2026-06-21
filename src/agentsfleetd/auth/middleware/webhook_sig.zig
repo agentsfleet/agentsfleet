@@ -28,6 +28,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
 const hs = @import("hmac_sig");
 const logging = @import("log");
+const ec = @import("auth_codes");
 
 const AuthCtx = auth_ctx.AuthCtx;
 
@@ -101,7 +102,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             };
 
             const result_opt = self.lookup_fn(self.lookup_ctx, fleet_id, ctx.alloc) catch |err| {
-                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .fleet_id = fleet_id, .err = @errorName(err) });
+                log.warn("lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .req_id = ctx.req_id, .fleet_id = fleet_id, .err = @errorName(err) });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
@@ -114,7 +115,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // No scheme = no provider configured. Reject as "credential not
             // configured" so operators see a recoverable error class.
             const scheme = result.signature_scheme orelse {
-                log.warn("no_scheme", .{ .req_id = ctx.req_id, .fleet_id = fleet_id });
+                log.warn("no_scheme", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .req_id = ctx.req_id, .fleet_id = fleet_id });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
@@ -122,7 +123,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // from "signature wrong" — this is a recoverable misconfiguration,
             // not an attack.
             const secret = result.signature_secret orelse {
-                log.warn("hmac_secret_unavailable", .{ .req_id = ctx.req_id, .fleet_id = fleet_id, .reason = "vault load failed or empty" });
+                log.warn("hmac_secret_unavailable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .req_id = ctx.req_id, .fleet_id = fleet_id, .reason = "vault load failed or empty" });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };

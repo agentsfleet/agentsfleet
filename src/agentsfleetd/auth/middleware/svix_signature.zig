@@ -22,6 +22,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
 const sv = @import("../crypto/svix_verify.zig");
 const logging = @import("log");
+const ec = @import("auth_codes");
 
 const AuthCtx = auth_ctx.AuthCtx;
 
@@ -69,7 +70,7 @@ pub fn SvixSignature(comptime LookupCtx: type) type {
             const fleet_id = ctx.webhook_fleet_id orelse return failSig(ctx);
 
             const result_opt = self.lookup_fn(self.lookup_ctx, fleet_id, ctx.alloc) catch |err| {
-                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .fleet_id = fleet_id, .err = @errorName(err) });
+                log.warn("lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .req_id = ctx.req_id, .fleet_id = fleet_id, .err = @errorName(err) });
                 return failSig(ctx);
             };
             const result = result_opt orelse return failSig(ctx);

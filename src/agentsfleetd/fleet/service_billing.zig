@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -55,16 +56,16 @@ pub fn resolveBilling(hx: Hx, session: *FleetSession, acq: assign.Acquired) ?Bil
 /// XACK is still owed.
 pub fn blockEvent(hx: Hx, fleet_id: []const u8, event_id: []const u8, label: []const u8) void {
     const affected = rows.markBlocked(hx.ctx.pool, fleet_id, event_id, label) catch |err| {
-        log.warn("lease_block_write_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
+        log.warn("lease_block_write_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
         return;
     };
     var scratch = activity_publisher.Scratch.init(hx.alloc);
     defer scratch.deinit();
     activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, fleet_id, event_id, rows.STATUS_GATE_BLOCKED);
     redis_fleet.xackFleet(hx.ctx.queue, fleet_id, event_id) catch |err| {
-        log.warn("lease_block_xack_failed", .{ .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
+        log.warn("lease_block_xack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
     };
-    log.info("lease_gate_blocked", .{ .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
+    log.debug("lease_gate_blocked", .{ .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
 }
 
 /// A borrowed `FleetEvent` view over the acquired envelope for the leaf write
@@ -92,7 +93,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     const pool = hx.ctx.pool;
 
     const first_delivery = rows.insertReceivedRow(alloc, pool, session, event) catch |err| {
-        log.err("lease_received_insert_failed", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.err("lease_received_insert_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return null;
     };
     if (!first_delivery) {
@@ -106,14 +107,14 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
             // Uncertain: leave the entry pending (no XACK, no lease) so the
             // next poll retries the classification rather than risking a
             // double-execution on a guess.
-            log.warn("lease_status_classify_failed", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+            log.warn("lease_status_classify_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
             return null;
         };
         if (klass == .terminal) {
             redis_fleet.xackFleet(hx.ctx.queue, session.fleet_id, event.event_id) catch |err| {
-                log.warn("lease_terminal_reack_failed", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+                log.warn("lease_terminal_reack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
             };
-            log.info("lease_terminal_redelivery_acked", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
+            log.debug("lease_terminal_redelivery_acked", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
             return null;
         }
     }
@@ -155,7 +156,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
     if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
-        log.info("lease_balance_exhausted", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
+        log.debug("lease_balance_exhausted", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
         blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
         return null;
     }
@@ -171,7 +172,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
         // Operator-fixable bootstrap gap / transient DB fault: no terminal
         // write, no XACK — the delivery redelivers once the fault clears.
         .missing_tenant_billing, .db_error => {
-            log.warn("lease_receive_debit_unavailable", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
+            log.warn("lease_receive_debit_unavailable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id });
             return null;
         },
     };
@@ -181,7 +182,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
             // Human decision outstanding: answer no-work; the next lease poll
             // re-delivers the entry from the PEL and re-evaluates the recorded
             // gate ref. No thread waits.
-            log.info("lease_gate_pending", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
+            log.debug("lease_gate_pending", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
             return null;
         },
         .blocked => |reason| switch (reason) {
@@ -196,14 +197,14 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
             // Redis-unavailable default-deny is transient: no terminal write;
             // the entry stays leasable and the next poll retries the gate.
             .unavailable => {
-                log.warn("lease_gate_unavailable", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
+                log.warn("lease_gate_unavailable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id });
                 return null;
             },
         },
         .auto_killed => |trigger| {
             // The gate paused the fleet; the event is retained un-acked so a
             // resume re-delivers it (Failure Modes: paused mid-flight).
-            log.info("lease_gate_auto_killed", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .trigger = @tagName(trigger) });
+            log.debug("lease_gate_auto_killed", .{ .fleet_id = session.fleet_id, .event_id = event.event_id, .trigger = @tagName(trigger) });
             return null;
         },
     }
@@ -226,16 +227,16 @@ const TenantResolution = union(enum) {
 /// `event_loop_writepath_resolve.resolveTenantAndProvider`'s drain order.
 fn resolveTenant(alloc: std.mem.Allocator, pool: *pg.Pool, workspace_id: []const u8) TenantResolution {
     const conn = pool.acquire() catch |err| {
-        log.warn("lease_resolve_acquire_failed", .{ .err = @errorName(err) });
+        log.warn("lease_resolve_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return .{ .failed_transient = {} };
     };
     defer pool.release(conn);
     const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, workspace_id) catch |err| {
-        log.err("lease_tenant_lookup_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
+        log.err("lease_tenant_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .workspace_id = workspace_id, .err = @errorName(err) });
         return if (err == error.WorkspaceNotFound) .{ .failed_permanent = {} } else .{ .failed_transient = {} };
     };
     const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| {
-        log.warn("lease_provider_resolve_failed", .{ .workspace_id = workspace_id, .err = @errorName(err) });
+        log.warn("lease_provider_resolve_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .workspace_id = workspace_id, .err = @errorName(err) });
         return switch (err) {
             error.CredentialMissing,
             error.CredentialDataMalformed,

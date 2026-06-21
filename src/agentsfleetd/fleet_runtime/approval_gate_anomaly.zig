@@ -28,11 +28,12 @@ pub fn checkAnomaly(
             // Redis unavailable — fail open for anomaly detection (the approval
             // gate itself fails closed; only the speculative anomaly check is
             // permissive on Redis outage).
-            log.warn("redis_fail", .{ .fleet_id = fleet_id });
+            log.warn("redis_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id });
             return .normal;
         };
         if (count >= rule.threshold_count) {
             log.err("auto_kill", .{
+                .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
                 .fleet_id = fleet_id,
                 .tool = tool,
                 .action = action,

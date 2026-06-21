@@ -98,13 +98,13 @@ pub fn innerFleetMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const
     };
 
     const event_id = hx.ctx.queue.xaddFleetEvent(envelope) catch |err| {
-        log.warn("xadd_failed", .{ .fleet_id = fleet_id, .actor = actor, .err = @errorName(err) });
+        log.warn("xadd_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .actor = actor, .err = @errorName(err) });
         common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;
     };
     defer hx.ctx.alloc.free(event_id);
 
-    log.info("posted", .{ .fleet_id = fleet_id, .event_id = event_id, .actor = actor });
+    log.debug("posted", .{ .fleet_id = fleet_id, .event_id = event_id, .actor = actor });
     hx.ok(.accepted, .{
         .status = "accepted",
         .event_id = event_id,
