@@ -22,6 +22,7 @@ const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const FailureClass = @import("execution_result.zig").FailureClass;
 const runner_events = @import("runner_events.zig");
+const memory = @import("protocol_memory.zig");
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -222,6 +223,22 @@ pub const LeasePayload = struct {
     /// omits the field gets `""` (rollout is runners-first — an older runner
     /// reading a newer lease rejects the unknown field and runs no work).
     instructions: []const u8 = "",
+    /// Content-addressed reference to the installed Fleet Bundle's canonical
+    /// snapshot in object storage. Present only when the fleet was created from a
+    /// bundle; the runner GETs `/v1/runners/me/bundles/{content_hash}` to
+    /// materialize support files into the sandbox workspace. Additive + defaulted
+    /// with the same rollout-safety as `instructions`: a new runner reading an
+    /// older lease gets null and skips the download (an older runner reading a
+    /// newer lease rejects the unknown field — runners-first rollout).
+    bundle: ?BundleManifest = null,
+};
+
+/// The downloadable half of a bundle-backed lease: the content hash addresses the
+/// immutable canonical tar in object storage. The hash's presence on the lease is
+/// the "has bundle" signal; a `404` from the download means the bundle is
+/// skill-only (no support files were stored) and the runner proceeds with none.
+pub const BundleManifest = struct {
+    content_hash: []const u8,
 };
 
 /// POST /v1/runners/me/leases (Bearer runner_token, long-poll). Always 200:
@@ -282,59 +299,14 @@ pub const ReportResponse = struct {
     ok: bool,
 };
 
-/// Upper bound on the total memory bytes (sum of key+content+category over every
-/// delta) one push may carry. The runner caps what it surfaces; the control plane
-/// rejects beyond this. Oversized memory is truncated + logged, never silently
-/// dropped whole. Single-sourced (RULE UFS) — both build graphs key off it.
-pub const MAX_MEMORY_PUSH_BYTES: usize = 256 * 1024; // 256 KiB
-
-/// Hard ceiling on the durable memory entries one fleet may accumulate across all
-/// its runs. The per-push cap bounds a single push; this bounds the unbounded
-/// growth a long-lived (or adversarial) fleet would otherwise build up — `enforceCap`
-/// evicts beyond it server-side, tier-ordered: coldest non-core rows first, `core`
-/// rows only when no non-core row remains. A backstop, not the primary bound
-/// (stable-key overwrite + `memory_forget` are the fleet's own).
-pub const MAX_MEMORY_ENTRIES_PER_AGENT: usize = 1000;
-
-/// Byte budget for one hydration window. The `GET` Compactor is category-pinned:
-/// every `core` entry that fits hydrates first (newest-first), then the newest
-/// non-core entries fill the remainder of this budget; the dropped entries stay
-/// durable in Postgres, unhydrated. Bounds the payload a run seeds into the child
-/// regardless of how large the durable set has grown.
-pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024; // 256 KiB
-
-/// One durable fleet-memory item on the wire — the unit of both capture (POST
-/// body) and hydrate (GET response). Carries no scope: the fleet is the
-/// `{fleet_id}` path segment, server-validated against the runner's live lease.
-/// One shape for a memory item, shared agentsfleetd <-> runner (RULE UFS).
-pub const MemoryDelta = struct {
-    key: []const u8,
-    content: []const u8,
-    category: []const u8,
-};
-
-/// POST /v1/runners/me/memory/{fleet_id} (Bearer runner_token) — capture the
-/// run's memory for the path's fleet. `lease_id` + `fencing_token` ride the body
-/// exactly like `ReportRequest`: the control plane loads that lease, verifies the
-/// runner owns it, cross-checks `lease.fleet_id == {fleet_id}`, and fences the
-/// write — a reclaimed holder (token below the fleet's live fencing seq) is
-/// rejected UZ-RUN-005. The scope (`fleet_id`) is server-derived; each delta is
-/// upserted (`ON CONFLICT (key, fleet_id) DO UPDATE`), so a retried push is idempotent.
-pub const MemoryPushRequest = struct {
-    lease_id: []const u8,
-    fencing_token: u64,
-    memory: []const MemoryDelta,
-};
-
-/// GET /v1/runners/me/memory/{fleet_id} reply — a compacted hydration window of
-/// the path fleet's durable memory (category-pinned under `HYDRATE_WINDOW_BYTES`:
-/// `core` entries first, then newest non-core; the dropped entries stay in
-/// Postgres), which the runner parent seeds into the child's in-run store at run
-/// start. The runner names the fleet it holds in its `LeasePayload`; the server
-/// returns memory only for a fleet the runner holds a live lease for.
-pub const MemoryHydrateResponse = struct {
-    memory: []const MemoryDelta,
-};
+// Durable fleet-memory wire sub-protocol lives in `protocol_memory.zig` (RULE
+// FLL); re-exported here so `protocol.MemoryDelta` (and siblings) are unchanged.
+pub const MAX_MEMORY_PUSH_BYTES = memory.MAX_MEMORY_PUSH_BYTES;
+pub const MAX_MEMORY_ENTRIES_PER_AGENT = memory.MAX_MEMORY_ENTRIES_PER_AGENT;
+pub const HYDRATE_WINDOW_BYTES = memory.HYDRATE_WINDOW_BYTES;
+pub const MemoryDelta = memory.MemoryDelta;
+pub const MemoryPushRequest = memory.MemoryPushRequest;
+pub const MemoryHydrateResponse = memory.MemoryHydrateResponse;
 
 /// What the runner parent pipes down the child's stdin: the lease to execute,
 /// plus the fleet's prior memory the parent already hydrated over the trusted

@@ -489,3 +489,15 @@ test "runner activity route extracts the lease_id path param" {
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc/unknown", .POST) == null);
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc", .POST) == null);
 }
+
+test "runner bundle route extracts the content_hash path param" {
+    const hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const r = match("/v1/runners/me/bundles/" ++ hash, .GET).?;
+    try std.testing.expect(r == .runner_bundle);
+    try std.testing.expectEqualStrings(hash, r.runner_bundle);
+    // All methods map to the route; the invoke fn enforces GET (405 otherwise).
+    try std.testing.expect(match("/v1/runners/me/bundles/" ++ hash, .POST).? == .runner_bundle);
+    // Bare and over-long paths do not match.
+    try std.testing.expect(match("/v1/runners/me/bundles", .GET) == null);
+    try std.testing.expect(match("/v1/runners/me/bundles/" ++ hash ++ "/extra", .GET) == null);
+}

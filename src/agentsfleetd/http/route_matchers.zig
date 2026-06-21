@@ -10,11 +10,11 @@
 // See `docs/REST_API_DESIGN_GUIDELINES.md` §7 (Matcher style — segment-based).
 
 const std = @import("std");
-const runner_protocol = @import("contract").protocol;
 const webhook = @import("route_matchers_webhook.zig");
 const billing = @import("route_matchers_billing.zig");
 const fleet = @import("route_matchers_fleet.zig");
 const bundles = @import("route_matchers_fleet_bundles.zig");
+const runner_m = @import("route_matchers_runner.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
@@ -25,11 +25,6 @@ const S_SESSIONS = "sessions";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
-const S_RUNNERS = "runners";
-const S_ME = "me";
-const S_LEASES = "leases";
-const S_MEMORY = "memory";
-
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
 const APPROVAL_ACTION_APPROVE = ":approve";
@@ -317,33 +312,12 @@ pub const WorkspaceFleetBundleRoute = bundles.WorkspaceFleetBundleRoute;
 pub const matchWorkspaceFleetBundles = bundles.matchWorkspaceFleetBundles;
 pub const matchWorkspaceFleetBundle = bundles.matchWorkspaceFleetBundle;
 
-/// Match `/runners/me/leases/{lease_id}/activity` (the only runner verb with a
-/// path param). `me` is the self-plane segment; identity is the Bearer token.
-/// The `activity` suffix is single-sourced from the wire contract (RULE UFS).
-pub fn matchRunnerLeaseActivity(p: Path) ?[]const u8 {
-    if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
-    if (!p.eq(4, runner_protocol.RUNNER_LEASE_ACTIVITY_SUFFIX)) return null;
-    return p.param(3);
-}
-
-/// `GET|POST /v1/runners/me/memory/{fleet_id}` — runner-plane memory hydrate +
-/// capture. 4 segments after the v1 strip; the fleet is the leaf. The method
-/// (GET hydrate vs POST capture) is disambiguated by the router, not here.
-pub fn matchRunnerMemory(p: Path) ?[]const u8 {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_MEMORY)) return null;
-    return p.param(3);
-}
-
-/// `POST /v1/runners/me/leases/{lease_id}/renew` — same shape as activity, keyed
-/// on the `renew` suffix segment (single-sourced from the wire contract).
-pub fn matchRunnerLeaseRenew(p: Path) ?[]const u8 {
-    if (p.segs.len != 5) return null;
-    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
-    if (!p.eq(4, runner_protocol.RUNNER_LEASE_RENEW_SUFFIX)) return null;
-    return p.param(3);
-}
+// Runner control-plane matchers live in `route_matchers_runner.zig` (RULE FLL);
+// re-exported here so `matchers.matchRunner*` is unchanged for the router.
+pub const matchRunnerLeaseActivity = runner_m.matchRunnerLeaseActivity;
+pub const matchRunnerMemory = runner_m.matchRunnerMemory;
+pub const matchRunnerBundles = runner_m.matchRunnerBundles;
+pub const matchRunnerLeaseRenew = runner_m.matchRunnerLeaseRenew;
 
 test {
     _ = @import("route_matchers_test.zig");

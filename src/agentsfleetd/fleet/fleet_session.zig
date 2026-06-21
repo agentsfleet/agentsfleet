@@ -21,6 +21,10 @@ instructions: []const u8,
 context_json: []const u8,
 /// Source markdown — owns the memory that instructions borrows from.
 source_markdown: []const u8,
+/// Content hash of the installed Fleet Bundle's snapshot, or null when the fleet
+/// was not created from a bundle. Flows onto the lease so the runner downloads +
+/// materializes the canonical tar (never the raw upstream archive).
+bundle_content_hash: ?[]const u8 = null,
 /// Active execution session handle. NULL when fleet is idle.
 /// Set at createExecution, cleared at destroyExecution and on claimFleet (crash recovery).
 /// Persisted to core.fleet_sessions.execution_id so the steer API can read it.
@@ -30,7 +34,7 @@ execution_started_at: i64 = 0,
 
 comptime {
     const actual = @sizeOf(Self);
-    if (actual != 320) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 320", .{actual}));
+    if (actual != 336) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 336", .{actual}));
 }
 
 pub fn deinit(self: *Self, alloc: Allocator) void {
@@ -39,6 +43,7 @@ pub fn deinit(self: *Self, alloc: Allocator) void {
     self.config.deinit(alloc);
     alloc.free(self.source_markdown);
     alloc.free(self.context_json);
+    if (self.bundle_content_hash) |bch| alloc.free(bch);
     if (self.execution_id) |eid| alloc.free(eid);
 }
 
@@ -54,7 +59,7 @@ pub fn claimFleet(
     defer pool.release(conn);
 
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, config_json::text, source_markdown, status
+        \\SELECT workspace_id::text, config_json::text, source_markdown, status, bundle_content_hash
         \\FROM core.fleets WHERE id = $1
     , .{fleet_id_input}));
     defer q.deinit();
@@ -76,6 +81,9 @@ pub fn claimFleet(
     errdefer alloc.free(source_markdown);
     // Check status before deinit — row-backed slices are invalid after deinit.
     const status = fleet_config.FleetStatus.fromSlice(try row.get([]const u8, 3)) orelse .stopped;
+    // Bundle ref (nullable column): present only for fleets created from a bundle.
+    const bundle_content_hash: ?[]const u8 = if (try row.get(?[]const u8, 4)) |bch| try alloc.dupe(u8, bch) else null;
+    errdefer if (bundle_content_hash) |bch| alloc.free(bch);
 
     if (!status.isRunnable()) {
         log.warn("fleet_event_loop.claim_skipped", .{ .fleet_id = fleet_id_input });
@@ -111,6 +119,7 @@ pub fn claimFleet(
         .instructions = instructions,
         .context_json = context_json,
         .source_markdown = source_markdown,
+        .bundle_content_hash = bundle_content_hash,
     };
     // Crash recovery: clear any stale execution_id left by a holder that
     // died mid-stage so the next createExecution starts from a clean slot.
