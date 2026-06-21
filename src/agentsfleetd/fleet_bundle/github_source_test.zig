@@ -10,7 +10,7 @@ const testing = std.testing;
 const github_source = @import("github_source.zig");
 const markdown_limits = @import("../fleet_runtime/markdown_limits.zig");
 
-const SAMPLE_TARGZ = @embedFile("testdata/sample.tar.gz");
+const SAMPLE_TARGZ = @embedFile("sample_with_folders.tar.gz");
 
 const TarEntry = struct {
     name: []const u8,

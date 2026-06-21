@@ -35,7 +35,7 @@ agentsfleet credential add upstash --data='{"host":"api.upstash.com","api_token"
 agentsfleet credential add slack   --data='{"host":"slack.com","bot_token":"<xoxb-...>"}'
 
 # 2. Install. Output: a agent id.
-agentsfleet install --from samples/fixtures/platform-ops-sample
+agentsfleet install --from tests/fixtures/fleetbundle/platform-ops
 
 # 3. Chat.
 agentsfleet chat <agent_id>

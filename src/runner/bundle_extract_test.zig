@@ -10,6 +10,15 @@ const bundle_extract = @import("bundle_extract.zig");
 const SKILL_NAME = "SKILL.md";
 const TRIGGER_NAME = "TRIGGER.md";
 
+// Real security-reviewer bundle fixture (tests/fixtures/fleetbundle/security-reviewer/),
+// wired as named @embedFile imports by build_fixtures.zig. It carries a nested
+// support file (checklists/owasp.md), so the extraction test exercises folder
+// materialization against a real bundle's bytes rather than synthetic entries.
+const SR_SKILL = @embedFile("security-reviewer-SKILL.md");
+const SR_TRIGGER = @embedFile("security-reviewer-TRIGGER.md");
+const SR_OWASP = @embedFile("security-reviewer-owasp.md");
+const SR_NESTED = "checklists/owasp.md";
+
 const TarEntry = struct {
     name: []const u8,
     content: []const u8 = "",
@@ -43,11 +52,13 @@ test "extractSupportFiles writes support files and folders, skips SKILL/TRIGGER"
     const alloc = std.testing.allocator;
     const io = @import("common").globalIo();
     const ws = try freshDir(io, "extract");
+    // Real security-reviewer bundle shape: SKILL.md + TRIGGER.md (both skipped),
+    // a top-level README support file, and the nested checklists/owasp.md.
     const tar = try buildTar(alloc, &.{
-        .{ .name = SKILL_NAME, .content = "skill body" },
-        .{ .name = TRIGGER_NAME, .content = "trigger body" },
+        .{ .name = SKILL_NAME, .content = SR_SKILL },
+        .{ .name = TRIGGER_NAME, .content = SR_TRIGGER },
         .{ .name = "README.md", .content = "readme" },
-        .{ .name = "playbooks/zoho.md", .content = "nested" },
+        .{ .name = SR_NESTED, .content = SR_OWASP },
     });
     defer alloc.free(tar);
 
@@ -58,9 +69,9 @@ test "extractSupportFiles writes support files and folders, skips SKILL/TRIGGER"
     const readme = try std.Io.Dir.cwd().readFileAlloc(io, "/tmp/agentsfleet-be-test-extract/README.md", alloc, .limited(1024));
     defer alloc.free(readme);
     try std.testing.expectEqualStrings("readme", readme);
-    const nested = try std.Io.Dir.cwd().readFileAlloc(io, "/tmp/agentsfleet-be-test-extract/playbooks/zoho.md", alloc, .limited(1024));
+    const nested = try std.Io.Dir.cwd().readFileAlloc(io, "/tmp/agentsfleet-be-test-extract/" ++ SR_NESTED, alloc, .limited(64 * 1024));
     defer alloc.free(nested);
-    try std.testing.expectEqualStrings("nested", nested);
+    try std.testing.expectEqualStrings(SR_OWASP, nested);
 
     // ...but SKILL.md/TRIGGER.md are NOT written (the lease carries the authoritative copy).
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.cwd().access(io, "/tmp/agentsfleet-be-test-extract/SKILL.md", .{}));

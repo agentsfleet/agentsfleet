@@ -84,7 +84,7 @@ curl -fsSL https://agentsfleet.dev | bash   # installs agentsfleet, then npx ski
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
-npm install -g @agentsfleet/cli     # CLI binary + bundled samples (postinstall copies to ~/.config/agentsfleet/samples/)
+npm install -g @agentsfleet/cli     # CLI binary only (templates ship from github.com/agentsfleet/skills, not bundled)
 npx skills add agentsfleet/skills         # symlinks /agentsfleet-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
 agentsfleet login                          # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks

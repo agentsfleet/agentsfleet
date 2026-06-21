@@ -40,7 +40,7 @@ export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   AGENTSFLEET_STATUS.terminated,
 ];
 
-export const PLATFORM_OPS_SAMPLE_DIR = "samples/fixtures/platform-ops-sample";
+export const PLATFORM_OPS_SAMPLE_DIR = "tests/fixtures/fleetbundle/platform-ops";
 
 export const LOGIN_POLL_MS = 500;
 

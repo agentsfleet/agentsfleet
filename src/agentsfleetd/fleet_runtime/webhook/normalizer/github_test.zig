@@ -6,8 +6,8 @@ const github = @import("github.zig");
 const TEST_GITHUB_RUN_ID = 10000000000;
 const TEST_BALANCE_NANOS = 100000;
 
-const FAILURE_FIXTURE = @embedFile("workflow_run_failure.json");
-const SUCCESS_FIXTURE = @embedFile("workflow_run_success.json");
+const FAILURE_FIXTURE = @embedFile("github_run_failure.json");
+const SUCCESS_FIXTURE = @embedFile("github_run_success.json");
 
 // Fixed RFC3339 timestamp for deterministic tests: 1970-01-01T00:00:00Z (epoch).
 const FIXED_RECEIVED_AT_UNIX: i64 = 0;
