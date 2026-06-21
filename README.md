@@ -87,19 +87,8 @@ Enable git hooks: `git config core.hooksPath .githooks`
 
 Coding conventions and the agent operating model live in [`AGENTS.md`](AGENTS.md).
 
-The [`playbooks/`](playbooks/) tree bootstraps your **own private agentsfleet instance** — a Fly.io control plane behind a Cloudflare Tunnel, with [Clerk](https://clerk.com) for auth and 1Password (`op`) for every secret. Start at [`playbooks/founding/01_bootstrap/001_playbook.md`](playbooks/founding/01_bootstrap/001_playbook.md).
-
-For the system design — control plane, runner fleet, data flow, scaling — see [`docs/architecture/`](docs/architecture/), and the tunnel-first deployment rationale in [`playbooks/ARCHITECTURE.md`](playbooks/ARCHITECTURE.md).
+Read about [architecture](docs/architecture/) and [deployment](playbooks/ARCHITECTURE.md), or jump into [local development](#local-development).
 
 ---
-
-## Repos
-
-| Repo | What |
-|---|---|
-| [agentsfleet/agentsfleet](https://github.com/agentsfleet/agentsfleet) | Control plane + runner + CLI (this repo) |
-| [agentsfleet/docs](https://github.com/agentsfleet/docs) | User docs ([docs.agentsfleet.net](https://docs.agentsfleet.net)) |
-| [agentsfleet/skills](https://github.com/agentsfleet/skills) | Agent skill libraries |
-| [agentsfleet/posthog-zig](https://github.com/agentsfleet/posthog-zig) | PostHog SDK for Zig |
 
 MIT — Copyright (c) 2026 agentsfleet.
