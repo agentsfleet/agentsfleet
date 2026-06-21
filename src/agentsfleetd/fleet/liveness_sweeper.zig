@@ -4,6 +4,7 @@ const std = @import("std");
 const constants = @import("common");
 const clock = constants.clock;
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
@@ -44,10 +45,10 @@ pub const SweepStats = struct {
 
 /// Run until shutdown is signalled. Spawned by the serve lifecycle.
 pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value(bool)) void {
-    log.info(LOG_SWEEPER_STARTED, .{ .interval_ms = constants.HEARTBEAT_INTERVAL_MS, .batch_limit = SWEEP_BATCH_LIMIT });
+    log.debug(LOG_SWEEPER_STARTED, .{ .interval_ms = constants.HEARTBEAT_INTERVAL_MS, .batch_limit = SWEEP_BATCH_LIMIT });
     while (!shutdown.load(.acquire)) { // safe because: pairs with serve_shutdown.request() release-store.
         const stats = sweepOnce(pool, alloc) catch |err| {
-            log.warn(LOG_SWEEP_FAILED, .{ .err = @errorName(err) });
+            log.warn(LOG_SWEEP_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
             continue;
         };
@@ -59,7 +60,7 @@ pub fn run(pool: *pg.Pool, alloc: std.mem.Allocator, shutdown: *std.atomic.Value
         });
         sleepInterruptible(shutdown, SWEEP_INTERVAL_NS);
     }
-    log.info(LOG_SWEEPER_STOPPED, .{});
+    log.debug(LOG_SWEEPER_STOPPED, .{});
 }
 
 /// Execute one bounded sweep. Tests call this directly.
@@ -197,8 +198,8 @@ fn expireActiveLeaseSlots(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i
         \\  SET leased_until = $3, updated_at = $4
         \\  WHERE a.last_runner_id = $1::uuid
         \\    AND a.leased_until > $3
-        \\    AND a.agent_id IN (
-        \\      SELECT l.agent_id FROM fleet.runner_leases l
+        \\    AND a.fleet_id IN (
+        \\      SELECT l.fleet_id FROM fleet.runner_leases l
         \\      WHERE l.runner_id = $1::uuid AND l.status = $2
         \\    )
         \\  RETURNING 1
@@ -266,7 +267,7 @@ fn sleepInterruptible(shutdown: *std.atomic.Value(bool), total_ns: u64) void {
 }
 
 fn rollback(conn: *pg.Conn) void {
-    conn.rollback() catch |err| log.warn(LOG_ROLLBACK_FAILED, .{ .err = @errorName(err) });
+    conn.rollback() catch |err| log.warn(LOG_ROLLBACK_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
 }
 
 fn freeRunnerRefs(alloc: std.mem.Allocator, refs: []RunnerRef) void {

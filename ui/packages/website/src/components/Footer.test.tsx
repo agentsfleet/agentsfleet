@@ -31,7 +31,7 @@ describe("Footer", () => {
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^fleet$/i })).toHaveAttribute("href", "/#operational-loop");
     expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
-    expect(screen.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
+    expect(screen.getByRole("link", { name: /^fleets$/i })).toHaveAttribute("href", "/fleets");
   });
 
   it("renders resources column with docs and machine-readable surfaces", () => {

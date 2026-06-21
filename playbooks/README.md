@@ -2,7 +2,7 @@
 
 Two tiers, by intent:
 
-- **`founding/`** — the **sequential** spine you run **once, in order**, to stand a agentsfleet platform up from nothing. Run lexically from `01_bootstrap` upward; each step declares its predecessor as a prerequisite.
+- **`founding/`** — the **sequential** spine you run **once, in order**, to stand an agentsfleet platform up from nothing. Run lexically from `01_bootstrap` upward; each step declares its predecessor as a prerequisite.
 - **`operations/`** — **on-demand** runbooks with **no implied order**: rotate a credential, set up observability, tear an environment down. Named by what they do, not numbered, because they are not a sequence. Destructive teardowns are isolated under `operations/teardown/`.
 
 > The old flat `001…015` numbering implied a single sequence that did not exist — teardowns, CI image builds, and post-deploy admin setup were numbered as if they followed the deploy steps. This split makes the founding path legible and keeps ops runbooks from masquerading as founding steps.

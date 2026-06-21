@@ -17,8 +17,8 @@ pub const ERR_EXEC_RENEWAL_TERMINATED: []const u8 = "UZ-EXEC-008";
 pub const ERR_EXEC_STARTUP_POSTURE: []const u8 = "UZ-EXEC-009";
 pub const ERR_EXEC_CRASH: []const u8 = "UZ-EXEC-010";
 pub const ERR_EXEC_LANDLOCK_DENY: []const u8 = "UZ-EXEC-011";
-pub const ERR_EXEC_RUNNER_AGENT_INIT: []const u8 = "UZ-EXEC-012";
-pub const ERR_EXEC_RUNNER_AGENT_RUN: []const u8 = "UZ-EXEC-013";
+pub const ERR_EXEC_RUNNER_FLEET_INIT: []const u8 = "UZ-EXEC-012";
+pub const ERR_EXEC_RUNNER_FLEET_RUN: []const u8 = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG: []const u8 = "UZ-EXEC-014";
 pub const ERR_TOOL_UNKNOWN: []const u8 = "UZ-TOOL-005";
 
@@ -32,7 +32,7 @@ pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED: []const u8 = "UZ-RUN-007";
 pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
     return switch (failure) {
         .startup_posture => ERR_EXEC_STARTUP_POSTURE,
-        .policy_deny => ERR_EXEC_RUNNER_AGENT_RUN, // latent: no emit site yet
+        .policy_deny => ERR_EXEC_RUNNER_FLEET_RUN, // latent: no emit site yet
         .timeout_kill => ERR_EXEC_TIMEOUT_KILL,
         .oom_kill => ERR_EXEC_OOM_KILL,
         .resource_kill => ERR_EXEC_RESOURCE_KILL,
@@ -43,4 +43,3 @@ pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
         .renewal_terminate => ERR_EXEC_RENEWAL_TERMINATED,
     };
 }
-

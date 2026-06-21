@@ -37,11 +37,11 @@ type Props = {
   workspaceId: string;
   initialItems: ApprovalGate[];
   initialCursor: string | null;
-  /** When set, the list is filtered server-side by this agent. */
-  agentId?: string;
+  /** When set, the list is filtered server-side by this fleet. */
+  fleetId?: string;
 };
 
-export default function ApprovalsList({ workspaceId, initialItems, initialCursor, agentId }: Props) {
+export default function ApprovalsList({ workspaceId, initialItems, initialCursor, fleetId }: Props) {
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [filter, setFilter] = useState<string>("");
@@ -53,7 +53,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     if (!q) return items;
     return items.filter(
       (g) =>
-        g.agent_name.toLowerCase().includes(q) ||
+        g.fleet_name.toLowerCase().includes(q) ||
         g.tool_name.toLowerCase().includes(q) ||
         g.action_name.toLowerCase().includes(q) ||
         g.gate_kind.toLowerCase().includes(q) ||
@@ -65,7 +65,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   // the list within ~5 s of reality. Worker wake on resolution is a separate
   // ≤2 s concern handled server-side.
   //
-  // Skip the poll-driven reset once the operator has clicked Load more.
+  // Skip the poll-driven reset once the human has clicked Load more.
   // Polling fetches page 1 only (`limit: 50`, no cursor); replacing items
   // wholesale would silently drop the loaded-more pages. A ref is fine —
   // the latest value is read inside the interval callback, no re-render
@@ -78,11 +78,11 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const alreadyPaged = () => hasLoadedMore.current;
     const tick = async () => {
       if (alreadyPaged()) return;
-      const result = await listApprovalsAction(workspaceId, { limit: 50, agentId });
+      const result = await listApprovalsAction(workspaceId, { limit: 50, fleetId });
       if (!alive || alreadyPaged()) return;
       if (!result.ok) {
         // 401 is terminal — silently retrying for 5s forever leaves the
-        // operator staring at a stale list with no signal that their
+        // human staring at a stale list with no signal that their
         // session expired. Surface it; refresh fixes it.
         if (result.status === 401) {
           setError("Session expired — refresh the page to sign back in.");
@@ -100,14 +100,14 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       alive = false;
       clearInterval(id);
     };
-  }, [workspaceId, agentId]);
+  }, [workspaceId, fleetId]);
 
   // `cursor` is passed in (narrowed to a non-null string by the `{cursor ? …}`
   // render guard on the trigger), so no in-function null check is needed.
   function loadMore(cursor: string) {
     setError(null);
     startTransition(async () => {
-      const result = await listApprovalsAction(workspaceId, { cursor, agentId, limit: 50 });
+      const result = await listApprovalsAction(workspaceId, { cursor, fleetId, limit: 50 });
       if (!result.ok) {
         setError(
           presentErrorString({
@@ -121,7 +121,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       setItems((prev) => [...prev, ...result.data.items]);
       setCursor(result.data.next_cursor);
       // Latch the polling guard so the next 5s tick doesn't reset the
-      // operator back to page 1 by replacing items with the first page.
+      // human back to page 1 by replacing items with the first page.
       hasLoadedMore.current = true;
     });
   }
@@ -144,7 +144,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const outcome: ResolveOutcome = result.data;
     // Optimistic removal — even on already_resolved the row leaves the
     // pending list. Toasts could be added later; for v1 the list update
-    // alone is the operator-visible signal.
+    // alone is the human-visible signal.
     setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
     if (outcome.kind === "already_resolved") {
       setError(
@@ -158,7 +158,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       <EmptyState
         icon={<CheckCircle2Icon size={28} />}
         title="No pending approvals"
-        description="Nothing waiting on operator action."
+        description="Nothing waiting on human review."
       />
     );
   }
@@ -168,7 +168,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       <div className="mb-4">
         <Input
           type="search"
-          placeholder="Filter by agent, tool, or action…"
+          placeholder="Filter by fleet, tool, or action…"
           value={filter}
           onChange={(e) => setFilter(e.currentTarget.value)}
           aria-label="Filter approvals"
@@ -223,8 +223,8 @@ function ApprovalCard({
               </Link>
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Link href={`/agents/${gate.agent_id}`} className="font-medium hover:underline">
-                {gate.agent_name}
+              <Link href={`/fleets/${gate.fleet_id}`} className="font-medium hover:underline">
+                {gate.fleet_name}
               </Link>
               {gate.gate_kind ? <Badge variant="default">{gate.gate_kind}</Badge> : null}
               <span>requested {ageMin}m ago</span>

@@ -241,10 +241,9 @@ describe("app components", () => {
 
   it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/agents");
+    mocks.usePathname.mockReturnValue("/fleets");
     const tree = Shell({ children: React.createElement("div", null, "content") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
-    // Brand-mark always-alive contract.
     expect(markup).toContain("data-live");
     expect(markup).toContain("agentsfleet");
     // Sidebar nav rendered across the Operations / Configuration / Organization
@@ -253,7 +252,7 @@ describe("app components", () => {
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
-    expect(markup).toContain("Agents");
+    expect(markup).toContain("Fleets");
     // Models + Credentials are one combined Configuration entry now.
     expect(markup).toContain("Models &amp; Credentials");
     // The combined item points at the unified route.
@@ -262,13 +261,13 @@ describe("app components", () => {
     expect(markup).not.toContain('href="/credentials"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
-    expect(markup).toContain("Settings");
+    expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/agents");
+    mocks.usePathname.mockReturnValue("/fleets");
     const tree = Shell({ children: React.createElement("div") });
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
     // The active link gets data-active="true" — the sidebar's surface-3 fill
@@ -355,13 +354,13 @@ describe("app components", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeTruthy();
     expect(dialog.textContent).toContain("Dashboard");
-    expect(dialog.textContent).toContain("Agents");
+    expect(dialog.textContent).toContain("Fleets");
     cleanup();
   });
 
   it("Shell mobile-nav: clicking a link inside the dialog closes it", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-    mocks.usePathname.mockReturnValue("/agents");
+    mocks.usePathname.mockReturnValue("/fleets");
     const user = userEvent.setup();
     render(
       React.createElement(Shell, null, React.createElement("div", null, "content")),
@@ -383,12 +382,12 @@ describe("app components", () => {
       React.createElement(Shell, null, React.createElement("div", null, "content")),
     );
     // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
-    // 'Agents' (href /agents) exercises the path-to-slug replaceAll branch.
+    // 'Fleets' (href /fleets) exercises the path-to-slug replaceAll branch.
     await user.click(screen.getByText("Dashboard"));
-    await user.click(screen.getByText("Agents"));
-    // Footer 'Docs' is external (anchor + label-slug branch); 'Settings' internal.
+    await user.click(screen.getByText("Fleets"));
+    // Footer 'Docs' is external; 'Workspace' is internal.
     await user.click(screen.getByText("Docs"));
-    await user.click(screen.getByText("Settings"));
+    await user.click(screen.getByText("Workspace"));
     // The combined Configuration entry — a nested route exercises the
     // multi-segment slug branch.
     await user.click(screen.getByText("Models & Credentials"));
@@ -398,7 +397,7 @@ describe("app components", () => {
       (c) => (c[0] as { source: string }).source,
     );
     expect(sources).toContain("app_sidebar_root");
-    expect(sources).toContain("app_sidebar_agents");
+    expect(sources).toContain("app_sidebar_fleets");
     expect(sources).toContain("app_sidebar_docs");
     expect(sources).toContain("app_sidebar_settings");
     expect(sources).toContain("app_sidebar_settings_models");

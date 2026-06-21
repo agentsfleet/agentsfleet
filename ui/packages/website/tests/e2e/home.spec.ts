@@ -56,13 +56,13 @@ test.describe("Home page", () => {
     await expect(brandMark).toHaveAttribute("data-live", "true");
   });
 
-  test("renders operational knowledge and the prebuilt-agents fleet", async ({ page }) => {
+  test("renders operational knowledge and the prebuilt Fleet catalogue", async ({ page }) => {
     await expect(page.getByTestId("operational-knowledge")).toBeVisible();
     await expect(page.getByText("It remembers, so the next time is faster.")).toBeVisible();
-    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
-    await expect(page.getByTestId("agent-card-auto-reviewer")).toContainText("Auto Reviewer");
-    await expect(page.getByTestId("agent-card-security-reviewer")).toContainText("Security Reviewer");
-    await expect(page.getByTestId("agent-card-coming-soon")).toContainText(/coming soon/i);
+    await expect(page.getByTestId("prebuilt-fleets")).toBeVisible();
+    await expect(page.getByTestId("fleet-card-auto-reviewer")).toContainText("Auto Reviewer");
+    await expect(page.getByTestId("fleet-card-security-reviewer")).toContainText("Security Reviewer");
+    await expect(page.getByTestId("fleet-card-coming-soon")).toContainText(/coming soon/i);
 
     await page.setViewportSize({ width: 1280, height: 800 });
     const overflowsX = await page.evaluate(
@@ -71,11 +71,11 @@ test.describe("Home page", () => {
     expect(overflowsX).toBe(false);
   });
 
-  test("agent cards stay visible without horizontal overflow on mobile", async ({ page }) => {
+  test("Fleet cards stay visible without horizontal overflow on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId("prebuilt-agents")).toBeVisible();
+    await expect(page.getByTestId("prebuilt-fleets")).toBeVisible();
     for (const id of ["auto-reviewer", "diagnose", "security-reviewer"]) {
-      await expect(page.getByTestId(`agent-card-${id}`)).toBeVisible();
+      await expect(page.getByTestId(`fleet-card-${id}`)).toBeVisible();
     }
     const overflowsX = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

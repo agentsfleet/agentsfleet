@@ -2,7 +2,7 @@
 //
 // Runs three checks: server reachable (/healthz, no auth), workspace
 // selected (read from Workspaces service), workspace binding valid
-// (GET /v1/workspaces/{ws}/agents, authed). Aggregates the results
+// (GET /v1/workspaces/{ws}/fleets, authed). Aggregates the results
 // and exits 0/1 by the all-checks-ok fold.
 //
 // CliError variants are mapped down into per-check `ok=false, detail`
@@ -17,7 +17,7 @@ import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { resolveAuthToken } from "./workspace-guards.ts";
 import {
-  wsAgentsPath,
+  wsFleetsPath,
   HEALTHZ_PATH,
   HEALTHZ_STATUS_OK,
 } from "../lib/api-paths.ts";
@@ -102,7 +102,7 @@ const runBindingCheck = (
     }
     return yield* http
       .request<unknown>({
-        path: wsAgentsPath(wsId),
+        path: wsFleetsPath(wsId),
         token: tokenResult.token,
         timeoutMs: PER_CHECK_TIMEOUT_MS,
       })

@@ -2,8 +2,8 @@
 
 const std = @import("std");
 
-const agent_metrics = @import("metrics_agent.zig");
-pub const incAgentsTriggered = agent_metrics.incAgentsTriggered;
+const fleet_metrics = @import("metrics_fleet.zig");
+pub const incFleetsTriggered = fleet_metrics.incFleetsTriggered;
 
 pub const Snapshot = struct {
     api_backpressure_rejections_total: u64,
@@ -12,7 +12,7 @@ pub const Snapshot = struct {
     sse_in_flight_streams: u64,
     sse_dropped_frames_total: u64,
     sse_hub_reconnects_total: u64,
-    agent_triggered_total: u64 = 0,
+    fleet_triggered_total: u64 = 0,
     // Signup funnel counters.
     signup_bootstrapped_total: u64 = 0,
     signup_replayed_total: u64 = 0,
@@ -102,7 +102,7 @@ pub fn snapshot() Snapshot {
         .sse_dropped_frames_total = loadStat(&g_sse_dropped_frames_total),
         .sse_hub_reconnects_total = loadStat(&g_sse_hub_reconnects_total),
     };
-    s.agent_triggered_total = agent_metrics.snapshotAgentFields().agent_triggered_total;
+    s.fleet_triggered_total = fleet_metrics.snapshotFleetFields().fleet_triggered_total;
     s.signup_bootstrapped_total = loadStat(&g_signup_bootstrapped_total);
     s.signup_replayed_total = loadStat(&g_signup_replayed_total);
     s.signup_failed_bad_sig_total = loadStat(&g_signup_failed_bad_sig_total);

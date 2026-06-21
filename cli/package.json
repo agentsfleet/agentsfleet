@@ -1,6 +1,6 @@
 {
   "name": "@agentsfleet/cli",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "agentsfleet CLI",
   "repository": {
     "type": "git",
@@ -15,8 +15,6 @@
   },
   "files": [
     "dist",
-    "samples",
-    "scripts/postinstall.mjs",
     "README.md"
   ],
   "engines": {
@@ -31,8 +29,7 @@
     "lint": "oxlint src test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
     "lint:fix": "oxlint src test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs && tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "npm run build && node ./scripts/prepublish.mjs",
-    "postinstall": "node ./scripts/postinstall.mjs"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@vercel/detect-agent": "^1.2.3",

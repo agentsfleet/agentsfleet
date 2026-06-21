@@ -20,7 +20,7 @@ import {
   AUTH_REQUIRED_REPRESENTATIVE,
 } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { runAgentctl, composeEnv } from "./fixtures/cli.js";
+import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
   expectInvalidSubcommand,
@@ -63,7 +63,7 @@ describe("help triplet", () => {
 
   it("all four forms exit 0 and contain the help banner", async () => {
     const results = await Promise.all(
-      invocations.map((args) => runAgentctl(args, { env: emptyEnv() })),
+      invocations.map((args) => runFleetctl(args, { env: emptyEnv() })),
     );
     invocations.forEach((args, i) => {
       const r = results[i];
@@ -75,7 +75,7 @@ describe("help triplet", () => {
 
   it("all four forms emit byte-identical stripped stdout", async () => {
     const results = await Promise.all(
-      invocations.map((args) => runAgentctl(args, { env: emptyEnv() })),
+      invocations.map((args) => runFleetctl(args, { env: emptyEnv() })),
     );
     const stripped = results.map((r) => stripAnsi(r.stdout));
     const first = stripped[0];
@@ -92,7 +92,7 @@ describe("help triplet", () => {
 
 describe("--version", () => {
   it("--version exits 0 with stdout containing the package.json version", async () => {
-    const result = await runAgentctl(["--version"], { env: emptyEnv() });
+    const result = await runFleetctl(["--version"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(
       result.stdout.includes(pkgVersion),
@@ -101,13 +101,13 @@ describe("--version", () => {
   });
 
   it("-v is equivalent to --version", async () => {
-    const result = await runAgentctl(["-v"], { env: emptyEnv() });
+    const result = await runFleetctl(["-v"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(result.stdout.includes(pkgVersion));
   });
 
   it("--version --json emits parseable JSON with the version field", async () => {
-    const result = await runAgentctl(["--version", "--json"], { env: emptyEnv() });
+    const result = await runFleetctl(["--version", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     const parsed = JSON.parse(result.stdout.trim()) as { version: string };
     assert.equal(parsed.version, pkgVersion);
@@ -126,7 +126,7 @@ describe("unknown commands", () => {
   });
 
   it("unknown top-level command exits non-zero with suggest stem", async () => {
-    const result = await runAgentctl(["pogo"], { env: emptyEnv() });
+    const result = await runFleetctl(["pogo"], { env: emptyEnv() });
     assert.notEqual(result.code, 0);
     assert.match(result.stderr.toLowerCase(), /unknown|did you mean|usage/);
   });
@@ -158,7 +158,7 @@ describe("unknown commands", () => {
 describe("auth guard short-circuits before any network call", () => {
   for (const args of AUTH_REQUIRED_REPRESENTATIVE) {
     it(`"${args.join(" ")}" exits 1 with "not authenticated", no ECONNREFUSED`, async () => {
-      const result = await runAgentctl(args, { env: emptyEnv() });
+      const result = await runFleetctl(args, { env: emptyEnv() });
       assert.equal(result.code, 1, `expected exit 1; got ${result.code}; stderr=${result.stderr}`);
       const merged = `${result.stderr}\n${result.stdout}`.toLowerCase();
       assert.match(merged, /not authenticated|authentication required|please.*log/);
@@ -173,11 +173,11 @@ describe("validate.js error stem", () => {
   // that mismatch with the backend's strict uuidv7 is the motivation for
   // the optional library swap covered in the lifecycle suite.
   it("validateRequiredId is reachable and emits the invalid-format stem", () => {
-    const result = validateModule.validateRequiredId("abc def", "agent_id");
+    const result = validateModule.validateRequiredId("abc def", "fleet_id");
     assert.equal(result.ok, false);
     assert.match(
       result.message,
-      /invalid agent_id: expected/i,
+      /invalid fleet_id: expected/i,
       `unexpected stem: ${result.message}`,
     );
   });
@@ -202,7 +202,7 @@ describe("help DX surfaces (real binary)", () => {
   }
 
   it("--help lists the top-level commands and the env-var docs pointer", async () => {
-    const result = await runAgentctl(["--help"], { env: helpEnv() });
+    const result = await runFleetctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
     // Commander's own Commands: block carries the command list.
@@ -215,17 +215,17 @@ describe("help DX surfaces (real binary)", () => {
   });
 
   it("--help stays within 80 columns through the real binary", async () => {
-    const result = await runAgentctl(["--help"], { env: helpEnv() });
+    const result = await runFleetctl(["--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const overflow = stripAnsi(result.stdout).split("\n").filter((l) => l.length > 80);
     assert.deepEqual(overflow, [], `lines over 80 cols: ${overflow.join(" | ")}`);
   });
 
-  it("agent --help clarifies the lifecycle verbs are top-level", async () => {
-    const result = await runAgentctl(["agent", "--help"], { env: helpEnv() });
+  it("fleet --help clarifies the lifecycle verbs are top-level", async () => {
+    const result = await runFleetctl(["fleet", "--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
     assert.match(out, /top-level commands/);
-    assert.ok(out.includes("agentsfleet --help"), "agent --help should point at the full guide");
+    assert.ok(out.includes("agentsfleet --help"), "fleet --help should point at the full guide");
   });
 });

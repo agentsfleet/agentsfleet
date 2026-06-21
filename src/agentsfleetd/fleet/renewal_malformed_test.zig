@@ -31,7 +31,7 @@ const ALLOC = std.testing.allocator;
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9011";
 const RUNNER_A_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9a01";
 const RUNNER_B_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9b01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9c01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9c01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9f01";
 // A well-formed UUID that is never inserted — the unknown-lease case.
 const ABSENT_LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d9fff";
@@ -64,7 +64,7 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token:
 fn seedActiveLease(conn: *pg.Conn, runner_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -72,7 +72,7 @@ fn seedActiveLease(conn: *pg.Conn, runner_id: []const u8) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ LEASE_ID, runner_id, AGENTSFLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, clock.nowMillis() + 60_000 });
+    , .{ LEASE_ID, runner_id, FLEET_ID, WORKSPACE_ID, base.TEST_TENANT_ID, clock.nowMillis() + 60_000 });
 }
 
 fn renewPath(alloc: std.mem.Allocator, lease_id: []const u8) ![]const u8 {

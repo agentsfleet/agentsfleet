@@ -158,7 +158,7 @@ pub fn applyPolicy(workspace_path: []const u8) LandlockError!void {
     );
     if (restrict_result != 0) return LandlockError.RestrictSelfFailed;
 
-    log.info("applied", .{ .workspace = workspace_path });
+    log.debug("landlock_applied", .{ .workspace = workspace_path });
 }
 
 fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!void {
@@ -184,7 +184,6 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
     );
     if (result != 0) return LandlockError.RuleAddFailed;
 }
-
 
 test "applyPolicy returns UnsupportedPlatform on non-linux" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;

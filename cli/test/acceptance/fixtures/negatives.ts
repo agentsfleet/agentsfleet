@@ -1,11 +1,11 @@
 /**
  * Negative-path helpers used across the acceptance specs.
  *
- * Each helper composes a `runAgentctl` call, asserts a non-zero exit,
+ * Each helper composes a `runFleetctl` call, asserts a non-zero exit,
  * and verifies stderr/stdout shape against the documented contract.
  */
 
-import { runAgentctl } from "./cli.js";
+import { runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
@@ -29,7 +29,7 @@ function lastJsonObject(stdout: string): ErrorEnvelope | null {
 }
 
 export async function expectInvalidSubcommand(group: string, env: Env): Promise<RunResult> {
-  const result = await runAgentctl([group, "pogo"], { env });
+  const result = await runFleetctl([group, "pogo"], { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${group} pogo"; got 0; stdout: ${result.stdout}`);
   }
@@ -41,7 +41,7 @@ export async function expectInvalidSubcommand(group: string, env: Env): Promise<
 }
 
 export async function expectMissingArg(args: ReadonlyArray<string>, env: Env): Promise<RunResult> {
-  const result = await runAgentctl(args, { env });
+  const result = await runFleetctl(args, { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${args.join(" ")}"; got 0; stdout: ${result.stdout}`);
   }
@@ -57,7 +57,7 @@ export async function expectInvalidArgValue(
   env: Env,
   expectedErrorCode?: string | null,
 ): Promise<RunResult | InvalidArgEnvelope> {
-  const result = await runAgentctl(args, { env });
+  const result = await runFleetctl(args, { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${args.join(" ")}"; got 0; stdout: ${result.stdout}`);
   }

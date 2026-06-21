@@ -47,24 +47,24 @@ fn seedRunner(conn: *pg.Conn, runner_id: []const u8, host_id: []const u8, token_
     , .{ runner_id, host_id, token_hash, @tagName(state), last_seen_at });
 }
 
-fn seedAffinity(conn: *pg.Conn, affinity_id: []const u8, agent_id: []const u8, runner_id: []const u8, leased_until: i64, token: i64) !void {
+fn seedAffinity(conn: *pg.Conn, affinity_id: []const u8, fleet_id: []const u8, runner_id: []const u8, leased_until: i64, token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (agent_id) DO UPDATE
+        \\ON CONFLICT (fleet_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq,
         \\      leased_until = EXCLUDED.leased_until
-    , .{ affinity_id, agent_id, runner_id, token, leased_until });
+    , .{ affinity_id, fleet_id, runner_id, token, leased_until });
 }
 
-fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, agent_id: []const u8, event_id: []const u8, token: i64) !void {
+fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, fleet_id: []const u8, event_id: []const u8, token: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
         \\   last_metered_at_ms, fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -74,7 +74,7 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, agent_
     , .{
         lease_id,
         runner_id,
-        agent_id,
+        fleet_id,
         WORKSPACE_ID,
         base.TEST_TENANT_ID,
         event_id,
@@ -90,7 +90,7 @@ fn seedLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, agent_
 }
 
 fn cleanup(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ONE_ID, AGENTSFLEET_TWO_ID });
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ AGENTSFLEET_ONE_ID, AGENTSFLEET_TWO_ID });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_STALE_ID, RUNNER_LIVE_ID });
 }
 
@@ -137,25 +137,25 @@ fn runnerState(conn: *pg.Conn, runner_id: []const u8) !protocol.AdminState {
     return std.meta.stringToEnum(protocol.AdminState, raw) orelse error.TestUnexpectedResult;
 }
 
-fn leasedUntil(conn: *pg.Conn, agent_id: []const u8) !i64 {
-    return scalarI64(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{agent_id});
+fn leasedUntil(conn: *pg.Conn, fleet_id: []const u8) !i64 {
+    return scalarI64(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{fleet_id});
 }
 
-fn seedStaleActiveLease(conn: *pg.Conn, agent_id: []const u8, affinity_id: []const u8, lease_id: []const u8, event_id: []const u8, token: i64) !void {
+fn seedStaleActiveLease(conn: *pg.Conn, fleet_id: []const u8, affinity_id: []const u8, lease_id: []const u8, event_id: []const u8, token: i64) !void {
     const now_ms = clock.nowMillis();
     try seedRunner(conn, RUNNER_STALE_ID, STALE_HOST, STALE_HASH, .active, now_ms - constants.RUNNER_OFFLINE_AFTER_MS - constants.HEARTBEAT_INTERVAL_MS);
-    try seedAffinity(conn, affinity_id, agent_id, RUNNER_STALE_ID, now_ms + constants.LEASE_TTL_MS, token);
-    try seedLease(conn, lease_id, RUNNER_STALE_ID, agent_id, event_id, token);
+    try seedAffinity(conn, affinity_id, fleet_id, RUNNER_STALE_ID, now_ms + constants.LEASE_TTL_MS, token);
+    try seedLease(conn, lease_id, RUNNER_STALE_ID, fleet_id, event_id, token);
 }
 
-fn reclaimAsLive(conn: *pg.Conn, agent_id: []const u8) !void {
-    const claim = try affinity.claim(conn, ALLOC, agent_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
+fn reclaimAsLive(conn: *pg.Conn, fleet_id: []const u8) !void {
+    const claim = try affinity.claim(conn, ALLOC, fleet_id, RUNNER_LIVE_ID, constants.LEASE_TTL_MS);
     const won = switch (claim) {
         .won => |w| w,
         .taken => return error.TestUnexpectedResult,
     };
     try std.testing.expect(won.token > 0);
-    const prior = (try reclaim.reclaimPriorActive(conn, ALLOC, agent_id)) orelse return error.TestUnexpectedResult;
+    const prior = (try reclaim.reclaimPriorActive(conn, ALLOC, fleet_id)) orelse return error.TestUnexpectedResult;
     defer freePrior(prior);
 }
 

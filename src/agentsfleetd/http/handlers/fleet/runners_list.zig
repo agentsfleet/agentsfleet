@@ -1,4 +1,4 @@
-//! GET /v1/fleet/runners — platform-admin operator-plane read of the fleet.
+//! GET /v1/fleets/runners — platform-admin operator-plane read of the fleet.
 //!
 //! Authed by `platformAdmin` (same gate as enrollment). Paginated, read-only.
 //! Each row carries a DERIVED `liveness` (never the stored auth `status`, never
@@ -181,7 +181,7 @@ fn collectItems(alloc: std.mem.Allocator, rows: anytype, now_ms: i64) !PageRows 
             continue;
         }
         const item = readItem(alloc, row, now_ms) catch |err| {
-            log.warn("row_decode_skipped", .{ .err = @errorName(err) });
+            log.warn("row_decode_skipped", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err) });
             continue;
         };
         try items.append(alloc, item);

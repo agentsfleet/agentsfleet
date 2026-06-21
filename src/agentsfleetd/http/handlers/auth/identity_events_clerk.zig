@@ -117,7 +117,7 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
         return;
     }
     if (!std.mem.eql(u8, event.type, "user.created")) {
-        log.info("event_ignored", .{ .type = event.type, .req_id = hx.req_id });
+        log.debug("event_ignored", .{ .type = event.type, .req_id = hx.req_id });
         hx.ok(.ok, .{ .status = "ignored", .type = event.type });
         return;
     }
@@ -321,6 +321,6 @@ fn runDelete(hx: Hx, oidc_subject: []const u8) void {
         return;
     };
 
-    log.info("user_deleted", .{ .oidc = oidc_subject, .purged = purged, .req_id = hx.req_id });
+    log.debug("user_deleted", .{ .oidc = oidc_subject, .purged = purged, .req_id = hx.req_id });
     hx.ok(.ok, .{ .deleted = true });
 }

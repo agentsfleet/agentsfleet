@@ -1,5 +1,5 @@
-// Concurrency proof for the per-agent lease SLOT under 100 simultaneous
-// `affinity.claim` calls racing for ONE free agent, each on its own pooled
+// Concurrency proof for the per-fleet lease SLOT under 100 simultaneous
+// `affinity.claim` calls racing for ONE free fleet, each on its own pooled
 // connection. The claim is a single conditional UPSERT (`ON CONFLICT ... WHERE
 // leased_until < now`), so exactly one of the N racers wins the row and the
 // other 99 see `.taken`. This is the exactly-one-winner invariant the whole
@@ -34,7 +34,7 @@ fn noopRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECKs pass.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dc011";
 const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dca01";
-const AGENTSFLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc01";
+const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dcc01";
 
 const N_CLAIMERS = 100;
 
@@ -53,7 +53,7 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
-    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", .{AGENTSFLEET_ID});
+    execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", .{FLEET_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
@@ -71,7 +71,7 @@ const Worker = struct {
     fn run(h: *TestHarness, slot: *ClaimSlot) void {
         const conn = h.acquireConn() catch return;
         defer h.releaseConn(conn);
-        const c = affinity.claim(conn, ALLOC, AGENTSFLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
+        const c = affinity.claim(conn, ALLOC, FLEET_ID, RUNNER_ID, constants.LEASE_TTL_MS) catch return;
         switch (c) {
             .won => |w| slot.* = .{ .code = 1, .token = w.token },
             .taken => slot.* = .{ .code = 2 },
@@ -79,7 +79,7 @@ const Worker = struct {
     }
 };
 
-test "100 concurrent claims on one free agent yield exactly one winner" {
+test "100 concurrent claims on one free fleet yield exactly one winner" {
     const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
         if (err == error.SkipZigTest) return error.SkipZigTest;
         return err;
@@ -92,7 +92,7 @@ test "100 concurrent claims on one free agent yield exactly one winner" {
     try base.seedTenant(c_init);
     try base.seedWorkspace(c_init, WORKSPACE_ID);
     try seedRunner(c_init);
-    // No affinity row seeded → the agent's slot is unclaimed; the INSERT branch
+    // No affinity row seeded → the fleet's slot is unclaimed; the INSERT branch
     // of the UPSERT wins for exactly one racer, the ON CONFLICT guard rejects
     // the rest (a live claim now holds leased_until in the future).
     defer teardown(c_init);
@@ -117,7 +117,7 @@ test "100 concurrent claims on one free agent yield exactly one winner" {
             else => return error.ClaimWorkerErrored,
         }
     }
-    // Exactly one winner per agent — the losers consumed no event, so nothing
+    // Exactly one winner per fleet — the losers consumed no event, so nothing
     // is orphaned; the fence has a single owner.
     try std.testing.expectEqual(@as(usize, 1), won);
     try std.testing.expectEqual(@as(usize, N_CLAIMERS - 1), taken);

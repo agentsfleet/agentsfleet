@@ -1,6 +1,6 @@
 # Scenario 03 — The credit pool, John drains under both postures
 
-**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops agent cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
+**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops fleet cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
 
 > **Rate snapshot.** The cent-and-token arithmetic below was authored against an earlier rate table (M48 era — $0.01 receive, $0.10 run, $10 starter). Under M66 stealth-mode rates the grant is $5, receive is $0 in both postures, and run is posture-dispatched (platform overhead + token cost / flat self-managed fee). The *flow* — gate, two debit points, telemetry rows — is identical to what's shown; only the per-event arithmetic moves. Authoritative current values: see [`billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 (sources of truth). Treat the numbers in this scenario as illustrative.
 
@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT agent_events<br/>status=received]
+    Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT fleet_events<br/>status=received]
     Insert --> Resolve[Resolve posture<br/>tenant_provider.resolveActiveProvider]
     Resolve --> Estimate[Estimate event cost<br/>receive + worst-case run]
     Estimate --> Gate{balance_nanos<br/>≥ estimate?}
@@ -57,7 +57,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 > **Flow note (M80_010):** the run charge is no longer a one-shot deduction at lease issue — it meters incrementally on each `/renew` and settles at `report`. The lease-issue gate is now a coverage check only. The trace below still shows the single-shot model for illustrative clarity (it predates M80_010); the canonical incremental flow is in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3, and the totals it lands on are unchanged.
 
 ```
-XREADGROUP unblocks → INSERT agent_events (status='received')
+XREADGROUP unblocks → INSERT fleet_events (status='received')
 resolveActiveProvider → mode=platform
 estimate cost = compute_receive_charge(.platform)
               + compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6,
@@ -68,7 +68,7 @@ gate: 1000¢ ≥ 3¢ → pass
 
 DEDUCT RECEIVE
   UPDATE tenant_billing SET balance_nanos = 1000 - 1 = 999
-  INSERT agent_execution_telemetry
+  INSERT fleet_execution_telemetry
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='receive', credit_deducted_nanos=1)
 
@@ -83,11 +83,11 @@ issue lease → runner forks NullClaw child   (no run debit at issue under M80_0
 RUN charge (metered on /renew ticks + settled at report under M80_010;
             shown here collapsed into one step for illustration)
   UPDATE tenant_billing SET balance_nanos = 999 - 2 = 997
-  UPDATE agent_execution_telemetry  (the accumulated 'stage' row)
+  UPDATE fleet_execution_telemetry  (the accumulated 'stage' row)
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='stage', credit_deducted_nanos=2)
 
-UPDATE agent_execution_telemetry  (the 'stage' row — token counts)
+UPDATE fleet_execution_telemetry  (the 'stage' row — token counts)
   SET token_count_input=820, token_count_output=1040, wall_ms=8210
 
 reconcile actual cost:
@@ -95,7 +95,7 @@ reconcile actual cost:
                = 1¢ + ((300×820 + 1500×1040) / 1_000_000) ≈ 1¢ + 1¢ = 2¢
   matches the conservative estimate; no adjustment.
 
-UPDATE agent_events status='processed'
+UPDATE fleet_events status='processed'
 XACK
 ```
 
@@ -150,7 +150,7 @@ UPDATE telemetry run row SET token_count_input=820, token_count_output=1320,
                               wall_ms=11400
 (credit_deducted_nanos stays 1¢; tokens are FYI only under self-managed)
 
-UPDATE agent_events status='processed'
+UPDATE fleet_events status='processed'
 XACK
 
 Fireworks bills John's Fireworks account directly for the 820+1320 tokens
@@ -177,7 +177,7 @@ Week 5 opens. John's balance is hovering around 30¢. A flaky deploy triggers a 
 estimate cost = 1¢
 gate: 0¢ < 1¢ → BLOCK
 
-UPDATE agent_events
+UPDATE fleet_events
   SET status='gate_blocked', failure_label='balance_exhausted'
 PUBLISH event_complete (status=gate_blocked)
 XACK terminal
@@ -326,7 +326,7 @@ Resolver returns `error.CredentialMissing`. Event terminates with `status='gate_
 - **Same code path serves both postures.** The gate, the receive deduct, the run deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the self-managed signal.** John's agentsfleet credits last ~3× longer under self-managed than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside the lease path or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
-- **The api_key boundary holds in production traffic.** A grep across `core.agent_events`, `core.agent_execution_telemetry`, `agentsfleetd` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
+- **The api_key boundary holds in production traffic.** A grep across `core.fleet_events`, `core.fleet_execution_telemetry`, `agentsfleetd` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
 
 ---

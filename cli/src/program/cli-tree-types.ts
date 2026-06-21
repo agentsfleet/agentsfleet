@@ -1,6 +1,6 @@
 // Shared types for the agentsfleet command tree. Lives outside cli-tree.ts
 // so the FLL cap (350L) does not block adding new verbs to the tree
-// itself; consumers (cli-tree.ts, cli-tree-agent.ts, handlers-bind.ts)
+// itself; consumers (cli-tree.ts, cli-tree-fleet.ts, handlers-bind.ts)
 // import this module directly.
 
 import type { Command, Help } from "commander";
@@ -29,7 +29,7 @@ export interface WorkspaceHandlers {
   delete: CommandHandlerFn;
 }
 
-export interface AgentKeyHandlers {
+export interface FleetKeyHandlers {
   add: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
@@ -54,14 +54,15 @@ export interface BillingHandlers {
   show: CommandHandlerFn;
 }
 
-export interface AgentCredentialHandlers {
+export interface FleetCredentialHandlers {
   add: CommandHandlerFn;
   show: CommandHandlerFn;
   list: CommandHandlerFn;
   delete: CommandHandlerFn;
 }
 
-export interface AgentHandlers {
+export interface FleetHandlers {
+  templates: CommandHandlerFn;
   install: CommandHandlerFn;
   update: CommandHandlerFn;
   list: CommandHandlerFn;
@@ -73,7 +74,7 @@ export interface AgentHandlers {
   logs: CommandHandlerFn;
   events: CommandHandlerFn;
   steer: CommandHandlerFn;
-  credential: AgentCredentialHandlers;
+  credential: FleetCredentialHandlers;
 }
 
 export interface MemoryHandlers {
@@ -87,11 +88,11 @@ export interface Handlers {
   auth: AuthHandlers;
   doctor: CommandHandlerFn;
   workspace: WorkspaceHandlers;
-  agentKey: AgentKeyHandlers;
+  fleetKey: FleetKeyHandlers;
   grant: GrantHandlers;
   tenant: TenantHandlers;
   billing: BillingHandlers;
-  agent: AgentHandlers;
+  fleet: FleetHandlers;
   memory: MemoryHandlers;
 }
 

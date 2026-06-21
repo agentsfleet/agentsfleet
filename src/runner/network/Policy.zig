@@ -25,6 +25,7 @@
 //! `EgressScope` wiring lands.
 
 const std = @import("std");
+const client_errors = @import("../engine/client_errors.zig");
 const log = @import("log").scoped(.egress_policy);
 
 const ALLOW_ALL = "allow_all";
@@ -68,7 +69,7 @@ pub fn fromSlice(raw: []const u8) Mode {
     if (std.ascii.eqlIgnoreCase(raw, ALLOW_ALL)) return .allow_all;
     if (std.ascii.eqlIgnoreCase(raw, DENY_ALL_EGRESS)) return .deny_all_egress;
     if (std.ascii.eqlIgnoreCase(raw, ALLOW_LIST_EGRESS)) return .allow_list_egress;
-    log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = ALLOW_ALL });
+    log.warn("network_policy_unrecognized", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .value = raw, .fallback = ALLOW_ALL });
     return .allow_all;
 }
 

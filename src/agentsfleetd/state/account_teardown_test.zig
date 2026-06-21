@@ -5,10 +5,10 @@
 //! `openTestConn` gate). The test conn is the DB superuser, so the purge's
 //! cross-schema DELETEs and the memory seed/count run directly without SET ROLE.
 //!
-//! Regression target: `memory.memory_entries` carries no FK to `core.agents`,
-//! so a seeded memory row survives the workspace/agent deletes and is removed
-//! ONLY by the teardown's explicit `DELETE ... WHERE agent_id IN (...)`. That
-//! DELETE keys on `agent_id` (UUID) after the `instance_id` column was dropped;
+//! Regression target: `memory.memory_entries` carries no FK to `core.fleets`,
+//! so a seeded memory row survives the workspace/fleet deletes and is removed
+//! ONLY by the teardown's explicit `DELETE ... WHERE fleet_id IN (...)`. That
+//! DELETE keys on `fleet_id` (UUID) after the `instance_id` column was dropped;
 //! a stale-column DELETE would error the whole purge (returns error, not true).
 
 const std = @import("std");
@@ -24,12 +24,12 @@ const OIDC: []const u8 = "oidc-account-teardown-purge-01";
 const TENANT_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000001";
 const USER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000002";
 const WORKSPACE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000003";
-const AGENTSFLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000004";
+const FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000004";
 
-fn countMemory(conn: *pg.Conn, agent_id: []const u8) !i64 {
+fn countMemory(conn: *pg.Conn, fleet_id: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::BIGINT FROM memory.memory_entries WHERE agent_id = $1::uuid",
-        .{agent_id},
+        "SELECT COUNT(*)::BIGINT FROM memory.memory_entries WHERE fleet_id = $1::uuid",
+        .{fleet_id},
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
@@ -47,14 +47,14 @@ fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
 }
 
 /// Best-effort teardown of the fixture. FK-safe order: memory (no FK) and
-/// agent first, then workspace, then membership/user, then tenant.
+/// fleet first, then workspace, then membership/user, then tenant.
 fn cleanup(conn: *pg.Conn) void {
     const stmts = [_][]const u8{
-        "DELETE FROM memory.memory_entries WHERE agent_id = $1::uuid",
-        "DELETE FROM core.agents WHERE id = $1::uuid",
+        "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid",
+        "DELETE FROM core.fleets WHERE id = $1::uuid",
     };
     inline for (stmts) |s| {
-        _ = conn.exec(s, .{AGENTSFLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+        _ = conn.exec(s, .{FLEET_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     }
     _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.memberships WHERE user_id = $1::uuid", .{USER_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -73,7 +73,7 @@ const RB_OIDC: []const u8 = "oidc-account-teardown-rollback-01";
 const RB_TENANT_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000031";
 const RB_USER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000032";
 const RB_WORKSPACE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000033";
-const RB_AGENTSFLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000034";
+const RB_FLEET_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000034";
 const RB_GATE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000035";
 const RB_MEMORY_UID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000036";
 const RB_RUNNER_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000037";
@@ -89,30 +89,30 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
     , .{RB_TENANT_ID});
     _ = try conn.exec(
         \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-rollback@test.agent', 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown-rollback@test.fleet', 0, 0)
         \\ON CONFLICT (user_id) DO NOTHING
     , .{ RB_USER_ID, RB_TENANT_ID, RB_OIDC });
     try base.seedWorkspaceWithTenant(conn, RB_WORKSPACE_ID, RB_TENANT_ID);
-    try base.seedAgent(conn, RB_AGENTSFLEET_ID, RB_WORKSPACE_ID, "teardown-rollback", "{}", "# z");
-    // An approval gate on the victim's own agent — exercises the purge's
+    try base.seedFleet(conn, RB_FLEET_ID, RB_WORKSPACE_ID, "teardown-rollback", "{}", "# z");
+    // An approval gate on the victim's own fleet — exercises the purge's
     // append-only bypass in both the rollback and the success tests.
     _ = try conn.exec(
-        \\INSERT INTO core.agent_approval_gates
-        \\  (id, agent_id, workspace_id, action_id, tool_name, action_name, gate_kind,
+        \\INSERT INTO core.fleet_approval_gates
+        \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
         \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
         \\   detail, requested_at, created_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-rollback-test', 'bash', 'rm',
         \\        'destructive_action', 'n/a', '{}'::jsonb, 'n/a', 9999999999999, '',
         \\        'pending', '', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ RB_GATE_ID, RB_AGENTSFLEET_ID, RB_WORKSPACE_ID });
+    , .{ RB_GATE_ID, RB_FLEET_ID, RB_WORKSPACE_ID });
     // A memory row the purge deletes BEFORE it reaches the injected failure —
     // its survival after the error is the rollback proof.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, agent_id, created_at, updated_at)
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-rollback-canary', 'canary', 'must survive the rollback', 'core', $2::uuid, 1700000000000, 1700000000000)
         \\ON CONFLICT (uid) DO NOTHING
-    , .{ RB_MEMORY_UID, RB_AGENTSFLEET_ID });
+    , .{ RB_MEMORY_UID, RB_FLEET_ID });
     // Fleet rows: no FK into core, swept only by the purge's explicit fleet
     // DELETEs. The runner row is shared host infrastructure and must SURVIVE.
     _ = try conn.exec(
@@ -124,15 +124,15 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
     , .{RB_RUNNER_ID});
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, agent_id, last_runner_id, fencing_seq, leased_until,
+        \\  (id, fleet_id, last_runner_id, fencing_seq, leased_until,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
-        \\ON CONFLICT (agent_id) DO NOTHING
-    , .{ RB_AFFINITY_ID, RB_AGENTSFLEET_ID, RB_RUNNER_ID });
+        \\ON CONFLICT (fleet_id) DO NOTHING
+    , .{ RB_AFFINITY_ID, RB_FLEET_ID, RB_RUNNER_ID });
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
-        \\  (id, runner_id, agent_id, workspace_id, tenant_id, event_id, actor,
+        \\  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor,
         \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
@@ -140,7 +140,7 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
         \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ RB_LEASE_ID, RB_RUNNER_ID, RB_AGENTSFLEET_ID, RB_WORKSPACE_ID, RB_TENANT_ID, RB_EVENT_ID });
+    , .{ RB_LEASE_ID, RB_RUNNER_ID, RB_FLEET_ID, RB_WORKSPACE_ID, RB_TENANT_ID, RB_EVENT_ID });
     _ = try conn.exec(
         \\INSERT INTO fleet.metering_periods
         \\  (uid, event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
@@ -155,10 +155,10 @@ fn seedRollbackAccount(conn: *pg.Conn) !void {
 fn cleanupRollbackAccount(conn: *pg.Conn) void {
     _ = teardown.purgeByOidcSubject(conn, std.testing.allocator, RB_OIDC) catch |err|
         std.log.warn("ignored: {s}", .{@errorName(err)});
-    execIgnoreTd(conn, "DELETE FROM memory.memory_entries WHERE agent_id = $1::uuid", RB_AGENTSFLEET_ID);
+    execIgnoreTd(conn, "DELETE FROM memory.memory_entries WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID);
-    execIgnoreTd(conn, "DELETE FROM fleet.runner_affinity WHERE agent_id = $1::uuid", RB_AGENTSFLEET_ID);
+    execIgnoreTd(conn, "DELETE FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID);
     execIgnoreTd(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID);
     execIgnoreTd(conn, "DELETE FROM core.tenants WHERE tenant_id = $1::uuid", RB_TENANT_ID);
 }
@@ -182,7 +182,7 @@ test "integration: a mid-purge failure rolls back — no partial deletes, conn s
     cleanupRollbackAccount(conn);
     try seedRollbackAccount(conn);
     defer cleanupRollbackAccount(conn);
-    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_AGENTSFLEET_ID));
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_FLEET_ID));
 
     // Deterministic mid-purge failure: every DELETE on core.users raises until
     // the trigger is dropped. The purge deletes telemetry, memory, and gates
@@ -197,7 +197,7 @@ test "integration: a mid-purge failure rolls back — no partial deletes, conn s
 
     // No partial deletes: the memory row deleted before the failure is back,
     // and the user row was never reached.
-    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_AGENTSFLEET_ID));
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_FLEET_ID));
     try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, RB_OIDC));
 
     // Conn healthy: not stuck in an aborted transaction — with the old
@@ -224,11 +224,11 @@ test "integration: purge succeeds for an account with approval gates (append-onl
     try std.testing.expect(purged);
 
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, RB_OIDC));
-    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.agent_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
+    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM core.fleet_approval_gates WHERE id = $1::uuid", RB_GATE_ID));
     // Fleet sweep: lease + affinity + metering rows are gone; the shared
     // runner row survives (host infrastructure, not tenant data).
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_leases WHERE id = $1::uuid", RB_LEASE_ID));
-    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_affinity WHERE agent_id = $1::uuid", RB_AGENTSFLEET_ID));
+    try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runner_affinity WHERE fleet_id = $1::uuid", RB_FLEET_ID));
     try std.testing.expectEqual(@as(i64, 0), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.metering_periods WHERE event_id = $1", RB_EVENT_ID));
     try std.testing.expectEqual(@as(i64, 1), try countByUuid(conn, "SELECT COUNT(*)::BIGINT FROM fleet.runners WHERE id = $1::uuid", RB_RUNNER_ID));
 }
@@ -249,25 +249,25 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
     cleanup(conn); // start clean even if a prior run aborted mid-test
     defer cleanup(conn);
 
-    // Seed a full account: tenant -> user -> workspace -> agent.
+    // Seed a full account: tenant -> user -> workspace -> fleet.
     _ = try conn.exec(
         \\INSERT INTO core.tenants (tenant_id, name, created_at, updated_at)
         \\VALUES ($1::uuid, 'teardown-victim', 0, 0)
     , .{TENANT_ID});
     _ = try conn.exec(
         \\INSERT INTO core.users (user_id, tenant_id, oidc_subject, email, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown@test.agent', 0, 0)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'teardown@test.fleet', 0, 0)
     , .{ USER_ID, TENANT_ID, OIDC });
     try base.seedWorkspaceWithTenant(conn, WORKSPACE_ID, TENANT_ID);
-    try base.seedAgent(conn, AGENTSFLEET_ID, WORKSPACE_ID, "teardown-victim", "{}", "# z");
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "teardown-victim", "{}", "# z");
 
-    // Seed one memory row for the agent. No FK to core.agents, so only the
+    // Seed one memory row for the fleet. No FK to core.fleets, so only the
     // teardown's explicit DELETE removes it.
     _ = try conn.exec(
-        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, agent_id, created_at, updated_at)
+        \\INSERT INTO memory.memory_entries (uid, id, key, content, category, fleet_id, created_at, updated_at)
         \\VALUES ('0195b4ba-8d3a-7f13-8abc-c00000000011'::uuid, $1, 'canary', 'should not survive teardown', 'core', $2::uuid, 1700000000000, 1700000000000)
-    , .{ "account-teardown-canary", AGENTSFLEET_ID });
-    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, AGENTSFLEET_ID));
+    , .{ "account-teardown-canary", FLEET_ID });
+    try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, FLEET_ID));
 
     // Purge the account by its oidc_subject.
     const purged = try teardown.purgeByOidcSubject(conn, std.testing.allocator, OIDC);
@@ -275,6 +275,6 @@ test "integration: purgeByOidcSubject removes the account's memory entries" {
 
     // The memory row is gone (regression target) and the cascade reached the
     // user — proving every statement before the user delete (incl. memory) ran.
-    try std.testing.expectEqual(@as(i64, 0), try countMemory(conn, AGENTSFLEET_ID));
+    try std.testing.expectEqual(@as(i64, 0), try countMemory(conn, FLEET_ID));
     try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC));
 }

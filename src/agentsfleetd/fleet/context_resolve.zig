@@ -1,4 +1,4 @@
-//! Resolve the shared `ContextBudget` from a parsed `AgentConfig`.
+//! Resolve the shared `ContextBudget` from a parsed `FleetConfig`.
 //!
 //! Lifted from the worker's `event_loop_helpers.zig` at the M80 cutover onto
 //! the lease verb's per-event prep. The wiring is small (frontmatter overrides
@@ -8,37 +8,37 @@
 
 const std = @import("std");
 const context_budget = @import("contract").execution_policy;
-const config_types = @import("../agent/config_types.zig");
+const config_types = @import("../fleet_runtime/config_types.zig");
 
-// Drift guard: every field on the parser-side `AgentContextBudget` must
+// Drift guard: every field on the parser-side `FleetContextBudget` must
 // exist on the runner-side `ContextBudget` at the same name + type, OR
 // the field-by-field copy below silently drops the operator override at
 // trigger time. Adding `max_tool_calls` to `ContextBudget` without a
-// matching `AgentContextBudget` field is a separate failure mode (the
+// matching `FleetContextBudget` field is a separate failure mode (the
 // new knob would be runtime-only, never frontmatter-overridable) — caught
 // by the inverse check.
 comptime {
-    const ZB = config_types.AgentContextBudget;
+    const ZB = config_types.FleetContextBudget;
     const CB = context_budget.ContextBudget;
     const zb_fields = std.meta.fields(ZB);
     for (zb_fields) |f| {
         if (!@hasField(CB, f.name)) {
-            @compileError("AgentContextBudget field '" ++ f.name ++ "' missing from ContextBudget — pair them or rename");
+            @compileError("FleetContextBudget field '" ++ f.name ++ "' missing from ContextBudget — pair them or rename");
         }
         const cb_field_type = @FieldType(CB, f.name);
         if (cb_field_type != f.type) {
-            @compileError("AgentContextBudget." ++ f.name ++ " type drifts from ContextBudget." ++ f.name ++ " — pair them");
+            @compileError("FleetContextBudget." ++ f.name ++ " type drifts from ContextBudget." ++ f.name ++ " — pair them");
         }
     }
     // Inverse guard: any new ContextBudget field that LOOKS like a
     // frontmatter knob (numeric, non-`model`) but isn't paired in
-    // AgentContextBudget would silently be runtime-only forever.
-    // Pin AgentContextBudget's size so a agent-side addition without
+    // FleetContextBudget would silently be runtime-only forever.
+    // Pin FleetContextBudget's size so a fleet-side addition without
     // a matching parser entry trips this assert in the same commit.
     std.debug.assert(@sizeOf(ZB) == 16);
 }
 
-/// Build a fully-resolved `ContextBudget` from the agent's parsed config.
+/// Build a fully-resolved `ContextBudget` from the fleet's parsed config.
 /// Per-field, independent resolution (see `user_flow.md`): a present
 /// frontmatter value wins (non-zero `context_cap_tokens`, non-empty `model`);
 /// a sentinel (`context_cap_tokens: 0` / `model: ""` / absent) overlays from
@@ -49,7 +49,7 @@ comptime {
 /// overlay is then a no-op and an unresolved cap leaves `tool_window` at the
 /// mid tier with L3 chunking inert (it needs a non-zero cap).
 pub fn resolveContextBudget(
-    config_ctx: ?config_types.AgentContextBudget,
+    config_ctx: ?config_types.FleetContextBudget,
     config_model: ?[]const u8,
     overlay_cap: u32,
     overlay_model: []const u8,

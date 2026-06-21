@@ -14,18 +14,18 @@ test "removed workspace billing routes are 404 (pre-v2.0 per RULE EP4)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/events", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/scale", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/billing/summary", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_1/agents/z_1/billing/summary", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_1/fleets/z_1/billing/summary", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
 }
 
-test "match rejects /v1/agents paths after agent_profiles removal" {
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores", .GET) == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report", .GET) == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals", .GET) == null);
-    try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/c1:revert", .GET) == null);
-    try std.testing.expect(match("/v1/agents/", .GET) == null);
-    try std.testing.expect(match("/v1/agents/foo/bar/scores", .GET) == null);
+test "match rejects /v1/fleets paths after fleet_profiles removal" {
+    try std.testing.expect(match("/v1/fleets/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/proposals", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/harness/changes/c1:revert", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/foo/bar/scores", .GET) == null);
 }
 
 test "match resolves auth routes" {
@@ -72,7 +72,7 @@ test "match resolves auth routes" {
 }
 
 // Memory API moved from /v1/memory/{store,recall,list,forget} to
-// workspace-scoped /v1/workspaces/{ws}/agents/{zid}/memories[/{key}].
+// workspace-scoped /v1/workspaces/{ws}/fleets/{zid}/memories[/{key}].
 // The retired top-level paths must 404.
 test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
     try std.testing.expect(match("/v1/memory/store", .POST) == null);
@@ -81,15 +81,15 @@ test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
     try std.testing.expect(match("/v1/memory/forget", .POST) == null);
 }
 
-test "match resolves /v1/workspaces/{ws}/agents/{zid}/memories collection" {
-    switch (match("/v1/workspaces/ws1/agents/z1/memories", .GET).?) {
-        .workspace_agent_memories => |r| {
+test "match resolves /v1/workspaces/{ws}/fleets/{zid}/memories collection" {
+    switch (match("/v1/workspaces/ws1/fleets/z1/memories", .GET).?) {
+        .workspace_fleet_memories => |r| {
             try std.testing.expectEqualStrings("ws1", r.workspace_id);
-            try std.testing.expectEqualStrings("z1", r.agent_id);
+            try std.testing.expectEqualStrings("z1", r.fleet_id);
         },
         else => return error.TestExpectedEqual,
     }
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/memories/", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/z1/memories/", .GET) == null);
 }
 
 // /v1/runs/* routes removed (pipeline v1) — get_run, retry_run, replay_run,
@@ -128,48 +128,70 @@ test "match returns null for removed spec relay routes" {
 // ── webhook route tests ───────────────────────────────────────────────────
 
 test "webhook routes resolve and reject correctly" {
-    const agent_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const fleet_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     // Webhook tests for matchWebhookRoute are in route_matchers.zig.
     // Test via match() integration:
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(agent_id, switch (route) {
+    try std.testing.expectEqualStrings(fleet_id, switch (route) {
         .receive_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
 }
 
-// ── agent CRUD route tests ───────────────────────────────────────────────
+// ── fleet CRUD route tests ───────────────────────────────────────────────
 
-test "match resolves workspace-scoped agent collection" {
+test "match resolves workspace-scoped fleet collection" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents", .GET).?) {
-        .workspace_agents => |id| id,
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets", .GET).?) {
+        .workspace_fleets => |id| id,
         else => return error.TestExpectedEqual,
     });
 }
 
-test "match: flat /v1/agents/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
-    try std.testing.expect(match("/v1/agents/", .GET) == null);
+test "match resolves Fleet Bundle routes under fleets" {
+    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const bundle_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+
+    try std.testing.expectEqual(Route.fleet_bundles, match("/v1/fleets/bundles", .GET).?);
+    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots", .POST).?) {
+        .workspace_fleet_bundles => |id| id,
+        else => return error.TestExpectedEqual,
+    });
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles/snapshots/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?) {
+        .workspace_fleet_bundle => |route| {
+            try std.testing.expectEqualStrings(ws_id, route.workspace_id);
+            try std.testing.expectEqualStrings(bundle_id, route.bundle_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+
+    try std.testing.expect(match("/v1/fleet-bundles", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleet-bundles", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/bundles", .POST) == null);
 }
 
-test "workspace-scoped agent PATCH resolves to patch_workspace_agent" {
+test "match: flat /v1/fleets/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
+    try std.testing.expect(match("/v1/fleets/", .GET) == null);
+}
+
+test "workspace-scoped fleet PATCH resolves to patch_workspace_fleet" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?;
+    const r = match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET).?;
     switch (r) {
-        .patch_workspace_agent => |route| {
+        .patch_workspace_fleet => |route| {
             try std.testing.expectEqualStrings(ws_id, route.workspace_id);
-            try std.testing.expectEqualStrings(zid, route.agent_id);
+            try std.testing.expectEqualStrings(zid, route.fleet_id);
         },
         else => return error.TestExpectedEqual,
     }
 }
 
-test "retired path: /v1/workspaces/{ws}/agents/{id}/kill no longer resolves" {
-    // All status transitions fold into PATCH /agents/{id} with body
+test "retired path: /v1/workspaces/{ws}/fleets/{id}/kill no longer resolves" {
+    // All status transitions fold into PATCH /fleets/{id} with body
     // {status: "active" | "stopped" | "killed"}. Verb-suffix paths (/kill,
     // /stop, /current-run) all 404.
-    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
 test "match resolves workspace-scoped credentials collection" {
@@ -178,24 +200,24 @@ test "match resolves workspace-scoped credentials collection" {
         .workspace_credentials => |id| id,
         else => return error.TestExpectedEqual,
     });
-    try std.testing.expect(match("/v1/agents/credentials", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/credentials", .GET) == null);
 }
 
-test "match: flat /v1/agents/{id} DELETE path is removed (bare 404 per RULE EP4)" {
-    try std.testing.expect(match("/v1/agents/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
+test "match: flat /v1/fleets/{id} DELETE path is removed (bare 404 per RULE EP4)" {
+    try std.testing.expect(match("/v1/fleets/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
 }
 
-test "match: agent routes reject invalid paths" {
-    try std.testing.expect(match("/v1/agents/a/b", .GET) == null);
-    try std.testing.expect(match("/v1/agents", .GET) == null);
+test "match: fleet routes reject invalid paths" {
+    try std.testing.expect(match("/v1/fleets/a/b", .GET) == null);
+    try std.testing.expect(match("/v1/fleets", .GET) == null);
 }
 
 // ── approval gate route tests ─────────────────────────────────────────────
 
 test "match: approval webhook route resolves correctly" {
-    const agent_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
+    const fleet_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/approval", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings(agent_id, switch (route) {
+    try std.testing.expectEqualStrings(fleet_id, switch (route) {
         .approval_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
@@ -226,7 +248,7 @@ test "match: approval route resolves before webhook route" {
 
 test "matchWebhookAction excludes reserved literals at slot 1" {
     // /v1/webhooks/{reserved}/approval must NOT dispatch to .approval_webhook
-    // with agent_id={reserved}. Symmetric with matchWebhook's reserved-segment
+    // with fleet_id={reserved}. Symmetric with matchWebhook's reserved-segment
     // guard. (svix is excluded by matchWebhookAction too, but svix paths route
     // to the svix family via matchSvixWebhook — so they're tested separately.)
     const cases = [_][]const u8{
@@ -244,7 +266,7 @@ test "matchWebhookAction excludes reserved literals at slot 1" {
     }
 }
 
-test "svix webhook route resolves with agent_id" {
+test "svix webhook route resolves with fleet_id" {
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/svix/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zid, switch (route) {
@@ -254,7 +276,7 @@ test "svix webhook route resolves with agent_id" {
 }
 
 test "svix route takes precedence over generic /v1/webhooks/{id}/{secret}" {
-    // /v1/webhooks/svix/{id} must NOT be interpreted as {agent_id=svix, secret=id}.
+    // /v1/webhooks/svix/{id} must NOT be interpreted as {fleet_id=svix, secret=id}.
     const route = match("/v1/webhooks/svix/zomb-abc", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
         .receive_svix_webhook => |id| try std.testing.expectEqualStrings("zomb-abc", id),
@@ -262,7 +284,7 @@ test "svix route takes precedence over generic /v1/webhooks/{id}/{secret}" {
     }
 }
 
-test "svix route rejects empty and multi-segment agent_id" {
+test "svix route rejects empty and multi-segment fleet_id" {
     try std.testing.expect(match("/v1/webhooks/svix/", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/svix/a/b", .GET) == null);
 }
@@ -308,33 +330,33 @@ test "retired path: /v1/workspaces/{ws}/sync no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/ws_123/sync", .GET) == null);
 }
 
-test "custom-method subpath: agent /messages resolves" {
+test "custom-method subpath: fleet /messages resolves" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    const route = match("/v1/workspaces/ws_abc/agents/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
+    const route = match("/v1/workspaces/ws_abc/fleets/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
-        .workspace_agent_messages => |r| {
+        .workspace_fleet_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
-            try std.testing.expectEqualStrings(zid, r.agent_id);
+            try std.testing.expectEqualStrings(zid, r.fleet_id);
         },
         else => return error.TestExpectedEqual,
     }
 }
 
-test "retired path: agent /current-run no longer resolves" {
+test "retired path: fleet /current-run no longer resolves" {
     // /current-run was the singleton-sub-resource form for stop. After the
-    // PATCH FSM unification (status: stopped|active|killed on the agent
+    // PATCH FSM unification (status: stopped|active|killed on the fleet
     // resource itself), /current-run is gone — must not match.
-    try std.testing.expect(match("/v1/workspaces/ws_abc/agents/z_xyz/current-run", .DELETE) == null);
-    try std.testing.expect(match("/v1/workspaces/ws_abc/agents/z_xyz/current-run", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/fleets/z_xyz/current-run", .DELETE) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/fleets/z_xyz/current-run", .GET) == null);
 }
 
-test "retired path: /stop no longer resolves as a agent action" {
+test "retired path: /stop no longer resolves as a fleet action" {
     // /stop was the pre-hygiene path-verb form. With both /stop and
-    // /current-run retired in favor of PATCH /agents/{id} {status:"stopped"},
+    // /current-run retired in favor of PATCH /fleets/{id} {status:"stopped"},
     // this path must return null.
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/stop", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/stop", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/z1/stop", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/z1/stop", .POST) == null);
 }
 
 test "custom-method regression: old colon-action forms no longer hit the migrated routes" {
@@ -357,14 +379,14 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
         .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
-    const messages_colon_old = match("/v1/workspaces/ws1/agents/z1:messages", .POST);
+    const messages_colon_old = match("/v1/workspaces/ws1/fleets/z1:messages", .POST);
     if (messages_colon_old) |r| switch (r) {
-        .workspace_agent_messages => return error.TestExpectedNotAction,
+        .workspace_fleet_messages => return error.TestExpectedNotAction,
         else => {},
     };
-    const stop_old = match("/v1/workspaces/ws1/agents/z1:stop", .POST);
+    const stop_old = match("/v1/workspaces/ws1/fleets/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_agent_messages => return error.TestExpectedNotAction,
+        .workspace_fleet_messages => return error.TestExpectedNotAction,
         else => {},
     };
     // /v1/workspaces/ws1:pause used to be the colon-op form (POST). With
@@ -388,8 +410,8 @@ test "webhook action routes: approval / grant-approval / svix / github dispatch 
         .grant_approval_webhook => {},
         else => return error.TestExpectedEqual,
     }
-    // "svix" as slot-1 is the Svix route prefix, not a agent_id.
-    // /v1/webhooks/svix/{id} means "svix-signed webhook for agent {id}".
+    // "svix" as slot-1 is the Svix route prefix, not a fleet_id.
+    // /v1/webhooks/svix/{id} means "svix-signed webhook for fleet {id}".
     const svix = match("/v1/webhooks/svix/zid", .GET) orelse return error.TestExpectedMatch;
     switch (svix) {
         .receive_svix_webhook => {},
@@ -407,8 +429,8 @@ test "custom-method subpath: trailing segments after action are rejected" {
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/github/extra", .POST) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/messages/extra", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/agents/z1/current-run/extra", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/z1/messages/extra", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets/z1/current-run/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/sync/extra", .GET) == null);
 }
@@ -416,8 +438,8 @@ test "custom-method subpath: trailing segments after action are rejected" {
 test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/webhooks//approval", .GET) == null);
     try std.testing.expect(match("/v1/webhooks//grant-approval", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces//agents/z1/messages", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/agents//current-run", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces//fleets/z1/messages", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/fleets//current-run", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//pause", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);
 }
@@ -435,20 +457,20 @@ test "runner control-plane routes resolve (static, identity-from-token paths)" {
 
 test "fleet operator-plane runner PATCH extracts the runner id" {
     const runner_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
-    const r = match("/v1/fleet/runners/0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002", .PATCH).?;
+    const r = match("/v1/fleets/runners/0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002", .PATCH).?;
     try std.testing.expect(r == .fleet_runner_patch);
     try std.testing.expectEqualStrings(runner_id, r.fleet_runner_patch);
-    try std.testing.expect(match("/v1/fleet/runners/", .PATCH) == null);
-    try std.testing.expect(match("/v1/fleet/runners/r1/events", .PATCH) == null);
+    try std.testing.expect(match("/v1/fleets/runners/", .PATCH) == null);
+    try std.testing.expect(match("/v1/fleets/runners/r1/events", .PATCH) == null);
 }
 
 test "fleet operator-plane runner events extracts the runner id" {
     const runner_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002";
-    const r = match("/v1/fleet/runners/0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002/events", .GET).?;
+    const r = match("/v1/fleets/runners/0195b4ba-8d3a-7f13-8abc-2b3e1e0a7002/events", .GET).?;
     try std.testing.expect(r == .fleet_runner_events);
     try std.testing.expectEqualStrings(runner_id, r.fleet_runner_events);
-    try std.testing.expect(match("/v1/fleet/runners//events", .GET) == null);
-    try std.testing.expect(match("/v1/fleet/runners/r1/events/extra", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/runners//events", .GET) == null);
+    try std.testing.expect(match("/v1/fleets/runners/r1/events/extra", .GET) == null);
 }
 
 test "runner control-plane rejects malformed sibling paths (404, no runner_id shape)" {
@@ -466,4 +488,16 @@ test "runner activity route extracts the lease_id path param" {
     // A wrong suffix or a bare {id} is not the activity route.
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc/unknown", .POST) == null);
     try std.testing.expect(match("/v1/runners/me/leases/lease-abc", .POST) == null);
+}
+
+test "runner bundle route extracts the content_hash path param" {
+    const hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const r = match("/v1/runners/me/bundles/" ++ hash, .GET).?;
+    try std.testing.expect(r == .runner_bundle);
+    try std.testing.expectEqualStrings(hash, r.runner_bundle);
+    // All methods map to the route; the invoke fn enforces GET (405 otherwise).
+    try std.testing.expect(match("/v1/runners/me/bundles/" ++ hash, .POST).? == .runner_bundle);
+    // Bare and over-long paths do not match.
+    try std.testing.expect(match("/v1/runners/me/bundles", .GET) == null);
+    try std.testing.expect(match("/v1/runners/me/bundles/" ++ hash ++ "/extra", .GET) == null);
 }

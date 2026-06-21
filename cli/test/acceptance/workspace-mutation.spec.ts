@@ -10,11 +10,11 @@
  *   1. round-trip — `workspace add` → `workspace list` contains it →
  *      `workspace use` → `workspace show` reflects active →
  *      `workspace delete` (LOCAL store removal) → list excludes it.
- *   2. scope isolation — two created workspaces; a prefix-named agent
+ *   2. scope isolation — two created workspaces; a prefix-named fleet
  *      installed into WS-A appears under WS-A's scope and is ABSENT under
- *      WS-B's scope (server enforces workspace-scoped agent reads). The
+ *      WS-B's scope (server enforces workspace-scoped fleet reads). The
  *      presence/absence verdict keys off the install envelope's
- *      `agent_id` (always emitted by `agent install --json`), not the
+ *      `fleet_id` (always emitted by `fleet install --json`), not the
  *      display name — id is the stronger invariant.
  *
  * The minted JWT must never appear in stdout/stderr — `assertNoSecretLeak`
@@ -24,14 +24,14 @@
  * LOCAL store only — `src/commands/workspace.ts` issues no DELETE and the
  * server-side workspace persists. So every created workspace is permanent
  * residue in the shared DEV tenant; names are `ACCEPTANCE_RUN_PREFIX`-scoped
- * to keep that residue attributable, and the agents installed inside are
- * torn down via `cleanWorkspaceAgents`.
+ * to keep that residue attributable, and the fleets installed inside are
+ * torn down via `cleanWorkspaceFleets`.
  *
- * Teardown caveat: `cleanWorkspaceAgents` lists the *current* workspace and
+ * Teardown caveat: `cleanWorkspaceFleets` lists the *current* workspace and
  * filters by `workspace_id`, so this suite switches the active workspace to
  * each created workspace (`workspace use`) BEFORE cleaning it — otherwise the
- * agent never appears in the listing and the kill is skipped, leaking a live
- * agent into the shared tenant.
+ * fleet never appears in the listing and the kill is skipped, leaking a live
+ * fleet into the shared tenant.
  *
  * Live-only: the suite registers only when `AGENTSFLEET_ACCEPTANCE_TARGET` is
  * an https URL; otherwise every test is skipped (matches the unit runner's
@@ -45,7 +45,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { ACCEPTANCE_RUN_PREFIX, TERMINAL_STATUSES } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
@@ -55,8 +55,8 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   WS_ID_KEY,
   WS_SHOW_ACTIVE_KEY,
@@ -67,9 +67,9 @@ import {
   addWorkspace,
   listWorkspaces,
   useWorkspace,
-  listAgentsIn,
-  agentIdOf,
-  hasAgentWithId,
+  listFleetsIn,
+  fleetIdOf,
+  hasFleetWithId,
 } from "./fixtures/workspace-ops.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
@@ -94,7 +94,7 @@ if (!isLive) {
     const createdWorkspaceIds = new Set<string>();
 
     async function runWithEnv(args: ReadonlyArray<string>): Promise<RunResult> {
-      const result = await runAgentctl(args, { env });
+      const result = await runFleetctl(args, { env });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -117,15 +117,15 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      // Kill this run's agents in every workspace we created. The teardown
+      // Kill this run's fleets in every workspace we created. The teardown
       // helper lists the CURRENT workspace, so switch to each created one
-      // first — otherwise its agents never appear in the listing and the
+      // first — otherwise its fleets never appear in the listing and the
       // kill is skipped (live residue in the shared DEV tenant). Best-effort:
       // a failed kill must not mask the test verdict.
       for (const wsId of createdWorkspaceIds) {
         try {
           await useWorkspace(env, wsId);
-          await cleanWorkspaceAgents(env, { workspaceId: wsId, runPrefix: ACCEPTANCE_RUN_PREFIX });
+          await cleanWorkspaceFleets(env, { workspaceId: wsId, runPrefix: ACCEPTANCE_RUN_PREFIX });
         } catch { /* best-effort teardown */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
@@ -174,7 +174,7 @@ if (!isLive) {
         assert.equal(parsed[WS_DELETE_KEY], createdId,
           `workspace delete ${WS_DELETE_KEY} mismatch: ${result.stdout}`);
         // The server workspace persists (no DELETE route); drop it from the
-        // teardown set only because no agent was ever installed inside it.
+        // teardown set only because no fleet was ever installed inside it.
         createdWorkspaceIds.delete(createdId);
       });
 
@@ -190,7 +190,7 @@ if (!isLive) {
     describe("scope isolation across two workspaces", () => {
       let wsA = "";
       let wsB = "";
-      let agentId = "";
+      let fleetId = "";
 
       it("create two distinct workspaces", async () => {
         const a = await addWorkspace(env, WS_A_NAME);
@@ -202,44 +202,44 @@ if (!isLive) {
         assert.notEqual(wsA, wsB, "the two created workspaces must have distinct ids");
       });
 
-      it("install a prefix-named agent into WS-A", async () => {
+      it("install a prefix-named fleet into WS-A", async () => {
         // install targets the *current* workspace (no --workspace flag on
         // the install command), so select WS-A first.
         await useWorkspace(env, wsA);
-        const installed = await installPlatformOpsAgent({ env, timeoutMs: INSTALL_TIMEOUT_MS });
-        agentId = agentIdOf(installed);
+        const installed = await installPlatformOpsFleet({ env, timeoutMs: INSTALL_TIMEOUT_MS });
+        fleetId = fleetIdOf(installed);
         const installedName = installed[AGENT_NAME_KEY];
         assert.ok(
           typeof installedName === "string" && installedName.startsWith(ACCEPTANCE_RUN_PREFIX),
-          `installed agent name must carry the run prefix: ${JSON.stringify(installed)}`,
+          `installed fleet name must carry the run prefix: ${JSON.stringify(installed)}`,
         );
       }, INSTALL_TIMEOUT_MS);
 
-      it("the agent appears under WS-A scope", async () => {
-        const rows = await listAgentsIn(env, wsA);
-        assert.ok(hasAgentWithId(rows, agentId),
-          `expected agent ${agentId} in WS-A (${wsA}); got: ` +
+      it("the fleet appears under WS-A scope", async () => {
+        const rows = await listFleetsIn(env, wsA);
+        assert.ok(hasFleetWithId(rows, fleetId),
+          `expected fleet ${fleetId} in WS-A (${wsA}); got: ` +
           `${JSON.stringify(rows.map((r) => r[AGENT_ID_KEY] ?? r.id))}`);
       });
 
-      it("the agent is ABSENT under WS-B scope", async () => {
-        const rows = await listAgentsIn(env, wsB);
-        assert.ok(!hasAgentWithId(rows, agentId),
-          `agent ${agentId} leaked into WS-B (${wsB}) — workspace scoping breached: ` +
+      it("the fleet is ABSENT under WS-B scope", async () => {
+        const rows = await listFleetsIn(env, wsB);
+        assert.ok(!hasFleetWithId(rows, fleetId),
+          `fleet ${fleetId} leaked into WS-B (${wsB}) — workspace scoping breached: ` +
           `${JSON.stringify(rows.map((r) => r[AGENT_ID_KEY] ?? r.id))}`);
       });
 
-      it("teardown leaves no LIVE run-prefixed agent in WS-A", async () => {
+      it("teardown leaves no LIVE run-prefixed fleet in WS-A", async () => {
         await useWorkspace(env, wsA);
-        await cleanWorkspaceAgents(env, { workspaceId: wsA, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        const rows = await listAgentsIn(env, wsA);
+        await cleanWorkspaceFleets(env, { workspaceId: wsA, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        const rows = await listFleetsIn(env, wsA);
         const mineLive = rows.filter((row) =>
           typeof row.name === "string" &&
           row.name.startsWith(ACCEPTANCE_RUN_PREFIX) &&
           !TERMINAL_STATUSES.includes(row.status ?? ""),
         );
         assert.equal(mineLive.length, 0,
-          `expected zero live run-prefixed agents in WS-A; got: ${JSON.stringify(mineLive)}`);
+          `expected zero live run-prefixed fleets in WS-A; got: ${JSON.stringify(mineLive)}`);
       }, SCOPE_TIMEOUT_MS);
     });
   });

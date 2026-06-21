@@ -1,0 +1,630 @@
+/v1/webhooks/{fleet_id}:
+  post:
+    operationId: receive_webhook
+    summary: Deliver an inbound webhook event to a Fleet
+    description: 'Delivers an inbound event to the fleet identified by `fleet_id`. The fleet is looked up by primary
+      key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace
+      credential keyed by the fleet''s `trigger.source` (e.g. vault row `fleet:linear`, field `webhook_secret`). The
+      provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is
+      verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no
+      Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200
+      `{status: "duplicate"}`. A webhook for a paused fleet returns 200 `{ignored: "fleet_paused"}` without consuming
+      the dedup slot, so redelivery after resume processes normally. A new event is enqueued to the fleet''s Redis stream
+      and returns 202.'
+    tags:
+    - Fleets
+    parameters:
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the target fleet. Obtained from `POST /v1/workspaces/{workspace_id}/fleets` or `agentsfleet install --from <path>`.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - event_id
+            - type
+            - data
+            properties:
+              event_id:
+                type: string
+                description: Unique identifier for this event. Used for idempotency deduplication (24-hour window).
+              type:
+                type: string
+                description: Event type label (e.g. `email.received`, `push`, `payment.succeeded`).
+              data:
+                type: object
+                additionalProperties: true
+                description: Event payload — any JSON object. Passed as-is into the fleet event loop.
+    responses:
+      '202':
+        description: Event accepted and enqueued for the fleet.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - event_id
+              properties:
+                status:
+                  type: string
+                  const: accepted
+                event_id:
+                  type: string
+      '200':
+        description: 'Not enqueued, intentionally. Two shapes: duplicate event (`{"status": "duplicate"}` — already processed
+          within the 24-hour dedup window) or event ignored (`{"ignored": "fleet_paused"}` — fleet is paused; the dedup
+          slot is not consumed, so redelivery after resume processes normally).'
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  const: duplicate
+                ignored:
+                  type: string
+                  description: Reason the event was ignored (e.g. `fleet_paused`).
+      '400':
+        description: Malformed payload — missing `event_id` or `type`.
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '401':
+        description: 'Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured`
+          (fleet has no recognized provider, OR the workspace has no matching `fleet:<source>` vault credential, OR
+          the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path);
+          `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or
+          the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).'
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      '404':
+        description: No active fleet is configured for this source (UZ-WH-001).
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security: []
+/v1/workspaces/{workspace_id}/fleets:
+  get:
+    operationId: list_fleets
+    summary: List fleets in a workspace
+    description: >
+      Returns fleets the caller has access to in the given workspace. Keyset
+      paginated over `(created_at DESC, id DESC)`. Omit `cursor` for the first
+      page; pass the response `cursor` back verbatim to fetch the next page.
+      `cursor` is `null` when the last page has been reached. Response envelope
+      follows the RAD §8 `items`/`total` convention (`total` is the size of
+      this page, not a global count).
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: >
+        Opaque page cursor from a prior response's `cursor` field, formatted
+        `{created_at_epoch_ms}:{fleet_id}`. Omit for the first page.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      description: Page size. Defaults to 20. Clamped to a maximum of 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - total
+              - cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetSummary
+                total:
+                  type: integer
+                  description: Count of items in this response (not total across pages).
+                cursor:
+                  type: string
+                  nullable: true
+                  description: >
+                    Opaque cursor to fetch the next page. `null` when there are
+                    no more pages.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  post:
+    operationId: create_fleet
+    summary: Create a Fleet
+    description: Creates a new Fleet from direct SKILL.md bytes or from a stored Fleet Bundle snapshot. Optional
+      TRIGGER.md bytes override the bundle trigger; otherwise the stored trigger is used, and if absent the server
+      generates a default API trigger. The server is the single parser of trigger frontmatter — `name` and the
+      persisted `config_json` are derived server-side. The Command-Line Interface (CLI) sends markdown files as raw
+      bytes; no frontmatter parsing happens client-side.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            anyOf:
+            - required:
+              - source_markdown
+            - required:
+              - bundle_id
+            properties:
+              bundle_id:
+                type: string
+                format: uuid
+                description: Optional Fleet Bundle Universally Unique Identifier (UUID). When present, the install
+                  uses the stored bundle snapshot through this same fleets endpoint.
+              trigger_markdown:
+                type: string
+                maxLength: 65536
+                description: Optional TRIGGER.md raw bytes — frontmatter (`name`, `trigger`, `tools`,
+                  `credentials`, `network`, `budget`, `gates`) between `---` delimiters. When omitted, the
+                  server derives a default API trigger from SKILL.md and persists the generated `config_json`.
+              source_markdown:
+                type: string
+                maxLength: 65536
+                description: SKILL.md raw bytes — the fleet instructions, stored as-is.
+              name:
+                type: string
+                maxLength: 64
+                description: Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen,
+                  max 64 chars). Overrides the SKILL.md-derived name so one bundle can back multiple
+                  fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`.
+    responses:
+      '201':
+        description: Created
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - fleet_id
+              - name
+              - status
+              properties:
+                fleet_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                  description: Fleet name parsed from TRIGGER.md frontmatter or the generated default trigger —
+                    the canonical identifier the user will see in `agentsfleet status` and CLI output.
+                status:
+                  type: string
+                webhook_urls:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: "Map of each webhook trigger's source → its delivery URL (`{api_url}/v1/webhooks/{fleet_id}/{source}`). Empty object when the fleet declares no webhook triggers."
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '424':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}:
+  patch:
+    operationId: patch_fleet
+    summary: Update Fleet config or drive its status FSM
+    description: |
+      Partial update of a Fleet. Body fields are optional and presence-based:
+
+      - `config_json` — replace the fleet's config blob whole; publishes
+        `fleet_config_changed`.
+      - `trigger_markdown` — replace the fleet's stored `TRIGGER.md`; the server
+        reparses the frontmatter and overlays the `x_agentsfleet.triggers` half of
+        `config_json`. The fleet's `name` is rewritten to the reparsed name.
+        Mutually exclusive with `config_json` (both drive the same column).
+      - `source_markdown` — replace the fleet's stored `SKILL.md`; the server
+        reparses the frontmatter and overlays the tools / credentials / network /
+        budget halves of `config_json`. The reparsed `name` must equal the
+        fleet's current name (renames require a fresh install).
+      - `status` — drive the lifecycle FSM. Allowed values: `active` (resume from
+        stopped or auto-paused), `stopped` (halt the running session, resumable),
+        `killed` (terminal mark, irreversible). The `paused` state is platform-only
+        (set by the anomaly gate) and rejected here.
+
+      All field-bearing branches run inside a single transaction that takes a
+      row-level `FOR UPDATE` lock on `core.fleets`, applies field-level merge
+      semantics, and commits with a single `UPDATE`. Two writers patching
+      different body fields land both halves; two writers patching the same
+      field collapse to last-write-wins. Per-transaction `lock_timeout=5s`,
+      `statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make
+      pathological waits fail fast as `503` (retryable).
+
+      The SQL UPDATE is one statement; one control-stream publish fires when any
+      dirty surface lands. Returns the new `config_revision` (a strictly
+      monotonic ms-epoch timestamp).
+
+      FSM rules:
+
+      - `killed` is terminal — any further PATCH on a killed fleet returns 404
+        (the row is a tombstone).
+      - Stop requires status ∈ {active, paused}; Resume requires status ∈
+        {stopped, paused}; Kill is allowed from any non-killed state.
+      - Disallowed transitions return 409 (e.g. resume on an active fleet).
+
+      Status transitions (stop/resume/kill) require operator-minimum role
+      per RULE BIL — destructive lifecycle actions. Pure config updates stay
+      at workspace-member.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the fleet.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              config_json:
+                type: string
+                description: |
+                  The new fleet config as a JSON string. Validated server-side.
+                  Mutually exclusive with `trigger_markdown`.
+              trigger_markdown:
+                type: string
+                description: |
+                  The full TRIGGER.md to persist; the server reparses the
+                  frontmatter and overlays the `x_agentsfleet.triggers` half of
+                  `config_json`. Must be non-empty. Mutually exclusive with
+                  `config_json`.
+              source_markdown:
+                type: string
+                description: |
+                  The full SKILL.md to persist; the server reparses the
+                  frontmatter and overlays the tools / credentials / network /
+                  budget halves of `config_json`. The reparsed `name` must
+                  match the fleet's current name. Must be non-empty.
+              status:
+                type: string
+                enum:
+                - active
+                - stopped
+                - killed
+                description: |
+                  Target FSM state. `active` resumes from stopped/paused; `stopped`
+                  halts the running session (resumable); `killed` is terminal. Note
+                  that `paused` is intentionally not in this enum — it is set only
+                  by the platform's anomaly gate.
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fleet_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - stopped
+                  - killed
+                  description: 'Present only when the request body included a `status` field. Echoes the new status.'
+                config_revision:
+                  type: integer
+                  format: int64
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_fleet
+    summary: Hard-delete a fleet and cascade its history
+    description: |
+      Hard-purge a fleet. Removes the `core.fleets` row and cascades every
+      per-fleet record across PostgreSQL (PG) schemas (events, telemetry, sessions,
+      approval gates, integration grants, fleet keys, memory entries) plus
+      best-effort DELs the Redis event stream.
+
+      Two-step lifecycle for safety: kill first (PATCH `{status:"killed"}`),
+      then delete. Returns 409 if the fleet is not yet `killed`.
+
+      Operator-minimum role required (RULE BIL — destructive lifecycle).
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the fleet.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Fleet purged.
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages:
+  post:
+    operationId: post_fleet_message
+    summary: Post a chat message to a fleet
+    description: Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `fleet:{id}:events`.
+      The Redis stream entry id IS the canonical event_id and is returned to the caller so Server-Sent Events (SSE) consumers can filter
+      frames for the message they just sent. Same single-ingress rule as webhook and continuation events — no separate
+      "queued vs instant" mode.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      description: UUIDv7 of the fleet.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - message
+            properties:
+              message:
+                type: string
+                description: Operator message body. Up to 8192 bytes. The server wraps it in a JSON object with a "message"
+                  field as the envelope's request payload.
+    responses:
+      '202':
+        description: Event enqueued. The CLI uses event_id to filter SSE frames.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              - event_id
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - accepted
+                event_id:
+                  type: string
+                  description: Redis stream entry id (the canonical event_id). Format `<ms>-<seq>`.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Fleet is paused or otherwise not active (`UZ-AGT-012`). Steering refuses loudly instead of enqueuing
+          work that would strand. The problem-details body carries `current_state` naming the actual fleet status
+          (e.g. `paused`). Resume with `agentsfleet resume <fleet>`, then retry.
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events:
+  get:
+    operationId: list_fleet_events
+    summary: List a fleet's event history
+    description: >
+      Cursor-paginated list of operator-visible events for one fleet,
+      newest first. Each row is a `core.fleet_events` entry — the
+      durable record produced by the worker write path on every steer,
+      webhook, cron, or continuation event. Filter by actor glob
+      (e.g. `steer:*`, `webhook:github`) or `since=` (Go-style
+      duration like `2h`/`30m` or RFC 3339 timestamp). `since=` and
+      `cursor=` are mutually exclusive.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: cursor
+      in: query
+      required: false
+      description: Opaque base64url-no-pad cursor returned in `next_cursor`. Mutually exclusive with `since`.
+      schema:
+        type: string
+    - name: actor
+      in: query
+      required: false
+      description: Glob filter against the row's actor. `*` is a wildcard. Examples - 'steer:kishore', 'webhook:github', 'webhook:*'.
+      schema:
+        type: string
+    - name: since
+      in: query
+      required: false
+      description: Lower bound on `created_at`. Accepts Go-style durations (15s/30m/2h/7d) or RFC 3339 timestamps. Mutually exclusive with `cursor`.
+      schema:
+        type: string
+    - name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              - next_cursor
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    description: One fleet_events row.
+                next_cursor:
+                  type: string
+                  nullable: true
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream:
+  get:
+    operationId: stream_fleet_events
+    summary: Subscribe to a fleet's live activity stream (SSE)
+    description: >
+      Server-Sent Events tail of the Redis pub/sub channel
+      `fleet:{id}:activity`. The server fans the channel out from one
+      shared subscription and forwards each PUBLISH frame as one SSE
+      event with id (per-connection monotonic counter), event (frame
+      kind), and data (JSON payload) lines. Frame kinds - event_received,
+      tool_call_started, tool_call_progress, chunk, tool_call_completed,
+      event_complete. Sequence ids reset to 0 on every new stream and
+      the server ignores `Last-Event-ID`. Concurrent streams per
+      instance are capped - above the cap the request is rejected with
+      503 (code UZ-API-002) and a Retry-After header. Clients reconnect
+      by calling GET /events with a cursor to backfill the durable
+      record, then re-open this stream. Authentication this slice is
+      Bearer-only (CLI / programmatic). Browser cookie auth lands with
+      the dashboard slice.
+    tags:
+    - Fleets
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: fleet_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: SSE stream opened.
+        content:
+          text/event-stream:
+            schema:
+              type: string
+              description: SSE-formatted frames.
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+    security:
+    - BearerAuth: []

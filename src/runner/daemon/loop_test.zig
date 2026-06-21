@@ -167,8 +167,8 @@ test "drain signal handler requests a graceful drain" {
     try testing.expect(loop.drain_requested.load(.seq_cst));
 }
 
-test "a failed execution reports agent_error; a clean one reports processed" {
-    try testing.expectEqual(protocol.Outcome.agent_error, loop.outcomeFor(false)); // the startup_posture path
+test "a failed execution reports fleet_error; a clean one reports processed" {
+    try testing.expectEqual(protocol.Outcome.fleet_error, loop.outcomeFor(false)); // the startup_posture path
     try testing.expectEqual(protocol.Outcome.processed, loop.outcomeFor(true));
 }
 

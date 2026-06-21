@@ -11,7 +11,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
 const logging = @import("log");
-const credential_key = @import("../agent/credential_key.zig");
+const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
 pub const Mode = tenant_provider.Mode;

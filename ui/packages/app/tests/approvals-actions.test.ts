@@ -51,7 +51,7 @@ describe("approval server actions — thin forwarders", () => {
 
   it("listApprovalsAction threads explicit opts through to the client", async () => {
     listApprovalsMock.mockResolvedValueOnce({ items: [], next_cursor: "cur-9" });
-    const opts = { status: "pending", agentId: "z-1", limit: 25 };
+    const opts = { status: "pending", fleetId: "z-1", limit: 25 };
     const r = await listApprovalsAction("ws-1", opts);
     expect(r).toEqual({ ok: true, data: { items: [], next_cursor: "cur-9" } });
     expect(listApprovalsMock).toHaveBeenCalledWith("ws-1", "tok", opts);

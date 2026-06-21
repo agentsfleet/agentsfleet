@@ -159,7 +159,7 @@ function SelfManagedModeCard({
       checked={mode === PROVIDER_MODE.self_managed}
       label="Use my provider key"
       meta="Bring a key"
-      description="Store a provider key, then choose which credential and model agents should use."
+      description="Store a provider key, then choose which credential and model teammates should use."
     >
       <SelfManagedModePanel
         workspaceId={workspaceId}

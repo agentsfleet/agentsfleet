@@ -215,7 +215,7 @@ export default function RunnerList({
         <EmptyState
           icon={<ServerIcon size={28} />}
           title="No runners yet"
-          description="Add a host to run agent work."
+          description="Add a host to run Fleet work."
         />
       ) : (
         <div className="divide-y rounded-md border">

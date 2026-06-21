@@ -14,12 +14,15 @@ const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
 const child_exec = @import("child_exec.zig");
+const client_errors = @import("engine/client_errors.zig");
 const version_cmd = @import("cmd/version.zig");
 const registry = @import("cmd/registry.zig");
 
 const protocol = contract.protocol;
 
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
 pub const std_options: std.Options = .{
     .logFn = runnerLog,
@@ -52,7 +55,7 @@ pub fn main(init: std.process.Init) void {
     // slice. Zig 0.16 removed `std.os.argv` — the entrypoint hands args in via
     // `Init`, alongside the `io` and environment block.
     const argv = init.minimal.args.toSlice(init.arena.allocator()) catch |err| {
-        log.err("argv_read_failed", .{ .err = @errorName(err) });
+        log.err("argv_read_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         std.process.exit(1);
     };
 
@@ -62,12 +65,12 @@ pub fn main(init: std.process.Init) void {
     if (dispatchCli(argv, env_map, io, alloc)) |code| std.process.exit(code);
 
     const cfg = Config.load(env_map, alloc) catch |err| {
-        log.err("config_load_failed", .{ .err = @errorName(err) });
+        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .err = @errorName(err) });
         std.process.exit(1);
     };
     defer cfg.deinit();
 
-    log.info("runner_boot", .{
+    log.info("server_started", .{
         .host_id = cfg.host_id,
         .sandbox_tier = cfg.sandbox_tier,
     });
@@ -77,14 +80,14 @@ pub fn main(init: std.process.Init) void {
     // rather than let it become the production default. Debug builds keep
     // dev_none for local development. `builtin.mode` matches agentsfleetd's dev gate.
     if (devNoneForbidden(builtin.mode, sandboxTierFromStr(cfg.sandbox_tier))) {
-        log.err("dev_none_rejected_in_release_build", .{ .sandbox_tier = cfg.sandbox_tier });
+        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = cfg.sandbox_tier });
         std.process.exit(1);
     }
 
     std.Io.Dir.createDirAbsolute(io, cfg.workspace_base, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
-            log.err("workspace_base_mkdir_failed", .{ .path = cfg.workspace_base, .err = @errorName(err) });
+            log.err("workspace_base_mkdir_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = cfg.workspace_base, .err = @errorName(err) });
             std.process.exit(1);
         },
     };
@@ -93,7 +96,7 @@ pub fn main(init: std.process.Init) void {
     // runner's identity. No register call — go straight to the loop.
     loop.installDrainHandlers();
     loop.runLoop(io, alloc, cfg, env_map);
-    log.info("runner_exit", .{});
+    log.info("server_stopped", .{});
 }
 
 /// Handle a CLI subcommand/flag if argv carries one, returning the process exit

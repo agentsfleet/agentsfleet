@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   Badge,
   EmptyState,
@@ -6,6 +7,10 @@ import {
   PageTitle,
   Section,
   SectionLabel,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
@@ -21,6 +26,8 @@ import CredentialsList from "@/app/(dashboard)/credentials/components/Credential
 export const dynamic = "force-dynamic";
 
 const EMPTY_FIELD = "—";
+const MODELS_TAB = "models";
+const CREDENTIALS_TAB = "credentials";
 
 const MODE_LABELS: Record<ProviderMode, string> = {
   platform: "Platform defaults",
@@ -32,6 +39,10 @@ const CONTEXT_CAP_FORMATTER = new Intl.NumberFormat("en-US");
 function formatContextCap(tokens: number | null | undefined) {
   if (typeof tokens !== "number") return EMPTY_FIELD;
   return `${CONTEXT_CAP_FORMATTER.format(tokens)} tokens`;
+}
+
+function settingsTab(tab: string | undefined): typeof MODELS_TAB | typeof CREDENTIALS_TAB {
+  return tab === CREDENTIALS_TAB ? CREDENTIALS_TAB : MODELS_TAB;
 }
 
 function modeBadgeVariant(provider: TenantProvider | null, mode: ProviderMode) {
@@ -111,7 +122,7 @@ function ModelSetupSection({
         <div className="space-y-2">
           <SectionLabel>Model setup</SectionLabel>
           <h2 className="font-mono text-heading text-foreground">
-            How should agents use models?
+            How should teammates use models?
           </h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Platform defaults need no key. Own-key setup stores a provider credential and then
@@ -148,13 +159,16 @@ function CredentialVaultSection({
             <SectionLabel>Credential vault</SectionLabel>
             <h2 className="font-mono text-heading text-foreground">Credentials</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Encrypted write-only secrets for agents and model providers. Reference one by name,
+              Encrypted write-only secrets for teammates and model providers. Reference one by name,
               e.g. <code>{"${secrets.fly.api_token}"}</code>.
             </p>
           </div>
-          <a href="#model-setup" className="text-sm font-medium text-primary underline">
+          <Link
+            href="/settings/models?tab=models#model-setup"
+            className="text-sm font-medium text-primary underline"
+          >
             Use a key in model setup
-          </a>
+          </Link>
         </div>
         <div className="space-y-4">
           <CredentialsList
@@ -179,10 +193,15 @@ function CredentialVaultSection({
   );
 }
 
-export default async function ProviderSettingsPage() {
+export default async function ProviderSettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+} = {}) {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
+  const initialTab = settingsTab((await searchParams)?.tab);
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {
@@ -213,28 +232,39 @@ export default async function ProviderSettingsPage() {
   const activeMode = provider?.mode ?? PROVIDER_MODE.platform;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <PageHeader className="max-w-3xl">
         <PageTitle>Models &amp; Credentials</PageTitle>
         <p className="mt-2 text-sm text-muted-foreground">
-          Choose whether agents use platform defaults or your own provider key. Keys live in the
-          credential vault and are never shown again after save.
+          Choose the model path and store write-only credentials for teammates.
         </p>
       </PageHeader>
 
-      <CurrentModelSetup provider={provider} activeMode={activeMode} />
-      <ModelSetupSection
-        workspaceId={workspace.id}
-        provider={provider}
-        activeMode={activeMode}
-        credentials={credentialsResp.credentials}
-        catalogue={catalogue}
-      />
-      <CredentialVaultSection
-        workspaceId={workspace.id}
-        credentials={credentialsResp.credentials}
-        protectedCredentialName={provider?.credential_ref ?? null}
-      />
+      <Tabs defaultValue={initialTab} className="max-w-5xl">
+        <TabsList aria-label="Models and credentials sections">
+          <TabsTrigger value={MODELS_TAB}>Models</TabsTrigger>
+          <TabsTrigger value={CREDENTIALS_TAB}>Credentials</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={MODELS_TAB} className="mt-6 space-y-6">
+          <CurrentModelSetup provider={provider} activeMode={activeMode} />
+          <ModelSetupSection
+            workspaceId={workspace.id}
+            provider={provider}
+            activeMode={activeMode}
+            credentials={credentialsResp.credentials}
+            catalogue={catalogue}
+          />
+        </TabsContent>
+
+        <TabsContent value={CREDENTIALS_TAB} className="mt-6">
+          <CredentialVaultSection
+            workspaceId={workspace.id}
+            credentials={credentialsResp.credentials}
+            protectedCredentialName={provider?.credential_ref ?? null}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

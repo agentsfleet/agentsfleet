@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-cli test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-agentsfleetd
+.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all _test-coverage-agentsfleetd
 
 test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
 	@echo "→ [agentsfleetd] Running Zig unit tests..."
@@ -57,11 +57,6 @@ test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
 	@echo "→ [design-system] Running Vitest unit tests..."
 	@cd ui/packages/design-system && bun run test
 	@echo "✓ [design-system] Unit tests passed"
-
-test-unit-bundle:  ## Run template-substitution + agentsfleet-postinstall unit tests (node --test)
-	@echo "→ [bundle] Running template-substitution + agentsfleet-postinstall suite..."
-	@node --test --test-reporter=spec $$(find tests/template-substitution tests/agentsfleet-postinstall -name '*.test.js' | sort)
-	@echo "✓ [bundle] All bundle checks passed"
 
 test-coverage-all:  ## Run coverage gates across app + website + agentsfleet + design-system
 	@echo "→ [app] Running Vitest with --coverage..."

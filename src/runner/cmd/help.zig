@@ -84,15 +84,16 @@ test "help body is ≤80 cols, ANSI-free, and lists every command" {
 }
 
 // Byte-exact drift guard against the checked-in golden (same contract as
-// cli/test/golden/help-no-color.txt). @embedFile is compile-time and
-// in-bounds (testdata/ lives under this module's root), so the test needs no
-// cwd. Regenerate on an intentional help change:
-//   NO_COLOR=1 zig-out/bin/agentsfleet-runner --help > src/runner/cmd/testdata/help.txt
+// cli/test/golden/help-no-color.txt). The golden lives at
+// tests/fixtures/runner/help.txt — outside this module's root, so it is wired
+// in as the named @embedFile import "help.txt" by build_fixtures.zig. Compile-
+// time, so the test needs no cwd. Regenerate on an intentional help change:
+//   NO_COLOR=1 zig-out/bin/agentsfleet-runner --help > tests/fixtures/runner/help.txt
 test "help matches the checked-in golden byte-for-byte" {
     const alloc = std.testing.allocator;
     const text = try render(alloc);
     defer alloc.free(text);
-    try std.testing.expectEqualStrings(@embedFile("testdata/help.txt"), text);
+    try std.testing.expectEqualStrings(@embedFile("help.txt"), text);
 }
 
 // The runner never takes an enrollment-grade credential: no `register` command,

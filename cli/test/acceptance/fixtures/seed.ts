@@ -1,7 +1,7 @@
 /**
  * Acceptance-suite seed helper.
  *
- * Drives `agentsfleet install --from samples/fixtures/platform-ops-sample` against the
+ * Drives `agentsfleet install --from tests/fixtures/fleetbundle/platform-ops` against the
  * worktree's canonical sample bundle. Returns the parsed JSON envelope
  * the CLI emits with `--json` set.
  */
@@ -13,11 +13,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 
 import { ACCEPTANCE_RUN_PREFIX, PLATFORM_OPS_SAMPLE_DIR } from "./constants.ts";
-import { runAgentctl } from "./cli.js";
+import { runFleetctl } from "./cli.js";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
-const SAMPLE_NAME = "platform-ops-agent";
+const SAMPLE_NAME = "platform-ops-fleet";
 
 export interface InstallOptions {
   readonly env: Readonly<Record<string, string>>;
@@ -27,9 +27,9 @@ export interface InstallOptions {
   readonly runPrefix?: string;
 }
 
-export interface InstalledAgent {
+export interface InstalledFleet {
   readonly id?: string;
-  readonly agent_id?: string;
+  readonly fleet_id?: string;
   readonly [key: string]: unknown;
 }
 
@@ -59,20 +59,20 @@ async function createInstallFixture(runPrefix: string): Promise<string> {
   return targetDir;
 }
 
-export async function installPlatformOpsAgent(opts: InstallOptions): Promise<InstalledAgent> {
+export async function installPlatformOpsFleet(opts: InstallOptions): Promise<InstalledFleet> {
   const samplePath = await createInstallFixture(opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX);
-  const result = await runAgentctl(
+  const result = await runFleetctl(
     ["install", "--from", samplePath, "--json"],
     { env: opts.env, timeoutMs: opts.timeoutMs ?? 120_000 },
   );
   if (result.code !== 0) {
     throw new Error(`install exited ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`);
   }
-  const parsed = JSON.parse(result.stdout.trim()) as InstalledAgent;
-  // Both callers fall back via `installed.id ?? installed.agent_id`; the
+  const parsed = JSON.parse(result.stdout.trim()) as InstalledFleet;
+  // Both callers fall back via `installed.id ?? installed.fleet_id`; the
   // server's install envelope can carry either key depending on the route.
-  if (!parsed.id && !parsed.agent_id) {
-    throw new Error(`install JSON missing id/agent_id field: ${result.stdout.trim()}`);
+  if (!parsed.id && !parsed.fleet_id) {
+    throw new Error(`install JSON missing id/fleet_id field: ${result.stdout.trim()}`);
   }
   return parsed;
 }

@@ -2,7 +2,7 @@
  * Owned helpers for the tenant-provider mutation spec.
  *
  * Tenant provider posture is TENANT-scoped shared state in the DEV tenant —
- * there is no per-run prefix to isolate it the way agents get
+ * there is no per-run prefix to isolate it the way fleets get
  * `ACCEPTANCE_RUN_PREFIX`. The only safe contract is: capture the baseline
  * before mutating, and restore it (PUT back to the captured self-managed
  * config, or DELETE back to the platform default) in `afterAll` even on
@@ -22,7 +22,7 @@
 
 import assert from "node:assert/strict";
 
-import { runAgentctl } from "./cli.js";
+import { runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
 import { assertNoSecretLeak } from "./negatives.ts";
 
@@ -79,7 +79,7 @@ function parseProvider(stdout: string): ProviderSnapshot {
  * runs the secret-leak regression against the supplied JWT.
  */
 export async function showProvider(env: Env, sessionJwt: string): Promise<ProviderSnapshot> {
-  const result = await runAgentctl([...TENANT_PROVIDER_SHOW_ARGS, FLAG_JSON], { env });
+  const result = await runFleetctl([...TENANT_PROVIDER_SHOW_ARGS, FLAG_JSON], { env });
   assertNoSecretLeak(result, sessionJwt);
   assert.equal(result.code, 0, `tenant provider show exited ${result.code}: ${result.stderr}`);
   return parseProvider(result.stdout);
@@ -104,7 +104,7 @@ export async function addProvider(
   const args = [...TENANT_PROVIDER_ADD_ARGS, FLAG_CREDENTIAL, opts.credential];
   if (opts.model) args.push(FLAG_MODEL, opts.model);
   args.push(FLAG_JSON);
-  const result = await runAgentctl(args, { env });
+  const result = await runFleetctl(args, { env });
   assertNoSecretLeak(result, sessionJwt);
   return result;
 }
@@ -114,7 +114,7 @@ export async function addProvider(
  * Asserts a clean exit; the reset always lands on the platform default.
  */
 export async function deleteProvider(env: Env, sessionJwt: string): Promise<ProviderSnapshot> {
-  const result = await runAgentctl([...TENANT_PROVIDER_DELETE_ARGS, FLAG_JSON], { env });
+  const result = await runFleetctl([...TENANT_PROVIDER_DELETE_ARGS, FLAG_JSON], { env });
   assertNoSecretLeak(result, sessionJwt);
   assert.equal(result.code, 0, `tenant provider delete exited ${result.code}: ${result.stderr}`);
   return parseProvider(result.stdout);
@@ -197,7 +197,7 @@ export async function restoreProviderBaseline(
       });
       return;
     }
-    await runAgentctl([...TENANT_PROVIDER_DELETE_ARGS, FLAG_JSON], { env });
+    await runFleetctl([...TENANT_PROVIDER_DELETE_ARGS, FLAG_JSON], { env });
   } catch {
     /* best-effort teardown — shared tenant left on platform default at worst */
   }

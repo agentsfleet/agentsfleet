@@ -8,8 +8,10 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
+const client_errors = @import("../engine/client_errors.zig");
 
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 // Call-site deadlines. The required parameter on every client verb is the
 // compile-time guarantee that no control-plane call is unbounded; only
@@ -114,7 +116,7 @@ pub const CallWatchdog = struct {
                 _ = std.c.shutdown(self.handle, std.c.SHUT.RDWR);
                 self.armed = false;
                 self.mutex.unlock();
-                log.warn("cp_call_deadline_fired", .{});
+                log.warn("cp_call_deadline_fired", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS });
                 self.mutex.lock();
                 continue;
             }

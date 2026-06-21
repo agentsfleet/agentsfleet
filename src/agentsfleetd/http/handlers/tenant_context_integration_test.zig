@@ -5,7 +5,7 @@
 // tenant FROM THE TARGET WORKSPACE, set `set_config('app.current_tenant_id', ...)`
 // to that workspace owner's (victim's) tenant, and then authorized — a cross-tenant
 // IDOR (a freshly-signed-up user could read/write any tenant's workspace by ID and
-// mint a durable agent key against it). The fix fails closed: a null tenant_id is
+// mint a durable fleet key against it). The fix fails closed: a null tenant_id is
 // never resolved from the workspace; the call returns false and leaves the RLS
 // context untouched. (The earlier use-after-free this branch was hardened against
 // is dissolved — the unsafe lookup no longer exists.)

@@ -44,14 +44,14 @@ const TOP_NAV: NavEntry[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
 ];
 
-// The live work — what the agents do.
+// The live work — what the fleets do.
 const OPERATIONS_NAV: NavEntry[] = [
-  { label: "Agents", href: "/agents", icon: SkullIcon },
+  { label: "Fleets", href: "/fleets", icon: SkullIcon },
   { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the agents are wired to — the model brain and the provider/service
+// What the fleets are wired to — the model brain and the provider/service
 // secrets, unified on one page; plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
   { label: "Models & Credentials", href: "/settings/models", icon: CpuIcon },
@@ -65,7 +65,7 @@ const PLATFORM_NAV: NavEntry[] = [
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [
-  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Workspace", href: "/settings", icon: SettingsIcon },
   { label: "Billing", href: "/settings/billing", icon: CreditCardIcon },
 ];
 
@@ -116,7 +116,7 @@ export default function Shell({
   const isActive = (href: string) => href === activeHref;
 
   return (
-    <div className="grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]">
+    <div className="app-glow-surface grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]" data-glow="dashboard">
       <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
         <MobileNav isActive={isActive} isPlatformAdmin={isPlatformAdmin} />
 

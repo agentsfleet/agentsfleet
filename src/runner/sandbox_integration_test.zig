@@ -89,7 +89,7 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     defer alloc.free(dump);
     _ = child.wait(io) catch {};
 
-    // The agent's real read path (cat /proc/self/environ) shows the allowlisted
+    // The fleet's real read path (cat /proc/self/environ) shows the allowlisted
     // HOME but never the planted token nor its AGENTSFLEET_ key.
     try std.testing.expect(std.mem.indexOf(u8, dump, PLANTED_TOKEN) == null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "AGENTSFLEET_RUNNER_TOKEN") == null);

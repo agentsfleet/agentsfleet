@@ -1,4 +1,4 @@
-//! PATCH /v1/fleet/runners/{id} — platform-admin runner operator plane.
+//! PATCH /v1/fleets/runners/{id} — platform-admin runner operator plane.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -58,7 +58,7 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         return;
     };
 
-    log.info("runner_admin_state_changed", .{ .runner_id = runner_id, .admin_state = @tagName(target) });
+    log.debug("runner_admin_state_changed", .{ .runner_id = runner_id, .admin_state = @tagName(target) });
     writeResponse(hx, runner_id, target);
 }
 

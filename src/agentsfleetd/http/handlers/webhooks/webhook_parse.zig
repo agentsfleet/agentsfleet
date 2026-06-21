@@ -1,9 +1,9 @@
 //! Inbound-webhook body parsing — the two ingress envelope shapes that
-//! `agent.zig` orchestrates. Kept separate so the orchestration file stays
+//! `fleet.zig` orchestrates. Kept separate so the orchestration file stays
 //! under the FLL cap and the parsing rules are unit-testable in isolation.
 //!
 //!  * `parseBody`     — the agentsfleet `{event_id, type, data}` envelope used
-//!                      by the generic per-agent receiver (HMAC-signed).
+//!                      by the generic per-fleet receiver (HMAC-signed).
 //!  * `parseSvixBody` — a Svix/Clerk delivery, where the `svix-id` header is
 //!                      the idempotency key and the whole body is the data.
 
@@ -27,7 +27,7 @@ const EV_NO_BODY = "no_body";
 const EV_MALFORMED_JSON = "malformed_json";
 
 /// The normalized inbound event both ingress shapes resolve to before the
-/// shared dedup-and-enqueue path in `agent.zig`.
+/// shared dedup-and-enqueue path in `fleet.zig`.
 pub const WebhookPayload = struct {
     event_id: []const u8,
     type: []const u8,
@@ -36,11 +36,11 @@ pub const WebhookPayload = struct {
 
 /// Parse the agentsfleet `{event_id, type, data}` envelope. Rejects a missing
 /// body, malformed JSON, or an empty `event_id`/`type` with 400 UZ-WH-002.
-pub fn parseBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayload {
+pub fn parseBody(hx: Hx, req: *httpz.Request, fleet_id: []const u8) ?WebhookPayload {
     const body = req.body() orelse {
         log.warn(EV_NO_BODY, .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED);
@@ -50,7 +50,7 @@ pub fn parseBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayl
     const parsed = std.json.parseFromSlice(WebhookPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
         log.warn(EV_MALFORMED_JSON, .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
@@ -60,7 +60,7 @@ pub fn parseBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayl
     if (payload.event_id.len == 0 or payload.type.len == 0) {
         log.warn("missing_fields", .{
             .error_code = ec.ERR_WEBHOOK_MALFORMED,
-            .agent_id = agent_id,
+            .fleet_id = fleet_id,
             .req_id = hx.req_id,
         });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS);
@@ -73,20 +73,20 @@ pub fn parseBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayl
 /// Build a WebhookPayload from a Svix delivery: the `svix-id` header is the
 /// idempotency `event_id`, the body's top-level `type` (when present) is the
 /// event type, and the whole parsed body is forwarded as `data`.
-pub fn parseSvixBody(hx: Hx, req: *httpz.Request, agent_id: []const u8) ?WebhookPayload {
+pub fn parseSvixBody(hx: Hx, req: *httpz.Request, fleet_id: []const u8) ?WebhookPayload {
     const svix_id = req.header(svix_verify.SVIX_ID_HEADER) orelse {
-        log.warn("missing_svix_id", .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .agent_id = agent_id, .req_id = hx.req_id });
+        log.warn("missing_svix_id", .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .fleet_id = fleet_id, .req_id = hx.req_id });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS);
         return null;
     };
     const body = req.body() orelse {
-        log.warn(EV_NO_BODY, .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .agent_id = agent_id, .req_id = hx.req_id });
+        log.warn(EV_NO_BODY, .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .fleet_id = fleet_id, .req_id = hx.req_id });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED);
         return null;
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
     const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch {
-        log.warn(EV_MALFORMED_JSON, .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .agent_id = agent_id, .req_id = hx.req_id });
+        log.warn(EV_MALFORMED_JSON, .{ .error_code = ec.ERR_WEBHOOK_MALFORMED, .fleet_id = fleet_id, .req_id = hx.req_id });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return null;
     };

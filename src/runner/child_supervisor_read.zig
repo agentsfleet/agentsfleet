@@ -16,8 +16,10 @@ const logging = @import("log");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
 const result_mod = @import("child_supervisor_result.zig");
+const client_errors = @import("engine/client_errors.zig");
 
 const log = logging.scoped(.runner_supervisor);
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 const ActivityFrame = contract.activity.ActivityFrame;
 pub const ReadOutcome = result_mod.ReadOutcome;
@@ -137,7 +139,7 @@ fn handleFrame(
                 // A malformed 24-byte frame means real wire corruption / version
                 // skew (an old child sends NO usage frame, never a bad one), so
                 // warn — symmetric with the child-side usage_frame_write_failed.
-                log.warn("usage_frame_dropped", .{ .len = f.payload.len });
+                log.warn("usage_frame_dropped", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .len = f.payload.len });
         },
         .result => return .{ .bytes = f.payload },
     }

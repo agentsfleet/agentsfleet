@@ -1,15 +1,15 @@
 /v1/auth/sessions:
   post:
     operationId: create_auth_session
-    summary: Start a CLI login session
+    summary: Start a command-line login session
     description: |
-      Step 1 of the CLI device flow. The CLI generates an ephemeral
-      P-256 ECDH keypair and POSTs the public key plus an operator-facing
-      `token_name` label. The server allocates a UUIDv7 session_id and
-      stores `{cli_public_key, token_name, status: pending, expires_at_ms}`
-      in Redis with a 5-minute TTL. The CLI then prints
-      `https://app.agentsfleet.net/cli-auth/{session_id}` for the operator
-      to open in their browser.
+      Step 1 of the command-line device flow. The command-line tool generates
+      an ephemeral P-256 ECDH keypair and POSTs the public key plus a
+      human-facing `token_name` label. The server allocates a UUIDv7
+      `session_id`, builds the browser approval `login_url` from `APP_URL`,
+      and stores `{cli_public_key, token_name, status: pending, expires_at_ms}`
+      in Redis with a 5-minute TTL. The command-line tool prints `login_url`
+      for the human to open in their browser.
 
       Unauthenticated; rate-limited at the Cloudflare WAF edge
       (L2 — 10 / IP / minute on `POST /v1/auth/sessions`) and
@@ -51,12 +51,17 @@
               type: object
               required:
               - session_id
+              - login_url
               - request_id
               properties:
                 session_id:
                   type: string
                   format: uuid
-                  description: Session identifier for polling. UUIDv7.
+                  description: UUIDv7 session identifier for approval and verification endpoints.
+                login_url:
+                  type: string
+                  format: uri
+                  description: Browser approval URL for this login session.
                 request_id:
                   type: string
                   description: Unique request identifier

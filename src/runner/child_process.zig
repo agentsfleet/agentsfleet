@@ -13,10 +13,13 @@ const std = @import("std");
 const logging = @import("log");
 
 const cgroup = @import("engine/CgroupScope.zig");
+const client_errors = @import("engine/client_errors.zig");
 const sandbox = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 
 const log = logging.scoped(.runner_supervisor);
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_RUN_SANDBOX_ESTABLISH_FAILED = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED;
 
 /// Spawn the sandboxed child. Zig 0.16 removed raw fork/pipe/dup2/close/waitpid,
 /// so std.process.spawn does pipe → fork → dup2 → setpgid(0,0) → execvpe, and the
@@ -29,7 +32,7 @@ const log = logging.scoped(.runner_supervisor);
 ///
 /// The child inherits ONLY the allowlisted environment (filtered from `daemon_env`
 /// via `environ_map`), so `AGENTSFLEET_RUNNER_TOKEN` and every other daemon-only var
-/// never reach a prompt-injectable agent. `argv[0]` is asserted absolute before
+/// never reach a prompt-injectable fleet. `argv[0]` is asserted absolute before
 /// spawn so a relative path can never be resolved via the parent `$PATH`.
 pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8, egress: ?sandbox.EgressFiles) !std.process.Child {
     const argv = try sandbox.buildArgv(io, alloc, cfg, workspace_path, egress);
@@ -50,7 +53,7 @@ pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *
         .pgid = 0,
         .environ_map = &child_env,
     }) catch |err| {
-        log.err("child_spawn_failed", .{ .err = @errorName(err) });
+        log.err("child_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return err;
     };
 }
@@ -93,11 +96,11 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
 /// signal is the only thing that actually kills it; it also covers the
 /// enroll-succeeds-then-races path. Safe against pid reuse because this always
 /// runs BEFORE the supervisor's single `wait()` — the target is still an
-/// un-reaped (agent-at-most) pid. `ESRCH` (group already gone via the cgroup
+/// un-reaped (fleet-at-most) pid. `ESRCH` (group already gone via the cgroup
 /// kill) is harmless.
 pub fn killChild(pid: std.posix.pid_t, scope: *?cgroup) void {
     if (scope.*) |*s| s.kill() catch |err|
-        log.warn("cgroup_kill_failed_fallback_signal", .{ .err = @errorName(err) });
+        log.warn("cgroup_kill_failed_fallback_signal", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
     std.posix.kill(-pid, std.posix.SIG.KILL) catch |err|
         log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
 }

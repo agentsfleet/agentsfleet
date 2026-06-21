@@ -12,9 +12,9 @@
 
 pub const router = @import("http/router.zig");
 pub const error_registry = @import("errors/error_registry.zig");
-pub const keyset_cursor = @import("agent/keyset_cursor.zig");
+pub const keyset_cursor = @import("fleet_runtime/keyset_cursor.zig");
 pub const id_format = @import("types/id_format.zig");
-pub const webhook_verify = @import("agent/webhook_verify.zig");
+pub const webhook_verify = @import("fleet_runtime/webhook_verify.zig");
 pub const queue = @import("queue/redis.zig");
 // Zig 0.16 removed `std.time.nanoTimestamp` / `std.process.getEnvVarOwned`;
 // benches reach the migration's facades through the bridge rather than

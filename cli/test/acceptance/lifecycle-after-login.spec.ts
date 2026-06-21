@@ -10,7 +10,7 @@
  *   - persisted-credentials read-only sweep (no env API key
  *     (AGENTSFLEET_API_KEY) in the spawn env; proves credentials.json is the
  *     load-bearing auth source).
- *   - prefix-scoped post-teardown emptiness (agent list).
+ *   - prefix-scoped post-teardown emptiness (fleet list).
  *   - persisted-credentials install + lifecycle walk.
  *
  * Skip posture:
@@ -30,7 +30,7 @@ import path from "node:path";
 
 import { READ_ONLY_COMMANDS } from "./fixtures/command-matrix.ts";
 import { ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
-import { composeEnv, runAgentctl } from "./fixtures/cli.js";
+import { composeEnv, runFleetctl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { PtyProcess } from "./fixtures/pty.ts";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
@@ -42,13 +42,13 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { completeCliAuthHandoff } from "./fixtures/browser.ts";
-import { installPlatformOpsAgent } from "./fixtures/seed.ts";
-import { cleanWorkspaceAgents } from "./fixtures/teardown.ts";
+import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 import {
   expectStatus,
-  killAgent,
-  resumeAgent,
-  stopAgent,
+  killFleet,
+  resumeFleet,
+  stopFleet,
 } from "./fixtures/lifecycle.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
@@ -111,7 +111,7 @@ if (!isLive) {
 
     async function spawn(args: ReadonlyArray<string>, extraEnv?: Record<string, string>): Promise<RunResult> {
       const env = extraEnv ? { ...baseEnv, ...extraEnv } : baseEnv;
-      const result = await runAgentctl(args, { env });
+      const result = await runFleetctl(args, { env });
       assertNoSecretLeak(result, sessionJwt);
       return result;
     }
@@ -136,7 +136,7 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      try { await cleanWorkspaceAgents(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
+      try { await cleanWorkspaceFleets(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
@@ -146,7 +146,7 @@ if (!isLive) {
       it("login --no-open → approve via Chromium → credentials.json 0600", async () => {
         // No --no-input: the pty makes stdin a terminal, so the device flow
         // runs the interactive verification prompt instead of fast-failing.
-        const cli = PtyProcess.spawnAgentctl(["login", "--no-open"], { env: baseEnv });
+        const cli = PtyProcess.spawnFleetctl(["login", "--no-open"], { env: baseEnv });
         try {
           const announced = await cli.waitForLine((line) => LOGIN_URL_RE.test(line), HANDSHAKE_TIMEOUT_MS);
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);
@@ -195,45 +195,45 @@ if (!isLive) {
       }
     });
 
-    // Prefix-scoped post-teardown emptiness (agent list).
+    // Prefix-scoped post-teardown emptiness (fleet list).
     // Same expectation as the seeded-credentials spec: shared DEV tenants carry
-    // residual agents; the only assertion that holds is "none of MY
-    // run's agents remain after teardown".
+    // residual fleets; the only assertion that holds is "none of MY
+    // run's fleets remain after teardown".
     describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceAgents(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
+        await cleanWorkspaceFleets(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      it(`agent list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
+      it(`fleet list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await spawn(["list", "--json"]);
         assert.equal(result.code, 0);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string }>) : [];
         const mine = items.filter((z) => typeof z.name === "string" && z.name.startsWith(ACCEPTANCE_RUN_PREFIX));
         assert.equal(mine.length, 0,
-          `expected zero agents starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
+          `expected zero fleets starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
       });
     });
 
     // Persisted-credentials install + lifecycle (no env API key).
     describe("install + lifecycle (no env API key)", () => {
-      let agentId: string = "";
+      let fleetId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {
-        const installed = await installPlatformOpsAgent({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
-        const id = installed.id ?? installed.agent_id;
+        const installed = await installPlatformOpsFleet({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
+        const id = installed.id ?? installed.fleet_id;
         assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
-        agentId = id as string;
+        fleetId = id as string;
       });
 
       it("status → stop → resume → kill walks state", async () => {
-        await expectStatus(baseEnv, agentId, ["active", "starting", "running"]);
-        await stopAgent(baseEnv, agentId);
-        await expectStatus(baseEnv, agentId, ["paused", "stopped"]);
-        await resumeAgent(baseEnv, agentId);
-        await expectStatus(baseEnv, agentId, ["active", "running", "starting"]);
-        await killAgent(baseEnv, agentId);
-        await expectStatus(baseEnv, agentId, ["killed", "errored", "terminated"]);
+        await expectStatus(baseEnv, fleetId, ["active", "starting", "running"]);
+        await stopFleet(baseEnv, fleetId);
+        await expectStatus(baseEnv, fleetId, ["paused", "stopped"]);
+        await resumeFleet(baseEnv, fleetId);
+        await expectStatus(baseEnv, fleetId, ["active", "running", "starting"]);
+        await killFleet(baseEnv, fleetId);
+        await expectStatus(baseEnv, fleetId, ["killed", "errored", "terminated"]);
       });
     });
   });

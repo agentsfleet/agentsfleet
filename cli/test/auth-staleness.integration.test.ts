@@ -44,7 +44,7 @@ const AGENTSFLEET_LOGIN_HINT = /agentsfleet login/;
 // leaks onto stderr the CLI has surfaced a raw throw instead of a typed error.
 const STACK_FRAME = /^\s*at\s+/m;
 
-const LIST_ROUTE = `GET /v1/workspaces/${WS_ID}/agents` as const;
+const LIST_ROUTE = `GET /v1/workspaces/${WS_ID}/fleets` as const;
 
 const expiredEnvelope = {
   error: { code: "UZ-AUTH-003", message: "Token expired — run `agentsfleet login` to refresh" },

@@ -7,7 +7,7 @@ The official Command Line Interface (CLI) for [agentsfleet](https://agentsfleet.
 [![npm](https://img.shields.io/npm/v/@agentsfleet/cli?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@agentsfleet/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-Authenticate, manage workspaces, install agents, tail their events, and operate your agentsfleet deployment from the terminal.
+Authenticate, manage workspaces, install Fleets, tail their events, and operate your agentsfleet deployment from the terminal.
 
 > **Pre-release** — agentsfleet is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
 
@@ -49,20 +49,20 @@ agentsfleet doctor
 | `workspace delete <workspace_id>` | Delete a workspace (irreversible) |
 | `doctor` | Diagnose CLI configuration and connectivity |
 
-### Agent keys
+### Fleet keys
 
 | Command | Description |
 |---------|-------------|
-| `agent-key add [--workspace <id>] [--agent <id>] [--name <name>]` | Mint an agent API key for the workspace |
-| `agent-key list [--workspace <id>]` | List agent API keys |
-| `agent-key delete <agent_key_id> [--workspace <id>]` | Revoke an agent API key |
+| `fleet-key add [--workspace <id>] [--fleet <id>] [--name <name>]` | Mint a Fleet API key for the workspace |
+| `fleet-key list [--workspace <id>]` | List Fleet API keys |
+| `fleet-key delete <fleet_key_id> [--workspace <id>]` | Revoke a Fleet API key |
 
 ### Integration grants
 
 | Command | Description |
 |---------|-------------|
-| `grant list [--agent <id>]` | List integration grants for an agent |
-| `grant delete <grant_id> [--agent <id>]` | Revoke an integration grant |
+| `grant list [--fleet <id>]` | List integration grants for a Fleet |
+| `grant delete <grant_id> [--fleet <id>]` | Revoke an integration grant |
 
 ### Tenant provider
 
@@ -78,30 +78,30 @@ agentsfleet doctor
 |---------|-------------|
 | `billing show [--limit <n>] [--cursor <token>]` | Plan, balance, and recent events |
 
-### Agents
+### Fleets
 
 | Command | Description |
 |---------|-------------|
-| `install --from <path>` | Register an agent from `<path>` |
-| `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List agents (paginated) |
-| `status [<agent_id>]` | Show agent status (workspace-wide if no id) |
-| `stop <agent_id>` | Halt the session (resumable) |
-| `resume <agent_id>` | Resume from stopped or auto-paused |
-| `kill <agent_id>` | Mark terminal (irreversible) |
-| `delete <agent_id>` | Hard-delete (kill first) |
-| `logs [<agent_id>] [--limit <n>] [--cursor <token>]` | Tail agent activity |
-| `events <agent_id> [--since <when>] [--actor <glob>] [--limit <n>] [--cursor <token>]` | Page through historical events |
-| `steer <agent_id> "<msg>"` | Send a message; stream response |
-| `agent update <agent_id> --from <path>` | Re-parse and PATCH an agent's TRIGGER.md + SKILL.md from a local bundle |
+| `install --from <path>` | Register a Fleet from `<path>` |
+| `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List Fleets (paginated) |
+| `status [<fleet_id>]` | Show Fleet status (workspace-wide if no id) |
+| `stop <fleet_id>` | Halt the session (resumable) |
+| `resume <fleet_id>` | Resume from stopped or auto-paused |
+| `kill <fleet_id>` | Mark terminal (irreversible) |
+| `delete <fleet_id>` | Hard-delete a killed Fleet |
+| `logs [<fleet_id>] [--limit <n>] [--cursor <token>]` | Tail Fleet activity |
+| `events <fleet_id> [--since <when>] [--actor <glob>] [--limit <n>] [--cursor <token>]` | Page through historical events |
+| `steer <fleet_id> "<msg>"` | Send a message; stream response |
+| `fleet update <fleet_id> --from <path>` | Re-parse and PATCH a Fleet's TRIGGER.md + SKILL.md from a local bundle |
 
 ### Memory (read-only)
 
-Inspect a agent's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
+Inspect a Fleet's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
 
 | Command | Description |
 |---------|-------------|
-| `memory list --agent <id> [--category <name>] [--limit <n>]` | List entries newest-first |
-| `memory search --agent <id> <query> [--limit <n>]` | Substring-search keys and content |
+| `memory list --fleet <id> [--category <name>] [--limit <n>]` | List entries newest-first |
+| `memory search --fleet <id> <query> [--limit <n>]` | Substring-search keys and content |
 
 Both verbs accept `--workspace <id>` to override the active workspace. The server caps `--limit` at 100 (defaults: 100 for list, 20 for search). There are no write verbs — durable memory is written only by the runner plane.
 

@@ -37,12 +37,12 @@ export interface BinarySpec {
 }
 
 // Resolves the spawn target (worktree `node dist/bin/...` vs global
-// `agentsfleet`) — shared by runAgentctl and the pty harness.
+// `agentsfleet`) — shared by runFleetctl and the pty harness.
 export function resolveBinary(opts?: Pick<RunOptions, "binary">): BinarySpec;
 
-export function runAgentctl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;
+export function runFleetctl(args: ReadonlyArray<string>, opts: RunOptions): Promise<RunResult>;
 
-export function spawnAgentctl(
+export function spawnFleetctl(
   args: ReadonlyArray<string>,
   opts: Pick<RunOptions, "env" | "cwd" | "binary">,
 ): ChildProcessWithoutNullStreams;

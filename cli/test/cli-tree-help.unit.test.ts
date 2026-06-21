@@ -1,6 +1,6 @@
 // Behavioural + regression coverage for the top-level help tail
-// (src/program/cli-tree-help.ts) and the `agent --help` lifecycle-verb
-// clarification (src/program/cli-tree-agent.ts).
+// (src/program/cli-tree-help.ts) and the `fleet --help` lifecycle-verb
+// clarification (src/program/cli-tree-fleet.ts).
 //
 // The golden snapshot (golden-output.unit.test.ts) already pins the help
 // byte-for-byte, but a snapshot only screams "something moved" — it does
@@ -9,7 +9,7 @@
 // meaningful message instead of an opaque diff:
 //   1. the 80-column width budget holds at the source, not just the fixture
 //   2. the help tail points at the configuration docs (single source of truth)
-// Plus: `agent --help` spells out that the lifecycle verbs are top-level.
+// Plus: `fleet --help` spells out that the lifecycle verbs are top-level.
 
 import { test, expect } from "bun:test";
 
@@ -64,10 +64,10 @@ test("help tail points to the configuration docs (no inline env matrix)", () => 
   }
 });
 
-// ── Behaviour: `agent --help` explains the top-level verbs (finding 1) ───
+// ── Behaviour: `fleet --help` explains the top-level verbs (finding 1) ───
 
-test("agent --help clarifies the lifecycle verbs are top-level commands", () => {
-  const text = renderCommandHelp("agent");
+test("fleet --help clarifies the lifecycle verbs are top-level commands", () => {
+  const text = renderCommandHelp("fleet");
   expect(text).toContain("top-level commands");
   // Names at least one verb a user would otherwise try as `agent <verb>`.
   expect(text).toContain("steer");

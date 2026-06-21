@@ -14,19 +14,26 @@ const constants = common;
 
 const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
+const client_errors = @import("../engine/client_errors.zig");
 const child_supervisor = @import("../child_supervisor.zig");
+const bundle_extract = @import("../bundle_extract.zig");
 const worker_pool = @import("worker_pool.zig");
 const forwarders = @import("forwarders.zig");
 const renew_driver = @import("renew_driver.zig");
 const RenewDriver = renew_driver.RenewDriver(*client_mod);
 
 const protocol = contract.protocol;
-const log = logging.scoped(.agent_runner);
+const log = logging.scoped(.fleet_runner);
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 /// Backoff (ms) on control-plane transport errors; lease polls use server-supplied retry_after_ms.
 const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
 /// Consecutive heartbeat errors before escalating the sleep multiplier.
 const HEARTBEAT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
+/// One event for a graceful daemon stop; the `reason` field discriminates the
+/// trigger (signal drain, fleet stop, fleet drain). Named per RULE UFS (3 sites).
+const EVENT_SERVER_STOPPED = "server_stopped";
 
 /// Set by the SIGTERM/SIGINT handler to request a graceful drain. The handler
 /// does nothing but this atomic store (async-signal-safe); the loop reads it at
@@ -87,13 +94,13 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
     var heartbeat_errors: u32 = 0;
     while (true) {
         if (drain_requested.load(.seq_cst)) {
-            log.info("signal_drain", .{});
+            log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
             break;
         }
 
         const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
             heartbeat_errors += 1;
-            log.warn("heartbeat_failed", .{ .err = @errorName(err), .consecutive = heartbeat_errors });
+            log.warn("heartbeat_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err), .consecutive = heartbeat_errors });
             const mult: u64 = if (heartbeat_errors >= HEARTBEAT_MAX_CONSECUTIVE_ERRORS) heartbeat_errors else 1;
             sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS * mult);
             continue;
@@ -102,12 +109,12 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 
         switch (hb.status) {
             .stop => {
-                log.info("fleet_stop", .{});
+                log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_stop" });
                 stop_requested.store(true, .seq_cst);
                 break;
             },
             .drain => {
-                log.info("fleet_drain", .{});
+                log.info(EVENT_SERVER_STOPPED, .{ .reason = "fleet_drain" });
                 drain_requested.store(true, .seq_cst);
                 break;
             },
@@ -117,7 +124,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
         // First OK heartbeat brings the pool up; later ones are liveness ticks.
         if (pool == null) {
             pool = worker_pool.spawn(io, alloc, cfg, env_map, &stop_requested, &drain_requested) catch |err| {
-                log.err("worker_pool_spawn_failed", .{ .err = @errorName(err) });
+                log.err("worker_pool_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
                 break;
             };
         }
@@ -132,7 +139,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 /// loop with its own allocator + client (see `worker_pool.zig`).
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
-        log.warn("lease_failed", .{ .err = @errorName(err) });
+        log.warn("lease_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
         return;
     };
@@ -141,7 +148,7 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
     const lease_resp = lease_parsed.value;
     if (lease_resp.lease == null) {
         const wait_ms: u64 = lease_resp.retry_after_ms orelse constants.NO_WORK_RETRY_AFTER_MS;
-        log.info("no_work", .{ .retry_after_ms = wait_ms });
+        log.debug("lease_poll_empty", .{ .retry_after_ms = wait_ms });
         sleepMs(io, wait_ms);
         return;
     }
@@ -166,7 +173,6 @@ const TickFanout = struct {
     }
 };
 
-
 /// Execute one leased event in a sandboxed child and report the result to the
 /// control plane, forwarding live-tail activity frames as the child streams them.
 fn executeAndReport(
@@ -178,7 +184,7 @@ fn executeAndReport(
     env_map: *const std.process.Environ.Map,
     payload: protocol.LeasePayload,
 ) void {
-    log.info("lease_acquired", .{
+    log.debug("lease_acquired", .{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
     });
@@ -193,17 +199,22 @@ fn executeAndReport(
     };
     defer cleanupWorkspace(io, workspace_path);
 
+    // Materialize the installed bundle's support files into the workspace before
+    // the fork (no-bundle / skill-only leases are a no-op). A hard failure reports
+    // a startup failure and skips execution (retry deferred — spec Failure Modes).
+    if (!materializeBundle(io, alloc, cp, runner_token, cfg, workspace_path, payload)) return;
+
     var forwarder = forwarders.ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id, .deadline_ms = cfg.cp_deadlines.activity_ms };
     defer forwarder.deinit();
     const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = forwarders.ActivityForwarder.forward };
     var driver = RenewDriver.init(alloc, cp, runner_token, payload, cfg.cp_deadlines.renew_ms);
     var fanout = TickFanout{ .forwarder = &forwarder, .driver = &driver };
 
-    // Hydrate the agent's prior memory over the trusted plane BEFORE the fork so
+    // Hydrate the fleet's prior memory over the trusted plane BEFORE the fork so
     // the child seeds its in-run store from it — the child makes no network call
     // and holds no token. A hydrate miss degrades to empty memory, never blocks.
-    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.agent_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
-        log.warn("memory_hydrate_failed", .{ .agent_id = payload.event.agent_id, .err = @errorName(err) });
+    const hydrated = cp.memoryHydrate(alloc, runner_token, payload.event.fleet_id, cfg.cp_deadlines.default_ms) catch |err| blk: {
+        log.warn("memory_hydrate_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .fleet_id = payload.event.fleet_id, .err = @errorName(err) });
         break :blk null;
     };
     defer if (hydrated) |h| h.deinit();
@@ -213,7 +224,7 @@ fn executeAndReport(
         .alloc = alloc,
         .cp = cp,
         .runner_token = runner_token,
-        .agent_id = payload.event.agent_id,
+        .fleet_id = payload.event.fleet_id,
         .lease_id = payload.lease_id,
         .fencing_token = payload.fencing_token,
         .deadline_ms = cfg.cp_deadlines.default_ms,
@@ -227,7 +238,7 @@ fn executeAndReport(
     // Ship whatever the batch still holds before the terminal report.
     forwarder.flush();
 
-    log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
+    log.debug("execute_completed", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
 
     const outcome = outcomeFor(result.exit_ok);
     const splits = splitFields(result);
@@ -245,25 +256,60 @@ fn executeAndReport(
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
     }, cfg.cp_deadlines.report_ms) catch |err| {
-        log.err("report_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
+        log.err("report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
         sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS); // back off so a down report endpoint can't hot-spin the pool
         return;
     };
 
-    log.info("reported", .{ .lease_id = payload.lease_id, .outcome = @tagName(outcome) });
+    log.debug("report_submitted", .{ .lease_id = payload.lease_id, .outcome = @tagName(outcome) });
+}
+
+/// Materialize the leased bundle's support files into `workspace_path` before the
+/// child forks. Returns true to proceed (no bundle, skill-only, or extracted OK);
+/// false after reporting a startup failure (download/extract failed) so the caller
+/// returns without executing. Retry deferred (spec Failure Modes).
+fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, workspace_path: []const u8, payload: protocol.LeasePayload) bool {
+    const manifest = payload.bundle orelse return true;
+    switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.workspace_base, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
+        .ready => return true,
+        .failed => {
+            reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms);
+            return false;
+        },
+    }
+}
+
+/// Report a pre-execution bundle-materialization failure as a startup failure so
+/// the event is finalized (`fleet_error` / `startup_posture`) instead of silently
+/// expiring and redelivering forever. No child forked → no tokens to settle. Retry
+/// is deferred; a failed report is logged and the lease expires for reclaim.
+fn reportStartupFailure(alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, payload: protocol.LeasePayload, deadline_ms: u31) void {
+    cp.report(alloc, runner_token, protocol.ReportRequest{
+        .lease_id = payload.lease_id,
+        .event_id = payload.event.event_id,
+        .fencing_token = payload.fencing_token,
+        .outcome = .fleet_error,
+        .failure_reason = .startup_posture,
+        .response_text = "",
+        .tokens = 0,
+        .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = 0 },
+        .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = "" },
+    }, deadline_ms) catch |err| {
+        log.err("bundle_startup_report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
+    };
 }
 
 /// Create a per-lease workspace directory. Writes into caller-owned `buf`; returns
 /// a slice into `buf` (valid for caller's stack frame) or null on error.
 fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id: []const u8) ?[]const u8 {
     const path = std.fmt.bufPrint(buf, "{s}/{s}", .{ base, lease_id }) catch {
-        log.err("workspace_path_fmt_failed", .{ .lease_id = lease_id });
+        log.err("workspace_path_fmt_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .lease_id = lease_id });
         return null;
     };
     std.Io.Dir.createDirAbsolute(io, path, .default_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => {
-            log.err("workspace_mkdir_failed", .{ .path = path, .err = @errorName(err) });
+            log.err("workspace_mkdir_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = path, .err = @errorName(err) });
             return null;
         },
     };
@@ -273,14 +319,14 @@ fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u
 /// Delete the per-lease workspace directory tree; failure is logged and ignored.
 fn cleanupWorkspace(io: std.Io, path: []const u8) void {
     std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
-        log.warn("workspace_cleanup_failed", .{ .path = path, .err = @errorName(err) });
+        log.warn("workspace_cleanup_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = path, .err = @errorName(err) });
     };
 }
 
 /// Map a child's clean-exit flag to the reported outcome. A failed execution
-/// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
+/// (incl. a fail-closed sandbox setup) is reported as `fleet_error`.
 pub fn outcomeFor(exit_ok: bool) protocol.Outcome {
-    return if (exit_ok) .processed else .agent_error;
+    return if (exit_ok) .processed else .fleet_error;
 }
 
 /// Saturate the final ExecutionResult's u64 cumulative splits onto the report's

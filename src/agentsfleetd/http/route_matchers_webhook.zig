@@ -26,8 +26,8 @@ pub fn matchSvixWebhook(p: Path) ?[]const u8 {
     return p.param(2);
 }
 
-/// Match `/webhooks/{agent_id}` (HMAC-only). The 3-segment
-/// `/webhooks/{agent_id}/{action}` form is matched per-action by
+/// Match `/webhooks/{fleet_id}` (HMAC-only). The 3-segment
+/// `/webhooks/{fleet_id}/{action}` form is matched per-action by
 /// `matchWebhookAction` (approval, grant-approval, github, …); the legacy
 /// URL-embedded-secret variant has been removed.
 pub fn matchWebhook(p: Path) ?[]const u8 {

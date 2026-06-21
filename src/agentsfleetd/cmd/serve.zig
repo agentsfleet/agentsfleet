@@ -21,13 +21,14 @@ const serve_args = @import("serve_args.zig");
 const serve_shutdown = @import("serve_shutdown.zig");
 const serve_background = @import("serve_background.zig");
 const pg = @import("pg");
+const serve_r2 = @import("serve_r2.zig");
+const serve_secrets = @import("serve_secrets.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const subscription_hub = @import("../events/subscription_hub.zig");
 const stream_registry = @import("../http/stream_registry.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const env_resolve = @import("../config/env_resolve.zig");
-const clerk_backend = @import("../auth/clerk_backend.zig");
 
 const log = logging.scoped(.agentsfleetd);
 
@@ -187,25 +188,24 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     };
     log.info("startup.subscription_hub_ok", .{});
 
-    // Webhook/backend secrets resolved ONCE at boot — handlers + the webhook
-    // middleware borrow these (Context owns them for the process lifetime)
-    // instead of re-reading env per request. Null = unset → consumer fails closed.
-    const clerk_webhook_secret = try env_resolve.secret(env_map, alloc, env_resolve.CLERK_WEBHOOK_SECRET_ENV);
-    defer if (clerk_webhook_secret) |s| alloc.free(s);
-    const approval_signing_secret_owned = try env_resolve.secret(env_map, alloc, env_resolve.APPROVAL_SIGNING_SECRET_ENV);
-    defer if (approval_signing_secret_owned) |s| alloc.free(s);
-    const clerk_secret_key = try env_resolve.secret(env_map, alloc, clerk_backend.SECRET_ENV_VAR);
-    defer if (clerk_secret_key) |s| alloc.free(s);
+    // Webhook/backend secrets resolved ONCE at boot; borrowed by handlers + webhook
+    // middleware for the process lifetime (null = unset → fail closed).
+    var secrets = try serve_secrets.resolve(env_map, alloc);
+    defer secrets.deinit();
+
+    var r2_store = try serve_r2.resolve(env_map, alloc, io);
+    defer if (r2_store) |*c| c.deinit();
 
     var ctx = http_handler.Context{
         .pool = api_pool,
         .queue = &api_queue,
         .alloc = alloc,
         .io = io,
-        .clerk_webhook_secret = clerk_webhook_secret,
-        .approval_signing_secret = approval_signing_secret_owned,
-        .clerk_secret_key = clerk_secret_key,
+        .clerk_webhook_secret = secrets.clerk_webhook_secret,
+        .approval_signing_secret = secrets.approval_signing_secret,
+        .clerk_secret_key = secrets.clerk_secret_key,
         .oidc = null,
+        .r2 = if (r2_store) |*c| c else null,
         .auth_sessions = &sessions,
         .audit_ctx = audit_events.AuditCtx.init(serve_cfg.audit_log_pepper),
         .app_url = serve_cfg.app_url,
@@ -252,7 +252,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // alive for the duration of the server. `initChains()` captures pointers
     // into registry fields; do NOT call initChains() before all fields are set,
     // and do NOT move/copy registry after calling initChains().
-    const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
+    const approval_signing_secret: []const u8 = if (secrets.approval_signing_secret) |s| s else "";
 
     var api_key_lookup_ctx = api_key_lookup.Ctx{ .pool = ctx.pool };
     var runner_lookup_ctx = serve_runner_lookup.Ctx{ .pool = ctx.pool };

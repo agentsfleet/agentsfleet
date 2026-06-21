@@ -25,11 +25,12 @@ function makeStubHandlers(): Handlers {
     login: noop, logout: noop, doctor: noop,
     auth:      { status: noop },
     workspace: { add: noop, list: noop, use: noop, show: noop, credentials: noop, delete: noop },
-    agentKey:  { add: noop, list: noop, delete: noop },
+    fleetKey:  { add: noop, list: noop, delete: noop },
     grant:     { list: noop, delete: noop },
     tenant:    { provider: { show: noop, add: noop, delete: noop } },
     billing:   { show: noop },
-    agent: {
+    fleet: {
+      templates: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       credential: { add: noop, show: noop, list: noop, delete: noop },
@@ -63,7 +64,7 @@ describe("CLI tree — every documented route is reachable through commander", (
     ["login"], ["logout"], ["doctor"],
     ["workspace", "add"], ["workspace", "list"], ["workspace", "use"],
     ["workspace", "show"], ["workspace", "credentials"], ["workspace", "delete"],
-    ["agent-key", "add"], ["agent-key", "list"], ["agent-key", "delete"],
+    ["fleet-key", "add"], ["fleet-key", "list"], ["fleet-key", "delete"],
     ["grant", "list"], ["grant", "delete"],
     ["tenant", "provider", "show"], ["tenant", "provider", "add"], ["tenant", "provider", "delete"],
     ["billing", "show"],

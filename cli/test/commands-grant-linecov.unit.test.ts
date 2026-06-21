@@ -21,7 +21,7 @@ import { Output, type OutputShape } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
-const AGENTSFLEET_ID = "01900000-0000-7000-8000-0000007670f7";
+const FLEET_ID = "01900000-0000-7000-8000-0000007670f7";
 const BEARER = "pat_grant_test";
 const NO_GRANTS_LINE = "no integration grants found";
 
@@ -122,7 +122,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
       items: [{ grant_id: "g1", service: "github", status: "approved" }],
     };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(undefined, AGENTSFLEET_ID), {
+      provideAll(grantListEffectFromArgs(undefined, FLEET_ID), {
         config: configLayer({ jsonMode: true }),
         http: httpReturning(body),
         output: captureOutputLayer(cap),
@@ -138,7 +138,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("empty grant list (no jsonMode) emits the no-grants info line", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(AGENTSFLEET_ID, undefined), {
+      provideAll(grantListEffectFromArgs(FLEET_ID, undefined), {
         config: configLayer({ jsonMode: false }),
         http: httpReturning({ items: [] }),
         output: captureOutputLayer(cap),
@@ -153,7 +153,7 @@ describe("grantListEffectFromArgs json + empty branches", () => {
   test("missing items field is treated as an empty list", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantListEffectFromArgs(AGENTSFLEET_ID, undefined), {
+      provideAll(grantListEffectFromArgs(FLEET_ID, undefined), {
         config: configLayer({ jsonMode: false }),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
@@ -165,10 +165,10 @@ describe("grantListEffectFromArgs json + empty branches", () => {
 });
 
 describe("grantDeleteEffectFromArgs id validation branch", () => {
-  test("a malformed agent id fails with ValidationError carrying the uuidv7 hint", async () => {
+  test("a malformed fleet id fails with ValidationError carrying the uuidv7 hint", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantDeleteEffectFromArgs("not-a-uuid", AGENTSFLEET_ID), {
+      provideAll(grantDeleteEffectFromArgs("not-a-uuid", FLEET_ID), {
         config: configLayer(),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
@@ -179,15 +179,15 @@ describe("grantDeleteEffectFromArgs id validation branch", () => {
       // The failure is the typed ValidationError minted by requireValidId.
       const text = String(exit.cause);
       expect(text).toContain("ValidationError");
-      expect(text).toContain("invalid agent_id");
+      expect(text).toContain("invalid fleet_id");
       expect(text).toContain("pass a valid uuidv7");
     }
   });
 
-  test("a valid agent id but malformed grant id also fails validation", async () => {
+  test("a valid fleet id but malformed grant id also fails validation", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantDeleteEffectFromArgs(AGENTSFLEET_ID, "bad-grant"), {
+      provideAll(grantDeleteEffectFromArgs(FLEET_ID, "bad-grant"), {
         config: configLayer(),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
@@ -207,14 +207,14 @@ describe("grantDeleteEffectFromArgs JSON mode", () => {
   test("prints a deleted payload and skips the human success line", async () => {
     const cap: PrintCapture = { json: [], info: [] };
     const exit = await Effect.runPromiseExit(
-      provideAll(grantDeleteEffectFromArgs(AGENTSFLEET_ID, AGENTSFLEET_ID), {
+      provideAll(grantDeleteEffectFromArgs(FLEET_ID, FLEET_ID), {
         config: configLayer({ jsonMode: true }),
         http: httpReturning({}),
         output: captureOutputLayer(cap),
       }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(cap.json).toEqual([{ deleted: true, grant_id: AGENTSFLEET_ID }]);
+    expect(cap.json).toEqual([{ deleted: true, grant_id: FLEET_ID }]);
     expect(cap.info).toEqual([]);
   });
 });

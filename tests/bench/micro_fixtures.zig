@@ -39,11 +39,11 @@ pub const ROUTE_PATHS = [_][]const u8{
     "/metrics",
     "/v1/auth/sessions",
     "/v1/workspaces",
-    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/agents",
-    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/agents/019abcde-5678-7ccc-8ddd-abcdef012345/activity",
+    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/fleets",
+    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/fleets/019abcde-5678-7ccc-8ddd-abcdef012345/activity",
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/credentials",
     "/v1/webhooks/019abcde-1234-7aaa-8bbb-abcdef012345",
-    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/agents/019abcde-5678-7ccc-8ddd-abcdef012345/memories",
+    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/fleets/019abcde-5678-7ccc-8ddd-abcdef012345/memories",
 };
 
 // ── error_registry_lookup ─────────────────────────────────────────────────

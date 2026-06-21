@@ -6,6 +6,7 @@ const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
+const ec = @import("auth_codes");
 const jwks_types = @import("jwks_types.zig");
 const jwks_token = @import("jwks_token.zig");
 const jwks_crypto = @import("jwks_crypto.zig");
@@ -115,11 +116,13 @@ pub const Verifier = struct {
         const header = try std.json.parseFromSlice(Header, alloc, header_raw, .{ .ignore_unknown_fields = true });
         defer header.deinit();
         if (!std.mem.eql(u8, header.value.alg, "RS256")) {
-            log.warn("unsupported_alg", .{ .alg = header.value.alg });
+            log.warn("unsupported_alg", .{ .error_code = ec.ERR_UNAUTHORIZED, .alg = header.value.alg });
             return VerifyError.UnsupportedAlgorithm;
         }
         const kid = header.value.kid orelse {
-            log.warn("missing_kid", .{});
+            log.warn("missing_kid", .{
+                .error_code = ec.ERR_UNAUTHORIZED,
+            });
             return VerifyError.MissingKeyId;
         };
 
@@ -136,7 +139,7 @@ pub const Verifier = struct {
         defer alloc.free(signing_input);
 
         verifyRs256(signing_input, signature, key.modulus, key.exponent) catch {
-            log.warn("signature_invalid", .{ .kid = kid });
+            log.warn("signature_invalid", .{ .error_code = ec.ERR_UNAUTHORIZED, .kid = kid });
             return VerifyError.SignatureInvalid;
         };
 
@@ -174,7 +177,7 @@ pub const Verifier = struct {
             // provider is unreachable.
             switch (try self.cachedKey(alloc, kid, .allow_stale)) {
                 .hit => |key| {
-                    log.warn("jwks_stale_serve", .{ .err = @errorName(err) });
+                    log.warn("jwks_stale_serve", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
                     return key;
                 },
                 else => return err,
@@ -232,18 +235,18 @@ pub const Verifier = struct {
             self.mutex.unlock();
         }
         const raw = fetched catch |err| {
-            log.warn("jwks_fetch_failed", .{ .err = @errorName(err) });
+            log.warn("jwks_fetch_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
             return err;
         };
         defer self.alloc.free(raw);
         var parsed = parseJwks(self.alloc, raw) catch |err| {
-            log.warn("jwks_parse_failed", .{ .err = @errorName(err) });
+            log.warn("jwks_parse_failed", .{ .error_code = ec.ERR_AUTH_UNAVAILABLE, .err = @errorName(err) });
             return err;
         };
         parsed.fetched_at_ms = clock.nowMillis();
         if (self.cache) |*old| old.deinit(self.alloc);
         self.cache = parsed;
-        log.info("jwks_fetched", .{ .keys = parsed.keys.len, .reason = @tagName(reason) });
+        log.debug("jwks_fetched", .{ .keys = parsed.keys.len, .reason = @tagName(reason) });
     }
 
     fn fetchJwksJson(self: *Self) ![]u8 {

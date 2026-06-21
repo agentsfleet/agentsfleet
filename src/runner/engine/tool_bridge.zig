@@ -10,11 +10,11 @@
 //!   Zero other changes required.
 //!
 //! This file is NOT about skill tools (Slack, GitHub, AgentMail). Skills are
-//! dynamic — the agent uses NullClaw's shell/HTTP tools to interact with
+//! dynamic — the fleet uses NullClaw's shell/HTTP tools to interact with
 //! skill APIs using injected credentials. No compiled Zig per skill.
 //!
 //! Binary boundary: the runner imports only `nullclaw`. This file must
-//! NOT import anything from src/agent/, src/pipeline/, or src/main.zig.
+//! NOT import anything from src/fleet/, src/pipeline/, or src/main.zig.
 
 const std = @import("std");
 const logging = @import("log");
@@ -28,7 +28,7 @@ const client_errors = @import("client_errors.zig");
 const log = logging.scoped(.tool_bridge);
 
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
-const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
+const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ const ToolEntry = struct {
 // ── Static registry ────────────────────────────────────────────────────────
 // Every NullClaw built-in tool. Skills are dynamic — no entries here.
 //
-// When tools: null → allTools() gives the agent everything (default).
+// When tools: null → allTools() gives the fleet everything (default).
 // When tools: ["shell", "file_read"] → the bridge resolves only those.
 
 const BRIDGE_REGISTRY = [_]ToolEntry{
@@ -84,7 +84,7 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
     .{ .name = "memory_recall", .buildFn = builders.buildMemoryRecall },
     .{ .name = "memory_list", .buildFn = builders.buildMemoryList },
     .{ .name = "memory_forget", .buildFn = builders.buildMemoryForget },
-    // Agent orchestration
+    // Fleet orchestration
     .{ .name = "delegate", .buildFn = builders.buildDelegate },
     .{ .name = "schedule", .buildFn = builders.buildSchedule },
     .{ .name = "spawn", .buildFn = builders.buildSpawn },
@@ -185,7 +185,7 @@ pub fn buildTools(
         };
 
         const t = entry.buildFn(ctx) catch |err| {
-            log.err("build_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT, .name = tool_name, .err = @errorName(err) });
+            log.err("build_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .name = tool_name, .err = @errorName(err) });
             continue;
         };
         list.append(alloc, t) catch |err| {

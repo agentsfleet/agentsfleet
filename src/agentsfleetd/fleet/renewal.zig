@@ -2,7 +2,7 @@
 //! meter the slice of runtime + tokens consumed since the last renewal.
 //!
 //! Decouples lease liveness from execution duration. A runner that is actively
-//! executing an agent calls `POST /v1/runners/me/leases/{id}/renew` inside the
+//! executing a Fleet calls `POST /v1/runners/me/leases/{id}/renew` inside the
 //! renewal window; this pushes the kill deadline forward so a legitimate >30s
 //! run is never reclaimed mid-flight, and charges the elapsed run fee + token
 //! delta for that slice.
@@ -20,7 +20,7 @@
 //! advance both cursors, debit the wallet (clamped, never negative), accumulate
 //! the per-event `stage` telemetry row, and INSERT the per-renewal breakdown —
 //! a lost/capped renewal writes none of them. The Δ is computed off the AFFINITY
-//! cursor (the durable per-agent anchor that survives reclaim), so a re-sent
+//! cursor (the durable per-fleet anchor that survives reclaim), so a re-sent
 //! renewal charges ≈0 (cumulative-diff idempotency). The four per-unit rates are
 //! resolved in Zig (`tenant_billing.resolveRenewSliceRates`) and passed in, so
 //! the slice math here is the SAME as `computeStageCharge` — SQL==Zig by
@@ -30,11 +30,12 @@
 
 const pg = @import("pg");
 const logging = @import("log");
+const ec = @import("../errors/error_registry.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const constants = @import("common");
 const protocol = @import("contract").protocol;
 const id_format = @import("../types/id_format.zig");
-const telemetry = @import("../state/agent_telemetry_store.zig");
+const telemetry = @import("../state/fleet_telemetry_store.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
@@ -73,7 +74,7 @@ pub fn buildMeterInputs(
     cum_output: u32,
 ) MeterInputs {
     const rates = tenant_billing.resolveRenewSliceRates(provider, posture, model, now_ms) orelse blk: {
-        log.warn("meter_rate_missing_run_fee_only", .{ .provider = provider, .model = model });
+        log.warn("meter_rate_missing_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model });
         break :blk tenant_billing.SliceRates{ .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
     };
     return .{
@@ -121,7 +122,7 @@ pub const RenewOutcome = union(enum) {
 // round-trip.
 const RENEW_METER_SQL =
     \\WITH probe AS (
-    \\    SELECT l.id, l.agent_id, l.workspace_id, l.tenant_id, l.event_id,
+    \\    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
     \\           l.created_at, l.fencing_token, l.posture, l.model, a.fencing_seq,
     \\           a.meter_slice_seq,
     \\           LEAST($3::bigint, l.created_at + $4::bigint) AS capped,
@@ -130,7 +131,7 @@ const RENEW_METER_SQL =
     \\           GREATEST(0, $8::bigint - a.metered_cached_tokens)   AS d_cached,
     \\           GREATEST(0, $9::bigint - a.metered_output_tokens)   AS d_out
     \\    FROM fleet.runner_leases l
-    \\    JOIN fleet.runner_affinity a ON a.agent_id = l.agent_id
+    \\    JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
     \\    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $5
     \\    FOR UPDATE OF l, a
     \\), bal AS (
@@ -169,8 +170,8 @@ const RENEW_METER_SQL =
     \\        metered_output_tokens = GREATEST(a.metered_output_tokens, $9),
     \\        last_metered_at_ms = $6,
     \\        meter_slice_seq = g.next_seq
-    \\    FROM guard g WHERE a.agent_id = g.agent_id
-    \\    RETURNING a.agent_id
+    \\    FROM guard g WHERE a.fleet_id = g.fleet_id
+    \\    RETURNING a.fleet_id
     \\), wallet AS (
     \\    UPDATE billing.tenant_billing tb
     \\    SET balance_nanos = GREATEST(0, tb.balance_nanos - g.slice),
@@ -181,22 +182,22 @@ const RENEW_METER_SQL =
     \\    FROM guard g WHERE tb.tenant_id = g.tenant_id
     \\    RETURNING tb.tenant_id
     \\), ledger AS (
-    \\    INSERT INTO core.agent_execution_telemetry
-    \\      (uid, id, tenant_id, workspace_id, agent_id, event_id, charge_type, posture,
+    \\    INSERT INTO core.fleet_execution_telemetry
+    \\      (uid, id, tenant_id, workspace_id, fleet_id, event_id, charge_type, posture,
     \\       model, credit_deducted_nanos, token_count_input, token_count_output,
     \\       wall_ms, recorded_at)
     \\    SELECT $17::uuid, 'mtr_' || g.event_id, g.tenant_id, g.workspace_id::text,
-    \\           g.agent_id::text, g.event_id, $14, g.posture, g.model,
+    \\           g.fleet_id::text, g.event_id, $14, g.posture, g.model,
     \\           g.charged, g.d_in, g.d_out, g.d_ms, $6
     \\    FROM guard g
     \\    ON CONFLICT (event_id, charge_type) DO UPDATE SET
-    \\        credit_deducted_nanos = core.agent_execution_telemetry.credit_deducted_nanos
+    \\        credit_deducted_nanos = core.fleet_execution_telemetry.credit_deducted_nanos
     \\            + EXCLUDED.credit_deducted_nanos,
-    \\        token_count_input  = COALESCE(core.agent_execution_telemetry.token_count_input, 0)
+    \\        token_count_input  = COALESCE(core.fleet_execution_telemetry.token_count_input, 0)
     \\            + EXCLUDED.token_count_input,
-    \\        token_count_output = COALESCE(core.agent_execution_telemetry.token_count_output, 0)
+    \\        token_count_output = COALESCE(core.fleet_execution_telemetry.token_count_output, 0)
     \\            + EXCLUDED.token_count_output,
-    \\        wall_ms = COALESCE(core.agent_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
+    \\        wall_ms = COALESCE(core.fleet_execution_telemetry.wall_ms, 0) + EXCLUDED.wall_ms
     \\    RETURNING event_id
     \\), breakdown AS (
     \\    INSERT INTO fleet.metering_periods

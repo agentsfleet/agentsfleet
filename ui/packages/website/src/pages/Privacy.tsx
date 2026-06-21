@@ -26,7 +26,7 @@ export default function Privacy() {
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">2. Information we do not collect</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem><strong className="text-text font-medium">LLM API keys</strong> — your keys are stored encrypted and never transmitted to agentsfleet servers in plaintext. We operate on a self-managed model.</ListItem>
-        <ListItem><strong className="text-text font-medium">Source code contents</strong> — agentsfleet agents operate within your Git repositories via branch-based state. Code is never copied to agentsfleet infrastructure.</ListItem>
+        <ListItem><strong className="text-text font-medium">Source code contents</strong> — agentsfleet fleets operate within your Git repositories via branch-based state. Code is never copied to agentsfleet infrastructure.</ListItem>
         <ListItem><strong className="text-text font-medium">Model outputs</strong> — generated patches, plans, and validation results remain in your repository as artifacts.</ListItem>
       </List>
 

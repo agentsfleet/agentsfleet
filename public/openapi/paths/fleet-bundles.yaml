@@ -1,0 +1,139 @@
+/v1/fleets/bundles:
+  get:
+    operationId: list_fleet_bundles
+    summary: List Fleet Bundles
+    description: Returns first-party Fleet Bundle templates that can be imported into a workspace. Template rows contain only metadata and requirement hints; they do not carry credential values.
+    tags:
+    - Fleet Bundles
+    responses:
+      '200':
+        description: Template metadata.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: ../components/schemas.yaml#/components/schemas/FleetBundleTemplate
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/bundles/snapshots:
+  post:
+    operationId: import_fleet_bundle
+    summary: Import a Fleet Bundle
+    description: Validates and stores a workspace-scoped Fleet Bundle snapshot from uploaded Markdown, a GitHub source reference, or a first-party template reference. The import response previews credentials, tools, network hosts, and support-file names without returning support-file content.
+    tags:
+    - Fleet Bundles
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: Universally Unique Identifier v7 (UUIDv7) of the workspace.
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - source_kind
+            properties:
+              source_kind:
+                type: string
+                description: >-
+                  Where the bundle comes from. `upload` carries the SKILL.md (and
+                  optional TRIGGER.md) Markdown inline; `github` and `template`
+                  are fetched and validated server-side from GitHub.
+                enum:
+                - template
+                - upload
+                - github
+              source_ref:
+                type: string
+                maxLength: 512
+                description: >-
+                  Required for `github` (an `owner/repo` locator resolved at the
+                  default branch) and `template` (a first-party template id). For
+                  `upload` it is an optional operator-traceability label.
+              skill_markdown:
+                type: string
+                maxLength: 204800
+                description: >-
+                  Raw SKILL.md bytes. Required for `upload`; ignored for fetched
+                  sources, whose fetched SKILL.md is authoritative.
+              trigger_markdown:
+                type: string
+                maxLength: 204800
+                description: >-
+                  Optional raw TRIGGER.md bytes for `upload`. When omitted,
+                  installing the bundle uses the server-generated default API
+                  trigger. Ignored for fetched sources.
+    responses:
+      '201':
+        description: Bundle imported and stored.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetBundleDetail
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+/v1/workspaces/{workspace_id}/fleets/bundles/snapshots/{bundle_id}:
+  get:
+    operationId: get_fleet_bundle
+    summary: Get a Fleet Bundle preview
+    description: Returns the stored Fleet Bundle snapshot metadata and requirement preview for a workspace. Support-file contents and credential values are never returned.
+    tags:
+    - Fleet Bundles
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: bundle_id
+      in: path
+      required: true
+      description: UUIDv7 of the Fleet Bundle.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Bundle preview.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/components/schemas/FleetBundleDetail
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

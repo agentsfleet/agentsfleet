@@ -37,16 +37,16 @@ async function renderTabs(pathname: string) {
 }
 
 describe("SettingsTabs active-tab computation", () => {
-  it("marks Basic Info active on the /settings index (exact match)", async () => {
+  it("marks Workspace active on the /settings index (exact match)", async () => {
     await renderTabs("/settings");
-    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Workspace" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("link", { name: "API Keys" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("marks API Keys active on /settings/api-keys", async () => {
     await renderTabs("/settings/api-keys");
     expect(screen.getByRole("link", { name: "API Keys" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Workspace" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("keeps API Keys active on a nested child route (prefix match)", async () => {
@@ -54,19 +54,19 @@ describe("SettingsTabs active-tab computation", () => {
     expect(screen.getByRole("link", { name: "API Keys" }).getAttribute("aria-current")).toBe("page");
   });
 
-  it("does not light up Basic Info for a nested api-keys route (index is exact-match only)", async () => {
+  it("does not light up Workspace for a nested api-keys route (index is exact-match only)", async () => {
     // Regression guard: the /settings index must NOT prefix-match every sub-route,
     // otherwise both tabs would read aria-current on any deeper page.
     await renderTabs("/settings/api-keys");
-    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Workspace" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("highlights no tab on a masked settings sub-route (defaults/security)", async () => {
     // /settings/defaults + /settings/security render SettingsTabs but have no
     // tab entry — neither tab should claim aria-current (so we don't falsely
-    // light up Basic Info while the user is clearly on a different page).
+    // light up Workspace while the user is clearly on a different page).
     await renderTabs("/settings/defaults");
-    expect(screen.getByRole("link", { name: "Basic Info" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Workspace" }).getAttribute("aria-current")).toBeNull();
     expect(screen.getByRole("link", { name: "API Keys" }).getAttribute("aria-current")).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe("SettingsTabs active-tab computation", () => {
 
   it("maps the index tab to the 'basic' analytics slug", async () => {
     await renderTabs("/settings/api-keys");
-    fireEvent.click(screen.getByRole("link", { name: "Basic Info" }));
+    fireEvent.click(screen.getByRole("link", { name: "Workspace" }));
     expect(trackNavigationClickedMock).toHaveBeenCalledWith({
       source: "settings_tabs_basic",
       surface: "settings_tabs",

@@ -63,7 +63,7 @@ const NFTA_DATA_VALUE: u16 = 1;
 
 const IPV4_KEY_LEN: u32 = 4;
 // nft datatype id for ipv4_addr keys (TYPE_IPADDR) — mandatory in NEWSET; the
-// oracle capture (fixtures/captured/04_set_allow0.mnl.txt) proved its absence
+// oracle capture (tests/fixtures/runner/network/captured/04_set_allow0.mnl.txt) proved its absence
 // was a real-nft divergence (Codex's NFTA_SET_KEY_TYPE catch).
 const TYPE_IPADDR: u32 = 7;
 const REQ_CREATE = MessageBuilder.NLM_F_REQUEST | MessageBuilder.NLM_F_CREATE;
@@ -106,7 +106,7 @@ pub fn newTable(mb: *MessageBuilder, name: []const u8, seq: u32) void {
 }
 
 /// Delete `inet` table `name` — one message tears down its chains, sets and
-/// rules (the teardown path; oracle: fixtures/captured/11_del_table.mnl.txt).
+/// rules (teardown path; oracle: tests/fixtures/runner/network/captured/11_del_table.mnl.txt).
 pub fn delTable(mb: *MessageBuilder, name: []const u8, seq: u32) void {
     mb.start(nftType(NFT_MSG_DELTABLE), MessageBuilder.NLM_F_REQUEST, seq);
     const g = nfgenmsg(NFPROTO_INET, 0);
@@ -119,7 +119,7 @@ pub const CHAIN_TYPE_NAT = "nat";
 
 /// Create a base chain of `chain_type` on `hooknum`/`priority`. Attribute
 /// order (NAME, POLICY?, TYPE, HOOK) and the policy-less NAT shape follow the
-/// oracle (fixtures/captured/02+03_chain_*.mnl.txt) — nat chains carry no
+/// oracle (tests/fixtures/runner/network/captured/02+03_chain_*.mnl.txt) — nat chains carry no
 /// POLICY attr; pass null.
 pub fn newChain(
     mb: *MessageBuilder,

@@ -52,10 +52,10 @@ test.describe("Smoke", () => {
     expect(await llmsFull.text()).toContain("AI teammates");
   });
 
-  test("agents page loads", async ({ page }) => {
-    await page.goto("/agents");
+  test("fleets page loads", async ({ page }) => {
+    await page.goto("/fleets");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "This page is for autonomous agents.",
+      "This page is for autonomous Fleets.",
     );
   });
 
@@ -78,7 +78,7 @@ test.describe("Smoke", () => {
   });
 
   test("footer renders on all routes", async ({ page }) => {
-    for (const route of ["/", "/agents", "/privacy", "/terms"]) {
+    for (const route of ["/", "/fleets", "/privacy", "/terms"]) {
       await page.goto(route);
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("contentinfo")).toBeVisible({ timeout: 10_000 });

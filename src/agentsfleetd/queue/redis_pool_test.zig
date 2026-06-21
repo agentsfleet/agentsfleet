@@ -731,7 +731,7 @@ const Client = @import("redis_client.zig");
 const metrics_redis_pool = @import("../observability/metrics_redis_pool.zig");
 const metrics_render = @import("../observability/metrics_render.zig");
 
-test "metrics: registerPool + activity renders all 8 agent_redis_pool_* lines in Prometheus output" {
+test "metrics: registerPool + activity renders all 8 fleet_redis_pool_* lines in Prometheus output" {
     // Spec coverage: prove the scrape path emits a line per `PoolStats`
     // field after a Pool is registered. The render layer treats `mrp`
     // as the single source of truth — a regression that drops a counter
@@ -772,14 +772,14 @@ test "metrics: registerPool + activity renders all 8 agent_redis_pool_* lines in
     // Match the metric NAMES (not values) — values drift with timing and
     // the renderer's order; names are the contract scrapers depend on.
     const expected_metric_names = [_][]const u8{
-        "agent_redis_pool_active",
-        "agent_redis_pool_idle",
-        "agent_redis_pool_dials_total",
-        "agent_redis_pool_overflow_dials_total",
-        "agent_redis_pool_poisoned_connections_total",
-        "agent_redis_pool_reconnects_total",
-        "agent_redis_pool_forced_closes_total",
-        "agent_redis_pool_acquire_timeouts_total",
+        "fleet_redis_pool_active",
+        "fleet_redis_pool_idle",
+        "fleet_redis_pool_dials_total",
+        "fleet_redis_pool_overflow_dials_total",
+        "fleet_redis_pool_poisoned_connections_total",
+        "fleet_redis_pool_reconnects_total",
+        "fleet_redis_pool_forced_closes_total",
+        "fleet_redis_pool_acquire_timeouts_total",
     };
     inline for (expected_metric_names) |name| {
         if (std.mem.indexOf(u8, text, name) == null) {
@@ -791,8 +791,8 @@ test "metrics: registerPool + activity renders all 8 agent_redis_pool_* lines in
     // Load-bearing value assertions: prove the snapshot path actually
     // pulls live stats (not zeroed defaults). The first acquire dials;
     // the next two reuse idle, then the poisoned release bumps pathology.
-    try std.testing.expect(std.mem.indexOf(u8, text, "agent_redis_pool_dials_total 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "agent_redis_pool_poisoned_connections_total 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "fleet_redis_pool_dials_total 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "fleet_redis_pool_poisoned_connections_total 1") != null);
 }
 
 // ── #28: failover reconnect flood completes under window ───────────────

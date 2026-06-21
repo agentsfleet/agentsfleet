@@ -1,8 +1,8 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerRefresh } from "./helpers/dashboard-mocks";
+import { routerPush, routerRefresh } from "./helpers/dashboard-mocks";
 import { resetDashboardMocks, setActiveWorkspaceMock, createWorkspaceActionMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
@@ -18,8 +18,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
 });
 
 // App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/agents", async () => (await import("./helpers/dashboard-app-mocks")).agentsApiMock());
-vi.mock("@/app/(dashboard)/agents/actions", async () => (await import("./helpers/dashboard-app-mocks")).agentActionsMock());
+vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
+vi.mock("@/app/(dashboard)/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
 vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
 vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
 vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", async () => (await import("./helpers/dashboard-app-mocks")).providerSelectorMock());
@@ -44,6 +44,8 @@ describe("WorkspaceSwitcher component", () => {
     workspaces?: Array<{ id: string; name: string | null }>;
     activeId?: string | null;
     onSwitch?: (id: string) => void | Promise<void>;
+    showCreateButton?: boolean;
+    showManageItem?: boolean;
   } = {}) {
     const { default: WorkspaceSwitcher } = await import(
       "../components/layout/WorkspaceSwitcher"
@@ -56,6 +58,8 @@ describe("WorkspaceSwitcher component", () => {
         ],
         activeId: props.activeId ?? "ws_1",
         onSwitch: props.onSwitch ?? setActiveWorkspaceMock,
+        showCreateButton: props.showCreateButton,
+        showManageItem: props.showManageItem,
       } as never),
     );
   }
@@ -77,6 +81,26 @@ describe("WorkspaceSwitcher component", () => {
     await renderSwitcher();
     await user.click(screen.getByTestId("workspace-new"));
     await waitFor(() => expect(screen.getByTestId("workspace-name-input")).toBeTruthy());
+  });
+
+  it("bounds the workspace menu so create actions remain reachable", async () => {
+    const manyWorkspaces = Array.from({ length: 32 }, (_, index) => ({
+      id: `ws_${index}`,
+      name: `Workspace ${index}`,
+    }));
+    const { container } = render(
+      React.createElement(
+        (await import("../components/layout/WorkspaceSwitcher")).default,
+        {
+          workspaces: manyWorkspaces,
+          activeId: "ws_0",
+          onSwitch: setActiveWorkspaceMock,
+        } as never,
+      ),
+    );
+    const menu = container.querySelector("[data-dropdown-content]");
+    expect(menu?.className).toContain("max-h-96");
+    expect(menu?.className).toContain("overflow-y-auto");
   });
 
   it("renders the active workspace label", async () => {
@@ -112,6 +136,53 @@ describe("WorkspaceSwitcher component", () => {
     await waitFor(() =>
       expect(setActiveWorkspaceMock).toHaveBeenCalledWith("ws_2"),
     );
+    expect(routerRefresh).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
+    );
+  });
+
+  it("uses the workspace id in the switch toast when the workspace has no name", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher({
+      workspaces: [
+        { id: "ws_1", name: "Alpha" },
+        { id: "ws_no_name", name: null },
+      ],
+    });
+    const items = screen.getAllByRole("menuitem");
+    await user.click(items[1]!);
+    await waitFor(() =>
+      expect(screen.getByText("Workspace changed to ws_no_name.")).toBeTruthy(),
+    );
+  });
+
+  it("clears the workspace switch toast after the notice timeout", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    const items = screen.getAllByRole("menuitem");
+    await user.click(items[1]!);
+    await waitFor(() =>
+      expect(screen.getByText("Workspace changed to Beta.")).toBeTruthy(),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2900));
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Workspace changed to Beta.")).toBeNull(),
+    );
+  });
+
+  it("shows a failure toast when switching workspaces rejects", async () => {
+    const user = userEvent.setup({ delay: null });
+    const onSwitch = vi.fn().mockRejectedValue(new Error("nope"));
+    await renderSwitcher({ onSwitch });
+    const items = screen.getAllByRole("menuitem");
+    await user.click(items[1]!);
+    await waitFor(() =>
+      expect(screen.getByText("Workspace switch failed.")).toBeTruthy(),
+    );
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("picking the active workspace is a no-op", async () => {
@@ -123,6 +194,29 @@ describe("WorkspaceSwitcher component", () => {
     // Give transition a tick
     await new Promise((r) => setTimeout(r, 10));
     expect(setActiveWorkspaceMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("navigates to Settings from Manage workspace", async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-manage"));
+    expect(routerPush).toHaveBeenCalledWith("/settings");
+  });
+
+  it("creates a workspace from the inline button and shows the created toast", async () => {
+    const user = userEvent.setup({ delay: null });
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_inline", name: "inline-prod" },
+    });
+    await renderSwitcher({ showCreateButton: true });
+    await user.click(screen.getByRole("button", { name: /new workspace/i }));
+    await user.type(screen.getByTestId("workspace-name-input"), "inline-prod");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(screen.getByText("Workspace created: inline-prod.")).toBeTruthy(),
+    );
   });
 });
 
@@ -130,7 +224,11 @@ describe("WorkspaceSwitcher component", () => {
 
 describe("CreateWorkspaceDialog component", () => {
   async function renderDialog(
-    props: { open?: boolean; onOpenChange?: (open: boolean) => void } = {},
+    props: {
+      open?: boolean;
+      onOpenChange?: (open: boolean) => void;
+      onCreated?: (workspaceName: string) => void;
+    } = {},
   ) {
     const onOpenChange = props.onOpenChange ?? vi.fn();
     const { default: CreateWorkspaceDialog } = await import(
@@ -140,6 +238,7 @@ describe("CreateWorkspaceDialog component", () => {
       React.createElement(CreateWorkspaceDialog, {
         open: props.open ?? true,
         onOpenChange,
+        onCreated: props.onCreated,
       } as never),
     );
     return { onOpenChange };
@@ -147,16 +246,18 @@ describe("CreateWorkspaceDialog component", () => {
 
   it("submits the trimmed name, then closes and refreshes on success", async () => {
     const user = userEvent.setup({ delay: null });
+    const onCreated = vi.fn();
     createWorkspaceActionMock.mockResolvedValueOnce({
       ok: true,
       data: { workspace_id: "ws_x", name: "acme-prod" },
     });
-    const { onOpenChange } = await renderDialog();
+    const { onOpenChange } = await renderDialog({ onCreated });
     await user.type(screen.getByTestId("workspace-name-input"), "  acme-prod  ");
     await user.click(screen.getByTestId("workspace-create-submit"));
     await waitFor(() =>
       expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }),
     );
+    expect(onCreated).toHaveBeenCalledWith("acme-prod");
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(routerRefresh).toHaveBeenCalled();
   });

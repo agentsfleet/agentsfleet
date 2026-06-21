@@ -4,6 +4,11 @@ import { runCli } from "../src/cli.ts";
 import { saveCredentials } from "../src/lib/state.ts";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
+const SESSION_ID = "sess_test_url_resolution";
+const API_URL_DEV = "https://api-dev.agentsfleet.net";
+const DASHBOARD_URL_DEV = "https://app-dev.agentsfleet.net";
+const DASHBOARD_URL_OVERRIDE = "https://dashboard.override.test";
+
 interface RecordedCall { url: string; method: string }
 interface FetchRecorder {
   calls: RecordedCall[];
@@ -28,7 +33,7 @@ const asFetchOverride = (
 // resolve, which would fast-fail before any fetch.
 const ttyStdin = { isTTY: true } as unknown as NodeJS.ReadableStream;
 
-function makeFetchRecorder(): FetchRecorder {
+function makeFetchRecorder(recorderOptions: { loginUrl?: string } = {}): FetchRecorder {
   const calls: RecordedCall[] = [];
   const fetchImpl = async (
     url: string,
@@ -36,13 +41,14 @@ function makeFetchRecorder(): FetchRecorder {
   ): Promise<ResponseLike> => {
     calls.push({ url, method: options?.method ?? "GET" });
     if (calls.length === 1) {
+      const body: { session_id: string; login_url?: string } = {
+        session_id: SESSION_ID,
+      };
+      if (recorderOptions.loginUrl !== undefined) body.login_url = recorderOptions.loginUrl;
       return {
         ok: true,
         status: 201,
-        text: async () => JSON.stringify({
-          session_id: "sess_test_url_resolution",
-          login_url: "https://login.test/sess_test_url_resolution",
-        }),
+        text: async () => JSON.stringify(body),
       };
     }
     return {
@@ -99,7 +105,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         [
-          "--api", "https://api-dev.agentsfleet.net",
+          "--api", API_URL_DEV,
           "login", "--no-open", "--no-input",
         ],
         {
@@ -111,7 +117,59 @@ describe("api url resolution drives every fetch from runCli", () => {
         },
       );
       expect(code).toBe(130);
-      expect(calls[0]).toEqual({ url: "https://api-dev.agentsfleet.net/v1/auth/sessions", method: "POST" });
+      expect(calls[0]).toEqual({ url: `${API_URL_DEV}/v1/auth/sessions`, method: "POST" });
+      expect(out.read()).toContain(`${DASHBOARD_URL_DEV}/cli-auth/${SESSION_ID}`);
+    });
+  });
+
+  test("honors AGENTSFLEET_DASHBOARD_URL over the dashboard derived from --api", async () => {
+    await withFreshStateDir(async () => {
+      const out = bufferStream();
+      const err = bufferStream();
+      const { calls, fetchImpl } = makeFetchRecorder();
+      const code = await runCli(
+        [
+          "--api", API_URL_DEV,
+          "login", "--no-open", "--no-input",
+        ],
+        {
+          stdout: out.stream,
+          stderr: err.stream,
+          stdin: ttyStdin,
+          env: { AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          fetchImpl: asFetchOverride(fetchImpl),
+        },
+      );
+      expect(code).toBe(130);
+      expect(calls[0]).toEqual({ url: `${API_URL_DEV}/v1/auth/sessions`, method: "POST" });
+      expect(out.read()).toContain(`${DASHBOARD_URL_OVERRIDE}/cli-auth/${SESSION_ID}`);
+    });
+  });
+
+  test("uses the API-provided login_url when auth session creation returns one", async () => {
+    await withFreshStateDir(async () => {
+      const out = bufferStream();
+      const err = bufferStream();
+      const apiOwnedLoginUrl = `https://api-owned-login.test/cli-auth/${SESSION_ID}`;
+      const { calls, fetchImpl } = makeFetchRecorder({ loginUrl: apiOwnedLoginUrl });
+      const code = await runCli(
+        [
+          "--api", API_URL_DEV,
+          "login", "--no-open", "--no-input",
+        ],
+        {
+          stdout: out.stream,
+          stderr: err.stream,
+          stdin: ttyStdin,
+          env: { AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          fetchImpl: asFetchOverride(fetchImpl),
+        },
+      );
+      const rendered = out.read();
+      expect(code).toBe(130);
+      expect(calls[0]).toEqual({ url: `${API_URL_DEV}/v1/auth/sessions`, method: "POST" });
+      expect(rendered).toContain(apiOwnedLoginUrl);
+      expect(rendered).not.toContain(`${DASHBOARD_URL_OVERRIDE}/cli-auth/${SESSION_ID}`);
     });
   });
 
@@ -167,7 +225,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   // regression guard that an ambient API_URL is ignored, never resolved.
   describe("full precedence matrix", () => {
     const FLAG = "https://flag.example";
-    const ZENV = "https://agent-env.example";
+    const ZENV = "https://fleet-env.example";
     const AENV = "https://api-url-env.example";
     const CREDS = "https://saved-creds.example";
     const DEFAULT = "https://api.agentsfleet.net";

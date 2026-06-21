@@ -123,8 +123,8 @@ describe("Step1Credential", () => {
     expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
     expect(screen.getByText("Add a new provider key")).toBeTruthy();
     const link = screen.getByText("Manage credential vault →") as HTMLAnchorElement;
-    // Credentials now live in a section on this same page; the link is an anchor.
-    expect(link.getAttribute("href")).toBe("#credentials");
+    // Credentials now live behind a tab; the link must select the tab and anchor.
+    expect(link.getAttribute("href")).toBe("/settings/models?tab=credentials#credentials");
     // The secondary link carries the active workspace id so QA can attribute the click.
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });

@@ -7,7 +7,7 @@
 // (export name + generic prop shape).
 //
 // ActivityFeed was retired in slice 10 (M42); the dashboard now renders
-// `core.agent_events` directly via <EventsList />. Co-located rendering
+// `core.fleet_events` directly via <EventsList />. Co-located rendering
 // tests for EventsList live in components/domain/EventsList.test.tsx.
 //
 // Pattern matches tests/app-components.test.ts: renderToStaticMarkup

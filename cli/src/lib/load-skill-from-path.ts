@@ -1,4 +1,4 @@
-// Reads a two-file agent bundle (SKILL.md + TRIGGER.md) from a local directory.
+// Reads a local Fleet Bundle. SKILL.md is required; TRIGGER.md is optional.
 // Pure: returns data or throws a typed SkillLoadError. Caller owns user-facing formatting.
 
 import { readFileSync, statSync } from "node:fs";
@@ -10,8 +10,7 @@ const TRIGGER_FILENAME = "TRIGGER.md";
 export type SkillLoadErrorCode =
   | typeof ERR_PATH_NOT_FOUND_2
   | typeof ERR_PATH_DENIED_2
-  | typeof ERR_SKILL_MISSING_2
-  | typeof ERR_TRIGGER_MISSING_2;
+  | typeof ERR_SKILL_MISSING_2;
 
 export class SkillLoadError extends Error {
   readonly code: SkillLoadErrorCode;
@@ -25,7 +24,7 @@ export class SkillLoadError extends Error {
 
 export interface LoadedSkill {
   skill_md: string;
-  trigger_md: string;
+  trigger_md: string | null;
   fallback_name: string;
 }
 
@@ -63,25 +62,24 @@ export function loadSkillFromPath(path: string): LoadedSkill {
     throw new SkillLoadError(ERR_SKILL_MISSING_2, skillPath);
   }
 
-  let trigger_md: string;
+  let trigger_md: string | null;
   try {
     trigger_md = readFileSync(triggerPath, UTF8_ENCODING);
   } catch (err) {
     if (isNodeErrnoException(err) && err.code === EACCES_CODE) {
       throw new SkillLoadError(ERR_PATH_DENIED_2, triggerPath);
     }
-    throw new SkillLoadError(ERR_TRIGGER_MISSING_2, triggerPath);
+    trigger_md = null;
   }
 
   // The canonical agent name comes back in the install response after the
   // server parses TRIGGER.md frontmatter. The directory basename is only a
-  // fallback hint for human-readable CLI output if the server omits it.
+  // fallback hint for human-readable Command-Line Interface (CLI) output if the server omits it.
   return { skill_md, trigger_md, fallback_name: basename(path) };
 }
 const EACCES_CODE = "EACCES" as const;
 const ERR_PATH_DENIED_2 = "ERR_PATH_DENIED" as const;
 const ERR_PATH_NOT_FOUND_2 = "ERR_PATH_NOT_FOUND" as const;
 const ERR_SKILL_MISSING_2 = "ERR_SKILL_MISSING" as const;
-const ERR_TRIGGER_MISSING_2 = "ERR_TRIGGER_MISSING" as const;
 const TYPE_STRING = "string" as const;
 const UTF8_ENCODING = "utf-8" as const;

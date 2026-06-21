@@ -33,11 +33,14 @@ KillMode=mixed
 #                          authenticates with it directly and NEVER self-registers
 #   RUNNER_HOST_ID       — stable machine identifier (reuse the host's vault
 #                          `hostname` field for consistency)
-#   (optional) RUNNER_SANDBOX_TIER (prod must override the dev_none default),
+#   (optional) RUNNER_SANDBOX_TIER (prod should set landlock_full; release
+#                                   builds reject dev_none),
 #              RUNNER_WORKSPACE_BASE,
-#              RUNNER_NETWORK_POLICY (set to registry_allowlist on bare-metal
-#                                    hosts that need agent dependency installs;
-#                                    default deny_all),
+#              RUNNER_NETWORK_POLICY (allow_all is the current default and gives
+#                                    full outbound egress; deny_all_egress gives
+#                                    no outbound egress; allow_list_egress is the
+#                                    enforced allow-list posture and currently
+#                                    fails closed until egress wiring lands),
 #              RUNNER_WORKER_COUNT  (concurrent leased agents per host; default 1
 #                                    = one agent at a time. Size to the host's
 #                                    spare cores/memory; clamped to [1, 64]. A
