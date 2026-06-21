@@ -35,10 +35,12 @@ export type Fleet = {
 // at a stored snapshot — never both. The `?: never` arms make the two
 // mutually exclusive at compile time, mirroring the immutable-bundle rule:
 // a bundle install does not also carry override Markdown (see the
-// Discovery 2026-06-20 codex review of create_fleet_bundle.zig).
+// Discovery 2026-06-20 codex review of create_fleet_bundle.zig). A bundle
+// install may carry an optional `name` that overrides the SKILL.md-derived
+// fleet name, so one bundle can back multiple fleets in a workspace.
 export type InstallFleetRequest =
   | { source_markdown: string; trigger_markdown?: string; bundle_id?: never }
-  | { bundle_id: string; source_markdown?: never; trigger_markdown?: never };
+  | { bundle_id: string; name?: string; source_markdown?: never; trigger_markdown?: never };
 
 export type InstallFleetResponse = {
   fleet_id: string;
@@ -61,13 +63,16 @@ export type BundleSourceKind = "template" | "upload" | "github";
 export type BundleSupportFile = { path: string; content: string };
 export type BundleSupportFileSummary = { path: string; size_bytes: number };
 
-// Posted to POST /v1/workspaces/{ws}/fleets/bundles/snapshots. The caller
-// (this app, server-side) supplies the Markdown — the server does not fetch
-// GitHub. `source_ref` is provenance (repo@sha or URL), not a fetch target.
+// Posted to POST /v1/workspaces/{ws}/fleets/bundles/snapshots. For `github`
+// and `template` the server fetches and validates the source itself (SSRF +
+// extraction guards) — the dashboard sends only `{ source_kind, source_ref }`.
+// `skill_markdown`/`trigger_markdown` are inline content for the `upload`
+// kind only (support files ride fetched sources, not uploads). The dashboard's
+// paste path does NOT import — it posts source_markdown straight to create.
 export type ImportBundleRequest = {
   source_kind: BundleSourceKind;
   source_ref: string;
-  skill_markdown: string;
+  skill_markdown?: string;
   trigger_markdown?: string;
   support_files?: BundleSupportFile[];
 };

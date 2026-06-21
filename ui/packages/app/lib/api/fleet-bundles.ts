@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { request } from "./client";
 import type {
   BundleSnapshot,
@@ -11,13 +12,13 @@ import type {
 //   POST /v1/workspaces/{ws}/fleets/bundles/snapshots        (import + validate)
 //   GET  /v1/workspaces/{ws}/fleets/bundles/snapshots/{id}   (parsed detail)
 //
-// The server validates + content-addresses the snapshot; it does NOT fetch
-// GitHub. The caller assembles the Markdown (see lib/github/fetch-bundle.ts)
-// and posts it here. `source_ref` is recorded as provenance only.
+// The server fetches (for `github`/`template`), validates, and content-
+// addresses the snapshot; the dashboard posts `{ source_kind, source_ref }`
+// and the server-fetched bundle is authoritative (no app-side GitHub fetch).
 
 // First-party template catalog. Metadata only (id/name/description + declared
-// requirement names) — the SKILL.md/TRIGGER.md content lives in
-// github.com/agentsfleet/skills and is fetched app-side before import.
+// requirement names) — the SKILL.md/TRIGGER.md content is fetched server-side
+// at import time from the template's pinned source.
 export async function listFleetTemplates(
   token: string,
 ): Promise<FleetTemplateListResponse> {
@@ -27,6 +28,12 @@ export async function listFleetTemplates(
     token,
   );
 }
+
+// Per-request deduped catalog read. The catalog is first-party, rarely-changing
+// metadata; React's cache() collapses repeat reads within one RSC render (the
+// dashboard gallery and /fleets/new both list templates) to a single
+// round-trip. Server-only — cache() is a React Server Component primitive.
+export const listFleetTemplatesCached = cache(listFleetTemplates);
 
 // Import (validate + snapshot) a bundle the caller already assembled. Returns
 // the immutable `bundle_id` plus parsed `requirements` for the install preview.
@@ -39,20 +46,6 @@ export async function importBundleSnapshot(
   return request<BundleSnapshot>(
     `/v1/workspaces/${workspaceId}/fleets/bundles/snapshots`,
     { method: "POST", body: JSON.stringify(body) },
-    token,
-  );
-}
-
-// Re-read a stored snapshot's parsed detail (requirements, support files,
-// content hash). Used when resuming from a `?bundle_id=` deep link.
-export async function getBundleSnapshot(
-  workspaceId: string,
-  bundleId: string,
-  token: string,
-): Promise<BundleSnapshot> {
-  return request<BundleSnapshot>(
-    `/v1/workspaces/${workspaceId}/fleets/bundles/snapshots/${bundleId}`,
-    { method: "GET" },
     token,
   );
 }

@@ -2938,6 +2938,11 @@
                     "type": "string",
                     "maxLength": 65536,
                     "description": "SKILL.md raw bytes — the fleet instructions, stored as-is."
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Optional operator-supplied fleet name (slug-safe, lowercase/digits/hyphen, max 64 chars). Overrides the SKILL.md-derived name so one bundle can back multiple fleets in a workspace, each with its own name + webhooks. Absent ⇒ the SKILL.md `name:`."
                   }
                 }
               }

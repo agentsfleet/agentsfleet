@@ -1,8 +1,11 @@
 /**
- * Dashboard-form install: drives the `/fleets/new` `InstallFleetForm` like a
- * real human. Used by the full-lifecycle scenarios, which deliberately
- * drive the install through the interface rather than via API seeding so the entire
- * signup → install → observe → halt walk is browser-driven end-to-end.
+ * Dashboard-form install: drives the `/fleets/new` paste fallback (the
+ * `InstallFleetForm`) like a real human. `/fleets/new` now leads with the
+ * gallery-first source selector (Variant D), so the helper first reveals the
+ * paste form via "Paste SKILL.md instead". Used by the full-lifecycle
+ * scenarios, which deliberately drive the install through the interface rather
+ * than via API seeding so the entire signup → install → observe → halt walk is
+ * browser-driven end-to-end.
  *
  * Same wire as `agentsfleet install --from`: the form takes SKILL.md and
  * TRIGGER.md bodies; agentsfleetd parses the markdown frontmatter server-side and
@@ -57,6 +60,8 @@ export async function installViaUI(page: Page, name: string): Promise<string> {
   await page.goto("/fleets/new");
   await expect(page).toHaveURL(/\/fleets\/new(\?|$)/);
 
+  // Gallery-first selector leads; reveal the paste fallback form.
+  await page.getByRole("button", { name: "Paste SKILL.md instead" }).click();
   await page.getByLabel("SKILL.md body").fill(fixtureSkillMd(name));
   await page.getByLabel("TRIGGER.md body").fill(fixtureTriggerMd(name));
   await page.getByRole("button", { name: "Install teammate" }).click();

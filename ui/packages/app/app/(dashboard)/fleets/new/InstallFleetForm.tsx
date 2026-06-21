@@ -21,7 +21,7 @@ import {
   Textarea,
 } from "@agentsfleet/design-system";
 import { installFleetAction } from "../actions";
-import { presentErrorString } from "@/lib/errors";
+import { FLEET_NAME_CONFLICT_MESSAGE, presentErrorString } from "@/lib/errors";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 
@@ -123,7 +123,7 @@ export default function InstallFleetForm({ workspaceId }: Props) {
         return;
       }
       if (result.status === 409) {
-        setApiError("That teammate name already exists in this workspace.");
+        setApiError(FLEET_NAME_CONFLICT_MESSAGE);
       } else {
         setApiError(
           presentErrorString({

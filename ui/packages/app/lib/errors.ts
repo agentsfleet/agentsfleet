@@ -163,3 +163,9 @@ export function presentErrorString(input: ErrorInput): string {
   if (!p.body) return p.title;
   return `${p.title}. ${p.body}`;
 }
+
+// Shown when Fleet creation returns 409 — the name (derived from SKILL.md
+// frontmatter) collides with an existing teammate. Shared by both the paste
+// form and the gallery install flow so the two paths surface the same hint.
+export const FLEET_NAME_CONFLICT_MESSAGE =
+  "That teammate name already exists in this workspace.";

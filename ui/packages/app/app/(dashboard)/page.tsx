@@ -11,15 +11,17 @@ import {
   SectionLabel,
   StatusCard,
   Skeleton,
-  WakePulse,
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
+import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
+import type { FleetTemplate } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
+import { TemplateCard } from "./fleets/new/TemplateCard";
 
 export const dynamic = "force-dynamic";
 
@@ -47,10 +49,13 @@ export async function StatusTiles() {
   const stopped = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.STOPPED).length;
 
   if (fleets.length === 0) {
+    const templates = await listFleetTemplatesCached(token)
+      .then((response) => response.items)
+      .catch(() => []);
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} />
+        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} templates={templates} />
       </>
     );
   }
@@ -72,79 +77,62 @@ export async function StatusTiles() {
   );
 }
 
-function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
+// First-run card: curated templates lead, each deep-linking
+// to the preselected install flow; importing from GitHub or pasting a SKILL.md
+// sits below as the secondary path.
+function FirstInstallCard({
+  balanceNanos,
+  templates,
+}: {
+  balanceNanos: number | null;
+  templates: FleetTemplate[];
+}) {
   const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
     <Section aria-label="Start your fleet" className="mb-8">
-      <Card className="overflow-hidden p-0">
-        <div className="grid gap-0 lg:grid-cols-2">
-          <div className="p-6 sm:p-8">
-            <SectionLabel>Next step</SectionLabel>
-            <h2 className="mt-3 font-mono text-heading text-foreground">
-              Start your fleet
-            </h2>
-            <p className="mt-3 max-w-prose text-sm text-muted-foreground">
-              Start with one <code className="font-mono">SKILL.md</code>. Install it,
-              trigger it once, then check Events for the run record.
+      <Card className="space-y-6 p-6 sm:p-8">
+        <div className="space-y-3">
+          <SectionLabel>Next step</SectionLabel>
+          <h2 className="font-mono text-heading text-foreground">Start your fleet</h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Pick a template to begin — connect what it needs, then create. Each one
+            installs from a single <code className="font-mono">SKILL.md</code>.
+          </p>
+          {credits != null && credits > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              ${credits} free credit is ready for that first run.
             </p>
-            {credits != null && credits > 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                ${credits} free credit is ready for that first run.
-              </p>
-            ) : null}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button asChild size="sm">
-                <Link href="/fleets/new">Install teammate</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm">
-                <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                  Quick start
-                </a>
-              </Button>
-            </div>
+          ) : null}
+        </div>
+
+        {templates.length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {templates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                action={
+                  <Button asChild size="sm">
+                    <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
+                  </Button>
+                }
+              />
+            ))}
           </div>
-          <FirstRunIllustration />
+        ) : null}
+
+        <div className="flex flex-wrap gap-3 border-t border-border pt-5">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
+              Quick start
+            </a>
+          </Button>
         </div>
       </Card>
     </Section>
-  );
-}
-
-function FirstRunIllustration() {
-  return (
-    <div className="border-t border-border bg-muted/30 p-6 lg:border-l lg:border-t-0">
-      <div className="mb-4 flex items-center gap-2 font-mono text-eyebrow uppercase tracking-label text-muted-foreground">
-        <WakePulse live className="inline-block h-2.5 w-2.5 rounded-full bg-pulse" aria-hidden="true" />
-        First run map
-      </div>
-      <div className="grid gap-3">
-        <IllustrationStep index="1" title="SKILL.md" detail="Behavior and instructions" />
-        <IllustrationStep index="2" title="Trigger" detail="Webhook, schedule, or manual wake" />
-        <IllustrationStep index="3" title="Evidence" detail="Events and approvals appear here" />
-      </div>
-    </div>
-  );
-}
-
-function IllustrationStep({
-  index,
-  title,
-  detail,
-}: {
-  index: string;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex items-start gap-3 rounded-md border border-border bg-background/40 p-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border border-border-strong font-mono text-label text-foreground">
-        {index}
-      </span>
-      <span>
-        <span className="block font-mono text-sm text-foreground">{title}</span>
-        <span className="block text-xs text-muted-foreground">{detail}</span>
-      </span>
-    </div>
   );
 }
 

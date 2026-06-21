@@ -461,6 +461,89 @@ test "integration: fleet create persists SKILL.md tags into required_tags" {
     try std.testing.expectEqualStrings("gpu,us-east", tags);
 }
 
+/// Counts fleets in the test workspace with a given name. COUNT(*) is a
+/// single-row result — drained by the lone `next()` before deinit.
+fn fleetCountByName(conn: *pg.Conn, name: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT COUNT(*) FROM core.fleets WHERE workspace_id = $1::uuid AND name = $2",
+        .{ TEST_WORKSPACE_ID, name },
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.CountRowMissing;
+    return try row.get(i64, 0);
+}
+
+// Spec §5 multi-instance: an optional `name` overrides the SKILL.md-derived
+// name, so one source can back two fleets in a single workspace without the
+// per-(workspace,name) unique constraint firing UZ-AGT-006. Pins both the
+// override-persists path and the no-collision-on-distinct-names path through
+// the real router.
+test "integration: fleet create name override enables same-source multi-instance" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    // SKILL.md + TRIGGER.md both name themselves "pr-reviewer"; each install
+    // overrides the persisted name, so the two coexist in one workspace.
+    const skill = "---\\nname: pr-reviewer\\ndescription: reviews prs\\nversion: 0.1.0\\n---\\nBody.\\n";
+    const trigger = "---\\nname: pr-reviewer\\nx-agentsfleet:\\n  triggers:\\n    - type: api\\n  tools: []\\n  budget:\\n    daily_dollars: 1.0\\n---\\n";
+    const body_a = "{\"source_markdown\":\"" ++ skill ++ "\",\"trigger_markdown\":\"" ++ trigger ++ "\",\"name\":\"pr-reviewer-acme\"}";
+    const body_b = "{\"source_markdown\":\"" ++ skill ++ "\",\"trigger_markdown\":\"" ++ trigger ++ "\",\"name\":\"pr-reviewer-blog\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    const r_a = try (try (try h.post(url).bearer(TOKEN_USER)).json(body_a)).send();
+    defer r_a.deinit();
+    try r_a.expectStatus(.created);
+
+    const r_b = try (try (try h.post(url).bearer(TOKEN_USER)).json(body_b)).send();
+    defer r_b.deinit();
+    try r_b.expectStatus(.created);
+
+    // Both persisted under the override names; the bundle's own "pr-reviewer"
+    // name was never written.
+    try std.testing.expectEqual(@as(i64, 1), try fleetCountByName(conn, "pr-reviewer-acme"));
+    try std.testing.expectEqual(@as(i64, 1), try fleetCountByName(conn, "pr-reviewer-blog"));
+    try std.testing.expectEqual(@as(i64, 0), try fleetCountByName(conn, "pr-reviewer"));
+}
+
+// Spec §5: an invalid override name (uppercase / spaces / >64 chars) is rejected
+// at the write boundary with 400 — the handler wires validateSkillName.
+test "integration: fleet create rejects an invalid name override" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: pr-reviewer\\ndescription: d\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: pr-reviewer\\nx-agentsfleet:\\n  triggers:\\n    - type: api\\n  tools: []\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"," ++
+        "\"name\":\"Not A Slug\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+}
+
 // Spec Dimension 1.2: malformed required_tags → UZ-REQ-001. The validator's
 // bounds are unit-tested exhaustively (config_types); THIS proves the create
 // handler WIRES the rejection — an over-long tag (>64 chars) fails the request

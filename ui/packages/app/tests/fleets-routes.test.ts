@@ -4,6 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { resolveActiveWorkspace, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
+import { listFleetTemplatesMock, listCredentialsMock } from "./helpers/dashboard-app-mocks";
 
 type BillingSnapshot = {
   balance_nanos: number;
@@ -27,6 +28,8 @@ vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });
+vi.mock("@/lib/api/fleet-bundles", async () => (await import("./helpers/dashboard-app-mocks")).fleetBundlesMock());
+vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -155,23 +158,57 @@ describe("fleets routes", () => {
   it("fleets new page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+    await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/sign-in");
   });
 
   it("fleets new page renders empty-workspace guard", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    const markup = renderToStaticMarkup(await Page());
+    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("Create a workspace before installing teammates");
   });
 
-  it("fleets new page renders the install form when a workspace exists", async () => {
+  it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockResolvedValue({
+      items: [
+        {
+          id: "github-pr-reviewer",
+          name: "GitHub PR reviewer",
+          description: "Reviews pull requests.",
+          required_credentials: ["github"],
+          required_tools: [],
+          network_hosts: [],
+        },
+      ],
+    });
+    listCredentialsMock.mockResolvedValue({ credentials: [{ name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Install teammate");
-    expect(markup).toContain("name=\"trigger_markdown\"");
-    expect(markup).toContain("name=\"source_markdown\"");
+    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(markup).toContain("Install teammate"); // page title
+    expect(markup).toContain("Start from a template");
+    expect(markup).toContain("GitHub PR reviewer");
+    expect(markup).toContain("Import from GitHub"); // GitHub source-strip action
+  });
+
+  it("fleets new page swallows failed template + credential fetches", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    listCredentialsMock.mockRejectedValue(new Error("vault down"));
+    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
+    const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(markup).toContain("No templates available yet"); // empty gallery → EmptyState
+  });
+
+  it("fleets new page accepts a ?template= deep link", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockResolvedValue({ items: [] });
+    listCredentialsMock.mockResolvedValue({ credentials: [] });
+    const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
+    const markup = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({ template: "github-pr-reviewer" }) }),
+    );
+    expect(markup).toContain("Start from a template");
   });
 
   it("fleets detail page redirects to /sign-in when no token", async () => {
