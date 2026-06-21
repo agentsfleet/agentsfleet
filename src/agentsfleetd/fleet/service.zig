@@ -145,6 +145,9 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             // fresh/reclaim split, so this is set identically on both paths. Borrowed
             // from `session`, which lives until the response serialises (deinit defer).
             .instructions = session.instructions,
+            // Bundle-backed fleets carry the content hash so the runner downloads +
+            // materializes the canonical snapshot; null for paste-installed fleets.
+            .bundle = if (session.bundle_content_hash) |hash| .{ .content_hash = hash } else null,
         },
     });
 }

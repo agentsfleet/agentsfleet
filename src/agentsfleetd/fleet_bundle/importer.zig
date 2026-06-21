@@ -9,6 +9,19 @@ pub const SOURCE_KIND_GITHUB = "github";
 pub const VISIBILITY_WORKSPACE = "workspace";
 pub const STATUS_VALID = "valid";
 
+/// Content-addressed object-storage key layout for a bundle's canonical tar:
+/// `fleet-bundles/sha256/{content_hash}.tar`. Single-sourced here so the import
+/// writer (`prepare`) and the runner download handler derive the same key from a
+/// content hash (RULE UFS).
+pub const SNAPSHOT_KEY_PREFIX = "fleet-bundles/sha256/";
+pub const SNAPSHOT_KEY_SUFFIX = ".tar";
+
+/// Build the object-storage key for a bundle's canonical tar from its content
+/// hash. Caller owns the returned slice.
+pub fn snapshotKey(alloc: std.mem.Allocator, content_hash: []const u8) std.mem.Allocator.Error![]const u8 {
+    return std.fmt.allocPrint(alloc, SNAPSHOT_KEY_PREFIX ++ "{s}" ++ SNAPSHOT_KEY_SUFFIX, .{content_hash});
+}
+
 const MAX_SOURCE_REF_LEN: usize = 512;
 const MAX_SUPPORT_FILES: usize = 32;
 const MAX_SUPPORT_PATH_LEN: usize = 160;
@@ -87,7 +100,7 @@ pub fn prepare(alloc: std.mem.Allocator, body: ImportBody) (std.mem.Allocator.Er
 
     const content_hash = try allocContentHash(alloc, body);
     errdefer alloc.free(content_hash);
-    const snapshot_key = try std.fmt.allocPrint(alloc, "fleet-bundles/sha256/{s}.tar", .{content_hash});
+    const snapshot_key = try snapshotKey(alloc, content_hash);
     errdefer alloc.free(snapshot_key);
 
     return .{

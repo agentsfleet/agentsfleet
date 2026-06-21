@@ -20,6 +20,7 @@ const runner_report = @import("handlers/runner/report.zig");
 const runner_activity = @import("handlers/runner/activity.zig");
 const runner_renew = @import("handlers/runner/renew.zig");
 const runner_memory = @import("handlers/runner/memory.zig");
+const runner_bundle = @import("handlers/runner/bundles.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -136,4 +137,12 @@ pub fn invokeRunnerMemoryCapture(hx: *Hx, req: *httpz.Request, route: router.Rou
         return;
     }
     runner_memory.innerRunnerMemoryCapture(hx.*, req, route.runner_memory_capture);
+}
+
+pub fn invokeRunnerBundle(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .GET) {
+        common.respondMethodNotAllowed(hx.res);
+        return;
+    }
+    runner_bundle.innerRunnerBundle(hx.*, route.runner_bundle);
 }

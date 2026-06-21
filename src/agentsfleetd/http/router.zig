@@ -67,6 +67,8 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
         .GET => .{ .runner_memory_hydrate = fleet_id },
         else => .{ .runner_memory_capture = fleet_id },
     };
+    // `…/bundles/{content_hash}`: GET only (the invoke fn 405s other methods).
+    if (matchers.matchRunnerBundles(p)) |content_hash| return .{ .runner_bundle = content_hash };
 
     // ── Tenant billing: per-charge metering-period drill-down ─────────────
     if (matchers.matchTenantMeteringPeriods(p)) |event_id| return .{ .get_tenant_metering_periods = event_id };

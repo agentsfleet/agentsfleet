@@ -113,4 +113,5 @@ pub const Route = union(enum) {
     runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
     runner_memory_hydrate: []const u8, // GET /v1/runners/me/memory/{fleet_id}
     runner_memory_capture: []const u8, // POST /v1/runners/me/memory/{fleet_id}
+    runner_bundle: []const u8, // GET /v1/runners/me/bundles/{content_hash}
 };

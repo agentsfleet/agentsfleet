@@ -328,3 +328,4 @@ pub const invokeRunnerActivity = runner_invokes.invokeRunnerActivity;
 pub const invokeRunnerRenew = runner_invokes.invokeRunnerRenew;
 pub const invokeRunnerMemoryHydrate = runner_invokes.invokeRunnerMemoryHydrate;
 pub const invokeRunnerMemoryCapture = runner_invokes.invokeRunnerMemoryCapture;
+pub const invokeRunnerBundle = runner_invokes.invokeRunnerBundle;

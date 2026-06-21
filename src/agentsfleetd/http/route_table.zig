@@ -101,6 +101,7 @@ pub fn classFor(route: router.Route) RouteClass {
         .runner_renew,
         .runner_memory_hydrate,
         .runner_memory_capture,
+        .runner_bundle,
         => .api,
     };
 }
@@ -217,6 +218,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .runner_renew => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerRenew },
         .runner_memory_hydrate => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryHydrate },
         .runner_memory_capture => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerMemoryCapture },
+        .runner_bundle => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerBundle },
     };
 }
 
