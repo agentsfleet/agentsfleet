@@ -59,7 +59,7 @@ describe("help output", () => {
     });
   });
 
-  test("--help shows environment variables section", async () => {
+  test("--help points to the configuration docs for env vars", async () => {
     const out = bufferStream();
     const err = bufferStream();
     await runCli(["--help"], {
@@ -68,9 +68,8 @@ describe("help output", () => {
       env: { ...process.env, NO_COLOR: "1" },
     });
     const output = out.read();
-    expect(output).toContain("AGENTSFLEET_API_URL");
-    expect(output).toContain("AGENTSFLEET_API_KEY");
-    expect(output).toContain("NO_COLOR");
+    expect(output).toContain("Environment variables:");
+    expect(output).toContain("https://docs.agentsfleet.net/cli/configuration");
   });
 
   test("--help shows global flags", async () => {

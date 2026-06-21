@@ -36,14 +36,4 @@ Commands:
   memory                       Inspect a Fleet's durable memory (read-only)
   help [command]               display help for command
 
-Environment variables:
-  AGENTSFLEET_API_URL                 API base URL (overridden by --api)
-  AGENTSFLEET_DASHBOARD_URL           Dashboard base URL (login verify page)
-  AGENTSFLEET_API_KEY                 Service API key (overrides stored login)
-  AGENTSFLEET_STATE_DIR               Directory for local CLI state files
-  NO_COLOR                            Any non-empty value disables color
-  AGENTSFLEET_TELEMETRY_DISABLED      Set to 1 to opt out of analytics+tracing
-  DO_NOT_TRACK                        Industry-standard opt-out signal
-  AGENTSFLEET_TELEMETRY_POSTHOG_KEY   Override the PostHog project key
-  AGENTSFLEET_TELEMETRY_POSTHOG_HOST  Override the PostHog ingest host
-  AGENTSFLEET_TELEMETRY_DEBUG         Set to 1 to log span summaries to stderr
+Environment variables: https://docs.agentsfleet.net/cli/configuration
