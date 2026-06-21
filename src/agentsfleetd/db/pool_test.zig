@@ -360,7 +360,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         "db_migrator",
         "api_runtime",
         "ops_readonly_human",
-        "ops_readonly_agent",
+        "ops_readonly_fleet",
     };
     inline for (role_checks) |role_name| {
         var role_q = PgQuery.from(try db_ctx.conn.query(
@@ -595,7 +595,7 @@ test "integration: readonly roles cannot read vault.secrets" {
     defer db_ctx.pool.release(db_ctx.conn);
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        "SELECT has_table_privilege('ops_readonly_agent', 'vault.secrets', 'SELECT')",
+        "SELECT has_table_privilege('ops_readonly_fleet', 'vault.secrets', 'SELECT')",
         .{},
     ));
     defer q.deinit();
