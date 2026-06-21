@@ -1,6 +1,0 @@
-id: []const u8,
-name: []const u8,
-description: []const u8,
-required_credentials: []const []const u8,
-required_tools: []const []const u8,
-network_hosts: []const []const u8,

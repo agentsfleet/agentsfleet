@@ -320,3 +320,28 @@ test "integration: Fleet Bundle upload rejects support files" {
     const row = try q.next() orelse return error.CountMissing;
     try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
 }
+
+test "integration: template catalog lists seeded first-party templates from the table" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    // GET /v1/fleets/bundles serves core.fleet_bundle_templates (migration-seeded,
+    // not a hardcoded Zig array). The JSONB requirement columns come back as JSON
+    // arrays, not quoted JSONB text.
+    const res = try (try h.get("/v1/fleets/bundles").bearer(TOKEN_USER)).send();
+    defer res.deinit();
+    try res.expectStatus(.ok);
+    try std.testing.expect(res.bodyContains("\"items\""));
+    try std.testing.expect(res.bodyContains("\"github-pr-reviewer\""));
+    try std.testing.expect(res.bodyContains("\"security-reviewer\""));
+    try std.testing.expect(res.bodyContains("\"required_credentials\""));
+    try std.testing.expect(res.bodyContains("[\"github\"]"));
+}
