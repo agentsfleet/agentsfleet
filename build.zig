@@ -1,6 +1,7 @@
 const std = @import("std");
 const build_pg = @import("build_pg.zig");
 const build_s3 = @import("build_s3.zig");
+const build_fixtures = @import("build_fixtures.zig");
 
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
@@ -242,6 +243,7 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
+    build_fixtures.addDaemon(b, tests.root_module);
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 

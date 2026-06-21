@@ -4,7 +4,7 @@
 //! structural objects): the four per-lease rules — DNS-tunnel drop, allowlist
 //! accept, conntrack return, masquerade — each serialized as the expression
 //! program real `nft` emits. Byte-validated against the captured oracle in
-//! `fixtures/captured/*.mnl.txt` (see `nfnetlink_rule_test.zig`); structural
+//! `tests/fixtures/runner/network/captured/*.mnl.txt` (see `nfnetlink_rule_test.zig`); structural
 //! invariants are tested in-file. Pure; `Socket` sends.
 //!
 //! Encoding notes pinned by the oracle: expression u32 attributes are
@@ -290,7 +290,7 @@ fn prefixMask(prefix_len: u8) [4]u8 {
 }
 
 // ── Tests — structural invariants; the full byte oracle lives in
-// nfnetlink_rule_test.zig against fixtures/captured/*.mnl.txt ────────────────
+// nfnetlink_rule_test.zig against tests/fixtures/runner/network/captured/*.mnl.txt ──
 
 test "dns drop rule sequences meta/cmp/meta/cmp/payload/cmp/immediate" {
     if (native_endian != .little) return error.SkipZigTest;

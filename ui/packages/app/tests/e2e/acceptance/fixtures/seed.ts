@@ -66,7 +66,7 @@ function triggerMd(name: string): string {
 
 function skillMd(name: string): string {
   // SKILL.md frontmatter requires name (kebab), description, version (semver).
-  // Mirrors samples/fixtures/frontmatter/bundles/name_mismatch/SKILL.md.
+  // Mirrors tests/fixtures/fleetbundle/skill/name_mismatch/SKILL.md.
   return [
     "---",
     `name: ${name}`,

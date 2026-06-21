@@ -112,7 +112,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-AGT-006", .conflict, "Fleet name already exists", "A Fleet with this name already exists. Use 'agentsfleet kill <name>' first, then deploy again."),
     // UZ-AGT-007 retired (single-string credential body) → see UZ-VAULT-002.
     e("UZ-AGT-008", .bad_request, "Invalid fleet config", "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
-        "in your TRIGGER.md frontmatter. See samples/fixtures/platform-ops-sample/TRIGGER.md for a working example."),
+        "in your TRIGGER.md frontmatter. See tests/fixtures/fleetbundle/platform-ops/TRIGGER.md for a working example."),
     e("UZ-AGT-009", .not_found, "Fleet not found", "Fleet not found. Verify the fleet_id and that it has not been killed."),
     e("UZ-AGT-010", .conflict, "Fleet state transition not allowed", "The requested lifecycle action is not valid from the fleet's current state. The response detail names the specific transition that was refused."),
     e("UZ-AGT-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`", "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per Fleet Bundle."),

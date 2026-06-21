@@ -1,7 +1,7 @@
 /**
  * Acceptance-suite seed helper.
  *
- * Drives `agentsfleet install --from samples/fixtures/platform-ops-sample` against the
+ * Drives `agentsfleet install --from tests/fixtures/fleetbundle/platform-ops` against the
  * worktree's canonical sample bundle. Returns the parsed JSON envelope
  * the CLI emits with `--json` set.
  */

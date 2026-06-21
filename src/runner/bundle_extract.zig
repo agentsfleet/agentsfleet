@@ -240,7 +240,7 @@ fn readEntry(alloc: std.mem.Allocator, iter: *std.tar.Iterator, entry: std.tar.I
 
 /// Create every parent folder of `abs` below the workspace root (`root_len` is the
 /// workspace prefix length), tolerating existing dirs. Walks the separators after
-/// the root so nested support paths (`playbooks/x.md`) get their folders.
+/// the root so nested support paths (`checklists/owasp.md`) get their folders.
 fn ensureParentDirs(io: std.Io, abs: []const u8, root_len: usize) !void {
     var i = root_len + 1; // skip the '/' joining workspace_path and rel
     while (std.mem.indexOfScalarPos(u8, abs, i, '/')) |slash| {
