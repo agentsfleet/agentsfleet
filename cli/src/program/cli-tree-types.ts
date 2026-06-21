@@ -62,6 +62,7 @@ export interface FleetCredentialHandlers {
 }
 
 export interface FleetHandlers {
+  templates: CommandHandlerFn;
   install: CommandHandlerFn;
   update: CommandHandlerFn;
   list: CommandHandlerFn;

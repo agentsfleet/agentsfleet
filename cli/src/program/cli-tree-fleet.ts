@@ -14,6 +14,7 @@ import {
   parseIntOption,
   parseIdOption,
   parsePathOption,
+  parseStringOption,
 } from "./validators.ts";
 import type {
   ActionDispatch,
@@ -31,12 +32,19 @@ export function buildFleetTree(
   { actionFor, runHandler }: ActionDispatch,
 ): void {
   program
+    .command("templates")
+    .description("Browse the first-party Fleet template gallery")
+    .action(actionFor("fleet.templates", (frame) => runHandler(state, frame, handlers.fleet.templates)));
+
+  program
     .command("install")
-    .description("Register a Fleet from a local skill bundle")
+    .description("Register a Fleet from a template (--template) or local skill bundle (--from)")
     // Path existence is validated by loadSkillFromPath inside the handler
     // so the failure path emits ERR_PATH_NOT_FOUND with the friendly
     // remap message instead of commander's generic "path does not exist".
     .option(FLAG_FROM_PATH, SKILL_BUNDLE_PATH, parsePathOption({ mustExist: false }))
+    .option(FLAG_TEMPLATE_ID, TEMPLATE_ID_DESC, parseStringOption)
+    .option(FLAG_NAME, NAME_DESC, parseStringOption)
     .action(actionFor("fleet.install", (frame) => runHandler(state, frame, handlers.fleet.install)));
 
   const fleetGroup = program
@@ -53,7 +61,7 @@ export function buildFleetTree(
       "",
       "Fleet lifecycle verbs are top-level commands, not under `fleet`:",
       "  agentsfleet list | status | logs | events | steer",
-      "  agentsfleet install | stop | resume | kill | delete",
+      "  agentsfleet templates | install | stop | resume | kill | delete",
       "This group holds in-place updates only. Run `agentsfleet --help`",
       "for the full command list.",
     ].join("\n"),
@@ -144,6 +152,11 @@ export function buildFleetTree(
 }
 const FLAG_CURSOR_TOKEN = "--cursor <token>" as const;
 const FLAG_FROM_PATH = "--from <path>" as const;
+const FLAG_TEMPLATE_ID = "--template <id>" as const;
+const FLAG_NAME = "--name <name>" as const;
+const TEMPLATE_ID_DESC = "Template id from `agentsfleet templates`" as const;
+const NAME_DESC =
+  "Override the fleet name (install the same bundle more than once)" as const;
 const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;

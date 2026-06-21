@@ -7,14 +7,18 @@
 // so the SkillLoadError surfaces on the typed error channel as a
 // ConfigError (operator can act on the message).
 
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
-import { wsFleetsPath, wsFleetPath } from "../lib/api-paths.ts";
+import {
+  wsFleetsPath,
+  wsFleetPath,
+  wsFleetBundleSnapshotsPath,
+} from "../lib/api-paths.ts";
 import {
   loadSkillFromPath,
   SkillLoadError,
@@ -38,7 +42,54 @@ interface UpdateResponse {
   readonly config_revision?: number | string | null;
 }
 
-const USAGE_INSTALL = "agentsfleet install --from <path>";
+// Parsed requirements of an imported bundle — drives the install preview
+// (mirrors the dashboard's BundlePreview). `trigger_present: false` means the
+// server generated a default API wake because the bundle shipped no TRIGGER.md.
+interface BundleRequirements {
+  readonly credentials?: ReadonlyArray<string>;
+  readonly tools?: ReadonlyArray<string>;
+  readonly network_hosts?: ReadonlyArray<string>;
+  readonly trigger_present?: boolean;
+}
+
+// POST /v1/workspaces/{ws}/fleets/bundles/snapshots response — the content-
+// addressed snapshot the create call then references by `bundle_id`.
+interface BundleSnapshot {
+  readonly bundle_id?: string;
+  readonly name?: string;
+  readonly requirements?: BundleRequirements;
+}
+
+// Fleet create body — `bundle_id` (template/import path) and direct
+// `source_markdown`/`trigger_markdown` are mutually exclusive sources; `name`
+// is the optional operator override that lets one bundle back many fleets.
+interface CreateFleetBody {
+  readonly source_markdown?: string;
+  readonly trigger_markdown?: string;
+  readonly bundle_id?: string;
+  readonly name?: string;
+}
+
+// Install sources are mutually exclusive — exactly one of a local bundle path
+// or a first-party template id. Tagged union so the resolved source carries
+// only the field its kind needs.
+type InstallSource =
+  | { readonly kind: typeof SOURCE_PATH; readonly fromPath: string }
+  | { readonly kind: typeof SOURCE_TEMPLATE; readonly templateId: string };
+
+export interface InstallFlags {
+  readonly fromPath?: string | null | undefined;
+  readonly templateId?: string | null | undefined;
+  readonly name?: string | null | undefined;
+}
+
+const SOURCE_PATH = "path" as const;
+const SOURCE_TEMPLATE = "template" as const;
+// Wire value for ImportBundleRequest.source_kind (the only kind the CLI
+// imports; `upload`/`github` are dashboard-only today).
+const SOURCE_KIND_TEMPLATE = "template" as const;
+
+const USAGE_INSTALL = "agentsfleet install (--from <path> | --template <id>)";
 const USAGE_UPDATE =
   "agentsfleet fleet update <fleet_id> --from <path>";
 
@@ -93,32 +144,87 @@ const requireFromPath = (
   return Effect.succeed(fromPath);
 };
 
-export const installEffectFromFlags = (
+// Exactly one source: a local bundle path (`--from`) or a template id
+// (`--template`). Neither is the common first-run mistake; both is an
+// ambiguous request — both fail with the usage line rather than silently
+// preferring one.
+const resolveSource = (
   fromPath: string | null | undefined,
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Workspaces
-> =>
+  templateId: string | null | undefined,
+): Effect.Effect<InstallSource, ValidationError> => {
+  const hasPath = typeof fromPath === "string" && fromPath.length > 0;
+  const hasTemplate = typeof templateId === "string" && templateId.length > 0;
+  if (hasPath && hasTemplate) {
+    return Effect.fail(
+      new ValidationError({
+        detail: "--from and --template are mutually exclusive",
+        suggestion: `usage: ${USAGE_INSTALL}`,
+      }),
+    );
+  }
+  if (hasPath) return Effect.succeed({ kind: SOURCE_PATH, fromPath });
+  if (hasTemplate) return Effect.succeed({ kind: SOURCE_TEMPLATE, templateId });
+  return Effect.fail(
+    new ValidationError({
+      detail: "a source is required: --from <path> or --template <id>",
+      suggestion: `usage: ${USAGE_INSTALL}`,
+    }),
+  );
+};
+
+// Fold an optional operator name override into a create body. A blank/whitespace
+// name is treated as absent so the server falls back to the SKILL.md `name:`.
+const withName = (
+  body: CreateFleetBody,
+  name: string | null | undefined,
+): CreateFleetBody => {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  return trimmed.length > 0 ? { ...body, name: trimmed } : body;
+};
+
+// Install preview — the credential/tool/host requirements the operator must
+// wire before the Fleet can run. Mirrors the dashboard's BundlePreview.
+const printRequirements = (
+  req: BundleRequirements | undefined,
+): Effect.Effect<void, never, Output> =>
+  Effect.gen(function* () {
+    if (!req) return;
+    const output = yield* Output;
+    const rows: ReadonlyArray<readonly [string, ReadonlyArray<string> | undefined]> = [
+      ["Credentials", req.credentials],
+      ["Tools", req.tools],
+      ["Network hosts", req.network_hosts],
+    ];
+    for (const [label, values] of rows) {
+      if (values && values.length > 0) {
+        yield* output.info(`  ${label}: ${values.join(", ")}`);
+      }
+    }
+  });
+
+// POST the create + render the install result. Shared by both sources so the
+// success / JSON output stays identical whether the bundle came from a path or
+// a template snapshot.
+const createAndRender = (
+  wsId: string,
+  token: Redacted.Redacted<string>,
+  body: CreateFleetBody,
+  generatedTrigger: boolean,
+  fallbackName: string,
+): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
     const output = yield* Output;
     const http = yield* HttpClient;
 
-    const path = yield* requireFromPath(fromPath, USAGE_INSTALL);
-    const wsId = yield* requireWorkspaceId;
-    const bundle = yield* loadBundle(path);
-    const token = yield* resolveAuthToken;
-
     const res = yield* http.request<InstallResponse>({
       path: wsFleetsPath(wsId),
       method: "POST",
-      body: bodyFromBundle(bundle),
+      body,
       token,
     });
 
-    const displayName = res.name || bundle.fallback_name;
-    const generatedTrigger = bundle.trigger_md === null;
+    const displayName = res.name || fallbackName;
 
     if (config.jsonMode) {
       yield* output.printJson({
@@ -144,6 +250,50 @@ export const installEffectFromFlags = (
         yield* output.info(`    ${source}: ${urls[source]}`);
       }
     }
+  });
+
+export const installEffectFromFlags = (
+  flags: InstallFlags,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+
+    const source = yield* resolveSource(flags.fromPath, flags.templateId);
+    const wsId = yield* requireWorkspaceId;
+    const token = yield* resolveAuthToken;
+
+    if (source.kind === SOURCE_TEMPLATE) {
+      const snapshot = yield* http.request<BundleSnapshot>({
+        path: wsFleetBundleSnapshotsPath(wsId),
+        method: "POST",
+        body: { source_kind: SOURCE_KIND_TEMPLATE, source_ref: source.templateId },
+        token,
+      });
+      yield* printRequirements(snapshot.requirements);
+      const bundleId = snapshot.bundle_id;
+      if (!bundleId) {
+        return yield* Effect.fail(
+          new ConfigError({
+            detail: "import did not return a bundle_id",
+            suggestion: "retry, or report if it persists",
+          }),
+        );
+      }
+      const body = withName({ bundle_id: bundleId }, flags.name);
+      const generatedTrigger = snapshot.requirements?.trigger_present === false;
+      const fallbackName = snapshot.name || source.templateId;
+      yield* createAndRender(wsId, token, body, generatedTrigger, fallbackName);
+      return;
+    }
+
+    const bundle = yield* loadBundle(source.fromPath);
+    const body = withName(bodyFromBundle(bundle), flags.name);
+    const generatedTrigger = bundle.trigger_md === null;
+    yield* createAndRender(wsId, token, body, generatedTrigger, bundle.fallback_name);
   });
 
 export const updateEffectFromArgs = (
