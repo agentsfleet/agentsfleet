@@ -84,10 +84,19 @@ export interface InstallFlags {
 }
 
 const SOURCE_PATH = "path" as const;
+// Internal InstallSource discriminant. Its value coincides with
+// SOURCE_KIND_TEMPLATE below but the two answer to different owners — this one
+// is a local tag, that one is the wire value — so keep them separate.
 const SOURCE_TEMPLATE = "template" as const;
 // Wire value for ImportBundleRequest.source_kind (the only kind the CLI
 // imports; `upload`/`github` are dashboard-only today).
 const SOURCE_KIND_TEMPLATE = "template" as const;
+const TYPE_STRING = "string" as const;
+const METHOD_POST = "POST" as const;
+
+// Predicate (not an inline `typeof x === TYPE_STRING`) so TypeScript narrows at
+// the call site — typeof-narrowing only fires on the string literal, not a const.
+const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 const USAGE_INSTALL = "agentsfleet install (--from <path> | --template <id>)";
 const USAGE_UPDATE =
@@ -133,7 +142,7 @@ const requireFromPath = (
   fromPath: string | null | undefined,
   usage: string,
 ): Effect.Effect<string, ValidationError> => {
-  if (typeof fromPath !== "string" || fromPath.length === 0) {
+  if (!isString(fromPath) || fromPath.length === 0) {
     return Effect.fail(
       new ValidationError({
         detail: "--from <path> is required",
@@ -152,8 +161,8 @@ const resolveSource = (
   fromPath: string | null | undefined,
   templateId: string | null | undefined,
 ): Effect.Effect<InstallSource, ValidationError> => {
-  const hasPath = typeof fromPath === "string" && fromPath.length > 0;
-  const hasTemplate = typeof templateId === "string" && templateId.length > 0;
+  const hasPath = isString(fromPath) && fromPath.length > 0;
+  const hasTemplate = isString(templateId) && templateId.length > 0;
   if (hasPath && hasTemplate) {
     return Effect.fail(
       new ValidationError({
@@ -178,7 +187,7 @@ const withName = (
   body: CreateFleetBody,
   name: string | null | undefined,
 ): CreateFleetBody => {
-  const trimmed = typeof name === "string" ? name.trim() : "";
+  const trimmed = isString(name) ? name.trim() : "";
   return trimmed.length > 0 ? { ...body, name: trimmed } : body;
 };
 
@@ -219,7 +228,7 @@ const createAndRender = (
 
     const res = yield* http.request<InstallResponse>({
       path: wsFleetsPath(wsId),
-      method: "POST",
+      method: METHOD_POST,
       body,
       token,
     });
@@ -269,7 +278,7 @@ export const installEffectFromFlags = (
     if (source.kind === SOURCE_TEMPLATE) {
       const snapshot = yield* http.request<BundleSnapshot>({
         path: wsFleetBundleSnapshotsPath(wsId),
-        method: "POST",
+        method: METHOD_POST,
         body: { source_kind: SOURCE_KIND_TEMPLATE, source_ref: source.templateId },
         token,
       });

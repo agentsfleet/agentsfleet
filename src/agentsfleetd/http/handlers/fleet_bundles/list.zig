@@ -21,6 +21,10 @@ const Hx = hx_mod.Hx;
 // deliberately ships no CHECK constraint. Only `public` rows surface here.
 const VISIBILITY_PUBLIC: []const u8 = "public";
 
+// No LIMIT by design: unlike the user-data list endpoints (fleets/keys/events,
+// which cap + cursor because they grow with usage), this is a curated catalog
+// that only grows via migration — no runtime or attacker write path. The
+// gallery must show every public template, so a cap would silently truncate it.
 const SELECT_PUBLIC =
     \\SELECT id, name, description,
     \\       required_credentials::text, required_tools::text, network_hosts::text
@@ -50,8 +54,11 @@ pub fn innerList(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
+    // A query or JSONB-decode failure here is a data/query fault, not lost
+    // connectivity — route it to the query-error code, not "DB unavailable",
+    // so on-call triage isn't misdirected to a connectivity hunt.
     const items = buildCatalog(hx.alloc, conn) catch {
-        common.internalDbUnavailable(hx.res, hx.req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
     hx.ok(.ok, ResponseBody{ .items = items });

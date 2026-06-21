@@ -343,5 +343,46 @@ test "integration: template catalog lists seeded first-party templates from the 
     try std.testing.expect(res.bodyContains("\"github-pr-reviewer\""));
     try std.testing.expect(res.bodyContains("\"security-reviewer\""));
     try std.testing.expect(res.bodyContains("\"required_credentials\""));
+    // The JSONB array decodes to a JSON array, not quoted JSONB text.
     try std.testing.expect(res.bodyContains("[\"github\"]"));
+}
+
+const PRIVATE_PROBE_ID = "private-visibility-probe";
+
+test "integration: catalog hides non-public templates (visibility filter)" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    // Seed a private-visibility row directly. The catalog filters
+    // `WHERE visibility = 'public'`, so this probe must NOT surface — without
+    // this negative test the filter could be dropped and every seed (all
+    // public) would still pass. Probe is removed afterward so the curated set
+    // is left intact.
+    _ = conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PRIVATE_PROBE_ID}) catch {};
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_bundle_templates
+        \\    (id, name, description, source_repo, source_path, source_ref,
+        \\     required_credentials, required_tools, network_hosts, visibility,
+        \\     created_at, updated_at)
+        \\VALUES
+        \\    ($1, 'Private probe', 'Hidden from the gallery.',
+        \\     'agentsfleet/private-visibility-probe', '', 'main',
+        \\     '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 'private', 0, 0)
+    , .{PRIVATE_PROBE_ID});
+
+    const res = try (try h.get("/v1/fleets/bundles").bearer(TOKEN_USER)).send();
+    defer res.deinit();
+    try res.expectStatus(.ok);
+    try std.testing.expect(!res.bodyContains(PRIVATE_PROBE_ID)); // private hidden
+    try std.testing.expect(res.bodyContains("\"github-pr-reviewer\"")); // public still shown
+
+    _ = conn.exec("DELETE FROM core.fleet_bundle_templates WHERE id = $1", .{PRIVATE_PROBE_ID}) catch {};
 }
