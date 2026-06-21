@@ -44,10 +44,13 @@
             type: object
             required:
             - source_kind
-            - skill_markdown
             properties:
               source_kind:
                 type: string
+                description: >-
+                  Where the bundle comes from. `upload` carries the SKILL.md (and
+                  optional TRIGGER.md) Markdown inline; `github` and `template`
+                  are fetched and validated server-side from GitHub.
                 enum:
                 - template
                 - upload
@@ -55,19 +58,23 @@
               source_ref:
                 type: string
                 maxLength: 512
-                description: Template identifier, upload label, or GitHub locator used for operator traceability.
+                description: >-
+                  Required for `github` (an `owner/repo` locator resolved at the
+                  default branch) and `template` (a first-party template id). For
+                  `upload` it is an optional operator-traceability label.
               skill_markdown:
                 type: string
-                maxLength: 65536
-                description: Raw SKILL.md bytes. Required for the stored snapshot.
+                maxLength: 204800
+                description: >-
+                  Raw SKILL.md bytes. Required for `upload`; ignored for fetched
+                  sources, whose fetched SKILL.md is authoritative.
               trigger_markdown:
                 type: string
-                maxLength: 65536
-                description: Optional TRIGGER.md raw bytes. When omitted, installing the bundle uses the server-generated default API trigger.
-              support_files:
-                type: array
-                items:
-                  $ref: ../components/schemas.yaml#/components/schemas/FleetBundleSupportFile
+                maxLength: 204800
+                description: >-
+                  Optional raw TRIGGER.md bytes for `upload`. When omitted,
+                  installing the bundle uses the server-generated default API
+                  trigger. Ignored for fetched sources.
     responses:
       '201':
         description: Bundle imported and stored.
@@ -80,6 +87,14 @@
       '401':
         $ref: ../components/responses.yaml#/components/responses/Error
       '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '502':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '503':
         $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
