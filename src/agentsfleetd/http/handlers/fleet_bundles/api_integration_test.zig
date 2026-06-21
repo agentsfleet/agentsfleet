@@ -190,15 +190,14 @@ test "integration: Fleet Bundle import persists metadata and detail preview" {
     defer h.releaseConn(conn);
     try resetAndSeed(conn);
 
-    const support_files = &.{importer.SupportFile{ .path = "README.md", .content = "Review checklist" }};
-    const imported = try importBundle(h, "unit/github-pr-reviewer", GITHUB_SKILL, GITHUB_TRIGGER, support_files);
+    // Paste/upload carries SKILL + TRIGGER only; support files ride GitHub/template
+    // sources, exercised by the github_source extraction tests + resolve unit tests.
+    const imported = try importBundle(h, "unit/github-pr-reviewer", GITHUB_SKILL, GITHUB_TRIGGER, &.{});
     defer alloc.free(imported.bundle_id);
     defer alloc.free(imported.body);
 
     try std.testing.expect(std.mem.indexOf(u8, imported.body, "\"github\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, imported.body, "\"api.github.com\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, imported.body, "\"README.md\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, imported.body, "Review checklist") == null);
 
     const detail_url = try bundleDetailUrl(alloc, imported.bundle_id);
     defer alloc.free(detail_url);
@@ -207,8 +206,6 @@ test "integration: Fleet Bundle import persists metadata and detail preview" {
     try detail.expectStatus(.ok);
     try std.testing.expect(detail.bodyContains("\"github-pr-reviewer\""));
     try std.testing.expect(detail.bodyContains("\"api.github.com\""));
-    try std.testing.expect(detail.bodyContains("\"README.md\""));
-    try std.testing.expect(!detail.bodyContains("Review checklist"));
 
     var q = PgQuery.from(try conn.query(
         \\SELECT count(*)::bigint
@@ -284,4 +281,42 @@ test "integration: fleet create bundle reports missing credentials" {
     try response.expectErrorCode("UZ-BUNDLE-003");
     try std.testing.expect(response.bodyContains("\"missing_credentials\":[\"github\"]"));
     try std.testing.expectEqual(@as(i64, 0), try fleetCountByName(conn, "github-pr-reviewer"));
+}
+
+test "integration: Fleet Bundle upload rejects support files" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try resetAndSeed(conn);
+
+    // Attachments are only accepted on fetched (github/template) sources; an
+    // upload that carries support files is a 400 and stores nothing.
+    const request_body = try std.json.Stringify.valueAlloc(alloc, importer.ImportBody{
+        .source_kind = importer.SOURCE_KIND_UPLOAD,
+        .source_ref = "unit/reject-support",
+        .skill_markdown = GITHUB_SKILL,
+        .trigger_markdown = GITHUB_TRIGGER,
+        .support_files = &.{.{ .path = "README.md", .content = "x" }},
+    }, .{});
+    defer alloc.free(request_body);
+
+    const url = try importUrl(alloc);
+    defer alloc.free(url);
+    const response = try (try (try h.post(url).bearer(TOKEN_USER)).json(request_body)).send();
+    defer response.deinit();
+    try std.testing.expectEqual(@as(u16, 400), response.status);
+    try response.expectErrorCode("UZ-BUNDLE-001");
+
+    var q = PgQuery.from(try conn.query(
+        \\SELECT count(*)::bigint FROM core.fleet_bundles WHERE workspace_id = $1::uuid
+    , .{http_auth.WS_PRIMARY}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.CountMissing;
+    try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
 }

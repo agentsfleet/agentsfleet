@@ -98,6 +98,9 @@ test {
     _ = @import("http/handlers/fleets/patch_concurrent_integration_test.zig");
     _ = @import("http/handlers/fleets/delete.zig");
     _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
+    _ = @import("http/handlers/fleet_bundles/imports.zig");
+    _ = @import("http/handlers/fleet_bundles/resolve.zig");
+    _ = @import("fleet_bundle/importer.zig");
     _ = @import("fleet_bundle/github_source.zig");
     _ = @import("fleet_bundle/github_net.zig");
     // Fleet execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)

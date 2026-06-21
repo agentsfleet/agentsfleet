@@ -267,18 +267,6 @@ components:
           type: array
           items:
             type: string
-    FleetBundleSupportFile:
-      type: object
-      required:
-      - path
-      - content
-      properties:
-        path:
-          type: string
-          maxLength: 160
-        content:
-          type: string
-          maxLength: 65536
     FleetBundleSupportFileSummary:
       type: object
       required:
