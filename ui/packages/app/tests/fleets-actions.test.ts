@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // network + auth boundary is proven elsewhere). vi.mock is hoisted above the
 // static actions import, so every mock fn referenced inside a factory is created
 // via vi.hoisted() (see runners-actions.test.ts).
-const { withTokenMock, listFleetsMock, setFleetStatusMock, deleteFleetMock, installFleetMock, steerFleetMock } =
+const { withTokenMock, listFleetsMock, setFleetStatusMock, deleteFleetMock, installFleetMock, steerFleetMock, importBundleSnapshotMock } =
   vi.hoisted(() => ({
     withTokenMock: vi.fn(),
     listFleetsMock: vi.fn(),
@@ -15,6 +15,7 @@ const { withTokenMock, listFleetsMock, setFleetStatusMock, deleteFleetMock, inst
     deleteFleetMock: vi.fn(),
     installFleetMock: vi.fn(),
     steerFleetMock: vi.fn(),
+    importBundleSnapshotMock: vi.fn(),
   }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -25,12 +26,14 @@ vi.mock("@/lib/api/fleets", () => ({
   installFleet: installFleetMock,
   steerFleet: steerFleetMock,
 }));
+vi.mock("@/lib/api/fleet-bundles", () => ({ importBundleSnapshot: importBundleSnapshotMock }));
 
 import {
   listFleetsAction,
   setFleetStatusAction,
   deleteFleetAction,
   installFleetAction,
+  importBundleAction,
   steerFleetAction,
 } from "@/app/(dashboard)/fleets/actions";
 
@@ -85,6 +88,15 @@ describe("fleet server actions — thin token-forwarders", () => {
     const r = await installFleetAction("ws1", body);
     expect(r).toEqual({ ok: true, data: resp });
     expect(installFleetMock).toHaveBeenCalledWith("ws1", body, "tok");
+  });
+
+  it("importBundleAction forwards ws, body with token last", async () => {
+    const snapshot = { bundle_id: "bnd_1", requirements: { credentials: ["github"] } };
+    importBundleSnapshotMock.mockResolvedValueOnce(snapshot);
+    const body = { source_kind: "github", source_ref: "acme/pr-reviewer" } as never;
+    const r = await importBundleAction("ws1", body);
+    expect(r).toEqual({ ok: true, data: snapshot });
+    expect(importBundleSnapshotMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
   it("steerFleetAction forwards ws, id, message with token last", async () => {

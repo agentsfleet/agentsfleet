@@ -4,7 +4,7 @@ import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 import { mockAuthOnce as mockAuth, resolveActiveWorkspace as resolveActiveWorkspaceMock } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, listFleetsMock, getTenantBillingMock } from "./helpers/dashboard-app-mocks";
+import { resetDashboardMocks, listFleetsMock, getTenantBillingMock, listFleetTemplatesMock } from "./helpers/dashboard-app-mocks";
 
 // Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
@@ -28,6 +28,7 @@ vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", asyn
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", async () => (await import("./helpers/dashboard-app-mocks")).billingUsageTabMock());
 vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
 vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-app-mocks")).credentialsApiMock());
+vi.mock("@/lib/api/fleet-bundles", async () => (await import("./helpers/dashboard-app-mocks")).fleetBundlesMock());
 vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", async () => (await import("./helpers/dashboard-app-mocks")).addCredentialFormMock());
 vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", async () => (await import("./helpers/dashboard-app-mocks")).credentialsListMock());
 vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
@@ -114,6 +115,37 @@ describe("dashboard overview page", () => {
     const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
     expect(m).toContain("Start your fleet");
     expect(m).toContain("SKILL.md");
+  });
+
+  it("StatusTiles first-install card surfaces template cards deep-linking to the install flow", async () => {
+    listFleetsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue(null);
+    listFleetTemplatesMock.mockResolvedValue({
+      items: [
+        {
+          id: "github-pr-reviewer",
+          name: "GitHub PR reviewer",
+          description: "Reviews pull requests.",
+          required_credentials: ["github"],
+          required_tools: [],
+          network_hosts: [],
+        },
+      ],
+    });
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("GitHub PR reviewer");
+    expect(m).toContain("needs: github");
+    expect(m).toContain('href="/fleets/new?template=github-pr-reviewer"');
+  });
+
+  it("StatusTiles first-install card swallows a failed template fetch", async () => {
+    listFleetsMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue(null);
+    listFleetTemplatesMock.mockRejectedValue(new Error("catalog down"));
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("Start your fleet"); // card still renders, gallery omitted
   });
 
   it("StatusTiles returns null without a token or an active workspace", async () => {

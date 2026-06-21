@@ -18,6 +18,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
+const config_validate = @import("../../../fleet_runtime/config_validate.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
@@ -40,6 +41,10 @@ const CreateBody = struct {
     bundle_id: ?[]const u8 = null,
     trigger_markdown: ?[]const u8 = null,
     source_markdown: ?[]const u8 = null,
+    // Optional operator-supplied name. Absent ⇒ the SKILL.md `name:` is used.
+    // Present ⇒ overrides the persisted fleet name so one bundle can back many
+    // fleets in a workspace (each with its own name + webhooks/cron).
+    name: ?[]const u8 = null,
 };
 
 fn parseCreateBody(hx: Hx, req: *httpz.Request) ?CreateBody {
@@ -122,6 +127,19 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     if (!std.mem.eql(u8, skill_meta.name, parsed.config.name)) {
         hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH);
         return;
+    }
+
+    // Optional operator name override (multi-instance): the same bundle can back
+    // many fleets in a workspace, each with its own name + webhooks/cron. The
+    // runner leases by content_hash (name-agnostic) and nothing reads
+    // config_json's name downstream, so overriding the persisted `name` column
+    // is safe. Validated against the same slug rules as a SKILL.md name.
+    if (body.name) |override_name| {
+        config_validate.validateSkillName(override_name) catch {
+            hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_NAME_REQUIRED);
+            return;
+        };
+        parsed.config.name = override_name;
     }
 
     // Placement tags: the SKILL.md frontmatter `tags:` the author already wrote
