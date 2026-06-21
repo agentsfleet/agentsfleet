@@ -4,7 +4,7 @@
 **Milestone:** Milestone 94 (M94)
 **Workstream:** 002
 **Date:** Jun 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** Priority 1 (P1) — fixes the first-run install path for a customer-facing dashboard flow.
 **Categories:** API, Command-Line Interface (CLI), Documentation (DOCS), Skill Bundle (SKILL), User Interface (UI)
 **Batch:** Batch 1 (B1) — bundle import and install flow.
@@ -297,14 +297,14 @@ No files are deleted by this spec. If implementation replaces paste-first instal
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-agentsfleetd` | Pending implementation. | |
-| Integration tests | `make test-integration` | Pending implementation. | |
-| UI tests | `cd ui/packages/app && bun run test:coverage` | 934 passed / 0 failed; 100% statements/branches/functions/lines (gate). | ✅ |
-| CLI tests | `bun test cli/test` | Pending implementation. | |
-| OpenAPI | `make check-openapi` | Pending implementation. | |
-| Lint | `make lint` | Pending implementation. | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | Pending implementation. | |
-| Gitleaks | `gitleaks detect` | Pending implementation. | |
+| Unit tests | `make test-unit-agentsfleetd` | 1288 passed; 390 DB-gated integration cases skip locally. | ✅ |
+| Integration tests | `make test-integration` | DB-gated → Continuous Integration (CI). New name-override + bundle cases compile and skip locally (no `TEST_DATABASE_URL`). | CI |
+| UI tests | `cd ui/packages/app && bun run test:coverage` | 937 passed / 0 failed; 100% statements/branches/functions/lines (gate). | ✅ |
+| CLI tests | `bun test cli/test` | §5.3 SKILL.md-only install — 6 pass (CLI untouched this session). | ✅ |
+| OpenAPI | `make check-openapi` | Bundle + lint + error-schema + url-shape green; create-request `name` field added. | ✅ |
+| Lint | `make lint-zig` + `make lint-app` | fmt/zlint/pg-drain/test-depth/line-limit + oxlint/tsc — all green. | ✅ |
+| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | Both targets build. | ✅ |
+| Gitleaks | `gitleaks detect` | No leaks found. | ✅ |
 
 ## Out of Scope
 
