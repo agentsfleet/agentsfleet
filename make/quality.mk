@@ -212,7 +212,21 @@ _legacy_symbols_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [zig] No legacy event-substrate symbols in active code"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+_legacy_noun_check:
+	@echo "→ [noun] Checking for the retired entity noun (zombie_id/zmb_id) in src/ + schema/ — the product noun is 'fleet'..."
+	@FAIL=0; \
+	NOUN_PATTERNS='\bzombie_id\b|\bzmb_id\b'; \
+	HITS=$$(grep -rEn "$$NOUN_PATTERNS" src/ schema/ --include='*.zig' --include='*.sql' \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*(//|--)' || true); \
+	if [ -n "$$HITS" ]; then \
+		echo "✗ Retired entity identifier (zombie_id/zmb_id) found in active code — the product noun is 'fleet'; use fleet_id:"; \
+		echo "$$HITS"; \
+		FAIL=1; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "✓ [noun] No retired zombie_id/zmb_id identifiers in src/ + schema/"
+
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
