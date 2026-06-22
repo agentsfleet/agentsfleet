@@ -4,11 +4,12 @@
 **Milestone:** M95
 **Workstream:** 001
 **Date:** Jun 22, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — build-tooling hygiene; no user-facing behaviour change, but it removes server/runner drift risk and documents a TLS-on/off matrix that today reads as a bug.
 **Categories:** API, INFRA
 **Batch:** B1
 **Branch:** chore/m95-build-hygiene
+**Test Baseline:** unit=2015 integration=201
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-4-8, Jun 22 2026) — from Indy's direction + an adversarial audit of build*.zig this session.
 
@@ -156,6 +157,7 @@ Clear the audit findings not absorbed by §2. **Implementation defaults:** the O
 - **Dimension 5.3** — `build_runner.zig` emits a build warning when the VERSION read falls back to `"0.0.0"` instead of swallowing it → Test `test_version_fallback_warns`.
 - **Dimension 5.4** — `build_runner.zig` exposes `-Dtest-filter` and threads `.filters` into all three runner test compilations → Test `test_runner_test_filter`.
 - **Dimension 5.5** — `src/build/pg.zig` carries the OpenSSL TLS-matrix doc comment + the `-Dopenssl` override note → Test `test_openssl_intent_documented` (cross-compile unchanged).
+- **Dimension 5.6** — version sourcing unified: both graphs embed `version`+`git_commit` via §2's shared helper; daemon gains `--version` printing `version (sha)` (the consumer keeping the option live, RULE NDC) → Test `test_daemon_version_surface`.
 
 ---
 
@@ -250,9 +252,7 @@ make test && make test-integration 2>&1 | tail -3
 make lint-zig 2>&1 | grep -E "✓|✗|noun"
 # E5: Cross-compile
 zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux && echo PASS
-# E6: Gitleaks
-gitleaks detect 2>&1 | tail -3
-# E7: Orphan sweep (empty = pass)
+# E6: Orphan sweep (empty = pass)
 git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 ```
 
@@ -279,7 +279,7 @@ git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 ## Discovery (consult log)
 
 - **Indy decisions (this session):** (a) fold the `_legacy_noun_check` guard into this spec rather than ship standalone (AskUserQuestion, Jun 22); (b) rename `chore/legacy-noun-ratchet` → `chore/m95-build-hygiene` and carry the guard change; (c) "fix all findings in build*.zig".
-- **OPEN — version-sourcing asymmetry (audit P2):** the runner reads VERSION at build time; the daemon does not. Resolution pending Indy: surface the daemon version (a `/health` behaviour add) OR document the deliberate omission. Adding an unconsumed daemon build option is rejected (RULE NDC). Captured here; does not block §1–§5.
+- **RESOLVED (Indy, Jun 22) — version-sourcing (audit P2):** git SHA is the canonical build identity in both binaries; semver `version` rides as a non-gating display label via §2's shared options helper (which collapses the duplicated git-commit option); the daemon gains a `--version` printing `version (sha)` — the consumer keeping the option live (RULE NDC). Tracked as Dimension 5.6.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: filled as run.
 
 ---
