@@ -136,7 +136,7 @@ Extract `src/build/shared.zig` that constructs `log`/`protocol`/`common`/`nullcl
 - **Dimension 2.2** — `build_runner.zig` consumes the SAME SharedDeps → Test `test_runner_shared_deps`.
 - **Dimension 2.3** — runner-isolation invariant: `build_runner`'s graph resolves neither `pg` nor `s3` → Test `test_runner_isolation_guard` (a `make` grep-guard, with a negative test that wiring `pg` into the runner trips it).
 
-### §3 — `requireZig` comptime guard
+### §3 — `requireZig` comptime guard — ✅ DONE
 
 Add ghostty's `comptime { requireZig(minimum_zig_version); }` (read from `build.zig.zon`) to both graphs via the barrel. Fail fast + legibly on toolchain drift instead of a deep cryptic error.
 

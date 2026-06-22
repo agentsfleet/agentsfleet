@@ -20,6 +20,11 @@
 const std = @import("std");
 const buildpkg = @import("src/build/main.zig");
 
+comptime {
+    // §3: fail fast if the toolchain drifted from build.zig.zon's pinned minimum.
+    buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
+}
+
 const S_LOG = "log";
 const S_CONTRACT = "contract";
 const S_COMMON = "common";

@@ -1,6 +1,12 @@
 const std = @import("std");
 const buildpkg = @import("src/build/main.zig");
 
+comptime {
+    // §3: fail fast (with a clear message) if the toolchain drifted from the
+    // minimum_zig_version pinned in build.zig.zon.
+    buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
+}
+
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
