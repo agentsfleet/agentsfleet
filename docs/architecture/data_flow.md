@@ -383,7 +383,7 @@ The user-facing copy says Fleet Bundle for source packages and Fleet for the
 installed runtime. Runner remains the infrastructure vocabulary.
 
 ```
-   user / install-skill
+   user / agentsfleet CLI
     │  POST /v1/workspaces/{ws}/fleets
     │  body, direct Markdown:
     │       { name, trigger_markdown?, source_markdown }
@@ -459,7 +459,7 @@ installed runtime. Runner remains the infrastructure vocabulary.
                A Fleet's TRIGGER.md declares `triggers: [...]` as an array
                (length 1–8, unique on `(type, source)` tuple). Each webhook
                entry carries `events: [...]` — the provider-specific
-               subscription list the install-skill forwards to the provider
+               subscription list the user forwards to the provider
                (e.g. `gh api repos/.../hooks --field 'events[]=workflow_run'`).
                The receiver itself doesn't read `events[]`; the normaliser
                filters server-side on the event's own semantics

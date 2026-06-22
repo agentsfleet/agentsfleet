@@ -8,7 +8,7 @@ All three scenarios follow the same persona — **John Doe** — across his jour
 
 | File | Stage of John's journey | What it proves |
 |---|---|---|
-| [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Fireworks + Kimi K2.6) | Wedge demo: zero to first webhook diagnosis in <10 min. `tenant provider show` returns the synth-default posture block; install-skill writes resolved values into frontmatter. |
+| [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Fireworks + Kimi K2.6) | Wedge demo: zero to first webhook diagnosis in <10 min. `tenant provider show` returns the synth-default posture block; the bundle's frontmatter carries the resolved model/cap values. |
 | [`02_self_managed.md`](./02_self_managed.md) | Switches to self-managed (Fireworks + Kimi K2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider add` time; the control plane overlays sentinels at lease time; api_key never leaves the resolver-to-inference path. |
 | [`03_balance_gate.md`](./03_balance_gate.md) | $5 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + run deductions; gate trips at zero with a dashboard-pointer UX. |
 | M94_002 fixtures | Fleet Bundle import scenarios | Validated bundle snapshots install through the existing Fleet API; no separate bundle-install endpoint. |
