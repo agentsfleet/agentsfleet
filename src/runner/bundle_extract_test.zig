@@ -11,7 +11,7 @@ const SKILL_NAME = "SKILL.md";
 const TRIGGER_NAME = "TRIGGER.md";
 
 // Real security-reviewer bundle fixture (tests/fixtures/fleetbundle/security-reviewer/),
-// wired as named @embedFile imports by build_fixtures.zig. It carries a nested
+// wired as named @embedFile imports by src/build/fixtures.zig. It carries a nested
 // support file (checklists/owasp.md), so the extraction test exercises folder
 // materialization against a real bundle's bytes rather than synthetic entries.
 const SR_SKILL = @embedFile("security-reviewer-SKILL.md");

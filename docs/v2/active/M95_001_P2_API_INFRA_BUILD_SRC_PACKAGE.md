@@ -120,7 +120,7 @@
 
 ## Sections (implementation slices)
 
-### §1 — Relocate build helpers into a `src/build/` package
+### §1 — Relocate build helpers into a `src/build/` package — ✅ DONE
 
 Move the three root helpers under `src/build/` behind a `main.zig` barrel; root keeps only the two entry-point graphs. Kills root sprawl; one discoverable package. **Implementation default:** lowercase `pg.zig`/`s3.zig`/`fixtures.zig` (they expose `pub fn`, no primary type) — match ghostty's namespace-file convention.
 

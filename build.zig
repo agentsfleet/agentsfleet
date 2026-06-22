@@ -1,7 +1,5 @@
 const std = @import("std");
-const build_pg = @import("build_pg.zig");
-const build_s3 = @import("build_s3.zig");
-const build_fixtures = @import("build_fixtures.zig");
+const buildpkg = @import("src/build/main.zig");
 
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
@@ -48,7 +46,7 @@ pub fn build(b: *std.Build) void {
     });
     const httpz_mod = httpz_dep.module("httpz");
 
-    const pg_mod = build_pg.module(b, target, optimize, S_PG);
+    const pg_mod = buildpkg.pg.module(b, target, optimize, S_PG);
 
     // ── posthog-zig (server-side PostHog SDK) ───────────────────────────────
     const posthog_dep = b.dependency(S_POSTHOG, .{
@@ -134,8 +132,8 @@ pub fn build(b: *std.Build) void {
     hmac_sig_mod.addImport(S_COMMON, common_mod);
 
     // R2 (Cloudflare) wrapper for Fleet Bundle snapshots — daemon graph only
-    // (the runner holds zero datastore credentials). See build_s3.zig.
-    const s3_mod = build_s3.module(b, target, optimize);
+    // (the runner holds zero datastore credentials). See src/build/s3.zig.
+    const s3_mod = buildpkg.s3.module(b, target, optimize);
 
     // ── agentsfleet executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
@@ -210,7 +208,7 @@ pub fn build(b: *std.Build) void {
     lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
 
     // `test-s3`: compile r2.zig against z3 standalone (build-wiring gate).
-    build_s3.addTestStep(b, target, optimize, test_filters);
+    buildpkg.s3.addTestStep(b, target, optimize, test_filters);
 
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
@@ -243,7 +241,7 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
-    build_fixtures.addDaemon(b, tests.root_module);
+    buildpkg.fixtures.addDaemon(b, tests.root_module);
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
