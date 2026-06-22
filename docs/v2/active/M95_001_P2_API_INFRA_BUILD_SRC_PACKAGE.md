@@ -142,7 +142,7 @@ Add ghostty's `comptime { requireZig(minimum_zig_version); }` (read from `build.
 
 - **Dimension 3.1** — the version-compare helper accepts `>= min`, rejects `< min` → Test `test_require_zig_compare` (pure comparison logic; a stale toolchain can't be installed in CI).
 
-### §4 — Fold in the legacy-noun guard (already implemented)
+### §4 — Fold in the legacy-noun guard (already implemented) — ✅ DONE
 
 The `_legacy_noun_check` make guard (forbids `\bzombie_id\b|\bzmb_id\b` in `src/` + `schema/`, wired into `lint-zig`, comment-line-exempt) — authored + verified this session, sitting uncommitted on this branch. Commit it as this Dimension. Ratchets against legacy-noun regression.
 
