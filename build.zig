@@ -1,9 +1,14 @@
 const std = @import("std");
-const build_pg = @import("build_pg.zig");
-const build_s3 = @import("build_s3.zig");
-const build_fixtures = @import("build_fixtures.zig");
+const buildpkg = @import("src/build/main.zig");
+
+comptime {
+    // Fail fast (with a clear message) if the toolchain drifted from the
+    // minimum_zig_version pinned in build.zig.zon.
+    buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
+}
 
 const S_POSTHOG = "posthog";
+const S_HTTPZ = "httpz";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
@@ -25,30 +30,29 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const with_bench_tools = b.option(bool, "with-bench-tools", "Enable benchmark tooling (zBench)") orelse false;
     const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
-    const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
+    const git_commit = buildpkg.shared.resolveGitCommit(b);
+    const version = buildpkg.shared.resolveVersion(b);
     const build_opts = b.addOptions();
-    build_opts.addOption([]const u8, "git_commit", git_commit);
+    // git SHA is the canonical build identity; semver is a non-gating label.
+    buildpkg.shared.addVersionOptions(build_opts, version, git_commit);
+    // One build_options module, reused by the exe + every test target.
+    const build_options_mod = build_opts.createModule();
     const test_filters: []const []const u8 = if (test_filter) |filter| &.{filter} else &.{};
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
     // need chat channels — agentsfleet runs agents programmatically).
-    const nullclaw_dep = b.dependency(S_NULLCLAW, .{
-        .target = target,
-        .optimize = optimize,
-        .channels = @as([]const u8, "none"),
-        .engines = @as([]const u8, "base,sqlite"),
-    });
-    const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
+    const deps = buildpkg.shared.SharedDeps.init(b, target, optimize);
+    const nullclaw_mod = deps.nullclaw;
 
     // ── httpz (pure-Zig HTTP server, karlseguin) ─────────────────────────────
-    const httpz_dep = b.dependency("httpz", .{
+    const httpz_dep = b.dependency(S_HTTPZ, .{
         .target = target,
         .optimize = optimize,
     });
-    const httpz_mod = httpz_dep.module("httpz");
+    const httpz_mod = httpz_dep.module(S_HTTPZ);
 
-    const pg_mod = build_pg.module(b, target, optimize, S_PG);
+    const pg_mod = buildpkg.pg.module(b, target, optimize, S_PG);
 
     // ── posthog-zig (server-side PostHog SDK) ───────────────────────────────
     const posthog_dep = b.dependency(S_POSTHOG, .{
@@ -103,30 +107,18 @@ pub fn build(b: *std.Build) void {
     // need to embed an error_code field in a log record pass it as a
     // struct field (`.{ .error_code = error_codes.ERR_X, ... }`), keeping
     // logging/ pure of business knowledge.
-    const log_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/logging/mod.zig"),
-    });
+    const log_mod = deps.log;
 
     // Shared `/v1/runners` wire contract (src/lib/contract). A named module so
     // both build graphs reach it without crossing module boundaries (see
     // docs/ZIG_RULES.md "Module Boundaries & Shared Modules"). No deps — its
     // files import only std + each other within src/lib/contract/.
-    const contract_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/contract/contract.zig"),
-    });
+    const contract_mod = deps.protocol;
 
     // Single-source lease/runner knobs (src/lib/common) the control plane (fleet)
     // and the runner daemon both key off (RULE UFS). Named module: src/lib sits
     // outside the agentsfleetd module root, so it cannot be relative-imported.
-    const common_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/common/constants.zig"),
-    });
-
-    // Logging sources its envelope wall-clock from `common.clock` (Zig 0.16
-    // removed std.time.*Timestamp). The log module is otherwise dependency-free;
-    // `common` is a pure, datastore-free shared module, so this adds no domain
-    // coupling and no cycle (common never imports log).
-    log_mod.addImport(S_COMMON, common_mod);
+    const common_mod = deps.common;
 
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
     // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
@@ -134,8 +126,8 @@ pub fn build(b: *std.Build) void {
     hmac_sig_mod.addImport(S_COMMON, common_mod);
 
     // R2 (Cloudflare) wrapper for Fleet Bundle snapshots — daemon graph only
-    // (the runner holds zero datastore credentials). See build_s3.zig.
-    const s3_mod = build_s3.module(b, target, optimize);
+    // (the runner holds zero datastore credentials). See src/build/s3.zig.
+    const s3_mod = buildpkg.s3.module(b, target, optimize);
 
     // ── agentsfleet executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
@@ -146,11 +138,11 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -210,7 +202,7 @@ pub fn build(b: *std.Build) void {
     lib_test_step.dependOn(&b.addRunArtifact(logging_tests).step);
 
     // `test-s3`: compile r2.zig against z3 standalone (build-wiring gate).
-    build_s3.addTestStep(b, target, optimize, test_filters);
+    buildpkg.s3.addTestStep(b, target, optimize, test_filters);
 
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
@@ -227,11 +219,11 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -243,7 +235,7 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
-    build_fixtures.addDaemon(b, tests.root_module);
+    buildpkg.fixtures.addDaemon(b, tests.root_module);
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
@@ -259,7 +251,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -293,7 +285,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
