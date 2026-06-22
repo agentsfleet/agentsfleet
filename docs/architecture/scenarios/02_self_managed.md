@@ -72,12 +72,12 @@ The same setup works through the dashboard at `/settings/models`: a credential d
 
 ---
 
-## 3. Subsequent install — the skill takes a different fork
+## 3. Subsequent install — the frontmatter takes a different fork
 
-When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
+When John re-installs his fleet after self-managed is set (`agentsfleet install --from`, or `agentsfleet fleet update` on the live fleet):
 
-1. The skill calls `agentsfleet doctor --json` for connectivity + workspace health (`server_reachable`, `workspace_selected`, `workspace_binding_valid`), then reads `agentsfleet tenant provider show --json`, which reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — `tenant provider show` is a readiness surface, not a secret surface.
-2. The skill writes `.agentsfleet/platform-ops/SKILL.md` with sentinel frontmatter:
+1. John (or his coding agent) runs `agentsfleet doctor --json` for connectivity + workspace health (`server_reachable`, `workspace_selected`, `workspace_binding_valid`), then `agentsfleet tenant provider show --json`, which reports `{ mode: "self_managed", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000 }`. The api_key is **never** in this block — `tenant provider show` is a readiness surface, not a secret surface.
+2. The bundle's `.agentsfleet/platform-ops/SKILL.md` carries sentinel frontmatter:
    ```yaml
    x-agentsfleet:
      model: ""                       # sentinel: control plane overlays from tenant_providers
@@ -89,7 +89,7 @@ When John runs `/agentsfleet-install-platform-ops` after self-managed is set:
    ```
 3. Everything else (tool credentials, webhook URL, first steer) is identical to Scenario 01.
 
-**Overlay rule (at lease time):** `model == ""` OR the `model:` key absent from the frontmatter ⇒ the control plane overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The install-skill emits the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this fleet inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
+**Overlay rule (at lease time):** `model == ""` OR the `model:` key absent from the frontmatter ⇒ the control plane overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The bundle's frontmatter carries the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this fleet inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
 
 If John later runs `agentsfleet tenant provider add --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing fleets pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
 
@@ -155,8 +155,8 @@ The provider hosting a given model is encoded in the `model_id` itself (`account
 
 Properties:
 
-- **Path key (`da5b6b3810543fe108d816ee972e4ff8`) is 64 bits of entropy.** Random scanning to find this URL is cost-prohibitive. Treat the key as obscurity, not secrecy — it's referenced from the public install-skill repo, but anyone who deliberately reads that repo is not the threat model. The threat model is opportunistic crawlers.
-- **Hard-coded in clients.** `agentsfleet` and the install-skill embed the URL at build/release time. Rotation is a coordinated CLI + skill release on a quarterly cadence (or sooner if abuse is detected). Old key gets a 410 Gone with a "upgrade your CLI" hint for ~30 days, then 404.
+- **Path key (`da5b6b3810543fe108d816ee972e4ff8`) is 64 bits of entropy.** Random scanning to find this URL is cost-prohibitive. Treat the key as obscurity, not secrecy — it's referenced from the open-source `agentsfleet` CLI, but anyone who deliberately reads that source is not the threat model. The threat model is opportunistic crawlers.
+- **Hard-coded in clients.** The `agentsfleet` CLI embeds the URL at build/release time. Rotation is a coordinated CLI release on a quarterly cadence (or sooner if abuse is detected). Old key gets a 410 Gone with a "upgrade your CLI" hint for ~30 days, then 404.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (1 RPS sustained, burst 10) at the edge — well above any legitimate client and well below any scraping budget.
 - **Backed by a static table (v2.0) → admin-fleet (later).** Initial implementation is a JSON file checked into the API repo and served by a route handler. Later, an admin-only fleet owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a PR with deltas. Humans review/merge. Same endpoint, fresher data — the admin-fleet is a dogfood instance of the platform-ops pattern.
 - **Resolved at provider-set / install time, never at trigger time.** Triggers must not depend on a network call to a sibling endpoint — the cap is pinned into either `tenant_providers` (self-managed) or frontmatter (platform).
