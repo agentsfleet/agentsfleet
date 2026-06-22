@@ -4,7 +4,7 @@
 **Milestone:** M95
 **Workstream:** 001
 **Date:** Jun 22, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — build-tooling hygiene; no user-facing behaviour change, but it removes server/runner drift risk and documents a TLS-on/off matrix that today reads as a bug.
 **Categories:** API, INFRA
 **Batch:** B1
@@ -284,7 +284,9 @@ git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 - **VERIFY (rebased onto origin/main @ PR #439 — docs-only divergence, no conflicts):** lint-zig all green; both binaries cross-compile both linux arches; unit lib 53/53, runner 299 pass/7 skip, daemon 1287 pass/392 skip (DB tests self-skip on the mac), 0 failures. `test-integration` is the CI-canonical DB+Redis gate. Both new guards proven by negative-test probes.
 - **Pre-existing flakiness (NOT this diff):** daemon + runner unit lanes each flaked once on a telemetry event-ordering timing test (`observability/telemetry_test.zig`) then passed on the harness retry (lanes exit 0). Outside this PR's diff; a build-graph reorg cannot affect runtime event ordering.
 - **FOLLOW-UP MILESTONE (recommend separate):** purge the legacy `contract` module name — `src/lib/contract` has ~80 `@import("contract")` sites + `S_CONTRACT` binding consts. M95 renamed only the new `SharedDeps.protocol` field; the full `contract`→`protocol` rename is a cross-cutting ~90-file change (the zombie→fleet class) and should be its own milestone.
-- **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: filled as run.
+- **`/write-unit-test`:** diff ledger resolved — `/healthz` version covered by the extended `innerHealthz` regression guard (24 pass); both grep-guards proven by negative probes; build-graph wiring verified by compile; two build-time paths (`resolveVersion` fallback, `requireZig` `<` arm) marked won't-test with reasons. No bare gaps.
+- **`/review` (adversarial subagent):** two fixes landed — (1) HIGH: `_runner_isolation_check` only matched literal `b.dependency("pg")`/`buildpkg.pg`, missing the repo's named-constant style (`b.dependency(S_PG, …)`); rewired to allowlist-only-nullclaw so ANY non-nullclaw dependency in the runner graph trips it (negative test now catches the `S_PG` bypass). (2) LOW: `requireZig` accepted a pre-release of the pin; now rejected. One doc-wording nit ("once for both graphs") left as accurate-in-context, non-blocking.
+- **`/review-pr` + `kishore-babysit-prs`:** run after the PR opens.
 
 ---
 
