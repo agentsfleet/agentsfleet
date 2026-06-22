@@ -50,6 +50,7 @@ pub fn innerHealthz(hx: Hx) void {
     hx.ok(.ok, .{
         .status = "ok",
         .service = "agentsfleetd",
+        .version = build_options.version,
         .commit = build_options.git_commit,
     });
 }
@@ -118,7 +119,7 @@ fn buildLivenessHx(res: *httpz.Response) hx_mod.Hx {
     };
 }
 
-test "innerHealthz returns 200 with status/service/commit and NO database field" {
+test "innerHealthz returns 200 with status/service/version/commit and NO database field" {
     // Regression guard — M18_002 dropped the `database` field from /healthz
     // (liveness does not probe DB; /readyz does that). If someone reintroduces
     // it, this test fails and forces the conversation.
@@ -133,6 +134,9 @@ test "innerHealthz returns 200 with status/service/commit and NO database field"
     const obj = json.object;
     try std.testing.expect(obj.get("status") != null);
     try std.testing.expect(obj.get("service") != null);
+    // /healthz reports the build version alongside the commit SHA — the consumer
+    // that keeps build_options.version live. Schema-lock both fields.
+    try std.testing.expect(obj.get("version") != null);
     try std.testing.expect(obj.get("commit") != null);
     // The anti-assertion: no database probe leaks into /healthz.
     try std.testing.expect(obj.get("database") == null);

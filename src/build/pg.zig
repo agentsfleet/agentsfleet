@@ -1,3 +1,21 @@
+//! pg.zig — builds the `pg` (Postgres) dependency module with host/target-aware
+//! OpenSSL/Transport Layer Security (TLS) wiring. Split out of build.zig (RULE
+//! FLL), mirroring s3.zig.
+//!
+//! TLS-enable matrix (`enable_openssl` below) — auto-on ONLY for native,
+//! same-arch builds (a linux host → linux target of the same arch, or macOS →
+//! macOS):
+//!   - Prod: agentsfleetd is built native-arch per runner (x86_64 on x86_64,
+//!     aarch64 on aarch64), so `same_arch` holds → TLS ON.
+//!   - Local `make up`: cross-builds (e.g. a darwin host → aarch64-linux) → TLS
+//!     OFF by design — the local compose Postgres is plaintext on the docker
+//!     network. Pass `-Dopenssl=true` to force TLS on for any build.
+//!
+//! The `{arch}-linux-gnu` lib/include paths below resolve only because the
+//! Continuous Integration (CI) Alpine image is pre-baked with those multiarch
+//! symlinks (a vanilla musl host has a flat /usr/lib) — an intentional coupling,
+//! not a bug.
+
 const std = @import("std");
 const builtin = @import("builtin");
 

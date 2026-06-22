@@ -2,7 +2,7 @@
 //!
 //! Each test reconstructs the exact wire bytes real `nft` sent the kernel from
 //! the embedded `--debug=mnl` capture (`tests/fixtures/runner/network/captured/*.mnl.txt`,
-//! wired as named @embedFile imports by build_fixtures.zig; see that dir's
+//! wired as named @embedFile imports by src/build/fixtures.zig; see that dir's
 //! README.md for provenance) and requires our builder's payload —
 //! everything after the 16-byte `nlmsghdr` (whose seq/flags legitimately
 //! differ) — to match byte-for-byte. No transcription: the fixture file IS the

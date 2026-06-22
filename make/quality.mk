@@ -212,7 +212,41 @@ _legacy_symbols_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [zig] No legacy event-substrate symbols in active code"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+_legacy_noun_check:
+	@echo "→ [noun] Checking for the retired entity noun (zombie_id/zmb_id) in src/ + schema/ — the product noun is 'fleet'..."
+	@FAIL=0; \
+	NOUN_PATTERNS='\bzombie_id\b|\bzmb_id\b'; \
+	HITS=$$(grep -rEn "$$NOUN_PATTERNS" src/ schema/ --include='*.zig' --include='*.sql' \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*(//|--)' || true); \
+	if [ -n "$$HITS" ]; then \
+		echo "✗ Retired entity identifier (zombie_id/zmb_id) found in active code — the product noun is 'fleet'; use fleet_id:"; \
+		echo "$$HITS"; \
+		FAIL=1; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "✓ [noun] No retired zombie_id/zmb_id identifiers in src/ + schema/"
+
+_runner_isolation_check:
+	@echo "→ [isolation] Verifying the runner graph (build_runner.zig + src/build/shared.zig) depends ONLY on nullclaw — zero datastore/server deps (pg/s3/httpz)..."
+	@FAIL=0; \
+	DEP_HITS=$$(grep -En 'b\.dependency\(' build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' \
+	         | grep -vE 'S_NULLCLAW|"nullclaw"' || true); \
+	HELPER_HITS=$$(grep -En 'buildpkg\.(pg|s3)\b' build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
+	IMPORT_HITS=$$(grep -En '@import\("([^"]*/)?(pg|s3)\.zig"\)' build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
+	if [ -n "$$DEP_HITS$$HELPER_HITS$$IMPORT_HITS" ]; then \
+		echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (no pg/s3/httpz; no direct @import of the daemon-only helpers). Offending lines:"; \
+		[ -n "$$DEP_HITS" ] && echo "$$DEP_HITS"; \
+		[ -n "$$HELPER_HITS" ] && echo "$$HELPER_HITS"; \
+		[ -n "$$IMPORT_HITS" ] && echo "$$IMPORT_HITS"; \
+		FAIL=1; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
+
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)

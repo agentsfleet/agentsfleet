@@ -18,7 +18,12 @@
 //! Run:    zig build --build-file build_runner.zig run
 
 const std = @import("std");
-const build_fixtures = @import("build_fixtures.zig");
+const buildpkg = @import("src/build/main.zig");
+
+comptime {
+    // Fail fast if the toolchain drifted from build.zig.zon's pinned minimum.
+    buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
+}
 
 const S_LOG = "log";
 const S_CONTRACT = "contract";
@@ -28,8 +33,6 @@ const S_BUILD_OPTIONS = "build_options";
 
 // Build-option names + the runner root, single-sourced (RULE UFS) — each is
 // referenced by the prod, stub-exe, and integration options modules below.
-const OPT_VERSION = "version";
-const OPT_GIT_COMMIT = "git_commit";
 const OPT_EXECUTOR_PROVIDER_STUB = "executor_provider_stub";
 const OPT_STUB_RUNNER_EXE_PATH = "stub_runner_exe_path";
 const SRC_RUNNER_MAIN = "src/runner/main.zig";
@@ -37,40 +40,27 @@ const SRC_RUNNER_MAIN = "src/runner/main.zig";
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    // `-Dtest-filter` restricts the runner suites (parity with build.zig).
+    const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
+    const test_filters: []const []const u8 = if (test_filter) |f| &.{f} else &.{};
 
     // Logfmt logging, shared by source with agentsfleetd.
-    const log_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/logging/mod.zig"),
-    });
+    const deps = buildpkg.shared.SharedDeps.init(b, target, optimize);
+    const log_mod = deps.log;
 
     // The shared `/v1/runners` wire contract (src/lib/contract), reached as a
     // named module — the runner's ONLY shared surface beyond `log`. This is the
     // entire reason it compiles the protocol without crossing into src/agentsfleetd/.
     // `pg`/`httpz`/`redis` remain deliberately absent.
-    const contract_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/contract/contract.zig"),
-    });
+    const contract_mod = deps.protocol;
 
     // Single-source lease/runner knobs (src/lib/common) both binaries key off
     // (RULE UFS); datastore-free, so importing it keeps the zero-credential
     // invariant. A named module because src/lib sits outside the runner root.
-    const common_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/common/constants.zig"),
-    });
-
-    // Logging sources its envelope wall-clock from `common.clock` (Zig 0.16
-    // removed std.time.*Timestamp); `common` is pure/datastore-free so the
-    // runner's zero-credential invariant holds and there is no import cycle.
-    log_mod.addImport(S_COMMON, common_mod);
+    const common_mod = deps.common;
 
     // NullClaw engine dependency — same options as the agentsfleetd build graph.
-    const nullclaw_dep = b.dependency(S_NULLCLAW, .{
-        .target = target,
-        .optimize = optimize,
-        .channels = @as([]const u8, "none"),
-        .engines = @as([]const u8, "base,sqlite"),
-    });
-    const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
+    const nullclaw_mod = deps.nullclaw;
 
     // Build options. `version` (read from the repo VERSION file, kept in sync by
     // `make sync-version`) + `git_commit` (-Dgit-commit, passed from CI) back
@@ -81,14 +71,12 @@ pub fn build(b: *std.Build) void {
     // exec target to `stub_runner_exe_path` — so the worker-pool integration lane
     // can drive the real lease→fork→execute→report path with no LLM. Production
     // builds leave it false, so both seams comptime-vanish (no env backdoor).
-    const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
-    const version_raw = b.build_root.handle.readFileAlloc(b.graph.io, "VERSION", b.allocator, .limited(64)) catch "0.0.0";
-    const version = std.mem.trim(u8, version_raw, " \t\r\n");
+    const git_commit = buildpkg.shared.resolveGitCommit(b);
+    const version = buildpkg.shared.resolveVersion(b);
 
     // Production options (exe + unit tests): real engine, no exec redirect.
     const build_opts = b.addOptions();
-    build_opts.addOption([]const u8, OPT_VERSION, version);
-    build_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    buildpkg.shared.addVersionOptions(build_opts, version, git_commit);
     build_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, false);
     build_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     const build_options_mod = build_opts.createModule();
@@ -136,8 +124,9 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
         }),
+        .filters = test_filters,
     });
-    build_fixtures.addRunner(b, runner_tests.root_module);
+    buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
 
     // The stub child binary the worker-pool integration lane forks: a real
@@ -146,8 +135,7 @@ pub fn build(b: *std.Build) void {
     // binary can't be the child itself (a `zig test` binary has no `__execute`
     // dispatch), so the harness points the forked child at THIS artifact's path.
     const stub_exe_opts = b.addOptions();
-    stub_exe_opts.addOption([]const u8, OPT_VERSION, version);
-    stub_exe_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    buildpkg.shared.addVersionOptions(stub_exe_opts, version, git_commit);
     stub_exe_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     stub_exe_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     const stub_runner_exe = b.addExecutable(.{
@@ -170,8 +158,7 @@ pub fn build(b: *std.Build) void {
     // redirects the child exec target) + the stub exe's built path. `addOptionPath`
     // makes the test compilation depend on the stub exe being emitted first.
     const integ_opts = b.addOptions();
-    integ_opts.addOption([]const u8, OPT_VERSION, version);
-    integ_opts.addOption([]const u8, OPT_GIT_COMMIT, git_commit);
+    buildpkg.shared.addVersionOptions(integ_opts, version, git_commit);
     integ_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     integ_opts.addOptionPath(OPT_STUB_RUNNER_EXE_PATH, stub_runner_exe.getEmittedBin());
 
@@ -195,6 +182,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },
         }),
+        .filters = test_filters,
     });
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }
