@@ -4,11 +4,12 @@
 **Milestone:** M97
 **Workstream:** 001
 **Date:** Jun 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a production CI gate (`smoke (post-deploy)` website job) is red on every marketing deploy, drowning real signal.
 **Categories:** INFRA
 **Batch:** B1 — standalone CI fix, no dependents.
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m97-001-website-smoke-canonical
+**Test Baseline:** unit=2015 integration=201
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, CI failure triage of runs 27975813182 + 27975833257).
 
