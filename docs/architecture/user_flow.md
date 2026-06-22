@@ -14,22 +14,27 @@ The Claude session becomes the place where the user defines, imports, creates, u
 
 For the full end-to-end install + first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
 
-## §8.0 The wedge surface: `/agentsfleet-install-platform-ops` skill
+## §8.0 The wedge surface
 
-The MVP's user-facing wedge is not raw `agentsfleet install`. It is a host-neutral SKILL.md invoked as **`/agentsfleet-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/agentsfleet-install-platform-ops/` or the host-equivalent path), or run the one-liner `curl -fsSL https://agentsfleet.dev | bash`, which installs `agentsfleet` and adds the skill into the host path in one step (§8.2.1). No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/agentsfleet-steer`, `/agentsfleet-doctor`).
+The MVP's user-facing wedge is the **`agentsfleet` CLI plus the first-party template catalogue**. A user goes from cold machine to a running fleet through the CLI — no host-agent and no markdown-skill install step:
 
-The skill is the install UX; `agentsfleet install --from <path>` is the substrate it drives.
+```bash
+curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI
+agentsfleet login                            # Clerk OAuth
+agentsfleet templates                        # browse the first-party catalogue (GET /v1/fleets/bundles)
+agentsfleet install --template github-pr-reviewer
+```
 
-What the skill does, in order:
+`agentsfleet install` takes one of two sources (§8.2.2):
 
-1. **Detects the user's repo**: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json` to infer CI provider, deploy target, and Slack channel. Bails clearly if no GitHub Actions workflow is detected (non-GH CI is post-MVP).
-2. **Asks at most three or four gating questions** through the host-neutral `variables:` frontmatter (so the same SKILL.md works on Claude Code, Amp, Codex CLI, and OpenCode without `AskUserQuestion` lock-in). Slack channel, prod branch glob, and cron opt-in.
-3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
-4. **Calls `agentsfleet doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
-5. **Generates `.agentsfleet/platform-ops/SKILL.md` and `.agentsfleet/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
-6. **Drives `agentsfleet install --from .agentsfleet/platform-ops/`** then runs a batch `agentsfleet steer {id} "morning health check"` smoke test.
+- **`--template <id>`** — a curated, ready-to-run Fleet Bundle from the first-party catalogue (M94; `GET /v1/fleets/bundles`). The pinned `SKILL.md`/`TRIGGER.md` are fetched and validated server-side; the user supplies only the credentials the template declares.
+- **`--from <path>`** — a local bundle the user authored (SKILL.md required, TRIGGER.md optional), often drafted with a coding agent's help (Claude Code, Amp, Codex CLI, OpenCode). This is the path for a fleet customized beyond what a template ships.
 
-This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any fleet CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
+Configuration — Slack channel, production-branch glob, cron schedule — lives in the bundle's `TRIGGER.md`/`SKILL.md`, version-controlled by design. A template ships sensible defaults; customize by editing a local copy and re-installing with `--from` (or `agentsfleet fleet update`). There are no install-time gating questions: the markdown *is* the configuration.
+
+This matters architecturally: the install surface is the CLI (deterministic, scriptable, host-neutral) and the bundle is portable markdown. The runtime stays prompt-driven; `agentsfleet install` plus the catalogue is what makes it tractable from a cold start.
+
+> **Transitional note.** The earlier wedge was a host-agent markdown skill (`/agentsfleet-install-platform-ops`, added via `npx skills add agentsfleet/skills`) that orchestrated repo detection, gating questions, frontmatter generation, and webhook auto-registration. That onboarding is being retired in favor of the CLI + catalogue flow above, and the public docs lead with the CLI path. Where this file and the scenarios still describe skill-orchestrated steps, read them as the prior approach — the substrate calls (`doctor`, `credential add`, `install --from`, `steer`, the `gh` webhook registration) are unchanged; only the orchestration moved from the skill to the CLI + the user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
@@ -75,33 +80,32 @@ Once the files are ready, the user creates the Fleet in the workspace.
 
 ### §8.2.1 Cold-machine bootstrap (run once per machine)
 
-The canonical entry is the one-liner served from `https://agentsfleet.dev` — it wraps the first two steps below (install `agentsfleet`, add the skill):
+The canonical entry is the one-liner served from `https://agentsfleet.dev` — it installs the `agentsfleet` CLI:
 
 ```bash
-curl -fsSL https://agentsfleet.dev | bash   # installs agentsfleet, then npx skills add agentsfleet/skills
+curl -fsSL https://agentsfleet.dev | bash   # installs the agentsfleet CLI (npm under the hood)
 ```
 
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
-npm install -g @agentsfleet/cli     # CLI binary only (templates ship from github.com/agentsfleet/skills, not bundled)
-npx skills add agentsfleet/skills         # symlinks /agentsfleet-* into host skill paths (skills now ship from github.com/agentsfleet/skills)
-agentsfleet login                          # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
-gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
+npm install -g @agentsfleet/cli   # CLI binary
+agentsfleet login                  # Clerk OAuth → token in ~/.config/agentsfleet/credentials.json
+gh auth login -s admin:repo_hook   # one-time; lets you register GitHub webhooks from the terminal
 ```
 
-The install-skill's first action (§8.2.2 step 1) is a `which agentsfleet && which gh && agentsfleet doctor --json` precondition check; on any miss it prints the explicit four-command block above and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
+`agentsfleet doctor --json` is the readiness gate (§8.2.2 step 2): on any miss it prints the explicit fix commands and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
 
 ### §8.2.2 Per-Fleet create flow
 
-1. Claude (or another fleet), typically driven by the `/agentsfleet-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
-2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
-3. The user (or skill) creates or updates the Fleet through one of two source paths:
+1. The user picks a catalogue template (`agentsfleet install --template <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
+2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
+3. The user (or coding agent) creates or updates the Fleet through one of two source paths:
    - **Direct Markdown create** — `agentsfleet install --from <path>` or manual dashboard paste POSTs `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/fleets`.
    - **Fleet Bundle create** — the dashboard imports/uploads/selects a validated bundle snapshot, previews required credentials/tools/network, then POSTs `bundle_id` to the same Fleet creation handler. There is no bundle-specific install route.
 4. The API parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a bundle lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no credentials, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the imported bundle metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
 5. The API stores the Fleet config, linked credentials reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
-6. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only creates, the Trigger panel on `/fleets/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
+6. **Webhook registration on the upstream provider runs from the user's own machine** — `agentsfleet install` prints the webhook URL(s) from the 201 response, and the user registers each on the provider with `gh api repos/.../hooks` (for GitHub) or the equivalent command, using their existing `gh` auth or stored API token. The platform never holds the user's Personal Access Token (PAT) for this step; the registration is logged on the provider side by the user. For dashboard-only creates, the Trigger panel on `/fleets/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
 7. Future triggers are served with no restart and no watcher thread: creation made the Fleet's events stream + consumer group up front (step 4), so each later trigger `XADD`s to the canonical stream name `fleet:{id}:events` and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
 After creation, the Fleet is no longer tied to the interactive Claude session that created it.
@@ -168,7 +172,7 @@ While working in Claude, the user defines a `platform-ops` fleet that:
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to the fleet's webhook ingest URL `POST /v1/webhooks/{fleet_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the install-skill running `gh api repos/{repo}/hooks` from the user's machine; the platform never held the user's PAT for that step.
+1. GitHub posts to the fleet's webhook ingest URL `POST /v1/webhooks/{fleet_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the user running `gh api repos/{repo}/hooks` from their machine; the platform never held the user's PAT for that step.
 2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every fleet in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-agentsfleet.triggers[].credential_name:` frontmatter override scopes a distinct vault row per fleet for the per-fleet credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
 3. The receiver normalizes the payload into a synthetic event and `XADD`s to `fleet:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. A `agentsfleet-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `agentsfleetd`:
@@ -214,12 +218,12 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 Two things travel together: the **model** the runner's fleet invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
-The install-skill's job in both postures is the same shape: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json`, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the sanctioned health check — it verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider or trial posture. If a health check fails (or the CLI is not authenticated) the skill prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Free-trial state comes from `agentsfleet billing show`. The skill never calls the model-caps endpoint directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+The install flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json`, branch on `mode`; the bundle's frontmatter carries resolved-or-sentinel model/cap values.** Doctor is the sanctioned health check — it verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider or trial posture. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Free-trial state comes from `agentsfleet billing show`. The CLI never calls the model-caps endpoint directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
 ```
                      PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
                   ─────────────────────────────────       ─────────────────────────────────
-install-skill →   doctor --json (health)                  doctor --json (health)
+install flow   →   doctor --json (health)                  doctor --json (health)
                     server_reachable: true  ✓              server_reachable: true  ✓
                     workspace_selected: true ✓             workspace_selected: true ✓
                     workspace_binding_valid: ✓             workspace_binding_valid: ✓
@@ -259,7 +263,7 @@ L3 run chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-**Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.
+**Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The bundle's frontmatter carries the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading it can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.
 
 The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 

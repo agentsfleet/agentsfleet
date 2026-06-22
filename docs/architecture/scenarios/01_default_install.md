@@ -13,34 +13,29 @@ This scenario is the wedge demo. If this path doesn't work end-to-end, nothing e
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Op as User (in host)
-    participant Skill as /agentsfleet-install-platform-ops
+    participant Op as User (laptop)
     participant CLI as agentsfleet
     participant API as agentsfleetd-api
     participant Runner as agentsfleet-runner
     participant GH as GitHub Actions
     participant Slack
 
-    Op->>Skill: invoke
-    Skill->>CLI: doctor --json (health)
+    Op->>CLI: login (Clerk OAuth) + doctor --json (health)
     CLI->>API: GET /v1/me + workspace binding
-    API-->>Skill: { server_reachable ✓, workspace_selected ✓, workspace_binding_valid ✓ }
-    Skill->>CLI: tenant provider show --json
+    API-->>CLI: { server_reachable ✓, workspace_selected ✓, workspace_binding_valid ✓ }
+    Op->>CLI: tenant provider show --json
     CLI->>API: GET /v1/.../tenant-provider
-    API-->>Skill: { mode, provider, model, context_cap_tokens }
-    Note over Skill: doctor returns health only. Posture comes from<br/>tenant provider show (synth-default for John);<br/>billing show carries free-trial state. The skill never<br/>calls the model-caps endpoint directly.
-    Skill->>Op: ask 3 questions (slack, branch, cron)
-    Skill->>CLI: credential add (fly, slack, github, upstash)
+    API-->>CLI: { mode, provider, model, context_cap_tokens }
+    Note over Op,CLI: doctor returns health only. Posture comes from<br/>tenant provider show (synth-default for John);<br/>billing show carries free-trial state.
+    Op->>CLI: credential add (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
-    Skill->>CLI: install --from .agentsfleet/platform-ops/
+    Op->>CLI: install --from .agentsfleet/platform-ops/  (or --template <id>)
     CLI->>API: POST /fleets<br/>{trigger_markdown, source_markdown}
     API->>API: XGROUP CREATE fleet:{id}:events (+ consumer group)
-    API-->>Skill: { id, webhook_urls: { github: "..." } }
-    Skill->>GH: gh api repos/owner/repo/hooks<br/>(events[]=workflow_run, config.url, secret)
-    GH-->>Skill: { id, active: true }
-    Skill->>API: HMAC self-verify (curl + computed sig)
-    API-->>Skill: 202
-    Skill->>CLI: steer {id} "morning health check"
+    API-->>CLI: { id, webhook_urls: { github: "..." } }
+    Op->>GH: gh api repos/owner/repo/hooks<br/>(events[]=workflow_run, config.url, secret)
+    GH-->>Op: { id, active: true }
+    Op->>CLI: steer {id} "morning health check"
     CLI->>API: POST /steer
     API->>API: XADD fleet:{id}:events
     Runner->>API: lease (POST /v1/runners/me/leases)
@@ -56,30 +51,12 @@ sequenceDiagram
 
 ## 1. Cold install (user's laptop)
 
-The user is already inside their host (Claude Code, Amp, Codex CLI, or OpenCode). They invoke:
+John installs the CLI and provisions the fleet from his shell — no host-agent and no markdown-skill step. He authors the `platform-ops` bundle locally (a `SKILL.md` + `TRIGGER.md` for the deploy-failure → Slack use case, often drafted with a coding agent's help), or starts from a catalogue template and customizes it.
 
-```
-/agentsfleet-install-platform-ops
-```
+### 1.1 Install steps
 
-The skill's first action is host-neutral: it reads its own `variables:` frontmatter and asks at most four questions through whatever question primitive the host provides (or falls back to inline natural-language Q&A on hosts that have none).
-
-### 1.1 Skill steps
-
-1. **Preconditions.** The skill runs `which agentsfleet && which gh && agentsfleet doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @agentsfleet/cli`, `npx skills add agentsfleet/skills`, `agentsfleet login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned health check; the skill never duplicates the logic.
-2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
-3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
-4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
-   - try `op read 'op://Personal/<name>/api-token'`
-   - else read env `AGENTSFLEET_CRED_<NAME>_API_TOKEN`
-   - else interactive masked prompt
-   then `agentsfleet credential add <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
-
-   For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced fleets share it; rotation rotates everywhere).
-5. **Model and cap from `tenant provider show`.** After doctor confirms health, the skill reads `agentsfleet tenant provider show --json`, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; the CLI never has to call the model-caps endpoint at runtime.
-
-   The model-caps endpoint at `https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `agentsfleet tenant provider add` (Scenario 02), **not** by the install-skill directly. The skill stays simple: run doctor for health, read `tenant provider show`, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
-6. **File generation.** The skill writes `.agentsfleet/platform-ops/SKILL.md` and `.agentsfleet/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
+1. **Bootstrap + auth (once per machine).** `curl -fsSL https://agentsfleet.dev | bash` installs the CLI; `agentsfleet login` does the Clerk OAuth. `agentsfleet doctor --json` is the readiness gate — `server_reachable`, `workspace_selected`, `workspace_binding_valid`; on any miss it prints the exact fix (`npm install -g @agentsfleet/cli`, `agentsfleet login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned health check.
+2. **Author the bundle.** John writes `.agentsfleet/platform-ops/SKILL.md` (operational behaviour in plain English) and `.agentsfleet/platform-ops/TRIGGER.md` (the config below). The Slack channel, production-branch glob, and cron schedule are values *in* the markdown — version-controlled, not install-time prompts. A coding agent (Claude Code, Amp, Codex CLI, OpenCode) can draft these; or `agentsfleet install --template <id>` pulls a curated catalogue bundle and skips authoring entirely (browse with `agentsfleet templates`). Either way, the markdown *is* the configuration.
    ```yaml
    ---
    name: platform-ops
@@ -92,7 +69,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
            secret_ref: github
            header: x-hub-signature-256
            prefix: "sha256="
-       - type: cron                 # omitted entirely when cron_schedule is blank
+       - type: cron                 # omit the whole entry to skip the periodic sweep
          schedule: "*/30 * * * *"
      model: accounts/fireworks/models/kimi-k2.6
      context:
@@ -113,9 +90,10 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `agentsfleet install --from .agentsfleet/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `fleet:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `fleet:control` watcher was retired at the cutover): a later trigger `XADD`s to `fleet:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next. The 201 response carries `{ fleet_id, name, status, webhook_urls: { github: "https://api.agentsfleet.net/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
-8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.agentsfleet/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
-9. **Register webhook(s) on the provider via the user's local `gh`.** For each webhook trigger in `triggers[]`, the skill runs:
+   The `model` / `context_cap_tokens` come from `agentsfleet tenant provider show --json` (synth-default for John: `accounts/fireworks/models/kimi-k2.6`, `256000`, `provider: fireworks`); under self-managed posture the bundle carries the `""` / `0` overlay sentinels instead (Scenario 02). `tenant provider show` always carries resolved values, so neither the CLI nor the author calls the model-caps endpoint (`/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json`) directly — that endpoint is consumed by the platform-side resolver and by `agentsfleet tenant provider add`. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9.
+3. **Add credentials.** For each of `fly`, `slack`, `github`, optional `upstash`: `agentsfleet credential add <name> --data @-`, JSON piped on stdin so secret bytes never reach shell history or argv (upsert; skip-if-exists per M45). The `github` body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }` — generate the secret with `openssl rand -base64 32` (one per workspace; all GitHub-sourced fleets share it, rotation rotates everywhere). Install rejects a bundle whose declared credentials are absent (`UZ-BUNDLE-003`), so add them first.
+4. **Install.** `agentsfleet install --from .agentsfleet/platform-ops/ --json` (or `--template <id>`). The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `fleet:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `fleet:control` watcher was retired at the cutover): a later trigger `XADD`s to `fleet:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next. The 201 response carries `{ fleet_id, name, status, webhook_urls: { github: "https://api.agentsfleet.net/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
+5. **Register the webhook on GitHub** — from John's own machine, for each webhook URL the install printed:
    ```bash
    gh api -X POST "repos/${GH_REPO}/hooks" \
      --field name=web --field active=true \
@@ -124,10 +102,8 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
      --field 'config[content_type]=json' \
      --field "config[secret]=${WEBHOOK_SECRET}"
    ```
-   The user's `gh auth` does the work — the platform never holds the user's PAT for this step. Failure modes: `403`/`401` → skill prints `gh auth refresh -s admin:repo_hook` and stops; `404` → repo or token wrong, prints response verbatim and stops; `422 Hook already exists` → idempotent (skill `gh api repos/.../hooks`, matches on `config.url`, advances).
-10. **Self-verify the webhook end-to-end.** The skill computes HMAC-SHA256 over a synthetic payload using the stored `webhook_secret`, curls the receiver with the signed payload + `X-GitHub-Event: workflow_run` + `X-Hub-Signature-256` headers. Expects 202. Anything else → prints response verbatim and stops *before* declaring success. The user never finds out hours later that HMAC is wrong.
-11. **Post-install summary.** Prints fleet id, registered hook id per source, HMAC-verified status, and the credentials stored — no manual paste prose. No GitHub web UI step.
-12. **First steer (smoke test).** The skill runs `agentsfleet steer {id} "morning health check"` in batch mode and streams the response inline.
+   The user's `gh auth` does the work — the platform never holds the user's PAT. Failure modes: `403`/`401` → `gh auth refresh -s admin:repo_hook`; `404` → repo or token wrong; `422 Hook already exists` → idempotent (match on `config.url`). For dashboard creates, the Trigger panel on `/fleets/{id}` renders this exact command pre-filled with the webhook URL and event list.
+6. **First steer (smoke test).** `agentsfleet steer {id} "morning health check"` runs the stored playbook against a manual trigger and streams the response inline — the install-time proof that creds, network, sandbox, and Slack are all wired. (Optionally self-verify the webhook first by curling the receiver with an HMAC-SHA256-signed synthetic payload + `X-GitHub-Event: workflow_run`; a 202 confirms the stored `webhook_secret` matches before the first real fire.)
 
 ### 1.2 What the first steer actually returns
 
@@ -183,73 +159,57 @@ After this event: `balance_nanos = 997`. Two telemetry rows (`charge_type='recei
 
 ## 3. Terminal transcript — what John Doe sees
 
-This is the verbatim end-to-end CLI experience. The skill drives most of it; John's only typed inputs are the three variable answers and the GitHub webhook paste.
+This is the verbatim end-to-end CLI experience — the commands John types from a cold machine to first steer. His only inputs are the bundle markdown (authored by hand or with a coding agent, or skipped via `--template`), the credential secrets, and the webhook registration.
 
-### 3.1 Skill invocation through to first steer
+### 3.1 Cold install through to first steer
 
 ```text
-$ /agentsfleet-install-platform-ops
+$ curl -fsSL https://agentsfleet.dev | bash
+  ✓ installed agentsfleet → ~/.agentsfleet/bin/agentsfleet
 
-▸ Preconditions …
-  agentsfleet   ✓ on PATH
-  gh          ✓ on PATH, scope admin:repo_hook present
-  doctor      ✓ health OK
-              server_reachable: true
-              workspace_selected: true
-              workspace_binding_valid: true
-  provider    ✓ tenant provider show:
-              { mode: platform,
-                provider: fireworks,
-                model: accounts/fireworks/models/kimi-k2.6,
-                context_cap_tokens: 256000 }
-  billing     ✓ billing show:
-              free_trial: { active: true, ends_at_ms: 1785542400000 }
-              → Free until 2026-07-31 (UTC); runs charged 0 nanos.
+$ agentsfleet login
+  → opened browser for Clerk approval; enter the 6-digit code: ••••••
+  ✓ logged in; active workspace ws_01HX… (auto-provisioned at signup)
 
-▸ Detecting repo … github.com/john-doe/widgetly
-  .github/workflows/deploy.yml present
-  fly.toml present
+$ agentsfleet doctor
+  server_reachable        ✓
+  workspace_selected      ✓
+  workspace_binding_valid ✓
 
-▸ Three quick questions:
-  Slack channel for diagnoses?     #platform-ops
-  Production branch glob?          main
-  Cron schedule (blank to skip)?   (blank)
+$ agentsfleet tenant provider show
+  mode: platform   provider: fireworks
+  model: accounts/fireworks/models/kimi-k2.6   context_cap_tokens: 256000
 
-▸ Resolving tool credentials (op → env → prompt fallback) …
-  fly       ✓ via op
-  slack     ✓ via op
-  github    ✓ via env (AGENTSFLEET_CRED_GITHUB_API_TOKEN)
-            ✓ generated webhook_secret locally (32 bytes, base64);
-              stored in vault credential `github`, never re-displayed
-  upstash   skipped (not detected)
+$ agentsfleet billing show
+  free_trial: active, ends 2026-07-31 (UTC) → runs charged 0 nanos
 
-▸ Writing .agentsfleet/platform-ops/SKILL.md, TRIGGER.md
-   triggers: [ webhook:github events=[workflow_run] ]
-   model: accounts/fireworks/models/kimi-k2.6
-   context_cap_tokens: 256000     ← from tenant provider show
+# Authored .agentsfleet/platform-ops/{SKILL.md,TRIGGER.md} — slack #platform-ops,
+# prod branch main, no cron — by hand or with a coding agent's help. (Or skip
+# authoring with: agentsfleet install --template <id>.) github webhook_secret
+# generated once with: openssl rand -base64 32
 
-▸ Installing …
-  fleet_id   = agt_a01HX9N3K…
-  webhook_urls = { github: https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github }
+$ agentsfleet credential add github --data @- <<'JSON'
+{ "api_token": "ghp_…", "webhook_secret": "…" }
+JSON
+  ✓ credential `github` stored   (also added: fly, slack)
 
-▸ Registering webhook on john-doe/widgetly via gh api …
-  POST repos/john-doe/widgetly/hooks
-       events=[workflow_run]
-       config.url=https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github
-       config.secret=$WEBHOOK_SECRET
+$ agentsfleet install --from .agentsfleet/platform-ops/
+  ✓ platform-ops is live.
+    fleet_id     = agt_a01HX9N3K…
+    webhook_urls = { github: https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github }
+
+$ gh api -X POST repos/john-doe/widgetly/hooks \
+    --field name=web --field active=true --field 'events[]=workflow_run' \
+    --field "config[url]=https://api.agentsfleet.net/v1/webhooks/agt_a01HX9N3K…/github" \
+    --field 'config[content_type]=json' --field "config[secret]=$WEBHOOK_SECRET"
   ✓ hook 482389123 registered, active=true
 
-▸ Self-verifying webhook (HMAC-SHA256 + curl) …
-  POST .../v1/webhooks/agt_a01HX9N3K…/github → 202
-
-▸ Running first steer ("morning health check") …
+$ agentsfleet steer agt_a01HX9N3K… "morning health check"
   GH Actions runs on main: 12 in last 24h, all green
   Fly app widgetly-prod: healthy, last deploy 6h ago, 2 instances
   Posted to #platform-ops at 09:14 UTC.
 
-✓ Setup complete. To steer manually:  agentsfleet steer agt_a01HX9N3K… "<msg>"
-  Webhook ready. Next failed workflow_run on john-doe/widgetly will
-  wake the fleet automatically.
+# Webhook ready. Next failed workflow_run on john-doe/widgetly wakes the fleet.
 ```
 
 ### 3.2 First production webhook fires (a few hours later)
@@ -285,7 +245,7 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider show` 
 
 ## 4. What this scenario proves
 
-- The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
+- Install is CLI-driven; repo, Slack-channel, and branch configuration live in the authored bundle (or a catalogue template), not in install-time prompts. The runtime stays prompt-driven.
 - The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires an agentsfleet release.
 - The first steer and the first production webhook hit the **same reasoning loop**. Asymmetry would mean a code-path the SKILL.md author can't reason about — the architecture forbids it.
 - Credit deduction goes through the same `fleet_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future user on Stripe-purchased credits.
