@@ -31,13 +31,8 @@ pub fn build(b: *std.Build) void {
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
     // need chat channels — agentsfleet runs agents programmatically).
-    const nullclaw_dep = b.dependency(S_NULLCLAW, .{
-        .target = target,
-        .optimize = optimize,
-        .channels = @as([]const u8, "none"),
-        .engines = @as([]const u8, "base,sqlite"),
-    });
-    const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
+    const deps = buildpkg.shared.SharedDeps.init(b, target, optimize);
+    const nullclaw_mod = deps.nullclaw;
 
     // ── httpz (pure-Zig HTTP server, karlseguin) ─────────────────────────────
     const httpz_dep = b.dependency("httpz", .{
@@ -101,30 +96,18 @@ pub fn build(b: *std.Build) void {
     // need to embed an error_code field in a log record pass it as a
     // struct field (`.{ .error_code = error_codes.ERR_X, ... }`), keeping
     // logging/ pure of business knowledge.
-    const log_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/logging/mod.zig"),
-    });
+    const log_mod = deps.log;
 
     // Shared `/v1/runners` wire contract (src/lib/contract). A named module so
     // both build graphs reach it without crossing module boundaries (see
     // docs/ZIG_RULES.md "Module Boundaries & Shared Modules"). No deps — its
     // files import only std + each other within src/lib/contract/.
-    const contract_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/contract/contract.zig"),
-    });
+    const contract_mod = deps.protocol;
 
     // Single-source lease/runner knobs (src/lib/common) the control plane (fleet)
     // and the runner daemon both key off (RULE UFS). Named module: src/lib sits
     // outside the agentsfleetd module root, so it cannot be relative-imported.
-    const common_mod = b.createModule(.{
-        .root_source_file = b.path("src/lib/common/constants.zig"),
-    });
-
-    // Logging sources its envelope wall-clock from `common.clock` (Zig 0.16
-    // removed std.time.*Timestamp). The log module is otherwise dependency-free;
-    // `common` is a pure, datastore-free shared module, so this adds no domain
-    // coupling and no cycle (common never imports log).
-    log_mod.addImport(S_COMMON, common_mod);
+    const common_mod = deps.common;
 
     // hmac_sig sources its wall-clock from `common.clock` (Zig 0.16 removed
     // std.time.*Timestamp). Same pure, datastore-free shared module as log_mod —
