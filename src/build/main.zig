@@ -10,3 +10,6 @@ pub const fixtures = @import("fixtures.zig");
 
 // Shared dependency set built once for both graphs (§2).
 pub const shared = @import("shared.zig");
+
+// Toolchain guard (§3).
+pub const requireZig = @import("zig.zig").requireZig;
