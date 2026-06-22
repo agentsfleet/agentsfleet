@@ -4,7 +4,7 @@
 **Milestone:** M97
 **Workstream:** 001
 **Date:** Jun 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a production CI gate (`smoke (post-deploy)` website job) is red on every marketing deploy, drowning real signal.
 **Categories:** INFRA
 **Batch:** B1 — standalone CI fix, no dependents.
