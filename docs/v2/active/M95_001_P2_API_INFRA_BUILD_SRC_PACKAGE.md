@@ -148,7 +148,7 @@ The `_legacy_noun_check` make guard (forbids `\bzombie_id\b|\bzmb_id\b` in `src/
 
 - **Dimension 4.1** — guard passes clean, is in the `lint-zig` chain, and fails on an injected `zombie_id`(.zig)/`zmb_id`(.sql) while ignoring `//`/`--` comment lines → Test `test_legacy_noun_guard`.
 
-### §5 — build*.zig findings remediation
+### §5 — build*.zig findings remediation — ✅ DONE
 
 Clear the audit findings not absorbed by §2. **Implementation defaults:** the OpenSSL cluster is fixed by *documentation* (native-arch → TLS on; cross/local → TLS off by design, `-Dopenssl=true` forces on; the `{arch}-linux-gnu` paths depend on the pre-baked CI Alpine symlinks), NOT by rewriting target detection — prod builds native-arch so TLS is already on, and a rewrite risks `make up` + the CI image.
 
@@ -157,7 +157,7 @@ Clear the audit findings not absorbed by §2. **Implementation defaults:** the O
 - **Dimension 5.3** — `build_runner.zig` emits a build warning when the VERSION read falls back to `"0.0.0"` instead of swallowing it → Test `test_version_fallback_warns`.
 - **Dimension 5.4** — `build_runner.zig` exposes `-Dtest-filter` and threads `.filters` into all three runner test compilations → Test `test_runner_test_filter`.
 - **Dimension 5.5** — `src/build/pg.zig` carries the OpenSSL TLS-matrix doc comment + the `-Dopenssl` override note → Test `test_openssl_intent_documented` (cross-compile unchanged).
-- **Dimension 5.6** — version sourcing unified: both graphs embed `version`+`git_commit` via §2's shared helper; daemon gains `--version` printing `version (sha)` (the consumer keeping the option live, RULE NDC) → Test `test_daemon_version_surface`.
+- **Dimension 5.6** — version sourcing unified: both graphs embed `version`+`git_commit` via §2's shared helper; the daemon's `/healthz` reports `version` + `commit` (the consumer keeping the option live, RULE NDC) → Test `test_daemon_version_surface`.
 
 ---
 
@@ -232,7 +232,7 @@ Guarantee: the relocated `pg`/`s3`/`fixtures` keep their existing public fns unc
 - [x] Shared set single-sourced — verify: `grep -rl 'src/lib/contract/contract.zig' build.zig build_runner.zig` → empty (only `src/build/shared.zig`)
 - [x] Runner-isolation guard passes + catches violation — verify: `make _runner_isolation_check` (+ negative probe)
 - [ ] `_legacy_noun_check` wired + green — verify: `make _legacy_noun_check` && `make -n lint-zig | grep _legacy_noun_check`
-- [ ] No raw `"httpz"` — verify: `grep -c '"httpz"' build.zig` → 1 (the `S_HTTPZ` def)
+- [x] No raw `"httpz"` — verify: `grep -c '"httpz"' build.zig` → 1 (the `S_HTTPZ` def)
 - [ ] `make lint` clean · `make test` passes · `make test-integration` passes
 - [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` and `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl`
 - [ ] `gitleaks detect` clean · no file over 350 lines added (build.zig drops below cap)
@@ -279,7 +279,7 @@ git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 ## Discovery (consult log)
 
 - **Indy decisions (this session):** (a) fold the `_legacy_noun_check` guard into this spec rather than ship standalone (AskUserQuestion, Jun 22); (b) rename `chore/legacy-noun-ratchet` → `chore/m95-build-hygiene` and carry the guard change; (c) "fix all findings in build*.zig".
-- **RESOLVED (Indy, Jun 22) — version-sourcing (audit P2):** git SHA is the canonical build identity in both binaries; semver `version` rides as a non-gating display label via §2's shared options helper (which collapses the duplicated git-commit option); the daemon gains a `--version` printing `version (sha)` — the consumer keeping the option live (RULE NDC). Tracked as Dimension 5.6.
+- **RESOLVED (Indy, Jun 22) — version-sourcing (audit P2):** git SHA is the canonical build identity in both binaries; semver `version` rides as a non-gating display label via §2's shared options helper (which collapses the duplicated git-commit option); the daemon's `/healthz` reports `version` + `commit` — the consumer keeping the option live (RULE NDC). Tracked as Dimension 5.6.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: filled as run.
 
 ---

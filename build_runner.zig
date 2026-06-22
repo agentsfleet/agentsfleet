@@ -21,7 +21,7 @@ const std = @import("std");
 const buildpkg = @import("src/build/main.zig");
 
 comptime {
-    // §3: fail fast if the toolchain drifted from build.zig.zon's pinned minimum.
+    // Fail fast if the toolchain drifted from build.zig.zon's pinned minimum.
     buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
 }
 
@@ -40,6 +40,9 @@ const SRC_RUNNER_MAIN = "src/runner/main.zig";
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    // `-Dtest-filter` restricts the runner suites (parity with build.zig).
+    const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
+    const test_filters: []const []const u8 = if (test_filter) |f| &.{f} else &.{};
 
     // Logfmt logging, shared by source with agentsfleetd.
     const deps = buildpkg.shared.SharedDeps.init(b, target, optimize);
@@ -121,6 +124,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
             },
         }),
+        .filters = test_filters,
     });
     buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
@@ -178,6 +182,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = integ_opts.createModule() },
             },
         }),
+        .filters = test_filters,
     });
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }

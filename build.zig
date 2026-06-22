@@ -2,12 +2,13 @@ const std = @import("std");
 const buildpkg = @import("src/build/main.zig");
 
 comptime {
-    // §3: fail fast (with a clear message) if the toolchain drifted from the
+    // Fail fast (with a clear message) if the toolchain drifted from the
     // minimum_zig_version pinned in build.zig.zon.
     buildpkg.requireZig(@import("build.zig.zon").minimum_zig_version);
 }
 
 const S_POSTHOG = "posthog";
+const S_HTTPZ = "httpz";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
@@ -29,9 +30,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const with_bench_tools = b.option(bool, "with-bench-tools", "Enable benchmark tooling (zBench)") orelse false;
     const test_filter = b.option([]const u8, "test-filter", "Restrict Zig tests to names containing this substring");
-    const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
+    const git_commit = buildpkg.shared.resolveGitCommit(b);
+    const version = buildpkg.shared.resolveVersion(b);
     const build_opts = b.addOptions();
-    build_opts.addOption([]const u8, "git_commit", git_commit);
+    // git SHA is the canonical build identity; semver is a non-gating label.
+    buildpkg.shared.addVersionOptions(build_opts, version, git_commit);
+    // One build_options module, reused by the exe + every test target.
+    const build_options_mod = build_opts.createModule();
     const test_filters: []const []const u8 = if (test_filter) |filter| &.{filter} else &.{};
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
@@ -41,11 +46,11 @@ pub fn build(b: *std.Build) void {
     const nullclaw_mod = deps.nullclaw;
 
     // ── httpz (pure-Zig HTTP server, karlseguin) ─────────────────────────────
-    const httpz_dep = b.dependency("httpz", .{
+    const httpz_dep = b.dependency(S_HTTPZ, .{
         .target = target,
         .optimize = optimize,
     });
-    const httpz_mod = httpz_dep.module("httpz");
+    const httpz_mod = httpz_dep.module(S_HTTPZ);
 
     const pg_mod = buildpkg.pg.module(b, target, optimize, S_PG);
 
@@ -133,11 +138,11 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -214,11 +219,11 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_PG, .module = pg_mod },
                 .{ .name = S_POSTHOG, .module = posthog_mod },
                 .{ .name = S_SCHEMA, .module = schema_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_BUILD_OPTIONS, .module = build_options_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -246,7 +251,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
@@ -280,7 +285,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "httpz", .module = httpz_mod },
+                .{ .name = S_HTTPZ, .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
