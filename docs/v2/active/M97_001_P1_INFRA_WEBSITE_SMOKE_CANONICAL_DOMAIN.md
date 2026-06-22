@@ -112,9 +112,9 @@ No new architecture; shape defined by the existing workflow.
 
 The `Detect project` step gains a `smoke_base_url` output set per detected project: website → the canonical production domain; app and agents → the deployment `target_url` (current behaviour preserved). The smoke step uses `smoke_base_url` as `BASE_URL`. This delivers the green website gate while leaving the working app/agents paths untouched.
 
-- **Dimension 1.1** — website project resolves `smoke_base_url` to the canonical production domain → Test `test_website_smoke_targets_canonical_domain`
-- **Dimension 1.2** — app and agents projects resolve `smoke_base_url` to the deployment `target_url` (no behavioural change) → Test `test_app_agents_smoke_keep_target_url`
-- **Dimension 1.3** — the website smoke suite passes end-to-end against the canonical production domain → Test `test_website_smoke_green_against_canonical`
+- **Dimension 1.1** — DONE — website project resolves `smoke_base_url` to the canonical production domain → Test `test_website_smoke_targets_canonical_domain`
+- **Dimension 1.2** — DONE — app and agents projects resolve `smoke_base_url` to the deployment `target_url` (no behavioural change) → Test `test_app_agents_smoke_keep_target_url`
+- **Dimension 1.3** — DONE — the website smoke suite passes end-to-end against the canonical production domain → Test `test_website_smoke_green_against_canonical`
 
 ---
 
@@ -204,7 +204,10 @@ N/A — no files deleted.
 
 - **Consult — Indy (Jun 23, 2026):** scoping of the acceptance-e2e-prod failure (`api.agentsfleet.net` NXDOMAIN). Indy decision: *"I think let it fail, since we havent deployed prod yet."* — context: acceptance-e2e-prod is excluded from this spec's scope; the prod API backend/tunnel DNS is an intentional infra gap, not a code bug.
 - **Consult — Indy (Jun 23, 2026):** canonical-domain mapping. Indy: *"canonical domain for prod is agentsfleet.net(website), and agentsfleet.dev(agents) app.agentsfleet.net(app) its not deployed yet i think, i may be wrong."* — context: verified `agentsfleet.dev` serves the installer bash script (not marketing HTML), so only the **website** project is retargeted to its canonical domain; app/agents stay on `target_url`.
-- **Skill chain outcomes** — populated during VERIFY/CHORE(close).
+- **Skill chain outcomes:**
+  - `/write-unit-test` (Jun 23, 2026): diff ledger 3/3 resolved — website branch covered by e2e playwright smoke vs `agentsfleet.net` (11 passed); app/agents branch `won't-test` (value identical to the prior inlined `BASE_URL`, zero behaviour change); `BASE_URL` output wiring covered by actionlint + smoke run. No supported unit-test stack applies to inline-YAML bash; a `bats` test would duplicate implementation logic (anti-pattern). Zig-leak / concurrency / perf proofs N/A — no code. Verdict: no unit tests warranted.
+  - `/review` (Jun 23, 2026): adversarial diff review CLEAN — no critical findings. One informational: app/agents branches round-trip `target_url` through `GITHUB_OUTPUT` (theoretical newline-injection; `target_url` is a trusted Vercel HTTPS URL, pre-existing trust, not blocking). Invariants 1 + 2 verified; "canonical not yet promoted" failure mode handled by the post-promotion `deployment_status==success` gate.
+  - `/review-pr`, `kishore-babysit-prs` — recorded below as they run.
 - **Deferrals** — none.
 
 ---
@@ -223,9 +226,11 @@ N/A — no files deleted.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Website smoke (e2e) | `BASE_URL=https://agentsfleet.net bunx playwright test tests/e2e/smoke.spec.ts` | {paste snippet} | |
-| Workflow YAML valid | `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/smoke-post-deploy.yml'))"` | {paste snippet} | |
-| Gitleaks | `gitleaks detect` | {paste snippet} | |
+| Website smoke (e2e) | `BASE_URL=https://agentsfleet.net bunx playwright test tests/e2e/smoke.spec.ts` | `11 passed (8.9s)` | ✅ |
+| Workflow YAML valid | `python3 -c "import yaml; yaml.safe_load(...)"` | `PASS` | ✅ |
+| actionlint + make-target refs | `make check-gh-actions-valid` | `actionlint + make-target refs all green` | ✅ |
+| Playbooks ref integrity | `make check-playbooks` | `all references resolve` / `README documents every playbook dir` | ✅ |
+| Gitleaks | `gitleaks protect --staged` (pre-commit) | `no leaks found` | ✅ |
 
 ---
 
