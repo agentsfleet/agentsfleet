@@ -12,9 +12,11 @@ pub fn requireZig(comptime required_zig: []const u8) void {
     if (current_vsn.major != required_vsn.major or
         current_vsn.minor != required_vsn.minor or
         current_vsn.patch < required_vsn.patch or
-        // a pre-release of the pinned version (e.g. 0.16.0-dev.N) is OLDER than
-        // the release — reject it; that is exactly the toolchain drift we guard.
-        (current_vsn.patch == required_vsn.patch and current_vsn.pre != null))
+        // ANY pre-release/dev toolchain (0.16.0-dev.N, 0.16.1-dev.N, ...) is
+        // drift from the pinned RELEASE — reject all of them, not just the
+        // pinned patch. The project pins an exact mise release; a dev build of
+        // any patch is unshipped and unsupported here.
+        current_vsn.pre != null)
     {
         @compileError(std.fmt.comptimePrint(
             "Your Zig version v{f} does not meet the required build version of v{f}",

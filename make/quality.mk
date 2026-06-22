@@ -234,10 +234,13 @@ _runner_isolation_check:
 	         | grep -vE 'S_NULLCLAW|"nullclaw"' || true); \
 	HELPER_HITS=$$(grep -En 'buildpkg\.(pg|s3)\b' build_runner.zig src/build/shared.zig \
 	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
-	if [ -n "$$DEP_HITS$$HELPER_HITS" ]; then \
-		echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (zero datastore/server deps). Offending lines:"; \
+	IMPORT_HITS=$$(grep -En '@import\("([^"]*/)?(pg|s3)\.zig"\)' build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
+	if [ -n "$$DEP_HITS$$HELPER_HITS$$IMPORT_HITS" ]; then \
+		echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (no pg/s3/httpz; no direct @import of the daemon-only helpers). Offending lines:"; \
 		[ -n "$$DEP_HITS" ] && echo "$$DEP_HITS"; \
 		[ -n "$$HELPER_HITS" ] && echo "$$HELPER_HITS"; \
+		[ -n "$$IMPORT_HITS" ] && echo "$$IMPORT_HITS"; \
 		FAIL=1; \
 	fi; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
