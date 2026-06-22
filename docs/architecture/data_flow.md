@@ -373,9 +373,11 @@ Fleet Bundle import is a source-prep step before Fleet creation, not a second ru
     │    a default manual/API trigger with no tools, credentials, or network
     ├─► [Postgres] store searchable bundle metadata, parsed requirements,
     │    source kind, validation status, and content hash
-    ├─► [object storage / R2] store the immutable raw repo tarball, content-hash-addressed
-    │    (`{hash}.tar.gz`) — the snapshot the runner untars into the sandbox for support files;
-    │    the parsed SKILL.md/TRIGGER.md live in Postgres (above) and ride every lease
+    ├─► [object storage / R2] store the immutable canonical tar (agentsfleet re-packs the validated files, not GitHub's raw archive), content-hash-addressed
+    │    (`fleet-bundles/sha256/{hash}.tar`) — the snapshot the runner untars into the sandbox
+    │    for support files; the parsed SKILL.md/TRIGGER.md live in Postgres (above) and ride every
+    │    lease. Support-file content is currently ALSO stored inline in `support_files_json`; see
+    │    [`fleet_bundles.md`](./fleet_bundles.md) for the bundle/fleet split + the storage redundancy.
     └─► 201 { bundle_id, status, requirements, content_hash }
 ```
 
