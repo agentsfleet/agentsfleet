@@ -18,7 +18,7 @@
 //! Run:    zig build --build-file build_runner.zig run
 
 const std = @import("std");
-const build_fixtures = @import("build_fixtures.zig");
+const buildpkg = @import("src/build/main.zig");
 
 const S_LOG = "log";
 const S_CONTRACT = "contract";
@@ -137,7 +137,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    build_fixtures.addRunner(b, runner_tests.root_module);
+    buildpkg.fixtures.addRunner(b, runner_tests.root_module);
     b.step("test", "Run agentsfleet-runner unit tests (contract + daemon + common)").dependOn(&b.addRunArtifact(runner_tests).step);
 
     // The stub child binary the worker-pool integration lane forks: a real

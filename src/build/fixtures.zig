@@ -1,4 +1,4 @@
-//! build_fixtures.zig — wires test-fixture files onto a test module so the
+//! fixtures.zig — wires test-fixture files onto a test module so the
 //! `*_test.zig` sources can `@embedFile` them by name.
 //!
 //! Fixtures live under `tests/fixtures/` (outside every source module's root
@@ -8,7 +8,7 @@
 //! or `src/runner/**`. Registering it as a named anonymous import makes
 //! `@embedFile("<name>")` resolve it regardless of where the source file sits.
 //!
-//! Mirrors the build_pg.zig / build_s3.zig helper split — keeps build.zig and
+//! Mirrors the pg.zig / s3.zig helper split — keeps build.zig and
 //! build_runner.zig free of per-fixture wiring.
 
 const std = @import("std");
