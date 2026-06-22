@@ -8,8 +8,8 @@ pub const pg = @import("pg.zig");
 pub const s3 = @import("s3.zig");
 pub const fixtures = @import("fixtures.zig");
 
-// Shared dependency set built once for both graphs (§2).
+// Shared dependency set built once for both graphs.
 pub const shared = @import("shared.zig");
 
-// Toolchain guard (§3).
+// Toolchain guard.
 pub const requireZig = @import("zig.zig").requireZig;

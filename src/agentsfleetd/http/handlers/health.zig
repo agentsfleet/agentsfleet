@@ -50,6 +50,7 @@ pub fn innerHealthz(hx: Hx) void {
     hx.ok(.ok, .{
         .status = "ok",
         .service = "agentsfleetd",
+        .version = build_options.version,
         .commit = build_options.git_commit,
     });
 }
