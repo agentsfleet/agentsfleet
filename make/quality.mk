@@ -226,7 +226,21 @@ _legacy_noun_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [noun] No retired zombie_id/zmb_id identifiers in src/ + schema/"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check  ## Lint all Zig source (agentsfleetd/runner/lib)
+_runner_isolation_check:
+	@echo "→ [isolation] Verifying build_runner.zig links no datastore/server deps (pg/s3/httpz) — the runner holds zero datastore credentials..."
+	@FAIL=0; \
+	ISO_PATTERNS='buildpkg\.pg\b|buildpkg\.s3\b|b\.dependency\("(pg|httpz|z3)"|\.module\("(pg|httpz|z3|s3)"'; \
+	HITS=$$(grep -En "$$ISO_PATTERNS" build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
+	if [ -n "$$HITS" ]; then \
+		echo "✗ Runner isolation breach — build_runner's graph must NOT link pg/s3/httpz (it holds zero datastore credentials):"; \
+		echo "$$HITS"; \
+		FAIL=1; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
+	echo "✓ [isolation] build_runner links no datastore/server deps"
+
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)

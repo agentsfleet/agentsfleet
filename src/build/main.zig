@@ -7,3 +7,6 @@
 pub const pg = @import("pg.zig");
 pub const s3 = @import("s3.zig");
 pub const fixtures = @import("fixtures.zig");
+
+// Shared dependency set built once for both graphs (§2).
+pub const shared = @import("shared.zig");

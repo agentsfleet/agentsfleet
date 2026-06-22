@@ -22,7 +22,7 @@
 ## Implementing agent — read these first
 
 1. `/Users/kishore/Projects/oss/ghostty/src/build/main.zig` + `Config.zig` + `SharedDeps.zig` — the reference package: a barrel that `pub const`-re-exports components, a struct-with-`init()` SharedDeps built once and passed `*const` to every artifact, lowercase `*.zig` fn-namespaces. Mirror the barrel + SharedDeps + naming; do NOT import its Config.zig options-centralization (out of scope).
-2. `build.zig` + `build_runner.zig` (repo root) — the two current graphs. Note the shared module set both wire separately (`log`, `contract`, `common`, `nullclaw`) and the per-graph `build_options` (different `-D` options each — NOT shared).
+2. `build.zig` + `build_runner.zig` (repo root) — the two current graphs. Note the shared module set both wire separately (`log`, `protocol`, `common`, `nullclaw`) and the per-graph `build_options` (different `-D` options each — NOT shared).
 3. `build_pg.zig` / `build_s3.zig` / `build_fixtures.zig` — the three helpers to relocate; `fixtures` is consumed by BOTH graphs (`addDaemon` + `addRunner`).
 4. `dispatch/write_zig.md` — Zig authoring discipline (PUB-surface verdict, LENGTH, cross-compile both linux targets) for the new `src/build/*.zig`.
 5. `make/quality.mk` `_legacy_symbols_check` — the sibling grep-guard whose shape the new `_legacy_noun_check` + runner-isolation guard mirror.
@@ -75,7 +75,7 @@
 
 ## Overview
 
-**Goal (testable):** Root holds exactly two `build*.zig` entry points; the `log`/`contract`/`common`/`nullclaw` module set is constructed once in `src/build/shared.zig` and consumed by both graphs; `build_runner`'s graph resolves neither the `pg` nor the `s3` module (guard-enforced); every build*.zig audit finding is fixed or documented; both binaries build and cross-compile byte-identically.
+**Goal (testable):** Root holds exactly two `build*.zig` entry points; the `log`/`protocol`/`common`/`nullclaw` module set is constructed once in `src/build/shared.zig` and consumed by both graphs; `build_runner`'s graph resolves neither the `pg` nor the `s3` module (guard-enforced); every build*.zig audit finding is fixed or documented; both binaries build and cross-compile byte-identically.
 
 **Problem:** Five `build*.zig` files at the repo root (two graphs + three helpers) read as sprawl. The two graphs each wire the same four shared modules separately, so they can silently drift. An audit surfaced finding clusters: an undocumented OpenSSL TLS-on/off matrix that reads as a bug, a raw `"httpz"` literal that escaped the `S_*` convention, a silently-swallowed VERSION read, and runner/daemon parity gaps.
 
@@ -103,7 +103,7 @@
 | `src/build/pg.zig` | CREATE | moved `build_pg.zig` + OpenSSL TLS-matrix doc comment (§5) |
 | `src/build/s3.zig` | CREATE | moved `build_s3.zig` (R2/z3 module + `test-s3` step), unchanged |
 | `src/build/fixtures.zig` | CREATE | moved `build_fixtures.zig` (`addDaemon`/`addRunner`), unchanged |
-| `src/build/shared.zig` | CREATE | SharedDeps: build `log`/`contract`/`common`/`nullclaw` once; single-source the nullclaw engine/channel + git-commit literals |
+| `src/build/shared.zig` | CREATE | SharedDeps: build `log`/`protocol`/`common`/`nullclaw` once; single-source the nullclaw engine/channel + git-commit literals |
 | `make/quality.mk` | EDIT | `_legacy_noun_check` (already done) + runner-isolation guard target, both wired into `lint-zig` |
 
 > `build.zig.zon` `.paths` already includes `"src"`, so `src/build/` ships with no manifest edit. CI cache keys hash `build.zig`/`build_runner.zig` (kept) + `src/**/*.zig` (covers the new files) — no workflow change.
@@ -128,9 +128,9 @@ Move the three root helpers under `src/build/` behind a `main.zig` barrel; root 
 - **Dimension 1.2** — `src/build/main.zig` barrel re-exports the three; both graphs import the barrel, not the old root paths → Test `test_no_root_helper_refs`.
 - **Dimension 1.3** — old root files deleted from disk + git (Dead Code Sweep) → Test `test_old_helpers_deleted`.
 
-### §2 — SharedDeps: build the common module set once
+### §2 — SharedDeps: build the common module set once — ✅ DONE
 
-Extract `src/build/shared.zig` that constructs `log`/`contract`/`common`/`nullclaw` once (with `log`'s `common.clock` import); both graphs consume it. `pg`/`s3` stay daemon-only. `build_options` stays per-graph (the two binaries expose different `-D` options). This absorbs the audit's duplicated nullclaw engine/channel + git-commit literals (single-sourced here). Server and runner can no longer drift on the shared set; the isolation boundary becomes explicit + enforced.
+Extract `src/build/shared.zig` that constructs `log`/`protocol`/`common`/`nullclaw` once (with `log`'s `common.clock` import); both graphs consume it. `pg`/`s3` stay daemon-only. `build_options` stays per-graph (the two binaries expose different `-D` options). This absorbs the audit's duplicated nullclaw engine/channel + git-commit literals (single-sourced here). Server and runner can no longer drift on the shared set; the isolation boundary becomes explicit + enforced.
 
 - **Dimension 2.1** — `shared.zig` builds the shared set via one `init`; `build.zig` consumes it for agentsfleetd → Test `test_agentsfleetd_shared_deps`.
 - **Dimension 2.2** — `build_runner.zig` consumes the SAME SharedDeps → Test `test_runner_shared_deps`.
@@ -171,12 +171,12 @@ src/build/main.zig (barrel) — pub const re-exports:
 
 src/build/shared.zig:
   pub const SharedDeps = struct {
-    pub fn init(b, target, optimize, nullclaw_dep_opts) SharedDeps; // builds log/contract/common/nullclaw once
-    pub fn module(self, name) *std.Build.Module;                    // accessor by S_* name; exposes NO pg/s3
+    log, protocol, common, nullclaw: *std.Build.Module; // the 4 shared modules — NO pg/s3 (runner isolation)
+    pub fn init(b, target, optimize) SharedDeps;        // builds them once
   };
 ```
 
-Contract: the relocated `pg`/`s3`/`fixtures` keep their existing public fns unchanged. SharedDeps exposes only the four shared modules; `build_options`, `pg`, `s3` are wired by the daemon graph alone.
+Guarantee: the relocated `pg`/`s3`/`fixtures` keep their existing public fns unchanged. SharedDeps exposes only the four shared modules; `build_options`, `pg`, `s3` are wired by the daemon graph alone.
 
 ---
 
@@ -196,7 +196,7 @@ Contract: the relocated `pg`/`s3`/`fixtures` keep their existing public fns unch
 ## Invariants
 
 1. Root contains exactly two `build*.zig` (`build.zig`, `build_runner.zig`) — enforced by Dead Code Sweep + the Dimension 1.2 grep (zero old-path references).
-2. The shared module set is constructed exactly once (`src/build/shared.zig`) — enforced by single-source: no `createModule` of `log`/`contract`/`common`/`nullclaw` remains in either graph.
+2. The shared module set is constructed exactly once (`src/build/shared.zig`) — enforced by single-source: no `createModule` of `log`/`protocol`/`common`/`nullclaw` remains in either graph.
 3. `build_runner`'s graph resolves neither `pg` nor `s3` — enforced by the runner-isolation `make` guard (Dim 2.3), wired into `lint-zig`.
 4. No `zombie_id`/`zmb_id` in `src/`/`schema/` — enforced by `_legacy_noun_check` in `lint-zig` (Dim 4.1).
 5. Both binaries build byte-identically pre/post (no behaviour change beyond the VERSION-warn line) — enforced by `test`/`test-integration`/cross-compile passing unchanged.
@@ -229,8 +229,8 @@ Contract: the relocated `pg`/`s3`/`fixtures` keep their existing public fns unch
 
 - [ ] Root has exactly two build graphs — verify: `ls build*.zig` → `build.zig build_runner.zig`
 - [ ] No old helper-path references — verify: `! git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'`
-- [ ] Shared set single-sourced — verify: `grep -rl 'src/lib/contract/contract.zig' build.zig build_runner.zig` → empty (only `src/build/shared.zig`)
-- [ ] Runner-isolation guard passes + catches violation — verify: `make <isolation-target>` (+ negative probe)
+- [x] Shared set single-sourced — verify: `grep -rl 'src/lib/contract/contract.zig' build.zig build_runner.zig` → empty (only `src/build/shared.zig`)
+- [x] Runner-isolation guard passes + catches violation — verify: `make _runner_isolation_check` (+ negative probe)
 - [ ] `_legacy_noun_check` wired + green — verify: `make _legacy_noun_check` && `make -n lint-zig | grep _legacy_noun_check`
 - [ ] No raw `"httpz"` — verify: `grep -c '"httpz"' build.zig` → 1 (the `S_HTTPZ` def)
 - [ ] `make lint` clean · `make test` passes · `make test-integration` passes
