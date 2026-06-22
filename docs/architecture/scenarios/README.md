@@ -1,24 +1,21 @@
 # Architecture Scenarios
 
-Three end-to-end walkthroughs that compose the v2 install, trigger, execute, and bill loop. Each is a complete narrative — you should be able to read one in isolation and understand how a real user gets to a real outcome.
+One golden end-to-end walkthrough that composes the v2 install, trigger, and execute loop for the hero use case. Read it in isolation and you understand how a real user gets to a real outcome.
 
-Fleet Bundle import is tracked separately in Milestone 94 Workstream 002 (M94_002). These scenarios continue to prove the platform-ops path; M94_002 adds two bundle fixtures on top of the same runtime: GitHub Pull Request (PR) reviewer and Zoho Recruit outreach.
+| File | What it proves |
+|---|---|
+| [`gh-pr-reviewer.md`](./gh-pr-reviewer.md) | **The golden path.** John Doe installs the `github-pr-reviewer` from a GitHub repo (the bundle storage journey: GitHub tarball → canonical re-pack → R2 + Postgres), wires the webhook, and a Pull Request (PR) gets reviewed. Marks what is built vs the one piece of trigger plumbing still to land (`pull_request` events). |
 
-All three scenarios follow the same persona — **John Doe** — across his journey from cold install to self-managed adoption to gate trip.
+> **Why one scenario.** Earlier the set carried three platform-ops walkthroughs (cold install, self-managed posture, credit-gate drain). Those narratives were consolidated into the topic docs they proved — the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (posture + billing + gate) and [`../data_flow.md`](../data_flow.md) (the install/trigger/execute/bill loop). The scenario set keeps a single golden narrative; the invariants below point at those topic docs.
+>
+> Shipped specs under `docs/v2/done/` may still cite the retired `01_default_install.md` / `02_self_managed.md` / `03_balance_gate.md` by name — those are historical records of what each milestone touched at ship time and are intentionally left intact.
 
-| File | Stage of John's journey | What it proves |
-|---|---|---|
-| [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Fireworks + Kimi K2.6) | Wedge demo: zero to first webhook diagnosis in <10 min. `tenant provider show` returns the synth-default posture block; the bundle's frontmatter carries the resolved model/cap values. |
-| [`02_self_managed.md`](./02_self_managed.md) | Switches to self-managed (Fireworks + Kimi K2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider add` time; the control plane overlays sentinels at lease time; api_key never leaves the resolver-to-inference path. |
-| [`03_balance_gate.md`](./03_balance_gate.md) | $5 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + run deductions; gate trips at zero with a dashboard-pointer UX. |
-| M94_002 fixtures | Fleet Bundle import scenarios | Validated bundle snapshots install through the existing Fleet API; no separate bundle-install endpoint. |
+## Cross-cutting decisions these docs encode
 
-## Cross-cutting decisions these scenarios encode
+These are the load-bearing invariants. Every spec under `docs/v2/` should be readable against them; the canonical home for each is the linked topic doc.
 
-1. **Model-caps endpoint** — `GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` (cryptic-prefix to dodge opportunistic crawlers) is the single source of truth for model → context cap **and per-model token rates**. Resolved at API-server boot for the rate cache, or at `tenant provider add` time for cap. Never resolved at trigger time. See [`02_self_managed.md`](./02_self_managed.md) §5 and [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §10 for the endpoint shape.
-2. **Overlay at lease time** — when frontmatter carries `model: ""` or `context_cap_tokens: 0` or omits the keys entirely, the control plane overlays from `tenant_providers`. Per-field, independent. Visible sentinels for human readability; absent-key as the safety net for hand-edits.
-3. **One credit pool, posture-dependent drain** — `core.tenant_billing.balance_nanos` is a single column. Receive + run debits both fire under both postures; only the per-run drain rate differs (platform overhead + token cost vs. flat self-managed fee). No plan tiers in the cost function; no included-events ladder. Live rate values: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1.
-4. **api_key visibility boundary** — platform OR self-managed, the api_key exists only in vault, server-side process memory, and outbound HTTPS request headers. It never appears in any user-facing surface (doctor JSON, HTTP responses, logs, Fleet context, persisted event rows). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.
-5. **One reasoning loop** — install-time steer, production webhook, cron fire, manual steer, and continuation event all enter the lease path with the same envelope shape and the same SKILL.md prose-driven dispatch. The runtime never branches on actor type.
-
-These five are the load-bearing invariants. Every spec under `docs/v2/` should be readable against them.
+1. **Model-caps endpoint** — `GET https://api.agentsfleet.net/_um/da5b6b3810543fe108d816ee972e4ff8/cap.json` is the single source of truth for model → context cap and per-model token rates. Resolved at API-server boot or at `tenant provider add` time, never at trigger time. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9–10.
+2. **Overlay at lease time** — when frontmatter carries `model: ""` / `context_cap_tokens: 0` / omits the keys, the control plane overlays from `tenant_providers`, per-field. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md).
+3. **One credit pool, posture-dependent drain** — `core.tenant_billing.balance_nanos` is a single column; receive + run debits fire under both postures; only the per-run rate differs. No plan tiers. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1.
+4. **api_key visibility boundary** — platform or self-managed, the api_key exists only in vault, server-side memory, and outbound request headers; never in any user-facing surface. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.
+5. **One reasoning loop** — install-time steer, production webhook, cron fire, manual steer, and continuation all enter the lease path with the same envelope and the same SKILL.md prose-driven dispatch. The runtime never branches on actor type. See [`../data_flow.md`](../data_flow.md).
