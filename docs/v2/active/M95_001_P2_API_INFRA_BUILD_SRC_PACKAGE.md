@@ -280,6 +280,10 @@ git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 
 - **Indy decisions (this session):** (a) fold the `_legacy_noun_check` guard into this spec rather than ship standalone (AskUserQuestion, Jun 22); (b) rename `chore/legacy-noun-ratchet` → `chore/m95-build-hygiene` and carry the guard change; (c) "fix all findings in build*.zig".
 - **RESOLVED (Indy, Jun 22) — version-sourcing (audit P2):** git SHA is the canonical build identity in both binaries; semver `version` rides as a non-gating display label via §2's shared options helper (which collapses the duplicated git-commit option); the daemon's `/healthz` reports `version` + `commit` — the consumer keeping the option live (RULE NDC). Tracked as Dimension 5.6.
+- **Daemon version consumer:** surfaced via `/healthz` (alongside the existing `commit`) rather than a `--version` flag — the daemon already reports build identity there, and it avoids touching the subcommand parser. The "version (sha)" identity is preserved as JSON fields.
+- **VERIFY (rebased onto origin/main @ PR #439 — docs-only divergence, no conflicts):** lint-zig all green; both binaries cross-compile both linux arches; unit lib 53/53, runner 299 pass/7 skip, daemon 1287 pass/392 skip (DB tests self-skip on the mac), 0 failures. `test-integration` is the CI-canonical DB+Redis gate. Both new guards proven by negative-test probes.
+- **Pre-existing flakiness (NOT this diff):** daemon + runner unit lanes each flaked once on a telemetry event-ordering timing test (`observability/telemetry_test.zig`) then passed on the harness retry (lanes exit 0). Outside this PR's diff; a build-graph reorg cannot affect runtime event ordering.
+- **FOLLOW-UP MILESTONE (recommend separate):** purge the legacy `contract` module name — `src/lib/contract` has ~80 `@import("contract")` sites + `S_CONTRACT` binding consts. M95 renamed only the new `SharedDeps.protocol` field; the full `contract`→`protocol` rename is a cross-cutting ~90-file change (the zombie→fleet class) and should be its own milestone.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: filled as run.
 
 ---
@@ -298,13 +302,16 @@ git grep -lE 'build_(pg|s3|fixtures)\.zig' -- ':!docs' ':!CHANGELOG.md'
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | {paste} | |
-| Integration tests | `make test-integration` | {paste} | |
-| Lint + guards | `make lint-zig` | {paste} | |
-| Cross-compile (daemon) | `zig build -Dtarget=x86_64-linux && -Dtarget=aarch64-linux` | {paste} | |
-| Cross-compile (runner) | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl` | {paste} | |
-| Isolation guard (negative) | wire `pg` into runner → `make <isolation-target>` fails | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Unit — shared lib | `make test-unit-agentsfleet-lib` | 53/53 pass | ✅ |
+| Unit — runner | `make test-unit-agentsfleet-runner` | 299 pass, 7 skip | ✅ |
+| Unit — daemon | `make test-unit-agentsfleetd` | 1287 pass, 392 skip (DB self-skip), 0 fail | ✅ |
+| Integration | `make test-integration` | DB+Redis — CI-canonical, not runnable locally | ⚪ CI |
+| Lint + guards | `make lint-zig` | all green (fmt, zlint, noun + isolation guards) | ✅ |
+| Cross-compile (daemon) | `zig build -Dtarget={x86_64,aarch64}-linux` | both built | ✅ |
+| Cross-compile (runner) | `zig build --build-file build_runner.zig -Dtarget={x86_64,aarch64}-linux-musl` | both built | ✅ |
+| Isolation guard (negative) | inject `pg` into runner → `make _runner_isolation_check` | fails as expected | ✅ |
+| Noun guard (negative) | inject `zombie_id`/`zmb_id` → `make _legacy_noun_check` | fails as expected | ✅ |
+| Gitleaks | pre-commit `gitleaks protect --staged` | clean on every commit | ✅ |
 
 ---
 
