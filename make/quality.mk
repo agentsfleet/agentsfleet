@@ -227,18 +227,21 @@ _legacy_noun_check:
 	echo "✓ [noun] No retired zombie_id/zmb_id identifiers in src/ + schema/"
 
 _runner_isolation_check:
-	@echo "→ [isolation] Verifying build_runner.zig links no datastore/server deps (pg/s3/httpz) — the runner holds zero datastore credentials..."
+	@echo "→ [isolation] Verifying the runner graph (build_runner.zig + src/build/shared.zig) depends ONLY on nullclaw — zero datastore/server deps (pg/s3/httpz)..."
 	@FAIL=0; \
-	ISO_PATTERNS='buildpkg\.pg\b|buildpkg\.s3\b|b\.dependency\("(pg|httpz|z3)"|\.module\("(pg|httpz|z3|s3)"'; \
-	HITS=$$(grep -En "$$ISO_PATTERNS" build_runner.zig src/build/shared.zig \
+	DEP_HITS=$$(grep -En 'b\.dependency\(' build_runner.zig src/build/shared.zig \
+	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' \
+	         | grep -vE 'S_NULLCLAW|"nullclaw"' || true); \
+	HELPER_HITS=$$(grep -En 'buildpkg\.(pg|s3)\b' build_runner.zig src/build/shared.zig \
 	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
-	if [ -n "$$HITS" ]; then \
-		echo "✗ Runner isolation breach — build_runner's graph must NOT link pg/s3/httpz (it holds zero datastore credentials):"; \
-		echo "$$HITS"; \
+	if [ -n "$$DEP_HITS$$HELPER_HITS" ]; then \
+		echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (zero datastore/server deps). Offending lines:"; \
+		[ -n "$$DEP_HITS" ] && echo "$$DEP_HITS"; \
+		[ -n "$$HELPER_HITS" ] && echo "$$HELPER_HITS"; \
 		FAIL=1; \
 	fi; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "✓ [isolation] build_runner links no datastore/server deps"
+	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
 
 lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Lint all Zig source (agentsfleetd/runner/lib)
 	@echo "✓ [zig] Lint passed"
