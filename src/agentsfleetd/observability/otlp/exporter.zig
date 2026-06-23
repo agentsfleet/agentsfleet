@@ -44,8 +44,11 @@ pub fn Exporter(comptime hooks: Hooks) type {
 
         const log = logging.scoped(hooks.scope);
 
-        /// Install the exporter. Starts the background flush thread.
+        /// Install the exporter. Starts the background flush thread. Idempotent:
+        /// a second install while running is a no-op — two flush threads on one
+        /// ring would put two consumers on a single-consumer buffer.
         pub fn install(cfg: config.GrafanaOtlpConfig) void {
+            if (g_running.load(.acquire)) return;
             g_config = cfg;
             g_running.store(true, .release);
             g_thread = std.Thread.spawn(.{}, flushLoop, .{}) catch {
@@ -66,7 +69,12 @@ pub fn Exporter(comptime hooks: Hooks) type {
         }
 
         pub fn isInstalled() bool {
-            return g_running.load(.acquire) and g_config != null;
+            // Gate on the atomic only. g_config is a non-atomic optional that
+            // uninstall() nulls on another thread; reading it here (concurrently
+            // with a producer's record call) would be a data race. The flush
+            // thread re-checks `g_config orelse return` before any use, so
+            // g_running is the sufficient and race-free gate.
+            return g_running.load(.acquire);
         }
 
         fn interruptibleSleep(total_ms: u64) void {

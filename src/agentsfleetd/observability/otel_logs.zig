@@ -75,8 +75,8 @@ fn collectLogs(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[
     var out: std.ArrayList(u8) = .empty;
     try out.print(
         alloc,
-        "{{\"resourceLogs\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeLogs\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"logRecords\":[",
-        .{cfg.service_name},
+        "{{\"resourceLogs\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeLogs\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"logRecords\":[",
+        .{std.json.fmt(cfg.service_name, .{})},
     );
 
     var count: usize = 0;

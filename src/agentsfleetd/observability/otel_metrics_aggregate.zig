@@ -36,10 +36,13 @@ fn matches(acc: *const Accumulator, sample: payload.Sample) bool {
 
 fn accumulate(acc: *Accumulator, sample: payload.Sample) void {
     if (payload.metaFor(sample.id).kind == .histogram) {
-        const obs: u64 = if (sample.value < 0) 0 else @intCast(sample.value);
+        // Clamp once: a negative observation (e.g. clock-skew wall_ms) buckets at
+        // 0 AND adds 0 to the sum, so hist_sum can never disagree with the bucket
+        // counts or go negative.
+        const clamped: i64 = if (sample.value < 0) 0 else sample.value;
         acc.hist_count += 1;
-        acc.hist_sum += sample.value;
-        acc.bucket_counts[payload.bucketIndex(obs)] += 1;
+        acc.hist_sum += clamped;
+        acc.bucket_counts[payload.bucketIndex(@intCast(clamped))] += 1;
     } else {
         acc.sum_value += sample.value;
     }

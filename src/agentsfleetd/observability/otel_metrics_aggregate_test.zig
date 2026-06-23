@@ -44,6 +44,18 @@ test "test_aggregates_histogram_per_window: observations merge into one histogra
     try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[3]); // 37
 }
 
+test "histogram clamps a negative observation to bucket 0 and adds 0 to the sum" {
+    var agg = aggregate.Aggregator.init();
+    agg.add(histSample(-5)); // e.g. clock-skew wall_ms
+    agg.add(histSample(8)); // bucket 1
+    var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
+    const series = agg.toSeries(&buf);
+    try std.testing.expectEqual(@as(u64, 2), series[0].hist_count);
+    try std.testing.expectEqual(@as(i64, 8), series[0].hist_sum); // -5 clamped to 0, + 8
+    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[0]); // -5 → bucket 0
+    try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[1]); // 8 → bucket 1
+}
+
 test "distinct label sets aggregate into distinct series" {
     var agg = aggregate.Aggregator.init();
     agg.add(sumSample(10, "ws-a"));

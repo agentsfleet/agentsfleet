@@ -37,6 +37,18 @@ test "test_exporter_lifecycle: install spawns the flush thread, uninstall joins 
     try std.testing.expect(!TestExporter.isInstalled());
 }
 
+test "double install is a no-op — single-consumer guard (no orphaned second thread)" {
+    TestExporter.install(TEST_CFG);
+    // Second install while running must NOT spawn a second flush thread (two
+    // consumers on one ring would corrupt it). The guard makes it a no-op.
+    TestExporter.install(TEST_CFG);
+    try std.testing.expect(TestExporter.isInstalled());
+    // uninstall joins the single thread and completes (would hang/leak if a
+    // second orphaned thread existed).
+    TestExporter.uninstall();
+    try std.testing.expect(!TestExporter.isInstalled());
+}
+
 test "test_exporter_testhooks: testSetInstalled/testClear toggle state without a thread" {
     TestExporter.testSetInstalled(TEST_CFG);
     try std.testing.expect(TestExporter.isInstalled());
