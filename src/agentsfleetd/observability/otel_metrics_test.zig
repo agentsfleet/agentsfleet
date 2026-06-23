@@ -217,6 +217,27 @@ test "test_observes_run_latency_histogram: observeRunDuration enqueues a histogr
     try std.testing.expect(findLabel(&s, payload.LABEL_WORKSPACE) == null); // duration carries no workspace
 }
 
+test "test_dashboard_metric_names_match_constants: every emitted metric name is referenced by the dashboard" {
+    const alloc = std.testing.allocator;
+    const dash = @embedFile("agent-observability.json");
+
+    // The dashboard is valid JSON.
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, dash, .{});
+    defer parsed.deinit();
+
+    // Every emitted metric-name constant appears (in __source_otlp_metrics and/or
+    // a panel expr) — a metric rename in code breaks this test until the
+    // dashboard is updated. The metric names are the single source of truth.
+    inline for (.{
+        payload.METRIC_CREDIT_DRAIN,
+        payload.METRIC_TOKENS,
+        payload.METRIC_RUN_DURATION,
+        payload.METRIC_SAMPLES_DROPPED,
+    }) |name| {
+        try std.testing.expect(std.mem.indexOf(u8, dash, name) != null);
+    }
+}
+
 test "test_window_resets_after_flush: a flush drains + aggregates the window; the next is empty" {
     const alloc = std.testing.allocator;
     otel_metrics.testSetInstalled(TEST_CFG);
