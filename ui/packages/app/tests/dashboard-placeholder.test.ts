@@ -280,7 +280,7 @@ describe("placeholder pages", () => {
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("data-event-count=\"0\"");
+    expect(m).toContain("data-charge-count=\"0\"");
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {
