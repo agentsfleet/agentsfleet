@@ -104,6 +104,16 @@
 | `src/agentsfleetd/observability/otel_metrics.zig` | EDIT | `recordRunSettlement` emit bundle (called by the service layer). |
 | ~~`fleet_runtime/metering.zig` / `fleet/renewal_settle.zig`~~ | UNTOUCHED | money modules stay pure — emits moved to the service-orchestration layer (the spec §2 prose: "same call sites that already increment Prometheus counters" = `service_report`), mirroring `emitDeliverySpan`. Strengthens Invariant 1. |
 | `deploy/grafana/agent-observability.json` | CREATE | Grafana dashboard for the three series (config, not code). |
+| **Scope expansion (§5–§7) — generic substrate + aggregation** | | |
+| `src/agentsfleetd/observability/otlp/ring.zig` | CREATE | generic `Ring(Entry, capacity)`. |
+| `src/agentsfleetd/observability/otlp/config.zig` | CREATE | `GrafanaOtlpConfig` + `configFromEnv` (moved from otel_logs). |
+| `src/agentsfleetd/observability/otlp/post.zig` | CREATE | persistent `std.http.Client` + basic-auth POST. |
+| `src/agentsfleetd/observability/otlp/exporter.zig` | CREATE | generic `Exporter(hooks)` flush driver. |
+| `src/agentsfleetd/observability/otlp/*_test.zig` | CREATE | substrate unit tests. |
+| `src/agentsfleetd/observability/otel_metrics_registry.zig` | CREATE | windowed-delta aggregation registry (+ test). |
+| `src/agentsfleetd/observability/otel_traces.zig` | EDIT | migrate onto `otlp/` substrate (surface unchanged). |
+| `src/agentsfleetd/observability/otel_logs.zig` | EDIT | migrate onto `otlp/` substrate; config/post moved out. |
+| `src/agentsfleetd/observability/otel_metrics.zig` / `_payload.zig` | EDIT | migrate onto substrate + serialize from aggregated series. |
 
 ---
 
@@ -147,6 +157,48 @@ The `workspace` label is high-cardinality; guard it. Provide the Grafana dashboa
 
 - **Dimension 4.1** — DONE — above a configured cardinality cap the `workspace` label is dropped/aggregated; below it, retained → Test `test_workspace_label_cardinality_capped` (cap = 100, `otel_metrics_cardinality.zig`).
 - **Dimension 4.2** — `deploy/grafana/agent-observability.json` is valid JSON whose panels reference exactly the emitted metric-name constants → Test `test_dashboard_metric_names_match_constants` (panel names vs the UFS metric-name consts).
+
+---
+
+## Scope expansion — generic OTLP substrate + aggregation (Indy, Jun 23 2026)
+
+> Indy (2026-06-23): chose "Fold everything into M94" — generic exporter refactor + migrate all three signals + in-process aggregation + drop-counter + persistent HTTP client — over a lean M94 + follow-up. Risk/size acknowledged in the choice. Plus: "do the large refactor you proposed."
+
+**Driver:** the three OTLP exporters (`otel_traces`, `otel_logs`, `otel_metrics`) are ~70% byte-identical (lock-free ring, lifecycle, flush thread, POST). Triplication is the smell; one substrate is the fix. Pure observability — no money path — so low regression risk behind the existing traces/logs tests.
+
+**Temporality (resolves the open #3):** emit **DELTA**; an OTel Collector with the `deltatocumulative` processor (per Grafana Cloud support) converts to cumulative before Mimir — no Mimir flag needed. In-process aggregation is therefore **windowed-delta** (coalesce per flush window, reset each flush), NOT cumulative-since-process-start.
+
+### §5 — Generic OTLP substrate (`observability/otlp/`)
+
+Extract the triplicated machinery into reusable generic pieces:
+- `otlp/ring.zig` — `Ring(comptime Entry, comptime capacity)` lock-free SPMC ring (the discipline currently copied 3×).
+- `otlp/config.zig` — `GrafanaOtlpConfig` + `configFromEnv` (moved from `otel_logs`).
+- `otlp/post.zig` — `Client` wrapping a **persistent** `std.http.Client` + basic-auth POST (replaces per-flush client creation).
+- `otlp/exporter.zig` — `Exporter(comptime hooks)` generic flush driver: lifecycle (`install`/`uninstall`/`isInstalled`), tick-interruptible shutdown + drain, persistent client, parametrized by `collect`/`pending`/`path`.
+
+- **Dimension 5.1** — generic `Ring` round-trips, drops-on-full, never tears under concurrent push → Test `test_generic_ring_*` (the migrated trace ring tests still pass).
+- **Dimension 5.2** — `Exporter(hooks)` install→uninstall joins within one tick, no hang/leak → Test `test_exporter_lifecycle`.
+- **Dimension 5.3** — the persistent `Client` is created once per flush thread and reused across flushes → Test `test_persistent_client_reused`.
+
+### §6 — Migrate the three signals onto the substrate
+
+`otel_traces`, `otel_logs`, `otel_metrics` all use `otlp/exporter.zig`; traces/logs use `otlp/ring.zig`. Public surfaces unchanged (`install`/`uninstall`/`isInstalled`/`enqueue*`/`record*`). Existing traces/logs tests are the regression guard.
+
+- **Dimension 6.1** — traces behavior byte-identical post-migration → existing `otel_traces_test.zig` passes unchanged.
+- **Dimension 6.2** — logs behavior byte-identical → existing `otel_logs_test.zig` passes unchanged.
+- **Dimension 6.3** — all three share ONE lifecycle implementation (no per-signal ring/thread copy remains) → grep proof: no duplicated `flushLoop`/`Ring` outside `otlp/`.
+
+### §7 — In-process aggregation + self-observability
+
+- `otel_metrics_registry.zig` — windowed-delta aggregation: same-`(metric, labelset)` samples coalesce into one accumulator per flush window (sums add; histograms merge `count`+`sum`+bucketCounts). Flush snapshots+resets → one dataPoint per series. Replaces the metrics per-sample ring.
+- Registry is size-bounded (max distinct series); overflow drops + counts.
+- Drop counter exported as `agentsfleet.telemetry.samples_dropped` (sum) — self-observability for exporter health.
+- Persistent HTTP client (from §5) reused across flushes.
+
+- **Dimension 7.1** — N same-labelset sum samples in a window → ONE dataPoint with the summed value → Test `test_aggregates_sum_per_window`.
+- **Dimension 7.2** — N histogram observations in a window → ONE histogram dataPoint (merged buckets, `count==N`, `sum==Σ`) → Test `test_aggregates_histogram_per_window`.
+- **Dimension 7.3** — distinct series beyond the registry cap are dropped and counted; the drop count emits as `agentsfleet.telemetry.samples_dropped` → Test `test_registry_cap_drops_and_counts`.
+- **Dimension 7.4** — flush snapshot **resets** the window (next window starts empty → delta semantics) → Test `test_window_resets_after_flush`.
 
 ---
 
