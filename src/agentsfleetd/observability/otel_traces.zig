@@ -172,6 +172,22 @@ pub const TEST_BUFFER_CAPACITY = BUFFER_CAPACITY;
 pub const TEST_MAX_ATTR_COUNT = MAX_ATTR_COUNT;
 pub const TEST_MAX_NAME_LEN = MAX_NAME_LEN;
 
+/// Test hook: mark installed without spawning the flush thread.
+pub fn testSetInstalled(cfg: otlp_config.GrafanaOtlpConfig) void {
+    Exporter.testSetInstalled(cfg);
+}
+
+/// Test hook: clear installed state and drain the ring.
+pub fn testClear() void {
+    Exporter.testClear();
+    while (g_ring.pop()) |_| {}
+}
+
+/// Test hook: run one collect (drain + serialize the buffered spans).
+pub fn testCollect(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
+    return collectSpans(alloc, cfg);
+}
+
 test {
     _ = @import("otel_traces_test.zig");
 }
