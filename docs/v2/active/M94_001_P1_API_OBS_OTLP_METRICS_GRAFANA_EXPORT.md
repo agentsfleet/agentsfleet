@@ -4,11 +4,12 @@
 **Milestone:** M94
 **Workstream:** 001
 **Date:** Jun 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing observability; moves analytical/dashboard load off the control-plane Postgres
 **Categories:** API, OBS
 **Batch:** B1
-**Branch:** {feat/m94-otlp-metrics — added when work begins}
+**Branch:** feat/m94-otlp-metrics
+**Test Baseline:** unit=2015 integration=201
 **Depends on:** none (otel_traces / otel_logs already ship the push pipeline)
 **Provenance:** LLM-drafted (Claude Opus 4.8, Jun 19 2026) — design captured in a live session; cross-check every claim against the codebase before EXECUTE.
 
@@ -21,7 +22,7 @@
 1. `src/agentsfleetd/observability/otel_traces.zig` — the exact module to mirror: bounded batch queue, background flush thread, OTLP-JSON builder, `install`/`uninstall` gated on config, fire-and-forget POST.
 2. `src/agentsfleetd/observability/otel_logs.zig` — `GrafanaOtlpConfig`, `configFromEnv` (reads `GRAFANA_OTLP_ENDPOINT`/`INSTANCE_ID`/`API_KEY`), and `postWithBasicAuth` — reuse all three verbatim; do not duplicate config or auth.
 3. `src/agentsfleetd/cmd/preflight.zig` — where `otel_traces.install` / `otel_logs.install` are wired (and their `uninstall`); the metrics exporter installs/uninstalls in the same place under the same gate.
-4. `src/agentsfleetd/agent/metering.zig` + `src/agentsfleetd/fleet/renewal_settle.zig` — the post-commit points where credit-drain and token/latency data already exist; emit there, after the money transaction commits.
+4. `src/agentsfleetd/fleet_runtime/metering.zig` + `src/agentsfleetd/fleet/renewal_settle.zig` — the post-commit points where credit-drain and token/latency data already exist; emit there, after the money transaction commits. (`debitAndInsert` commits at `S_COMMIT`; the emit hook lands after that, before the function returns.)
 5. `docs/architecture/billing_and_provider_keys.md` §3–4 — the atomic wallet+ledger contract that defines the hard boundary: nothing money-bearing moves.
 
 ---
@@ -98,7 +99,7 @@
 | `src/agentsfleetd/observability/otel_metrics_test.zig` | CREATE | unit tests (payload shape, gating, drop-on-full, shutdown). |
 | `src/agentsfleetd/observability/metrics.zig` | EDIT | (if needed) shared metric-sample type / registry hook for the new series. |
 | `src/agentsfleetd/cmd/preflight.zig` | EDIT | install/uninstall the metrics exporter under the same `GRAFANA_OTLP_*` gate as traces/logs. |
-| `src/agentsfleetd/agent/metering.zig` | EDIT | emit credit-drain + token sums post-commit (receive + stage debits). |
+| `src/agentsfleetd/fleet_runtime/metering.zig` | EDIT | emit credit-drain + token sums post-commit (`debitAndInsert`, after `S_COMMIT`). |
 | `src/agentsfleetd/fleet/renewal_settle.zig` | EDIT | emit token-delta sum + run-latency histogram at settle. |
 | `deploy/grafana/agent-observability.json` | CREATE | Grafana dashboard for the three series (config, not code). |
 
@@ -114,14 +115,14 @@
 
 ## Sections (implementation slices)
 
-### §1 — OTLP metrics exporter module
+### §1 — OTLP metrics exporter module — DONE
 
-Deliver `otel_metrics.zig` mirroring `otel_traces.zig`: a bounded queue of metric samples, a background flush thread that batches and POSTs OTLP-JSON metrics to `/v1/metrics`, install/uninstall gated on `GrafanaOtlpConfig`, fire-and-forget on error. **Implementation default:** reuse `otel_logs.postWithBasicAuth` and `GrafanaOtlpConfig` rather than re-deriving config/auth.
+Deliver `otel_metrics.zig` mirroring `otel_traces.zig`: a bounded queue of metric samples, a background flush thread that batches and POSTs OTLP-JSON metrics to `/v1/metrics`, install/uninstall gated on `GrafanaOtlpConfig`, fire-and-forget on error. **Implementation default:** reuse `otel_logs.postWithBasicAuth` and `GrafanaOtlpConfig` rather than re-deriving config/auth. **Split:** serialization → `otel_metrics_payload.zig`, cardinality guard → `otel_metrics_cardinality.zig` (file-length gate).
 
-- **Dimension 1.1** — exporter installs only when `GrafanaOtlpConfig` is present; absent → emit calls are cheap no-ops → Test `test_disabled_when_no_config`.
-- **Dimension 1.2** — `record*` enqueue is non-blocking and bounded: a full queue drops the sample and increments a drop counter, never blocks the caller → Test `test_enqueue_drops_on_full_never_blocks`.
-- **Dimension 1.3** — flush serializes a sum data point and a histogram data point into valid OTLP-JSON and POSTs to `/v1/metrics` → Test `test_otlp_payload_shape` (assert against a captured fixture).
-- **Dimension 1.4** — `uninstall` signals stop, wakes the flush wait, and joins the thread with no hang and no leak → Test `test_uninstall_joins_cleanly`.
+- **Dimension 1.1** — DONE — exporter installs only when `GrafanaOtlpConfig` is present; absent → emit calls are cheap no-ops → Test `test_disabled_when_no_config`.
+- **Dimension 1.2** — DONE — `record*` enqueue is non-blocking and bounded: a full queue drops the sample and increments a drop counter, never blocks the caller → Test `test_enqueue_drops_on_full_never_blocks`.
+- **Dimension 1.3** — DONE — flush serializes a sum data point and a histogram data point into valid OTLP-JSON and POSTs to `/v1/metrics` → Test `test_otlp_payload_shape` (assert against captured fixture `tests/fixtures/telemetry/otlp_metrics.json`).
+- **Dimension 1.4** — DONE — `uninstall` signals stop, wakes the flush wait (tick-interruptible sleep), and joins the thread with no hang and no leak → Test `test_uninstall_joins_cleanly`.
 
 ### §2 — Metric instrumentation at the metering hot paths
 
@@ -142,7 +143,7 @@ Install/uninstall in `preflight.zig` alongside traces/logs, reusing `configFromE
 
 The `workspace` label is high-cardinality; guard it. Provide the Grafana dashboard JSON.
 
-- **Dimension 4.1** — above a configured cardinality cap the `workspace` label is dropped/aggregated; below it, retained → Test `test_workspace_label_cardinality_capped`.
+- **Dimension 4.1** — DONE — above a configured cardinality cap the `workspace` label is dropped/aggregated; below it, retained → Test `test_workspace_label_cardinality_capped` (cap = 100, `otel_metrics_cardinality.zig`).
 - **Dimension 4.2** — `deploy/grafana/agent-observability.json` is valid JSON whose panels reference exactly the emitted metric-name constants → Test `test_dashboard_metric_names_match_constants` (panel names vs the UFS metric-name consts).
 
 ---
@@ -195,7 +196,7 @@ Pub surface (mirror otel_traces): install(cfg), uninstall(), isInstalled(),
 |-----------|------|------|---------|
 | 1.1 | unit | `test_disabled_when_no_config` | no config → `isInstalled()==false`; `record*` is a no-op. |
 | 1.2 | unit | `test_enqueue_drops_on_full_never_blocks` | full queue → sample dropped, drop counter +1, call returns immediately. |
-| 1.3 | unit | `test_otlp_payload_shape` | a sum + histogram sample serialize to OTLP-JSON matching `samples/fixtures/m94-fixtures/otlp_metrics.json`. |
+| 1.3 | unit | `test_otlp_payload_shape` | a sum + histogram sample serialize to OTLP-JSON matching `tests/fixtures/telemetry/otlp_metrics.json` (registered via `src/build/fixtures.zig`; the drafted `samples/fixtures/…` path is unreachable by `@embedFile` — codebase convention is `tests/fixtures/`). |
 | 1.4 | unit | `test_uninstall_joins_cleanly` | install→uninstall completes without hang; no leaked thread/allocation (testing allocator). |
 | 2.1 | unit | `test_emits_credit_drain_on_debit` | a committed receive+stage debit records a credit-drain sum with `{posture,model}`. |
 | 2.2 | unit | `test_emits_token_throughput_on_settle` | a settle with a token delta records token sums per direction. |
@@ -266,6 +267,21 @@ N/A — purely additive; no files deleted.
 | After implementation, before CHORE(close) | `/write-unit-test` | audits diff coverage vs this Test Specification | clean; iteration count in Discovery |
 | After tests pass, before CHORE(close) | `/review` | adversarial diff review vs this spec, `dispatch/write_zig.md`, Failure Modes, Invariants | clean OR every finding dispositioned |
 | After `gh pr create` | `/review-pr` | review-comments the open PR | comments addressed before merge |
+
+---
+
+## CHORE(close) Documentation Deliverables (blocking)
+
+These rows close the cross-repo enforcement blind spot: `changelog.mdx` lives in `~/Projects/docs/`, so the agentsfleet PR diff cannot see it and the standard "changelog in diff" pre-PR gate passes vacuously. This milestone does NOT close until every row below is checked and its link/quote filled in.
+
+| # | Deliverable | Evidence required | Done |
+|---|-------------|-------------------|------|
+| D1 | `~/Projects/docs/changelog.mdx` `<Update>` written | new block on branch `chore/m94-otlp-metrics-changelog` (own-branch docs flow); tags include `Observability`; no milestone IDs in body | [ ] |
+| D2 | Relevant docs updated | user-facing `docs.agentsfleet.net` page and/or a one-paragraph `docs/architecture/` observability note covering the OTLP triad metrics signal | [ ] |
+| D3 | CTO docs review | docs changes (D1+D2) routed through a second-model review via the `oracle` CLI (CTO stand-in) — verdict + any fixes captured in PR Session Notes; OR Indy's verbatim sign-off quote | [ ] |
+| D4 | docs PR opened | `gh pr create` on the docs repo branch — link in Session Notes | [ ] |
+| D5 | agentsfleet PR opened | this milestone's PR — link in Session Notes; references the docs PR | [ ] |
+| D6 | `VERSION` bump | feature milestone → minor bump; `make sync-version` + `make check-version` clean | [ ] |
 
 ---
 
