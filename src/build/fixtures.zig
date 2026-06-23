@@ -20,6 +20,7 @@ const DAEMON: []const Fixture = &.{
     .{ .name = "github_run_failure.json", .path = "tests/fixtures/webhooks/github_run_failure.json" },
     .{ .name = "github_run_success.json", .path = "tests/fixtures/webhooks/github_run_success.json" },
     .{ .name = "sample_with_folders.tar.gz", .path = "tests/fixtures/fleetbundle/sample_with_folders.tar.gz" },
+    .{ .name = "otlp_metrics.json", .path = "tests/fixtures/telemetry/otlp_metrics.json" },
 };
 
 /// agentsfleet-runner (`src/runner/**`) `*_test.zig` @embedFile fixtures.
