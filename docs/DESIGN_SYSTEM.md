@@ -177,7 +177,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 
 ## Motion
 
-The system has **two** sanctioned animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Everything else is functional or absent.
+The system has **two** signature animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Beyond those, **marketing and docs stay still** — motion is functional or absent. The **operator dashboard** (the gated app) is the one deliberate exception: a lived-in workspace earns a restrained, fully reduced-motion-gated motion pass — content mount-rise, a slow ambient glow-drift, hover/press micro-interactions — see *Dashboard motion pass* below.
 
 ### Wake pulse (signature)
 
@@ -209,11 +209,42 @@ no JS timer — same discipline as the wake pulse.
 - One-shot: lines hold their final visible frame (`forwards`); the reveal never loops.
 - `prefers-reduced-motion: reduce` → every line visible at once, no reveal.
 
+### Dashboard motion pass (operator app)
+
+The gated operator dashboard is the one surface that performs — a restrained
+layer over the static system, scoped to `ui/packages/app` and defined in
+`app/globals.css`. It exists because the dashboard is a lived-in workspace, not
+a one-shot marketing read; a little life reads as responsive without tipping
+into the anti-vibes traps the rest of this doc forbids.
+
+- **Mount-rise:** page content fades + rises 10px (`rise-in`, 0.38s, no
+  overshoot) as it mounts / on route change, gently staggered across the page's
+  top-level sections. `both` fill resolves to the visible frame — never pins
+  `opacity: 0` as a resting state.
+- **Ambient glow-drift:** the dashboard's single `--pulse` glow drifts a few
+  percent over ~24s (`glow-drift`). Low-opacity, single radius — a slow breath,
+  explicitly **not** an aurora/mesh gradient.
+- **Micro-interactions:** a faint brightness lift on button hover, a 1px press
+  on active, a 1px sidebar-nav nudge on hover. Transform/filter only — the
+  colour transitions stay with the design-system primitives.
+
+**Rules:**
+- Scoped to the gated app dashboard. Marketing + docs keep the "instant, no
+  performance" restraint below.
+- **Every effect is gated:** keyframe animations are neutralised by the global
+  `prefers-reduced-motion: reduce` block; the hover/press lifts live inside a
+  `no-preference` query; the nav nudge uses the `motion-safe:` variant. Under
+  reduced motion the dashboard is as still as the rest of the system.
+- Pinned by `app/tests/shell-motion.test.ts` — the gate is structural, not a
+  review note.
+- Later dashboard motion extends this pass under the same reduced-motion
+  guarantee (the Billing balance meter-fill lands with that screen's rebuild).
+
 ### Functional motion
 
 - **Hovers:** `transition: 50ms ease-out`. Snap. No bounce, no spring, no `cubic-bezier` overshoot.
 - **Focus rings:** instant, no animated draw-on. `box-shadow: 0 0 0 3px var(--pulse-glow)`.
-- **Page transitions:** instant. No fade, no slide. Operational software does not perform.
+- **Page transitions:** instant on marketing + docs — no fade, no slide. The gated operator dashboard is the exception: page content performs a restrained mount-rise (≤0.4s, reduced-motion-gated) on route change — see *Dashboard motion pass* above.
 - **Log streams (operational):** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger. (The marketing install-demo terminal is the one sanctioned staggered reveal — see above.)
 - **Loading states:** prefer skeleton bars (1-pixel-thick borders) over spinners. If a spinner is required, use a 2px monochrome arc, not a circular pulse.
 
@@ -226,9 +257,9 @@ no JS timer — same discipline as the wake pulse.
 ### Forbidden motion
 
 - Bouncy easings (`elastic`, `bounce`, anything with overshoot)
-- Page-transition fades or slides
+- Page-transition fades or slides **on marketing + docs** (the gated dashboard mount-rise is the one sanctioned exception — *Dashboard motion pass*)
 - Scroll-driven animations on marketing (other than the static dot-grid)
-- Animated gradients
+- Animated gradients **as decoration** — no aurora/mesh gradients anywhere; the dashboard's slow, low-opacity single-radius glow-drift is the one sanctioned exception
 - Cursor-following effects, parallax, mouse-tracking glows
 - Spring physics on UI chrome
 
@@ -297,6 +328,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-21 | Add a second sanctioned animation: the marketing install-demo terminal reveal | Supersedes the 2026-05-08 "only signature animation" call for marketing surfaces. The hero shows the install "running" via a one-shot staggered line reveal (opacity-only, CSS-driven, reduced-motion-safe). Scoped to marketing; operational log streams stay non-staggered. |
 | 2026-06-23 | Add "Interaction restraint — minimize end-user friction" principle | Indy: "always think about adding less friction to an end user." Restraint is procedural, not only visual — auto-proceed once intent is expressed (no confirm beats), resolve inputs inline, auto-resume on gate satisfaction, push state instead of poll. Surfaced from the M98 install-fleet flow (auto-create after import/gate). Destructive actions still confirm. |
 | 2026-06-23 | Retire the pill tab; one underline tab style (app) | M98 §1.1. The app shipped two tab visuals (a `bg-muted` pill tray with a `bg-background` active fill) applied inconsistently. Unified to a single underline: active = a `--pulse` 2px bottom-border on a `--border` rail; inactive `--text-muted`. Shared `design-system/tab-styles.ts` consumed by `Tabs` (Radix) + `TabNav` (links) + their tests (RULE UFS). Approved in the M98 mockup (`docs/design/M98_001-ui-polish-preview.html`). |
+| 2026-06-23 | Add a scoped motion pass to the operator dashboard (mount-rise, ambient glow-drift, hover/press micro-interactions) | M98 §1.5. A lived-in operator dashboard performs where marketing stays still — approved by Indy as full mockup motion (`docs/design/M98_001-ui-polish-preview.html`, signed off screen-by-screen). Supersedes the 2026-05-08 "everything else functional or absent" call and the §Motion "page transitions instant / operational software does not perform" rule **for the gated app dashboard only**; marketing + docs keep the restraint. Every effect is reduced-motion-gated; pinned by `app/tests/shell-motion.test.ts`. |
 | 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
 | 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
 

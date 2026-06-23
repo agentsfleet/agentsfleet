@@ -151,7 +151,9 @@ export default function Shell({
       </aside>
 
       <main className="p-6 md:p-8 overflow-auto">
-        <div className="mx-auto w-full max-w-content">{children}</div>
+        {/* `app-content-rise` rises the page's top-level sections in on mount /
+         * route change (globals.css, reduced-motion-gated). */}
+        <div className="app-content-rise mx-auto w-full max-w-content">{children}</div>
       </main>
     </div>
   );
@@ -266,8 +268,10 @@ type NavItemProps = {
   onClick?: () => void;
 };
 
+// `transition` (not just -colors) so the motion-safe hover nudge animates;
+// `motion-safe:` drops the nudge entirely under prefers-reduced-motion.
 const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
+  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-eyebrow text-muted-foreground no-underline transition duration-snap ease-snap motion-safe:hover:translate-x-px hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
 
 function NavItem({ href, label, Icon, active, external, onClick }: NavItemProps) {
   if (external) {
