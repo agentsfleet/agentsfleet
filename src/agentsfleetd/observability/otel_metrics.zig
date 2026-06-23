@@ -133,6 +133,9 @@ fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) 
     }
 
     const start = if (g_window_start_ns == 0) now else g_window_start_ns;
+    // Advance the window BEFORE serialization so a serialize error can't strand
+    // g_window_start_ns at a stale boundary (the drained samples are already gone).
+    g_window_start_ns = now;
     var series_buf: [aggregate.MAX_SERIES + 1]payload.Series = undefined;
     const base = agg.toSeries(series_buf[0..aggregate.MAX_SERIES]);
     var count = base.len;
@@ -149,9 +152,7 @@ fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) 
         count += 1;
     }
 
-    const body = try payload.serializeSeries(alloc, cfg.service_name, series_buf[0..count], start, now);
-    g_window_start_ns = now;
-    return body;
+    return try payload.serializeSeries(alloc, cfg.service_name, series_buf[0..count], start, now);
 }
 
 // ---------------------------------------------------------------------------

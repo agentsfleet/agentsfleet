@@ -118,8 +118,8 @@ fn collectSpans(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?
     var out: std.ArrayList(u8) = .empty;
     try out.print(
         alloc,
-        "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"spans\":[",
-        .{cfg.service_name},
+        "{{\"resourceSpans\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeSpans\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"spans\":[",
+        .{std.json.fmt(cfg.service_name, .{})},
     );
 
     var count: usize = 0;

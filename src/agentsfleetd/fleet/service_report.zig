@@ -100,10 +100,13 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     // won, so this records once per terminal run and never blocks the report.
     otel_metrics.recordRunSettlement(
         settled.charged_nanos,
+        // input/cached/output are u32 → always fit i64. wall_ms is a runner-
+        // controlled u64: saturate, never @intCast (which traps in ReleaseSafe
+        // on > i64::MAX and would abort the whole daemon — Invariant 1).
         @intCast(body.input_tokens),
         @intCast(body.cached_input_tokens),
         @intCast(body.output_tokens),
-        @intCast(body.telemetry.wall_ms),
+        std.math.cast(i64, body.telemetry.wall_ms) orelse std.math.maxInt(i64),
         parsePosture(lease.posture).label(),
         lease.model,
         lease.workspace_id,
@@ -216,7 +219,7 @@ fn finalize(hx: Hx, runner_id: []const u8, lease: Lease, body: protocol.ReportRe
         .posture = parsePosture(lease.posture),
         .provider = lease.provider,
         .model = lease.model,
-    }, 0, body.tokens, wall_ms, clock.nowMillis() - @as(i64, @intCast(wall_ms)));
+    }, 0, body.tokens, wall_ms, clock.nowMillis() - (std.math.cast(i64, wall_ms) orelse std.math.maxInt(i64)));
     event_rows.checkpointFleetSession(alloc, pool, lease.fleet_id, buildContextJson(alloc, body.checkpoint)) catch |err| {
         log.warn("report_checkpoint_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = lease.fleet_id, .err = @errorName(err) });
     };

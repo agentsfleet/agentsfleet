@@ -220,8 +220,8 @@ pub fn serializeSeries(
     var list: std.ArrayList(u8) = .empty;
     try list.print(
         alloc,
-        "{{\"resourceMetrics\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":\"{s}\"}}}}]}},\"scopeMetrics\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"metrics\":[",
-        .{service_name},
+        "{{\"resourceMetrics\":[{{\"resource\":{{\"attributes\":[{{\"key\":\"service.name\",\"value\":{{\"stringValue\":{f}}}}}]}},\"scopeMetrics\":[{{\"scope\":{{\"name\":\"agentsfleetd\"}},\"metrics\":[",
+        .{std.json.fmt(service_name, .{})},
     );
     for (series, 0..) |s, i| {
         if (i > 0) try list.appendSlice(alloc, ",");
