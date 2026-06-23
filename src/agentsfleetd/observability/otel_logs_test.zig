@@ -1,6 +1,13 @@
 const std = @import("std");
 const common = @import("common");
 const otel_logs = @import("otel_logs.zig");
+const otlp_config = @import("otlp/config.zig");
+
+const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
+    .endpoint = "http://127.0.0.1:0",
+    .instance_id = "i",
+    .api_key = "k",
+};
 
 const Ring = otel_logs.TestRing;
 const LogEntry = otel_logs.TestLogEntry;
@@ -186,6 +193,25 @@ test "pop returns null on a claimed-but-unready head slot, then delivers once pu
 test "enqueue is no-op when exporter not installed" {
     // g_config is null by default, so enqueue should silently no-op
     enqueue("info", "test", "this should not crash");
+}
+
+test "collectLogs serializes valid JSON with an escaped body (json.fmt double-quote regression)" {
+    const alloc = std.testing.allocator;
+    otel_logs.testSetInstalled(TEST_CFG);
+    defer otel_logs.testClear();
+
+    // Body with an embedded quote: exercises json.fmt escaping AND the regression
+    // (the prior bug wrapped json.fmt output in its own quotes → invalid ""...."").
+    otel_logs.enqueue("error", "fleet", "boom: said \"hi\"");
+
+    const body = (try otel_logs.testCollect(alloc, TEST_CFG)) orelse return error.NoBody;
+    defer alloc.free(body);
+
+    // A successful parse is the regression assertion: the double-quote bug makes
+    // the log body unparseable, and the embedded quote must be escaped (\").
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    parsed.deinit();
+    try std.testing.expect(std.mem.indexOf(u8, body, "\\\"hi\\\"") != null); // escaped quote present
 }
 
 test "LogEntry truncates oversized fields" {

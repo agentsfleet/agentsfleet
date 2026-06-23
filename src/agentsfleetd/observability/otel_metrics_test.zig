@@ -260,6 +260,22 @@ test "test_window_resets_after_flush: a flush drains + aggregates the window; th
     try std.testing.expect(body2 == null);
 }
 
+test "test_samples_dropped_emitted: ring overflow surfaces the samples_dropped self-metric" {
+    const alloc = std.testing.allocator;
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+
+    // Push past ring capacity → enqueue-time drops; the flush emits the delta as
+    // agentsfleet.telemetry.samples_dropped.
+    var i: usize = 0;
+    while (i < otel_metrics.TEST_BUFFER_CAPACITY + 8) : (i += 1) {
+        otel_metrics.recordCreditDrain(1, POSTURE, MODEL, "ws-drop");
+    }
+    const body = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.NoBody;
+    defer alloc.free(body);
+    try std.testing.expect(std.mem.indexOf(u8, body, payload.METRIC_SAMPLES_DROPPED) != null);
+}
+
 test "test_workspace_label_cardinality_capped: distinct workspaces bounded by the cap" {
     cardinality.reset();
     defer cardinality.reset();

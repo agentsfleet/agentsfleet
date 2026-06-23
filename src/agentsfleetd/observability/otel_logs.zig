@@ -110,6 +110,22 @@ pub const TestRing = RingT;
 pub const TestLogEntry = LogEntry;
 pub const TEST_BUFFER_CAPACITY = BUFFER_CAPACITY;
 
+/// Test hook: mark installed without spawning the flush thread.
+pub fn testSetInstalled(cfg: otlp_config.GrafanaOtlpConfig) void {
+    Exporter.testSetInstalled(cfg);
+}
+
+/// Test hook: clear installed state and drain the ring.
+pub fn testClear() void {
+    Exporter.testClear();
+    while (g_ring.pop()) |_| {}
+}
+
+/// Test hook: run one collect (drain + serialize the buffered log records).
+pub fn testCollect(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) !?[]const u8 {
+    return collectLogs(alloc, cfg);
+}
+
 test {
     _ = @import("otel_logs_test.zig");
 }
