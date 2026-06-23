@@ -148,8 +148,8 @@ Emit the series from the **service-orchestration layer** at the same call sites 
 
 Install/uninstall in `preflight.zig` alongside traces/logs, reusing `configFromEnv`; the metrics exporter shares the single `GRAFANA_OTLP_*` enablement gate.
 
-- **Dimension 3.1** — preflight installs the metrics exporter iff config present, and uninstalls on shutdown → Test `test_preflight_installs_under_gate`.
-- **Dimension 3.2** — the disabled path logs one line `metrics exporter disabled (no GRAFANA_OTLP_ENDPOINT)` at startup → Test `test_disabled_logs_once`.
+- **Dimension 3.1** — DONE (code) — preflight installs the metrics exporter iff config present (`initOtelMetrics` in `preflight.zig`, wired in `serve.zig` beside traces/logs), and uninstalls on shutdown → integration `test_preflight_installs_under_gate` (VERIFY tier).
+- **Dimension 3.2** — DONE (code) — the disabled path logs `startup.otel_metrics_disabled {reason="no GRAFANA_OTLP_ENDPOINT"}` once at startup → integration `test_disabled_logs_once` (VERIFY tier).
 
 ### §4 — Cardinality guard & dashboard
 
@@ -168,7 +168,7 @@ The `workspace` label is high-cardinality; guard it. Provide the Grafana dashboa
 
 **Temporality (resolves the open #3):** emit **DELTA**; an OTel Collector with the `deltatocumulative` processor (per Grafana Cloud support) converts to cumulative before Mimir — no Mimir flag needed. In-process aggregation is therefore **windowed-delta** (coalesce per flush window, reset each flush), NOT cumulative-since-process-start.
 
-### §5 — Generic OTLP substrate (`observability/otlp/`)
+### §5 — Generic OTLP substrate (`observability/otlp/`) — DONE
 
 Extract the triplicated machinery into reusable generic pieces:
 - `otlp/ring.zig` — `Ring(comptime Entry, comptime capacity)` lock-free SPMC ring (the discipline currently copied 3×).
@@ -180,7 +180,9 @@ Extract the triplicated machinery into reusable generic pieces:
 - **Dimension 5.2** — `Exporter(hooks)` install→uninstall joins within one tick, no hang/leak → Test `test_exporter_lifecycle`.
 - **Dimension 5.3** — the persistent `Client` is created once per flush thread and reused across flushes → Test `test_persistent_client_reused`.
 
-### §6 — Migrate the three signals onto the substrate
+### §6 — Migrate the three signals onto the substrate — DONE
+
+> Latent bug found + fixed during migration (RULE NLR): `otel_traces` / `otel_logs` wrapped `std.json.fmt(...)` (which already emits quotes) in their own quotes — emitting invalid `""value""` JSON for span names + attributes + log bodies, which Tempo/Loki would reject. The metrics fixture test proved `json.fmt` adds the quotes; fixed both to `{f}` without manual quotes.
 
 `otel_traces`, `otel_logs`, `otel_metrics` all use `otlp/exporter.zig`; traces/logs use `otlp/ring.zig`. Public surfaces unchanged (`install`/`uninstall`/`isInstalled`/`enqueue*`/`record*`). Existing traces/logs tests are the regression guard.
 

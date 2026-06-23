@@ -57,6 +57,10 @@ test {
     _ = @import("events/subscription_hub.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
+    _ = @import("observability/otlp/ring.zig");
+    _ = @import("observability/otlp/config.zig");
+    _ = @import("observability/otlp/post.zig");
+    _ = @import("observability/otlp/exporter.zig");
     _ = @import("observability/otel_logs.zig");
     _ = @import("observability/otel_traces.zig");
     _ = @import("observability/otel_metrics.zig");
