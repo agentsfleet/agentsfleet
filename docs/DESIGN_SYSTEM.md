@@ -37,6 +37,19 @@
 
 ---
 
+## Interaction restraint — minimize end-user friction
+
+Restraint is procedural, not only visual. Default every flow to the **fewest steps the user must take** — friction is debt, justified only by real risk.
+
+- **No confirmation beats** where intent is already expressed. A primary action (e.g. "Use template") *is* the commit; don't gate it behind a second "Confirm." **Auto-proceed** once prerequisites are met.
+- **Resolve in place.** When a flow needs a credential or a value, surface the input **inline at the point of need** — never bounce the user to another page and back.
+- **Auto-resume.** The instant a gate is satisfied, the flow continues on its own; the user never re-initiates.
+- **Show, don't ask.** Push live state (the run is provisioning) rather than making the user poll, refresh, or click "check status."
+
+**The one exception:** destructive or irreversible actions still confirm. Cutting friction never overrides the safety-confirm rule.
+
+---
+
 ## Typography
 
 ### Font stack
@@ -279,6 +292,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-08 | Light mode is secondary, never the brand's hero shot | Devtools category baseline is dark; the brand's first impression must be dark. Light mode is a polite afterthought. |
 | 2026-05-11 | Lift `--text-subtle` to ≥4.5:1 WCAG AA in both themes | Audit found the pre-existing values failed body-text AA (dark 3.23:1, light 2.99:1). Tertiary text + CLI subtle output + eyebrow labels were borderline-illegible at small sizes. Dark `#5C6469 → #7A8085` (4.88:1); light `#8A918A → #67706B` (4.73:1); CLI xterm256 `240 → 244`. |
 | 2026-05-21 | Add a second sanctioned animation: the marketing install-demo terminal reveal | Supersedes the 2026-05-08 "only signature animation" call for marketing surfaces. The hero shows the install "running" via a one-shot staggered line reveal (opacity-only, CSS-driven, reduced-motion-safe). Scoped to marketing; operational log streams stay non-staggered. |
+| 2026-06-23 | Add "Interaction restraint — minimize end-user friction" principle | Indy: "always think about adding less friction to an end user." Restraint is procedural, not only visual — auto-proceed once intent is expressed (no confirm beats), resolve inputs inline, auto-resume on gate satisfaction, push state instead of poll. Surfaced from the M98 install-fleet flow (auto-create after import/gate). Destructive actions still confirm. |
 
 ---
 
