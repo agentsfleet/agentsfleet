@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 // Server-component page tests: render the async page to static markup with the
-// data layer mocked at module boundaries. Mirrors tests/app-pages.test.ts.
+// data layer + heavy client components mocked at module boundaries. Covers the
+// single-purpose Models page (no in-page Credentials tab) and the Credentials
+// vault page (kinds strip + three ordered groups).
 
 const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
@@ -14,21 +16,46 @@ vi.mock("next/navigation", () => ({
   redirect,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
+vi.mock("next/link", () => ({
+  default: ({ children, ...props }: React.PropsWithChildren<React.AnchorHTMLAttributes<HTMLAnchorElement>>) =>
+    React.createElement("a", props, children),
+}));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 
-vi.mock("@/lib/workspace", () => ({
-  resolveActiveWorkspace: vi.fn(),
-}));
-vi.mock("@/lib/api/tenant_provider", () => ({
-  getTenantProvider: vi.fn(),
-}));
-vi.mock("@/lib/api/credentials", () => ({
-  listCredentials: vi.fn(),
-}));
+vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace: vi.fn() }));
+vi.mock("@/lib/api/tenant_provider", () => ({ getTenantProvider: vi.fn() }));
+vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
 vi.mock("@/lib/api/model_caps", () => ({
   getModelCaps: vi.fn(),
   uniqueModelIds: (models: Array<{ id: string }>) =>
     Array.from(new Map(models.map((m) => [m.id, m])).values()),
+}));
+
+// Mock the interactive children so the page tests assert composition + order,
+// not the children's internals (those have their own unit tests).
+vi.mock("@/app/(dashboard)/settings/models/components/ProviderSelector", () => ({
+  default: ({ workspaceId }: { workspaceId: string }) =>
+    React.createElement("div", { "data-provider-selector": workspaceId }),
+}));
+vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", () => ({
+  default: ({ workspaceId, credentials }: { workspaceId: string; credentials: { name: string }[] }) =>
+    React.createElement(
+      "div",
+      { "data-credentials-list": workspaceId },
+      ...credentials.map((c) => React.createElement("span", { key: c.name }, c.name)),
+    ),
+}));
+vi.mock("@/app/(dashboard)/credentials/components/CustomSecretsList", () => ({
+  default: ({ workspaceId, secrets }: { workspaceId: string; secrets: { name: string }[] }) =>
+    React.createElement(
+      "div",
+      { "data-custom-secrets-list": workspaceId },
+      ...secrets.map((s) => React.createElement("span", { key: s.name }, s.name)),
+    ),
+}));
+vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", () => ({
+  default: ({ workspaceId }: { workspaceId: string }) =>
+    React.createElement("div", { "data-add-credential-form": workspaceId }),
 }));
 
 vi.mock("lucide-react", () => {
@@ -37,9 +64,9 @@ vi.mock("lucide-react", () => {
   return {
     ZapIcon: make("ZapIcon"),
     KeyRoundIcon: make("KeyRoundIcon"),
-    PencilIcon: make("PencilIcon"),
-    Trash2Icon: make("Trash2Icon"),
-    Loader2Icon: make("Loader2Icon"),
+    GitPullRequestIcon: make("GitPullRequestIcon"),
+    BriefcaseIcon: make("BriefcaseIcon"),
+    HashIcon: make("HashIcon"),
   };
 });
 
@@ -52,36 +79,27 @@ import { PROVIDER_MODE } from "@/lib/types";
 const WORKSPACE_FIXTURE = { id: "ws_1", name: "Acme" };
 const FIREWORKS_PROVIDER = "fireworks";
 const FIREWORKS_MODEL_ID = "kimi-k2.6";
-const ANTHROPIC_PROVIDER = "anthropic";
-const CLAUDE_MODEL_ID = "claude-sonnet-4-5";
-const FLY_CREDENTIAL_NAME = "fly";
 const ANTHROPIC_CREDENTIAL_NAME = "anthropic-prod";
+const STRIPE_SECRET_NAME = "STRIPE_API_KEY";
 const CREATED_AT_MS = 1_777_507_200_000;
 const CONTEXT_CAP_TOKENS = 256000;
-const ZERO_RATE_NANOS = 0;
-const ZERO_TIMESTAMP_MS = 0;
 
-function modelCap(provider: string, id: string) {
+function platformProvider() {
   return {
-    id,
-    provider,
+    mode: PROVIDER_MODE.platform,
+    provider: FIREWORKS_PROVIDER,
+    model: FIREWORKS_MODEL_ID,
     context_cap_tokens: CONTEXT_CAP_TOKENS,
-    input_nanos_per_mtok: ZERO_RATE_NANOS,
-    cached_input_nanos_per_mtok: ZERO_RATE_NANOS,
-    output_nanos_per_mtok: ZERO_RATE_NANOS,
+    credential_ref: null,
   };
 }
 
-function modelCatalogue(provider: string, id: string) {
+function emptyCatalogue() {
   return {
     version: "1",
-    models: [modelCap(provider, id)],
-    rates: { run_nanos_per_sec: ZERO_RATE_NANOS, event_nanos: ZERO_RATE_NANOS },
-    billing: {
-      starter_credit_nanos: ZERO_RATE_NANOS,
-      free_trial_end_ms: ZERO_TIMESTAMP_MS,
-      free_trial_stage_nanos: ZERO_RATE_NANOS,
-    },
+    models: [],
+    rates: { run_nanos_per_sec: 0, event_nanos: 0 },
+    billing: { starter_credit_nanos: 0, free_trial_end_ms: 0, free_trial_stage_nanos: 0 },
   };
 }
 
@@ -91,76 +109,152 @@ beforeEach(() => {
 });
 afterEach(() => vi.clearAllMocks());
 
-describe("/credentials route", () => {
-  it("redirects into the unified Models & Credentials page", async () => {
-    const { default: CredentialsPage } = await import("../app/(dashboard)/credentials/page");
-    expect(() => CredentialsPage()).toThrow("redirect:/settings/models?tab=credentials#credentials");
-  });
-});
-
-describe("unified Models & Credentials page", () => {
-  it("renders model setup by default and stored credentials on the credentials tab", async () => {
+describe("Models page", () => {
+  it("test_models_no_inpage_credentials_tab: renders no Credentials tab trigger", async () => {
     vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
-    vi.mocked(getTenantProvider).mockResolvedValue({
-      mode: PROVIDER_MODE.platform,
-      provider: FIREWORKS_PROVIDER,
-      model: FIREWORKS_MODEL_ID,
-      context_cap_tokens: CONTEXT_CAP_TOKENS,
-      credential_ref: null,
-    });
-    vi.mocked(listCredentials).mockResolvedValue({
-      credentials: [{ name: FLY_CREDENTIAL_NAME, created_at: CREATED_AT_MS }],
-    });
-    vi.mocked(getModelCaps).mockResolvedValue(modelCatalogue(FIREWORKS_PROVIDER, FIREWORKS_MODEL_ID));
+    vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    vi.mocked(getModelCaps).mockResolvedValue(emptyCatalogue());
 
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
 
-    // The default tab keeps setup focused on the model path.
-    expect(markup).toContain(">Model setup<");
-    expect(markup).toContain(">Current setup<");
-    expect(markup).toContain(">Credentials<");
+    // Single-purpose page: title "Models" + description, the model selector, and
+    // NO tablist / Credentials tab trigger.
+    expect(markup).toContain(">Models<");
+    expect(markup).toContain("Credentials for the own-key path live under Credentials");
+    expect(markup).toContain('data-provider-selector="ws_1"');
+    expect(markup).not.toContain('role="tablist"');
+    expect(markup).not.toContain('role="tab"');
     expect(markup).not.toContain('id="credentials"');
-
-    const credentialsMarkup = renderToStaticMarkup(
-      await Page({ searchParams: Promise.resolve({ tab: "credentials" }) }),
-    );
-    expect(credentialsMarkup).toContain('id="credentials"');
-    // The stored credential is listed in the Credentials section.
-    expect(credentialsMarkup).toContain(FLY_CREDENTIAL_NAME);
-    expect(credentialsMarkup).toContain("Credential vault");
-    // Page title reflects the union.
-    expect(markup).toContain("Models &amp; Credentials");
+    // The old union title is gone.
+    expect(markup).not.toContain("Models &amp; Credentials");
   });
 
-  it("renders the self-managed provider state with the chosen credential", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
-    vi.mocked(getTenantProvider).mockResolvedValue({
-      mode: PROVIDER_MODE.self_managed,
-      provider: ANTHROPIC_PROVIDER,
-      model: CLAUDE_MODEL_ID,
-      context_cap_tokens: CONTEXT_CAP_TOKENS,
-      credential_ref: ANTHROPIC_CREDENTIAL_NAME,
-    });
-    vi.mocked(listCredentials).mockResolvedValue({
-      credentials: [{ name: ANTHROPIC_CREDENTIAL_NAME, created_at: CREATED_AT_MS }],
-    });
-    vi.mocked(getModelCaps).mockResolvedValue(modelCatalogue(ANTHROPIC_PROVIDER, CLAUDE_MODEL_ID));
-
-    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
-    const markup = renderToStaticMarkup(await Page());
-
-    expect(markup).toContain("Own provider key");
-    expect(markup).toContain(ANTHROPIC_PROVIDER);
-    expect(markup).toContain(CLAUDE_MODEL_ID);
-    expect(markup).toContain(ANTHROPIC_CREDENTIAL_NAME);
-  });
-
-  it("renders the no-workspace empty state under the unified title", async () => {
+  it("renders the no-workspace empty state under the Models title", async () => {
     vi.mocked(resolveActiveWorkspace).mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Models &amp; Credentials");
+    expect(markup).toContain(">Models<");
     expect(markup).toContain("No workspace yet");
+  });
+
+  it("redirects to /sign-in when unauthenticated", async () => {
+    auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("degrades to platform-default cards when getTenantProvider errors", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    vi.mocked(getTenantProvider).mockRejectedValue(new Error("503"));
+    vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
+    vi.mocked(getModelCaps).mockRejectedValue(new Error("503"));
+    const { default: Page } = await import("../app/(dashboard)/settings/models/page");
+    const markup = renderToStaticMarkup(await Page());
+    expect(markup).toContain('data-provider-selector="ws_1"');
+  });
+});
+
+describe("Credentials vault page", () => {
+  it("test_credentials_vault_order: kinds strip + groups in order providers→custom→integrations", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    vi.mocked(getTenantProvider).mockResolvedValue({
+      ...platformProvider(),
+      mode: PROVIDER_MODE.self_managed,
+      credential_ref: ANTHROPIC_CREDENTIAL_NAME,
+    });
+    vi.mocked(listCredentials).mockResolvedValue({
+      credentials: [
+        { name: ANTHROPIC_CREDENTIAL_NAME, created_at: CREATED_AT_MS },
+        { name: STRIPE_SECRET_NAME, created_at: CREATED_AT_MS },
+      ],
+    });
+
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    // Header + Add credential action.
+    expect(markup).toContain(">Credentials<");
+    expect(markup).toContain("write-only secret vault");
+    expect(markup).toContain("Add credential");
+
+    // Kinds strip carries all three kinds.
+    expect(markup).toContain('data-testid="vault-kinds-strip"');
+    expect(markup).toContain('data-testid="vault-kind-providers"');
+    expect(markup).toContain('data-testid="vault-kind-custom"');
+    expect(markup).toContain('data-testid="vault-kind-integrations"');
+
+    // Groups render in order: providers → custom → integrations.
+    const providersAt = markup.indexOf('data-testid="group-providers"');
+    const customAt = markup.indexOf('data-testid="group-custom"');
+    const integrationsAt = markup.indexOf('data-testid="group-integrations"');
+    expect(providersAt).toBeGreaterThan(-1);
+    expect(providersAt).toBeLessThan(customAt);
+    expect(customAt).toBeLessThan(integrationsAt);
+
+    // The active model credential lands in the providers group; the other in custom.
+    expect(markup).toContain(ANTHROPIC_CREDENTIAL_NAME);
+    expect(markup).toContain(STRIPE_SECRET_NAME);
+  });
+
+  it("test_custom_secret_create_and_status: custom secrets list + an add form for NAME+value", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    // Platform mode → no active model credential, so every stored credential is a
+    // custom secret and the providers group shows its empty state.
+    vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
+    vi.mocked(listCredentials).mockResolvedValue({
+      credentials: [{ name: STRIPE_SECRET_NAME, created_at: CREATED_AT_MS }],
+    });
+
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+
+    // The custom secret is listed and the add form (NAME+value) is composed.
+    expect(markup).toContain('data-custom-secrets-list="ws_1"');
+    expect(markup).toContain(STRIPE_SECRET_NAME);
+    expect(markup).toContain('data-add-credential-form="ws_1"');
+    expect(markup).toContain("NAME=value");
+    // No active model key → providers group shows the empty hint, not a list.
+    expect(markup).toContain("No model-provider key in use");
+  });
+
+  it("never fabricates a referenced-by when the provider fetch fails", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    vi.mocked(getTenantProvider).mockRejectedValue(new Error("503"));
+    vi.mocked(listCredentials).mockResolvedValue({
+      credentials: [{ name: STRIPE_SECRET_NAME, created_at: CREATED_AT_MS }],
+    });
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+    // With no known provider ref, the credential is a custom secret (not a
+    // fabricated model-provider reference).
+    expect(markup).toContain('data-custom-secrets-list="ws_1"');
+    expect(markup).toContain("No model-provider key in use");
+  });
+
+  it("renders the no-workspace empty state under the Credentials title", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+    expect(markup).toContain(">Credentials<");
+    expect(markup).toContain("No workspace yet");
+  });
+
+  it("redirects to /sign-in when unauthenticated", async () => {
+    auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("falls back to an empty vault when listCredentials errors", async () => {
+    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
+    vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
+    vi.mocked(listCredentials).mockRejectedValue(new Error("503"));
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const markup = renderToStaticMarkup(await Page());
+    // Empty custom-secrets list still renders the add form + integrations group.
+    expect(markup).toContain('data-add-credential-form="ws_1"');
+    expect(markup).toContain('data-testid="group-integrations"');
   });
 });

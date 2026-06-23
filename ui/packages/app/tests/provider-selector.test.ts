@@ -34,19 +34,12 @@ vi.mock("lucide-react", () => ({
     React.createElement("svg", { ...p, "data-icon": "Loader2Icon" }),
 }));
 
-import ModeRadio from "@/app/(dashboard)/settings/models/components/ModeRadio";
 import Step1Credential from "@/app/(dashboard)/settings/models/components/Step1Credential";
 import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model";
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
-import { RadioGroup } from "@agentsfleet/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
-
-// ModeRadio renders a Radix RadioGroupItem internally; render it inside a
-// RadioGroup at the test boundary to mirror the production composition.
-function inRadioGroup(children: React.ReactNode, value: string) {
-  return React.createElement(RadioGroup, { value, onValueChange: () => {} }, children);
-}
+import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 
 const CRED = { name: "fw-key", created_at: 1_777_507_200_000 } as const;
 const WORKSPACE_ID = "ws_provider_test";
@@ -59,52 +52,6 @@ beforeEach(() => {
   captureProductEventMock.mockReset();
 });
 afterEach(() => cleanup());
-
-// ── ModeRadio (presentational) ──────────────────────────────────────────
-
-describe("ModeRadio", () => {
-  it("renders label + description and reflects checked state via data-active", () => {
-    const { container } = render(
-      inRadioGroup(
-        React.createElement(ModeRadio, {
-          value: PROVIDER_MODE.self_managed,
-          checked: true,
-          label: "Use my provider key",
-          description: "your provider, your key.",
-        }),
-        PROVIDER_MODE.self_managed,
-      ),
-    );
-    expect(screen.getByText("Use my provider key")).toBeTruthy();
-    expect(container.querySelector("[data-active='true']")).toBeTruthy();
-  });
-
-  it("delegates click selection to the parent RadioGroup's onValueChange", () => {
-    const onValueChange = vi.fn();
-    render(
-      React.createElement(
-        RadioGroup,
-        {
-          defaultValue: PROVIDER_MODE.self_managed,
-          onValueChange,
-          "aria-label": "wrap",
-        },
-        React.createElement(ModeRadio, {
-          value: PROVIDER_MODE.platform,
-          checked: false,
-          label: "Platform-managed",
-          description: "we charge from your tenant balance.",
-        }),
-      ),
-    );
-    fireEvent.click(screen.getByRole("radio"));
-    // ModeRadio no longer carries its own onClick; the parent's
-    // onValueChange owns selection. Asserting via the RadioGroup
-    // callback proves the delegation, not the redundant double-fire.
-    expect(onValueChange).toHaveBeenCalledWith(PROVIDER_MODE.platform);
-    expect(onValueChange).toHaveBeenCalledTimes(1);
-  });
-});
 
 // ── Step1Credential (presentational) ───────────────────────────────────
 
@@ -119,13 +66,11 @@ describe("Step1Credential", () => {
 
   it("shows the inline create form (no dead-end) plus a manage link when the vault is empty", () => {
     render(React.createElement(Step1Credential, { ...baseProps, credentials: [] }));
-    // The old empty-vault dead-end Alert is gone — an inline create form shows instead.
     expect(screen.queryByTestId("provider-key-no-credentials")).toBeNull();
     expect(screen.getByText("Add a new provider key")).toBeTruthy();
     const link = screen.getByText("Manage credential vault →") as HTMLAnchorElement;
-    // Credentials now live behind a tab; the link must select the tab and anchor.
-    expect(link.getAttribute("href")).toBe("/settings/models?tab=credentials#credentials");
-    // The secondary link carries the active workspace id so QA can attribute the click.
+    // Credentials now live at the top-level vault route.
+    expect(link.getAttribute("href")).toBe(WORKSPACE_CREDENTIALS_PATH);
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });
 
@@ -207,9 +152,7 @@ describe("Step2Model", () => {
     const onModel = vi.fn();
     render(React.createElement(Step2Model, { catalogue: MODELS, model: "kimi-k2.6", onModelChange: onModel }));
     const trigger = screen.getByLabelText(/model/i);
-    // A non-empty model shows on the trigger (covers the value ternary's model branch).
     expect(trigger.textContent).toContain("kimi-k2.6");
-    // Selecting the default entry maps the sentinel back to "" (omit the override).
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
@@ -218,9 +161,6 @@ describe("Step2Model", () => {
   });
 
   it("dedupes a catalogue with the same model_id across providers (regression: duplicate React key)", () => {
-    // core.model_caps is keyed (provider, model_id): claude-opus-4-8 is one row
-    // on anthropic and another on pioneer. The picker must render it once and
-    // emit no duplicate-key warning (the crash this redesign fixes).
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const dupCatalogue = [
       { id: "claude-opus-4-8", provider: "anthropic", context_cap_tokens: 256_000, input_nanos_per_mtok: 0, cached_input_nanos_per_mtok: 0, output_nanos_per_mtok: 0 },
@@ -233,9 +173,7 @@ describe("Step2Model", () => {
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     fireEvent.click(trigger);
     fireEvent.keyDown(trigger, { key: "Enter" });
-    // claude-opus-4-8 appears exactly once despite two catalogue rows.
     expect(screen.getAllByText("claude-opus-4-8")).toHaveLength(1);
-    // No "two children with the same key" warning was emitted.
     const dupKeyWarning = consoleError.mock.calls.some((args) =>
       args.some((a) => typeof a === "string" && a.includes("same key")),
     );
@@ -256,14 +194,57 @@ describe("ProviderSelector", () => {
     catalogue: [],
   };
 
-  it("submits self-managed PUT with the picked credential and refreshes the route", async () => {
+  it("test_models_two_option_cards: active card shows Current + no action button; inactive shows the switch action", () => {
+    // Platform is the saved mode here → its card is active (Current, no button),
+    // the own-key card carries the switch action.
+    render(React.createElement(ProviderSelector, { ...defaultProps }));
+    const platformCard = screen.getByTestId("option-card-platform");
+    const ownKeyCard = screen.getByTestId("option-card-self_managed");
+
+    // Active platform card: "Current" badge + "Active — nothing to do", no button.
+    expect(platformCard.textContent).toContain("Current");
+    expect(platformCard.querySelector('[data-testid="active-note"]')).toBeTruthy();
+    expect(platformCard.querySelector("button")).toBeNull();
+
+    // Inactive own-key card: the switch action button, no "Current" badge.
+    expect(ownKeyCard.textContent).not.toContain("Current");
+    expect(ownKeyCard.querySelector('[data-testid="active-note"]')).toBeNull();
+    expect(screen.getByRole("button", { name: /switch to own key/i })).toBeTruthy();
+    // The active option carries no action; the only card-level action is the switch.
+    expect(screen.queryByRole("button", { name: /use platform defaults/i })).toBeNull();
+  });
+
+  it("marks own-key as Current and surfaces the platform switch action when self-managed is saved", () => {
+    render(
+      React.createElement(ProviderSelector, {
+        ...defaultProps,
+        currentMode: PROVIDER_MODE.self_managed,
+        currentCredentialRef: CRED.name,
+      }),
+    );
+    const ownKeyCard = screen.getByTestId("option-card-self_managed");
+    expect(ownKeyCard.textContent).toContain("Current");
+    expect(ownKeyCard.querySelector('[data-testid="active-note"]')).toBeTruthy();
+    expect(ownKeyCard.querySelector("button")).toBeNull();
+    expect(screen.getByRole("button", { name: /use platform defaults/i })).toBeTruthy();
+  });
+
+  it("'Switch to own key' reveals the config form; Cancel returns to the cards", () => {
+    render(React.createElement(ProviderSelector, { ...defaultProps }));
+    expect(screen.queryByText("Own-key model setup")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
+    expect(screen.getByText("Own-key model setup")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByText("Own-key model setup")).toBeNull();
+  });
+
+  it("saves the own-key setup → setProviderSelfManaged + analytics + refresh", async () => {
     setProviderSelfManagedActionMock.mockResolvedValue({
       ok: true,
       data: { mode: PROVIDER_MODE.self_managed, provider: "anthropic", model: "claude-sonnet-4-6" },
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
-
-    fireEvent.click(screen.getByRole("radio", { name: /use my provider key/i }));
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
     fireEvent.click(screen.getByRole("button", { name: /save model setup/i }));
 
     await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
@@ -272,22 +253,16 @@ describe("ProviderSelector", () => {
       model: undefined,
     });
     expect(routerRefresh).toHaveBeenCalled();
-    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.model_added, {
       provider: "anthropic",
       mode: PROVIDER_MODE.self_managed,
       model: "claude-sonnet-4-6",
     });
-    await waitFor(() =>
-      expect(screen.getByText(/Saved\. Run a test event/)).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText(/Saved\. Run a test event/)).toBeTruthy());
   });
 
-  it("calls DELETE on reset to platform default", async () => {
-    resetProviderActionMock.mockResolvedValue({
-      ok: true,
-      data: { mode: PROVIDER_MODE.platform },
-    });
+  it("clicking 'Use platform defaults' calls reset and refreshes (no add event)", async () => {
+    resetProviderActionMock.mockResolvedValue({ ok: true, data: { mode: PROVIDER_MODE.platform } });
     render(
       React.createElement(ProviderSelector, {
         ...defaultProps,
@@ -295,21 +270,21 @@ describe("ProviderSelector", () => {
         currentCredentialRef: CRED.name,
       }),
     );
-    fireEvent.click(screen.getByRole("radio", { name: /platform defaults/i }));
     fireEvent.click(screen.getByRole("button", { name: /use platform defaults/i }));
     await waitFor(() => expect(resetProviderActionMock).toHaveBeenCalledTimes(1));
-    // Reverting to platform defaults removes the BYOK setup — no add event.
+    expect(routerRefresh).toHaveBeenCalled();
     expect(captureProductEventMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/Using platform defaults/)).toBeTruthy());
   });
 
-  it("surfaces API errors as an alert and does not refresh", async () => {
+  it("surfaces a self-managed save error as an alert and does not refresh", async () => {
     setProviderSelfManagedActionMock.mockResolvedValue({
       ok: false,
       error: "credential_data_malformed",
       status: 400,
     });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
-    fireEvent.click(screen.getByRole("radio", { name: /use my provider key/i }));
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
     fireEvent.click(screen.getByRole("button", { name: /save model setup/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("credential_data_malformed"),
@@ -318,13 +293,15 @@ describe("ProviderSelector", () => {
     expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
-  it("returns a 'Not authenticated' alert when the server action reports unauth", async () => {
-    resetProviderActionMock.mockResolvedValue({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
-    render(React.createElement(ProviderSelector, { ...defaultProps }));
+  it("surfaces a platform-reset error as an alert and does not refresh", async () => {
+    resetProviderActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
+    render(
+      React.createElement(ProviderSelector, {
+        ...defaultProps,
+        currentMode: PROVIDER_MODE.self_managed,
+        currentCredentialRef: CRED.name,
+      }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /use platform defaults/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("Not authenticated"),
@@ -332,18 +309,17 @@ describe("ProviderSelector", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("blocks self-managed submit when no credential is picked", async () => {
+  it("disables Save model setup while the own-key form has no credential", () => {
     render(
       React.createElement(ProviderSelector, {
         ...defaultProps,
-        currentMode: PROVIDER_MODE.self_managed,
+        currentMode: PROVIDER_MODE.platform,
         credentials: [], // empty vault
       }),
     );
-    // Submit button is disabled when vault is empty AND mode is self_managed.
-    expect(
-      (screen.getByRole("button", { name: /save model setup/i }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
+    const save = screen.getByRole("button", { name: /save model setup/i }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });
 });

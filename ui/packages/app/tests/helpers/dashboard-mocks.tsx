@@ -66,7 +66,7 @@ const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "CpuIcon",
-  "SlidersHorizontalIcon",
+  "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
 ] as const;
 
 export function lucideMock() {

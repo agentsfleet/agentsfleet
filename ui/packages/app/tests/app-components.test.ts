@@ -253,16 +253,26 @@ describe("app components", () => {
     expect(markup).toContain("Organization");
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Fleets");
-    // Models + Credentials are one combined Configuration entry now.
-    expect(markup).toContain("Models &amp; Credentials");
-    // The combined item points at the unified route.
+    // Models and Credentials are two separate Configuration entries now.
+    expect(markup).toContain(">Models<");
+    expect(markup).toContain(">Credentials<");
     expect(markup).toContain('href="/settings/models"');
-    // The standalone Credentials nav link is gone (it redirects into the page).
-    expect(markup).not.toContain('href="/credentials"');
+    // Credentials is its own top-level vault destination.
+    expect(markup).toContain('href="/credentials"');
     expect(markup).toContain("Approvals");
     expect(markup).toContain("Events");
     expect(markup).toContain("Workspace");
     expect(markup).toContain("Billing");
+  });
+
+  it("test_nav_models_credentials_split: nav renders Models→/settings/models and Credentials→/credentials", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const tree = Shell({ children: React.createElement("div", null, "content") });
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    // Two distinct Configuration destinations, each at its own route.
+    expect(markup).toMatch(/href="\/settings\/models"[\s\S]*?data-icon="CpuIcon"[^>]*><\/svg>Models</);
+    expect(markup).toMatch(/href="\/credentials"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Credentials</);
   });
 
   it("Shell sidebar marks the active route via data-active attribute", async () => {
@@ -388,9 +398,9 @@ describe("app components", () => {
     // Footer 'Docs' is external; 'Workspace' is internal.
     await user.click(screen.getByText("Docs"));
     await user.click(screen.getByText("Workspace"));
-    // The combined Configuration entry — a nested route exercises the
+    // The Models Configuration entry — a nested route exercises the
     // multi-segment slug branch.
-    await user.click(screen.getByText("Models & Credentials"));
+    await user.click(screen.getByText("Models"));
     await user.click(screen.getByText("Billing"));
 
     const sources = mocks.trackNavigationClicked.mock.calls.map(
