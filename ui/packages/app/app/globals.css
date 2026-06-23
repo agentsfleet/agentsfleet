@@ -146,8 +146,32 @@ code, pre, kbd { font-family: var(--ff-mono); }
   border-width: 0;
 }
 
-/* prefers-reduced-motion — wake-pulse becomes a static glow; everything else
- * is functional or absent per spec §Motion, so no other overrides needed. */
+/* Balance meter — a full-width usage bar; the mint fill animates 0 → its
+ * data-driven width on load (`meter-fill`). Track + gradient live here (not as
+ * arbitrary Tailwind) so the component only sets the dynamic width inline.
+ * Neutralised under reduced-motion by the block below (snaps to final width). */
+.app-meter {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.app-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--pulse-dim), var(--pulse));
+  animation: meter-fill 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes meter-fill {
+  from {
+    width: 0;
+  }
+}
+
+/* prefers-reduced-motion — wake-pulse becomes a static glow; the dashboard
+ * motion pass (rise-in, glow-drift, meter-fill) snaps to its final frame; hover
+ * lifts (in a no-preference query) + the motion-safe nav nudge are absent. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

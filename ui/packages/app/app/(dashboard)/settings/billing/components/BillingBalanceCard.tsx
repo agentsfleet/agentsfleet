@@ -3,9 +3,6 @@ import {
   Button,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -13,56 +10,73 @@ import {
 } from "@agentsfleet/design-system";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
-import { formatDollars } from "../lib/groupCharges";
+import { formatDollars, type ChargeSummary } from "../lib/charges";
 
 const PURCHASE_TOOLTIP = "Contact support to top up your balance.";
 
 export type BillingBalanceCardProps = {
   billing: TenantBilling;
+  summary: ChargeSummary;
 };
 
 /**
- * Top-of-page balance card with a disabled Purchase Credits button. The
- * button is rendered grey via Tooltip + Button composition (no new
- * primitive needed per spec §8 / §9). When the tenant balance is
- * exhausted, the headline switches to a destructive treatment so the
- * "out of credits" state is visually unmistakable.
+ * Top-of-page balance card: amount + a full-width consumption meter (fills on
+ * load) + a caption that rides the meter's end, with the Purchase CTA pinned
+ * top-right of the head row (no stranded gap). When the balance is exhausted
+ * the headline switches to a destructive treatment and an alert appears.
  */
-export default function BillingBalanceCard({ billing }: BillingBalanceCardProps) {
+export default function BillingBalanceCard({ billing, summary }: BillingBalanceCardProps) {
   const isExhausted = billing.is_exhausted;
-  const balance = billing.balance_nanos;
 
   return (
-    <Card className="max-w-2xl animate-in fade-in-0 slide-in-from-top-1 duration-300">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle className="text-3xl tabular-nums">
-            <span
-              data-exhausted={isExhausted}
-              className={isExhausted ? "text-destructive" : undefined}
-              data-testid="balance-headline"
-            >
-              {formatDollars(balance)} <span className="text-base font-normal text-muted-foreground">USD</span>
-            </span>
-          </CardTitle>
-          <CardDescription className="mt-1">
-            Covers all your Fleet events.
-          </CardDescription>
+    <Card>
+      <CardContent className="space-y-4 p-6">
+        <div className="flex flex-row items-end justify-between gap-4">
+          <div>
+            <div className="font-mono text-label uppercase tracking-label text-muted-foreground">
+              Balance
+            </div>
+            <div className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
+              <span
+                data-exhausted={isExhausted}
+                className={isExhausted ? "text-destructive" : undefined}
+                data-testid="balance-headline"
+              >
+                {formatDollars(billing.balance_nanos)}
+              </span>
+              <span className="ml-1.5 font-mono text-base font-normal text-muted-foreground">
+                USD
+              </span>
+            </div>
+          </div>
+          <PurchaseCreditsButton />
         </div>
-        <PurchaseCreditsButton />
-      </CardHeader>
-      {isExhausted ? (
-        <CardContent>
+
+        <div className="app-meter" data-testid="balance-meter" aria-hidden="true">
+          <span style={{ width: `${summary.meterPct}%` }} />
+        </div>
+
+        <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
+          <div>
+            Covers all Fleet events · <span className="font-medium text-foreground">pay as you go</span>
+          </div>
+          <div className="font-mono text-xs" data-testid="balance-usage">
+            spent <span className="text-foreground">{formatDollars(summary.spentNanos)}</span> ·{" "}
+            <span className="text-foreground">{summary.eventCount}</span>{" "}
+            {summary.eventCount === 1 ? "event" : "events"}
+          </div>
+        </div>
+
+        {isExhausted ? (
           <Alert variant="destructive" className="text-xs">
-            Balance exhausted. New Fleet events are gate-blocked until you
-            top up — contact{" "}
+            Balance exhausted. New Fleet events are gate-blocked until you top up — contact{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support
             </a>{" "}
             for a top-up.
           </Alert>
-        </CardContent>
-      ) : null}
+        ) : null}
+      </CardContent>
     </Card>
   );
 }
@@ -72,16 +86,11 @@ function PurchaseCreditsButton() {
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled <button> doesn't fire pointer events, so the
-              tooltip won't show without a wrapper. tabIndex={0} keeps
-              the trigger keyboard-reachable; cursor-not-allowed lives
-              on the wrapper because the disabled button blocks its
-              own pointer events. */}
-          {/* Disabled-button-with-tooltip a11y workaround: a disabled
-           * <Button> can't receive focus, so a non-interactive span wrapper
-           * carries the focus + describedby. jsx-a11y/no-noninteractive-
-           * tabindex flags this; the wrapper is the recommended ARIA
-           * pattern for keyboard-reachable disabled affordances. */}
+          {/* Disabled-button-with-tooltip a11y workaround: a disabled <Button>
+           * can't receive focus, so a non-interactive span wrapper carries the
+           * focus + describedby. jsx-a11y/no-noninteractive-tabindex flags this;
+           * the wrapper is the recommended ARIA pattern for keyboard-reachable
+           * disabled affordances. */}
           <span
             // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             tabIndex={0}
@@ -89,14 +98,8 @@ function PurchaseCreditsButton() {
             className="inline-block cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid="purchase-credits-trigger"
           >
-            <Button
-              variant="outline"
-              disabled
-              aria-disabled
-              tabIndex={-1}
-              className="pointer-events-none"
-            >
-              Purchase Credits
+            <Button variant="outline" disabled aria-disabled tabIndex={-1} className="pointer-events-none">
+              Purchase credits
             </Button>
           </span>
         </TooltipTrigger>

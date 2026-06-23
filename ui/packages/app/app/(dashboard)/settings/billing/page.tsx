@@ -13,9 +13,13 @@ import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import BillingBalanceCard from "./components/BillingBalanceCard";
 import BillingUsageTab from "./components/BillingUsageTab";
-import { groupChargesByEvent } from "./lib/groupCharges";
+import BillingPlanRow from "./components/BillingPlanRow";
+import { summarizeCharges } from "./lib/charges";
 
 export const dynamic = "force-dynamic";
+
+const BILLING_DESCRIPTION =
+  "Manage credits and usage. You pay per Fleet event from your balance — no seats, no monthly minimum.";
 
 export default async function BillingSettingsPage() {
   const { getToken } = await auth();
@@ -38,7 +42,7 @@ export default async function BillingSettingsPage() {
   if (!billing) {
     return (
       <div className="space-y-8">
-        <PageHeader>
+        <PageHeader description={BILLING_DESCRIPTION}>
           <PageTitle>Billing</PageTitle>
         </PageHeader>
         <EmptyState
@@ -50,26 +54,27 @@ export default async function BillingSettingsPage() {
     );
   }
 
-  const events = groupChargesByEvent(chargesResp.items);
-  const initialCursor = chargesResp.next_cursor;
+  const charges = chargesResp.items;
+  const summary = summarizeCharges(charges, billing.balance_nanos);
 
   return (
     <div className="space-y-8">
-      <PageHeader>
+      <PageHeader description={BILLING_DESCRIPTION}>
         <PageTitle>Billing</PageTitle>
       </PageHeader>
 
-      <BillingBalanceCard billing={billing} />
+      <BillingBalanceCard billing={billing} summary={summary} />
 
-      <Tabs defaultValue="usage" className="max-w-5xl">
+      <Tabs defaultValue="usage">
         <TabsList>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="payment">Payment Method</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="usage" className="mt-4">
-          <BillingUsageTab initialEvents={events} initialCursor={initialCursor} />
+        <TabsContent value="usage" className="mt-4 space-y-6">
+          <BillingUsageTab initialCharges={charges} initialCursor={chargesResp.next_cursor} />
+          <BillingPlanRow />
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">
