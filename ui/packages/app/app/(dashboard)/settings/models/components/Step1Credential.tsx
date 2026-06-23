@@ -13,6 +13,7 @@ import {
 } from "@agentsfleet/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import type { ModelCap } from "@/lib/api/model_caps";
+import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 import InlineProviderKeyCreate from "./InlineProviderKeyCreate";
 
 export type Step1CredentialProps = {
@@ -84,7 +85,7 @@ export default function Step1Credential({
 
       <p className="text-xs text-muted-foreground">
         <Link
-          href="/settings/models?tab=credentials#credentials"
+          href={WORKSPACE_CREDENTIALS_PATH}
           className="underline"
           data-workspace-id={workspaceId}
         >

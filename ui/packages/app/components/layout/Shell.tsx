@@ -11,6 +11,7 @@ import {
   SkullIcon,
   CheckCircle2Icon,
   CpuIcon,
+  KeyRoundIcon,
   CreditCardIcon,
   ServerIcon,
   MenuIcon,
@@ -25,6 +26,7 @@ import {
 } from "@agentsfleet/design-system";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { setActiveWorkspace } from "@/app/(dashboard)/actions";
+import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -51,10 +53,11 @@ const OPERATIONS_NAV: NavEntry[] = [
   { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
-// What the fleets are wired to — the model brain and the provider/service
-// secrets, unified on one page; plus the execution fleet for platform admins.
+// What the fleets are wired to — the model brain and the write-only secret
+// vault, now two destinations; plus the execution fleet for platform admins.
 const CONFIGURATION_NAV: NavEntry[] = [
-  { label: "Models & Credentials", href: "/settings/models", icon: CpuIcon },
+  { label: "Models", href: "/settings/models", icon: CpuIcon },
+  { label: "Credentials", href: WORKSPACE_CREDENTIALS_PATH, icon: KeyRoundIcon },
 ];
 
 // Platform-admin-only — appended to the Configuration group only when the
