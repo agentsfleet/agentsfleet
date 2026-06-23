@@ -99,8 +99,10 @@
 | `src/agentsfleetd/observability/otel_metrics_test.zig` | CREATE | unit tests (payload shape, gating, drop-on-full, shutdown). |
 | `src/agentsfleetd/observability/metrics.zig` | EDIT | (if needed) shared metric-sample type / registry hook for the new series. |
 | `src/agentsfleetd/cmd/preflight.zig` | EDIT | install/uninstall the metrics exporter under the same `GRAFANA_OTLP_*` gate as traces/logs. |
-| `src/agentsfleetd/fleet_runtime/metering.zig` | EDIT | emit credit-drain + token sums post-commit (`debitAndInsert`, after `S_COMMIT`). |
-| `src/agentsfleetd/fleet/renewal_settle.zig` | EDIT | emit token-delta sum + run-latency histogram at settle. |
+| `src/agentsfleetd/fleet/service_billing.zig` | EDIT | emit receive credit-drain post-commit, service layer, on `.deducted`. |
+| `src/agentsfleetd/fleet/service_report.zig` | EDIT | emit settle credit-drain + token throughput + run-latency post-settle, service layer. |
+| `src/agentsfleetd/observability/otel_metrics.zig` | EDIT | `recordRunSettlement` emit bundle (called by the service layer). |
+| ~~`fleet_runtime/metering.zig` / `fleet/renewal_settle.zig`~~ | UNTOUCHED | money modules stay pure — emits moved to the service-orchestration layer (the spec §2 prose: "same call sites that already increment Prometheus counters" = `service_report`), mirroring `emitDeliverySpan`. Strengthens Invariant 1. |
 | `deploy/grafana/agent-observability.json` | CREATE | Grafana dashboard for the three series (config, not code). |
 
 ---
@@ -124,13 +126,13 @@ Deliver `otel_metrics.zig` mirroring `otel_traces.zig`: a bounded queue of metri
 - **Dimension 1.3** — DONE — flush serializes a sum data point and a histogram data point into valid OTLP-JSON and POSTs to `/v1/metrics` → Test `test_otlp_payload_shape` (assert against captured fixture `tests/fixtures/telemetry/otlp_metrics.json`).
 - **Dimension 1.4** — DONE — `uninstall` signals stop, wakes the flush wait (tick-interruptible sleep), and joins the thread with no hang and no leak → Test `test_uninstall_joins_cleanly`.
 
-### §2 — Metric instrumentation at the metering hot paths
+### §2 — Metric instrumentation at the metering hot paths — DONE
 
-Emit the series at the same call sites that already increment Prometheus counters, **after** the money transaction commits.
+Emit the series from the **service-orchestration layer** at the same call sites that already increment Prometheus counters / emit `emitDeliverySpan`, **after** the money transaction commits. The money modules (`metering.zig`, `renewal_settle.zig`) stay untouched — the emits live in `service_billing.zig` (receive) and `service_report.zig` (settle), calling the `otel_metrics` record API. Token throughput is the run's **cumulative** totals emitted once at terminal settle (aggregate-correct); per-renewal mid-slice credit stays in the PG ledger (`renewal.zig` out of scope).
 
-- **Dimension 2.1** — a credit-drain sum is emitted on each committed debit (receive + stage), labelled `{posture, model}` (+ guarded `workspace`) → Test `test_emits_credit_drain_on_debit`.
-- **Dimension 2.2** — a token-throughput sum is emitted on each renew settle from the token delta, by direction `{input, cached, output}` → Test `test_emits_token_throughput_on_settle`.
-- **Dimension 2.3** — a run-latency histogram observes `wall_ms` on settle → Test `test_observes_run_latency_histogram`.
+- **Dimension 2.1** — DONE — a credit-drain sum is emitted on each committed debit (receive via `service_billing`, stage via `service_report` settle), labelled `{posture, model}` (+ guarded `workspace`) → Test `test_emits_credit_drain_on_debit`.
+- **Dimension 2.2** — DONE — a token-throughput sum is emitted at settle by direction `{input, cached, output}` (zero directions skipped) → Test `test_emits_token_throughput_on_settle`.
+- **Dimension 2.3** — DONE — a run-latency histogram observes `wall_ms` at settle → Test `test_observes_run_latency_histogram`.
 
 ### §3 — Wiring & config
 
