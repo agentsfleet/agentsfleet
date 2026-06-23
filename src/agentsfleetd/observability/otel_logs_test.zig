@@ -5,7 +5,7 @@ const otel_logs = @import("otel_logs.zig");
 const Ring = otel_logs.TestRing;
 const LogEntry = otel_logs.TestLogEntry;
 const BUFFER_CAPACITY = otel_logs.TEST_BUFFER_CAPACITY;
-const configFromEnv = otel_logs.configFromEnv;
+const configFromEnv = @import("otlp/config.zig").configFromEnv;
 const enqueue = otel_logs.enqueue;
 
 test "configFromEnv returns null when GRAFANA_OTLP_ENDPOINT is unset" {

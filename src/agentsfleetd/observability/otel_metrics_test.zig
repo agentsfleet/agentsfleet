@@ -2,7 +2,7 @@ const std = @import("std");
 const otel_metrics = @import("otel_metrics.zig");
 const payload = @import("otel_metrics_payload.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
-const otel_logs = @import("otel_logs.zig");
+const otlp_config = @import("otlp/config.zig");
 
 const Ring = otel_metrics.TestRing;
 const BUFFER_CAPACITY = otel_metrics.TEST_BUFFER_CAPACITY;
@@ -29,7 +29,7 @@ fn findLabel(s: *const payload.Sample, key: []const u8) ?[]const u8 {
     return null;
 }
 
-const TEST_CFG: otel_logs.GrafanaOtlpConfig = .{
+const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
     .endpoint = "http://127.0.0.1:0",
     .instance_id = "test-instance",
     .api_key = "test-key",
@@ -139,7 +139,7 @@ test "test_otlp_payload_shape: batch serializes to the pinned OTLP-JSON fixture"
 }
 
 test "test_uninstall_joins_cleanly: install then uninstall completes with no hang" {
-    const cfg: otel_logs.GrafanaOtlpConfig = .{
+    const cfg: otlp_config.GrafanaOtlpConfig = .{
         .endpoint = "http://127.0.0.1:0",
         .instance_id = "test-instance",
         .api_key = "test-key",
