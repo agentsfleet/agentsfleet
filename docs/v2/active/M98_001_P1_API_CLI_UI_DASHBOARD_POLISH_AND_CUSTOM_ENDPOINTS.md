@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Branch:** feat/m98-dashboard-polish-custom-endpoints
 **Test Baseline:** unit=2015 integration=201 (Zig `src/**`, `make _lint_zig_test_depth` at CHORE(open); VERIFY Test Delta compares against this. UI vitest + CLI bun lanes track separately via their own coverage gates.)
 **Depends on:** none
-**Provenance:** agent-generated (interactive design-review session with Indy, Jun 23, 2026) — grounded in a clickable mockup (Billing / Models / Credentials, dark+light) Indy signed off screen-by-screen, the decision to bundle custom endpoints here (not a separate spec), the confirmation that `base_url` rides in the saved credential JSON ("it's just the json that gets saved"), and a read of every touched component, CLI command, and the resolver→runner→nullclaw chain; re-confirm at PLAN.
+**Provenance:** agent-generated (interactive design-review session with Indy, Jun 23, 2026) — grounded in a clickable mockup (Billing / Models / Credentials / Install / Steer, dark+light) Indy signed off screen-by-screen — committed at `docs/design/M98_001-ui-polish-preview.html` (the visual North Star), the decision to bundle custom endpoints here (not a separate spec), the confirmation that `base_url` rides in the saved credential JSON ("it's just the json that gets saved"), and a read of every touched component, CLI command, and the resolver→runner→nullclaw chain; re-confirm at PLAN.
 
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` (visual source of truth — the mono typeface, the pulse accent, dark-primary, anti-vibes) + `docs/architecture/direction.md` §UI surfaces & §model-routing. The polish codifies *how* the existing system is applied; the custom-endpoint piece threads one validated field through the existing self-managed routing path — no new architectural concept, no schema migration.
 
@@ -33,6 +33,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 3. `cli/src/commands/{tenant.ts,fleet_credential.ts}` + `cli/src/services/credentials.ts` + `cli/test/acceptance/{tenant-provider-mutation.spec.ts,credential-vault.spec.ts}` (+ `fixtures/{tenant-provider-ops,credential-ops,command-matrix}.ts`) — the CLI provider/credential surface and the acceptance specs this work extends.
 4. `dispatch/write_zig.md` + `dispatch/write_ts_adhere_bun.md` — Zig (ZIG/PUB/LIFECYCLE) and TS (FILE SHAPE, primitive substitution, DESIGN TOKEN) discipline.
 5. `ui/packages/app/lib/clerkAppearance.ts` + `docs/DESIGN_SYSTEM.md` — the Clerk appearance map (dark-theme contrast fix) and the binding type ramp / pulse-as-currency / anti-vibes rules.
+6. `docs/design/M98_001-ui-polish-preview.html` — the approved visual North Star (Billing / Models / Credentials / Install / Steer, dark + light): layout, spacing, copy, and the underline-tab + `--content-max` + ink-CTA + motion treatments. This spec governs *behavior* where the two differ (e.g. GitHub renders **Planned**, not the mockup's **Connect** — the connector is M99).
 
 > **Confirm at handshake (precedent exists, so not a `[?]`):** nullclaw's engine `Config` accepts a per-request endpoint/base_url override for an OpenAI-compatible provider — the existing `azure`/`vertex` providers already require endpoint configuration, so the knob exists. If it does not, that is a blocking upstream dependency — STOP and surface to Indy before EXECUTE.
 
@@ -104,7 +105,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **CLI** → the "7 Pillars" of CLI developer experience (handler purity, output-as-a-service, structured JSON errors with suggestion/retry, 3-tier test pyramid, auto-JSON when piped). Extend the existing `tenant`/`fleet_credential` commands and the `credential-vault.spec.ts` / `tenant-provider-mutation.spec.ts` acceptance specs rather than inventing a new surface.
 - **Backend** → mirror the existing `{provider, api_key, model}` extraction in `tenant_provider_resolver.zig` for `base_url`; mirror how `azure`/`vertex` already pass an endpoint to nullclaw; reuse `AllowList.zig`'s host-derivation.
 - **House style** → `docs/v2/done/M92_001_P1_UI_SUPPORT_WEDGE_WEBSITE_REFRESH.md` (token-precise, guard-tested UI workstream).
-- Approved visual: the Jun 23 mockup Indy signed off — provenance only; binding rules live here + in `DESIGN_SYSTEM.md`.
+- Approved visual: `docs/design/M98_001-ui-polish-preview.html` — the Jun 23 mockup Indy signed off (Billing / Models / Credentials / Install / Steer, dark+light). Layout / spacing / copy North Star; binding *behavior* lives here + in `DESIGN_SYSTEM.md` (e.g. GitHub renders Planned per the M99 decoupling, not the mockup's Connect).
 
 ---
 
@@ -352,7 +353,7 @@ core.fleets.status : "installing" on create → "active" on install:ready   (exi
 - [ ] CLI carries base_url end-to-end — verify: `make test-unit-cli` (or the CLI unit lane) and `make cli-acceptance`
 - [ ] Dashboard acceptance e2e green (all screens, both themes) — verify: `make dry-smoke && make acceptance-e2e`
 - [ ] Install experience minimal + unified across Dashboard and Fleets (3 paths + import states); **live status over the existing SSE stream** (`install:*` events + `installing→active` flip) — verify: `make test-unit-app && make test-integration && make acceptance-e2e`
-- [ ] `make lint` + `make lint-app` clean · `gitleaks detect` clean · no non-md file over 350 lines added
+- [ ] `make lint` + `make lint-app` clean · `gitleaks detect` clean · no non-md file over 350 lines added **except** `docs/design/M98_001-ui-polish-preview.html` (static design reference, exempt per Indy Jun 23)
 
 ---
 
@@ -371,8 +372,8 @@ make acceptance-e2e && make cli-acceptance
 make dry-smoke
 # E6: lint + gitleaks
 make lint 2>&1 | grep -E "✓|FAIL"; gitleaks detect 2>&1 | tail -3
-# E7: 350-line gate (exempts .md)
-git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
+# E7: 350-line gate (exempts .md + the committed design mockup asset)
+git diff --name-only origin/main | grep -vE '\.md$|^docs/design/' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
 # E8: orphan sweeps — retired pill-tab + api_key-in-log (empty = pass)
 grep -rn "data-\[state=active\]:bg-background" ui/ | head
 grep -rn "api_key" src/agentsfleetd/runner --include='*.zig' | grep -i "log\|print" | head
@@ -406,6 +407,7 @@ grep -rn "api_key" src/agentsfleetd/runner --include='*.zig' | grep -i "log\|pri
   > - Indy (2026-06-23): chose **"Minimal synthetic steps"** for the §9 install lifecycle — context: no provisioning lease exists today (fleets are born `active` at `create.zig:273`; nothing walks an `installing` lifecycle). §9 emits `install:creating → install:provisioning → install:ready` as **synthetic steps from the create path on a deferred tick** (so the post-201 SSE subscriber catches them), flips `installing → active` fast, and reconciles via `fleet.status` on (re)connect. **No provisioning subsystem is built here** (that shape is M99-like).
   > - Indy (2026-06-23): chose **"Commander validator only"** for §8.1 CLI URL rejection — context: a non-https `--base-url` is rejected by a CLI option validator (non-zero exit, human-text stderr, **no network call**), not a JSON-enveloped error; full SSRF validation stays server-side in `base_url_guard.zig` (typed `UZ-*`). RULE JCL's `--json` *output* discipline is unaffected (the stdout success contract is unchanged).
 - **Implementation reality (verification, Jun 23, 2026) — spec assumptions corrected, intent unchanged:** (a) `execution_policy.zig` is at `src/lib/contract/`, the runner tree + AllowList at `src/runner/…` (not under `src/agentsfleetd/…`); (b) `/credentials` is currently a `redirect()` to `/settings/models?tab=credentials` and Shell has one "Models & Credentials" entry — the spec's split-into-two-destinations is the *target* end-state (handshake item (c) described the current state backwards); (c) `PageHeader` is a bare `flex justify-between` row with **no description slot** — §1.2 adds a real title/description structure; (d) a content-width token already exists (`--max-w-content: 1280px`, wired to Tailwind `max-w-content` + the Shell container) — **reused** rather than duplicating a `--content-max` (RULE UFS); Invariant 2 holds via the existing token; (e) SSRF IP-range logic lives only in nullclaw's vendored `net_security.zig` (not importable) — `base_url_guard.zig` mirrors its loopback/RFC1918/link-local/metadata predicates.
+- **Design reference (Indy, Jun 23, 2026):** the approved UI-polish mockup (`ui-polish-preview.html`, agent-authored in a prior session's scratchpad — **not** a gstack artifact) is the visual North Star for §1–§5 + §9. Indy directed it **committed into the repo** at `docs/design/M98_001-ui-polish-preview.html` (chosen over a durable-local-path reference) so it travels with the Pull Request; the 1114-line static asset is **exempt from the 350-line source gate** (Acceptance + Eval E7 updated to skip `docs/design/`). Where mockup and spec differ, the spec governs behavior — notably GitHub renders **Planned** (connector decoupled to M99), not the mockup's **Connect**.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: populate during VERIFY/CHORE(close).
 - **Deferrals** — full per-credential fleet-usage tracking (beyond the active model credential) is **Out of Scope** here, not a silently-dropped Dimension.
 
