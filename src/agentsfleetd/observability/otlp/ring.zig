@@ -1,4 +1,4 @@
-//! Generic lock-free SPMC ring buffer for the OTLP exporters.
+//! Generic lock-free MPSC ring buffer for the OTLP exporters.
 //!
 //! Many producers push (the request/worker threads, fire-and-forget); a single
 //! consumer (the exporter's flush thread) pops. `Entry` is a fixed-size value

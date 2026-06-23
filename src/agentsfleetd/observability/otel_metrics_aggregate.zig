@@ -41,10 +41,13 @@ fn accumulate(acc: *Accumulator, sample: payload.Sample) void {
         // counts or go negative.
         const clamped: i64 = if (sample.value < 0) 0 else sample.value;
         acc.hist_count += 1;
-        acc.hist_sum += clamped;
+        // Saturating add: a runner can report wall_ms that saturates to
+        // maxInt(i64), and two such in one window would overflow a plain += and
+        // trap in ReleaseSafe. Cap at maxInt instead — telemetry, not money.
+        acc.hist_sum +|= clamped;
         acc.bucket_counts[payload.bucketIndex(@intCast(clamped))] += 1;
     } else {
-        acc.sum_value += sample.value;
+        acc.sum_value +|= sample.value;
     }
 }
 

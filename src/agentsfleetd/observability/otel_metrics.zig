@@ -118,8 +118,15 @@ fn collectMetrics(alloc: std.mem.Allocator, cfg: otlp_config.GrafanaOtlpConfig) 
 
     // Drain the window and coalesce same-(metric, labelset) samples into one
     // series each — 100 same-labelset samples become ONE dataPoint on the wire.
+    // Bound the drain to one ring's worth of samples so producers refilling
+    // mid-drain can't spin this loop unboundedly; the overflow waits for the
+    // next flush (and counts as a ring drop if the ring fills).
     var agg = aggregate.Aggregator.init();
-    while (g_ring.pop()) |s| agg.add(s);
+    var drained: usize = 0;
+    while (drained < BUFFER_CAPACITY) : (drained += 1) {
+        const s = g_ring.pop() orelse break;
+        agg.add(s);
+    }
 
     // Dropped delta since last flush: ring-full drops (a cumulative counter) plus
     // this window's series-cap drops.

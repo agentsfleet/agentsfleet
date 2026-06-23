@@ -1,6 +1,7 @@
 const std = @import("std");
 const otel_metrics = @import("otel_metrics.zig");
 const payload = @import("otel_metrics_payload.zig");
+const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
 const otlp_config = @import("otlp/config.zig");
 
@@ -270,6 +271,26 @@ test "test_samples_dropped_emitted: ring overflow surfaces the samples_dropped s
     var i: usize = 0;
     while (i < otel_metrics.TEST_BUFFER_CAPACITY + 8) : (i += 1) {
         otel_metrics.recordCreditDrain(1, POSTURE, MODEL, "ws-drop");
+    }
+    const body = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.NoBody;
+    defer alloc.free(body);
+    try std.testing.expect(std.mem.indexOf(u8, body, payload.METRIC_SAMPLES_DROPPED) != null);
+}
+
+test "test_samples_dropped via the series-cap path (agg.dropped, not ring-full)" {
+    const alloc = std.testing.allocator;
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+
+    // MAX_SERIES+1 distinct models → distinct labelsets; the aggregator caps at
+    // MAX_SERIES and drops the rest. Count stays well under the ring capacity, so
+    // this isolates the series-cap drop from the ring-full drop. Empty workspace
+    // keeps the labelset to {posture, model}.
+    var buf: [32]u8 = undefined;
+    var i: usize = 0;
+    while (i < aggregate.MAX_SERIES + 1) : (i += 1) {
+        const model = try std.fmt.bufPrint(&buf, "model-{d}", .{i});
+        otel_metrics.recordCreditDrain(1, POSTURE, model, "");
     }
     const body = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.NoBody;
     defer alloc.free(body);

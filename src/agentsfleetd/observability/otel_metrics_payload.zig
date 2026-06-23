@@ -1,12 +1,12 @@
 //! OTLP-JSON metric serialization for the Grafana Cloud Mimir exporter.
 //! Holds the metric-name/unit/label UFS constants (the wire contract shared
-//! with the Grafana dashboard JSON), the fixed-size `Sample` type, and the
-//! per-sample serializer that `otel_metrics.zig`'s flush loop calls.
+//! with the Grafana dashboard JSON), the fixed-size `Sample` input type, the
+//! aggregated `Series` type, and the per-series serializer the flush loop calls.
 //!
-//! Temporality is DELTA: every enqueued sample becomes one metric object with
-//! a single dataPoint. No in-process cumulative registry — Grafana Cloud's
-//! OTLP endpoint converts delta to cumulative. This mirrors the fire-and-forget,
-//! no-aggregation shape of otel_traces.zig.
+//! Temporality is DELTA: the flush coalesces a window's samples into one
+//! `Series` per (metric, labelset) — see otel_metrics_aggregate.zig — each
+//! serialized as a single dataPoint. A Fly-deployed OTel Collector
+//! (deltatocumulative) converts delta → cumulative before Mimir.
 
 const std = @import("std");
 
