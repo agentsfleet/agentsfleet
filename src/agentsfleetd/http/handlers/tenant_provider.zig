@@ -158,6 +158,10 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
             hx.fail(ec.ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
             return;
         },
+        tenant_provider.ResolveError.CredentialEndpointInvalid => {
+            hx.fail(ec.ERR_PROVIDER_BASE_URL_INVALID, "custom endpoint base_url is missing, not https, SSRF-unsafe, or set on a non-openai-compatible provider");
+            return;
+        },
         tenant_provider.ResolveError.TenantHasNoWorkspace => {
             log.err("no_workspace", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
             common.internalOperationError(hx.res, "Tenant has no primary workspace — bootstrap invariant violated", hx.req_id);

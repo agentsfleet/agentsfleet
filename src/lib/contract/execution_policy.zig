@@ -11,6 +11,15 @@
 
 const std = @import("std");
 
+/// Provider-name prefix that routes a custom OpenAI-compatible endpoint through
+/// nullclaw's `.compatible_provider` path with a config `base_url` override
+/// (`classifyProvider("custom:…") == .compatible_provider`). The control plane
+/// builds `custom:<url>` for a self-managed `openai-compatible` credential and
+/// the runner hands it to nullclaw verbatim. NEVER the literal "openai" — that
+/// is pinned to api.openai.com and silently drops the base_url. Shared by both
+/// build graphs + the §7 tests (RULE UFS).
+pub const CUSTOM_PROVIDER_PREFIX: []const u8 = "custom:";
+
 /// Per-execution network egress policy. Outbound HTTPS requests must match at
 /// least one entry in `allow` (exact hostname match). Empty `allow` = deny-all.
 pub const NetworkPolicy = struct {
@@ -90,6 +99,16 @@ pub const ExecutionPolicy = struct {
     /// allowlist permits exactly the host the fleet's LLM call will reach — no
     /// drift. Additive + defaulted so old/new leases stay parseable both ways.
     inference_host: []const u8 = "",
+    /// Resolved custom OpenAI-compatible endpoint URL for a self-managed
+    /// `openai-compatible` credential (e.g. "https://vllm.corp/v1"); `null` for
+    /// every named-provider / platform lease. When set, the runner hands nullclaw
+    /// the `custom:<url>` provider name + this `base_url` so the request dials it
+    /// (NEVER the literal "openai", which is pinned to api.openai.com). The
+    /// egress `inference_host` is derived from the SAME URL (`hostFromUrl`) so the
+    /// allowlist permits exactly this host (Invariant 6). Nullable + defaulted, so
+    /// existing serialized leases deserialize to `null` — backward-compatible with
+    /// in-flight leases.
+    base_url: ?[]const u8 = null,
     context: ContextBudget = .{},
 };
 
@@ -134,6 +153,33 @@ test "autoToolWindow tiers tool_window by context cap (capabilities.md §4)" {
     try std.testing.expectEqual(TOOL_WINDOW_SMALL_CAP, autoToolWindow(200_000)); // ≤200k → 10
     try std.testing.expectEqual(TOOL_WINDOW_SMALL_CAP, autoToolWindow(128_000));
     try std.testing.expectEqual(DEFAULT_TOOL_WINDOW, autoToolWindow(0)); // unknown cap → mid default
+}
+
+test "test_policy_base_url_optional_roundtrip" {
+    const alloc = std.testing.allocator;
+    // A custom-endpoint policy serializes and deserializes its base_url +
+    // inference_host intact (the wire carries the URL the runner dials).
+    const policy: ExecutionPolicy = .{
+        .provider = "custom:https://vllm.corp/v1",
+        .api_key = "sk_user",
+        .inference_host = "vllm.corp",
+        .base_url = "https://vllm.corp/v1",
+    };
+    const json = try std.json.Stringify.valueAlloc(alloc, policy, .{});
+    defer alloc.free(json);
+    const parsed = try std.json.parseFromSlice(ExecutionPolicy, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("https://vllm.corp/v1", parsed.value.base_url.?);
+    try std.testing.expectEqualStrings("vllm.corp", parsed.value.inference_host);
+    try std.testing.expectEqualStrings("custom:https://vllm.corp/v1", parsed.value.provider);
+
+    // A legacy lease serialized before base_url existed (the field is simply
+    // absent) deserializes to null — backward-compatible with in-flight leases.
+    const legacy = "{\"provider\":\"fireworks\",\"api_key\":\"fw\",\"inference_host\":\"api.fireworks.ai\"}";
+    const legacy_parsed = try std.json.parseFromSlice(ExecutionPolicy, alloc, legacy, .{});
+    defer legacy_parsed.deinit();
+    try std.testing.expectEqual(@as(?[]const u8, null), legacy_parsed.value.base_url);
+    try std.testing.expectEqualStrings("api.fireworks.ai", legacy_parsed.value.inference_host);
 }
 
 test "applyDefaults resolves an auto tool_window from the cap; overrides survive" {

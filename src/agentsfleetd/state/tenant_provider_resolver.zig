@@ -14,6 +14,7 @@ const logging = @import("log");
 const credential_key = @import("../fleet_runtime/credential_key.zig");
 
 const tenant_provider = @import("tenant_provider.zig");
+const base_url_guard = @import("base_url_guard.zig");
 pub const Mode = tenant_provider.Mode;
 pub const ResolvedProvider = tenant_provider.ResolvedProvider;
 pub const ResolveError = tenant_provider.ResolveError;
@@ -23,6 +24,12 @@ pub const PLATFORM_DEFAULT_CAP_TOKENS = tenant_provider.PLATFORM_DEFAULT_CAP_TOK
 const log = logging.scoped(.tenant_provider_resolver);
 
 const S_API_KEY = "api_key";
+const S_BASE_URL = "base_url";
+/// Provider id in the self-managed credential JSON that opts the credential into
+/// a custom OpenAI-compatible endpoint — the `base_url` field is required iff
+/// the provider equals this, and forbidden otherwise (RULE UFS; the runner uses
+/// the distinct `custom:<url>` wire name, never this id, when dialing nullclaw).
+pub const OPENAI_COMPATIBLE_PROVIDER: []const u8 = "openai-compatible";
 
 pub const ProviderRow = struct {
     const Self = @This();
@@ -58,12 +65,17 @@ pub const ProbedCredential = struct {
     provider: []u8,
     api_key: []u8,
     model: []u8,
+    /// Validated custom endpoint URL when `provider == OPENAI_COMPATIBLE_PROVIDER`
+    /// (https + SSRF-safe); `null` for every named provider. Set only after
+    /// base_url_guard accepts it, so a probe that succeeds carries a safe URL.
+    base_url: ?[]u8 = null,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         std.crypto.secureZero(u8, self.api_key);
         alloc.free(self.api_key);
         alloc.free(self.provider);
         alloc.free(self.model);
+        if (self.base_url) |u| alloc.free(u);
     }
 };
 
@@ -163,11 +175,22 @@ pub fn probeSelfManagedCredential(
     defer parsed.deinit();
 
     if (parsed.value != .object) return ResolveError.CredentialDataMalformed;
-    const provider_v = parsed.value.object.get("provider") orelse return ResolveError.CredentialDataMalformed;
-    const api_key_v = parsed.value.object.get(S_API_KEY) orelse return ResolveError.CredentialDataMalformed;
-    const model_v = parsed.value.object.get("model") orelse return ResolveError.CredentialDataMalformed;
+    const obj = parsed.value.object;
+    const provider_v = obj.get("provider") orelse return ResolveError.CredentialDataMalformed;
+    const api_key_v = obj.get(S_API_KEY) orelse return ResolveError.CredentialDataMalformed;
+    const model_v = obj.get("model") orelse return ResolveError.CredentialDataMalformed;
     if (provider_v != .string or api_key_v != .string or model_v != .string) return ResolveError.CredentialDataMalformed;
     if (provider_v.string.len == 0 or api_key_v.string.len == 0 or model_v.string.len == 0) return ResolveError.CredentialDataMalformed;
+
+    // Extract the optional base_url (string when present) and validate the
+    // provider⇔base_url pairing through the SSRF guard BEFORE any owned alloc, so
+    // a hostile or mismatched endpoint fails the probe early. A non-string
+    // base_url is malformed JSON; a validated URL is duped onto the credential.
+    const base_url_opt: ?[]const u8 = if (obj.get(S_BASE_URL)) |bv| blk: {
+        if (bv != .string) return ResolveError.CredentialDataMalformed;
+        break :blk bv.string;
+    } else null;
+    const validated_base_url = try validateCredentialEndpoint(provider_v.string, base_url_opt);
 
     const provider = try alloc.dupe(u8, provider_v.string);
     errdefer alloc.free(provider);
@@ -177,7 +200,35 @@ pub fn probeSelfManagedCredential(
         alloc.free(api_key);
     }
     const model = try alloc.dupe(u8, model_v.string);
-    return .{ .provider = provider, .api_key = api_key, .model = model };
+    errdefer alloc.free(model);
+    const base_url: ?[]u8 = if (validated_base_url) |u| try alloc.dupe(u8, u) else null;
+    return .{ .provider = provider, .api_key = api_key, .model = model, .base_url = base_url };
+}
+
+/// Validate the provider⇔base_url pairing for a self-managed credential (RULE
+/// PRI/NTP — the URL is hostile). Pure (no allocation, no DB) so the credential
+/// unit tests drive every branch directly:
+///   - provider == openai-compatible  ⇒ base_url REQUIRED and guard-`ok`
+///     (https + SSRF-safe), else `CredentialEndpointInvalid`. Returns the bare
+///     validated URL (borrowed from the input) for the caller to dupe.
+///   - any other provider             ⇒ base_url FORBIDDEN; present ⇒
+///     `CredentialEndpointInvalid`. Returns null.
+/// Only the rejected host (never the api_key) is logged at the call site.
+/// Pub for the co-located §6 validation unit tests (`tenant_provider_test.zig`),
+/// which drive every provider⇔base_url branch without a DB.
+pub fn validateCredentialEndpoint(provider: []const u8, base_url_opt: ?[]const u8) ResolveError!?[]const u8 {
+    const is_compatible = std.mem.eql(u8, provider, OPENAI_COMPATIBLE_PROVIDER);
+    if (!is_compatible) {
+        // A named provider must not smuggle a base_url (would silently widen the
+        // egress allowlist without going through the compatible path).
+        if (base_url_opt != null) return ResolveError.CredentialEndpointInvalid;
+        return null;
+    }
+    const base_url = base_url_opt orelse return ResolveError.CredentialEndpointInvalid;
+    return switch (base_url_guard.validate(base_url)) {
+        .ok => base_url,
+        .invalid_scheme, .blocked_host, .malformed => ResolveError.CredentialEndpointInvalid,
+    };
 }
 
 fn loadSelfManagedJson(
@@ -270,6 +321,10 @@ pub fn resolveSelfManaged(
     }
     const model = try alloc.dupe(u8, row.model);
     errdefer alloc.free(model);
+    // Carry the guard-validated custom endpoint forward (already https + SSRF-safe
+    // from the probe). `cred` owns its copy; dupe onto the resolved value so it
+    // survives `cred.deinit`. Null for every named provider.
+    const base_url: ?[]u8 = if (cred.base_url) |u| try alloc.dupe(u8, u) else null;
 
     return .{
         .mode = .self_managed,
@@ -277,5 +332,6 @@ pub fn resolveSelfManaged(
         .api_key = api_key,
         .model = model,
         .context_cap_tokens = row.context_cap_tokens,
+        .base_url = base_url,
     };
 }

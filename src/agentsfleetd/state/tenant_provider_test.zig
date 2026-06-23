@@ -91,6 +91,79 @@ fn seedFleetCredential(
     try seedSelfManagedCredential(conn, alloc, ws_id, key_name, provider, api_key, model);
 }
 
+// ── §6 base_url validation (pure — no DB) ───────────────────────────────────
+// validateCredentialEndpoint is the resolver's parse-boundary SSRF gate; these
+// drive every provider⇔base_url branch the Dimensions name without a DB.
+
+const COMPAT = tenant_provider.OPENAI_COMPATIBLE_PROVIDER;
+
+test "test_resolver_extracts_base_url" {
+    // 6.1: openai-compatible + valid https base_url → carried through (the bare
+    // validated URL is returned for the resolver to dupe onto the credential).
+    const got = try tenant_provider.validateCredentialEndpoint(COMPAT, "https://api.openrouter.ai/v1");
+    try std.testing.expectEqualStrings("https://api.openrouter.ai/v1", got.?);
+    // A self-hosted gateway hostname is equally fine.
+    const gw = try tenant_provider.validateCredentialEndpoint(COMPAT, "https://vllm.corp.internal:8443/v1");
+    try std.testing.expectEqualStrings("https://vllm.corp.internal:8443/v1", gw.?);
+}
+
+test "test_resolver_rejects_non_https" {
+    // 6.2: http / garbage scheme → typed invalid-endpoint error, no resolution.
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.validateCredentialEndpoint(COMPAT, "http://api.example.com/v1"),
+    );
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.validateCredentialEndpoint(COMPAT, "ftp://api.example.com"),
+    );
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.validateCredentialEndpoint(COMPAT, "not a url"),
+    );
+    // openai-compatible with NO base_url is the mirror mismatch — also rejected.
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.validateCredentialEndpoint(COMPAT, null),
+    );
+}
+
+test "test_resolver_blocks_ssrf_hosts" {
+    // 6.3: every SSRF-unsafe host the Dimension enumerates is blocked BEFORE any
+    // run. Asserts ALL of: 127.0.0.1, 10.x, 172.16.x, 192.168.x, the cloud
+    // metadata IP, ::1, and 0.0.0.0.
+    const blocked = [_][]const u8{
+        "https://127.0.0.1/v1",
+        "https://10.1.2.3/v1",
+        "https://172.16.0.9/v1",
+        "https://192.168.1.1/v1",
+        "https://169.254.169.254/latest/meta-data",
+        "https://[::1]/v1",
+        "https://0.0.0.0/v1",
+    };
+    for (blocked) |url| {
+        try std.testing.expectError(
+            tenant_provider.ResolveError.CredentialEndpointInvalid,
+            tenant_provider.validateCredentialEndpoint(COMPAT, url),
+        );
+    }
+}
+
+test "test_resolver_named_provider_unchanged" {
+    // 6.4: a named-provider credential with NO base_url resolves exactly as today
+    // (null endpoint, no error) — the existing path is not regressed.
+    try std.testing.expectEqual(
+        @as(?[]const u8, null),
+        try tenant_provider.validateCredentialEndpoint("fireworks", null),
+    );
+    // …and a named provider must NOT smuggle a base_url (mismatch → rejected),
+    // so the openai-compatible path is the only door to a custom host.
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.validateCredentialEndpoint("fireworks", "https://evil.example.com/v1"),
+    );
+}
+
 // ── Mode enum + ResolvedProvider invariants ────────────────────────────────
 
 test "Mode label round-trips for both variants" {
@@ -194,6 +267,64 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
     try std.testing.expectEqualStrings("fw_USER_abc", rp.api_key);
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
+}
+
+test "resolveActiveProvider carries a validated base_url for openai-compatible (end-to-end)" {
+    setEncryptionKey();
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
+
+    // Seed an openai-compatible credential whose JSON carries a valid https
+    // base_url alongside provider/api_key/model (the "{provider,api_key,model,
+    // base_url}" shape from the spec Interfaces).
+    const CUSTOM_URL = "https://api.openrouter.ai/v1";
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(ALLOC);
+    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
+    try obj.put(ALLOC, "api_key", .{ .string = "sk_user_compat_xyz" });
+    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
+    try obj.put(ALLOC, "base_url", .{ .string = CUSTOM_URL });
+    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "compat-endpoint", .{ .object = obj });
+
+    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "compat-endpoint", "gpt-4o-mini", 128_000);
+
+    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer rp.deinit(ALLOC);
+
+    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
+    try std.testing.expectEqualStrings(COMPAT, rp.provider);
+    try std.testing.expectEqualStrings("sk_user_compat_xyz", rp.api_key);
+    try std.testing.expectEqualStrings(CUSTOM_URL, rp.base_url.?);
+}
+
+test "resolveActiveProvider rejects an openai-compatible credential with an SSRF base_url" {
+    setEncryptionKey();
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
+
+    // The credential JSON itself is well-formed but points at the cloud metadata
+    // host — upsert (which probes) must refuse it, so a hostile endpoint never
+    // even reaches tenant_providers, let alone a lease.
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(ALLOC);
+    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
+    try obj.put(ALLOC, "api_key", .{ .string = "sk_user_compat_xyz" });
+    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
+    try obj.put(ALLOC, "base_url", .{ .string = "https://169.254.169.254/v1" });
+    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "ssrf-endpoint", .{ .object = obj });
+
+    try std.testing.expectError(
+        tenant_provider.ResolveError.CredentialEndpointInvalid,
+        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "ssrf-endpoint", "gpt-4o-mini", 128_000),
+    );
 }
 
 test "resolveActiveProvider accepts dashboard fleet-prefixed credential rows" {

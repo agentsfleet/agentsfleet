@@ -136,6 +136,8 @@ pub const ENTRIES = [_]Entry{
         "Re-run `agentsfleet credential set` with the full triplet."),
     e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue", "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended."),
+    e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++
+        "loopback, private, link-local, or cloud-metadata host. A non-openai-compatible provider must not carry a `base_url`."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     // ── STARTUP ──────────────────────────────────────────────────────────────
     e("UZ-STARTUP-001", .internal_server_error, "Environment check failed", "Required environment variables are missing. Run 'agentsfleetd doctor' to see which ones."),
