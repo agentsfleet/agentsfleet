@@ -24,27 +24,35 @@ jobs:
 
       # Detect which Vercel project deployed based on GitHub deployment metadata first.
       # URL-shape fallback remains for safety, but deployment.environment is the stable source.
+      #
+      # smoke_base_url selects the smoke target per project:
+      #   - website → the canonical production domain. Vercel deployment protection
+      #     gates the generated *.vercel.app URL ("Login – Vercel"), but the promoted
+      #     production custom domain is open, so the marketing smoke runs there.
+      #   - app / agents → the deployment target_url (protected; reached via the
+      #     x-vercel-protection-bypass header loaded below). Unchanged.
       - name: Detect project
         id: detect
         run: |
           URL="${{ github.event.deployment_status.target_url }}"
           DEPLOY_ENV="${{ github.event.deployment.original_environment || github.event.deployment.environment }}"
+          WEBSITE_CANONICAL_URL="https://agentsfleet.net"
 
           echo "deployment_environment=$DEPLOY_ENV"
           echo "target_url=$URL"
 
           if echo "$DEPLOY_ENV" | grep -qi "agentsfleet-app"; then
-            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; echo "smoke_base_url=$URL"; } >> "$GITHUB_OUTPUT"
           elif echo "$DEPLOY_ENV" | grep -qi "agentsfleet-agents"; then
-            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; echo "smoke_base_url=$URL"; } >> "$GITHUB_OUTPUT"
           elif echo "$DEPLOY_ENV" | grep -qi "agentsfleet-website"; then
-            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; echo "smoke_base_url=$WEBSITE_CANONICAL_URL"; } >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "agentsfleet-app\|app\.agentsfleet"; then
-            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; } >> "$GITHUB_OUTPUT"
+            { echo "package=app"; echo "workdir=ui/packages/app"; echo "bypass_item=vercel-bypass-app"; echo "smoke_base_url=$URL"; } >> "$GITHUB_OUTPUT"
           elif echo "$URL" | grep -qi "agentsfleet-agents"; then
-            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; } >> "$GITHUB_OUTPUT"
+            { echo "package=agents"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-agents"; echo "smoke_base_url=$URL"; } >> "$GITHUB_OUTPUT"
           else
-            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; } >> "$GITHUB_OUTPUT"
+            { echo "package=website"; echo "workdir=ui/packages/website"; echo "bypass_item=vercel-bypass-website"; echo "smoke_base_url=$WEBSITE_CANONICAL_URL"; } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Load Vercel bypass secret from 1Password
@@ -67,7 +75,7 @@ jobs:
         run: bun run test:e2e:smoke
         working-directory: ${{ steps.detect.outputs.workdir }}
         env:
-          BASE_URL: ${{ github.event.deployment_status.target_url }}
+          BASE_URL: ${{ steps.detect.outputs.smoke_base_url }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
       - name: Upload Playwright report
