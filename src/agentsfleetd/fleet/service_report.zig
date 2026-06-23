@@ -40,6 +40,7 @@ const redis_fleet = @import("../queue/redis_fleet.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
+const otel_metrics = @import("../observability/otel_metrics.zig");
 const runner_events = @import("runner_events.zig");
 
 const Hx = hx_mod.Hx;
@@ -92,6 +93,21 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         return;
     }
     log.debug("report_settled", .{ .fleet_id = lease.fleet_id, .event_id = lease.event_id, .charged_nanos = settled.charged_nanos });
+
+    // Post-commit, fire-and-forget OTLP metrics for the settled run: stage
+    // credit drained (final slice) + cumulative token throughput by direction +
+    // run-latency. The claim+settle committed atomically above and the claim
+    // won, so this records once per terminal run and never blocks the report.
+    otel_metrics.recordRunSettlement(
+        settled.charged_nanos,
+        @intCast(body.input_tokens),
+        @intCast(body.cached_input_tokens),
+        @intCast(body.output_tokens),
+        @intCast(body.telemetry.wall_ms),
+        parsePosture(lease.posture).label(),
+        lease.model,
+        lease.workspace_id,
+    );
 
     finalize(hx, runner_id, lease, body);
     // Per-runner telemetry (best-effort, in-memory — never gates the report).

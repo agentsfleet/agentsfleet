@@ -145,6 +145,7 @@ fn currentNanos() u64 {
 /// when under the cardinality cap, workspace.
 pub fn recordCreditDrain(drained_nanos: i64, posture: []const u8, model: []const u8, workspace: []const u8) void {
     if (!isInstalled()) return;
+    if (drained_nanos == 0) return;
     var s = payload.newSample(.credit_drain, drained_nanos, currentNanos());
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
     _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
@@ -172,6 +173,28 @@ pub fn observeRunDuration(wall_ms: i64, posture: []const u8, model: []const u8) 
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, posture);
     _ = payload.addLabel(&s, payload.LABEL_MODEL, model);
     _ = g_ring.push(s);
+}
+
+/// Emit the full metric bundle for one terminal run settlement: the stage
+/// credit drained (final slice), token throughput per direction (the run's
+/// cumulative totals), and the run-latency observation. Called post-commit
+/// from the service layer (`service_report`), never from the money modules.
+pub fn recordRunSettlement(
+    charged_nanos: i64,
+    input_tokens: i64,
+    cached_tokens: i64,
+    output_tokens: i64,
+    wall_ms: i64,
+    posture: []const u8,
+    model: []const u8,
+    workspace: []const u8,
+) void {
+    if (!isInstalled()) return;
+    recordCreditDrain(charged_nanos, posture, model, workspace);
+    recordTokens(input_tokens, payload.DIRECTION_INPUT, posture, model);
+    recordTokens(cached_tokens, payload.DIRECTION_CACHED, posture, model);
+    recordTokens(output_tokens, payload.DIRECTION_OUTPUT, posture, model);
+    observeRunDuration(wall_ms, posture, model);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +246,25 @@ pub const TEST_BUFFER_CAPACITY = BUFFER_CAPACITY;
 /// Test hook: number of samples currently pending in the global ring.
 pub fn testPendingCount() usize {
     return g_ring.len();
+}
+
+/// Test hook: mark the exporter installed WITHOUT spawning the flush thread,
+/// so emit + ring inspection is deterministic (no background drain race).
+pub fn testSetInstalled(cfg: otel_logs.GrafanaOtlpConfig) void {
+    g_config = cfg;
+    g_running.store(true, .release);
+}
+
+/// Test hook: pop one sample from the global ring.
+pub fn testPop() ?Sample {
+    return g_ring.pop();
+}
+
+/// Test hook: reset global exporter state and drain the ring.
+pub fn testClear() void {
+    g_running.store(false, .release);
+    g_config = null;
+    while (g_ring.pop()) |_| {}
 }
 
 test {

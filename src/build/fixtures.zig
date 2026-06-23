@@ -10,6 +10,14 @@
 //!
 //! Mirrors the pg.zig / s3.zig helper split — keeps build.zig and
 //! build_runner.zig free of per-fixture wiring.
+//!
+//! CONVENTION: place new fixtures under `tests/fixtures/<category>/`, grouped by
+//! domain (`telemetry/`, `webhooks/`, `fleetbundle/`, `runner/`, …). Then add a
+//! `{ .name, .path }` row to DAEMON (`src/agentsfleetd/**` tests) or RUNNER
+//! (`src/runner/**` tests) and consume via `@embedFile("<name>")` using the
+//! registered NAME — never a relative path, and never a repo-root `samples/…`
+//! path. Both are unreachable: `@embedFile` refuses files outside the importing
+//! module's root directory.
 
 const std = @import("std");
 
