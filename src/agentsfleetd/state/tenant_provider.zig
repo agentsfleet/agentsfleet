@@ -60,12 +60,19 @@ pub const ResolvedProvider = struct {
     api_key: []u8,
     model: []u8,
     context_cap_tokens: u32,
+    /// Validated custom endpoint URL for an `openai-compatible` self-managed
+    /// credential (https + SSRF-safe, checked by base_url_guard at resolve time);
+    /// `null` for every named-provider / platform credential. The control plane
+    /// derives the egress-allowlist host from this and hands the engine the
+    /// `custom:<url>` provider name so the request dials exactly this host.
+    base_url: ?[]u8 = null,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         std.crypto.secureZero(u8, self.api_key);
         alloc.free(self.api_key);
         alloc.free(self.provider);
         alloc.free(self.model);
+        if (self.base_url) |u| alloc.free(u);
         self.* = undefined;
     }
 };
@@ -76,6 +83,11 @@ pub const ResolveError = error{
     /// Vault row decrypted but the JSON object is missing required fields
     /// (provider, api_key, model).
     CredentialDataMalformed,
+    /// An openai-compatible credential's `base_url` is missing, not https, or
+    /// targets an SSRF-unsafe host; OR a non-openai-compatible credential
+    /// carries a `base_url`. Validated at the parse boundary by base_url_guard
+    /// (Invariant 5) — never dialed.
+    CredentialEndpointInvalid,
     /// Platform mode, but core.platform_llm_keys has no active row OR the
     /// admin workspace's vault is missing the referenced key. Operator-side
     /// incident; surfaced via dead-letter on the next event.
@@ -184,6 +196,15 @@ pub fn upsertPlatform(
 
 pub const ProbedCredential = resolver.ProbedCredential;
 
+/// The provider id that opts a self-managed credential into a custom
+/// OpenAI-compatible endpoint (re-exported from the resolver — the credential
+/// JSON's `provider` value, distinct from the runner's `custom:<url>` wire name).
+pub const OPENAI_COMPATIBLE_PROVIDER = resolver.OPENAI_COMPATIBLE_PROVIDER;
+
+/// Validate a self-managed credential's provider⇔base_url pairing (pure; SSRF +
+/// https-checked). Re-exported for the §6 validation unit tests.
+pub const validateCredentialEndpoint = resolver.validateCredentialEndpoint;
+
 /// Probe the tenant's self-managed credential and return the {provider, api_key,
 /// model} triplet. Used by the HTTP PUT handler to read the effective
 /// model from the credential before catalogue validation, and by tests.
@@ -200,4 +221,5 @@ pub fn probeSelfManaged(
 
 test {
     _ = @import("tenant_provider_test.zig");
+    _ = @import("base_url_guard.zig");
 }

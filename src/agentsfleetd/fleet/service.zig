@@ -199,12 +199,42 @@ fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_prov
         }
         secrets_map = .{ .object = obj };
     }
+    const endpoint = customEndpoint(alloc, resolved);
     return .{
         .secrets_map = secrets_map,
         .context = budget,
-        .provider = if (resolved) |r| r.provider else "",
+        .provider = endpoint.provider,
         .api_key = if (resolved) |r| r.api_key else "",
+        .inference_host = endpoint.inference_host,
+        .base_url = endpoint.base_url,
     };
+}
+
+/// The lease's provider name + egress host + dialed URL, branching on whether the
+/// resolved credential is a custom OpenAI-compatible endpoint:
+///   - custom (base_url set): hand nullclaw the `custom:<url>` provider name (so
+///     it classifies as `.compatible_provider` and honours the URL override —
+///     NEVER "openai"), carry the URL as `base_url`, and derive the egress
+///     `inference_host` from the SAME URL so the allowlist permits exactly it.
+///   - named provider (base_url null): pass the provider through unchanged with
+///     no base_url; `inference_host` stays "" exactly as before — named-provider
+///     leases are byte-for-byte unchanged (Invariant 7).
+/// Arena-scoped (`alloc` is `hx.alloc`); the `custom:<url>` name + host live until
+/// `hx.ok` serializes. An OOM building the custom name degrades to the bare
+/// `openai-compatible` provider — which nullclaw cannot dial without a URL, so the
+/// engine fails authentication cleanly rather than the daemon crashing.
+fn customEndpoint(
+    alloc: std.mem.Allocator,
+    resolved: ?tenant_provider.ResolvedProvider,
+) struct { provider: []const u8, base_url: ?[]const u8, inference_host: []const u8 } {
+    const r = resolved orelse return .{ .provider = "", .base_url = null, .inference_host = "" };
+    const base_url = r.base_url orelse return .{ .provider = r.provider, .base_url = null, .inference_host = "" };
+
+    const custom_name = std.fmt.allocPrint(alloc, "{s}{s}", .{ execution_policy.CUSTOM_PROVIDER_PREFIX, base_url }) catch {
+        log.warn("lease_custom_provider_name_alloc_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .inference_host = execution_policy.hostFromUrl(base_url) });
+        return .{ .provider = r.provider, .base_url = base_url, .inference_host = execution_policy.hostFromUrl(base_url) };
+    };
+    return .{ .provider = custom_name, .base_url = base_url, .inference_host = execution_policy.hostFromUrl(base_url) };
 }
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued
