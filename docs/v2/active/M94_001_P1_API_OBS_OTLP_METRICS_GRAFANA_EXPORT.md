@@ -156,7 +156,7 @@ Install/uninstall in `preflight.zig` alongside traces/logs, reusing `configFromE
 The `workspace` label is high-cardinality; guard it. Provide the Grafana dashboard JSON.
 
 - **Dimension 4.1** — DONE — above a configured cardinality cap the `workspace` label is dropped/aggregated; below it, retained → Test `test_workspace_label_cardinality_capped` (cap = 100, `otel_metrics_cardinality.zig`).
-- **Dimension 4.2** — `deploy/grafana/agent-observability.json` is valid JSON whose panels reference exactly the emitted metric-name constants → Test `test_dashboard_metric_names_match_constants` (panel names vs the UFS metric-name consts).
+- **Dimension 4.2** — DONE — `deploy/grafana/agent-observability.json` is valid JSON; its `__source_otlp_metrics` + panel exprs reference every emitted metric-name const (incl. `samples_dropped`) → Test `test_dashboard_metric_names_match_constants`. Panels query the Prometheus-translated names; a `__deployment_note` records the Fly OTel-Collector `deltatocumulative` dependency.
 
 ---
 
