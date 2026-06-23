@@ -154,7 +154,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 One underline tab visual shared by `Tabs`/`TabNav` (pill retired); `PageHeader` stacks title→description; `Shell` wraps page content in one container whose **max-width is a single token** (`--content-max`, ≈1200px; fluid below it — it is a readability cap, not a fixed width, and **chat/steer + large data tables go full-width**, needing no reading cap) with the ambient dual-tone `--pulse` glow behind every page; a light-mode **ink** primary-CTA token (mint reserved for accents/links/active/glow); a restrained motion pass (mount-rise, glow drift, live-status ping, meter fill, micro-interactions) entirely behind `prefers-reduced-motion`. **Implementation default:** typography = sans for titles/body/buttons, mono only for IDs/paths/table-cells/section-labels/log surfaces — chosen via the existing sans/mono token, not new classes.
 
-- **Dimension 1.1** — `Tabs`/`TabNav` render underline; zero pill-style class in `src/` → Test `test_tabs_underline_no_pill`
+- **Dimension 1.1** ✅ DONE — `Tabs`/`TabNav` render underline (shared `tab-styles.ts`); pill applied nowhere in component `src/` → Test `test_tabs_underline_no_pill`
 - **Dimension 1.2** — `PageHeader` renders description below the title → Test `test_pageheader_description_below`
 - **Dimension 1.3** — every dashboard page composes the shared width container; none sets its own max-width → Test `test_pages_use_shared_content_width`
 - **Dimension 1.4** — primary `Button` resolves to ink under `[data-theme=light]`, pulse under dark → Test `test_primary_button_ink_in_light`
@@ -289,7 +289,7 @@ core.fleets.status : "installing" on create → "active" on install:ready   (exi
 
 ## Invariants
 
-1. One tab visual — the retired pill-tab class has **zero** occurrences in `src/` — enforced by `test_tabs_underline_no_pill` + grep.
+1. One tab visual — the retired pill-tab class is **applied nowhere** in component `src/` (the only references are the negative test assertions proving its absence) — enforced by `test_tabs_underline_no_pill` + grep (excl. `*.test.*`).
 2. One content width — a single exported constant; pages compose the shared container, set no own max-width — enforced by `test_pages_use_shared_content_width`.
 3. No arbitrary Tailwind values; motion is opt-out — DESIGN TOKEN lint + every animation behind `prefers-reduced-motion` (`test_motion_respects_reduced_motion`).
 4. Credentials are write-only — UI/CLI never render a stored secret beyond a masked suffix; no reveal — enforced by `test_credential_write_only_masked`.
@@ -375,7 +375,7 @@ make lint 2>&1 | grep -E "✓|FAIL"; gitleaks detect 2>&1 | tail -3
 # E7: 350-line gate (exempts .md + the committed design mockup asset)
 git diff --name-only origin/main | grep -vE '\.md$|^docs/design/' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
 # E8: orphan sweeps — retired pill-tab + api_key-in-log (empty = pass)
-grep -rn "data-\[state=active\]:bg-background" ui/ | head
+grep -rn "data-\[state=active\]:bg-background" ui/ --include='*.tsx' | grep -v '\.test\.' | head   # tests assert ABSENCE; real usage must be 0
 grep -rn "api_key" src/agentsfleetd/runner --include='*.zig' | grep -i "log\|print" | head
 ```
 
@@ -389,7 +389,7 @@ grep -rn "api_key" src/agentsfleetd/runner --include='*.zig' | grep -i "log\|pri
 
 | Removed/renamed symbol | Grep | Expected |
 |------------------------|------|----------|
-| pill-tab active class | `grep -rn "data-\[state=active\]:bg-background" ui/ \| head` | 0 (underline replaces it) |
+| pill-tab active class | `grep -rn "data-\[state=active\]:bg-background" ui/ --include='*.tsx' \| grep -v '\.test\.' \| head` | 0 in component src (tests assert absence) |
 | Models page Credentials tab | `grep -rn "CREDENTIALS_TAB\|Credentials</TabsTrigger" ui/packages/app/app/\(dashboard\)/settings/models \| head` | 0 |
 | `"openai-compatible"` literal | `grep -rn '"openai-compatible"' src/ ui/ cli/ \| grep -v const \| head` | only the named-constant defs + imports (RULE UFS) |
 

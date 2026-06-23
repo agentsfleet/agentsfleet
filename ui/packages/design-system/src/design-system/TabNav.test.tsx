@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TabNav, type TabNavItem } from "./TabNav";
+import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_LINK } from "./tab-styles";
 
 const ITEMS: TabNavItem[] = [
   { label: "Basic Info", href: "/settings" },
@@ -45,5 +46,20 @@ describe("TabNav", () => {
     const link = screen.getByRole("link", { name: "Basic Info" });
     expect(link.tagName).toBe("A");
     expect(link.getAttribute("href")).toBe("/settings");
+  });
+
+  // TabNav shares the one underline tab style (pill retired).
+  it("uses the shared underline visual; active lights to --pulse, no pill", () => {
+    render(<TabNav label="x" items={ITEMS} activeHref="/settings" />);
+    const nav = screen.getByRole("navigation");
+    expect(nav.className).toContain("border-b");
+    expect(nav.className).not.toContain("bg-muted");
+    expect(TAB_LIST_CLASS).toContain("border-b");
+    const active = screen.getByRole("link", { name: "Basic Info" });
+    expect(active.className).toContain("border-b-2");
+    expect(active.className).toContain("data-[active=true]:border-pulse");
+    expect(active.className).not.toContain("data-[active=true]:bg-background");
+    expect(active.className).not.toContain("rounded-md");
+    expect(TAB_TRIGGER_CLASS_LINK).not.toContain("bg-background");
   });
 });
