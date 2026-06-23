@@ -189,7 +189,7 @@ Balance + full-width consumption meter (caption rides its right end; CTA in the 
 
 The account modal's email/secondary-identifier is invisible in dark theme (maps to a too-dim token). Map it to a readable text token (set base theme explicitly if auto-detect is wrong) so it's legible in both themes.
 
-- **Dimension 5.1** — `clerkAppearance` maps the UserProfile secondary-identifier to the readable token in dark → Test `test_clerk_secondary_identifier_contrast`
+- **Dimension 5.1** ✅ DONE — `clerkAppearance` maps `userPreviewSecondaryIdentifier` (the account-modal email) to the readable `--text` token (theme-adaptive, legible in both; no static baseTheme); global `colorTextSecondary` fallback stays readable → Test `test_clerk_secondary_identifier_contrast`
 
 ### §6 — Custom-endpoint: credential `base_url` + resolver SSRF validation
 

@@ -84,8 +84,14 @@ export const AUTH_APPEARANCE = {
     userPreviewMainIdentifier: {
       color: TEXT,
     },
+    // The account modal's email (secondary identifier) read as a too-dim token
+    // on the dark modal surface — effectively invisible. Pin it to the primary
+    // readable text token. The token is theme-adaptive ([data-theme] swaps
+    // --text), so it stays legible in light too — no static Clerk baseTheme
+    // (which would force one palette and re-break the other). Hierarchy below
+    // the name comes from Clerk's smaller secondary-identifier type, not colour.
     userPreviewSecondaryIdentifier: {
-      color: TEXT_MUTED,
+      color: TEXT,
     },
     userProfileRoot: {
       backgroundColor: SURFACE_1,
