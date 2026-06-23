@@ -1,0 +1,201 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Button } from "@agentsfleet/design-system";
+import { EVENTS } from "@/lib/analytics/events";
+import { captureProductEvent } from "@/lib/analytics/posthog";
+import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
+import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
+import { importBundleAction, installFleetAction } from "../actions";
+import {
+  flowError,
+  readyToCreate,
+  requirementsOf,
+  STATE_GLYPH,
+  unmetCredentials,
+  type InstallSource,
+  type StateLine,
+} from "./install-flow";
+import { InstallShell, StateList } from "./install-state-list";
+import { InstallStreamSteps } from "./InstallStreamSteps";
+
+type Props = {
+  workspaceId: string;
+  source: InstallSource;
+  // The workspace's present credential names, or null when the vault read
+  // failed — in which case connect-to-continue gates nothing (the server's 424
+  // stays authoritative).
+  presentCredentialNames: string[] | null;
+  onBack: () => void;
+};
+
+// One install experience, run inline. On mount it imports (when the source
+// needs it), gates on connect-to-continue when a required credential is
+// missing, then auto-proceeds to create — no confirm beat. After create it
+// hands off to InstallStreamSteps, which advances the creating→provisioning→
+// ready steps off the existing SSE fleet-event stream and lands "Open fleet".
+export function InstallStates({ workspaceId, source, presentCredentialNames, onBack }: Props) {
+  const router = useRouter();
+  const requirements = requirementsOf(source);
+  // Pre-create phases the flow drives directly. Post-create, InstallStreamSteps
+  // owns the rendered steps (it reads the SSE stream), so this component only
+  // tracks up to the point a fleet exists.
+  const [phase, setPhase] = useState<"importing" | "connect" | "creating" | "error">("importing");
+  const [fleet, setFleet] = useState<{ id: string; name: string } | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const started = useRef(false);
+
+  // Resolve the bundle_id to create from. A GitHub source is already imported;
+  // a template imports lazily here (its content is fetched server-side, so an
+  // unpopulated template repo surfaces its import error at this step).
+  const resolveCreateBody = useCallback(async (): Promise<
+    | { ok: true; body: Parameters<typeof installFleetAction>[1] }
+    | { ok: false; error: string }
+  > => {
+    if (source.kind === "paste") {
+      const body = source.triggerMarkdown
+        ? { source_markdown: source.sourceMarkdown, trigger_markdown: source.triggerMarkdown }
+        : { source_markdown: source.sourceMarkdown };
+      return { ok: true, body };
+    }
+    if (source.kind === "github") {
+      return { ok: true, body: { bundle_id: source.snapshot.bundle_id } };
+    }
+    const imported = await importBundleAction(workspaceId, {
+      source_kind: "template",
+      source_ref: source.template.id,
+    });
+    if (!imported.ok) return { ok: false, error: flowError(imported, "import the template") };
+    return { ok: true, body: { bundle_id: imported.data.bundle_id } };
+  }, [source, workspaceId]);
+
+  const runCreate = useCallback(async () => {
+    setPhase("creating");
+    setErrorText(null);
+    const resolved = await resolveCreateBody();
+    if (!resolved.ok) {
+      setErrorText(resolved.error);
+      setPhase("error");
+      return;
+    }
+    const created = await installFleetAction(workspaceId, resolved.body);
+    if (!created.ok) {
+      setErrorText(
+        created.status === 409 ? FLEET_NAME_CONFLICT_MESSAGE : flowError(created, "create the fleet"),
+      );
+      setPhase("error");
+      return;
+    }
+    captureProductEvent(EVENTS.fleet_created, { fleet_id: created.data.fleet_id });
+    setFleet({ id: created.data.fleet_id, name: requirements.name });
+  }, [resolveCreateBody, workspaceId, requirements.name]);
+
+  // Drive the flow once on mount: a source with no unmet credential creates
+  // immediately; otherwise we sit on connect-to-continue until the operator
+  // returns with the credential stored (Back → re-enter re-evaluates).
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    if (readyToCreate(requirements.credentials, presentCredentialNames)) {
+      void runCreate();
+    } else {
+      setPhase("connect");
+    }
+  }, [requirements.credentials, presentCredentialNames, runCreate]);
+
+  // Once a fleet exists, the SSE-driven steps own the panel.
+  if (fleet) {
+    return (
+      <InstallShell onBack={onBack} title={`installing · ${fleet.name}`}>
+        <InstallStreamSteps
+          workspaceId={workspaceId}
+          fleetId={fleet.id}
+          fleetName={fleet.name}
+          onOpen={() => {
+            router.push(`/fleets/${fleet.id}`);
+          }}
+        />
+      </InstallShell>
+    );
+  }
+
+  const unmet = unmetCredentials(requirements.credentials, presentCredentialNames);
+  return (
+    <InstallShell onBack={onBack} title={`installing · ${requirements.name}`}>
+      <PreCreateLines phase={phase} requirements={requirements} unmet={unmet} errorText={errorText} />
+      {phase === "connect" ? (
+        <ConnectToContinue unmet={unmet} onRetry={() => void runCreate()} />
+      ) : null}
+      {phase === "error" ? (
+        <div className="border-t border-border px-lg py-md">
+          <Button type="button" variant="ghost" size="sm" onClick={() => void runCreate()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+    </InstallShell>
+  );
+}
+
+// ── pre-create state lines ─────────────────────────────────────────────────
+
+function PreCreateLines({
+  phase,
+  requirements,
+  unmet,
+  errorText,
+}: {
+  phase: "importing" | "connect" | "creating" | "error";
+  requirements: ReturnType<typeof requirementsOf>;
+  unmet: string[];
+  errorText: string | null;
+}) {
+  const lines: StateLine[] = [];
+  if (phase === "importing") {
+    lines.push({ id: "importing", tone: "run", glyph: STATE_GLYPH.run, text: `importing ${requirements.name}… fetching SKILL.md, TRIGGER.md, support files` });
+  } else {
+    lines.push({ id: "imported", tone: "ok", glyph: STATE_GLYPH.ok, text: `imported ${requirements.name}` });
+  }
+  if (!requirements.triggerPresent) {
+    lines.push({ id: "skill-only", tone: "wait", glyph: STATE_GLYPH.wait, text: "no TRIGGER.md — a manual / API wake will be generated" });
+  }
+  if (phase === "connect") {
+    lines.push({ id: "connect", tone: "wait", glyph: STATE_GLYPH.wait, text: `first run: store ${unmet.join(", ")} to continue` });
+  }
+  if (phase === "creating") {
+    lines.push({ id: "creating", tone: "run", glyph: STATE_GLYPH.run, text: "creating fleet…" });
+  }
+  if (phase === "error" && errorText) {
+    lines.push({ id: "error", tone: "err", glyph: STATE_GLYPH.err, text: errorText });
+  }
+  return <StateList lines={lines} />;
+}
+
+// Connect-to-continue: the requirement transparency the old review page showed,
+// surfaced as a gate. Resolves via the custom-secret bridge — the one-click
+// connector is a later milestone, so this links to the vault, not an App
+// connect. The flow auto-resumes into create the instant the operator returns
+// (Retry re-checks; Back → re-enter re-evaluates the gate).
+function ConnectToContinue({ unmet, onRetry }: { unmet: string[]; onRetry: () => void }) {
+  return (
+    <div className="space-y-3 border-t border-border px-lg py-md">
+      <p className="text-sm text-muted-foreground">
+        This fleet needs{" "}
+        <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Store{" "}
+        {unmet.length === 1 ? "it" : "them"} as a custom secret in your workspace vault, then
+        continue.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button asChild size="sm">
+          <Link href={WORKSPACE_CREDENTIALS_PATH}>Store in vault</Link>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+          I&apos;ve stored it — continue
+        </Button>
+      </div>
+    </div>
+  );
+}
+

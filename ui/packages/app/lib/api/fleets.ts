@@ -70,6 +70,12 @@ export const AGENTSFLEET_STATUS = {
   PAUSED: "paused",
   STOPPED: "stopped",
   KILLED: "killed",
+  // Transient post-create state while the synthetic install steps run. Mirrors
+  // `S_INSTALLING` in src/agentsfleetd/fleet_runtime/config_types.zig — the
+  // create path returns this on the 201 and flips it to `active` on the ready
+  // step. The Fleets list/detail keep an installing indicator visible while a
+  // fleet reads this, so progress is never hidden.
+  INSTALLING: "installing",
 } as const;
 export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
 

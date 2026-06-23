@@ -34,6 +34,10 @@ vi.mock("@/lib/api/credentials", async () => (await import("./helpers/dashboard-
 beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks({ pathname: "/fleets" });
+  // The Fleets empty-state lazily fetches the template gallery; default it to an
+  // empty catalog so tests that don't care about templates don't crash on the
+  // unmocked promise (individual tests override as needed).
+  listFleetTemplatesMock.mockResolvedValue({ items: [] });
 });
 afterEach(() => {
   cleanup();
@@ -124,7 +128,8 @@ describe("fleets routes", () => {
     const { default: Page } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("Start your fleet");
-    expect(markup).toContain("Install teammate");
+    // The empty-state composes the shared InstallEntry (its source affordance).
+    expect(markup).toContain("Import from GitHub or paste SKILL.md");
     expect(markup).not.toContain("credit balance is exhausted");
   });
 
@@ -136,6 +141,22 @@ describe("fleets routes", () => {
     expect(markup).toContain("href=\"/fleets/zom_1\"");
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
+  });
+
+  it("fleets list empty-state swallows a failed template fetch (gallery omitted)", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    listFleetTemplatesMock.mockRejectedValueOnce(new Error("catalog down"));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
+    });
+    const { default: Page } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(await Page());
+    // Card still renders via the catch → [] arm; the shared source affordance shows.
+    expect(markup).toContain("Start your fleet");
+    expect(markup).toContain("Import from GitHub or paste SKILL.md");
   });
 
   it("fleets list page swallows a failed billing fetch and still renders", async () => {
@@ -165,7 +186,7 @@ describe("fleets routes", () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("Create a workspace before installing teammates");
+    expect(markup).toContain("Create a workspace before installing a fleet");
   });
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {
@@ -185,7 +206,7 @@ describe("fleets routes", () => {
     listCredentialsMock.mockResolvedValue({ credentials: [{ name: "github", created_at: 1 }] });
     const { default: Page } = await import("../app/(dashboard)/fleets/new/page");
     const markup = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(markup).toContain("Install teammate"); // page title
+    expect(markup).toContain("Install fleet"); // page title
     expect(markup).toContain("Start from a template");
     expect(markup).toContain("GitHub PR reviewer");
     expect(markup).toContain("Import from GitHub"); // GitHub source-strip action
@@ -415,6 +436,43 @@ describe("fleets routes", () => {
     );
     expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
+  });
+
+  // A still-provisioning fleet shows the install states on its own page (the
+  // gate holds the panels until ready), with an installing indicator in the
+  // header — so progress is never hidden, and "Open fleet" lands here while
+  // installing and resolves in place.
+  it("test_installing_fleet_always_visible — detail page shows install states + indicator while installing", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ id: "zom_1", name: "fresh-bot", status: "installing", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/fleets/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    // Header carries the status label + the installing live indicator.
+    expect(markup).toContain("installing");
+    expect(markup).toContain("data-live");
+    // The install states surface is shown; the gate withholds the lower panels.
+    expect(markup).toContain("Install states");
+    expect(markup).not.toContain("Pending approvals");
   });
 
   it("fleets detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {

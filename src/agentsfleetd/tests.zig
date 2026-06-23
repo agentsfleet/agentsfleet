@@ -92,6 +92,7 @@ test {
     _ = @import("http/handlers/fleets/api.zig");
     _ = @import("http/handlers/fleets/api_integration_test.zig");
     _ = @import("http/handlers/fleets/create.zig");
+    _ = @import("http/handlers/fleets/create_install_steps.zig");
     _ = @import("http/handlers/fleets/list.zig");
     _ = @import("http/handlers/fleets/patch.zig");
     _ = @import("http/handlers/fleets/patch_body_fields_integration_test.zig");
