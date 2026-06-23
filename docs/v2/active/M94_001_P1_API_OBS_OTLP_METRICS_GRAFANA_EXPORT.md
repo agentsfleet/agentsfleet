@@ -190,17 +190,19 @@ Extract the triplicated machinery into reusable generic pieces:
 - **Dimension 6.2** — logs behavior byte-identical → existing `otel_logs_test.zig` passes unchanged.
 - **Dimension 6.3** — all three share ONE lifecycle implementation (no per-signal ring/thread copy remains) → grep proof: no duplicated `flushLoop`/`Ring` outside `otlp/`.
 
-### §7 — In-process aggregation + self-observability
+### §7 — In-process aggregation + self-observability — DONE
 
-- `otel_metrics_registry.zig` — windowed-delta aggregation: same-`(metric, labelset)` samples coalesce into one accumulator per flush window (sums add; histograms merge `count`+`sum`+bucketCounts). Flush snapshots+resets → one dataPoint per series. Replaces the metrics per-sample ring.
-- Registry is size-bounded (max distinct series); overflow drops + counts.
-- Drop counter exported as `agentsfleet.telemetry.samples_dropped` (sum) — self-observability for exporter health.
+> **Implementation choice:** coalesce-at-flush, not a persistent registry. The (already-tested) ring stays; `otel_metrics_aggregate.zig`'s `Aggregator` is a transient per-flush object that drains the window and coalesces same-`(metric, labelset)` samples into one series each. Same windowed-delta wire result (10–100× fewer dataPoints) with no persistent global/mutex, reusing the ring + its concurrency tests. The ring's bounded capacity (1024) bounds the window; `MAX_SERIES`=256 bounds distinct series.
+
+- `otel_metrics_aggregate.zig` — `Aggregator`: same-`(metric, labelset)` samples coalesce (sums add; histograms merge `count`+`sum`+bucketCounts) → one `payload.Series` each. Flush builds a fresh Aggregator (delta) and `serializeSeries` emits one dataPoint per series.
+- Size-bounded (`MAX_SERIES`); overflow drops + counts.
+- Drop counter exported as `agentsfleet.telemetry.samples_dropped` (sum) — ring-full drops (delta vs last flush) + series-cap drops; self-observability for exporter health.
 - Persistent HTTP client (from §5) reused across flushes.
 
-- **Dimension 7.1** — N same-labelset sum samples in a window → ONE dataPoint with the summed value → Test `test_aggregates_sum_per_window`.
-- **Dimension 7.2** — N histogram observations in a window → ONE histogram dataPoint (merged buckets, `count==N`, `sum==Σ`) → Test `test_aggregates_histogram_per_window`.
-- **Dimension 7.3** — distinct series beyond the registry cap are dropped and counted; the drop count emits as `agentsfleet.telemetry.samples_dropped` → Test `test_registry_cap_drops_and_counts`.
-- **Dimension 7.4** — flush snapshot **resets** the window (next window starts empty → delta semantics) → Test `test_window_resets_after_flush`.
+- **Dimension 7.1** — DONE — N same-labelset sum samples in a window → ONE dataPoint with the summed value → Test `test_aggregates_sum_per_window` (+ `test_window_resets_after_flush` asserts `asInt:"150"` end-to-end).
+- **Dimension 7.2** — DONE — N histogram observations in a window → ONE histogram dataPoint (merged buckets, `count==N`, `sum==Σ`) → Test `test_aggregates_histogram_per_window`.
+- **Dimension 7.3** — DONE — distinct series beyond the cap are dropped + counted; emits as `agentsfleet.telemetry.samples_dropped` → Test `test_registry_cap_drops_and_counts`.
+- **Dimension 7.4** — DONE — a flush drains the ring → the next window starts empty (delta semantics) → Test `test_window_resets_after_flush`.
 
 ---
 

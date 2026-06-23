@@ -11,8 +11,8 @@ const BUFFER_CAPACITY = otel_metrics.TEST_BUFFER_CAPACITY;
 const POSTURE = "standard";
 const MODEL = "claude-opus-4-8";
 
-fn sampleWithLabels(id: payload.MetricId, value: i64, ts: u64) payload.Sample {
-    var s = payload.newSample(id, value, ts);
+fn sampleWithLabels(id: payload.MetricId, value: i64) payload.Sample {
+    var s = payload.newSample(id, value);
     _ = payload.addLabel(&s, payload.LABEL_POSTURE, POSTURE);
     _ = payload.addLabel(&s, payload.LABEL_MODEL, MODEL);
     return s;
@@ -41,7 +41,7 @@ test "ring push/pop round-trip preserves a sample" {
     defer alloc.destroy(ring);
     ring.* = .{};
 
-    const s = sampleWithLabels(.credit_drain, 123456, 1000);
+    const s = sampleWithLabels(.credit_drain, 123456);
     try std.testing.expect(ring.push(s));
     try std.testing.expectEqual(@as(usize, 1), ring.len());
 
@@ -59,7 +59,7 @@ test "test_enqueue_drops_on_full_never_blocks" {
     defer alloc.destroy(ring);
     ring.* = .{};
 
-    const s = sampleWithLabels(.tokens, 1, 0);
+    const s = sampleWithLabels(.tokens, 1);
     var i: usize = 0;
     while (i < BUFFER_CAPACITY - 1) : (i += 1) {
         try std.testing.expect(ring.push(s)); // returns immediately, never blocks
@@ -70,7 +70,7 @@ test "test_enqueue_drops_on_full_never_blocks" {
 }
 
 test "addLabel respects max count and rejects overflow" {
-    var s = payload.newSample(.tokens, 1, 0);
+    var s = payload.newSample(.tokens, 1);
     var i: usize = 0;
     while (i < payload.MAX_LABELS) : (i += 1) {
         try std.testing.expect(payload.addLabel(&s, "k", "v"));
@@ -80,7 +80,7 @@ test "addLabel respects max count and rejects overflow" {
 }
 
 test "addLabel rejects an oversized key or value without partial write" {
-    var s = payload.newSample(.tokens, 1, 0);
+    var s = payload.newSample(.tokens, 1);
     const huge_val = "v" ** (payload.MAX_LABEL_VAL + 1);
     try std.testing.expect(!payload.addLabel(&s, payload.LABEL_MODEL, huge_val));
     try std.testing.expectEqual(@as(u8, 0), s.label_count);
@@ -107,26 +107,31 @@ test "test_disabled_when_no_config: record* are no-ops when not installed" {
     try std.testing.expectEqual(before, otel_metrics.testPendingCount());
 }
 
-test "test_otlp_payload_shape: batch serializes to the pinned OTLP-JSON fixture" {
+test "test_otlp_payload_shape: aggregated series serialize to the pinned OTLP-JSON fixture" {
     const alloc = std.testing.allocator;
-    // pin test: literal is the contract — these values + timestamps are what
+
+    // Build label sets via Sample construction, then view them as aggregated
+    // Series. Window = [1000, 2000] (delta temporality, one window stamp).
+    const s_credit = sampleWithLabels(.credit_drain, 0);
+    var s_tokens = payload.newSample(.tokens, 0);
+    _ = payload.addLabel(&s_tokens, payload.LABEL_DIRECTION, payload.DIRECTION_INPUT);
+    _ = payload.addLabel(&s_tokens, payload.LABEL_POSTURE, POSTURE);
+    _ = payload.addLabel(&s_tokens, payload.LABEL_MODEL, MODEL);
+    const s_dur = sampleWithLabels(.run_duration, 0);
+    // One 37ms observation → bucket index 3 (the (25, 50] bucket).
+    var dur_buckets = [_]u64{0} ** payload.N_BUCKETS;
+    dur_buckets[3] = 1;
+
+    // pin test: literal is the contract — these values are what
     // tests/fixtures/telemetry/otlp_metrics.json encodes.
-    const samples = [_]payload.Sample{
-        // pin test: literal is the contract
-        sampleWithLabels(.credit_drain, 123456, 1000),
-        blk: {
-            // pin test: literal is the contract
-            var s = payload.newSample(.tokens, 42, 2000);
-            _ = payload.addLabel(&s, payload.LABEL_DIRECTION, payload.DIRECTION_INPUT);
-            _ = payload.addLabel(&s, payload.LABEL_POSTURE, POSTURE);
-            _ = payload.addLabel(&s, payload.LABEL_MODEL, MODEL);
-            break :blk s;
-        },
-        // pin test: literal is the contract
-        sampleWithLabels(.run_duration, 37, 3000),
+    const series = [_]payload.Series{
+        .{ .id = .credit_drain, .labels = s_credit.labels[0..s_credit.label_count], .sum_value = 123456, .hist_count = 0, .hist_sum = 0, .bucket_counts = &[_]u64{} },
+        .{ .id = .tokens, .labels = s_tokens.labels[0..s_tokens.label_count], .sum_value = 42, .hist_count = 0, .hist_sum = 0, .bucket_counts = &[_]u64{} },
+        .{ .id = .run_duration, .labels = s_dur.labels[0..s_dur.label_count], .sum_value = 0, .hist_count = 1, .hist_sum = 37, .bucket_counts = &dur_buckets },
     };
 
-    const body = try payload.serializeBatch(alloc, "agentsfleetd", &samples);
+    // pin test: literal is the contract (window start/now)
+    const body = try payload.serializeSeries(alloc, "agentsfleetd", &series, 1000, 2000);
     defer alloc.free(body);
 
     const fixture = @embedFile("otlp_metrics.json");
@@ -210,6 +215,28 @@ test "test_observes_run_latency_histogram: observeRunDuration enqueues a histogr
     try std.testing.expectEqual(@as(i64, 37), s.value);
     try std.testing.expectEqualStrings(POSTURE, findLabel(&s, payload.LABEL_POSTURE).?);
     try std.testing.expect(findLabel(&s, payload.LABEL_WORKSPACE) == null); // duration carries no workspace
+}
+
+test "test_window_resets_after_flush: a flush drains + aggregates the window; the next is empty" {
+    const alloc = std.testing.allocator;
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+
+    // pin test: literal is the contract
+    otel_metrics.recordCreditDrain(100, POSTURE, MODEL, "ws-reset");
+    // pin test: literal is the contract
+    otel_metrics.recordCreditDrain(50, POSTURE, MODEL, "ws-reset");
+    try std.testing.expectEqual(@as(usize, 2), otel_metrics.testPendingCount());
+
+    // First flush drains + coalesces the same labelset → one summed dataPoint.
+    const body1 = (try otel_metrics.testCollectOnce(alloc, TEST_CFG)) orelse return error.ExpectedBody;
+    defer alloc.free(body1);
+    try std.testing.expect(std.mem.indexOf(u8, body1, "\"asInt\":\"150\"") != null); // 100 + 50
+
+    // Window reset: the ring is drained, so the next flush is empty (delta).
+    try std.testing.expectEqual(@as(usize, 0), otel_metrics.testPendingCount());
+    const body2 = try otel_metrics.testCollectOnce(alloc, TEST_CFG);
+    try std.testing.expect(body2 == null);
 }
 
 test "test_workspace_label_cardinality_capped: distinct workspaces bounded by the cap" {
