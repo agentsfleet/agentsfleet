@@ -11,6 +11,22 @@ export interface CredentialSummary {
   created_at: number;
 }
 
+/**
+ * The decrypted credential body the vault stores (never returned on read). The
+ * shape is open (`[key: string]: unknown`) because a SKILL.md references
+ * arbitrary fields by name, but the self-managed model-provider fields are
+ * typed so the own-key + custom-endpoint write paths can't drift: `provider` +
+ * optional `base_url` (required iff `provider === OPENAI_COMPATIBLE_PROVIDER`,
+ * https + SSRF-validated server-side) alongside `api_key` / `model`.
+ */
+export interface CredentialData {
+  provider?: string;
+  api_key?: string;
+  model?: string;
+  base_url?: string;
+  [key: string]: unknown;
+}
+
 export interface CredentialListResponse {
   credentials: CredentialSummary[];
 }

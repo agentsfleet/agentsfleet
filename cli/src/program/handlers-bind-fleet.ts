@@ -131,6 +131,16 @@ export const buildFleetHandlers = (
         credentialAddEffectFromFlags({
           name: frame.parsed.positionals[0],
           data: optString(frame.parsed.options, "data"),
+          provider: optString(frame.parsed.options, FIELD_PROVIDER),
+          // commander stores hyphenated flags under their camelCase key;
+          // read both so a future parser tweak can't silently drop the value.
+          baseUrl:
+            optString(frame.parsed.options, FIELD_BASE_URL_CAMEL) ??
+            optString(frame.parsed.options, FIELD_BASE_URL_KEBAB),
+          apiKey:
+            optString(frame.parsed.options, FIELD_API_KEY_CAMEL) ??
+            optString(frame.parsed.options, FIELD_API_KEY_KEBAB),
+          model: optString(frame.parsed.options, FIELD_MODEL),
           force: frame.parsed.options["force"] === true,
         }),
     ),
@@ -150,4 +160,10 @@ const FIELD_FROM = "from" as const;
 const FIELD_TEMPLATE = "template" as const;
 const FIELD_NAME = "name" as const;
 const FIELD_LIMIT = "limit" as const;
+const FIELD_PROVIDER = "provider" as const;
+const FIELD_BASE_URL_CAMEL = "baseUrl" as const;
+const FIELD_BASE_URL_KEBAB = "base-url" as const;
+const FIELD_API_KEY_CAMEL = "apiKey" as const;
+const FIELD_API_KEY_KEBAB = "api-key" as const;
+const FIELD_MODEL = "model" as const;
 const AGENT = "fleet" as const;

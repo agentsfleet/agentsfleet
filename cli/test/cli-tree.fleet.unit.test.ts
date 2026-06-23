@@ -138,6 +138,38 @@ test("credential add <name> accepts --data / --force", async () => {
   expect(calls[0]?.frame.parsed.options.force).toBe(true);
 });
 
+test("credential add <name> accepts the typed custom-endpoint flags", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch([
+    "credential", "add", "vllm",
+    "--provider", "openai-compatible",
+    "--base-url", "https://vllm.corp/v1",
+    "--api-key", "sk-custom",
+    "--model", "qwen2.5",
+  ], handlers);
+  expect(calls[0]?.name).toBe("fleet.credential.add");
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe("vllm");
+  expect(calls[0]?.frame.parsed.options.provider).toBe("openai-compatible");
+  // commander stores hyphenated flags under their camelCase key.
+  expect(calls[0]?.frame.parsed.options.baseUrl).toBe("https://vllm.corp/v1");
+  expect(calls[0]?.frame.parsed.options.apiKey).toBe("sk-custom");
+  expect(calls[0]?.frame.parsed.options.model).toBe("qwen2.5");
+});
+
+test("credential add rejects a non-https --base-url at parse time (no dispatch)", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await expect(
+    dispatch([
+      "credential", "add", "vllm",
+      "--provider", "openai-compatible",
+      "--base-url", "http://vllm.corp/v1",
+      "--api-key", "sk-custom",
+    ], handlers),
+  ).rejects.toThrow(/https/i);
+  // The validator threw during parse — the handler never ran.
+  expect(calls).toHaveLength(0);
+});
+
 test("credential show / list / delete each dispatch with the right shape", async () => {
   {
     const { handlers, calls } = makeSpyTree();

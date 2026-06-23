@@ -12,6 +12,7 @@ import {
   parsePathOption,
   parseDurationOption,
   parseJsonObjectOption,
+  parseHttpsUrlOption,
 } from "../src/program/validators.ts";
 
 const VALID_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
@@ -276,5 +277,36 @@ describe("parseJsonObjectOption", () => {
   test("accepts payload at exactly maxBytes", () => {
     const payload = '{"a":1}'; // 7 bytes
     expect(parseJsonObjectOption({ maxBytes: 7 })(payload)).toEqual({ a: 1 });
+  });
+});
+
+describe("parseHttpsUrlOption", () => {
+  test("accepts an https URL and returns it trimmed", () => {
+    expect(parseHttpsUrlOption("  https://vllm.corp/v1  ")).toBe("https://vllm.corp/v1");
+  });
+
+  test("rejects an http:// URL (names the https requirement, exit-2 path)", () => {
+    expect(() => parseHttpsUrlOption("http://vllm.corp/v1")).toThrow(InvalidArgumentError);
+    expect(() => parseHttpsUrlOption("http://vllm.corp/v1")).toThrow(/https/i);
+  });
+
+  test("rejects a non-http(s) scheme (e.g. file://)", () => {
+    expect(() => parseHttpsUrlOption("file:///etc/passwd")).toThrow(/https/i);
+  });
+
+  test("rejects a malformed URL", () => {
+    expect(() => parseHttpsUrlOption("not a url")).toThrow(/valid URL/i);
+  });
+
+  test("empty string throws required", () => {
+    expect(() => parseHttpsUrlOption("")).toThrow("required");
+  });
+
+  test("whitespace-only string throws required", () => {
+    expect(() => parseHttpsUrlOption("   ")).toThrow("required");
+  });
+
+  test("non-string input throws required", () => {
+    expect(() => parseHttpsUrlOption(42)).toThrow("required");
   });
 });

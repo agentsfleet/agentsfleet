@@ -174,6 +174,23 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
+// Apply exitOverride + the injected stdout/stderr to a command AND every
+// subcommand recursively. commander 14 scopes both to the command they're
+// called on; without the walk, a subcommand option-validation error escapes
+// the Effect bridge via process.exit and writes to the real stderr.
+function applyOutputToTree(
+  cmd: Command,
+  stdout: WritableStreamLike,
+  stderr: WritableStreamLike,
+): void {
+  cmd.exitOverride();
+  cmd.configureOutput({
+    writeOut: (s: string) => { stdout.write(s); },
+    writeErr: (s: string) => { stderr.write(s); },
+  });
+  for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
+}
+
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
 
@@ -249,11 +266,14 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   const state: ProgramState = { exitCode: 0 };
   const program = buildProgram({ handlers, version: VERSION, state });
 
-  program.exitOverride();
-  program.configureOutput({
-    writeOut: (s: string) => { stdout.write(s); },
-    writeErr: (s: string) => { stderr.write(s); },
-  });
+  // commander 14 does NOT propagate exitOverride/configureOutput to
+  // subcommands, so an option validator that throws InvalidArgumentError on a
+  // SUBCOMMAND flag (e.g. `credential add --base-url`) would otherwise call
+  // process.exit + write to the real stderr, bypassing the Effect bridge and
+  // the injected test streams. Apply both to the whole tree so every parse-stage
+  // rejection throws (caught by runCommanderParse) and routes through the
+  // configured output instead.
+  applyOutputToTree(program, stdout, stderr);
 
   installPreAction(program, ctx, state);
 

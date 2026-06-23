@@ -15,7 +15,9 @@ import {
   parseIdOption,
   parsePathOption,
   parseStringOption,
+  parseHttpsUrlOption,
 } from "./validators.ts";
+import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
 import type {
   ActionDispatch,
   Handlers,
@@ -132,9 +134,18 @@ export function buildFleetTree(
     .command("credential")
     .description("Workspace credential vault");
 
+  // Two ways to supply the body: the generic `--data <json>` blob, or the
+  // typed custom-endpoint flags (`--provider openai-compatible --base-url
+  // <url> --api-key <key> [--model <m>]`) that compose the same JSON object.
+  // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
+  // exits non-zero with NO network call (full SSRF check stays server-side).
   credential.command("add <name>")
     .description("Store a credential JSON object")
     .option("--data <json>", "Credential JSON object, or @- to read stdin")
+    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_BASE_URL, "Custom endpoint base URL (https; required for a custom-endpoint provider)", parseHttpsUrlOption)
+    .option(FLAG_API_KEY, "Provider API key for the typed custom-endpoint form")
+    .option(FLAG_MODEL_OPT, "Default model identifier for the typed custom-endpoint form", parseStringOption)
     .option("--force", "Overwrite if a credential with this name already exists")
     .action(actionFor("fleet.credential.add", (frame) => runHandler(state, frame, handlers.fleet.credential.add)));
 
@@ -160,5 +171,9 @@ const NAME_DESC =
 const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
+const FLAG_PROVIDER = "--provider <id>" as const;
+const FLAG_BASE_URL = "--base-url <url>" as const;
+const FLAG_API_KEY = "--api-key <key>" as const;
+const FLAG_MODEL_OPT = "--model <name>" as const;
 const COMMAND_LIST = "list" as const;
 const NEXT_CURSOR_FROM_A_PREVIOUS_PAGE = "next_cursor from a previous page" as const;
