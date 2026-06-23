@@ -2,22 +2,21 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  Button,
   buttonClassName,
   EmptyState,
   PageHeader,
   PageTitle,
 } from "@agentsfleet/design-system";
 import { listFleets } from "@/lib/api/fleets";
+import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { PlusIcon } from "lucide-react";
 import FleetsList from "./components/FleetsList";
+import { InstallEntry } from "./new/InstallEntry";
 
 export const dynamic = "force-dynamic";
-
-const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 export default async function FleetsListPage() {
   const { getToken } = await auth();
@@ -44,6 +43,15 @@ export default async function FleetsListPage() {
     getTenantBilling(token).catch(() => null),
   ]);
 
+  // Only the empty state needs the template gallery — fetch it lazily so a
+  // populated list pays nothing for it.
+  const templates =
+    page.items.length === 0
+      ? await listFleetTemplatesCached(token)
+          .then((response) => response.items)
+          .catch(() => [])
+      : [];
+
   return (
     <div>
       <ExhaustionBanner billing={billing} />
@@ -53,24 +61,17 @@ export default async function FleetsListPage() {
           href="/fleets/new"
           className={buttonClassName("default", "sm")}
         >
-          <PlusIcon size={14} /> Install teammate
+          <PlusIcon size={14} /> Install fleet
         </Link>
       </PageHeader>
 
       {page.items.length === 0 ? (
         <EmptyState
           title="Start your fleet"
-          description="Install your first teammate to automate recurring work, then trigger it once to see events."
+          description="Install your first fleet to automate recurring work, then trigger it once to see events."
           action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button asChild size="sm">
-                <Link href="/fleets/new">Install teammate</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm">
-                <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-                  Quick start
-                </a>
-              </Button>
+            <div className="w-full max-w-xl text-left">
+              <InstallEntry templates={templates} quickstart />
             </div>
           }
         />

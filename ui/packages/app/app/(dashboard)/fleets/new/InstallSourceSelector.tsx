@@ -16,9 +16,10 @@ type Props = {
   onPaste: () => void;
 };
 
-// Gallery-first source selector (approved Variant D):
-// curated templates lead as the primary choice; importing a public GitHub repo
-// and pasting a SKILL.md sit in a secondary "or start from source" strip.
+// Minimal, one-experience source selector: curated templates lead as the
+// primary choice; an `owner/repo` import is the secondary path; pasting a
+// SKILL.md is a quiet tertiary link. Picking any source proceeds inline to the
+// live install states — there is no review page.
 export function InstallSourceSelector({
   templates,
   onUseTemplate,
@@ -33,7 +34,7 @@ export function InstallSourceSelector({
       <div className="space-y-1">
         <h2 className="font-mono text-heading text-foreground">Start from a template</h2>
         <p className="text-sm text-muted-foreground">
-          Curated Fleets, pinned and ready. Connect what they need, then create.
+          Curated fleets, pinned and ready. Pick one and it installs inline — you see each state.
         </p>
       </div>
 

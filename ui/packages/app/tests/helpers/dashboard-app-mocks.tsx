@@ -73,7 +73,7 @@ export function fleetsApiMock() {
     getFleet: vi.fn(),
     installFleet: vi.fn(),
     deleteFleet: vi.fn(),
-    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed" },
+    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed", INSTALLING: "installing" },
   };
 }
 

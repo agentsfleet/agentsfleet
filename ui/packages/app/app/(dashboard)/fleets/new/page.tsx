@@ -27,10 +27,10 @@ export default async function InstallFleetPage({
     return (
       <div>
         <PageHeader>
-          <PageTitle>Install teammate</PageTitle>
+          <PageTitle>Install fleet</PageTitle>
         </PageHeader>
         <p className="text-sm text-muted-foreground">
-          Create a workspace before installing teammates.
+          Create a workspace before installing a fleet.
         </p>
       </div>
     );
@@ -53,7 +53,7 @@ export default async function InstallFleetPage({
   return (
     <div>
       <PageHeader>
-        <PageTitle>Install teammate</PageTitle>
+        <PageTitle>Install fleet</PageTitle>
       </PageHeader>
       <InstallFleet
         workspaceId={workspace.id}

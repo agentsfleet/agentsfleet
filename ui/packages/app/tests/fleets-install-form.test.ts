@@ -2,276 +2,161 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
-import { EVENTS } from "../lib/analytics/events";
+import { resetCommonMocks } from "./helpers/dashboard-mocks";
 
-const captureProductEventMock = vi.fn();
-vi.mock("@/lib/analytics/posthog", () => ({
-  captureProductEvent: captureProductEventMock,
-}));
-
-// Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
-vi.stubGlobal("fetch", fetchMock);
+// InstallFleetForm is now a pure paste INPUT: it validates the SKILL.md (and
+// optional TRIGGER.md) frontmatter client-side, then hands the validated
+// markdown to the install states via `onSubmit`. It does NOT post or route —
+// create runs inline in the states. These tests pin the validation gate + the
+// callback shape.
 vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
-vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
-vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
-vi.mock("@agentsfleet/design-system", async (orig) => {
-  const h = await import("./helpers/dashboard-mocks");
-  return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
-});
+
+import InstallFleetForm from "../app/(dashboard)/fleets/new/InstallFleetForm";
+
+const FIXTURE_TRIGGER =
+  "---\nname: platform-ops\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
+const FIXTURE_SKILL =
+  "---\nname: platform-ops\ndescription: Automates platform checks\nversion: 0.1.0\n---\n# Platform Ops\n";
+
+let onSubmit: ReturnType<typeof vi.fn<(sourceMarkdown: string, triggerMarkdown?: string) => void>>;
+let onBack: ReturnType<typeof vi.fn<() => void>>;
+
+function renderForm() {
+  onSubmit = vi.fn<(sourceMarkdown: string, triggerMarkdown?: string) => void>();
+  onBack = vi.fn<() => void>();
+  return render(React.createElement(InstallFleetForm, { onSubmit, onBack }));
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetCommonMocks({ pathname: "/fleets" });
+  resetCommonMocks();
 });
-afterEach(() => {
-  cleanup();
-  fetchMock.mockReset();
-});
+afterEach(() => cleanup());
 
-// These tests type a ~120-char multi-line TRIGGER.md fixture. `delay: null`
-// fills the field in one synchronous pass instead of one keystroke per event
-// loop tick, so the typing can't starve past testTimeout when the suite runs
-// many shards in parallel — the byte content the assertions read is identical.
-describe("InstallFleetForm interactions", () => {
-  async function renderForm() {
-    const { default: Form } = await import(
-      "../app/(dashboard)/fleets/new/InstallFleetForm"
-    );
-    return render(React.createElement(Form, { workspaceId: "ws_1" }));
-  }
-
-  const FIXTURE_TRIGGER =
-    "---\nname: platform-ops\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
-  const FIXTURE_SKILL =
-    "---\nname: platform-ops\ndescription: Automates platform checks\nversion: 0.1.0\n---\n# Platform Ops\n";
-
-  it("blank TRIGGER.md submits SKILL.md only for server defaulting", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({ fleet_id: "zom_manual", status: "active" }),
-    });
+describe("InstallFleetForm — paste input", () => {
+  it("blank TRIGGER.md submits SKILL.md only (server defaults the wake)", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     expect(screen.getByText(/What is SKILL\.md/i)).toBeTruthy();
-    expect(screen.getAllByText(/API wake/i).length).toBeGreaterThan(0);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/workspaces/ws_1/fleets"),
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    const callBody = JSON.parse(
-      (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
-    ) as { trigger_markdown?: string; source_markdown: string };
-    expect(Object.keys(callBody)).toEqual(["source_markdown"]);
-    expect(callBody.source_markdown).toContain("Platform Ops");
-    expect(routerPush).toHaveBeenCalledWith("/fleets/zom_manual");
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [skill, trigger] = onSubmit.mock.calls[0]!;
+    expect(skill).toContain("Platform Ops");
+    expect(trigger).toBeUndefined();
   });
 
-  it("empty SKILL.md blocks submit and shows the required-field error", async () => {
+  it("a filled TRIGGER.md is passed alongside the SKILL.md", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    renderForm();
+    const skillField = screen.getByLabelText(/SKILL\.md body/i);
+    const triggerField = screen.getByLabelText(/TRIGGER\.md body/i);
+    expect(skillField.compareDocumentPosition(triggerField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.type(triggerField, FIXTURE_TRIGGER);
+    await user.type(skillField, FIXTURE_SKILL);
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [skill, trigger] = onSubmit.mock.calls[0]!;
+    expect(skill).toContain("Platform Ops");
+    expect(trigger).toContain("x-agentsfleet:");
   });
 
-  it("invalid SKILL.md frontmatter blocks submit without a network call", async () => {
+  it("empty SKILL.md blocks submit with the required-field error", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("malformed SKILL.md (no frontmatter markers) blocks submit", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderForm();
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# missing frontmatter");
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/SKILL\.md needs frontmatter/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/SKILL\.md needs frontmatter/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid SKILL.md missing required frontmatter fields blocks submit", async () => {
+  it("SKILL.md missing a required frontmatter field blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
+    renderForm();
     await user.type(
       screen.getByLabelText(/SKILL\.md body/i),
       "---\nname: platform-ops\ndescription: Automates platform checks\n---\n# Platform Ops\n",
     );
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/SKILL\.md frontmatter needs version:/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/SKILL\.md frontmatter needs version:/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid SKILL.md without a closing frontmatter marker blocks submit", async () => {
+  it("SKILL.md without a closing frontmatter marker blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
+    renderForm();
     await user.type(
       screen.getByLabelText(/SKILL\.md body/i),
-      "---\nname: platform-ops\ndescription: Automates platform checks\nversion: 0.1.0\n# Platform Ops\n",
+      "---\nname: platform-ops\ndescription: d\nversion: 0.1.0\n# Platform Ops\n",
     );
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/SKILL\.md needs frontmatter/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/SKILL\.md needs frontmatter/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid TRIGGER.md frontmatter blocks submit without a network call", async () => {
+  it("malformed TRIGGER.md (missing x-agentsfleet) blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), "---\nname: platform-ops\n---\n");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
     await waitFor(() =>
       expect(screen.getByText(/TRIGGER\.md frontmatter needs x-agentsfleet:/i)).toBeTruthy(),
     );
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid TRIGGER.md without frontmatter markers blocks submit", async () => {
+  it("TRIGGER.md without frontmatter markers blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), "name: platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/TRIGGER\.md needs frontmatter/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/TRIGGER\.md needs frontmatter/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid TRIGGER.md without a top-level name blocks submit", async () => {
+  it("TRIGGER.md without a top-level name blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     await user.type(
       screen.getByLabelText(/TRIGGER\.md body/i),
       "---\nx-agentsfleet:\n  triggers:\n    - type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
     );
     await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/TRIGGER\.md frontmatter needs name:/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/TRIGGER\.md frontmatter needs name:/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("invalid TRIGGER.md missing x-agentsfleet fields blocks submit", async () => {
+  it("TRIGGER.md missing x-agentsfleet sub-fields blocks submit", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
     await user.type(
       screen.getByLabelText(/TRIGGER\.md body/i),
       "---\nname: platform-ops\nx-agentsfleet:\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
     );
     await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/x-agentsfleet needs triggers:/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /create fleet/i }));
+    await waitFor(() => expect(screen.getByText(/x-agentsfleet needs triggers:/i)).toBeTruthy());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("happy path: fills form, POSTs trigger+source markdown, redirects to detail", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({ fleet_id: "zom_new", status: "active" }),
-    });
+  it("Back and Cancel both call onBack", async () => {
     const user = userEvent.setup({ delay: null });
-    await renderForm();
-    const skillField = screen.getByLabelText(/SKILL\.md body/i);
-    const triggerField = screen.getByLabelText(/TRIGGER\.md body/i);
-    expect(skillField.compareDocumentPosition(triggerField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/workspaces/ws_1/fleets"),
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    const callBody = JSON.parse(
-      (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
-    ) as { trigger_markdown: string; source_markdown: string };
-    expect(Object.keys(callBody).sort()).toEqual(["source_markdown", "trigger_markdown"]);
-    expect(callBody.trigger_markdown).toContain("name: platform-ops");
-    expect(callBody.trigger_markdown).toContain("x-agentsfleet:");
-    expect(callBody.source_markdown).toContain("Platform Ops");
-    expect(routerPush).toHaveBeenCalledWith("/fleets/zom_new");
-    expect(routerRefresh).not.toHaveBeenCalled();
-    expect(captureProductEventMock).toHaveBeenCalledTimes(1);
-    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.fleet_created, { fleet_id: "zom_new" });
-  });
-
-  it("409 conflict renders a name-collision hint", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 409,
-      statusText: "Conflict",
-      json: async () => ({ detail: "dup", error_code: "UZ-ZOM-002" }),
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
-    );
-    expect(routerPush).not.toHaveBeenCalled();
-    expect(captureProductEventMock).not.toHaveBeenCalled();
-  });
-
-  it("non-409 errors render the raw error message", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-      json: async () => ({ detail: "boom", error_code: "UZ-SRV" }),
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/boom/)).toBeTruthy(),
-    );
-  });
-
-  it("missing token surfaces Not authenticated", async () => {
-    // Server-side auth() returns no token → installFleetAction returns
-    // { ok: false, status: 401 }; the form surfaces it as the api-error alert.
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const user = userEvent.setup({ delay: null });
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), FIXTURE_SKILL);
-    await user.click(screen.getByRole("button", { name: /install teammate/i }));
-    // Same UZ-AUTH-401 mapping — "Your session expired" copy in the alert.
-    await waitFor(() =>
-      expect(screen.getByText(/Your session expired/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("Cancel button navigates back to /fleets", async () => {
-    const user = userEvent.setup({ delay: null });
-    await renderForm();
+    renderForm();
+    await user.click(screen.getByRole("button", { name: /Back to templates/i }));
+    expect(onBack).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: /cancel/i }));
-    expect(routerPush).toHaveBeenCalledWith("/fleets");
+    expect(onBack).toHaveBeenCalledTimes(2);
   });
 });

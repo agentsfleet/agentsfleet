@@ -15,10 +15,11 @@ type Props = {
 
 const PULSE_CAP = 5;
 
-type LiveState = "live" | "parked" | "failed";
+type LiveState = "live" | "installing" | "parked" | "failed";
 
 function liveStateOf(status: string): LiveState {
   if (status === AGENTSFLEET_STATUS.ACTIVE) return "live";
+  if (status === AGENTSFLEET_STATUS.INSTALLING) return "installing";
   if (status === AGENTSFLEET_STATUS.KILLED) return "failed";
   return "parked";
 }
@@ -191,6 +192,11 @@ function StateDot({ state, pulses }: StateDotProps) {
         }
       />
     );
+  }
+  // Installing: a live info-toned pulse so an in-flight install reads as active
+  // progress (never hidden) without competing with the mint live signal.
+  if (state === "installing") {
+    return <WakePulse live className="inline-block w-2 h-2 rounded-full bg-info" />;
   }
   if (state === "failed") {
     return <span className="inline-block w-2 h-2 rounded-full bg-destructive" />;

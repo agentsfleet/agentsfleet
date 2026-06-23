@@ -4,7 +4,7 @@ const config_types = @import("config_types.zig");
 const FleetStatus = config_types.FleetStatus;
 
 test "FleetStatus.toSlice round-trips via fromSlice" {
-    inline for (&[_]FleetStatus{ .active, .paused, .stopped, .killed }) |s| {
+    inline for (&[_]FleetStatus{ .active, .paused, .stopped, .killed, .installing }) |s| {
         const text = s.toSlice();
         const parsed = FleetStatus.fromSlice(text) orelse return error.RoundTripFailed;
         try std.testing.expectEqual(s, parsed);
