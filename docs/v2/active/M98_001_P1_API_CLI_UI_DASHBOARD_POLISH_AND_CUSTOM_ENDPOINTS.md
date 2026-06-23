@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M98
 **Workstream:** 001
 **Date:** Jun 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the dashboard reads as several half-finished pages (mixed typefaces, two tab styles, stranded controls, a cluttered Models screen, an invisible email in the dark account modal), and own-key model setup cannot target a self-hosted / gateway OpenAI-compatible endpoint — both erode trust and block real customers.
 **Categories:** Application Programming Interface (API), Command-Line Interface (CLI), User Interface (UI)
 **Batch:** B1 — single workstream; suggested commit staging is the UI polish first (§1–§5), then the custom-endpoint feature (§6–§8) on top.
-**Branch:** {feat/m98-dashboard-polish-custom-endpoints — added when work begins}
+**Branch:** feat/m98-dashboard-polish-custom-endpoints
+**Test Baseline:** unit=2015 integration=201 (Zig `src/**`, `make _lint_zig_test_depth` at CHORE(open); VERIFY Test Delta compares against this. UI vitest + CLI bun lanes track separately via their own coverage gates.)
 **Depends on:** none
 **Provenance:** agent-generated (interactive design-review session with Indy, Jun 23, 2026) — grounded in a clickable mockup (Billing / Models / Credentials, dark+light) Indy signed off screen-by-screen, the decision to bundle custom endpoints here (not a separate spec), the confirmation that `base_url` rides in the saved credential JSON ("it's just the json that gets saved"), and a read of every touched component, CLI command, and the resolver→runner→nullclaw chain; re-confirm at PLAN.
 
