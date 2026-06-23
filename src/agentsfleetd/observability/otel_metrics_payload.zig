@@ -144,10 +144,12 @@ fn appendAttributes(list: *std.ArrayList(u8), alloc: std.mem.Allocator, labels: 
     try list.appendSlice(alloc, "\"attributes\":[");
     for (labels, 0..) |lbl, i| {
         if (i > 0) try list.appendSlice(alloc, ",");
-        // json.fmt emits the surrounding quotes (and escapes the interior), so
-        // the format string must NOT wrap {f} in its own quotes.
-        try list.print(alloc, "{{\"key\":\"{s}\",\"value\":{{\"stringValue\":{f}}}}}", .{
-            lbl.key[0..lbl.key_len],
+        // Both key and value go through json.fmt (which adds the quotes and
+        // escapes the interior) — keys are trusted consts today, but routing
+        // them through json.fmt keeps the whole attribute escape-safe and
+        // consistent with the value + the traces/logs serializers.
+        try list.print(alloc, "{{\"key\":{f},\"value\":{{\"stringValue\":{f}}}}}", .{
+            std.json.fmt(lbl.key[0..lbl.key_len], .{}),
             std.json.fmt(lbl.val[0..lbl.val_len], .{}),
         });
     }
