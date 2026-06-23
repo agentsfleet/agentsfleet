@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. **Preserved user behaviour** — every existing action still works unchanged: platform-default vs named-provider own-key setup, add/delete credential, usage history with load-more, Workspace/API-Keys tabs, theme toggle, the account modal, and every CLI command. A credential without `base_url` behaves exactly as today.
 3. **Optimal-way check** — fix the *application* of the existing design system + thread one validated field through the existing self-managed path; the gap to "perfect" (deeper motion; a typed multi-endpoint provider catalog) is deferred deliberately.
 4. **Rebuild-vs-iterate** — iterate. Design system, tokens, primitives, and the resolve→runner chain all exist; the defects are inconsistent application and a missing field. A rebuild trades determinism for nothing.
-5. **What we build** — a typography/tab/width/header/ink/motion standard in the shared layer; redesigned Billing (balance+meter, terminal usage ledger, no seat grid); the Models/Credentials sidebar split + decluttered two-option Models screen; a Credentials *vault* (model providers · custom secrets · integrations-coming-soon); the Clerk dark-mode fix; and `base_url`-carrying credentials with SSRF-safe validation threaded to the engine + egress allowlist, surfaced in both the CLI and the UI.
+5. **What we build** — a typography/tab/width/header/ink/motion standard in the shared layer; redesigned Billing (balance+meter, terminal usage ledger, no seat grid); the Models/Credentials sidebar split + decluttered two-option Models screen; a Credentials *vault* (model providers · custom secrets · integrations-coming-soon); the Clerk dark-mode fix; and `base_url`-carrying credentials with SSRF-safe validation threaded to the engine + egress allowlist, surfaced in both the CLI and the UI; and one minimal, unified install-teammate experience (template / GitHub source / paste SKILL.md, with its import states) shared by the Dashboard and the Fleets install page.
 6. **What we do NOT build** — first-class GitHub/Zoho/Slack connectors (Coming soon; custom secrets bridge them); a typed multi-endpoint provider catalog; non-OpenAI wire formats; per-credential fleet-usage tracking beyond the active model credential; any billing-model change (consumption/prepaid stays); credential rotation automation.
 7. **Fit with existing features** — compounds with the design system, the settings IA, the self-managed own-key path, and the credential vault; must not destabilize platform-default routing, the billing data path, or the runner egress allowlist (the SSRF boundary).
 8. **Surface order** — UI polish (§1–§5) is UI-only. The custom-endpoint feature is **CLI-first** per repo default (`agentsfleet`): the routing + CLI land the contract, the UI option follows. Justified: the credential JSON shape is the contract both surfaces consume.
@@ -88,7 +88,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Overview
 
-**Goal (testable):** the dashboard renders one design language (one underline tab primitive, one ~1120px content container + ambient dual-tone glow on every page, `PageHeader` description-below-title, sans chrome / mono data, ink CTA in light), with Billing/Models/Credentials rebuilt to it and the Clerk account modal readable in dark; and a self-managed credential carrying `base_url` is validated (https, SSRF-safe), threaded through `ExecutionPolicy` → runner → nullclaw → egress allowlist, and settable from both the CLI and the UI — with an invalid or SSRF-unsafe URL rejected with a typed error before any run.
+**Goal (testable):** the dashboard renders one design language (one underline tab primitive, one ~1120px content container + ambient dual-tone glow on every page, `PageHeader` description-below-title, sans chrome / mono data, ink CTA in light), with Billing/Models/Credentials rebuilt to it and the Clerk account modal readable in dark; and a self-managed credential carrying `base_url` is validated (https, SSRF-safe), threaded through `ExecutionPolicy` → runner → nullclaw → egress allowlist, and settable from both the CLI and the UI — with an invalid or SSRF-unsafe URL rejected with a typed error before any run. The install-teammate experience (template / GitHub source / paste SKILL.md, with its import states) is one minimal shared flow across the Dashboard and the Fleets install page.
 
 **Problem:** the design system is applied inconsistently (two tab visuals, varying widths + stranded controls, monospace on chrome, a thrice-restated Models screen, Credentials buried as a tab, an invisible dark-theme email), and own-key model setup resolves only the hardcoded named providers — a customer on self-hosted vLLM / OpenRouter / a gateway has no way to point a fleet at it.
 
@@ -119,6 +119,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/app/(dashboard)/settings/models/page.tsx` · `components/ProviderSelector.tsx` | EDIT | drop in-page Credentials tab; two option-cards; own-key "Custom — OpenAI-compatible" option reveals base-URL field |
 | `ui/packages/app/app/(dashboard)/credentials/page.tsx` · `components/CredentialsList.tsx` · `components/AddCredentialForm.tsx` · `components/IntegrationsComingSoon.tsx` (CREATE) | EDIT/CREATE | vault layout (kinds strip + grouped sections); custom-secrets table + best-effort referenced-by; the Custom — OpenAI-compatible credential (base URL + key); Planned integrations + bridge hint |
 | `ui/packages/app/lib/api/credentials.ts` | EDIT | type the optional `provider`/`base_url` fields in the credential data shape |
+| `ui/packages/app/app/(dashboard)/fleets/new/page.tsx` · `InstallFleet.tsx` · `InstallFleetForm.tsx` · `InstallSourceSelector.tsx` · `TemplateCard.tsx` | EDIT | minimal Install-teammate page; one shared experience for the three paths + import states |
+| `ui/packages/app/app/(dashboard)/page.tsx` · `fleets/page.tsx` | EDIT | Dashboard "Start your fleet" + Fleets empty-state compose the shared install component (drop the hand-rolled duplicate cards) |
 | `src/agentsfleetd/state/tenant_provider_resolver.zig` | EDIT | extract + validate optional `base_url` from the self-managed credential JSON |
 | `src/agentsfleetd/state/base_url_guard.zig` | CREATE | validate https + SSRF-safe host (reject loopback/private/link-local/metadata); tagged-union result |
 | `src/agentsfleetd/lib/contract/execution_policy.zig` | EDIT | nullable `base_url`; derive `inference_host` from it for custom endpoints; backward-compatible deserialize |
@@ -208,6 +210,15 @@ CLI: `agentsfleet` credential-add carries `provider:"openai-compatible"` + `base
 - **Dimension 8.3** — UI custom credential form submits provider+base_url via `createCredential` → Test `test_custom_credential_form_payload`
 - **Dimension 8.4** — UI own-key "Custom" option reveals the URL field, selects the credential, calls `setTenantProviderSelfManaged` with its ref → Test `test_models_custom_option_select`
 
+### §9 — Unified install-teammate experience (Dashboard + Fleets)
+
+One install experience, three paths — **template**, **GitHub source** (`owner/repo` → Import), **paste SKILL.md** — composed identically by the Dashboard "Start your fleet" card, the Fleets `new` install page, and the Fleets empty-state CTAs. Today the Dashboard hand-rolls its own template cards while `fleets/new` has another set, and the install page reads cluttered; this collapses them to **one shared install component** and makes the page **minimal** — a clear hierarchy (templates first, the `owner/repo` source row second, the paste-SKILL.md affordance a quiet tertiary link) replacing today's flat, undifferentiated stack, in the §1 design language (consistent `TemplateCard`, NEEDS-credential badges, the typography/button rules). The flow renders the full set of import states from the reference panel: importing/progress, repo-not-found / no-SKILL.md / rate-limited (404/429), first-run no-credentials (connect prompt), and skill-only bundle (no TRIGGER.md → a manual / API wake is generated). **Implementation default:** extract the shared experience once and compose it in all three entry points; the Dashboard stops rendering a divergent copy.
+
+- **Dimension 9.1** — `fleets/new` renders the three paths (template grid · `owner/repo` import · paste SKILL.md) in the §1 design language → Test `test_install_three_paths_render`
+- **Dimension 9.2** — Dashboard "Start your fleet" and the Fleets empty-state CTAs compose the **same** shared install component (no hand-rolled duplicate) → Test `test_install_experience_shared`
+- **Dimension 9.3** — each path creates: Use template, Import from `owner/repo`, Paste SKILL.md → the create action fires with the correct source → Test `test_install_paths_create`
+- **Dimension 9.4** — import states render: importing · not-found/404/rate-limited (retry) · first-run-no-credentials (connect prompt) · skill-only no-TRIGGER (manual/API wake) → Test `test_install_states_render`
+
 ---
 
 ## Interfaces
@@ -246,6 +257,10 @@ Credential data JSON (self-managed; stored encrypted in `vault.secrets`, never r
 | openai-compatible without base_url (or base_url without it) | mismatched fields | rejected as malformed credential at the boundary |
 | Endpoint unreachable / non-OpenAI response | network/timeout / wrong shape at run | run fails with the endpoint error surfaced in Events; ECL timeout/retryable class, not silent |
 | api_key leak | logging the credential | api_key never logged or returned (VLT); only the host appears |
+| Repo not found / no SKILL.md / rate-limited | bad `owner/repo`, GitHub 404 or 429 | install shows the not-found/rate-limited state with a retry — not a crash or silent blank |
+| First-run, no credentials | template `NEEDS:` a provider not connected | install shows "connect X to create" and gates create until the credential is connected |
+| Skill-only bundle | imported source has SKILL.md but no TRIGGER.md | install informs a manual / API wake is generated; create still succeeds |
+| Malformed SKILL.md paste | invalid pasted content | inline validation error; create blocked |
 
 ---
 
@@ -292,7 +307,11 @@ Credential data JSON (self-managed; stored encrypted in `vault.secrets`, never r
 | 8.2 | e2e (cli-acceptance) | `test_cli_provider_set_custom` | CLI sets provider to the openai-compatible credential vs live API; `--json` reflects custom setup |
 | 8.3 | unit | `test_custom_credential_form_payload` | UI form submit → `createCredential` body has provider+base_url |
 | 8.4 | e2e (acceptance) | `test_models_custom_option_select` | UI: add custom credential, pick in own-key, submit → `setTenantProviderSelfManaged` with its ref |
-| all-ui | e2e (acceptance) | dashboard acceptance-e2e | Billing/Models/Credentials render every section dark+light; no console errors; axe green |
+| 9.1 | unit | `test_install_three_paths_render` | `fleets/new` renders template grid + `owner/repo` import + paste SKILL.md affordance |
+| 9.2 | unit | `test_install_experience_shared` | Dashboard card + Fleets empty-state render the same shared install component (one source) |
+| 9.3 | e2e (acceptance) | `test_install_paths_create` | Use template, Import `owner/repo`, Paste SKILL.md each fire create with the correct source |
+| 9.4 | unit | `test_install_states_render` | importing / 404-not-found-rate-limited / first-run-no-creds / skill-only-no-TRIGGER states each render |
+| all-ui | e2e (acceptance) | dashboard acceptance-e2e | Billing/Models/Credentials/Install render every section dark+light; no console errors; axe green |
 | all-cli | e2e (cli-acceptance) | CLI vault + provider acceptance | extended `credential-vault.spec.ts` + `tenant-provider-mutation.spec.ts` cover the openai-compatible path vs live API |
 
 **Regression:** platform-default + named-provider routing and runs; billing pagination; credential create/delete; settings tabs; theme toggle; the egress allowlist for named providers; every existing CLI command — all unchanged except assertions tracking intentional markup. **Idempotency/replay:** re-resolving the same credential yields the same policy; a re-run against the same endpoint is not double-charged beyond existing telemetry semantics. **Integration coverage:** `cli/test/credentials.integration.test.ts` extended for the base_url credential; backend resolver→runner→fake-endpoint + allowlist integration (Failure Modes for SSRF/unreachable injected deterministically).
@@ -307,6 +326,7 @@ Credential data JSON (self-managed; stored encrypted in `vault.secrets`, never r
 - [ ] Cross-compile clean — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
 - [ ] CLI carries base_url end-to-end — verify: `make test-unit-cli` (or the CLI unit lane) and `make cli-acceptance`
 - [ ] Dashboard acceptance e2e green (all screens, both themes) — verify: `make dry-smoke && make acceptance-e2e`
+- [ ] Install experience minimal + unified across Dashboard and Fleets (3 paths + import states) — verify: `make test-unit-app && make acceptance-e2e`
 - [ ] `make lint` + `make lint-app` clean · `gitleaks detect` clean · no non-md file over 350 lines added
 
 ---
@@ -353,7 +373,7 @@ grep -rn "api_key" src/agentsfleetd/runner --include='*.zig' | grep -i "log\|pri
 
 > **Empty at creation.** Populate as work surfaces consults, skill outcomes, and any Indy-acked deferrals.
 
-- **Authoring-time decisions (Indy, Jun 23, 2026 design-review session):** direction = "terminal-native, clean Replicas-like", branding stays; the right-side dual-tone glow is intentional, on all pages "with jazz"; ~1120px is the committed content width; light-mode primary CTA = ink; decorative terminal corner-tags are labels, never links; Credentials kinds order = Model providers → Custom secrets → Integrations; GitHub/Zoho/Slack are "Coming soon" (not built), custom secrets bridge them now; **bundle custom endpoints into M98_001** (not a separate spec); **`base_url` rides in the saved credential JSON — no schema migration**; full support (backend + CLI + UI) this round; add integration + acceptance + CLI-acceptance coverage.
+- **Authoring-time decisions (Indy, Jun 23, 2026 design-review session):** direction = "terminal-native, clean Replicas-like", branding stays; the right-side dual-tone glow is intentional, on all pages "with jazz"; ~1120px is the committed content width; light-mode primary CTA = ink; decorative terminal corner-tags are labels, never links; Credentials kinds order = Model providers → Custom secrets → Integrations; GitHub/Zoho/Slack are "Coming soon" (not built), custom secrets bridge them now; **bundle custom endpoints into M98_001** (not a separate spec); **`base_url` rides in the saved credential JSON — no schema migration**; full support (backend + CLI + UI) this round; add integration + acceptance + CLI-acceptance coverage. Also bundle the **install-teammate experience** (§9): the Install page "looks very cluttered" → make it minimal, and unify the three install paths (template / GitHub source / paste SKILL.md) and the import states across the Dashboard and the Fleets install page (one shared component).
 - **Open dependency to confirm at PLAN:** nullclaw OpenAI-compatible base_url override capability (see read-first note). If absent → blocking upstream item, surface to Indy.
 - **Skill chain outcomes** — `/write-unit-test`, `/review`, `/review-pr`, `kishore-babysit-prs`: populate during VERIFY/CHORE(close).
 - **Deferrals** — full per-credential fleet-usage tracking (beyond the active model credential) is **Out of Scope** here, not a silently-dropped Dimension.
