@@ -157,7 +157,7 @@ One underline tab visual shared by `Tabs`/`TabNav` (pill retired); `PageHeader` 
 - **Dimension 1.1** ✅ DONE — `Tabs`/`TabNav` render underline (shared `tab-styles.ts`); pill applied nowhere in component `src/` → Test `test_tabs_underline_no_pill`
 - **Dimension 1.2** ✅ DONE — `PageHeader` renders description below the title (+ optional top-right `actions` slot) → Test `test_pageheader_description_below`
 - **Dimension 1.3** — every dashboard page composes the shared width container; none sets its own max-width → Test `test_pages_use_shared_content_width`
-- **Dimension 1.4** — primary `Button` resolves to ink under `[data-theme=light]`, pulse under dark → Test `test_primary_button_ink_in_light`
+- **Dimension 1.4** ✅ DONE — primary `Button` resolves to ink under `[data-theme=light]`, pulse under dark (via the `--cta` token) → Test `test_primary_button_ink_in_light`
 - **Dimension 1.5** — `prefers-reduced-motion` disables all animations → Test `test_motion_respects_reduced_motion`
 
 ### §2 — Billing redesign
