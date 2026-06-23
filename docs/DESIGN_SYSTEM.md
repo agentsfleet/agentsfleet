@@ -242,6 +242,7 @@ no JS timer — same discipline as the wake pulse.
 - **Tables / lists:** prefer flat rows with 1px bottom borders over zebra-striping. Tabular-nums everywhere. Right-align numbers, left-align text.
 - **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
 - **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
+- **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional primary action pins top-right — the title + description form a left column, the action aligns to its top. One `PageHeader` primitive carries both the bare and the with-description/action shapes.
 
 ---
 
@@ -295,6 +296,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-21 | Add a second sanctioned animation: the marketing install-demo terminal reveal | Supersedes the 2026-05-08 "only signature animation" call for marketing surfaces. The hero shows the install "running" via a one-shot staggered line reveal (opacity-only, CSS-driven, reduced-motion-safe). Scoped to marketing; operational log streams stay non-staggered. |
 | 2026-06-23 | Add "Interaction restraint — minimize end-user friction" principle | Indy: "always think about adding less friction to an end user." Restraint is procedural, not only visual — auto-proceed once intent is expressed (no confirm beats), resolve inputs inline, auto-resume on gate satisfaction, push state instead of poll. Surfaced from the M98 install-fleet flow (auto-create after import/gate). Destructive actions still confirm. |
 | 2026-06-23 | Retire the pill tab; one underline tab style (app) | M98 §1.1. The app shipped two tab visuals (a `bg-muted` pill tray with a `bg-background` active fill) applied inconsistently. Unified to a single underline: active = a `--pulse` 2px bottom-border on a `--border` rail; inactive `--text-muted`. Shared `design-system/tab-styles.ts` consumed by `Tabs` (Radix) + `TabNav` (links) + their tests (RULE UFS). Approved in the M98 mockup (`docs/design/M98_001-ui-polish-preview.html`). |
+| 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
 
 ---
 
