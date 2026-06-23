@@ -141,6 +141,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | `--pulse` | `#14B8A6` | Pulse desaturates 15% in light mode. |
 | `--pulse-dim` | `#0D9488` | |
 | `--pulse-glow` | `rgba(20, 184, 166, 0.30)` | |
+| `--ink` | `#17211F` | Light-mode primary-CTA fill (solid ink, white text). Mint stays for accents/links/active/glow. |
 
 ### Forbidden color treatments
 
@@ -235,7 +236,7 @@ no JS timer — same discipline as the wake pulse.
 
 ## Component principles
 
-- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md`. Three variants: `primary` (pulse fill, near-black text), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
+- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md`. Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
 - **Badges:** mono font, 11px, padding `4px 8px`, border-radius `--r-sm`. Status badges (`LIVE`, `degraded`, `failed`) get colored fills; informational badges get muted outlines.
 - **Form fields:** surface-2 background, border on default, pulse-cyan focus ring with `--pulse-glow` shadow. Mono font for input values (they're operational data, not prose).
 - **Cards:** surface-1 background, 1px border, `--r-md` radius. Padding 24px default, 16px in dense data views.
@@ -297,6 +298,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-06-23 | Add "Interaction restraint — minimize end-user friction" principle | Indy: "always think about adding less friction to an end user." Restraint is procedural, not only visual — auto-proceed once intent is expressed (no confirm beats), resolve inputs inline, auto-resume on gate satisfaction, push state instead of poll. Surfaced from the M98 install-fleet flow (auto-create after import/gate). Destructive actions still confirm. |
 | 2026-06-23 | Retire the pill tab; one underline tab style (app) | M98 §1.1. The app shipped two tab visuals (a `bg-muted` pill tray with a `bg-background` active fill) applied inconsistently. Unified to a single underline: active = a `--pulse` 2px bottom-border on a `--border` rail; inactive `--text-muted`. Shared `design-system/tab-styles.ts` consumed by `Tabs` (Radix) + `TabNav` (links) + their tests (RULE UFS). Approved in the M98 mockup (`docs/design/M98_001-ui-polish-preview.html`). |
 | 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
+| 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
 
 ---
 

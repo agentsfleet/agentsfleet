@@ -97,6 +97,10 @@
    * a pulse-coloured surface (primary CTAs, brand-mark labels). Stays
    * dark in light mode too; see tokens.css `--on-pulse`. */
   --color-on-pulse: var(--on-pulse);
+  /* Primary CTA fill — swaps pulse (dark) <-> ink (light); see tokens.css --cta. */
+  --color-cta: var(--cta);
+  --color-cta-hover: var(--cta-hover);
+  --color-cta-foreground: var(--cta-foreground);
 
   /* `bg-surface-deep` — one shade below --bg; for terminal/log/CLI
    * chrome where the body reads as "lower than the page itself".

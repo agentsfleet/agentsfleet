@@ -52,6 +52,14 @@
    * ~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html. */
   --on-pulse: #0a0d0e;
 
+  /* ── Primary CTA fill ──
+   * Isolated from --pulse so light mode can use solid ink for the primary
+   * button while mint stays reserved for accents/links/active/glow. Dark = the
+   * pulse; light swaps to --ink (see [data-theme="light"]). */
+  --cta: var(--pulse);
+  --cta-hover: var(--pulse-dim);
+  --cta-foreground: var(--on-pulse);
+
   /* ── Status (use sparingly, only for actual status) ── */
   --success: #34d399;
   --warn: #f59e0b;
@@ -220,6 +228,12 @@
   --pulse-glow: rgba(20, 184, 166, 0.3);
   /* --on-pulse stays dark in light mode too — see comment above. */
   --on-pulse: #0a0d0e;
+  /* Primary CTA = solid ink in light mode (mint stays for accents / links /
+   * active / glow). White text on the ink fill. */
+  --ink: #17211f;
+  --cta: var(--ink);
+  --cta-hover: #0a0f0e;
+  --cta-foreground: #ffffff;
 }
 
 /* ── The wake pulse — the signature live-signal animation ──
