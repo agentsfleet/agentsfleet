@@ -6,11 +6,16 @@ import { ActionForm, Alert, Badge, Button, Spinner } from "@agentsfleet/design-s
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import type { ModelCap } from "@/lib/api/model_caps";
-import { PROVIDER_MODE, type ProviderMode } from "@/lib/types";
+import { PROVIDER_MODE, type ProviderMode, type TenantProvider } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import Step1Credential from "./Step1Credential";
 import Step2Model from "./Step2Model";
+import CustomEndpointOwnKey, {
+  OWN_KEY_KIND,
+  OwnKeyKindToggle,
+  type OwnKeyKind,
+} from "./CustomEndpointOwnKey";
 
 type Props = {
   workspaceId: string;
@@ -98,54 +103,64 @@ function OptionCard({ mode, title, description, modelLine, isActive, action }: O
   );
 }
 
-function OwnKeyConfig({
-  workspaceId,
-  credentials,
-  catalogue,
-  credentialRef,
-  modelOverride,
-  isPending,
-  onCredentialRefChange,
-  onModelChange,
-  onCancel,
-}: {
+type OwnKeyConfigProps = {
   workspaceId: string;
   credentials: CredentialSummary[];
   catalogue: ModelCap[];
   credentialRef: string;
   modelOverride: string;
   isPending: boolean;
+  ownKeyKind: OwnKeyKind;
+  onKindChange: (kind: OwnKeyKind) => void;
   onCredentialRefChange: (ref: string) => void;
   onModelChange: (value: string) => void;
   onCancel: () => void;
-}) {
+  onCustomSaved: (provider: TenantProvider) => void;
+  onCustomError: (message: string) => void;
+};
+
+function OwnKeyConfig(props: OwnKeyConfigProps) {
+  const isCustom = props.ownKeyKind === OWN_KEY_KIND.custom;
   return (
     <div className="space-y-4 rounded-md border border-border bg-card p-4">
       <div className="space-y-1">
         <h3 className="font-mono text-heading text-foreground">Own-key model setup</h3>
         <p className="text-xs text-muted-foreground">
-          Pick the stored credential and name the model teammates should use.
+          {isCustom
+            ? "Point the model at any OpenAI-compatible endpoint — store its base URL and optional key."
+            : "Pick the stored credential and name the model teammates should use."}
         </p>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Step1Credential
-          workspaceId={workspaceId}
-          credentials={credentials}
-          catalogue={catalogue}
-          credentialRef={credentialRef}
-          onCredentialRefChange={onCredentialRefChange}
+      <OwnKeyKindToggle kind={props.ownKeyKind} onKindChange={props.onKindChange} />
+      {isCustom ? (
+        <CustomEndpointOwnKey
+          workspaceId={props.workspaceId}
+          catalogue={props.catalogue}
+          isPending={props.isPending}
+          onSaved={props.onCustomSaved}
+          onError={props.onCustomError}
         />
-        <Step2Model catalogue={catalogue} model={modelOverride} onModelChange={onModelChange} />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={isPending || credentialRef === ""}>
-          {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
-          Save model setup
-        </Button>
-        <Button type="button" variant="ghost" disabled={isPending} onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
+      ) : (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Step1Credential
+              workspaceId={props.workspaceId}
+              credentials={props.credentials}
+              catalogue={props.catalogue}
+              credentialRef={props.credentialRef}
+              onCredentialRefChange={props.onCredentialRefChange}
+            />
+            <Step2Model catalogue={props.catalogue} model={props.modelOverride} onModelChange={props.onModelChange} />
+          </div>
+          <Button type="submit" disabled={props.isPending || props.credentialRef === ""}>
+            {props.isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
+            Save model setup
+          </Button>
+        </>
+      )}
+      <Button type="button" variant="ghost" disabled={props.isPending} onClick={props.onCancel}>
+        Cancel
+      </Button>
     </div>
   );
 }
@@ -185,12 +200,30 @@ export default function ProviderSelector({
   // The own-key config form is revealed by "Switch to own key"; the cards are
   // the default view. Form inputs are local state submitted by ActionForm.
   const [configuring, setConfiguring] = useState(false);
+  const [ownKeyKind, setOwnKeyKind] = useState<OwnKeyKind>(OWN_KEY_KIND.stored);
   const [credentialRef, setCredentialRef] = useState<string>(
     currentCredentialRef ?? credentials[0]?.name ?? "",
   );
   const [modelOverride, setModelOverride] = useState<string>(
     currentMode === PROVIDER_MODE.self_managed ? currentModel : "",
   );
+  // The custom-endpoint own-key path self-submits (it creates a credential then
+  // sets the provider), so its outcome lands here rather than via useActionState.
+  const [customState, setCustomState] = useState<ActionState>(INITIAL_ACTION_STATE);
+
+  function onCustomSaved(provider: TenantProvider) {
+    captureProductEvent(EVENTS.model_added, {
+      provider: provider.provider,
+      mode: provider.mode,
+      model: provider.model,
+    });
+    setCustomState({ ok: SAVE_SUCCESS_MSG, error: null });
+    router.refresh();
+  }
+
+  function onCustomError(message: string) {
+    setCustomState({ ok: null, error: message });
+  }
 
   async function runPlatform(_prev: ActionState): Promise<ActionState> {
     const result = await resetProviderAction();
@@ -263,9 +296,19 @@ export default function ProviderSelector({
           credentialRef={credentialRef}
           modelOverride={modelOverride}
           isPending={isPending}
+          ownKeyKind={ownKeyKind}
+          onKindChange={(kind) => {
+            setCustomState(INITIAL_ACTION_STATE);
+            setOwnKeyKind(kind);
+          }}
           onCredentialRefChange={setCredentialRef}
           onModelChange={setModelOverride}
-          onCancel={() => setConfiguring(false)}
+          onCancel={() => {
+            setCustomState(INITIAL_ACTION_STATE);
+            setConfiguring(false);
+          }}
+          onCustomSaved={onCustomSaved}
+          onCustomError={onCustomError}
         />
       ) : null}
 
@@ -273,7 +316,7 @@ export default function ProviderSelector({
         Changes apply to new events; events already in flight finish on their current configuration.
       </p>
 
-      <ProviderSelectorFeedback state={state} />
+      <ProviderSelectorFeedback state={customState.ok || customState.error ? customState : state} />
     </ActionForm>
   );
 }

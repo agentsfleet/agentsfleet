@@ -20,10 +20,11 @@ import {
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
+import {
+  resolveCredentialBody,
+  type CredentialAddFlags,
+} from "./fleet_credential_body.ts";
 
-const STDIN_DATA_SENTINEL = "@-";
-const MISSING_DATA_HINT =
-  "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
 const TYPE_STRING = "string" as const;
 
 const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
@@ -36,40 +37,6 @@ interface CredentialRow {
 interface CredentialsListResponse {
   readonly credentials?: ReadonlyArray<CredentialRow>;
 }
-
-type ParsedData =
-  | { readonly ok: true; readonly value: Record<string, unknown> }
-  | { readonly ok: false; readonly message: string };
-
-const parseDataObject = (raw: string): ParsedData => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, message: `--data is not valid JSON: ${message}` };
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, message: "--data must be a JSON object (not a string, array, or scalar)" };
-  }
-  const obj = parsed as Record<string, unknown>;
-  if (Object.keys(obj).length === 0) {
-    return {
-      ok: false,
-      message: "--data must be a non-empty JSON object — at least one field is required",
-    };
-  }
-  return { ok: true, value: obj };
-};
-
-const readStdinJson: Effect.Effect<string, ConfigError> = Effect.tryPromise({
-  try: () => Bun.stdin.text(),
-  catch: (err) =>
-    new ConfigError({
-      detail: `failed to read stdin: ${err instanceof Error ? err.message : String(err)}`,
-      suggestion: "ensure stdin is not closed and re-pipe the JSON payload",
-    }),
-});
 
 const findCredentialByName = (
   wsId: string,
@@ -90,12 +57,6 @@ const findCredentialByName = (
     return list.find((c) => c.name === name) ?? null;
   });
 
-export interface CredentialAddFlags {
-  readonly name?: string | undefined;
-  readonly data?: string | undefined;
-  readonly force?: boolean | undefined;
-}
-
 const requireName = (
   name: string | undefined,
   usage: string,
@@ -108,31 +69,6 @@ const requireName = (
           suggestion: `usage: ${usage}`,
         }),
       );
-
-const resolveDataSource = (
-  data: string | undefined,
-): Effect.Effect<string, CliError> =>
-  Effect.gen(function* () {
-    if (!isString(data) || data.length === 0) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: MISSING_DATA_HINT,
-          suggestion: "pass --data='{...}' or --data=@- for stdin",
-        }),
-      );
-    }
-    if (data !== STDIN_DATA_SENTINEL) return data;
-    const raw = yield* readStdinJson;
-    if (!raw || raw.trim().length === 0) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: "--data=@- but stdin was empty",
-          suggestion: "pipe JSON on stdin: cat creds.json | agentsfleet credential add <name> --data=@-",
-        }),
-      );
-    }
-    return raw;
-  });
 
 export const credentialAddEffectFromFlags = (
   flags: CredentialAddFlags,
@@ -151,16 +87,7 @@ export const credentialAddEffectFromFlags = (
       flags.name,
       "agentsfleet credential add <name> --data='<json-object>' [--force]",
     );
-    const raw = yield* resolveDataSource(flags.data);
-    const validated = parseDataObject(raw);
-    if (!validated.ok) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: validated.message,
-          suggestion: "fix the --data payload and retry",
-        }),
-      );
-    }
+    const data = yield* resolveCredentialBody(flags);
 
     if (flags.force !== true) {
       const existing = yield* findCredentialByName(wsId, name);
@@ -180,7 +107,7 @@ export const credentialAddEffectFromFlags = (
     yield* http.request<unknown>({
       path: wsCredentialsPath(wsId),
       method: "POST",
-      body: { name, data: validated.value },
+      body: { name, data },
       token,
     });
 

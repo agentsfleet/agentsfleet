@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const {
   setProviderSelfManagedActionMock,
@@ -37,7 +37,11 @@ vi.mock("lucide-react", () => ({
 import Step1Credential from "@/app/(dashboard)/settings/models/components/Step1Credential";
 import Step2Model from "@/app/(dashboard)/settings/models/components/Step2Model";
 import ProviderSelector from "@/app/(dashboard)/settings/models/components/ProviderSelector";
-import { PROVIDER_MODE } from "@/lib/types";
+import {
+  PROVIDER_MODE,
+  OPENAI_COMPATIBLE_PROVIDER,
+  CREDENTIAL_FIELD,
+} from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { WORKSPACE_CREDENTIALS_PATH } from "@/lib/fleet-credentials";
 
@@ -321,5 +325,177 @@ describe("ProviderSelector", () => {
     const save = screen.getByRole("button", { name: /save model setup/i }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── own-key "Custom — OpenAI-compatible" option ─────────────────────────
+describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
+  const baseProps = {
+    workspaceId: WORKSPACE_ID,
+    currentMode: PROVIDER_MODE.platform,
+    currentCredentialRef: null,
+    currentModel: "",
+    credentials: [CRED],
+    catalogue: [],
+  };
+
+  const CUSTOM_NAME = "vllm-gateway";
+  const CUSTOM_URL = "https://vllm.corp/v1";
+
+  function openCustom() {
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
+    fireEvent.click(screen.getByRole("button", { name: /custom — openai-compatible/i }));
+  }
+
+  it("picking Custom reveals the base-URL field (hidden under the stored path)", () => {
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
+    // Stored path: no base-URL field.
+    expect(screen.queryByLabelText(/base url/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /custom — openai-compatible/i }));
+    // Custom path: the base-URL field appears.
+    expect(screen.getByLabelText(/base url/i)).toBeTruthy();
+  });
+
+  it("test_models_custom_option_select: submit → createCredential(provider+base_url) → setProviderSelfManaged(ref)", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CUSTOM_NAME } });
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: true,
+      data: { mode: PROVIDER_MODE.self_managed, provider: OPENAI_COMPATIBLE_PROVIDER, model: "" },
+    });
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    expect(createCredentialActionMock).toHaveBeenCalledWith(WORKSPACE_ID, {
+      name: CUSTOM_NAME,
+      data: {
+        [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [CREDENTIAL_FIELD.baseUrl]: CUSTOM_URL,
+      },
+    });
+    await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({
+      credential_ref: CUSTOM_NAME,
+      model: undefined,
+    });
+    expect(routerRefresh).toHaveBeenCalled();
+    expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.model_added, {
+      provider: OPENAI_COMPATIBLE_PROVIDER,
+      mode: PROVIDER_MODE.self_managed,
+      model: "",
+    });
+  });
+
+  it("includes api_key in the credential body when the key field is filled", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CUSTOM_NAME } });
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: true,
+      data: { mode: PROVIDER_MODE.self_managed, provider: OPENAI_COMPATIBLE_PROVIDER, model: "" },
+    });
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-custom-x" } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    expect(createCredentialActionMock).toHaveBeenCalledWith(WORKSPACE_ID, {
+      name: CUSTOM_NAME,
+      data: {
+        [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
+        [CREDENTIAL_FIELD.baseUrl]: CUSTOM_URL,
+        [CREDENTIAL_FIELD.apiKey]: "sk-custom-x",
+      },
+    });
+  });
+
+  it("a non-https base URL is flagged and neither action fires", async () => {
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: "http://vllm.corp/v1" } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/https/i));
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+  });
+
+  it("a credential-create failure surfaces the error and never sets the provider", async () => {
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "duplicate name",
+      status: 409,
+    });
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("duplicate name"));
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a set-provider failure (credential stored but provider not switched)", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CUSTOM_NAME } });
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: false,
+      error: "blocked_host",
+      status: 400,
+    });
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("blocked_host"));
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("toggling back to Stored clears a custom error and restores the stored Save button", async () => {
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: "http://x" } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /stored credential/i }));
+    expect(screen.queryByLabelText(/base url/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /save model setup/i })).toBeTruthy();
+  });
+
+  it("Enter on a field saves; a second Enter while in flight is guarded", async () => {
+    let resolveCreate!: (v: { ok: true; data: { name: string } }) => void;
+    createCredentialActionMock.mockReturnValue(
+      new Promise<{ ok: true; data: { name: string } }>((r) => { resolveCreate = r; }),
+    );
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: true,
+      data: { mode: PROVIDER_MODE.self_managed, provider: OPENAI_COMPATIBLE_PROVIDER, model: "" },
+    });
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    const field = screen.getByLabelText(/base url/i);
+    fireEvent.keyDown(field, { key: "Enter" }); // enters busy
+    fireEvent.keyDown(field, { key: "Enter" }); // guarded — no second create
+    await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    expect(createCredentialActionMock).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveCreate({ ok: true, data: { name: CUSTOM_NAME } }); });
+    await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("ignores a non-Enter keypress on a field", () => {
+    render(React.createElement(ProviderSelector, { ...baseProps }));
+    openCustom();
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.keyDown(screen.getByLabelText(/base url/i), { key: "x" });
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 });

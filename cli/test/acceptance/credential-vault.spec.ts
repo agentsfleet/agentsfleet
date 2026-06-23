@@ -76,6 +76,14 @@ const NO_COLOR_ON = "1" as const;
 const STATE_DIR_PREFIX = "agentsfleet-credvault-" as const;
 const UNKNOWN_NAME_SUFFIX = "ghost" as const;
 
+// Custom-endpoint typed credential-add form.
+const FLAG_PROVIDER = "--provider" as const;
+const FLAG_BASE_URL = "--base-url" as const;
+const FLAG_API_KEY = "--api-key" as const;
+const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
+const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
+const NON_HTTPS_BASE_URL = "http://vllm.acceptance.example/v1" as const;
+
 // A quoted JSON scalar — valid JSON, but not the object `add` requires, so the
 // client-side payload guard must reject it before any network call.
 const SCALAR_PAYLOAD = '"just-a-string"' as const;
@@ -87,7 +95,14 @@ const SECRET_ENTROPY_BYTES = 18 as const;
 // never reach a captured stream. Distinct, high-entropy, easy to grep for.
 const SECRET_TOKEN_VALUE = `sk-live-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
 const SECRET_PASSWORD_VALUE = `pw-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
-const SECRET_VALUES: ReadonlyArray<string> = [SECRET_TOKEN_VALUE, SECRET_PASSWORD_VALUE];
+// The custom-endpoint credential's api_key is also a planted secret — every
+// leak assertion below proves it never reaches a captured stream (VLT).
+const CUSTOM_API_KEY_VALUE = `sk-custom-${crypto.randomBytes(SECRET_ENTROPY_BYTES).toString(ENC_HEX)}`;
+const SECRET_VALUES: ReadonlyArray<string> = [
+  SECRET_TOKEN_VALUE,
+  SECRET_PASSWORD_VALUE,
+  CUSTOM_API_KEY_VALUE,
+];
 
 const credentialName = (label: string): string => `${ACCEPTANCE_RUN_PREFIX}-${label}`;
 
@@ -307,6 +322,48 @@ if (!isLive) {
       it("add with a non-object payload is rejected client-side (no network)", async () => {
         await runUnroutable([
           CMD_CREDENTIAL, SUB_ADD, credentialName("scalar"), FLAG_DATA, SCALAR_PAYLOAD, FLAG_JSON,
+        ]);
+      });
+    });
+
+    // Custom OpenAI-compatible endpoint credential — the typed credential-add
+    // form stores provider + base_url; a non-https URL is rejected by the
+    // commander validator with NO network call.
+    describe("custom OpenAI-compatible endpoint", () => {
+      const customName = credentialName("custom-endpoint");
+
+      afterAll(async () => {
+        await run([CMD_CREDENTIAL, SUB_DELETE, customName, FLAG_JSON]).catch(() => undefined);
+      });
+
+      it("add --provider openai-compatible --base-url <https> --api-key <key> stores it", async () => {
+        const result = await run([
+          CMD_CREDENTIAL, SUB_ADD, customName,
+          FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
+          FLAG_BASE_URL, CUSTOM_BASE_URL,
+          FLAG_API_KEY, CUSTOM_API_KEY_VALUE,
+          FLAG_JSON,
+        ]);
+        assert.equal(result.code, 0, `custom add exited ${result.code}: ${result.stderr}`);
+        const parsed = parseJson<Record<string, unknown>>(result.stdout, "custom-add");
+        assert.equal(parsed[KEY_STATUS], STATUS_STORED, `unexpected custom add status: ${result.stdout}`);
+        assert.equal(parsed[KEY_NAME], customName, `custom add echoed wrong name: ${result.stdout}`);
+      });
+
+      it("list --json contains the custom-endpoint credential", async () => {
+        const result = await run([CMD_CREDENTIAL, SUB_LIST, FLAG_JSON]);
+        assert.equal(result.code, 0, `list exited ${result.code}: ${result.stderr}`);
+        const parsed = parseJson<CredentialListEnvelope>(result.stdout, "list-custom");
+        assert.ok(listIncludesName(parsed, customName), `list omitted ${customName}: ${result.stdout}`);
+      });
+
+      it("a non-https --base-url is rejected client-side (non-zero exit, no network)", async () => {
+        await runUnroutable([
+          CMD_CREDENTIAL, SUB_ADD, credentialName("custom-bad"),
+          FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
+          FLAG_BASE_URL, NON_HTTPS_BASE_URL,
+          FLAG_API_KEY, CUSTOM_API_KEY_VALUE,
+          FLAG_JSON,
         ]);
       });
     });

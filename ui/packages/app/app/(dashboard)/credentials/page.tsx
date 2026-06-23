@@ -17,6 +17,7 @@ import { VAULT_KIND, VAULT_KINDS } from "./lib/vault-kinds";
 import AddCredentialForm from "./components/AddCredentialForm";
 import CredentialsList from "./components/CredentialsList";
 import CustomSecretsList from "./components/CustomSecretsList";
+import CustomEndpointForm from "./components/CustomEndpointForm";
 import IntegrationsComingSoon from "./components/IntegrationsComingSoon";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,18 @@ function ProvidersGroup({
             protectedCredentialName={activeModelRef}
           />
         )}
+        <details className="rounded-md border border-dashed border-border bg-card">
+          <summary className="cursor-pointer px-4 py-3">
+            <span className="block font-medium text-foreground">Custom — OpenAI-compatible</span>
+            <span className="block text-xs text-muted-foreground">
+              Point a teammate at any OpenAI-compatible endpoint (self-hosted vLLM, a
+              gateway, OpenRouter) — store its base URL and optional key here.
+            </span>
+          </summary>
+          <div className="border-t border-border p-4">
+            <CustomEndpointForm workspaceId={workspaceId} />
+          </div>
+        </details>
       </section>
     </Section>
   );

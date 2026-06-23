@@ -25,8 +25,64 @@ import assert from "node:assert/strict";
 import { runFleetctl } from "./cli.js";
 import type { RunResult } from "./cli.js";
 import { assertNoSecretLeak } from "./negatives.ts";
+import { OPENAI_COMPATIBLE_PROVIDER } from "../../../src/constants/custom-endpoint.ts";
 
 type Env = Readonly<Record<string, string>>;
+
+// Custom-endpoint credential argv heads — the typed credential-add form
+// (`--provider openai-compatible --base-url <url> --api-key <key>`). UFS: the
+// flag literals live once here, reused by the provider-set scenario.
+const CMD_CREDENTIAL = "credential" as const;
+const SUB_ADD = "add" as const;
+const SUB_DELETE = "delete" as const;
+export const FLAG_PROVIDER = "--provider" as const;
+export const FLAG_BASE_URL = "--base-url" as const;
+export const FLAG_API_KEY = "--api-key" as const;
+
+export interface CustomCredentialOptions {
+  readonly name: string;
+  readonly baseUrl: string;
+  readonly apiKey: string;
+}
+
+/**
+ * `credential add <name> --provider openai-compatible --base-url <url>
+ * --api-key <key> --json`. Stores a custom OpenAI-compatible credential so a
+ * subsequent `tenant provider add --credential <name>` can target it. Returns
+ * the raw run result; the secret-leak regression fires against the JWT.
+ */
+export async function addCustomEndpointCredential(
+  env: Env,
+  sessionJwt: string,
+  opts: CustomCredentialOptions,
+): Promise<RunResult> {
+  const result = await runFleetctl(
+    [
+      CMD_CREDENTIAL, SUB_ADD, opts.name,
+      FLAG_PROVIDER, OPENAI_COMPATIBLE_PROVIDER,
+      FLAG_BASE_URL, opts.baseUrl,
+      FLAG_API_KEY, opts.apiKey,
+      FLAG_JSON,
+    ],
+    { env },
+  );
+  assertNoSecretLeak(result, sessionJwt);
+  // The api_key must never echo to stdout/stderr (VLT).
+  assert.ok(
+    !`${result.stdout}\n${result.stderr}`.includes(opts.apiKey),
+    "custom-endpoint credential api_key leaked into CLI output",
+  );
+  return result;
+}
+
+/** Best-effort delete of a named credential (afterAll cleanup). */
+export async function deleteCredentialByName(env: Env, name: string): Promise<void> {
+  try {
+    await runFleetctl([CMD_CREDENTIAL, SUB_DELETE, name, FLAG_JSON], { env });
+  } catch {
+    /* best-effort teardown — never throw out of afterAll */
+  }
+}
 
 // Provider-mode wire literals — mirror `PROVIDER_MODE` in
 // `cli/src/constants/billing.ts`, which itself mirrors
