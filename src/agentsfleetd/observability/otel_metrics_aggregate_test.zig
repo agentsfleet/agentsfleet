@@ -56,6 +56,18 @@ test "histogram clamps a negative observation to bucket 0 and adds 0 to the sum"
     try std.testing.expectEqual(@as(u64, 1), series[0].bucket_counts[1]); // 8 → bucket 1
 }
 
+test "histogram sum saturates instead of trapping on two maxInt observations" {
+    var agg = aggregate.Aggregator.init();
+    // A runner-saturated wall_ms reaches here as maxInt(i64); two in one window
+    // would overflow a plain += and trap in ReleaseSafe. Saturating add caps it.
+    agg.add(histSample(std.math.maxInt(i64)));
+    agg.add(histSample(std.math.maxInt(i64)));
+    var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
+    const series = agg.toSeries(&buf);
+    try std.testing.expectEqual(@as(u64, 2), series[0].hist_count);
+    try std.testing.expectEqual(@as(i64, std.math.maxInt(i64)), series[0].hist_sum);
+}
+
 test "distinct label sets aggregate into distinct series" {
     var agg = aggregate.Aggregator.init();
     agg.add(sumSample(10, "ws-a"));
