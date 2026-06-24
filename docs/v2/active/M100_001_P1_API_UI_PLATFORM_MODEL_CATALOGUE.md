@@ -13,11 +13,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M100
 **Workstream:** 001
 **Date:** Jun 24, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — unblocks self-serve platform onboarding; removes the manual seed + playbook bootstrap that gate every new environment.
 **Categories:** API, UI
 **Batch:** B1
-**Branch:** {feat/m100-platform-model-catalogue — added at CHORE(open)}
+**Branch:** feat/m100-platform-model-catalogue
+**Test Baseline:** unit=2090 integration=202
 **Depends on:** M98_002 (custom OpenAI-compatible endpoints; the provider resolve + catalogue-gate path this extends)
 **Provenance:** human-directed, LLM-drafted (Opus 4.8, Jun 24, 2026) — reconciled design from the M100 handoff + Indy decisions A–F; supersedes the discarded `is_default`-on-`model_caps` draft.
 
