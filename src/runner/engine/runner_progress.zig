@@ -5,12 +5,11 @@
 //! fires these synchronously on the same thread that called `fleet.runSingle`,
 //! so writes to the pipe are sequential — no locking, no concurrent producers.
 //!
-//! Args redaction: docs/architecture/ mandates that any secret bytes substituted
-//! into tool arguments are replaced with the canonical `${secrets.NAME.FIELD}`
-//! placeholder before the frame leaves this child. The redactor is constructed
-//! in runner.execute from the known fleet_config secrets (LLM api_key, GitHub
-//! token); runner.zig is the only file that knows the secret VALUES, and they
-//! never escape into an `ActivityFrame`.
+//! Args redaction: secret bytes are replaced with the canonical
+//! `${secrets.NAME.FIELD}` placeholder before any frame leaves this child. The
+//! redactor is fed api_key ∪ every `secrets_map` leaf (== the set
+//! `secret_substitution` resolves), built in runner.execute via `collectSecrets`;
+//! on redaction OOM the frame is DROPPED, never emitted raw (M100 §1).
 
 const std = @import("std");
 const logging = @import("log");
@@ -173,12 +172,14 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // and emit a fresh `tool_call_started` carrying the
             // post-redaction bytes; otherwise just close the call.
             if (b.args) |raw| {
-                const redacted = redactBytes(self.alloc, raw, self.secrets) catch raw;
-                defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
-                const start_frame = ActivityFrame{
-                    .tool_call_started = .{ .name = b.tool, .args_redacted = redacted },
-                };
-                self.writer.write(start_frame);
+                // Drop the args frame on redaction OOM (raw could carry a secret);
+                // the completed frame below still closes the call (M100 §1).
+                if (redactBytes(self.alloc, raw, self.secrets)) |redacted| {
+                    defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
+                    self.writer.write(.{ .tool_call_started = .{ .name = b.tool, .args_redacted = redacted } });
+                } else |err| {
+                    log.warn("tool_args_redaction_failed_frame_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+                }
             }
             const ms_signed = std.math.cast(i64, b.duration_ms) orelse std.math.maxInt(i64);
             const done_frame = ActivityFrame{
@@ -269,12 +270,13 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     const self = Adapter.fromPtr(ctx);
     if (chunk.is_final) return;
     if (chunk.delta.len == 0) return;
-    const redacted = redactBytes(self.alloc, chunk.delta, self.secrets) catch chunk.delta;
-    defer if (redacted.ptr != chunk.delta.ptr) self.alloc.free(redacted);
-    const frame = ActivityFrame{
-        .fleet_response_chunk = .{ .text = redacted },
+    // Drop the chunk on redaction OOM (un-redacted delta could leak; M100 §1).
+    const redacted = redactBytes(self.alloc, chunk.delta, self.secrets) catch |err| {
+        log.warn("chunk_redaction_failed_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        return;
     };
-    self.writer.write(frame);
+    defer if (redacted.ptr != chunk.delta.ptr) self.alloc.free(redacted);
+    self.writer.write(.{ .fleet_response_chunk = .{ .text = redacted } });
 }
 
 // ── Args redaction ──────────────────────────────────────────────────────────

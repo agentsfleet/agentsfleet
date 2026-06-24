@@ -20,6 +20,15 @@ const log = logging.scoped(.runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 
+const Secret = runner_progress.Secret;
+
+/// Canonical placeholder for the LLM provider api_key — the one secret not keyed
+/// by a `secrets_map` name/field. RULE UFS: single source.
+const S_SECRETS_LLM_API_KEY = "${secrets.llm.api_key}";
+/// Leading bytes of every `${secrets.NAME.FIELD}` placeholder built for a
+/// `secrets_map` leaf; kept in lockstep with `secret_substitution`'s grammar.
+const S_SECRETS_PLACEHOLDER_PREFIX = "${secrets.";
+
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
 /// The terminal StageResponse content rides the same RPC channel as
@@ -31,9 +40,67 @@ pub fn redactedFinalReply(
     secrets: []const runner_progress.Secret,
 ) ![]const u8 {
     defer alloc.free(response);
-    const redacted = runner_progress.redactBytes(alloc, response, secrets) catch response;
+    // Fail CLOSED on redaction OOM — returning un-redacted `response` would leak a
+    // secret; propagate (caller maps to FleetRunFailed, no content). (M100 §1.)
+    const redacted = try runner_progress.redactBytes(alloc, response, secrets);
     defer if (redacted.ptr != response.ptr) alloc.free(redacted);
     return alloc.dupe(u8, redacted);
+}
+
+/// Collect every secret VALUE the redactor must scrub: api_key ∪ every leaf in
+/// `secrets_map` — the same set `secret_substitution` resolves — so the redaction
+/// set equals the substitution set (M100 §1, Invariant 1). Each maps to its
+/// `${secrets.NAME.FIELD}` placeholder. Slice + placeholders are `alloc`-owned
+/// (free with `freeSecrets`); `value` fields borrow the JSON inputs. Fails closed.
+pub fn collectSecrets(
+    alloc: std.mem.Allocator,
+    fleet_config: ?std.json.Value,
+    secrets_map: ?std.json.Value,
+) std.mem.Allocator.Error![]const Secret {
+    var list: std.ArrayList(Secret) = .empty;
+    errdefer freeSecretsList(alloc, &list);
+
+    // api_key — always a slot (empty value short-circuits; placeholder allocated for uniform free).
+    const api_key = if (fleet_config) |ac| (json.getStr(ac, wire.api_key) orelse "") else "";
+    try list.ensureUnusedCapacity(alloc, 1);
+    list.appendAssumeCapacity(.{ .value = api_key, .placeholder = try alloc.dupe(u8, S_SECRETS_LLM_API_KEY) });
+
+    // Every tool credential: secrets_map is {name:{field:"value"}}; mirror
+    // secret_substitution's traversal. Non-object/non-string shapes are skipped.
+    if (secrets_map) |sm| {
+        if (sm == .object) {
+            var names = sm.object.iterator();
+            while (names.next()) |name_e| {
+                const cred = name_e.value_ptr.*;
+                if (cred != .object) continue;
+                var fields = cred.object.iterator();
+                while (fields.next()) |field_e| {
+                    const value = switch (field_e.value_ptr.*) {
+                        .string => |s| s,
+                        else => continue,
+                    };
+                    try list.ensureUnusedCapacity(alloc, 1);
+                    const ph = try std.fmt.allocPrint(alloc, "{s}{s}.{s}}}", .{
+                        S_SECRETS_PLACEHOLDER_PREFIX, name_e.key_ptr.*, field_e.key_ptr.*,
+                    });
+                    list.appendAssumeCapacity(.{ .value = value, .placeholder = ph });
+                }
+            }
+        }
+    }
+
+    return list.toOwnedSlice(alloc);
+}
+
+/// Free a `collectSecrets` result: each placeholder, then the slice (values borrowed).
+pub fn freeSecrets(alloc: std.mem.Allocator, secrets: []const Secret) void {
+    for (secrets) |s| alloc.free(s.placeholder);
+    alloc.free(secrets);
+}
+
+fn freeSecretsList(alloc: std.mem.Allocator, list: *std.ArrayList(Secret)) void {
+    for (list.items) |s| alloc.free(s.placeholder);
+    list.deinit(alloc);
 }
 
 /// Holds the runtime LLM provider bundle for the fleet loop.
@@ -264,4 +331,18 @@ test "redactedFinalReply with no matching secret still transfers ownership" {
     // The std.testing.allocator catches double-free / leak; a defective
     // implementation that returned `input` directly would either leak
     // the dupe or double-free on the caller's defer.
+}
+
+test "redactedFinalReply fails closed (no raw leak) when redaction allocation fails" {
+    // M100 §1: FailingAllocator index 0 = the response dupe (succeeds), index 1 =
+    // redactBytes' internal dupe (fails). The helper must PROPAGATE the error, not
+    // fall back to the un-redacted `response` — so a secret never leaves on the
+    // terminal reply under memory pressure.
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "sk-leak", .placeholder = "${secrets.llm.api_key}" },
+    };
+    var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    const alloc = fa.allocator();
+    const response = try alloc.dupe(u8, "hello sk-leak world"); // index 0
+    try std.testing.expectError(error.OutOfMemory, redactedFinalReply(alloc, response, &secrets));
 }

@@ -15,6 +15,7 @@ const types = @import("types.zig");
 const common = @import("common");
 const nullclaw = @import("nullclaw");
 const contract = @import("contract");
+const runner_progress = @import("runner_progress.zig");
 const AllowList = @import("../network/network.zig").AllowList;
 
 const Config = nullclaw.config.Config;
@@ -346,20 +347,114 @@ test "errorCodeForFailure maps every FailureClass to its canonical UZ-EXEC code"
     try std.testing.expectEqualStrings(ec.ERR_EXEC_RUNNER_FLEET_RUN, runner.errorCodeForFailure(.policy_deny));
 }
 
+fn expectSecret(secrets: []const runner_progress.Secret, value: []const u8, placeholder: []const u8) !void {
+    for (secrets) |s| {
+        if (std.mem.eql(u8, s.value, value) and std.mem.eql(u8, s.placeholder, placeholder)) return;
+    }
+    std.debug.print("\nexpected secret value='{s}' placeholder='{s}' not in set of {d}\n", .{ value, placeholder, secrets.len });
+    return error.SecretNotFound;
+}
+
 test "collectSecrets extracts the llm api_key from fleet_config" {
     const alloc = std.testing.allocator;
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
     try ac.object.put(alloc, "api_key", .{ .string = "sk-secret" });
-    try std.testing.expectEqualStrings("sk-secret", runner.collectSecrets(ac)[0].value);
+    const secrets = try runner.collectSecrets(alloc, ac, null);
+    defer runner.freeSecrets(alloc, secrets);
+    try std.testing.expectEqual(@as(usize, 1), secrets.len); // api_key only (no secrets_map)
+    try std.testing.expectEqualStrings("sk-secret", secrets[0].value);
+    try std.testing.expectEqualStrings("${secrets.llm.api_key}", secrets[0].placeholder);
 }
 
-test "collectSecrets yields an empty value when fleet_config is null or the key is absent" {
-    try std.testing.expectEqualStrings("", runner.collectSecrets(null)[0].value);
+test "collectSecrets yields an empty api_key value when fleet_config is null or the key is absent" {
     const alloc = std.testing.allocator;
+    {
+        const secrets = try runner.collectSecrets(alloc, null, null);
+        defer runner.freeSecrets(alloc, secrets);
+        try std.testing.expectEqual(@as(usize, 1), secrets.len);
+        try std.testing.expectEqualStrings("", secrets[0].value);
+    }
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
-    try std.testing.expectEqualStrings("", runner.collectSecrets(ac)[0].value);
+    const secrets = try runner.collectSecrets(alloc, ac, null);
+    defer runner.freeSecrets(alloc, secrets);
+    try std.testing.expectEqualStrings("", secrets[0].value);
+}
+
+test "collectSecrets covers every secrets_map leaf alongside the api_key (M100 §1 D1.1)" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const alloc = std.testing.allocator;
+
+    // secrets_map = { fly: { api_token: "FlyTokenXyz" }, slack: { bot_token: "xoxb-AAA" } }
+    var fly: std.json.ObjectMap = .empty;
+    try fly.put(arena, "api_token", .{ .string = "FlyTokenXyz" });
+    var slack: std.json.ObjectMap = .empty;
+    try slack.put(arena, "bot_token", .{ .string = "xoxb-AAA" });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "fly", .{ .object = fly });
+    try top.put(arena, "slack", .{ .object = slack });
+    const sm: std.json.Value = .{ .object = top };
+
+    var ac = std.json.Value{ .object = .empty };
+    try ac.object.put(arena, "api_key", .{ .string = "sk-provider" });
+
+    const secrets = try runner.collectSecrets(alloc, ac, sm);
+    defer runner.freeSecrets(alloc, secrets);
+
+    try std.testing.expectEqual(@as(usize, 3), secrets.len); // api_key + 2 tool leaves
+    try expectSecret(secrets, "sk-provider", "${secrets.llm.api_key}");
+    try expectSecret(secrets, "FlyTokenXyz", "${secrets.fly.api_token}");
+    try expectSecret(secrets, "xoxb-AAA", "${secrets.slack.bot_token}");
+}
+
+test "collectSecrets skips non-object creds and non-string fields in secrets_map" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const alloc = std.testing.allocator;
+
+    // good.token is a string (kept); good.count is an integer (skipped);
+    // bogus is a bare string cred, not an object (skipped entirely).
+    var good: std.json.ObjectMap = .empty;
+    try good.put(arena, "token", .{ .string = "keep-me" });
+    try good.put(arena, "count", .{ .integer = 7 });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "good", .{ .object = good });
+    try top.put(arena, "bogus", .{ .string = "not-an-object" });
+    const sm: std.json.Value = .{ .object = top };
+
+    const secrets = try runner.collectSecrets(alloc, null, sm);
+    defer runner.freeSecrets(alloc, secrets);
+
+    try std.testing.expectEqual(@as(usize, 2), secrets.len); // empty api_key slot + good.token
+    try expectSecret(secrets, "keep-me", "${secrets.good.token}");
+}
+
+test "redactBytes over collectSecrets output scrubs the tool-secret VALUE, not just the api_key (M100 §1 D1.4)" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const alloc = std.testing.allocator;
+
+    var fly: std.json.ObjectMap = .empty;
+    try fly.put(arena, "api_token", .{ .string = "FlyTokenXyz" });
+    var top: std.json.ObjectMap = .empty;
+    try top.put(arena, "fly", .{ .object = fly });
+    const sm: std.json.Value = .{ .object = top };
+
+    const secrets = try runner.collectSecrets(alloc, null, sm);
+    defer runner.freeSecrets(alloc, secrets);
+
+    // A tool's stdout / curl error echoing the resolved token must be scrubbed —
+    // the previous [1]Secret design (api_key only) left this VALUE in the frame.
+    const raw = "curl failed: Authorization: Bearer FlyTokenXyz";
+    const out = try runner_progress.redactBytes(alloc, raw, secrets);
+    defer if (out.ptr != raw.ptr) alloc.free(out);
+    try std.testing.expect(std.mem.indexOf(u8, out, "FlyTokenXyz") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "${secrets.fly.api_token}") != null);
 }
 
 // ── §7 custom OpenAI-compatible endpoint threading ───────────────────────────
