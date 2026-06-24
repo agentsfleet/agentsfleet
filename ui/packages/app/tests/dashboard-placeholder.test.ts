@@ -139,7 +139,13 @@ describe("placeholder pages", () => {
 
   it("settings page renders workspace info when authenticated", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
+    // The active id resolves from the hint; the NAME comes from the workspace
+    // list (the switcher's data), so the list must carry the named entry.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
+      items: [{ id: "ws_xyz", name: "Production" }],
+      total: 1,
+    });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Workspace");
@@ -157,14 +163,17 @@ describe("placeholder pages", () => {
     expect(m).toContain("—");
   });
 
-  it("settings page falls back to the active workspace when listing workspaces fails", async () => {
+  it("settings page shows the hint workspace id (name unavailable) when listing workspaces fails", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
+    // List is the source of the name; with it down we still have the id from
+    // the cookie/JWT hint, so the page synthesizes a name-less entry: the id
+    // renders, the name shows the em-dash placeholder.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_fallback", name: "Fallback" });
     listTenantWorkspacesCachedMock.mockRejectedValueOnce(new Error("api-down"));
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Fallback");
     expect(m).toContain("ws_fallback");
+    expect(m).toContain("—"); // name unavailable without the list
   });
 
   it("settings page renders the tenant workspace list when available", async () => {

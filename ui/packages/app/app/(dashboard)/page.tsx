@@ -12,11 +12,11 @@ import {
 } from "@agentsfleet/design-system";
 import { listFleets, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
-import { getTenantBilling } from "@/lib/api/tenant_billing";
+import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { NANOS_PER_USD } from "@/lib/types";
 import type { FleetTemplate } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 import { InstallEntry } from "./fleets/new/InstallEntry";
@@ -28,17 +28,19 @@ export async function StatusTiles() {
   const token = await getToken();
   if (!token) return null;
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) return null;
-
   // Request the server max (100) so the Active/Paused/Stopped tiles don't
   // silently under-report for workspaces above the 20-default page size.
-  // A dedicated summary endpoint will replace this client-side rollup once it
-  // ships; until then 100 matches what the /fleets list page uses.
-  const [fleets, billing] = await Promise.all([
-    listFleets(workspace.id, token, { limit: 100 }).then((r) => r.items).catch(() => []),
-    getTenantBilling(token).catch(() => null),
-  ]);
+  // A dedicated fleet-status summary endpoint will replace this client-side
+  // rollup once it ships; until then 100 matches what the /fleets list uses.
+  const result = await withWorkspaceScope(token, async (workspaceId) => {
+    const [fleets, billing] = await Promise.all([
+      listFleets(workspaceId, token, { limit: 100 }).then((r) => r.items).catch(orFallback([])),
+      getTenantBillingCached(token).catch(() => null),
+    ]);
+    return { fleets, billing };
+  });
+  if (!result) return null;
+  const { fleets, billing } = result;
 
   const active = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.ACTIVE).length;
   const paused = fleets.filter((z) => z.status === AGENTSFLEET_STATUS.PAUSED).length;
@@ -113,21 +115,23 @@ export async function RecentActivity() {
   const token = await getToken();
   if (!token) return null;
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) return null;
-
   // Dashboard shows a short preview; the full, paginated stream lives at
   // /events (the sidebar "Events" item). Keeps the two from duplicating.
-  const page = await listWorkspaceEvents(workspace.id, token, { limit: 5 }).catch(
-    () => ({ items: [], next_cursor: null }),
-  );
+  const result = await withWorkspaceScope(token, async (workspaceId) => ({
+    workspaceId,
+    page: await listWorkspaceEvents(workspaceId, token, { limit: 5 }).catch(
+      orFallback({ items: [], next_cursor: null }),
+    ),
+  }));
+  if (!result) return null;
+  const { workspaceId, page } = result;
 
   return (
     <Section asChild>
       <section aria-label="Recent Activity">
         <SectionLabel>Recent Activity</SectionLabel>
         <EventsList
-          scope={{ kind: "workspace", workspaceId: workspace.id }}
+          scope={{ kind: "workspace", workspaceId }}
           initial={page}
           viewAllHref="/events"
         />
