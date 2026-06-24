@@ -14,7 +14,7 @@ import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials, type CredentialSummary } from "@/lib/api/credentials";
 import { VAULT_KIND, VAULT_KINDS } from "./lib/vault-kinds";
-import AddCredentialForm from "./components/AddCredentialForm";
+import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
 import CredentialsList from "./components/CredentialsList";
 import CustomSecretsList from "./components/CustomSecretsList";
 import CustomEndpointForm from "./components/CustomEndpointForm";
@@ -108,7 +108,7 @@ function CustomSecretsGroup({
             </span>
           </summary>
           <div className="border-t border-border p-4">
-            <AddCredentialForm workspaceId={workspaceId} />
+            <AddCredentialFormDynamic workspaceId={workspaceId} />
           </div>
         </details>
       </section>

@@ -14,7 +14,7 @@ import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import { presentErrorString } from "@/lib/errors";
-import EditCredentialDialog from "./EditCredentialDialog";
+import EditCredentialDialogDynamic from "@/components/domain/island-dynamic/EditCredentialDialogDynamic";
 
 type Props = {
   workspaceId: string;
@@ -163,7 +163,7 @@ function CredentialDialogs({
 }) {
   return (
     <>
-      <EditCredentialDialog
+      <EditCredentialDialogDynamic
         workspaceId={workspaceId}
         name={editTarget ?? ""}
         open={editTarget !== null}

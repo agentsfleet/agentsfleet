@@ -16,7 +16,7 @@ import {
   type ToastSeverity,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
-import CreateWorkspaceDialog from "./CreateWorkspaceDialog";
+import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 
 type Props = {
   workspaces: TenantWorkspace[];
@@ -122,7 +122,7 @@ export default function WorkspaceSwitcher({
           </Button>
         ) : null}
       </div>
-      <CreateWorkspaceDialog
+      <CreateWorkspaceDialogDynamic
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={(name) => showNotice("success", `Workspace created: ${name}.`)}
