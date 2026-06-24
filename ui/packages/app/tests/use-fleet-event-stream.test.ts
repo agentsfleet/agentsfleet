@@ -357,4 +357,44 @@ describe("useFleetEventStream", () => {
     });
     expect(result.current.events).toEqual([]);
   });
+
+  // ── install:* frames advance the install step, off the chat path ─────────
+  // The post-create install progression rides the SAME SSE stream this hook
+  // owns; these prove the registry forks `install:*` frames into `installStep`
+  // and advances it monotonically, and that `install:ready` is the flip signal.
+
+  it("advances installStep through creating → provisioning → ready as install:* frames arrive", async () => {
+    const { result } = mount();
+    expect(result.current.installStep).toBeNull();
+
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_CREATING }));
+    await waitFor(() => expect(result.current.installStep).toBe("creating"));
+
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_PROVISIONING }));
+    await waitFor(() => expect(result.current.installStep).toBe("provisioning"));
+
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_READY }));
+    await waitFor(() => expect(result.current.installStep).toBe("ready"));
+
+    // Install frames never leak into the chat message list.
+    expect(result.current.events).toEqual([]);
+  });
+
+  it("a late duplicate install frame never rewinds the rendered step", async () => {
+    const { result } = mount();
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_PROVISIONING }));
+    await waitFor(() => expect(result.current.installStep).toBe("provisioning"));
+    // A stray re-emitted `creating` after `provisioning` must hold at provisioning.
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_CREATING }));
+    expect(result.current.installStep).toBe("provisioning");
+  });
+
+  it("an install:error frame flips the step to error and chat stays empty", async () => {
+    const { result } = mount();
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_CREATING }));
+    await waitFor(() => expect(result.current.installStep).toBe("creating"));
+    act(() => FakeEventSource.instances[0]!.emit({ kind: FRAME_KIND.INSTALL_ERROR }));
+    await waitFor(() => expect(result.current.installStep).toBe("error"));
+    expect(result.current.events).toEqual([]);
+  });
 });

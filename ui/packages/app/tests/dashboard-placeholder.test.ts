@@ -53,12 +53,24 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("credentials route redirects into the unified Models & Credentials page", async () => {
-    // The credentials list + add form now live in a section on the models page;
-    // this route is a redirect. Its list/empty rendering is covered by
-    // tests/models-credentials-page.test.ts and credentials-components.test.ts.
+  it("credentials route renders the vault page (kinds strip + groups)", async () => {
+    // /credentials is now a real server-rendered vault page. Its grouping +
+    // ordering is covered in depth by tests/models-credentials-page.test.ts; here
+    // we prove the shared-mock harness renders it without throwing.
+    mockAuth({ token: "token_cred" });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_c", name: "C" });
+    getTenantProviderMock.mockResolvedValue({
+      mode: PROVIDER_MODE.platform,
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      context_cap_tokens: 256000,
+      credential_ref: null,
+    });
+    listCredentialsMock.mockResolvedValue({ credentials: [] });
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
-    expect(() => Page()).toThrow("redirect:/settings/models?tab=credentials#credentials");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain(">Credentials<");
+    expect(m).toContain('data-testid="vault-kinds-strip"');
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
@@ -181,7 +193,7 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Models");
-    expect(m).toContain("Platform defaults");
+    expect(m).toContain("Model access");
     expect(m).toContain("data-provider-selector=\"ws_p\"");
   });
 
@@ -280,7 +292,7 @@ describe("placeholder pages", () => {
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("data-event-count=\"0\"");
+    expect(m).toContain("data-charge-count=\"0\"");
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {

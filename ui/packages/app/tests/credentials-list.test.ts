@@ -106,6 +106,26 @@ describe("CredentialsList component", () => {
     expect(screen.getAllByText(/Apr 26, 2026/)).toHaveLength(2);
   });
 
+  it("test_credential_write_only_masked: stored secret is masked (suffix only), Replace present, never re-revealed", async () => {
+    const user = userEvent.setup();
+    // The vault never returns plaintext, so the list renders only the name +
+    // the "write-only" label — the secret value never appears in the DOM.
+    await renderList([{ name: "openai-key", created_at: Date.UTC(2026, 3, 26, 12) }]);
+    expect(screen.getByText("openai-key")).toBeTruthy();
+    expect(screen.getByText("Write-only encrypted secret")).toBeTruthy();
+    // No plaintext secret is rendered anywhere.
+    expect(document.body.textContent).not.toMatch(/sk-[a-z0-9]/i);
+
+    // The edit affordance is a Replace/Rotate flow, never a reveal: opening it
+    // asks the user to re-enter the secret rather than displaying the stored one.
+    await user.click(screen.getByLabelText(/Edit credential openai-key/i));
+    await waitFor(() => expect(screen.getByText(/Edit credential .*openai-key/i)).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
+    expect(screen.getByText(/re-enter the full secret to replace/i)).toBeTruthy();
+    // There is no "reveal"/"show" control that would expose the stored value.
+    expect(screen.queryByRole("button", { name: /reveal|show secret/i })).toBeNull();
+  });
+
   it("happy path: click delete then confirm calls delete and refreshes", async () => {
     deleteCredentialActionMock.mockResolvedValue({ ok: true, data: undefined });
     const user = userEvent.setup();

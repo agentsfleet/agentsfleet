@@ -19,6 +19,10 @@ pub const temperature = "temperature";
 pub const max_tokens = "max_tokens";
 pub const api_key = "api_key";
 pub const inference_host = "inference_host";
+/// Custom OpenAI-compatible endpoint URL the engine must dial — set on the
+/// `fleet_config` only for a `custom:<url>` provider; the runner copies it onto
+/// the nullclaw `ProviderEntry.base_url` so the request reaches the custom host.
+pub const base_url = "base_url";
 pub const message = "message";
 
 // ── Reasoning context (composeMessage) ──────────────────────────────────────

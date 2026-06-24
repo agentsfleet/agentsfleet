@@ -196,4 +196,22 @@ describe("FleetsList component", () => {
     // `stopped` is parked, not failed — only `killed` maps to the failed dot.
     expect(screen.getByRole("link", { name: /delta/ }).getAttribute("data-state")).toBe("parked");
   });
+
+  // An installing fleet always surfaces its installing state until it resolves
+  // — a distinct `installing` data-state + a live indicator + the status label,
+  // so create-in-flight progress is never hidden in the list.
+  it("test_installing_fleet_always_visible — installing row shows a live installing indicator", async () => {
+    await renderList({
+      initialFleets: [
+        { id: "zom_i", name: "fresh-bot", status: "installing", created_at: 1745280000000, updated_at: 1745280000000 },
+        { id: "zom_a", name: "live-bot", status: "active", created_at: 1745280001000, updated_at: 1745280001000 },
+      ],
+    });
+    const installingRow = screen.getByRole("link", { name: /fresh-bot/i });
+    expect(installingRow.getAttribute("data-state")).toBe("installing");
+    // A live indicator marks it as in-flight (not a dead parked dot).
+    expect(installingRow.querySelector("[data-live]")).toBeTruthy();
+    // The status label reads "installing" so the state is legible.
+    expect(installingRow.textContent).toMatch(/installing/i);
+  });
 });

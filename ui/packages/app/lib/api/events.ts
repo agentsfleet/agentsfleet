@@ -93,6 +93,15 @@ export const FRAME_KIND = {
   CHUNK: "chunk",
   TOOL_CALL_COMPLETED: "tool_call_completed",
   EVENT_COMPLETE: "event_complete",
+  // Synthetic install-progression frames the create path emits on a deferred
+  // tick post-201. The InstallStates surface advances its rendered step off
+  // these; `install:ready` is the signal the fleet has flipped installing→active
+  // on the server. Mirror the KIND_INSTALL_* constants in
+  // src/agentsfleetd/fleet_runtime/activity_publisher.zig verbatim.
+  INSTALL_CREATING: "install:creating",
+  INSTALL_PROVISIONING: "install:provisioning",
+  INSTALL_READY: "install:ready",
+  INSTALL_ERROR: "install:error",
 } as const;
 
 export type FrameKind = (typeof FRAME_KIND)[keyof typeof FRAME_KIND];
@@ -120,7 +129,14 @@ export type LiveFrame =
     }
   // `status` is optional — the backend can emit a status-less completion
   // frame, which the timeline resolves to "processed".
-  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status?: string };
+  | { kind: typeof FRAME_KIND.EVENT_COMPLETE; event_id: string; status?: string }
+  // Install-progression frames carry only their discriminating `kind` (the kind
+  // itself names the step). The registry forks these off the chat-event path —
+  // they advance the install step, never the message list.
+  | { kind: typeof FRAME_KIND.INSTALL_CREATING }
+  | { kind: typeof FRAME_KIND.INSTALL_PROVISIONING }
+  | { kind: typeof FRAME_KIND.INSTALL_READY }
+  | { kind: typeof FRAME_KIND.INSTALL_ERROR };
 
 // Same-origin URL for the SSE stream. The path is intercepted by the
 // Next Route Handler at app/backend/.../events/stream/route.ts which

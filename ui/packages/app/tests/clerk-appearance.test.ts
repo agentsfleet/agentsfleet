@@ -28,4 +28,13 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.userButtonAvatarBox.backgroundColor).toBe("var(--surface-2)");
     expect(elements.userButtonAvatarBox.color).toBe("var(--text)");
   });
+
+  it("test_clerk_secondary_identifier_contrast: the account-modal email maps to the readable token, not the subtle one", () => {
+    // Regression: the secondary identifier (email) read too dim on the dark
+    // modal surface. It must be the readable text token — never the subtle one.
+    expect(elements.userPreviewSecondaryIdentifier.color).toBe("var(--text)");
+    expect(elements.userPreviewSecondaryIdentifier.color).not.toBe("var(--text-subtle)");
+    // The global fallback for any unmapped secondary text stays readable too.
+    expect(AUTH_APPEARANCE.variables.colorTextSecondary).toBe("var(--text-muted)");
+  });
 });

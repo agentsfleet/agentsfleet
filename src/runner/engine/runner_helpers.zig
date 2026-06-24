@@ -91,28 +91,40 @@ pub fn applyFleetConfig(cfg: *Config, ac: std.json.Value) void {
 /// resolveApiKeyFromConfig() and never falls through to the process environment.
 pub fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
     const owned_key = try cfg.allocator.dupe(u8, api_key);
+    const entry = try ensureProviderEntry(cfg);
+    // Old api_key lives in the arena — overwriting the pointer is safe.
+    entry.api_key = owned_key;
+}
 
-    // Try to update an existing provider entry.
+/// Inject a custom OpenAI-compatible endpoint URL onto the ProviderEntry for
+/// cfg.default_provider (which the daemon set to `custom:<url>`, so nullclaw's
+/// `classifyProvider` routes it to `.compatible_provider` and `getProviderBaseUrl`
+/// returns this URL as the dial target). Without this, the compatible path falls
+/// back to the `custom:` prefix or the built-in URL table — setting it on the
+/// entry is the explicit, audited override. Same arena-ownership contract as
+/// `injectProviderApiKey`; safe to call after it (operates on the same entry).
+pub fn injectProviderBaseUrl(cfg: *Config, url: []const u8) !void {
+    const owned_url = try cfg.allocator.dupe(u8, url);
+    const entry = try ensureProviderEntry(cfg);
+    entry.base_url = owned_url;
+}
+
+/// Find the ProviderEntry for cfg.default_provider, creating (prepending) one if
+/// absent. Shared by the api_key + base_url injectors so both mutate the SAME
+/// entry. The returned pointer is valid until the next `ensureProviderEntry`
+/// call that has to grow the slice (callers use it immediately). All allocations
+/// are arena-backed (cfg.allocator) — freed by cfg.deinit(), no double-free.
+fn ensureProviderEntry(cfg: *Config) !*nullclaw.config.ProviderEntry {
     for (@constCast(cfg.providers)) |*entry| {
-        if (std.mem.eql(u8, entry.name, cfg.default_provider)) {
-            // Old api_key lives in the arena — overwriting the pointer is safe.
-            entry.api_key = owned_key;
-            return;
-        }
+        if (std.mem.eql(u8, entry.name, cfg.default_provider)) return entry;
     }
-
-    // No existing entry for default_provider — prepend one to the slice.
-    // cfg.allocator is the arena so all allocations are freed by cfg.deinit().
-    const nullclaw_config = nullclaw.config;
-    const new_providers = try cfg.allocator.alloc(nullclaw_config.ProviderEntry, cfg.providers.len + 1);
-    new_providers[0] = .{
-        .name = cfg.default_provider,
-        .api_key = owned_key,
-    };
+    const new_providers = try cfg.allocator.alloc(nullclaw.config.ProviderEntry, cfg.providers.len + 1);
+    new_providers[0] = .{ .name = cfg.default_provider };
     @memcpy(new_providers[1..], cfg.providers);
-    // Replace the slice pointer. The old slice is still in the arena and
-    // will be freed when the arena deinits — no double-free, no leak.
+    // Replace the slice pointer. The old slice is still in the arena and will be
+    // freed when the arena deinits — no double-free, no leak.
     cfg.providers = new_providers;
+    return &new_providers[0];
 }
 
 /// Build tools from RPC tools array, or fall back to allTools.

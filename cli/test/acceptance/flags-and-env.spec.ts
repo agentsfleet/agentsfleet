@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
+import { helpTail } from "../../src/program/cli-tree-help.ts";
 
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
@@ -96,34 +97,33 @@ describe("NO_COLOR semantics", () => {
   });
 });
 
-describe("telemetry env-var advertisement (--help)", () => {
-  // Supabase-aligned env names land in --help so users can discover the
-  // opt-out path without reading source. Golden snapshot covers the
-  // exact bytes; this acceptance assertion confirms the built binary
-  // (npm install / dist) renders the same names end-to-end.
-  it("advertises AGENTSFLEET_TELEMETRY_DISABLED, DO_NOT_TRACK and POSTHOG knobs", async () => {
+describe("env-var reference (--help)", () => {
+  // --help stays terse: the full environment-variable matrix (telemetry
+  // opt-out included) lives in the docs, surfaced as a single docs pointer
+  // (refactor: inline matrix → docs link). This confirms the built binary
+  // (npm install / dist) renders that pointer end-to-end and that the old
+  // inline matrix does not resurface. `helpTail()` is the single source.
+  it("points to the env-var docs instead of inlining the matrix", async () => {
     const result = await runFleetctl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
     });
     assert.equal(result.code, 0);
-    for (const key of [
+    const tail = helpTail().trim();
+    assert.ok(
+      result.stdout.includes(tail),
+      `--help did not surface the env-var docs pointer (${tail}); got: ${result.stdout}`,
+    );
+    // The matrix moved to the docs — neither the current nor the
+    // pre-supabase env names should be inlined in --help (catches a
+    // regression that re-inlines them).
+    for (const inlineName of [
       "AGENTSFLEET_TELEMETRY_DISABLED",
-      "DO_NOT_TRACK",
-      "AGENTSFLEET_TELEMETRY_POSTHOG_KEY",
-      "AGENTSFLEET_TELEMETRY_POSTHOG_HOST",
-      "AGENTSFLEET_TELEMETRY_DEBUG",
+      "AGENTSFLEET_POSTHOG_KEY",
+      "AGENTSFLEET_POSTHOG_HOST",
     ]) {
       assert.ok(
-        result.stdout.includes(key),
-        `--help did not mention ${key}; got: ${result.stdout}`,
-      );
-    }
-    // Negative assertion: the pre-supabase-alignment names must not
-    // resurface (catches a future bad merge that brings them back).
-    for (const stale of ["DISABLE_TELEMETRY ", "AGENTSFLEET_POSTHOG_KEY", "AGENTSFLEET_POSTHOG_HOST"]) {
-      assert.ok(
-        !result.stdout.includes(stale),
-        `--help still references legacy env name ${stale}`,
+        !result.stdout.includes(inlineName),
+        `--help re-inlines ${inlineName}; the env-var matrix belongs in the docs`,
       );
     }
   });

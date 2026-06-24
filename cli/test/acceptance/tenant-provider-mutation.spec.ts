@@ -35,7 +35,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { composeEnv } from "./fixtures/cli.js";
-import { ACCEPTANCE_TARGET_ENV } from "./fixtures/constants.ts";
+import { ACCEPTANCE_TARGET_ENV, ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
@@ -45,9 +45,11 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
 import {
   TENANT_PROVIDER_MODE,
+  addCustomEndpointCredential,
   addProvider,
   assertRejectedAddLeftBaseline,
   assertSelfManagedSnapshot,
+  deleteCredentialByName,
   deleteProvider,
   restoreProviderBaseline,
   showProvider,
@@ -68,6 +70,14 @@ const ACCEPTANCE_CREDENTIAL_REF = `acc-prov-${crypto.randomBytes(4).toString("he
 
 // Model override exercises the second PUT branch (`ProviderAddBody.model`).
 const ACCEPTANCE_MODEL_OVERRIDE = "claude-sonnet-acceptance-probe" as const;
+
+// Custom-endpoint credential: a real openai-compatible credential the
+// provider-set scenario targets. Prefix-scoped so the afterAll sweep (and a
+// crashed run) can't strand it; the host is a clearly-bogus example domain so
+// no real endpoint is ever dialed (the credential is never run, only selected).
+const CUSTOM_CREDENTIAL_NAME = `${ACCEPTANCE_RUN_PREFIX}-custom-endpoint`;
+const CUSTOM_BASE_URL = "https://vllm.acceptance.example/v1" as const;
+const CUSTOM_API_KEY = "sk-acceptance-custom-do-not-log" as const;
 
 if (!isLive) {
   describe("tenant-provider-mutation.spec.ts", () => {
@@ -191,6 +201,70 @@ if (!isLive) {
         TENANT_PROVIDER_MODE.platform,
         `second reset must stay on the platform default; got ${JSON.stringify(second)}`,
       );
+    }, 30_000);
+  });
+
+  // test_cli_provider_set_custom — set the tenant provider to a real
+  // openai-compatible credential and assert `--json` reflects the custom setup.
+  // The PUT body is unchanged (mode=self_managed, credential_ref) — the base_url
+  // rides in the referenced credential, set at credential-create time. Tenant
+  // posture is shared, so we snapshot a baseline, mutate, then restore (and
+  // delete the credential) even on failure.
+  describe("tenant-provider-mutation — sets a custom openai-compatible credential", () => {
+    let sessionJwt = "";
+    let stateDir = "";
+    let env: Record<string, string> = {};
+    let baseline: ProviderSnapshot | null = null;
+
+    beforeAll(async () => {
+      const apiUrl = resolveAcceptanceEnv().apiUrl;
+      const clerkSecret = resolveClerkSecret();
+      const email = resolveFixtureEmail("admin");
+      const minted = await attachJwt(clerkSecret, { email });
+      sessionJwt = minted.sessionJwt;
+
+      stateDir = await fs.mkdtemp(path.join(os.tmpdir(), STATE_DIR_PREFIX));
+      env = composeEnv({
+        AGENTSFLEET_API_URL: apiUrl,
+        AGENTSFLEET_STATE_DIR: stateDir,
+        NO_COLOR: NO_COLOR_ON,
+      });
+      await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
+      baseline = await showProvider(env, sessionJwt);
+    });
+
+    afterAll(async () => {
+      if (env && sessionJwt && baseline) {
+        await restoreProviderBaseline(env, sessionJwt, baseline);
+      }
+      if (env) await deleteCredentialByName(env, CUSTOM_CREDENTIAL_NAME);
+      if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
+    });
+
+    it("credential add (openai-compatible + base_url) → provider add → show reflects the custom credential", async () => {
+      // 1. Store the custom-endpoint credential (typed flags; api_key never logged).
+      const added = await addCustomEndpointCredential(env, sessionJwt, {
+        name: CUSTOM_CREDENTIAL_NAME,
+        baseUrl: CUSTOM_BASE_URL,
+        apiKey: CUSTOM_API_KEY,
+      });
+      assert.equal(added.code, 0, `custom credential add exited ${added.code}: ${added.stderr}`);
+
+      // 2. Point the tenant provider at it. PUT body is unchanged — the URL
+      //    lives in the referenced credential.
+      const set = await addProvider(env, sessionJwt, { credential: CUSTOM_CREDENTIAL_NAME });
+      // The credential exists, so the PUT should be accepted (mode flips). If
+      // the upstream rejects an unresolved key it leaves the baseline intact —
+      // either is recorded, but the custom credential we just stored should
+      // resolve.
+      if (set.code !== 0) {
+        await assertRejectedAddLeftBaseline(env, sessionJwt, set, baseline?.mode);
+        return;
+      }
+
+      // 3. show --json reflects the custom setup.
+      const after = await showProvider(env, sessionJwt);
+      assertSelfManagedSnapshot(after, CUSTOM_CREDENTIAL_NAME);
     }, 30_000);
   });
 }

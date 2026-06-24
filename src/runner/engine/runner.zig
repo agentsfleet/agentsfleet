@@ -158,6 +158,15 @@ fn executeInner(
                 return RunnerError.InvalidConfig;
             };
         }
+        // Custom OpenAI-compatible endpoint: pin the dial URL onto the provider
+        // entry so nullclaw reaches exactly the host the egress allowlist permits
+        // (only present for a `custom:<url>` provider; named providers omit it).
+        if (json.getStr(ac, wire.base_url)) |url| {
+            injectProviderBaseUrl(&cfg, url) catch {
+                log.err("base_url_inject_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
+                return RunnerError.InvalidConfig;
+            };
+        }
     }
 
     // 2. Build provider (real LLM bundle, or a stub in test builds).
@@ -282,6 +291,7 @@ fn selectObserver(
 // Delegate to runner_helpers.zig (split for RULE FLL).
 const applyFleetConfig = runner_helpers.applyFleetConfig;
 const injectProviderApiKey = runner_helpers.injectProviderApiKey;
+const injectProviderBaseUrl = runner_helpers.injectProviderBaseUrl;
 const buildToolsFromSpec = runner_helpers.buildToolsFromSpec;
 pub const composeMessage = runner_helpers.composeMessage;
 

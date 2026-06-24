@@ -156,4 +156,46 @@ describe("dashboard overview page", () => {
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     expect(await StatusTiles()).toBeNull();
   });
+
+  // The Dashboard "Start your fleet" card and the Fleets empty-state CTAs
+  // compose the SAME shared install component (InstallEntry) — one source, no
+  // hand-rolled duplicate. Proven by rendering both empty states and asserting
+  // each emits InstallEntry's signature output (template deep-links + the
+  // shared "Import from GitHub or paste SKILL.md" affordance to /fleets/new).
+  it("test_install_experience_shared — dashboard card + fleets empty-state render the same InstallEntry", async () => {
+    const templates = {
+      items: [
+        {
+          id: "github-pr-reviewer",
+          name: "GitHub PR reviewer",
+          description: "Reviews pull requests.",
+          required_credentials: ["github"],
+          required_tools: [],
+          network_hosts: [],
+        },
+      ],
+    };
+    const noFleets = { items: [], total: 0, cursor: null };
+    const SHARED_LINK = 'href="/fleets/new?template=github-pr-reviewer"';
+    const SHARED_SOURCE = "Import from GitHub or paste SKILL.md";
+
+    // Dashboard card (StatusTiles → FirstInstallCard → InstallEntry).
+    listFleetsMock.mockResolvedValue(noFleets);
+    getTenantBillingMock.mockResolvedValue(null);
+    listFleetTemplatesMock.mockResolvedValue(templates);
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const dash = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(dash).toContain(SHARED_LINK);
+    expect(dash).toContain(SHARED_SOURCE);
+
+    // Fleets empty-state (fleets/page → InstallEntry).
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1" });
+    listFleetsMock.mockResolvedValue(noFleets);
+    getTenantBillingMock.mockResolvedValue(null);
+    listFleetTemplatesMock.mockResolvedValue(templates);
+    const { default: FleetsPage } = await import("../app/(dashboard)/fleets/page");
+    const fleets = renderToStaticMarkup(await FleetsPage());
+    expect(fleets).toContain(SHARED_LINK);
+    expect(fleets).toContain(SHARED_SOURCE);
+  });
 });

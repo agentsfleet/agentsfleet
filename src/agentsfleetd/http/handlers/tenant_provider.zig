@@ -32,6 +32,15 @@ const log = logging.scoped(.http_tenant_provider);
 const S_PLATFORM = "platform";
 const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
 
+/// Context-cap persisted for a custom (openai-compatible) self-managed endpoint.
+/// A custom endpoint bills provider-direct — self_managed posture charges a
+/// run-fee only and never reads the per-token rate cache — so its user-hosted
+/// model is absent from core.model_caps by design and there is no platform rate
+/// to catalogue. The activation gate stores this "unknown/auto" sentinel instead
+/// of a catalogue lookup; execution_policy.autoToolWindow + the per-fleet
+/// frontmatter overlay resolve the effective context window at run time.
+const CUSTOM_ENDPOINT_CAP_UNKNOWN: u32 = 0;
+
 const PutInput = struct {
     mode: []const u8,
     credential_ref: ?[]const u8 = null,
@@ -158,6 +167,10 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
             hx.fail(ec.ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED, "credential JSON missing required field (provider, api_key, or model)");
             return;
         },
+        tenant_provider.ResolveError.CredentialEndpointInvalid => {
+            hx.fail(ec.ERR_PROVIDER_BASE_URL_INVALID, "custom endpoint base_url is missing, not https, SSRF-unsafe, or set on a non-openai-compatible provider");
+            return;
+        },
         tenant_provider.ResolveError.TenantHasNoWorkspace => {
             log.err("no_workspace", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
             common.internalOperationError(hx.res, "Tenant has no primary workspace — bootstrap invariant violated", hx.req_id);
@@ -172,15 +185,13 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
     defer probed.deinit(hx.alloc);
 
     // Effective model: caller's --model override OR the credential's stored model.
-    // The rate row is keyed by (provider, model) — the credential's provider is
-    // the authority for which provider hosts this model.
     const effective_model: []const u8 = input.model orelse probed.model;
-    const cache_entry = model_rate_cache.lookup_model_rate(probed.provider, effective_model) orelse {
+    const context_cap_tokens = resolveSelfManagedCap(probed.provider, effective_model) orelse {
         hx.fail(ec.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "model not in cached caps catalogue");
         return;
     };
 
-    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
+    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, credential_ref, effective_model, context_cap_tokens) catch |err| {
         log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -192,6 +203,22 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
     };
     defer freeView(hx.alloc, view);
     hx.ok(.ok, view);
+}
+
+/// Resolve the context-window cap to persist for a self-managed activation.
+/// A custom (openai-compatible) endpoint is provider-direct billing: its
+/// user-hosted model is absent from the platform rate catalogue by design, so it
+/// bypasses the gate and takes the unknown/auto sentinel. A named provider must
+/// resolve a catalogued rate row (whose cap we store) — `null` means the model is
+/// not in the catalogue, and the caller fails it (UZ-PROVIDER-004). The rate row
+/// is keyed by (provider, model): the credential's provider is the authority for
+/// which provider hosts the model.
+fn resolveSelfManagedCap(provider: []const u8, model: []const u8) ?u32 {
+    if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER)) {
+        return CUSTOM_ENDPOINT_CAP_UNKNOWN;
+    }
+    const entry = model_rate_cache.lookup_model_rate(provider, model) orelse return null;
+    return entry.context_cap_tokens;
 }
 
 const ProviderView = struct {

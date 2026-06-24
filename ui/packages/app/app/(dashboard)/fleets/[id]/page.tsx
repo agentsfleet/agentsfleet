@@ -13,6 +13,7 @@ import FleetThreadDynamic from "@/components/domain/FleetThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
 import FleetConfig from "./components/FleetConfig";
 import KillSwitch from "./components/KillSwitch";
+import { FleetInstallGate } from "./components/FleetInstallGate";
 import { resolveLastDeliveries } from "./components/last-delivery";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,13 @@ export default async function FleetDetailPage({
                 aria-hidden="true"
               />
             ) : null}
+            {fleet.status === AGENTSFLEET_STATUS.INSTALLING ? (
+              <WakePulse
+                live
+                className="inline-block w-2 h-2 rounded-full bg-info"
+                aria-hidden="true"
+              />
+            ) : null}
             {fleet.status}
           </span>
           {billing?.is_exhausted ? (
@@ -81,6 +89,12 @@ export default async function FleetDetailPage({
         <KillSwitch workspaceId={workspace.id} fleet={fleet} />
       </PageHeader>
 
+      <FleetInstallGate
+        workspaceId={workspace.id}
+        fleetId={fleet.id}
+        fleetName={fleet.name}
+        status={fleet.status}
+      >
       <Section asChild>
         <section aria-label="Trigger">
           <SectionLabel>Trigger</SectionLabel>
@@ -130,6 +144,7 @@ export default async function FleetDetailPage({
           />
         </section>
       </Section>
+      </FleetInstallGate>
     </div>
   );
 }

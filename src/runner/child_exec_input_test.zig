@@ -20,6 +20,34 @@ test "buildCallArgs injects the policy provider and api_key into fleet_config" {
     try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
 }
 
+test "buildCallArgs carries a custom-endpoint base_url into fleet_config" {
+    const alloc = testing.allocator;
+    // A custom OpenAI-compatible lease: provider is custom:<url>, and base_url is
+    // set — buildCallArgs must surface base_url under wire.base_url so the runner
+    // pins it onto the nullclaw provider entry (the dial target).
+    const payload = testLease(.{
+        .provider = "custom:https://vllm.corp/v1",
+        .api_key = "sk_user",
+        .base_url = "https://vllm.corp/v1",
+    });
+    var args = try input.buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.fleet_config.?.object;
+    try testing.expectEqualStrings("custom:https://vllm.corp/v1", ac.get(wire.provider).?.string);
+    try testing.expectEqualStrings("https://vllm.corp/v1", ac.get(wire.base_url).?.string);
+}
+
+test "buildCallArgs omits base_url for a named provider (no custom endpoint)" {
+    const alloc = testing.allocator;
+    // A named-provider lease carries no base_url — the key must be absent so the
+    // named-provider path is byte-for-byte unchanged (Invariant 7).
+    const payload = testLease(.{ .provider = "fireworks", .api_key = "fw_key" });
+    var args = try input.buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.fleet_config.?.object;
+    try testing.expect(ac.get(wire.base_url) == null);
+}
+
 test "buildInstructionsContext attaches the installed instructions under the wire key" {
     const alloc = testing.allocator;
     var ctx = try input.buildInstructionsContext(alloc, "do platform ops");
@@ -75,8 +103,9 @@ test "buildCallArgs leaks nothing on allocation failure (every alloc site)" {
     try testing.checkAllAllocationFailures(testing.allocator, struct {
         fn run(a: std.mem.Allocator) !void {
             const payload = testLease(.{
-                .provider = "fireworks",
+                .provider = "custom:https://vllm.corp/v1",
                 .api_key = "fw_secret_key",
+                .base_url = "https://vllm.corp/v1",
                 .tools = &.{ "bash", "read", "write" },
                 .context = .{ .model = "claude-x" },
             });

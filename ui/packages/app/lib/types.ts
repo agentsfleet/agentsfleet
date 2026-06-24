@@ -168,6 +168,29 @@ export const PROVIDER_MODE = {
   self_managed: "self_managed" as ProviderMode,
 } as const;
 
+// Provider id that opts a self-managed credential into a custom OpenAI-compatible
+// endpoint. Mirrors the backend resolver
+// (`src/agentsfleetd/state/tenant_provider_resolver.zig` →
+// `OPENAI_COMPATIBLE_PROVIDER`) and the CLI's `constants/custom-endpoint.ts`: a
+// credential carrying this provider requires a `base_url` (https, SSRF-validated
+// server-side), forbidden for every named provider. The literal lives here once
+// for the UI; every reader (the custom credential form, the Models own-key
+// option, and the tests) imports it (RULE UFS).
+export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
+
+// Credential JSON field names (verbatim with the server-side resolver's
+// `S_API_KEY` / `S_BASE_URL` extraction).
+export const CREDENTIAL_FIELD = {
+  provider: "provider",
+  apiKey: "api_key",
+  baseUrl: "base_url",
+  model: "model",
+} as const;
+
+// The only scheme a custom endpoint may use — checked client-side for an inline
+// flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
+export const HTTPS_SCHEME_PREFIX = "https://" as const;
+
 // Mirrors `ChargeType` enum in src/state/fleet_telemetry_store.zig — every
 // metered event yields up to two rows, one per charge_type. Use this rather
 // than typing "receive" / "stage" inline so a future rename catches every
