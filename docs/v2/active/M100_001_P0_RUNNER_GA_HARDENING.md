@@ -133,7 +133,7 @@
 
 ## Sections (implementation slices)
 
-### §1 — Secret-redaction coverage (P0)
+### §1 — Secret-redaction coverage (P0)  ✅ landed Jun 25, 2026
 
 Every credential the runner can resolve is registered with the redactor, fed from the *same* source the substitutor reads, so a secret can never reach an activity frame, the final reply, or a memory frame. **Implementation default:** `collectSecrets` returns an allocated `[]const Secret` built from `api_key` ∪ every leaf value in `policy.secrets_map`, each mapped to its `${secrets.NAME.FIELD}` placeholder.
 
@@ -326,6 +326,7 @@ No whole-file deletions planned → otherwise "N/A".
 > Empty at creation. Append consults, gate-flag triage, skill outcomes, and any Indy-acked deferral quotes here.
 
 - Single-spec (not multi-workstream-milestone) per Indy direction, Jun 24 2026: "Can you start this in 1 spec, why do we need gazillions spec?" — context: M100 decomposition.
+- §1 secret-redaction (Jun 25, 2026): `collectSecrets` moved to `runner_helpers` (RULE FLL), now returns an allocated slice over api_key ∪ every `secrets_map` leaf (mirrors `secret_substitution`'s traversal → redaction set == substitution set); `redactedFinalReply` now fails closed on redaction OOM (was `catch response` → raw leak); the observer drops tool-call/chunk frames on redaction OOM (was `catch raw`). Tests green (single-filter): D1.1 secrets_map coverage, D1.2 set parity (+ non-object/non-string skip), D1.4 secret-value-absence, D1.3 final-reply fail-closed-on-OOM. **Remaining within §1:** D1.3 direct observer-frame-drop (pipe-capture) test → add in VERIFY/`/write-unit-test` (logic shares the tested `redactBytes` error path).
 
 ---
 
