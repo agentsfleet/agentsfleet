@@ -4,19 +4,24 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
-        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.2 — upstream tag
-        // v2026.5.29 (b25c6eb) plus one commit: cumulative prompt/completion
-        // token-split accumulation + promptTokensUsed()/completionTokensUsed()
-        // accessors beside tokensUsed(), AND clearSessionState() zeroing both
-        // new counters so /new and /reset don't leave by-side metering with
-        // stale per-session figures. The runner reads these to bill token spend
-        // by side. We have no push or release rights on upstream nullclaw/nullclaw,
-        // so the patch rides our fork (reviewed in agentsfleet/nullclaw#1, tag below;
-        // supersedes zmb.1). Drop this fork pin and return to the upstream tag
-        // when upstream exposes split accessors.
+        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.3 — upstream tag
+        // v2026.5.29 (b25c6eb) plus two fork commits:
+        //   zmb.2 — cumulative prompt/completion token-split accumulation +
+        //     promptTokensUsed()/completionTokensUsed() accessors beside
+        //     tokensUsed(), plus clearSessionState() zeroing both so /new and
+        //     /reset don't leave by-side metering stale (the runner bills by side).
+        //   zmb.3 — pin the Server-Side Request Forgery (SSRF)-validated address on
+        //     the non-streaming POST dials (curlPostTimed / curlPostFormTimed): they
+        //     built the resolve pin then discarded it to std.http, which re-resolves
+        //     at connect time — a DNS-rebinding Time-Of-Check-To-Time-Of-Use (TOCTOU)
+        //     reachable via a user-supplied base_url. Now routed through the curl
+        //     --resolve path, which keeps credentials off the child argv.
+        // We have no push/release rights on upstream nullclaw/nullclaw, so the
+        // patches ride our fork. Drop this pin and return to the upstream tag when
+        // upstream exposes split accessors AND re-threads the resolve pin.
         .nullclaw = .{
-            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.2#dd85a21cdd5a9288556109e2b1438776f19d83b9",
-            .hash = "nullclaw-2026.5.29-wlZZyROORwEVQ6YA9mTLZWk7bxJJ3R-oHpRHD9xLXxga",
+            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.3#9403f63dd300980739b0f90be24b2d938cc0d058",
+            .hash = "nullclaw-2026.5.29-wlZZyduURwHCBGe4sW7dHhwfyANddVQJeCiAOKxF-4Wq",
         },
         // Fork pin agentsfleet/pg.zig (tag v0.0.0-af.1) over upstream karlseguin/pg.zig
         // commit 1aa3e3c, patched for a Zig 0.16 pool-acquire regression: upstream
