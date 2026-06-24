@@ -1,11 +1,18 @@
 const std = @import("std");
 const common = @import("common");
 const otel_logs = @import("otel_logs.zig");
+const otlp_config = @import("otlp/config.zig");
+
+const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
+    .endpoint = "http://127.0.0.1:0",
+    .instance_id = "i",
+    .api_key = "k",
+};
 
 const Ring = otel_logs.TestRing;
 const LogEntry = otel_logs.TestLogEntry;
 const BUFFER_CAPACITY = otel_logs.TEST_BUFFER_CAPACITY;
-const configFromEnv = otel_logs.configFromEnv;
+const configFromEnv = @import("otlp/config.zig").configFromEnv;
 const enqueue = otel_logs.enqueue;
 
 test "configFromEnv returns null when GRAFANA_OTLP_ENDPOINT is unset" {
@@ -16,6 +23,73 @@ test "configFromEnv returns null when GRAFANA_OTLP_ENDPOINT is unset" {
     var env_map = try common.env.fromPairs(alloc, &.{});
     defer env_map.deinit();
     try std.testing.expect(configFromEnv(&env_map, alloc) == null);
+}
+
+// The next three pin the conditional-free negative branches: each frees the
+// already-allocated values before returning null. testing.allocator turns any
+// leak or double-free into a test failure.
+test "configFromEnv returns null and frees on a whitespace-only endpoint" {
+    const alloc = std.testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{.{ "GRAFANA_OTLP_ENDPOINT", "   " }});
+    defer env_map.deinit();
+    try std.testing.expect(configFromEnv(&env_map, alloc) == null);
+}
+
+test "configFromEnv returns null and frees the endpoint when instance_id is missing" {
+    const alloc = std.testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{.{ "GRAFANA_OTLP_ENDPOINT", "https://otlp.example" }});
+    defer env_map.deinit();
+    try std.testing.expect(configFromEnv(&env_map, alloc) == null);
+}
+
+test "configFromEnv returns null and frees endpoint+instance_id when api_key is missing" {
+    const alloc = std.testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{
+        .{ "GRAFANA_OTLP_ENDPOINT", "https://otlp.example" },
+        .{ "GRAFANA_OTLP_INSTANCE_ID", "12345" },
+    });
+    defer env_map.deinit();
+    try std.testing.expect(configFromEnv(&env_map, alloc) == null);
+}
+
+test "configFromEnv returns the full config with the default service_name" {
+    const alloc = std.testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{
+        .{ "GRAFANA_OTLP_ENDPOINT", "https://otlp.example" },
+        .{ "GRAFANA_OTLP_INSTANCE_ID", "12345" },
+        .{ "GRAFANA_OTLP_API_KEY", "secret-key" },
+    });
+    defer env_map.deinit();
+    const cfg = configFromEnv(&env_map, alloc).?;
+    // endpoint/instance_id/api_key are owned copies; service_name here is the
+    // static default (NOT allocated), so it must NOT be freed.
+    defer {
+        alloc.free(cfg.endpoint);
+        alloc.free(cfg.instance_id);
+        alloc.free(cfg.api_key);
+    }
+    try std.testing.expectEqualStrings("https://otlp.example", cfg.endpoint);
+    try std.testing.expectEqualStrings("agentsfleetd", cfg.service_name);
+}
+
+test "configFromEnv honors an OTEL_SERVICE_NAME override" {
+    const alloc = std.testing.allocator;
+    var env_map = try common.env.fromPairs(alloc, &.{
+        .{ "GRAFANA_OTLP_ENDPOINT", "https://otlp.example" },
+        .{ "GRAFANA_OTLP_INSTANCE_ID", "12345" },
+        .{ "GRAFANA_OTLP_API_KEY", "secret-key" },
+        .{ "OTEL_SERVICE_NAME", "custom-name" },
+    });
+    defer env_map.deinit();
+    const cfg = configFromEnv(&env_map, alloc).?;
+    // Override path: service_name is an owned copy too — free all four.
+    defer {
+        alloc.free(cfg.endpoint);
+        alloc.free(cfg.instance_id);
+        alloc.free(cfg.api_key);
+        alloc.free(cfg.service_name);
+    }
+    try std.testing.expectEqualStrings("custom-name", cfg.service_name);
 }
 
 test "ring buffer push and pop round-trip" {
@@ -186,6 +260,25 @@ test "pop returns null on a claimed-but-unready head slot, then delivers once pu
 test "enqueue is no-op when exporter not installed" {
     // g_config is null by default, so enqueue should silently no-op
     enqueue("info", "test", "this should not crash");
+}
+
+test "collectLogs serializes valid JSON with an escaped body (json.fmt double-quote regression)" {
+    const alloc = std.testing.allocator;
+    otel_logs.testSetInstalled(TEST_CFG);
+    defer otel_logs.testClear();
+
+    // Body with an embedded quote: exercises json.fmt escaping AND the regression
+    // (the prior bug wrapped json.fmt output in its own quotes → invalid ""...."").
+    otel_logs.enqueue("error", "fleet", "boom: said \"hi\"");
+
+    const body = (try otel_logs.testCollect(alloc, TEST_CFG)) orelse return error.NoBody;
+    defer alloc.free(body);
+
+    // A successful parse is the regression assertion: the double-quote bug makes
+    // the log body unparseable, and the embedded quote must be escaped (\").
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    parsed.deinit();
+    try std.testing.expect(std.mem.indexOf(u8, body, "\\\"hi\\\"") != null); // escaped quote present
 }
 
 test "LogEntry truncates oversized fields" {

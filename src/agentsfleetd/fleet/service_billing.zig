@@ -23,6 +23,7 @@ const FleetSession = @import("fleet_session.zig");
 const approval_gate = @import("approval_gate.zig");
 const rows = @import("event_rows.zig");
 const metering = @import("../fleet_runtime/metering.zig");
+const otel_metrics = @import("../observability/otel_metrics.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
@@ -164,7 +165,9 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     // paid on its first delivery (the balance debit is not replay-guarded;
     // only the telemetry row is).
     if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, policy)) {
-        .deducted => {},
+        // Post-commit, fire-and-forget OTLP metric: the receive credit drain.
+        // The debit already committed inside debitReceive; this never blocks it.
+        .deducted => |nanos| otel_metrics.recordCreditDrain(nanos, ctx.posture.label(), ctx.model, ctx.workspace_id),
         .exhausted => {
             blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
             return null;

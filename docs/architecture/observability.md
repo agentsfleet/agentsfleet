@@ -90,3 +90,42 @@ discipline to remember. The field-level standard those calls must satisfy lives 
 `docs/LOGGING_STANDARD.md` — a tracked symlink into the operating-model dotfiles,
 so open it locally (GitHub renders only the symlink target path, not the document).
 This file covers *where the signal goes*; that one covers *what a line must contain*.
+
+---
+
+## The OTLP exporter substrate (traces · logs · metrics)
+
+`agentsfleetd` pushes three OTLP signals to Grafana Cloud over one shared pipeline,
+gated by a single env triple (`GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_INSTANCE_ID`,
+`GRAFANA_OTLP_API_KEY`):
+
+- **traces → Tempo** (`otel_traces.zig`, `/v1/traces`)
+- **logs → Loki** (`otel_logs.zig`, `/v1/logs`)
+- **metrics → Mimir** (`otel_metrics.zig`, `/v1/metrics`)
+
+All three are built on `observability/otlp/`: a generic lock-free multi-producer/
+single-consumer `Ring`, a shared `GrafanaOtlpConfig` + `configFromEnv`, a persistent
+basic-auth HTTP `Client`, and an `Exporter(hooks)` flush driver that owns the
+background flush thread (tick-interruptible shutdown + drain). Each signal supplies
+only its entry type, serialization, and enqueue API. Emission is fire-and-forget: a
+full ring drops the sample and never blocks the caller; an export error logs one warn.
+
+### Metrics: off-Postgres dashboards, money stays in PG
+
+The metrics signal lets operators watch credit-drain, token throughput, and run
+latency without any dashboard query touching the control-plane Postgres. Series:
+
+- `agentsfleet.credit.drained_nanos` (sum) — posture/model (+ a cardinality-guarded workspace)
+- `agentsfleet.tokens.processed` (sum) — by direction {input, cached, output}
+- `agentsfleet.run.duration_ms` (histogram)
+- `agentsfleet.telemetry.samples_dropped` (sum) — exporter self-observability
+
+The emits live in the **service-orchestration layer** (`service_billing` at the
+receive debit, `service_report` at the settle), strictly **after** the money
+transaction commits — never inside `fleet_runtime/metering.zig` or
+`fleet/renewal_settle.zig`. So the exporter can never block or fail a debit, and the
+wallet + ledger + `metering_periods` stay transactional in Postgres. The flush
+coalesces a window's samples into one **DELTA** dataPoint per (metric, labelset); a
+Fly-deployed OTel Collector with the `deltatocumulative` processor converts to
+cumulative before Mimir. Dashboard: `deploy/grafana/agent-observability.json` (do not
+deploy its panels before the Collector — they read empty).

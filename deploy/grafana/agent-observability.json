@@ -1,0 +1,97 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus"
+    }
+  ],
+  "__source_otlp_metrics": [
+    "agentsfleet.credit.drained_nanos",
+    "agentsfleet.tokens.processed",
+    "agentsfleet.run.duration_ms",
+    "agentsfleet.telemetry.samples_dropped"
+  ],
+  "__deployment_note": "These series are pushed via OTLP (DELTA temporality) by agentsfleetd to a Fly-deployed OpenTelemetry Collector running the `deltatocumulative` processor, which converts to cumulative before Grafana Cloud Mimir. The panel exprs use the Prometheus-translated names (dots -> underscores; histogram gets _bucket/_sum/_count). Do NOT deploy these panels until the Collector is configured, or they read empty. None of these queries touch the control-plane Postgres.",
+  "title": "Agent Observability — OTLP (Mimir)",
+  "uid": "agentsfleet-agent-observability",
+  "schemaVersion": 36,
+  "version": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "type": "query",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(agentsfleet_tokens_processed, model)",
+        "refresh": 2,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Credit Drained — nanos/sec by model",
+      "description": "Source OTLP metric agentsfleet.credit.drained_nanos (sum, delta). rate() over the cumulative series the Collector emits. The money path stays in Postgres; this is observability only.",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "sum by (model) (rate(agentsfleet_credit_drained_nanos{model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Token Throughput — tokens/sec by direction",
+      "description": "Source OTLP metric agentsfleet.tokens.processed (sum, delta), split by direction {input, cached, output}.",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "sum by (direction) (rate(agentsfleet_tokens_processed{model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Run Latency p95 (ms)",
+      "description": "Source OTLP metric agentsfleet.run.duration_ms (histogram, delta). p95 from the cumulative _bucket series.",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(agentsfleet_run_duration_ms_bucket{model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Exporter Samples Dropped — per sec",
+      "description": "Source OTLP metric agentsfleet.telemetry.samples_dropped (sum, delta). Non-zero means the metrics exporter is shedding samples (ring full or distinct-series cap) — telemetry is lossy, NOT the money path.",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "sum (rate(agentsfleet_telemetry_samples_dropped[$__rate_interval]))",
+          "legendFormat": "dropped/s"
+        }
+      ]
+    }
+  ]
+}
