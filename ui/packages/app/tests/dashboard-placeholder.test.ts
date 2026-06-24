@@ -111,20 +111,31 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
+  it("events page shell streams the header + skeleton before data", async () => {
+    // EventsData is an async child, so renderToStaticMarkup renders the Suspense
+    // skeleton in its place — the events section stays absent until it streams
+    // in, but the header title paints immediately.
+    mockAuth({ token: "token_abc" });
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Events"); // PageTitle in the shell
+    expect(m).toContain("data-skeleton"); // Skeleton fallback
+    expect(m).not.toContain("Workspace events"); // data not yet resolved
+  });
+
   it("events page calls notFound when no active workspace", async () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    await expect(EventsData()).rejects.toThrow("notFound");
   });
 
   it("events page renders Workspace events section with EventsList", async () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Events");
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await EventsData());
     expect(m).toContain("Workspace events");
   });
 
@@ -132,8 +143,8 @@ describe("placeholder pages", () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await Page());
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await EventsData());
     expect(m).toContain("Workspace events");
   });
 

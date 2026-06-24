@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M101
 **Workstream:** 001
 **Date:** Jun 24, 2026
-**Status:** IN_PROGRESS — parked. §1 (resolver), §2 (fallback + 11-route rewire), §4 (billing dedup) DONE + unit-tested (1024 passed). §3 (Suspense streaming), §5 (code-split dialogs/flows beyond the existing `FleetThreadDynamic`), §5.3 (assistant-ui live QA), and the e2e acceptance run remain.
+**Status:** IN_PROGRESS. §1 (resolver), §2 (fallback + 11-route rewire), §3 (Suspense streaming on `/fleets`, `/events`, `/approvals`), §4 (billing dedup) DONE + unit-tested (1027 passed). §5 (code-split dialogs/flows beyond the existing `FleetThreadDynamic`), §5.3 (assistant-ui live QA), and the e2e acceptance run remain.
 **Priority:** P1 — the dashboard's hottest path pays two serial round-trips per navigation and ships interaction-only islands in the initial bundle.
 **Categories:** UI
 **Batch:** B1 — frontend-only; the M101_002 backend endpoints are an independent sibling PR.
@@ -154,11 +154,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **Dimension 2.3** — no route awaits the list for its data call when a cookie is set → `test_routes_use_resolver` (grep + typecheck)
 - **Dimension 2.4** — hint id 403 and the authoritative list is empty (last workspace deleted) → returns `null` (no-workspace state), does NOT throw → `test_fallback_null_when_list_empty_after_reject`
 
-### §3 — Per-route Suspense streaming
+### §3 — Per-route Suspense streaming — DONE
 
-Each rewired route wraps its data region in `<Suspense>` with a `Skeleton` fallback and moves the fetch into an async child, so `PageHeader`/`PageTitle` streams first.
+Each rewired route wraps its data region in `<Suspense>` with a `Skeleton` fallback and moves the fetch into an exported async child (`FleetsData`/`EventsData`/`ApprovalsData`), so `PageHeader`/`PageTitle` streams first. Mirrors the home page's `StatusTiles`/`RecentActivity` split. Note: on `/fleets` the `ExhaustionBanner` now streams *inside* the data region (below the header) rather than above it — consistent with the home page placement.
 
-- **Dimension 3.1** — `/fleets`, `/events`, `/approvals` render the header synchronously with a skeleton while data is pending → `test_route_shell_streams_before_data`
+- **Dimension 3.1** — DONE — `/fleets`, `/events`, `/approvals` render the header synchronously with a skeleton while data is pending → `test_route_shell_streams_before_data` (one shell-streams test per route asserting `PageTitle` present + skeleton present + data content absent: `fleets-routes.test.ts`, `dashboard-placeholder.test.ts`, `approvals-pages.test.ts`)
 
 ### §4 — Billing read dedup
 
