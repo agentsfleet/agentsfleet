@@ -1,8 +1,15 @@
-//! Admin platform LLM key management — operational/bootstrap-only surface.
-//! Primary callers are humans/fleets driving environment provisioning via
-//! `playbooks/operations/admin_bootstrap/001_playbook.md` (steps 3 + 8 +
-//! rollback step 4). No first-party UI/CLI consumes these routes; if you add
-//! one, drop the playbook reference.
+//! Admin platform LLM key management — the platform default provider + model.
+//!
+//! Consumed by the platform-admin "/admin/models" dashboard (Platform Default
+//! card). Gated by registry.platformAdmin() at the route — the middleware is the
+//! sole gate (no handler-internal role re-check), mirroring register_runner.
+//!
+//! PUT sets the one active default: it validates the (provider, model) is a
+//! priced core.model_caps row (the billing spine — a free-text default would
+//! silently bill run-fee-only), records model/base_url/context_cap, and
+//! deactivates every other provider's row so exactly one row stays active. The
+//! api_key itself is NOT in this row — it lives in the source workspace's vault
+//! under the provider name; the resolver follows source_workspace_id into it.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -12,6 +19,8 @@ const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
+const tenant_provider = @import("../../../state/tenant_provider.zig");
+const model_caps_store = @import("../../../state/model_caps_store.zig");
 const hx_mod = @import("../hx.zig");
 
 const log = logging.scoped(.http);
@@ -21,6 +30,7 @@ pub const Context = common.Context;
 // Row shape for GET /v1/admin/platform-keys response.
 // Defined at module level so std.ArrayList(PlatformKeyRow) compiles in all build modes.
 const S_PROVIDER_MUST_BE_1_32_CHARS = "provider must be 1–32 chars";
+const S_ROLLBACK_FAILED = "platform_default_rollback_failed";
 
 const PlatformKeyRow = struct {
     provider: []const u8,
@@ -30,17 +40,24 @@ const PlatformKeyRow = struct {
 };
 
 // ── PUT /v1/admin/platform-keys ─────────────────────────────────────────────
-// Upsert the platform default LLM key source for a provider.
-// Body: {"provider": "kimi", "source_workspace_id": "..."}
+// Set the active platform default: provider + catalogued model + key source.
+// Body: {"provider","source_workspace_id","model","base_url"?}
+// context_cap is read from the catalogue row (authoritative), never the body.
 
 const PutInput = struct {
     provider: []const u8,
     source_workspace_id: []const u8,
+    model: []const u8,
+    /// Custom OpenAI-compatible endpoint. Required iff provider is the
+    /// openai-compatible id, forbidden for named providers (same pairing rule as
+    /// self-managed credentials). Threaded to the resolver/runner dial.
+    base_url: ?[]const u8 = null,
 };
 
 pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
-    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
-
+    // Gate is the platformAdmin() middleware on this route (route_table.zig) — a
+    // platform-admin principal need not carry the per-tenant `admin` role, so no
+    // handler-internal requireRole here (mirrors register_runner).
     const body = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
@@ -56,7 +73,18 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         hx.fail(error_codes.ERR_INVALID_REQUEST, S_PROVIDER_MUST_BE_1_32_CHARS);
         return;
     }
+    if (input.model.len == 0 or input.model.len > 256) {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "model must be 1–256 chars");
+        return;
+    }
     if (!common.requireUuidV7Id(hx.res, hx.req_id, input.source_workspace_id, "source_workspace_id")) return;
+
+    // base_url ⇔ provider pairing (same SSRF/https rule as self-managed creds):
+    // required for openai-compatible, forbidden for named providers.
+    const validated_base_url = tenant_provider.validateCredentialEndpoint(input.provider, input.base_url) catch {
+        hx.fail(error_codes.ERR_PROVIDER_BASE_URL_INVALID, "base_url invalid: openai-compatible needs an https SSRF-safe URL; a named provider must omit it");
+        return;
+    };
 
     const key_id = id_format.generatePlatformLlmKeyId(hx.alloc) catch {
         common.internalOperationError(hx.res, "Failed to generate platform key id", hx.req_id);
@@ -70,43 +98,100 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    // Validate source_workspace_id references an existing workspace.
-    const ws_exists = blk: {
-        var ws_q = PgQuery.from(conn.query(
-            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
-            .{input.source_workspace_id},
-        ) catch {
-            common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
-            return;
-        });
-        defer ws_q.deinit();
-        break :blk (ws_q.next() catch null) != null;
-    };
-    if (!ws_exists) {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace");
-        return;
-    }
+    if (!workspaceExists(hx, conn, input.source_workspace_id)) return;
 
-    _ = conn.exec(
-        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
-        \\VALUES ($1, $2, $3, true, $4, $4)
-        \\ON CONFLICT (provider) DO UPDATE
-        \\SET source_workspace_id = EXCLUDED.source_workspace_id,
-        \\    active = true,
-        \\    updated_at = EXCLUDED.updated_at
-    , .{ key_id, input.provider, input.source_workspace_id, now_ms }) catch {
-        common.internalOperationError(hx.res, "Failed to upsert platform key", hx.req_id);
+    // Billing-spine guard: the default's (provider, model) MUST be a priced
+    // catalogue row. The cap comes from that row — authoritative, no body drift.
+    const cap = model_caps_store.capFor(conn, input.provider, input.model) orelse {
+        hx.fail(error_codes.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "model is not a priced catalogue row for this provider; add it to /admin/models first");
         return;
     };
 
-    log.debug("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
+    if (!activateDefault(hx, conn, key_id, input, validated_base_url, cap, now_ms)) return;
+
+    log.debug("admin_platform_default_set", .{ .provider = input.provider, .model = input.model });
 
     hx.ok(.ok, .{
         .provider = input.provider,
+        .model = input.model,
         .source_workspace_id = input.source_workspace_id,
         .active = true,
         .request_id = hx.req_id,
     });
+}
+
+/// True iff source_workspace_id references an existing workspace; writes the
+/// error response and returns false otherwise.
+fn workspaceExists(hx: hx_mod.Hx, conn: anytype, workspace_id: []const u8) bool {
+    var q = PgQuery.from(conn.query(
+        "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 LIMIT 1",
+        .{workspace_id},
+    ) catch {
+        common.internalOperationError(hx.res, "Failed to check workspace existence", hx.req_id);
+        return false;
+    });
+    defer q.deinit();
+    if ((q.next() catch null) == null) {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "source_workspace_id does not reference an existing workspace");
+        return false;
+    }
+    return true;
+}
+
+/// Upsert this provider as the active default and deactivate every other row, in
+/// one transaction so exactly one row is ever active. Returns false (after
+/// writing the error response) on failure.
+fn activateDefault(
+    hx: hx_mod.Hx,
+    conn: anytype,
+    key_id: []const u8,
+    input: PutInput,
+    base_url: ?[]const u8,
+    cap: i32,
+    now_ms: i64,
+) bool {
+    conn.begin() catch {
+        common.internalOperationError(hx.res, "Failed to begin transaction", hx.req_id);
+        return false;
+    };
+    activateDefaultTx(conn, key_id, input, base_url, cap, now_ms) catch {
+        conn.rollback() catch |rb_err| log.warn(S_ROLLBACK_FAILED, .{ .err = @errorName(rb_err) });
+        common.internalOperationError(hx.res, "Failed to set platform default", hx.req_id);
+        return false;
+    };
+    conn.commit() catch {
+        conn.rollback() catch |rb_err| log.warn(S_ROLLBACK_FAILED, .{ .err = @errorName(rb_err) });
+        common.internalOperationError(hx.res, "Failed to commit platform default", hx.req_id);
+        return false;
+    };
+    return true;
+}
+
+fn activateDefaultTx(
+    conn: anytype,
+    key_id: []const u8,
+    input: PutInput,
+    base_url: ?[]const u8,
+    cap: i32,
+    now_ms: i64,
+) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.platform_llm_keys
+        \\  (id, provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1, $2, $3, $4, $5, $6, true, $7, $7)
+        \\ON CONFLICT (provider) DO UPDATE
+        \\SET source_workspace_id = EXCLUDED.source_workspace_id,
+        \\    model = EXCLUDED.model,
+        \\    base_url = EXCLUDED.base_url,
+        \\    context_cap_tokens = EXCLUDED.context_cap_tokens,
+        \\    active = true,
+        \\    updated_at = EXCLUDED.updated_at
+    , .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
+    // Exactly one active row: stand every other provider down.
+    _ = try conn.exec(
+        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE active = true AND provider <> $2",
+        .{ now_ms, input.provider },
+    );
 }
 
 // ── DELETE /v1/admin/platform-keys/{provider} ────────────────────────────────
@@ -114,8 +199,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
 
 pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider: []const u8) void {
     _ = req;
-    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
-
+    // Gate is the platformAdmin() middleware (route_table.zig) — see PUT above.
     if (provider.len == 0 or provider.len > 32) {
         hx.fail(error_codes.ERR_INVALID_REQUEST, S_PROVIDER_MUST_BE_1_32_CHARS);
         return;
@@ -149,8 +233,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
 
 pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
     _ = req;
-    if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
-
+    // Gate is the platformAdmin() middleware (route_table.zig) — see PUT above.
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;

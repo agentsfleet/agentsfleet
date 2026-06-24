@@ -423,26 +423,24 @@ test "integration: runner control plane — a fresh lease overlays the resolved 
     defer h.releaseConn(conn);
     defer cleanupAll(h, conn);
 
-    // The model + 1M cap the control plane resolved into tenant_providers at
-    // provider-set time (the model-caps endpoint). CONFIG_NO_GATES carries no
-    // x-agentsfleet.context block, so the fleet's frontmatter cap/model are the
-    // sentinels (0 / "") that the lease-time overlay fills.
+    // The model + 1M cap the lease overlays come from the active platform_llm_keys
+    // row (M100: resolvePlatformDefault sources model+cap live from that row, not
+    // the tenant_providers snapshot or a compile-time constant). CONFIG_NO_GATES
+    // carries no x-agentsfleet.context block, so the fleet's frontmatter cap/model
+    // are the sentinels (0 / "") that the lease-time overlay fills.
     const OVERLAY_MODEL = "accounts/fireworks/models/kimi-k2.6";
     const OVERLAY_CAP_TOKENS = 1_000_000; // ≥ large tier → tool_window 30 (capabilities.md §4)
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, "fw_overlay_path_key");
-    // A platform tenant_providers row pins a 1M cap so the overlaid cap lands in
-    // a different tool_window tier than the mid default — proving the tiering,
-    // not just the passthrough. credential_ref is NULL: platform mode resolves
-    // its key via core.platform_llm_keys, not the row.
+    // Pin a 1M cap on the live platform_llm_keys row (the fixture seeds the
+    // mid-tier default cap) so the overlaid cap lands in a different tool_window
+    // tier than the mid default — proving the tiering, not just the passthrough.
+    // The row's model already equals OVERLAY_MODEL via the fixture.
     _ = try conn.exec(
-        \\INSERT INTO core.tenant_providers
-        \\  (tenant_id, mode, provider, model, context_cap_tokens, credential_ref, created_at, updated_at)
-        \\VALUES ($1::uuid, 'platform', 'fireworks', $2, $3, NULL, 0, 0)
-        \\ON CONFLICT (tenant_id) DO UPDATE SET mode = EXCLUDED.mode,
-        \\  model = EXCLUDED.model, context_cap_tokens = EXCLUDED.context_cap_tokens
-    , .{ base.TEST_TENANT_ID, OVERLAY_MODEL, @as(i32, OVERLAY_CAP_TOKENS) });
+        "UPDATE core.platform_llm_keys SET context_cap_tokens = $1 WHERE active = true",
+        .{@as(i32, OVERLAY_CAP_TOKENS)},
+    );
     try fundLargeBalance(conn);
     try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
     try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-1", SESSION_1_ID);

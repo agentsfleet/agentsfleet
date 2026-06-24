@@ -66,6 +66,9 @@ pub const Route = union(enum) {
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
+    // Admin model-caps catalogue CRUD (platform-admin)
+    admin_models, // GET + POST /v1/admin/models (method-dispatched)
+    admin_model_by_id: []const u8, // PATCH + DELETE /v1/admin/models/{uid}
     // Fleet create/read/update/delete (CRUD), workspace-scoped.
     workspace_fleets: []const u8, // GET|POST /v1/workspaces/{ws}/fleets
     patch_workspace_fleet: matchers.WorkspaceFleetRoute, // PATCH /v1/workspaces/{ws}/fleets/{id}
