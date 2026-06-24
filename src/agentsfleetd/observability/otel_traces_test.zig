@@ -1,6 +1,13 @@
 const std = @import("std");
 const trace = @import("trace.zig");
 const otel_traces = @import("otel_traces.zig");
+const otlp_config = @import("otlp/config.zig");
+
+const TEST_CFG: otlp_config.GrafanaOtlpConfig = .{
+    .endpoint = "http://127.0.0.1:0",
+    .instance_id = "i",
+    .api_key = "k",
+};
 
 const Ring = otel_traces.TestRing;
 const BUFFER_CAPACITY = otel_traces.TEST_BUFFER_CAPACITY;
@@ -138,6 +145,29 @@ test "enqueueSpan is no-op when exporter not installed" {
     const ctx = trace.TraceContext.generate();
     const entry = buildSpan(ctx, "noop", 0, 0);
     enqueueSpan(entry);
+}
+
+test "collectSpans serializes valid single-quoted JSON (json.fmt double-quote regression)" {
+    const alloc = std.testing.allocator;
+    otel_traces.testSetInstalled(TEST_CFG);
+    defer otel_traces.testClear();
+
+    const ctx = trace.TraceContext.generate();
+    var span = otel_traces.buildSpan(ctx, "run.execute", 100, 200);
+    try std.testing.expect(otel_traces.addAttr(&span, "model", "claude-opus-4-8"));
+    otel_traces.enqueueSpan(span);
+
+    const body = (try otel_traces.testCollect(alloc, TEST_CFG)) orelse return error.NoBody;
+    defer alloc.free(body);
+
+    // The prior bug wrapped json.fmt (which already quotes) in its own quotes,
+    // emitting ""value"" — invalid JSON that Tempo rejects. A successful parse is
+    // the regression assertion; the bug makes the body unparseable.
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    parsed.deinit();
+    // And the attribute value + span name are single-quoted (the fixed shape).
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"stringValue\":\"claude-opus-4-8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"name\":\"run.execute\"") != null);
 }
 
 test "buildSpan sets fields correctly for root span" {

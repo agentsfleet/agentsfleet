@@ -10,6 +10,14 @@
 //!
 //! Mirrors the pg.zig / s3.zig helper split — keeps build.zig and
 //! build_runner.zig free of per-fixture wiring.
+//!
+//! CONVENTION: place new fixtures under `tests/fixtures/<category>/`, grouped by
+//! domain (`telemetry/`, `webhooks/`, `fleetbundle/`, `runner/`, …). Then add a
+//! `{ .name, .path }` row to DAEMON (`src/agentsfleetd/**` tests) or RUNNER
+//! (`src/runner/**` tests) and consume via `@embedFile("<name>")` using the
+//! registered NAME — never a relative path, and never a repo-root `samples/…`
+//! path. Both are unreachable: `@embedFile` refuses files outside the importing
+//! module's root directory.
 
 const std = @import("std");
 
@@ -20,6 +28,10 @@ const DAEMON: []const Fixture = &.{
     .{ .name = "github_run_failure.json", .path = "tests/fixtures/webhooks/github_run_failure.json" },
     .{ .name = "github_run_success.json", .path = "tests/fixtures/webhooks/github_run_success.json" },
     .{ .name = "sample_with_folders.tar.gz", .path = "tests/fixtures/fleetbundle/sample_with_folders.tar.gz" },
+    .{ .name = "otlp_metrics.json", .path = "tests/fixtures/telemetry/otlp_metrics.json" },
+    // The Grafana dashboard is a deploy artifact, embedded so a metric-name test
+    // pins it against the emitted metric-name constants (UFS single source).
+    .{ .name = "agent-observability.json", .path = "deploy/grafana/agent-observability.json" },
 };
 
 /// agentsfleet-runner (`src/runner/**`) `*_test.zig` @embedFile fixtures.

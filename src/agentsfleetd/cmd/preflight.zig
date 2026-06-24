@@ -11,8 +11,10 @@ const db = @import("../db/pool.zig");
 const EnvMap = constants.env.Map;
 const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
+const otlp_config = @import("../observability/otlp/config.zig");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
+const otel_metrics = @import("../observability/otel_metrics.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const common = @import("common.zig");
 
@@ -82,7 +84,7 @@ pub fn initTelemetry(env_map: *const EnvMap, alloc: std.mem.Allocator) Telemetry
 // ---------------------------------------------------------------------------
 
 pub fn initOtelLogs(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    if (otel_logs.configFromEnv(env_map, alloc)) |cfg| {
+    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
         otel_logs.install(cfg);
         log.info("startup.otel_logs_ok", .{});
     }
@@ -99,7 +101,7 @@ pub fn deinitOtelLogs() void {
 // ---------------------------------------------------------------------------
 
 pub fn initOtelTraces(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    if (otel_logs.configFromEnv(env_map, alloc)) |cfg| {
+    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
         otel_traces.install(cfg);
         log.info("startup.otel_traces_ok", .{});
     }
@@ -109,6 +111,42 @@ pub fn deinitOtelTraces() void {
     if (otel_traces.isInstalled()) {
         otel_traces.uninstall();
     }
+}
+
+// ---------------------------------------------------------------------------
+// OTLP metric exporter
+// ---------------------------------------------------------------------------
+
+pub fn initOtelMetrics(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+    if (otlp_config.configFromEnv(env_map, alloc)) |cfg| {
+        otel_metrics.install(cfg);
+        log.info("startup.otel_metrics_ok", .{});
+    } else {
+        // Self-serve signal: the disabled reason lives in the startup log, not a
+        // ticket — same shared GRAFANA_OTLP_* gate as traces/logs.
+        log.info("startup.otel_metrics_disabled", .{ .reason = "no GRAFANA_OTLP_ENDPOINT" });
+    }
+}
+
+pub fn deinitOtelMetrics() void {
+    if (otel_metrics.isInstalled()) {
+        otel_metrics.uninstall();
+    }
+}
+
+/// Install all three OTLP exporters (logs/traces/metrics) under the shared
+/// GRAFANA_OTLP_* gate. Pair with `deinitOtelExporters` via `defer`.
+pub fn initOtelExporters(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
+    initOtelLogs(env_map, alloc);
+    initOtelTraces(env_map, alloc);
+    initOtelMetrics(env_map, alloc);
+}
+
+/// Uninstall all three OTLP exporters (reverse order).
+pub fn deinitOtelExporters() void {
+    deinitOtelMetrics();
+    deinitOtelTraces();
+    deinitOtelLogs();
 }
 
 // ---------------------------------------------------------------------------
