@@ -200,6 +200,55 @@ test "integration: tenant provider accepts credential POST rows by raw name" {
     cleanupRows(conn);
 }
 
+test "integration: custom openai-compatible credential activates end-to-end" {
+    // The cross-tier seam the resolver-direct tests cannot see: POST a custom
+    // openai-compatible credential, then PUT /provider to activate it, and assert
+    // the activate SUCCEEDS (200) with the resolved view. This drives the real
+    // handler path — body parse, probe, AND the model_rate_cache catalogue gate —
+    // which the upsertSelfManaged-direct unit tests skip.
+    setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seedAndHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const credentials_path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/credentials", .{TEST_WS_ID});
+    defer alloc.free(credentials_path);
+
+    const cred_body =
+        "{\"name\":\"compat-key\",\"data\":{\"provider\":\"openai-compatible\"," ++
+        "\"base_url\":\"https://api.openrouter.ai/v1\",\"model\":\"kimi-k2.6\"," ++
+        "\"api_key\":\"sk-compat-not-real\"}}";
+    {
+        const r = try (try (try h.post(credentials_path).bearer(TOKEN_OPERATOR)).json(cred_body)).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    {
+        const r = try (try (try h.put("/v1/tenants/me/provider").bearer(TOKEN_OPERATOR))
+            .json("{\"mode\":\"self_managed\",\"credential_ref\":\"compat-key\"}")).send();
+        defer r.deinit();
+        // A custom (openai-compatible) endpoint bills provider-direct, so it must
+        // BYPASS the platform model-rate catalogue gate — its user-hosted model is
+        // absent from core.model_caps by design — and activate. Regression guard for
+        // the catalogue-gate fix: the activate SUCCEEDS with the resolved view, and
+        // the api_key never echoes back (vault-only).
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains("\"mode\":\"self_managed\""));
+        try std.testing.expect(r.bodyContains("\"provider\":\"openai-compatible\""));
+        try std.testing.expect(r.bodyContains("\"model\":\"kimi-k2.6\""));
+        try std.testing.expect(r.bodyContains("\"credential_ref\":\"compat-key\""));
+        try std.testing.expect(!r.bodyContains("sk-compat-not-real"));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupRows(conn);
+}
+
 test "integration: credential POST rejects non-object data" {
     setTestEncryptionKey();
     const alloc = std.testing.allocator;
