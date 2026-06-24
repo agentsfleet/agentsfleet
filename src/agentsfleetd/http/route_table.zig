@@ -68,6 +68,8 @@ pub fn classFor(route: router.Route) RouteClass {
         .github_webhook,
         .admin_platform_keys,
         .delete_admin_platform_key,
+        .admin_models,
+        .admin_model_by_id,
         .workspace_fleets,
         .patch_workspace_fleet,
         .workspace_credentials,
@@ -136,9 +138,15 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .fleet_bundles => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetBundles },
 
-        // Admin platform keys (admin role required)
-        .admin_platform_keys => .{ .middlewares = registry.admin(), .invoke = invoke.invokeAdminPlatformKeys },
-        .delete_admin_platform_key => .{ .middlewares = registry.admin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
+        // Admin platform keys + model catalogue — platform-admin claim required
+        // (the platformAdmin middleware is the sole gate; a tenant admin / agt_t
+        // is rejected 403). Tightened from the per-tenant admin() gate: setting
+        // the platform default and pricing the catalogue are platform-wide
+        // controls, not per-tenant ones (mirrors register_runner).
+        .admin_platform_keys => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminPlatformKeys },
+        .delete_admin_platform_key => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
+        .admin_models => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminModels },
+        .admin_model_by_id => .{ .middlewares = registry.platformAdmin(), .invoke = invoke.invokeAdminModelById },
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
         // scheme + secret resolved per-fleet from the workspace credential

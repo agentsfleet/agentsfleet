@@ -6,6 +6,21 @@
 --   2. platform_llm_keys active row → admin workspace vault.secrets  → platform default
 --   3. WorkerError.CredentialDenied — no env fallback in any mode
 
+-- The active row also carries the priced default it resolves to — model, an
+-- optional custom endpoint, and the context cap — so the resolver reads them
+-- straight off this row instead of compile-time constants. Changing the default
+-- (PUT /v1/admin/platform-keys) propagates to every platform-mode tenant on
+-- their next lease, no redeploy. All three are NULLABLE (a row may predate a
+-- proper default-set); presence is enforced in the app write path (the admin PUT
+-- validates `model` is a priced core.model_caps row before activating). No
+-- DEFAULT literal / no CHECK list (RULE STS): the allowed shapes are app-enforced
+-- named constants, not frozen SQL.
+--   model              the priced (provider, model_id) the default resolves to
+--   base_url           custom OpenAI-compatible endpoint when the default is not
+--                      a named provider; NULL for named providers (built-in
+--                      host). Validated https + SSRF-safe in the app.
+--   context_cap_tokens the context window pinned for the default, mirroring the
+--                      catalogue row's cap at activation time.
 CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     uid                 UUID GENERATED ALWAYS AS (id) STORED PRIMARY KEY,
     CONSTRAINT ck_platform_llm_keys_uid_uuidv7 CHECK (substring(uid::text from 15 for 1) = '7'),
@@ -13,6 +28,9 @@ CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     provider            TEXT NOT NULL,
     source_workspace_id UUID NOT NULL REFERENCES core.workspaces(workspace_id),
     active              BOOLEAN NOT NULL DEFAULT true,
+    model               TEXT,
+    base_url            TEXT,
+    context_cap_tokens  INTEGER,
     created_at          BIGINT NOT NULL,
     updated_at          BIGINT NOT NULL,
     CONSTRAINT uq_platform_llm_keys_provider UNIQUE (provider)

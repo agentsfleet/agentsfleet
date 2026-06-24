@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M100
 **Workstream:** 001
 **Date:** Jun 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — unblocks self-serve platform onboarding; removes the manual seed + playbook bootstrap that gate every new environment.
 **Categories:** API, UI
 **Batch:** B1
@@ -113,6 +113,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **Patch-vs-refactor verdict:** **patch** — wires admin write paths onto existing tables + resolver. The resolve chain is not refactored; only the default's source changes.
 
 ## Sections (implementation slices)
+
+> **All Sections §1–§6 DONE** (Jun 25, 2026). Every Dimension shipped + tested; deviations recorded in Discovery (uid-keyed PATCH/DELETE, schema fold into `006`/`019`, `model_caps_store` consolidation, the rate-cache UAF fix + regression guard, the install-worker drain, the four integration test-semantic fixes). §1's columns land in `006_platform_llm_keys.sql` (not a `029` ALTER — pre-v2.0 SCHEMA GUARD) and the seed is removed from `019`.
 
 ### §1 — Schema: widen `platform_llm_keys`, remove the catalogue seed
 
@@ -294,6 +296,19 @@ No files deleted (handler is new; tables widened, not dropped).
 - **Deferrals (Indy-acked):** "Test Connection" key verification → follow-up (Decision D). Audit trail → agent-firewall proxy, out of scope. Capture verbatim quotes here before CHORE(close) if challenged.
 - **Runners-alignment review** — record the modal/badge/table drift findings here at §6.
 
+### Pickup-session decisions + deviations (Orly, Jun 25, 2026)
+
+- **uid-keyed PATCH/DELETE** — `/v1/admin/models/{uid}` keys on the uuidv7 `uid`, not `{provider}/{model_id}` (model_id contains `/`, can't be a path segment). Interface change vs the spec's original §2 path shape.
+- **`model_caps_store.zig` consolidation (Indy override, in this PR — NOT deferred to M101)** — a single owner of all `core.model_caps` SQL (`listForAdmin`/`listForPublic`/`capFor`/`isReferencedByActiveDefault`/`create`/`updateRates`/`remove`). The public-GET handler, admin CRUD, and the platform-default cap-snapshot now call it; `model_rate_cache` shares its `TABLE` constant (its hot-path SELECT stays local). Removed ~3 duplicated column-lists, 2 row structs, 2 append loops, inline `catalogueCap`/`isActiveDefaultModel`.
+- **`credential_probe.zig` split (RULE FLL)** — `tenant_provider_resolver.zig` hit 379 > 350; the self-managed credential probe + SSRF endpoint gate moved to `credential_probe.zig` (resolver → 230 lines). `tenant_provider.zig` façade re-exports re-pointed; behavior-preserving (secureZero/errdefer on api_key intact).
+- **Rate-cache use-after-free FIX (production correctness)** — M100 made the admin handler call `model_rate_cache.populate()` per-mutation. The pre-M100 boot-only contract passed the caller's allocator; with a request-scoped allocator the process-global cache held request-lifetime memory → UAF on reset + cross-allocator free on the next build-then-swap. Fixed: `populate(conn)` now owns its memory off `std.heap.page_allocator`, dropping the misuse-prone allocator param. Regression guard added (`catalogue mutations repopulate the rate cache`).
+- **Schema fold (SCHEMA GUARD, pre-v2.0)** — migration `029`'s `ALTER TABLE ADD COLUMN` violated the pre-v2.0 teardown convention (no agent override). Folded the 3 columns into `006_platform_llm_keys.sql`'s `CREATE TABLE` and the `model_caps` write grant into `019_model_caps.sql`; removed `029` entirely (DBs torn down fresh — Indy-confirmed). Net vs `origin/main`: `006` + `019` edits only (embed.zig + migration array unchanged).
+- **Test-fixture + test-semantic fixes (integration was red, not green)** — the handoff's "confirm green" was wrong: 26 failures. Root causes + fixes: (1) `seedPlatformProviderWithKey` never set the new `model`/`context_cap_tokens` columns → `tenant_resolve_failed` across ~24 lease-path tests; (2) `control_plane` overlay test pinned cap on `tenant_providers` (M100 sources it from `platform_llm_keys` now); (3) `rbac` test asserted `UZ-AUTH-009` but M100's `platformAdmin()` gate returns `UZ-AUTH-021` (admin-role-alone now insufficient — security tightening); (4) `credentials_json` needed its own `model_caps` seed (seedless catalogue).
+- **Install-worker drain (flaky segfault FIX)** — fleet-create spawns a detached install worker that called `pool.acquire()` after harness teardown → timing-flaky segfault under the parallel runner. Added `common.WaitGroup` (this Zig lacks `std.Thread.WaitGroup`), threaded via `Context.install_wg` (null in prod), drained in `TestHarness.deinit()` before pool/queue free.
+- **Blast-radius adds beyond §1–§6:** `model_caps.zig` empty-catalogue → 200 (was 503); `model_caps_integration_test.zig` self-seeds; §6.4 runners alignment — no token-level drift requiring a fix (admin/models mirrors admin/runners: PageHeader + `divide-y` list + Badge + Dialog).
+- **`/review` (adversarial, this session):** 0 P0/P1; 2 P2 comment-only fixes applied (stale `formatVersion` 503-comment; `seedPlatformProvider` run-fee-only caveat). Per-file large-refactor assessment (Indy directive): NO for all touched files — focused post-dedup.
+- **Skill chain:** `/write-unit-test` — coverage added (3 admin edge/negative tests incl. the cache regression guard). `/review` — clean (above). `/review-pr` + `kishore-babysit-prs` — run after `gh pr create`.
+
 ## Skill-Driven Review Chain (mandatory)
 
 Standard chain, outcomes logged in Discovery: `/write-unit-test` (coverage audit) → `/review` (adversarial, before CHORE(close)) → `/review-pr` (after `gh pr create`) → `kishore-babysit-prs`. Skipping any violates CHORE(close).
@@ -302,13 +317,14 @@ Standard chain, outcomes logged in Discovery: `/write-unit-test` (coverage audit
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | {paste} | |
-| Integration tests | `make test-integration` | {paste} | |
-| e2e (UI) | `{ui e2e command}` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
-| Dead code sweep | `grep -rn PLATFORM_DEFAULT_ src/` | {paste} | |
+| Integration tests | `make test-integration` | 3 consecutive clean runs; 0 error/leak/panic blocks; no Build Summary (zig emits it only on failure) | ✅ |
+| Memleak | `make memleak` | 1352 passed, 0 failed, 0 leaks (allocator gate; macOS `leaks` SIP-advisory) | ✅ |
+| Lint (Zig) | `make lint-zig` | ZLint + pg-drain + test-depth + **schema-gate** all pass | ✅ |
+| UI typecheck + lint + vitest | `bun run typecheck && bun run lint && vitest` | 0 type errors, lint clean, 14/14 vitest | ✅ |
+| Cross-compile (Zig) | `zig build -Dtarget={x86_64,aarch64}-linux` | both exit 0 | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks (2902 commits scanned) | ✅ |
+| Dead code sweep | `grep -rn PLATFORM_DEFAULT_ src/` | constants deleted; no production refs | ✅ |
+| Test delta | `make _lint_zig_test_depth` | unit 2090 → 2103 (+13), integration 202 (baseline) | ✅ |
 
 ## Out of Scope
 

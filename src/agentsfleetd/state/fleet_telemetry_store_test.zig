@@ -4,7 +4,6 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const store = @import("fleet_telemetry_store.zig");
-const tenant_provider = @import("tenant_provider.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 const MS_PER_SECOND = 1000;
@@ -12,7 +11,9 @@ const MS_PER_SECOND = 1000;
 const ALLOC = std.testing.allocator;
 const WS_A = "0195b4ba-8d3a-7f13-8abc-aa1900000001";
 const AGENTSFLEET_A = "fleet-telem-a";
-const PLATFORM_MODEL = tenant_provider.PLATFORM_DEFAULT_MODEL;
+// Arbitrary model id for the telemetry fixtures — the value is opaque to these
+// tests (they only store + read it back), so it's a plain test string.
+const FIXTURE_MODEL = "telemetry-test-model";
 
 fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, event_id: []const u8, recorded_at: i64) !void {
     try store.insertTelemetry(conn, ALLOC, .{
@@ -22,7 +23,7 @@ fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8, 
         .event_id = event_id,
         .charge_type = .stage,
         .posture = .platform,
-        .model = PLATFORM_MODEL,
+        .model = FIXTURE_MODEL,
         .credit_deducted_nanos = 2,
         .recorded_at = recorded_at,
     });
@@ -36,7 +37,7 @@ fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const u8
         .event_id = event_id,
         .charge_type = .receive,
         .posture = .platform,
-        .model = PLATFORM_MODEL,
+        .model = FIXTURE_MODEL,
         .credit_deducted_nanos = 1,
         .recorded_at = recorded_at,
     });
