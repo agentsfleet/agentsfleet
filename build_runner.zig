@@ -184,5 +184,10 @@ pub fn build(b: *std.Build) void {
         }),
         .filters = test_filters,
     });
+    // The integration root pulls the network barrel (AllowList) transitively,
+    // and that barrel's test block @embedFiles the captured nft fixtures — wire
+    // the same runner fixtures the unit module gets (addRunner above) so they
+    // resolve here too, not just in the unit lane.
+    buildpkg.fixtures.addRunner(b, runner_integration_tests.root_module);
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
 }
