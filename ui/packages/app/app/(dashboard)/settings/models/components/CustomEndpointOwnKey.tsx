@@ -67,11 +67,12 @@ export type CustomEndpointOwnKeyProps = {
 
 /**
  * Own-key "Custom — OpenAI-compatible" path. Reveals a base-URL field, stores a
- * credential carrying `{ provider: "openai-compatible", base_url, api_key? }`,
+ * credential carrying `{ provider: "openai-compatible", base_url, model, api_key? }`,
  * then points the tenant provider at it (`setTenantProviderSelfManaged` with the
- * new credential's ref). A non-https URL is flagged inline before any request;
- * the server enforces the SSRF guard. The PUT body is unchanged — the URL rides
- * in the referenced credential.
+ * new credential's ref). The model collected here is written into the credential
+ * (the resolver requires it to activate the credential) AND passed as the PUT
+ * override, so the activation probe always has a model to read. A non-https URL
+ * is flagged inline before any request; the server enforces the SSRF guard.
  */
 export default function CustomEndpointOwnKey({
   workspaceId,
@@ -87,7 +88,7 @@ export default function CustomEndpointOwnKey({
   const [saving, setSaving] = useState(false);
 
   const busy = saving || isPending;
-  const canSubmit = name.trim() !== "" && baseUrl.trim() !== "";
+  const canSubmit = name.trim() !== "" && baseUrl.trim() !== "" && model.trim() !== "";
 
   async function submit() {
     if (!canSubmit || busy) return;
@@ -98,9 +99,11 @@ export default function CustomEndpointOwnKey({
     setSaving(true);
     try {
       const credName = name.trim();
+      const credModel = model.trim();
       const data: CredentialData = {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: baseUrl.trim(),
+        [CREDENTIAL_FIELD.model]: credModel,
       };
       const key = apiKey.trim();
       if (key !== "") data[CREDENTIAL_FIELD.apiKey] = key;
@@ -120,7 +123,7 @@ export default function CustomEndpointOwnKey({
 
       const set = await setProviderSelfManagedAction({
         credential_ref: credName,
-        model: model.trim() || undefined,
+        model: credModel,
       });
       if (!set.ok) {
         onError(set.error);
@@ -185,7 +188,7 @@ export default function CustomEndpointOwnKey({
       </div>
       <Step2Model catalogue={catalogue} model={model} onModelChange={setModel} />
       <Alert variant="info" className="text-xs">
-        The base URL is saved on this credential; the model setup points at it.
+        The base URL and model are saved on this credential; pick the model this endpoint serves.
       </Alert>
       <Button type="button" onClick={() => void submit()} disabled={busy || !canSubmit}>
         {busy ? <Spinner size="sm" srLabel="Saving" /> : null}

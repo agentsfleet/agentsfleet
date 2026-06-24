@@ -201,6 +201,31 @@ describe("credential add — custom OpenAI-compatible endpoint", () => {
     });
   });
 
+  test("--model alone routes to the typed path: a clear pairing error, never 'missing --data'", async () => {
+    await authedScope(async () => {
+      // `--model` with no other typed flag is an incomplete custom endpoint. It
+      // must route to the typed form (so the field-pairing check fires) instead
+      // of falling through to the generic `--data` resolver. Point at an
+      // unroutable API to prove the rejection is client-side (no network).
+      const out = bufferStream();
+      const err = bufferStream();
+      const code = await runCli(
+        [
+          "credential", "add", CRED_NAME,
+          "--model", MODEL,
+          "--json",
+        ],
+        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+      );
+      expect(code).not.toBe(0);
+      const text = out.read() + err.read();
+      // The clear typed-path pairing error (names --api-key / --provider / --base-url) …
+      expect(text).toMatch(/--api-key|--provider|--base-url/i);
+      // … NOT the generic "missing --data" hint the old fall-through produced.
+      expect(text).not.toMatch(/missing --data/i);
+    });
+  });
+
   test("--data and the typed flags together are rejected (mutually exclusive)", async () => {
     await authedScope(async () => {
       const out = bufferStream();

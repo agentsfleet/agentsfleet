@@ -112,9 +112,15 @@ const typedProviderBody = (flags: CredentialAddFlags): ParsedData => {
 };
 
 // Did the caller use the typed custom-endpoint form (any of --provider /
-// --base-url / --api-key)? `--data` and the typed flags are mutually exclusive.
+// --base-url / --api-key / --model)? `--model` counts so it routes to the typed
+// path and hits the clear pairing error (a model with no --provider/--base-url is
+// an incomplete custom endpoint) rather than the generic "missing --data" hint.
+// `--data` and the typed flags are mutually exclusive.
 const usedTypedForm = (flags: CredentialAddFlags): boolean =>
-  isString(flags.provider) || isString(flags.baseUrl) || isString(flags.apiKey);
+  isString(flags.provider) ||
+  isString(flags.baseUrl) ||
+  isString(flags.apiKey) ||
+  isString(flags.model);
 
 const resolveDataSource = (
   data: string | undefined,

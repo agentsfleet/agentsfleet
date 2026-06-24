@@ -46,9 +46,11 @@ export function isHttpsUrl(value: string): boolean {
 
 /**
  * Add a custom OpenAI-compatible model-provider credential to the vault: a base
- * URL (required, https) + an optional API key. Submits the credential JSON
- * `{ provider: "openai-compatible", base_url, api_key? }` via createCredential —
- * the `base_url` rides in the saved credential (no schema change). A non-https
+ * URL (required, https), a default model (required), and an optional API key.
+ * Submits the credential JSON `{ provider: "openai-compatible", base_url, model,
+ * api_key? }` via createCredential — the `base_url` + `model` ride in the saved
+ * credential (no schema change). The resolver requires `model` to activate the
+ * credential, so it is collected here rather than left for later. A non-https
  * URL is flagged inline (the "not-https" reason) before any request; the server
  * enforces the full SSRF guard and returns a typed error for a blocked host.
  */
@@ -56,11 +58,12 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
   const router = useRouter();
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const canSubmit = name.trim() !== "" && baseUrl.trim() !== "";
+  const canSubmit = name.trim() !== "" && baseUrl.trim() !== "" && model.trim() !== "";
 
   async function submit() {
     if (!canSubmit || pending) return;
@@ -74,6 +77,7 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
       const data: CredentialData = {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: baseUrl.trim(),
+        [CREDENTIAL_FIELD.model]: model.trim(),
       };
       const key = apiKey.trim();
       if (key !== "") data[CREDENTIAL_FIELD.apiKey] = key;
@@ -93,6 +97,7 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
       onCreated?.(name.trim());
       setName("");
       setBaseUrl("");
+      setModel("");
       setApiKey("");
       router.refresh();
     } finally {
@@ -134,6 +139,22 @@ export default function CustomEndpointForm({ workspaceId, onCreated }: CustomEnd
           spellCheck={false}
           autoComplete="off"
         />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="custom-endpoint-model">Model</Label>
+        <Input
+          id="custom-endpoint-model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          onKeyDown={onFieldKeyDown}
+          placeholder="claude-opus-4-8"
+          className="font-mono text-sm"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">
+          The model id this endpoint serves — required to activate the credential.
+        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="custom-endpoint-api-key">API key (optional)</Label>

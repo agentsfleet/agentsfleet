@@ -39,6 +39,7 @@ const HTTPS_BASE_URL = "https://vllm.corp/v1";
 const HTTP_BASE_URL = "http://vllm.corp/v1";
 const API_KEY = "sk-custom-key";
 const CRED_NAME = "vllm-gateway";
+const MODEL = "claude-opus-4-8";
 
 beforeEach(() => {
   createCredentialActionMock.mockReset();
@@ -47,9 +48,10 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function fill(name: string, baseUrl: string, apiKey?: string) {
+function fill(name: string, baseUrl: string, apiKey?: string, model: string = MODEL) {
   fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: name } });
   fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: baseUrl } });
+  fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: model } });
   if (apiKey !== undefined) {
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: apiKey } });
   }
@@ -75,7 +77,7 @@ describe("isHttpsUrl", () => {
 });
 
 describe("CustomEndpointForm", () => {
-  it("test_custom_credential_form_payload: submit → createCredential body has provider + base_url", async () => {
+  it("test_custom_credential_form_payload: submit → createCredential body has provider + base_url + model", async () => {
     createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CRED_NAME } });
     render(React.createElement(CustomEndpointForm, { workspaceId: WORKSPACE_ID }));
     fill(CRED_NAME, HTTPS_BASE_URL, API_KEY);
@@ -87,6 +89,7 @@ describe("CustomEndpointForm", () => {
       data: {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: HTTPS_BASE_URL,
+        [CREDENTIAL_FIELD.model]: MODEL,
         [CREDENTIAL_FIELD.apiKey]: API_KEY,
       },
     });
@@ -98,7 +101,7 @@ describe("CustomEndpointForm", () => {
     expect(JSON.stringify(captureProductEventMock.mock.calls)).not.toContain(API_KEY);
   });
 
-  it("omits api_key from the payload when the key field is left blank", async () => {
+  it("omits api_key from the payload when the key field is left blank (model still required)", async () => {
     createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CRED_NAME } });
     render(React.createElement(CustomEndpointForm, { workspaceId: WORKSPACE_ID }));
     fill(CRED_NAME, HTTPS_BASE_URL);
@@ -110,6 +113,7 @@ describe("CustomEndpointForm", () => {
       data: {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: HTTPS_BASE_URL,
+        [CREDENTIAL_FIELD.model]: MODEL,
       },
     });
   });
@@ -140,11 +144,16 @@ describe("CustomEndpointForm", () => {
     expect(captureProductEventMock).not.toHaveBeenCalled();
   });
 
-  it("disables the submit button until name + base URL are filled", () => {
+  it("disables the submit button until name + base URL + model are filled", () => {
     render(React.createElement(CustomEndpointForm, { workspaceId: WORKSPACE_ID }));
     const button = screen.getByRole("button", { name: /add custom endpoint/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    fill(CRED_NAME, HTTPS_BASE_URL);
+    // Name + base URL alone are not enough — the resolver requires a model, so
+    // the submit stays disabled until the model field is filled too.
+    fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: CRED_NAME } });
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: HTTPS_BASE_URL } });
+    expect(button.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: MODEL } });
     expect(button.disabled).toBe(false);
   });
 
