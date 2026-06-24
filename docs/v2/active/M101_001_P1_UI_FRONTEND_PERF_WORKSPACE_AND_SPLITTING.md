@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M101
 **Workstream:** 001
 **Date:** Jun 24, 2026
-**Status:** IN_PROGRESS
+**Status:** IN_PROGRESS — parked. §1 (resolver), §2 (fallback + 11-route rewire), §4 (billing dedup) DONE + unit-tested (1024 passed). §3 (Suspense streaming), §5 (code-split dialogs/flows beyond the existing `FleetThreadDynamic`), §5.3 (assistant-ui live QA), and the e2e acceptance run remain.
 **Priority:** P1 — the dashboard's hottest path pays two serial round-trips per navigation and ships interaction-only islands in the initial bundle.
 **Categories:** UI
 **Batch:** B1 — frontend-only; the M101_002 backend endpoints are an independent sibling PR.
