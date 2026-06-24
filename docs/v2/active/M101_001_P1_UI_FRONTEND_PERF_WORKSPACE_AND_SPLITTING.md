@@ -147,11 +147,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §2 — 403-fallback wrapper + route rewire
 
-`withWorkspaceScope(token, fn)` resolves the id, runs `fn(id)`, and on an `ApiError` forbidden/not-found from a hint-derived id, clears the cookie, re-resolves against the authoritative list, retries `fn` exactly once. List-derived ids never retry. Routes replace `resolveActiveWorkspace` with the resolver and wrap their primary fetch.
+`withWorkspaceScope(token, fn)` resolves the id, runs `fn(id)`, and on an `ApiError` forbidden/not-found from a hint-derived id, re-resolves against the authoritative list and retries `fn` exactly once with the list-derived id (when it differs). List-derived ids never retry. The cookie is **not** mutated here — Next 16 Server Components cannot write cookies; a stale cookie self-heals on the next workspace switch (which runs in a Server Action). Routes replace `resolveActiveWorkspace` with the resolver and wrap their primary fetch.
 
-- **Dimension 2.1** — hint id 403 then success → cookie cleared, fn called twice, returns 2nd result → `test_fallback_reresolves_on_forbidden`
+- **Dimension 2.1** — hint id 403 then success → re-resolves via list, fn called twice, returns 2nd result → `test_fallback_reresolves_on_forbidden`
 - **Dimension 2.2** — list-derived id 403 → fn once, ApiError propagates → `test_fallback_no_retry_on_authoritative_id`
 - **Dimension 2.3** — no route awaits the list for its data call when a cookie is set → `test_routes_use_resolver` (grep + typecheck)
+- **Dimension 2.4** — hint id 403 and the authoritative list is empty (last workspace deleted) → returns `null` (no-workspace state), does NOT throw → `test_fallback_null_when_list_empty_after_reject`
 
 ### §3 — Per-route Suspense streaming
 
@@ -200,8 +201,9 @@ No HTTP contract changes — only existing endpoints are issued.
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Stale cookie | active workspace deleted / prior tenant | optimistic call → `ERR_FORBIDDEN`; wrapper clears cookie, re-resolves via list, retries once; user sees valid data |
-| No workspace | brand-new tenant | resolver returns `null`; route renders existing "No workspace yet" empty state |
+| Stale cookie | active workspace deleted / prior tenant | optimistic call → `ERR_FORBIDDEN`; wrapper re-resolves via list, retries once; user sees valid data (cookie persists until next switch — a render cannot mutate cookies) |
+| No workspace | brand-new tenant (no hint, empty list) | resolver returns `null`; route renders existing "No workspace yet" empty state |
+| Stale hint + zero workspaces | last workspace deleted while its cookie/claim lingers | optimistic call → 403; re-resolve via list → list empty → `withWorkspaceScope` returns `null` (NOT a thrown error); route renders the empty state |
 | List fetch fails (fallback) | backend/network blip | resolver `.catch` → `null`; existing empty state, no crash |
 | Forbidden loop | both hint and list id rejected | wrapper retries at most once; list-derived rejection surfaces `ApiError` — no infinite loop |
 | Claim malformed | JWT `metadata.workspace_id` not a string | resolver ignores, falls through (existing null-guard) |
@@ -226,8 +228,9 @@ No HTTP contract changes — only existing endpoints are issued.
 | 1.2 | unit | `test_resolver_falls_to_claim` | no cookie, claim=`ws_b` → `{id:"ws_b",source:"claim"}`; spy not called |
 | 1.3 | unit | `test_resolver_falls_to_list` | no hint, list=`[ws_c]` → `{id:"ws_c",source:"list"}` |
 | 1.4 | unit | `test_resolver_null_when_no_workspace` | no hint, list=`[]` → `null` |
-| 2.1 | unit | `test_fallback_reresolves_on_forbidden` | hint `ws_x`, fn throws 403 then ok → cookie cleared, fn ×2, returns 2nd |
+| 2.1 | unit | `test_fallback_reresolves_on_forbidden` | hint `ws_x` (not in list), fn throws 403 then ok for list id → fn ×2, returns 2nd |
 | 2.2 | unit | `test_fallback_no_retry_on_authoritative_id` | list id, fn throws 403 → fn ×1, ApiError propagates |
+| 2.4 | unit | `test_fallback_null_when_list_empty_after_reject` | hint `ws_x`, fn throws 403, list empty → returns `null`, no throw |
 | 2.3 | unit | `test_routes_use_resolver` | grep/typecheck: no route uses `resolveActiveWorkspace` for its data call |
 | 3.1 | unit (RTL) | `test_route_shell_streams_before_data` | render `/fleets` with never-resolving data → `PageTitle` + `Skeleton` present |
 | 4.1 | unit | `test_billing_deduped_per_render` | two `getTenantBillingCached`, one render → fetch spy ×1 |
@@ -290,6 +293,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 - Backend-boundary consult (pre-spec): `list.zig` + `workspace_guards.zig` confirm `authorizeWorkspace` rejects foreign workspace ids with `ERR_FORBIDDEN` — the safety basis for trusting the cookie hint.
 - Scope consult (Indy, Jun 24 2026): collapse the planned 3-workstream M100 into one M101 frontend spec; include React.lazy/Suspense/code-splitting. Backend endpoints stay out per `dispatch/write_spec.md` (new endpoints get their own PR) → M101_002 follow-up.
+- Architecture consult (Indy, Jun 24 2026): the deterministic end-state is workspace_id as a first-class **session/JWT claim** (Clerk active-org pattern), written on signup + `setActive` switch, enforced by middleware, read by the backend principal — so a logged-in user *always* carries it (true invariant, one source, no cookie/fallback). Decision: **ship M101's cookie/claim-hint design now** (same 0-RTT hot path; claim-reading code carries forward), then **M102 (AUTH spec)** establishes the session-claim invariant and removes the cookie + `withWorkspaceScope` fallback. M101's cookie/fallback layer is transitional, not throwaway — the resolver + route shape persist; only the cookie branch retires.
 
 ---
 

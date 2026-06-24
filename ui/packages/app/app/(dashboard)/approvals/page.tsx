@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { PageHeader, PageTitle, Section } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listApprovals } from "@/lib/api/approvals";
 import ApprovalsList from "./components/ApprovalsList";
 
@@ -12,13 +12,15 @@ export default async function ApprovalsPage() {
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) notFound();
 
-  const initial = await listApprovals(workspace.id, token, { limit: 50 }).catch(() => ({
-    items: [],
-    next_cursor: null,
+  const result = await withWorkspaceScope(token, async (workspaceId) => ({
+    workspaceId,
+    initial: await listApprovals(workspaceId, token, { limit: 50 }).catch(
+      orFallback({ items: [], next_cursor: null }),
+    ),
   }));
+  if (!result) notFound();
+  const { workspaceId, initial } = result;
 
   return (
     <div>
@@ -29,7 +31,7 @@ export default async function ApprovalsPage() {
       <Section asChild>
         <section aria-label="Pending approval gates">
           <ApprovalsList
-            workspaceId={workspace.id}
+            workspaceId={workspaceId}
             initialItems={initial.items}
             initialCursor={initial.next_cursor}
           />

@@ -15,7 +15,7 @@ import {
 } from "@agentsfleet/design-system";
 
 import { auth } from "@clerk/nextjs/server";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { resolveActiveWorkspaceId } from "@/lib/workspace";
 import { getApproval, type ApprovalGate } from "@/lib/api/approvals";
 import ResolveButtons from "./ResolveButtons";
 
@@ -30,10 +30,10 @@ export default async function ApprovalDetailPage({
   const { getToken } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) notFound();
+  const active = await resolveActiveWorkspaceId(token);
+  if (!active) notFound();
 
-  const gate = await getApproval(workspace.id, gateId, token).catch(() => null);
+  const gate = await getApproval(active.id, gateId, token).catch(() => null);
   if (!gate) notFound();
 
   const terminal = gate.status !== "pending";
@@ -100,7 +100,7 @@ export default async function ApprovalDetailPage({
             <SectionLabel>Resolve</SectionLabel>
             <Card>
               <CardContent className="pt-6">
-                <ResolveButtons workspaceId={workspace.id} gateId={gate.gate_id} />
+                <ResolveButtons workspaceId={active.id} gateId={gate.gate_id} />
               </CardContent>
             </Card>
           </section>

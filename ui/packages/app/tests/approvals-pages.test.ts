@@ -25,7 +25,33 @@ vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(async () => ({ getToken: getTokenMock })),
 }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
+// Derive the M101 resolver split from the legacy `resolveActiveWorkspace` mock
+// so the existing `.mockResolvedValue({ id })` / `.mockResolvedValueOnce(null)`
+// setups drive both the list route (withWorkspaceScope) and the detail route
+// (resolveActiveWorkspaceId) unchanged.
+vi.mock("@/lib/workspace", () => ({
+  resolveActiveWorkspace,
+  resolveActiveWorkspaceId: async (token: string) => {
+    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+    return ws ? { id: ws.id, source: "cookie" as const } : null;
+  },
+  withWorkspaceScope: async <T,>(token: string, fn: (workspaceId: string) => Promise<T>) => {
+    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+    return ws ? fn(ws.id) : null;
+  },
+  orFallback:
+    <T,>(fallback: T) =>
+    (err: unknown): T => {
+      if (
+        err &&
+        typeof err === "object" &&
+        "status" in err &&
+        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
+      )
+        throw err;
+      return fallback;
+    },
+}));
 vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
   getApproval: getApprovalMock,

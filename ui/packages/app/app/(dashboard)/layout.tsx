@@ -3,7 +3,7 @@ import Shell from "@/components/layout/Shell";
 import { auth } from "@clerk/nextjs/server";
 import {
   listTenantWorkspacesCached,
-  resolveActiveWorkspace,
+  resolveActiveWorkspaceId,
 } from "@/lib/workspace";
 import { readPlatformAdminClaim } from "@/lib/auth/platform";
 
@@ -12,10 +12,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const token = await getToken();
   const [listResult, active, isPlatformAdmin] = token
     ? await Promise.all([
-        // Cached so `resolveActiveWorkspace` below (and every Suspense
-        // boundary on /) share a single GET /v1/tenants/me/workspaces.
+        // The switcher dropdown needs the full list; this is the one place
+        // that legitimately fetches it (off the page data path). `cache()`
+        // dedups it with any in-render caller.
         listTenantWorkspacesCached(token).catch(() => ({ items: [], total: 0 })),
-        resolveActiveWorkspace(token),
+        // Cheap hint resolve (cookie/claim) — no extra round-trip on the hot path.
+        resolveActiveWorkspaceId(token),
         readPlatformAdminClaim(),
       ])
     : [{ items: [], total: 0 }, null, false];
