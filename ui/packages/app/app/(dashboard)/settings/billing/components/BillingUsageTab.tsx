@@ -13,55 +13,59 @@ import {
 } from "@agentsfleet/design-system";
 import { listTenantBillingChargesAction } from "../actions";
 import { PROVIDER_MODE } from "@/lib/types";
-import { formatDollars, groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
+import {
+  describeCharge,
+  formatChargeTimestamp,
+  formatDollars,
+  type ChargeRow,
+} from "../lib/charges";
 import { presentErrorString } from "@/lib/errors";
 
 export type BillingUsageTabProps = {
-  initialEvents: GroupedEvent[];
+  initialCharges: ChargeRow[];
   initialCursor: string | null;
 };
 
 /**
- * Read-only Usage tab — newest-first per-event drain history with
- * cursor-based "Load more" pagination. Comma-Separated Values (CSV) export and Fleet/time filters
- * aren't built yet; this surface stays read-only on purpose so we can ship
- * without a dependency on a chart/filter primitive.
- *
- * Initial events + cursor come from the server-rendered page; subsequent
- * pages are fetched via `listTenantBillingChargesAction`, a Server Action
- * that mints the customized default session token via `auth().getToken()`.
- * `limit * 2` is intentional: each event yields up to two rows (receive +
- * stage), so we ask for double the rows we'll surface as events.
+ * Read-only Usage ledger — a terminal-native charge history (date · amount ·
+ * type · description), newest-first, with cursor-based "Load more" pagination.
+ * Each row is one raw telemetry charge (receive = gate-pass, stage = run); the
+ * model + token detail rides the description column. Charges are deductions, so
+ * amounts render negative. Pages are fetched via `listTenantBillingChargesAction`,
+ * a Server Action that mints the session token via `auth().getToken()`.
  */
 const PAGE_SIZE = 50;
 
-const COLUMNS: DataTableColumn<GroupedEvent>[] = [
-  { key: "event_id", header: "Event", cell: (e) => <span className="font-mono text-xs">{e.event_id}</span> },
+const COLUMNS: DataTableColumn<ChargeRow>[] = [
   {
-    key: "posture",
-    header: "Posture",
-    cell: (e) => (
-      <Badge variant={e.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{e.posture}</Badge>
+    key: "date",
+    header: "Date",
+    cell: (c) => <span className="font-mono text-xs">{formatChargeTimestamp(c.recorded_at)}</span>,
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    numeric: true,
+    cell: (c) => (
+      <span className="font-mono tabular-nums text-destructive">−{formatDollars(c.credit_deducted_nanos)}</span>
     ),
   },
-  { key: "model", header: "Model", cell: (e) => <span className="font-mono text-xs">{e.model}</span>, hideOnMobile: true },
-  { key: "in_tok",  header: "In tok",  cell: (e) => e.token_count_input ?? "—", numeric: true, hideOnMobile: true },
-  { key: "out_tok", header: "Out tok", cell: (e) => e.token_count_output ?? "—", numeric: true, hideOnMobile: true },
-  { key: "receive", header: "Receive", cell: (e) => formatDollars(e.receive_nanos), numeric: true },
-  { key: "stage",   header: "Stage",   cell: (e) => formatDollars(e.stage_nanos),   numeric: true },
   {
-    key: "total",
-    header: "Total",
-    cell: (e) => <span className="font-semibold">{formatDollars(e.total_nanos)}</span>,
-    numeric: true,
+    key: "type",
+    header: "Type",
+    cell: (c) => (
+      <Badge variant={c.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{c.posture}</Badge>
+    ),
+  },
+  {
+    key: "description",
+    header: "Description",
+    cell: (c) => <span className="text-muted-foreground">{describeCharge(c)}</span>,
   },
 ];
 
-export default function BillingUsageTab({
-  initialEvents,
-  initialCursor,
-}: BillingUsageTabProps) {
-  const [events, setEvents] = useState<GroupedEvent[]>(initialEvents);
+export default function BillingUsageTab({ initialCharges, initialCursor }: BillingUsageTabProps) {
+  const [charges, setCharges] = useState<ChargeRow[]>(initialCharges);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -73,9 +77,6 @@ export default function BillingUsageTab({
     startTransition(async () => {
       const result = await listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor });
       if (!result.ok) {
-        // Empty error string from the action would render as a blank
-        // alert; mirror the `|| <default>` pattern used by every other
-        // Server Action consumer.
         setError(
           presentErrorString({
             errorCode: result.errorCode,
@@ -85,16 +86,15 @@ export default function BillingUsageTab({
         );
         return;
       }
-      const more = groupChargesByEvent(result.data.items);
-      // De-dupe by event_id in case the page boundary repeats an event.
-      const seen = new Set(events.map((e) => e.event_id));
-      const fresh = more.filter((e) => !seen.has(e.event_id));
-      setEvents([...events, ...fresh]);
+      // De-dupe by charge id in case the page boundary repeats a row.
+      const seen = new Set(charges.map((c) => c.id));
+      const fresh = result.data.items.filter((c) => !seen.has(c.id));
+      setCharges([...charges, ...fresh]);
       setCursor(result.data.next_cursor);
     });
   }
 
-  if (events.length === 0) {
+  if (charges.length === 0) {
     return (
       <EmptyState
         icon={<ActivityIcon size={28} />}
@@ -105,12 +105,12 @@ export default function BillingUsageTab({
   }
 
   return (
-    <div className="space-y-3 animate-in fade-in-0 duration-200">
+    <div className="space-y-3">
       <DataTable
         columns={COLUMNS}
-        rows={events}
-        rowKey={(e) => e.event_id}
-        caption="Credit-pool charges"
+        rows={charges}
+        rowKey={(c) => c.id}
+        caption="usage history"
       />
       <div className="flex items-center gap-3 text-xs">
         {cursor ? (

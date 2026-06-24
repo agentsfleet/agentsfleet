@@ -3,6 +3,7 @@
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { type ComponentProps } from "react";
 import { cn } from "../utils";
+import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_RADIX } from "./tab-styles";
 
 /*
  * Tabs — Radix Tabs composition. Client boundary because Radix uses DOM
@@ -22,11 +23,7 @@ export function TabsList({ className, ref, ...props }: TabsListProps) {
   return (
     <TabsPrimitive.List
       ref={ref}
-      className={cn(
-        "inline-flex h-10 items-center justify-start gap-1 rounded-lg bg-muted p-1",
-        "text-muted-foreground",
-        className,
-      )}
+      className={cn(TAB_LIST_CLASS, className)}
       {...props}
     />
   );
@@ -38,14 +35,7 @@ export function TabsTrigger({ className, ref, ...props }: TabsTriggerProps) {
   return (
     <TabsPrimitive.Trigger
       ref={ref}
-      className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium",
-        "ring-offset-background transition-all",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1",
-        "disabled:pointer-events-none disabled:opacity-50",
-        "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
-        className,
-      )}
+      className={cn(TAB_TRIGGER_CLASS_RADIX, className)}
       {...props}
     />
   );

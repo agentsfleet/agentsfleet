@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 vi.mock("lucide-react", () => ({}));
 
 import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/BillingBalanceCard";
+import type { ChargeSummary } from "@/app/(dashboard)/settings/billing/lib/charges";
 import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
@@ -15,58 +16,82 @@ const HEALTHY: TenantBilling = {
   free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
 };
 
+const SUMMARY: ChargeSummary = { spentNanos: 290_000_000, eventCount: 4, meterPct: 6 };
+
+function renderCard(billing: TenantBilling, summary: ChargeSummary = SUMMARY) {
+  return render(React.createElement(BillingBalanceCard, { billing, summary }));
+}
+
 afterEach(() => cleanup());
 
 describe("BillingBalanceCard", () => {
-  it("renders formatted balance + subtitle for a healthy tenant", () => {
-    render(React.createElement(BillingBalanceCard, { billing: HEALTHY }));
+  it("renders the formatted balance + USD unit", () => {
+    renderCard(HEALTHY);
     expect(screen.getByText(/\$4\.71/)).toBeTruthy();
-    expect(screen.getByText("Covers all your Fleet events.")).toBeTruthy();
+    expect(screen.getByText("USD")).toBeTruthy();
   });
 
-  it("renders a disabled Purchase Credits button (Stripe deferred to v2.1)", () => {
-    render(React.createElement(BillingBalanceCard, { billing: HEALTHY }));
+  // test_billing_balance_layout — amount + full-width meter + caption + header
+  // CTA all present; the meter fills the row so the CTA is not stranded.
+  it("test_billing_balance_layout: amount, full-width meter, caption, and header CTA all render", () => {
+    renderCard(HEALTHY);
+    // amount
+    expect(screen.getByTestId("balance-headline").textContent).toMatch(/\$4\.71/);
+    // full-width meter, filled to the summary percentage
+    const meter = screen.getByTestId("balance-meter");
+    const fill = meter.querySelector("span") as HTMLSpanElement;
+    expect(fill.style.width).toBe("6%");
+    // caption: spent + events ride the meter's end
+    expect(screen.getByTestId("balance-usage").textContent).toMatch(/spent\s*\$0\.29\s*·\s*4\s*events/);
+    expect(screen.getByText("pay as you go")).toBeTruthy();
+    // header CTA present (in the head row, not a stranded control)
+    expect(screen.getByTestId("purchase-credits-trigger")).toBeTruthy();
+  });
+
+  it("singularizes the event caption when exactly one event", () => {
+    renderCard(HEALTHY, { spentNanos: 30_000_000, eventCount: 1, meterPct: 1 });
+    const usage = screen.getByTestId("balance-usage").textContent ?? "";
+    expect(usage).toMatch(/·\s*1\s*event$/);
+    expect(usage).not.toMatch(/events/);
+  });
+
+  it("renders a disabled Purchase credits button (self-serve top-up deferred)", () => {
+    renderCard(HEALTHY);
     const btn = screen.getByRole("button", { name: /purchase credits/i }) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     expect(btn.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("surfaces an alert banner when the balance is exhausted", () => {
-    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
-    render(React.createElement(BillingBalanceCard, { billing: exhausted }));
+    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Balance exhausted/);
     expect(alert.textContent).toMatch(/top up/i);
   });
 
   it("applies destructive treatment to the balance headline when exhausted", () => {
-    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
-    render(React.createElement(BillingBalanceCard, { billing: exhausted }));
+    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
     const headline = screen.getByTestId("balance-headline");
     expect(headline.getAttribute("data-exhausted")).toBe("true");
     expect(headline.className).toContain("text-destructive");
   });
 
   it("does NOT apply destructive treatment when the balance is healthy", () => {
-    render(React.createElement(BillingBalanceCard, { billing: HEALTHY }));
+    renderCard(HEALTHY);
     const headline = screen.getByTestId("balance-headline");
     expect(headline.getAttribute("data-exhausted")).toBe("false");
     expect(headline.className).not.toContain("text-destructive");
   });
 
-  it("Purchase Credits trigger is keyboard-reachable (a11y)", () => {
-    render(React.createElement(BillingBalanceCard, { billing: HEALTHY }));
+  it("Purchase credits trigger is keyboard-reachable (a11y)", () => {
+    renderCard(HEALTHY);
     const trigger = screen.getByTestId("purchase-credits-trigger");
-    // Wrapper carries tabIndex={0}; the disabled button inside is removed
-    // from the tab order via tabIndex={-1} so screen-reader users land on
-    // the trigger and hear the "Coming in v2.1" tooltip via aria-describedby.
     expect(trigger.getAttribute("tabindex")).toBe("0");
     expect(trigger.getAttribute("aria-describedby")).toBe("purchase-credits-tooltip");
   });
 
   it("renders the support email link using SUPPORT_EMAIL when exhausted", () => {
-    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
-    render(React.createElement(BillingBalanceCard, { billing: exhausted }));
+    renderCard({ ...HEALTHY, balance_nanos: 0, is_exhausted: true });
     const link = screen.getByRole("link", { name: /support/i }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("mailto:agentsfleet@agentmail.to");
   });

@@ -29,6 +29,7 @@ import { InvalidArgumentError } from "commander";
 import path from "node:path";
 import fs from "node:fs";
 import { validate as isValidUuid, version as uuidVersion } from "uuid";
+import { HTTPS_SCHEME_PREFIX } from "../constants/custom-endpoint.ts";
 
 export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
@@ -39,6 +40,8 @@ const MUST_BE_A_NUMBER = "must be a number" as const;
 const MUST_BE_AN_INTEGER = "must be an integer" as const;
 const REQUIRED = "required" as const;
 const TYPE_STRING = "string" as const;
+// `URL.protocol` returns the scheme with a trailing colon, no slashes.
+const HTTPS_PROTOCOL = "https:" as const;
 const MS_PER_SECOND = 1000 as const;
 const DURATION_FACTOR: Record<"ms" | "s" | "m" | "h", number> = {
   ms: 1,
@@ -137,6 +140,30 @@ export function parsePathOption({ mustExist = false }: PathOptions = {}): Comman
     }
     return resolved;
   };
+}
+
+// Client-side https-scheme gate for a custom-endpoint `--base-url`. Commander
+// runs this during parse — BEFORE any handler dispatches — so a non-https URL
+// is rejected (exit 2, human-text stderr) with NO network call. This is the
+// only client-side check; full SSRF validation (loopback/private/metadata
+// hosts) stays server-side in base_url_guard.zig, surfaced as a typed UZ-* JSON
+// error. Parses as a WHATWG URL so a malformed value is rejected for the same
+// reason rather than slipping through a bare prefix test.
+export function parseHttpsUrlOption(value: unknown): string {
+  if (!isString(value) || value.trim().length === 0) {
+    throw new InvalidArgumentError(REQUIRED);
+  }
+  const trimmed = value.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new InvalidArgumentError(`must be a valid URL (e.g. ${HTTPS_SCHEME_PREFIX}host/v1)`);
+  }
+  if (parsed.protocol !== HTTPS_PROTOCOL) {
+    throw new InvalidArgumentError(`must use https:// (got ${parsed.protocol}//)`);
+  }
+  return trimmed;
 }
 
 export function parseDurationOption(value: unknown): number {

@@ -65,6 +65,13 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
     if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
         try fleet_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
         try fleet_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
+        // Custom OpenAI-compatible endpoint: carry the dialed URL so the runner
+        // sets it on the nullclaw provider entry (the provider name is already
+        // `custom:<url>`). Only present for custom endpoints — a named provider's
+        // base_url is null and this key is omitted, leaving the named path intact.
+        if (payload.policy.base_url) |url| {
+            if (url.len > 0) try fleet_obj.put(alloc, wire.base_url, .{ .string = url });
+        }
     } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
         log.warn("fleet_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .fleet_id = payload.event.fleet_id });
     }

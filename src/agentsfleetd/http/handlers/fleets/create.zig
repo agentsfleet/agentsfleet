@@ -21,6 +21,7 @@ const fleet_config = @import("../../../fleet_runtime/config.zig");
 const config_validate = @import("../../../fleet_runtime/config_validate.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
+const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
 
 const log = logging.scoped(.fleet_api);
@@ -199,11 +200,25 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         return;
     };
 
+    // Kick off the synthetic install progression on a detached worker that
+    // owns its own copies of fleet_id + workspace_id (the arena dies with the
+    // request). It sleeps briefly so the post-201 SSE subscriber connects,
+    // emits install:creating → install:provisioning, flips the row
+    // installing→active, then emits install:ready. Spawn failure is non-fatal:
+    // the row stays installing and a later list/detail reconcile flips it (the
+    // status column is authoritative). The 201 still reports installing.
+    create_install_steps.spawn(hx.ctx.pool, hx.ctx.queue, workspace_id, fleet_id) catch |err| {
+        log.warn(
+            "install_steps_spawn_failed",
+            .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id },
+        );
+    };
+
     log.debug("created", .{ .id = fleet_id, .name = parsed.config.name, .workspace = workspace_id });
     hx.ok(.created, .{
         .fleet_id = fleet_id,
         .name = parsed.config.name,
-        .status = fleet_config.FleetStatus.active.toSlice(),
+        .status = fleet_config.FleetStatus.installing.toSlice(),
         .webhook_urls = std.json.Value{ .object = webhook_urls },
     });
 }
@@ -270,7 +285,11 @@ fn insertFleetOnConn(
         source_markdown,
         trigger_markdown,
         parsed.config_json,
-        fleet_config.FleetStatus.active.toSlice(),
+        // Born installing: the synthetic install steps run on a deferred tick
+        // after the 201 (create_install_steps), flipping the row to active on
+        // the ready step. A subscriber that reconnects mid-install reconciles
+        // from this column (the activity channel has no replay).
+        fleet_config.FleetStatus.installing.toSlice(),
         required_tags,
         bundle_id,
         bundle_hash,

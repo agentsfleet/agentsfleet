@@ -39,16 +39,14 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary CTA. Per `docs/DESIGN_SYSTEM.md` + the canonical preview
-        // at `~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html`,
-        // the primary button is mint background + theme-fixed dark text
-        // (`--on-pulse`). The text token does NOT swap with theme — the
-        // mint background is the same in dark + light, so the foreground
-        // must also be the same. The `[&_a]` selectors force the colour
-        // through `asChild` wrappers since the website's
-        // `a { color: inherit }` reset would otherwise win the cascade.
+        // Primary CTA. Per `docs/DESIGN_SYSTEM.md`, the primary button fills
+        // with `--cta`, which swaps by theme: the pulse in dark, solid ink in
+        // light (mint stays reserved for accents/links/active/glow). Text is
+        // `--cta-foreground` — dark on the mint fill, white on the ink fill.
+        // The `[&_a]` selectors force the colour through `asChild` wrappers
+        // since the website's `a { color: inherit }` reset would otherwise win.
         default:
-          "border-pulse bg-pulse text-on-pulse hover:bg-pulse-dim hover:border-pulse-dim [&_a]:text-on-pulse [&_a]:no-underline [&_a:hover]:text-on-pulse",
+          "border-cta bg-cta text-cta-foreground hover:bg-cta-hover hover:border-cta-hover [&_a]:text-cta-foreground [&_a]:no-underline [&_a:hover]:text-cta-foreground",
         // Destructive — saturated red fill. Same theme-fixed dark text
         // story as the primary variant: `--destructive-foreground`
         // resolves to `var(--bg)` which swaps to parchment in light

@@ -4,6 +4,11 @@ import {
   mergeBackfill,
   type FleetEvent,
 } from "./fleet-stream-frames";
+import {
+  advanceInstallStep,
+  installStepFromKind,
+  type InstallStepId,
+} from "./install-steps";
 
 export {
   type FleetEvent,
@@ -35,6 +40,11 @@ const STATUS_RECEIVED = "received";
 export type FleetStreamSnapshot = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
+  // The latest install step advanced by an `install:*` frame, or null when no
+  // install frame has arrived (a non-installing fleet, or pre-first-frame). The
+  // InstallStates surface reads this to advance its rendered step and to detect
+  // the installing→active flip; the chat path ignores it.
+  installStep: InstallStepId | null;
 };
 
 type Listener = () => void;
@@ -61,6 +71,7 @@ const RECONNECT_MAX_BACKOFF_ATTEMPTS = 5;
 const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   events: [],
   connectionStatus: CONNECTION_STATUS.CONNECTING,
+  installStep: null,
 }) as FleetStreamSnapshot;
 
 function notify(entry: Entry): void {
@@ -105,6 +116,17 @@ function onFrame(entry: Entry, e: MessageEvent): void {
     return;
   }
   const frame = parsed as LiveFrame;
+  // Install frames advance the install step, never the message list. Forking
+  // here (rather than inside applyLiveFrame) keeps the chat reducer pure and the
+  // two concerns — a long-lived chat timeline vs. a one-shot install beat —
+  // independent while sharing the single EventSource the spec mandates.
+  const installStep = installStepFromKind(frame.kind);
+  if (installStep !== null) {
+    patchSnapshot(entry, {
+      installStep: advanceInstallStep(entry.snapshot.installStep, installStep),
+    });
+    return;
+  }
   setEvents(entry, (prev) => applyLiveFrame(prev, frame));
 }
 
@@ -137,6 +159,7 @@ function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     snapshot: {
       events: mergeBackfill([], initial),
       connectionStatus: CONNECTION_STATUS.CONNECTING,
+      installStep: null,
     },
     listeners: new Set(),
     refCount: 0,

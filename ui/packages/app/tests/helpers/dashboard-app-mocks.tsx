@@ -73,7 +73,7 @@ export function fleetsApiMock() {
     getFleet: vi.fn(),
     installFleet: vi.fn(),
     deleteFleet: vi.fn(),
-    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed" },
+    AGENTSFLEET_STATUS: { ACTIVE: "active", PAUSED: "paused", STOPPED: "stopped", KILLED: "killed", INSTALLING: "installing" },
   };
 }
 
@@ -108,8 +108,8 @@ export function billingBalanceCardMock() {
 
 export function billingUsageTabMock() {
   return {
-    default: ({ initialEvents, initialCursor }: { initialEvents: { event_id: string }[]; initialCursor: string | null }) =>
-      React.createElement("div", { "data-usage-tab": "1", "data-event-count": initialEvents.length, "data-cursor": initialCursor ?? "" }),
+    default: ({ initialCharges, initialCursor }: { initialCharges: { id: string }[]; initialCursor: string | null }) =>
+      React.createElement("div", { "data-usage-tab": "1", "data-charge-count": initialCharges.length, "data-cursor": initialCursor ?? "" }),
   };
 }
 

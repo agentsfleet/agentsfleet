@@ -1,9 +1,7 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  Button,
   Card,
   PageHeader,
   PageTitle,
@@ -21,11 +19,9 @@ import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
-import { TemplateCard } from "./fleets/new/TemplateCard";
+import { InstallEntry } from "./fleets/new/InstallEntry";
 
 export const dynamic = "force-dynamic";
-
-const QUICKSTART_URL = "https://docs.agentsfleet.net/quickstart";
 
 export async function StatusTiles() {
   const { getToken } = await auth();
@@ -77,9 +73,10 @@ export async function StatusTiles() {
   );
 }
 
-// First-run card: curated templates lead, each deep-linking
-// to the preselected install flow; importing from GitHub or pasting a SKILL.md
-// sits below as the secondary path.
+// First-run card: composes the shared InstallEntry (one source for the install
+// affordances), wrapped in the dashboard's "Start your fleet" framing. Each
+// affordance deep-links into the install page, which proceeds inline to the
+// live states — no review page.
 function FirstInstallCard({
   balanceNanos,
   templates,
@@ -95,7 +92,7 @@ function FirstInstallCard({
           <SectionLabel>Next step</SectionLabel>
           <h2 className="font-mono text-heading text-foreground">Start your fleet</h2>
           <p className="max-w-prose text-sm text-muted-foreground">
-            Pick a template to begin — connect what it needs, then create. Each one
+            Pick a template and it installs inline — you see each state. Each one
             installs from a single <code className="font-mono">SKILL.md</code>.
           </p>
           {credits != null && credits > 0 ? (
@@ -105,32 +102,7 @@ function FirstInstallCard({
           ) : null}
         </div>
 
-        {templates.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {templates.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                action={
-                  <Button asChild size="sm">
-                    <Link href={`/fleets/new?template=${template.id}`}>Use template</Link>
-                  </Button>
-                }
-              />
-            ))}
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-3 border-t border-border pt-5">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/fleets/new">Import from GitHub or paste SKILL.md</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer">
-              Quick start
-            </a>
-          </Button>
-        </div>
+        <InstallEntry templates={templates} quickstart />
       </Card>
     </Section>
   );

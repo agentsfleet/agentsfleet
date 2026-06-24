@@ -9,9 +9,9 @@
 // links service credentials here and only here — it must not imply the two are
 // the same thing.
 //
-// `/credentials` is a redirect to the unified settings page's Credentials tab;
-// linking the semantic route keeps the preview decoupled from that page's
-// layout. (The model-provider Models tab is the WRONG target — asserted against
+// `/credentials` is the top-level write-only secret vault page; linking the
+// semantic route keeps the preview decoupled from that page's layout. (The
+// model-provider `/settings/models` page is the WRONG target — asserted against
 // by the install preview's routing test.)
 export const WORKSPACE_CREDENTIALS_PATH = "/credentials";
 

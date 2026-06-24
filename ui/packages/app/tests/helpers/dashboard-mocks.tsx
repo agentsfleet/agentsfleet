@@ -66,7 +66,7 @@ const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "CpuIcon",
-  "SlidersHorizontalIcon",
+  "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
 ] as const;
 
 export function lucideMock() {
@@ -128,8 +128,8 @@ export function designSystemCore(actual: Record<string, unknown>) {
     Button: ({ children, variant, size, ...rest }: { children: React.ReactNode; variant?: string; size?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) =>
       React.createElement("button", { "data-variant": variant, "data-size": size, ...rest }, children),
     ConfirmDialog: ConfirmDialogMock,
-    EmptyState: ({ title, description, icon }: { title: string; description?: string; icon?: React.ReactNode }) =>
-      React.createElement("div", { "data-empty-state": title }, icon, description),
+    EmptyState: ({ title, description, icon, action }: { title: string; description?: string; icon?: React.ReactNode; action?: React.ReactNode }) =>
+      React.createElement("div", { "data-empty-state": title }, icon, description, action),
     Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => React.createElement("input", props),
     PageHeader: ({ children }: { children: React.ReactNode }) => React.createElement("header", { "data-page-header": "1" }, children),
     PageTitle: ({ children }: { children: React.ReactNode }) => React.createElement("h1", { "data-page-title": "1" }, children),

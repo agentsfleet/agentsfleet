@@ -13,6 +13,25 @@ const wire = @import("wire.zig");
 const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const common = @import("common");
+const nullclaw = @import("nullclaw");
+const contract = @import("contract");
+const AllowList = @import("../network/network.zig").AllowList;
+
+const Config = nullclaw.config.Config;
+
+/// A minimal in-memory NullClaw Config for the provider-injection tests. Owns
+/// nothing on the heap except what the injectors dupe via `arena`; the caller
+/// deinits `arena` (NOT `cfg.deinit`, which expects the full `Config.load` arena
+/// machinery). `default_provider` is the `custom:<url>` name the daemon authored.
+fn customConfig(arena: std.mem.Allocator, provider_name: []const u8) Config {
+    return .{
+        .allocator = arena,
+        .workspace_dir = "",
+        .config_path = "",
+        .default_provider = provider_name,
+        .providers = &.{},
+    };
+}
 
 // ── DRY — getFloat returns null for missing key ──────────────────
 test "getFloat returns null for missing key" {
@@ -341,4 +360,101 @@ test "collectSecrets yields an empty value when fleet_config is null or the key 
     var ac = std.json.Value{ .object = .empty };
     defer ac.object.deinit(alloc);
     try std.testing.expectEqualStrings("", runner.collectSecrets(ac)[0].value);
+}
+
+// ── §7 custom OpenAI-compatible endpoint threading ───────────────────────────
+
+test "test_runner_injects_base_url" {
+    // 7.2: a base_url policy (provider = custom:<url>) must build an engine config
+    // that DIALS the injected endpoint, not the named-provider URL table — and the
+    // provider must NOT be the literal "openai" (which is pinned to
+    // api.openai.com and silently drops base_url).
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const INJECTED_URL = "https://fake-endpoint.test.invalid:9443/v1";
+    const PROVIDER_NAME = contract.execution_policy.CUSTOM_PROVIDER_PREFIX ++ INJECTED_URL;
+
+    // Drive the exact fleet_config the daemon → child_exec_input produces.
+    var ac = std.json.Value{ .object = .empty };
+    try ac.object.put(arena, wire.provider, .{ .string = PROVIDER_NAME });
+    try ac.object.put(arena, wire.api_key, .{ .string = "sk_user_custom" });
+    try ac.object.put(arena, wire.base_url, .{ .string = INJECTED_URL });
+
+    var cfg = customConfig(arena, "openrouter"); // default would be the named table…
+    helpers.applyFleetConfig(&cfg, ac); // …but applyFleetConfig switches it to custom:<url>
+    try helpers.injectProviderApiKey(&cfg, "sk_user_custom");
+    try helpers.injectProviderBaseUrl(&cfg, INJECTED_URL);
+
+    // The provider name the engine dials with is custom:<url>, NEVER "openai".
+    try std.testing.expectEqualStrings(PROVIDER_NAME, cfg.default_provider);
+    try std.testing.expect(!std.mem.eql(u8, cfg.default_provider, "openai"));
+    // It classifies to the OpenAI-COMPATIBLE path (honours base_url), not the
+    // dedicated OpenAI provider (which would drop it).
+    try std.testing.expect(nullclaw.providers.classifyProvider(cfg.default_provider) == .compatible_provider);
+    // The entry the runtime bundle reads back carries the INJECTED url (not the
+    // built-in table) — this is what `RuntimeProviderBundle.init` passes to the
+    // provider constructor as the dial target.
+    try std.testing.expectEqualStrings(INJECTED_URL, cfg.getProviderBaseUrl(cfg.default_provider).?);
+
+    // Build the real nullclaw provider and prove it dials the injected host.
+    var holder = nullclaw.providers.ProviderHolder.fromConfig(
+        arena,
+        cfg.default_provider,
+        "sk_user_custom",
+        cfg.getProviderBaseUrl(cfg.default_provider),
+        true,
+        null,
+        null,
+        false,
+        null,
+    );
+    defer holder.deinit();
+    try std.testing.expect(holder == .compatible); // NOT .openai
+    try std.testing.expectEqualStrings(INJECTED_URL, holder.compatible.base_url);
+}
+
+test "the literal openai provider drops base_url — why the custom: prefix is load-bearing" {
+    // Documents the hazard the custom:<url> name avoids: nullclaw's dedicated
+    // "openai" provider ignores any base_url and is pinned to api.openai.com.
+    // The runner must therefore NEVER hand nullclaw the bare "openai" name for a
+    // custom endpoint.
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    try std.testing.expect(nullclaw.providers.classifyProvider("openai") == .openai_provider);
+    var holder = nullclaw.providers.ProviderHolder.fromConfig(
+        arena,
+        "openai",
+        "sk_user",
+        "https://fake-endpoint.test.invalid/v1", // a base_url the openai provider ignores
+        true,
+        null,
+        null,
+        false,
+        null,
+    );
+    defer holder.deinit();
+    try std.testing.expect(holder == .openai); // the dedicated provider, base_url dropped
+}
+
+test "test_allowlist_permits_custom_host" {
+    // 7.3: the egress allowlist permits exactly the custom host (derived from the
+    // policy base_url via hostFromUrl, carried as inference_host) and DENIES an
+    // off-list host reached from the same run — the egress SSRF boundary
+    // (Invariant 6).
+    const alloc = std.testing.allocator;
+    const CUSTOM_URL = "https://vllm.gateway.example.com:8443/v1";
+    const custom_host = contract.execution_policy.hostFromUrl(CUSTOM_URL); // "vllm.gateway.example.com"
+
+    var al = try AllowList.build(alloc, &.{"pypi.org"}, &.{}, custom_host);
+    defer al.deinit();
+
+    try std.testing.expect(al.contains("vllm.gateway.example.com")); // the custom host is allowed
+    try std.testing.expect(!al.contains("evil.exfil.example.net")); // an off-list host from the same run is denied
+    try std.testing.expect(!al.contains("api.openai.com")); // not the named table either
+    // Exact-match only: the bare host, not a port-qualified or subdomain variant.
+    try std.testing.expect(!al.contains("vllm.gateway.example.com:8443"));
 }

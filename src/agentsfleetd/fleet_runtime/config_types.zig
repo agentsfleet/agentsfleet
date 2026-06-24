@@ -11,6 +11,13 @@ const S_PAUSED = "paused";
 const S_KILLED = "killed";
 const S_STOPPED = "stopped";
 const S_ACTIVE = "active";
+/// Transient post-create status while the synthetic install steps run. The
+/// fleet is born here and flips to `active` once the create path's deferred
+/// emission reaches its ready step. App-enforced (the status column already
+/// stores arbitrary strings — no DDL); the value is shared verbatim with the
+/// dashboard (`AGENTSFLEET_STATUS.INSTALLING` in lib/api/fleets.ts), which reads
+/// it to keep the installing indicator visible until it resolves.
+pub const S_INSTALLING = "installing";
 
 pub const FleetConfigError = error{
     MissingRequiredField,
@@ -44,6 +51,10 @@ pub const FleetStatus = enum {
     paused,
     stopped,
     killed,
+    /// Transient post-create state while the synthetic install steps run. Not
+    /// runnable (the runner skips it) and not terminal; the create path flips it
+    /// to `active` on its ready step.
+    installing,
 
     pub fn toSlice(self: Self) []const u8 {
         return switch (self) {
@@ -51,6 +62,7 @@ pub const FleetStatus = enum {
             .paused => S_PAUSED,
             .stopped => S_STOPPED,
             .killed => S_KILLED,
+            .installing => S_INSTALLING,
         };
     }
 
@@ -59,6 +71,7 @@ pub const FleetStatus = enum {
         if (std.mem.eql(u8, s, S_PAUSED)) return .paused;
         if (std.mem.eql(u8, s, S_STOPPED)) return .stopped;
         if (std.mem.eql(u8, s, S_KILLED)) return .killed;
+        if (std.mem.eql(u8, s, S_INSTALLING)) return .installing;
         return null;
     }
 
@@ -240,6 +253,18 @@ pub fn freeFleetTrigger(alloc: Allocator, t: FleetTrigger) void {
         .cron => |c| alloc.free(c.schedule),
         .api => {},
     }
+}
+
+test "FleetStatus: installing round-trips through to/fromSlice and is non-runnable, non-terminal" {
+    try std.testing.expectEqualStrings(S_INSTALLING, FleetStatus.installing.toSlice());
+    try std.testing.expectEqual(@as(?FleetStatus, .installing), FleetStatus.fromSlice(S_INSTALLING));
+    try std.testing.expectEqual(@as(?FleetStatus, .installing), FleetStatus.fromSlice("installing"));
+    // The runner must not lease an installing fleet, and it is not a tombstone.
+    try std.testing.expect(!FleetStatus.installing.isRunnable());
+    try std.testing.expect(!FleetStatus.installing.isTerminal());
+    // The pre-existing states still resolve (no regression in the lookup ladder).
+    try std.testing.expectEqual(@as(?FleetStatus, .active), FleetStatus.fromSlice(S_ACTIVE));
+    try std.testing.expectEqual(@as(?FleetStatus, null), FleetStatus.fromSlice("nonsense"));
 }
 
 test "validRequiredTags: accepts empty/normal sets, rejects over-count and bad lengths" {

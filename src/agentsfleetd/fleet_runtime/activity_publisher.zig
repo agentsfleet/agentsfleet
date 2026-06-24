@@ -28,6 +28,18 @@ pub const KIND_CHUNK = "chunk";
 pub const KIND_TOOL_CALL_COMPLETED = "tool_call_completed";
 pub const KIND_EVENT_COMPLETE = "event_complete";
 
+// Synthetic install-progression frames. The create path emits these on a
+// deferred tick after the 201 so the post-create SSE subscriber catches the
+// fleet crossing each step; the dashboard advances its rendered install steps
+// off them and flips the fleet from installing→active on `install:ready`.
+// The pub/sub channel is ephemeral (no replay) — a subscriber that connects
+// late reconciles from `core.fleets.status` instead. Mirror these verbatim in
+// the dashboard's LiveFrame union (ui/packages/app/lib/api/events.ts).
+pub const KIND_INSTALL_CREATING = "install:creating";
+pub const KIND_INSTALL_PROVISIONING = "install:provisioning";
+pub const KIND_INSTALL_READY = "install:ready";
+pub const KIND_INSTALL_ERROR = "install:error";
+
 /// Reusable encode buffer. One per worker / per event lifetime — the
 /// single-publisher invariant means callers never share these across
 /// threads. Construct with `std.Io.Writer.Allocating.init(alloc)` and
@@ -163,6 +175,19 @@ pub fn publishEventComplete(
         .event_id = event_id,
         .status = status,
     });
+}
+
+/// Publish one synthetic install step. `kind` is one of the `KIND_INSTALL_*`
+/// discriminators — the kind itself names the step, so the frame body is just
+/// `{ kind }` (the dashboard switches on it). Best-effort like every helper:
+/// a dropped frame is reconciled from `core.fleets.status` on (re)connect.
+pub fn publishInstallStep(
+    client: *Client,
+    scratch: *Scratch,
+    fleet_id: []const u8,
+    kind: []const u8,
+) void {
+    encodeAndPublish(client, scratch, fleet_id, kind, .{ .kind = kind });
 }
 
 const std = @import("std");

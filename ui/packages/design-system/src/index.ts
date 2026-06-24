@@ -110,6 +110,7 @@ export {
   ConfirmDialog,
   type ConfirmDialogProps,
   PageHeader,
+  PageDescription,
   type PageHeaderProps,
   PageTitle,
   type PageTitleProps,

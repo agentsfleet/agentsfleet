@@ -1,4 +1,5 @@
 import { type ElementType } from "react";
+import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS_LINK } from "./tab-styles";
 
 /*
  * TabNav — route-style tab bar: a <nav> of links styled as pills. Unlike Tabs
@@ -31,18 +32,12 @@ export type TabNavProps = {
   onNavigate?: (href: string) => void;
 };
 
-const TAB_CLASS =
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium no-underline " +
-  "ring-offset-background transition-all hover:text-foreground " +
-  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 " +
-  "data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm";
-
 export function TabNav({ items, activeHref, label, linkComponent, onNavigate }: TabNavProps) {
   const LinkEl: ElementType = linkComponent ?? "a";
   return (
     <nav
       aria-label={label}
-      className="inline-flex h-10 max-w-full items-center justify-start gap-1 overflow-x-auto rounded-lg bg-muted p-1 text-muted-foreground"
+      className={`${TAB_LIST_CLASS} max-w-full overflow-x-auto`}
     >
       {items.map((item) => {
         const active = item.href === activeHref;
@@ -52,7 +47,7 @@ export function TabNav({ items, activeHref, label, linkComponent, onNavigate }: 
             href={item.href}
             aria-current={active ? "page" : undefined}
             data-active={active ? "true" : undefined}
-            className={TAB_CLASS}
+            className={TAB_TRIGGER_CLASS_LINK}
             onClick={onNavigate ? () => onNavigate(item.href) : undefined}
           >
             {item.label}

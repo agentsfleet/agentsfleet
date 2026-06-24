@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agentsfleet — UI polish preview</title>
+<style>
+  /* ============================================================
+     TOKENS — mirrors design-system/tokens.css
+     ============================================================ */
+  :root, [data-theme="dark"] {
+    --surface-deep: #06090a;
+    --bg:           #0a0d0e;
+    --surface-1:    #11161a;
+    --surface-2:    #181e22;
+    --surface-3:    #1f262c;
+
+    --pulse:        #5eead4;
+    --pulse-dim:    #2dd4bf;
+    --pulse-glow:   rgba(94,234,212,.14);
+    --on-pulse:     #042f2a;
+
+    --text:         #e6eaec;
+    --text-muted:   #8b9398;
+    --text-subtle:  #6c7378;
+
+    --border:       #23292e;
+    --border-strong:#2e373e;
+
+    --success: #34d399;
+    --warn:    #f59e0b;
+    --error:   #f87171;
+    --info:    #60a5fa;
+  }
+  [data-theme="light"] {
+    --surface-deep: #ece9e1;
+    --bg:           #f4f2ec;
+    --surface-1:    #fbfaf6;
+    --surface-2:    #f1efe8;
+    --surface-3:    #e9e6dd;
+
+    --pulse:        #0d9488;
+    --pulse-dim:    #0f766e;
+    --pulse-glow:   rgba(13,148,136,.18);
+    --on-pulse:     #ffffff;
+    --ink:          #17211f;  /* light-mode primary button */
+
+    --text:         #1a1f21;
+    --text-muted:   #5b6266;
+    --text-subtle:  #828a8e;
+
+    --border:       #ddd9cf;
+    --border-strong:#cbc7bc;
+
+    --success: #0f9d58;
+    --warn:    #b45309;
+    --error:   #dc2626;
+    --info:    #2563eb;
+  }
+
+  /* ============================================================
+     RESET + BASE
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --content-max: 1200px;   /* readability cap (a token, not a fixed width); fluid below */
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, "Roboto Mono", monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ============================================================
+     PREVIEW TOOLBAR (meta — not part of the product)
+     ============================================================ */
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 20px;
+    background: #000;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .toolbar .tag { color: var(--pulse); letter-spacing: .08em; text-transform: uppercase; }
+  .toolbar .sep { color: var(--text-subtle); }
+  .toolbar .spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-family: var(--mono); cursor: pointer;
+    background: transparent; color: var(--text-muted);
+    border: 0; padding: 6px 12px;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+  .seg button + button { border-left: 1px solid var(--border-strong); }
+
+  /* ============================================================
+     APP SHELL
+     ============================================================ */
+  .app { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100vh - 41px); }
+
+  /* sidebar */
+  .sidebar {
+    background: var(--surface-deep);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 18px 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 6px 8px 22px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--pulse); box-shadow: 0 0 10px var(--pulse-glow); }
+  .brand .name { font-weight: 600; letter-spacing: -.01em; }
+  .nav-group { margin-top: 18px; }
+  .nav-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-subtle); padding: 0 10px 8px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px;
+    color: var(--text-muted); cursor: pointer; font-size: 13.5px;
+    text-decoration: none;
+  }
+  .nav-item:hover { background: var(--surface-1); color: var(--text); }
+  .nav-item.active { background: var(--surface-2); color: var(--text); }
+  .nav-item svg { width: 16px; height: 16px; opacity: .85; flex: none; }
+  .sidebar .bottom { margin-top: auto; padding-top: 18px; }
+
+  /* topbar */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    height: 56px; flex: none;
+    display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+    padding: 0 28px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(var(--bg), var(--bg));
+  }
+  .ws-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--text);
+    background: var(--surface-1); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 7px 12px;
+  }
+  .icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; color: var(--text-muted); cursor: pointer; }
+  .icon-btn:hover { background: var(--surface-1); color: var(--text); }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(120% 120% at 30% 20%, var(--pulse), var(--pulse-dim) 55%, #0d3b34); }
+
+  /* content canvas */
+  /* dual-tone ambient glow — global (wraps every page), tasteful "jazz":
+     mint top-right + a faint cool tone + a low mint wash bottom-left */
+  .canvas {
+    flex: 1; overflow: auto; position: relative;
+    background:
+      radial-gradient(1150px 660px at 94% -16%, var(--pulse-glow), transparent 60%),
+      radial-gradient(620px 460px at 66% 0%, color-mix(in srgb, var(--info) 7%, transparent), transparent 55%),
+      radial-gradient(720px 540px at 4% 116%, color-mix(in srgb, var(--pulse) 8%, transparent), transparent 60%);
+    background-repeat: no-repeat;
+    background-size: 150% 150%, 150% 150%, 150% 150%;
+    background-position: 90% 0%, 60% 0%, 0% 100%;
+    animation: glowDrift 26s ease-in-out infinite;
+  }
+  .content { max-width: var(--content-max); padding: 40px 44px 80px; }
+  /* chat/steer ignores the reading cap — fills width + height */
+  .content[data-page="steer"] { max-width: none; }
+
+  /* ============================================================
+     PRIMITIVES (design-system parity)
+     ============================================================ */
+  .page-header { margin-bottom: 28px; }
+  .page-title { font-size: 26px; font-weight: 650; letter-spacing: -.02em; }
+  .page-desc { color: var(--text-muted); margin-top: 6px; font-size: 14px; }
+  .page-header.with-action { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+
+  .section-label { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 12px; }
+
+  /* underline tabs — the one tab style */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 26px; }
+  .tab {
+    font: inherit; background: none; border: 0; cursor: pointer;
+    padding: 10px 14px; margin-bottom: -1px;
+    color: var(--text-muted); border-bottom: 2px solid transparent;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--pulse); }
+
+  /* buttons */
+  .btn { font: inherit; font-weight: 550; cursor: pointer; border-radius: 9px; padding: 9px 16px; border: 1px solid transparent; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .btn-primary { background: var(--pulse); color: var(--on-pulse); }
+  .btn-primary:hover { background: var(--pulse-dim); }
+  /* light mode: solid ink CTA (mint stays for accents/links/active/glow) */
+  [data-theme="light"] .btn-primary { background: var(--ink); color: #fff; }
+  [data-theme="light"] .btn-primary:hover { background: #0a0f0e; }
+  .btn-outline { background: transparent; border-color: var(--border-strong); color: var(--text); }
+  .btn-outline:hover { background: var(--surface-1); }
+  .btn-dbl { background: transparent; border: 1.5px solid var(--pulse); color: var(--pulse); }
+  .btn-dbl:hover { background: var(--pulse-glow); }
+  .btn-link { background: none; border: 0; color: var(--pulse); padding: 0; cursor: pointer; font: inherit; }
+  .btn-link:hover { text-decoration: underline; }
+
+  /* badges / pills */
+  .badge { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; }
+  .badge-current { background: var(--pulse-glow); color: var(--pulse); border: 1px solid color-mix(in srgb, var(--pulse) 40%, transparent); }
+  .badge-muted { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+
+  .status { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .status .led { width: 7px; height: 7px; border-radius: 50%; background: var(--text-subtle); }
+  .status.ok .led { background: var(--success); box-shadow: 0 0 8px color-mix(in srgb, var(--success) 60%, transparent); }
+
+  /* cards */
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; }
+
+  /* ============================================================
+     BILLING — balance card  (meter spans full width; caption rides
+     its right end; button sits in the header row — no stranded gap)
+     ============================================================ */
+  .balance { padding: 22px 24px; margin-bottom: 28px; }
+  .balance .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .balance .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-subtle); }
+  .balance .amount { font-size: 32px; font-weight: 650; letter-spacing: -.02em; margin-top: 4px; }
+  .balance .amount .unit { font-family: var(--mono); font-size: 14px; font-weight: 500; color: var(--text-muted); margin-left: 6px; letter-spacing: .02em; }
+  .meter { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 18px; }
+  .meter > span { display: block; height: 100%; width: 8%; border-radius: 99px; background: linear-gradient(90deg, var(--pulse-dim), var(--pulse)); }
+  .balance .cap { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-muted); }
+  .balance .cap b { color: var(--text); font-weight: 600; }
+  .balance .cap .right { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); }
+  .balance .cap .right b { color: var(--text); }
+
+  /* ============================================================
+     BILLING — usage history (the terminal-native data surface)
+     ============================================================ */
+  .terminal { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .terminal-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface-deep);
+  }
+  .lights { display: flex; gap: 7px; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1){ background:#3a4248; } .lights i:nth-child(2){ background:#3a4248; } .lights i:nth-child(3){ background:#3a4248; }
+  .terminal-head .ttl { font-family: var(--mono); font-size: 12.5px; color: var(--text-muted); }
+  /* corner tag is a decorative category label, NOT a link — muted, not mint */
+  .terminal-head .right { margin-left: auto; font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; color: var(--text-subtle); text-transform: uppercase; }
+
+  table.usage { width: 100%; border-collapse: collapse; }
+  table.usage th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  table.usage td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  table.usage tr:last-child td { border-bottom: 0; }
+  table.usage tr:hover td { background: var(--surface-2); }
+  td.mono, th.amt { font-family: var(--mono); }
+  td.date { font-family: var(--mono); color: var(--text-muted); font-size: 12.5px; white-space: nowrap; }
+  td.amt { font-family: var(--mono); text-align: right; color: var(--text); white-space: nowrap; }
+  td.amt .neg { color: var(--warn); }
+  td.type span { font-family: var(--mono); font-size: 12px; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
+  td.desc { color: var(--text); }
+
+  /* plans — honest single row, not a seat grid */
+  .planrow { display: flex; align-items: center; gap: 18px; padding: 18px 22px; margin-top: 28px; }
+  .planrow .pmark { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--pulse-glow); color: var(--pulse); flex: none; }
+  .planrow .ptext .t { font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .planrow .ptext .d { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+  .planrow .pright { margin-left: auto; text-align: right; }
+  .planrow .pright .q { color: var(--text-muted); font-size: 13px; }
+
+  /* ============================================================
+     MODELS & CREDENTIALS — option cards
+     ============================================================ */
+  .intro { color: var(--text-muted); max-width: 620px; margin-bottom: 20px; font-size: 14px; }
+  .opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .opt {
+    position: relative; border: 1px solid var(--border); border-radius: 14px;
+    background: var(--surface-1); padding: 20px 20px 18px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .opt.active { border-color: color-mix(in srgb, var(--pulse) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pulse) 30%, transparent); }
+  .opt .top { display: flex; align-items: flex-start; gap: 12px; }
+  .opt .radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-strong); margin-top: 2px; flex: none; display: grid; place-items: center; }
+  .opt.active .radio { border-color: var(--pulse); }
+  .opt.active .radio::after { content:""; width: 8px; height: 8px; border-radius: 50%; background: var(--pulse); }
+  .opt .htitle { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .opt .hsub { color: var(--text-muted); font-size: 13px; margin-top: 3px; }
+  .opt .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .opt .meta .k { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); }
+  .opt .meta .v { font-size: 13px; margin-top: 3px; }
+  .opt .modelline { font-family: var(--mono); font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .opt .modelline .pin { color: var(--pulse); }
+  .opt .foot { margin-top: 2px; }
+  .opt .foot .active-note { font-family: var(--mono); font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 8px; }
+
+  /* ============================================================
+     OWN-KEY CONFIGURE FORM (appears on "Switch to own key")
+     ============================================================ */
+  .config { margin-top: 18px; padding: 22px 22px 20px; }
+  .config .ttl { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .config .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 18px; }
+  .field { margin-bottom: 16px; }
+  .field > label { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 7px; }
+  .field .hint { font-size: 12px; color: var(--text-subtle); margin-top: 6px; }
+  .control { width: 100%; font: inherit; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text); border-radius: 9px; padding: 10px 12px; }
+  .control:focus { outline: none; border-color: var(--pulse); box-shadow: 0 0 0 3px var(--pulse-glow); }
+  .control.mono { font-family: var(--mono); font-size: 13px; }
+  select.control { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b9398' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .key-input { display: flex; gap: 10px; }
+  .key-input .control { flex: 1; }
+  .config .actions { display: flex; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+  /* ============================================================
+     CREDENTIALS SCREEN — grouped provider rows (Replicas-style)
+     ============================================================ */
+  .cred-group { margin-bottom: 26px; }
+  .cred-group > .ghead { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; color: var(--text-muted); }
+  .cred-group > .ghead .gname { font-weight: 600; color: var(--text); }
+  .cred-group > .ghead svg { width: 17px; height: 17px; opacity: .9; }
+  .cred-rows { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .cred-row { border-bottom: 1px solid var(--border); }
+  .cred-row:last-child { border-bottom: 0; }
+  .cred-row .summary { display: flex; align-items: center; gap: 14px; padding: 15px 18px; cursor: pointer; }
+  .cred-row .summary:hover { background: var(--surface-2); }
+  .cred-row .ckey { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); flex: none; }
+  .cred-row .cmeta .cn { font-weight: 550; font-size: 14px; }
+  .cred-row .cmeta .cd { color: var(--text-muted); font-size: 12.5px; margin-top: 1px; }
+  .cred-row .cright { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .chev { color: var(--text-subtle); transition: transform .15s; }
+  .cred-row.open .chev { transform: rotate(180deg); }
+  .cred-row .body { display: none; padding: 4px 18px 18px; }
+  .cred-row.open .body { display: block; }
+
+  /* kind strip — explains the vault holds more than model keys */
+  .kinds { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 30px; }
+  .kind { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); padding: 15px 16px; }
+  .kind .kt { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+  .kind .kt svg { width: 15px; height: 15px; color: var(--pulse); }
+  .kind .kd { color: var(--text-muted); font-size: 12.5px; margin-top: 5px; }
+  .kind .ke { font-family: var(--mono); font-size: 11px; color: var(--text-subtle); margin-top: 8px; }
+
+  .refpill { font-family: var(--mono); font-size: 11px; color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
+  td.refs { display: flex; gap: 6px; flex-wrap: wrap; }
+  td.name { font-family: var(--mono); color: var(--text); }
+  td.cstatus .status { font-size: 12px; }
+  .addsecret { display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 10px; align-items: end; padding: 16px 18px; border-top: 1px solid var(--border); background: var(--surface-deep); }
+  .addsecret label { display:block; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 6px; }
+
+  /* coming-soon integrations */
+  .cred-group.soon .cred-rows { opacity: .6; }
+  .ghead .soon-tag { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-subtle); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; margin-left: 6px; }
+  .soon-hint { font-size: 12.5px; color: var(--text-muted); margin: -2px 2px 12px; }
+  .soon-hint b { color: var(--text); }
+  .soon-hint code { font-family: var(--mono); color: var(--pulse); }
+
+  .hidden { display: none !important; }
+
+  /* ===== Install experience: templates · source · state machine · steer ===== */
+  .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .tpl-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); padding: 18px; }
+  .tpl-card .tn { font-weight: 600; }
+  .tpl-card .td { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+  .tpl-card .needs { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: 6px; padding: 2px 7px; margin: 12px 0 4px; }
+  .tpl-card .row { margin-top: 10px; }
+  .source-block { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 6px; }
+  .source-lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 10px; }
+  .source-row { display: flex; gap: 10px; }
+  .source-row .control { flex: 1; }
+  .paste-link { margin-top: 12px; }
+  .paste-link button { background: none; border: 0; color: var(--text-muted); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .paste-link button:hover { color: var(--text); }
+
+  .state-line { display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+  .state-line:last-child { border-bottom: 0; }
+  .state-line .g { font-family: var(--mono); width: 16px; text-align: center; flex: none; }
+  .state-line.run .g { color: var(--pulse); }
+  .state-line.ok .g { color: var(--success); }
+  .state-line.err .g { color: var(--error); }
+  .state-line.wait .g { color: var(--warn); }
+  .state-line.err { color: var(--error); }
+  .state-line .sx { margin-left: auto; }
+  .state-line code, .mono-inline { font-family: var(--mono); }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .done-block { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; }
+  .done-block .dt { font-weight: 600; display: flex; align-items: center; gap: 10px; }
+
+  .install-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--pulse); background: var(--pulse-glow); border: 1px solid color-mix(in srgb, var(--pulse) 35%, transparent); border-radius: 8px; padding: 5px 10px; }
+
+  .chat { border: 1px solid var(--border); border-radius: 14px; background: var(--surface-1); overflow: hidden; display: flex; flex-direction: column; height: calc(100vh - 250px); min-height: 460px; }
+  .chat-body { overflow-y: auto; }
+  .msg { max-width: 680px; }
+  .chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface-deep); }
+  .chat-head .ct { font-weight: 600; }
+  .chat-body { flex: 1; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 80%; padding: 11px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; }
+  .msg.agent { background: var(--surface-2); border: 1px solid var(--border); align-self: flex-start; }
+  .msg.me { background: var(--pulse); color: var(--on-pulse); align-self: flex-end; }
+  .composer { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--border); }
+  .composer .control { flex: 1; }
+
+  /* ============================================================
+     MOTION — slight jazz, tasteful; honors prefers-reduced-motion
+     ============================================================ */
+  /* content rises in on mount / view-switch, gently staggered */
+  @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .content > * { animation: riseIn .38s cubic-bezier(.2,.7,.2,1) both; }
+  .content > *:nth-child(1){ animation-delay:.02s } .content > *:nth-child(2){ animation-delay:.07s }
+  .content > *:nth-child(3){ animation-delay:.12s } .content > *:nth-child(4){ animation-delay:.17s }
+  .content > *:nth-child(5){ animation-delay:.22s } .content > *:nth-child(6){ animation-delay:.27s }
+  .content > *:nth-child(n+7){ animation-delay:.3s }
+
+  /* ambient glow slowly drifts — the page feels alive, never busy */
+  @keyframes glowDrift {
+    0%,100% { background-position: 90% 0%, 60% 0%, 0% 100%; }
+    50%     { background-position: 80% 7%, 67% 4%, 7% 95%; }
+  }
+
+  /* balance meter fills on load */
+  @keyframes meterFill { from { width: 0; } }
+  .meter > span { animation: meterFill .9s cubic-bezier(.2,.7,.2,1) both; }
+
+  /* live status LED: a slow radar ping (no box-shadow — uses a scaling dot) */
+  .status.ok .led { position: relative; }
+  .status.ok .led::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+    margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--success);
+    animation: ping 2.8s cubic-bezier(0,0,.2,1) infinite;
+  }
+  @keyframes ping { 0% { transform: scale(1); opacity: .5; } 70%,100% { transform: scale(3.4); opacity: 0; } }
+
+  /* smooth transitions on everything interactive */
+  .nav-item, .cred-row .summary, .tab, .btn, .opt, .card, .cred-rows, .terminal, .kind,
+  .ws-pill, .icon-btn, .seg button, .chev, .btn-link {
+    transition: background-color .16s ease, color .16s ease, border-color .2s ease,
+                transform .12s ease, filter .16s ease, box-shadow .2s ease;
+  }
+  .btn:hover { filter: brightness(1.04); }
+  .btn:active { transform: translateY(1px); }
+  .kind:hover, .card:hover, .opt:hover, .cred-rows:hover { border-color: var(--border-strong); }
+  .nav-item:hover { transform: translateX(1px); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .meter > span { width: 8% !important; }
+  }
+
+  /* changes aside */
+  .delta { margin-top: 40px; border-top: 1px dashed var(--border-strong); padding-top: 22px; }
+  .delta h4 { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 12px; }
+  .delta ul { list-style: none; display: grid; gap: 8px; }
+  .delta li { display: flex; gap: 10px; font-size: 13px; color: var(--text-muted); }
+  .delta li::before { content: "→"; color: var(--pulse); flex: none; }
+  .delta li b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- META PREVIEW TOOLBAR -->
+<div class="toolbar">
+  <span class="tag">mockup preview</span>
+  <span class="sep">·</span>
+  <span style="color:var(--text-muted)">agentsfleet UI polish — terminal-native, clean</span>
+  <span class="spacer"></span>
+  <div class="seg" role="group" aria-label="page">
+    <button data-view="dashboard" aria-pressed="false">Dashboard</button>
+    <button data-view="install" aria-pressed="true">Install</button>
+    <button data-view="steer" aria-pressed="false">Steer</button>
+    <button data-view="billing" aria-pressed="false">Billing</button>
+    <button data-view="models" aria-pressed="false">Models</button>
+    <button data-view="credentials" aria-pressed="false">Credentials</button>
+  </div>
+  <div class="seg" role="group" aria-label="theme">
+    <button data-theme-btn="dark" aria-pressed="true">Dark</button>
+    <button data-theme-btn="light" aria-pressed="false">Light</button>
+  </div>
+</div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand"><span class="dot"></span><span class="name">agentsfleet</span></div>
+
+    <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>
+
+    <div class="nav-group">
+      <div class="nav-label">Operations</div>
+      <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="10" r="7"/><path d="M9 21h6M10 17v4M14 17v4"/></svg>Fleets</a>
+      <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>Approvals</a>
+      <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>Events</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Configuration</div>
+      <a class="nav-item" data-nav data-navfor="models"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg>Models</a>
+      <a class="nav-item" data-nav data-navfor="credentials"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 7a4 4 0 1 0-3.5 6.9L9 15.5 7.5 17 9 18.5 7.5 20 5 22 3 20v-2.5l6.5-6.4A4 4 0 0 1 14 7z"/><circle cx="15.5" cy="7.5" r="1"/></svg>Credentials</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Organization</div>
+      <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.3 1a7 7 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z"/></svg>Workspace</a>
+      <a class="nav-item" data-nav data-navfor="billing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Billing</a>
+    </div>
+
+    <div class="bottom">
+      <a class="nav-item" data-nav><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h7M8 11h7"/></svg>Docs</a>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="ws-pill">sunny-shore-889 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+      <div class="icon-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+      <div class="avatar"></div>
+    </div>
+
+    <div class="canvas">
+
+      <!-- ===================== BILLING ===================== -->
+      <div class="content" data-page="billing">
+        <div class="page-header">
+          <div class="page-title">Billing</div>
+          <div class="page-desc">Manage credits and usage. You pay per Fleet event from your balance — no seats, no monthly minimum.</div>
+        </div>
+
+        <!-- balance + meter : meter spans full card, caption rides its end -->
+        <div class="card balance">
+          <div class="head">
+            <div>
+              <div class="lbl">Balance</div>
+              <div class="amount">$5.00<span class="unit">USD</span></div>
+            </div>
+            <button class="btn btn-primary">＋ Purchase credits</button>
+          </div>
+          <div class="meter"><span style="width:8%"></span></div>
+          <div class="cap">
+            <div>Covers all Fleet events · <b>pay as you go</b></div>
+            <div class="right">spent <b>$0.42</b> · <b>4</b> events this period</div>
+          </div>
+        </div>
+
+        <!-- tabs -->
+        <div class="tabs" data-tabs="billing">
+          <button class="tab active" data-tab="usage">Usage</button>
+          <button class="tab" data-tab="invoices">Invoices</button>
+          <button class="tab" data-tab="payment">Payment method</button>
+        </div>
+
+        <!-- usage history = terminal-native surface -->
+        <div data-tabpane="usage">
+          <div class="terminal">
+            <div class="terminal-head">
+              <span class="lights"><i></i><i></i><i></i></span>
+              <span class="ttl">usage history</span>
+              <span class="right">charges</span>
+            </div>
+            <table class="usage">
+              <thead>
+                <tr>
+                  <th style="width:160px">Date</th>
+                  <th class="amt" style="width:110px;text-align:right">Amount</th>
+                  <th style="width:180px">Type</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="date">Jun 15, 2026 · 17:33</td>
+                  <td class="amt"><span class="neg">−$0.03</span></td>
+                  <td class="type"><span>workspace_usage</span></td>
+                  <td class="desc">Final dashboard workspace usage: 3 minutes</td>
+                </tr>
+                <tr>
+                  <td class="date">Jun 15, 2026 · 17:33</td>
+                  <td class="amt"><span class="neg">−$0.03</span></td>
+                  <td class="type"><span>workspace_usage</span></td>
+                  <td class="desc">Final dashboard workspace usage: 3 minutes</td>
+                </tr>
+                <tr>
+                  <td class="date">Jun 15, 2026 · 17:30</td>
+                  <td class="amt"><span class="neg">−$0.57</span></td>
+                  <td class="type"><span>workspace_usage</span></td>
+                  <td class="desc">Dashboard workspace usage: 57 minutes</td>
+                </tr>
+                <tr>
+                  <td class="date">Jun 14, 2026 · 09:02</td>
+                  <td class="amt">＋$5.00</td>
+                  <td class="type"><span>credit_topup</span></td>
+                  <td class="desc">Starter credit applied</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- honest plans row — no seat grid -->
+          <div class="card planrow">
+            <div class="pmark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg></div>
+            <div class="ptext">
+              <div class="t">Pay as you go <span class="badge badge-current">Current</span></div>
+              <div class="d">Billed per Fleet event from your balance. Nothing to choose — top up when you're low.</div>
+            </div>
+            <div class="pright">
+              <div class="q">Running heavy volume?</div>
+              <button class="btn-link">Talk to us about volume pricing →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- (invoices/payment panes omitted in mockup; tabs are illustrative) -->
+
+        <div class="delta">
+          <h4>Changes from current Billing</h4>
+          <ul>
+            <li><b>Balance meter</b> replaces the bare "$5.00 / Purchase Credits" card — shows spend-this-period at a glance (Replicas' minutes bar, in our unit).</li>
+            <li><b>Usage history is now a table</b> (date · amount · type · description) on the terminal-native card — instead of the "No billable events yet" void. Real data, scannable.</li>
+            <li><b>No seat plans.</b> We're consumption-based, so a 4-column seat grid is dropped entirely — one honest "Pay as you go (current)" row + a volume-pricing link.</li>
+            <li><b>Description below the title</b>, and it states the model plainly: pay per event, no seats.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===================== MODELS ===================== -->
+      <div class="content hidden" data-page="models">
+        <div class="page-header">
+          <div class="page-title">Models</div>
+          <div class="page-desc">Choose how teammates get model access. Credentials for the own-key path live under Credentials.</div>
+        </div>
+
+        <div class="section-label">Model access</div>
+        <p class="intro">One decision: use our managed provider, or bring your own key. Your current choice is marked below.</p>
+
+        <div class="opt-grid">
+          <!-- platform defaults -->
+          <div class="opt" id="opt-platform">
+            <div class="top">
+              <div class="radio"></div>
+              <div>
+                <div class="htitle">Platform defaults <span class="badge badge-current" data-cur-platform>Current</span></div>
+                <div class="hsub">Built-in provider, paid per event from your balance. No key to manage.</div>
+              </div>
+            </div>
+            <div class="modelline"><span class="pin">▸</span> fireworks · kimi-k2.6 · 256K context</div>
+            <div class="meta">
+              <div><div class="k">Credential</div><div class="v">Not required</div></div>
+              <div><div class="k">Account</div><div class="v">agentsfleet managed</div></div>
+              <div><div class="k">Billing</div><div class="v">Tenant balance</div></div>
+            </div>
+            <div class="foot">
+              <span class="active-note" data-active-platform><span class="status ok"><span class="led"></span></span> Active — nothing to do</span>
+              <button class="btn btn-outline hidden" data-use-platform>Use platform defaults</button>
+            </div>
+          </div>
+
+          <!-- own key -->
+          <div class="opt" id="opt-ownkey">
+            <div class="top">
+              <div class="radio"></div>
+              <div>
+                <div class="htitle">Bring your own key <span class="badge badge-current hidden" data-cur-ownkey>Current</span></div>
+                <div class="hsub">Point the model config at any provider — or a custom OpenAI-compatible endpoint.</div>
+              </div>
+            </div>
+            <div class="modelline"><span style="color:var(--text-subtle)">▸</span> any provider · your model · your context</div>
+            <div class="meta">
+              <div><div class="k">Credential</div><div class="v">Required</div></div>
+              <div><div class="k">Account</div><div class="v">Your provider</div></div>
+              <div><div class="k">Billing</div><div class="v">Provider direct</div></div>
+            </div>
+            <div class="foot"><button class="btn btn-dbl" data-switch-ownkey>Switch to own key</button></div>
+          </div>
+        </div>
+
+        <!-- configure form: appears when "Switch to own key" is clicked -->
+        <div class="card config hidden" id="ownkey-config">
+          <div class="ttl">Own-key model setup</div>
+          <div class="sub">Pick a provider (or a custom OpenAI-compatible endpoint), select the stored credential, and name the model.</div>
+
+          <div class="field">
+            <label>Provider</label>
+            <select class="control" id="provider-select">
+              <option value="anthropic">Anthropic</option>
+              <option value="fireworks">Fireworks</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">Custom — OpenAI-compatible endpoint</option>
+            </select>
+            <div class="hint">No named provider? Choose “Custom” to point at any OpenAI-compatible URL (self-hosted vLLM, OpenRouter, wafer, …).</div>
+          </div>
+
+          <!-- only shown for custom -->
+          <div class="field hidden" id="baseurl-field">
+            <label>Base URL</label>
+            <input class="control mono" placeholder="https://api.your-endpoint.com/v1" />
+            <div class="hint">The OpenAI-compatible base path. We append <span style="font-family:var(--mono)">/chat/completions</span>.</div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label>Credential</label>
+              <select class="control">
+                <option>Anthropic key — added Jun 14</option>
+                <option>＋ Add a new credential…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Model name</label>
+              <input class="control mono" placeholder="claude-opus-4-8" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary">Save model setup</button>
+            <button class="btn btn-outline" data-cancel-ownkey>Cancel</button>
+          </div>
+        </div>
+
+        <div class="delta">
+          <h4>Changes from current Models</h4>
+          <ul>
+            <li><b>Triple restatement collapsed.</b> The "you're on platform defaults" fact appeared 3× (CURRENT SETUP card + radio + meta grid). Now it's <b>one card</b>, marked "Current".</li>
+            <li><b>No phantom button.</b> Active option reads "Active — nothing to do"; the action button lives only on the option you'd switch <em>to</em>. (Click "Switch to own key" to see the configure form.)</li>
+            <li><b>Custom / OpenAI-compatible endpoint</b> is a first-class provider choice — base URL + key + model, no named vendor required.</li>
+            <li><b>Sans heading, mono only on data</b> (model path, base URL, model name). Description below the title.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===================== CREDENTIALS (the secret vault) ===================== -->
+      <div class="content hidden" data-page="credentials">
+        <div class="page-header with-action">
+          <div>
+            <div class="page-title">Credentials</div>
+            <div class="page-desc">Your write-only secret vault. Model keys, integration tokens, and your own custom secrets — each stored once and resolved by name at runtime.</div>
+          </div>
+          <button class="btn btn-primary">＋ Add credential</button>
+        </div>
+
+        <!-- kinds strip: makes the breadth obvious at a glance -->
+        <div class="kinds">
+          <div class="kind">
+            <div class="kt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg> Model providers</div>
+            <div class="kd">Keys that power the own-key model path.</div>
+            <div class="ke">anthropic · openai · custom endpoint</div>
+          </div>
+          <div class="kind">
+            <div class="kt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l2 2M14 9l2 2"/></svg> Custom secrets</div>
+            <div class="kd">Any <span style="font-family:var(--mono)">NAME=value</span> your SKILL.md reads.</div>
+            <div class="ke">STRIPE_API_KEY · INTERNAL_WEBHOOK</div>
+          </div>
+          <div class="kind">
+            <div class="kt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg> Integrations</div>
+            <div class="kd">Tokens for the tools your fleets act on.</div>
+            <div class="ke">github · zoho · slack · …</div>
+          </div>
+        </div>
+
+        <!-- Model providers -->
+        <div class="cred-group">
+          <div class="ghead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg><span class="gname">Model providers</span></div>
+          <div class="cred-rows">
+            <div class="cred-row">
+              <div class="summary" data-cred-toggle>
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l2 2M14 9l2 2"/></svg></span>
+                <div class="cmeta"><div class="cn">Anthropic API key</div><div class="cd">Use an Anthropic key for Claude models.</div></div>
+                <div class="cright"><span class="status"><span class="led"></span> Not connected</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+              </div>
+              <div class="body"><div class="key-input"><input class="control mono" placeholder="sk-ant-..." /><button class="btn btn-outline">Save</button></div></div>
+            </div>
+            <div class="cred-row open">
+              <div class="summary" data-cred-toggle>
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l2 2M14 9l2 2"/></svg></span>
+                <div class="cmeta"><div class="cn">OpenAI API key</div><div class="cd">Use an OpenAI key for GPT models.</div></div>
+                <div class="cright"><span class="status ok"><span class="led"></span> Connected</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+              </div>
+              <div class="body">
+                <div class="key-input"><input class="control mono" value="sk-••••••••••••••••••••••••3f9a" disabled /><button class="btn btn-outline">Replace</button></div>
+                <div class="hint" style="margin-top:8px">Added Jun 14, 2026 · last used 2h ago. The full key is never shown again.</div>
+              </div>
+            </div>
+            <div class="cred-row">
+              <div class="summary" data-cred-toggle>
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg></span>
+                <div class="cmeta"><div class="cn">Custom — OpenAI-compatible</div><div class="cd">Any OpenAI-compatible URL — vLLM, OpenRouter, wafer, self-hosted.</div></div>
+                <div class="cright"><span class="status"><span class="led"></span> Not connected</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+              </div>
+              <div class="body">
+                <div class="field"><label>Base URL</label><input class="control mono" placeholder="https://api.your-endpoint.com/v1" /></div>
+                <div class="key-input"><input class="control mono" placeholder="sk-... (or blank if unauthenticated)" /><button class="btn btn-outline">Save</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom secrets (real now — sits above the coming-soon integrations) -->
+        <div class="cred-group">
+          <div class="ghead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l2 2M14 9l2 2"/></svg><span class="gname">Custom secrets</span></div>
+          <div class="terminal">
+            <div class="terminal-head"><span class="lights"><i></i><i></i><i></i></span><span class="ttl">vault · resolved by name</span><span class="right">write-only</span></div>
+            <table class="usage">
+              <thead><tr><th style="width:280px">Name</th><th style="width:150px">Status</th><th>Referenced by</th><th style="width:90px"></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="name">STRIPE_API_KEY</td>
+                  <td class="cstatus"><span class="status ok"><span class="led"></span> Set</span></td>
+                  <td class="refs"><span class="refpill">billing-bot</span></td>
+                  <td><button class="btn-link">Replace</button></td>
+                </tr>
+                <tr>
+                  <td class="name">ZOHO_REFRESH_TOKEN</td>
+                  <td class="cstatus"><span class="status ok"><span class="led"></span> Set</span></td>
+                  <td class="refs"><span class="refpill">zoho-summarizer</span></td>
+                  <td><button class="btn-link">Replace</button></td>
+                </tr>
+                <tr>
+                  <td class="name">INTERNAL_WEBHOOK</td>
+                  <td class="cstatus"><span class="status"><span class="led"></span> Empty</span></td>
+                  <td class="refs"><span style="color:var(--text-subtle)">— not referenced yet</span></td>
+                  <td><button class="btn-link">Set</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="addsecret">
+              <div><label>Name</label><input class="control mono" placeholder="MY_API_TOKEN" /></div>
+              <div><label>Value</label><input class="control mono" placeholder="value (write-only)" /></div>
+              <button class="btn btn-outline">＋ Add secret</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Integrations (not built yet → coming soon, last; custom secrets above bridge them) -->
+        <div class="cred-group">
+          <div class="ghead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg><span class="gname">Integrations</span></div>
+          <div class="soon-hint"><b>GitHub connects now.</b> Zoho/Slack are on the roadmap — until then, store their tokens as <b>custom secrets</b> above (e.g. <code>ZOHO_REFRESH_TOKEN</code>) and your fleets use them today.</div>
+          <div class="cred-rows">
+            <div class="cred-row">
+              <div class="summary">
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.3-1.1.6-1.3-2.2-.3-4.5-1.1-4.5-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.5-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .6 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.3 4.7-4.5 5 .3.3.6.9.6 1.8v2.7c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg></span>
+                <div class="cmeta"><div class="cn">GitHub</div><div class="cd">Run fleets on issues, pull requests, and CI failures.</div></div>
+                <div class="cright"><span class="status"><span class="led"></span> Not connected</span><button class="btn btn-outline" style="padding:6px 14px">Connect</button></div>
+              </div>
+            </div>
+            <div class="cred-row">
+              <div class="summary">
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h7"/></svg></span>
+                <div class="cmeta"><div class="cn">Zoho</div><div class="cd">Summarize Sprints, act on Desk tickets.</div></div>
+                <div class="cright"><span class="badge badge-muted">Planned</span></div>
+              </div>
+            </div>
+            <div class="cred-row">
+              <div class="summary">
+                <span class="ckey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3v8M10 13v8M3 10h8M13 14h8"/><circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/></svg></span>
+                <div class="cmeta"><div class="cn">Slack</div><div class="cd">Mention a fleet in channels; post run results.</div></div>
+                <div class="cright"><span class="badge badge-muted">Planned</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="delta">
+          <h4>Credentials = the secret vault (not just model keys)</h4>
+          <ul>
+            <li><b>Three kinds, one vault.</b> The strip up top spells it out: <b>model providers</b>, <b>integrations</b>, and <b>custom secrets</b>. Adding a secret is first-class, not buried.</li>
+            <li><b>Integrations ship later — custom secrets bridge the gap now.</b> GitHub/Zoho/Slack are marked "Coming soon"; today you store their tokens as custom secrets (<span style="font-family:var(--mono)">GITHUB_TOKEN</span>) and fleets use them. When the connector lands, it adopts the secret. So this round ships <b>Model providers + Custom secrets</b> (both real), no half-built connectors.</li>
+            <li><b>Custom secrets are arbitrary</b> <span style="font-family:var(--mono)">NAME=value</span> entries your SKILL.md reads by name — the "+ Add secret" row is right there.</li>
+            <li><b>Referenced-by</b> column shows which fleet uses each secret, so you never delete something live by accident.</li>
+            <li><b>Write-only throughout.</b> Stored as a vault <span style="font-family:var(--mono)">key_name</span> ref (resolved via crypto_store), masked on display, Replace not reveal.</li>
+            <li><b>Models references this vault</b> — the own-key path picks a model-provider credential from here; it doesn't store keys of its own.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===================== DASHBOARD ===================== -->
+      <div class="content hidden" data-page="dashboard">
+        <div class="page-header">
+          <div class="page-title">Dashboard</div>
+          <div class="page-desc">Welcome back. Pick a template to start your first fleet — $5 free credit is ready for that first run.</div>
+        </div>
+        <div class="section-label">Next step · start your fleet</div>
+        <div class="tpl-grid">
+          <div class="tpl-card">
+            <div class="tn">GitHub Pull Request reviewer</div>
+            <div class="td">Reviews GitHub pull requests and posts review comments.</div>
+            <div class="needs">needs: github</div>
+            <div class="row"><button class="btn btn-primary" data-use-template data-ref="acme/pr-reviewer@a1b2c3d">Use template</button></div>
+          </div>
+          <div class="tpl-card">
+            <div class="tn">Security reviewer</div>
+            <div class="td">Reviews pull requests for security issues and posts findings.</div>
+            <div class="needs">needs: github</div>
+            <div class="row"><button class="btn btn-primary" data-use-template data-ref="acme/security-reviewer@b2c3d4e">Use template</button></div>
+          </div>
+        </div>
+        <div class="delta"><h4>Same install component as Fleets</h4><ul>
+          <li>The Dashboard "Start your fleet" cards and the Fleets install page render the <b>same shared component</b> — click a "Use template" to see the inline state-driven install (no review page).</li>
+        </ul></div>
+      </div>
+
+      <!-- ===================== INSTALL (state-driven) ===================== -->
+      <div class="content hidden" data-page="install">
+        <div class="page-header">
+          <div class="page-title">Install teammate</div>
+          <div class="page-desc">Start from a template, a GitHub repo, or paste a SKILL.md. Installing runs inline — you see each state.</div>
+        </div>
+
+        <!-- picker -->
+        <div id="install-picker">
+          <div class="section-label">Start from a template</div>
+          <p class="intro">Curated Fleets, pinned and ready. Connect what they need, then create.</p>
+          <div class="tpl-grid">
+            <div class="tpl-card">
+              <div class="tn">GitHub Pull Request reviewer</div>
+              <div class="td">Reviews GitHub pull requests and posts review comments.</div>
+              <div class="needs">needs: github</div>
+              <div class="row"><button class="btn btn-primary" data-use-template data-ref="acme/pr-reviewer@a1b2c3d">Use template</button></div>
+            </div>
+            <div class="tpl-card">
+              <div class="tn">Security reviewer</div>
+              <div class="td">Reviews pull requests for security issues and posts findings.</div>
+              <div class="needs">needs: github</div>
+              <div class="row"><button class="btn btn-primary" data-use-template data-ref="acme/security-reviewer@b2c3d4e">Use template</button></div>
+            </div>
+            <div class="tpl-card">
+              <div class="tn">Zoho Sprints daily summarizer</div>
+              <div class="td">Summarizes the day's Zoho Sprints activity and posts a digest.</div>
+              <div class="needs">needs: zoho</div>
+              <div class="row"><button class="btn btn-primary" data-use-template data-ref="acme/zoho-summarizer@c3d4e5f">Use template</button></div>
+            </div>
+          </div>
+          <div class="source-block">
+            <div class="source-lbl">Or start from source</div>
+            <div class="source-row"><input class="control mono" value="owner/repo" /><button class="btn btn-outline" id="import-demo">Import from GitHub</button></div>
+            <div class="paste-link"><button>Paste SKILL.md instead</button></div>
+          </div>
+        </div>
+
+        <!-- states (replaces the old review page) -->
+        <div id="install-states" class="hidden">
+          <button class="btn-link" id="back-to-templates" style="margin-bottom:14px">← Back to templates</button>
+          <div class="terminal">
+            <div class="terminal-head"><span class="lights"><i></i><i></i><i></i></span><span class="ttl" id="install-states-title">installing</span><span class="right">states</span></div>
+            <div id="state-list"></div>
+            <div class="done-block hidden" id="install-done">
+              <div class="dt"><span class="status ok"><span class="led"></span></span> Installed — <span class="mono-inline" id="done-name">pr-reviewer</span> is ready</div>
+              <button class="btn btn-primary" id="open-teammate">Open fleet →</button>
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;align-items:center;gap:12px">
+            <span class="install-chip"><span class="spin">◐</span> installing</span>
+            <span style="color:var(--text-muted);font-size:13px">While it provisions, the fleet shows this state in your Fleets list and on its own page — never hidden.</span>
+          </div>
+        </div>
+
+        <div class="delta"><h4>State-driven install — no review page</h4><ul>
+          <li>Clicking <b>Use template</b> proceeds <b>inline</b> to the states (importing → connect-to-continue → creating → done) — it does <b>not</b> route to a separate review/preview page.</li>
+          <li><b>Import from GitHub</b> (try it with <span class="mono-inline">owner/repo</span>) shows the error state: no SKILL.md / 404 / rate-limited, with retry.</li>
+          <li>On <b>done → Open fleet</b> you land in the fleet's <b>steer/chat</b> (the Steer view).</li>
+          <li>An <b>installing fleet always shows its state</b> until ready.</li>
+        </ul></div>
+      </div>
+
+      <!-- ===================== STEER (where install lands) ===================== -->
+      <div class="content hidden" data-page="steer">
+        <div class="page-header">
+          <div class="page-title">pr-reviewer</div>
+          <div class="page-desc">Steer your teammate — give direction, ask what it's doing, approve actions.</div>
+        </div>
+        <div class="chat">
+          <div class="chat-head"><span class="status ok"><span class="led"></span></span><span class="ct">pr-reviewer</span><span style="margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--text-muted)">github · wake.on.pr</span></div>
+          <div class="chat-body">
+            <div class="msg agent">Installed and ready. I'll review new pull requests on <span class="mono-inline">acme/*</span> and post comments. Want me to do a first pass on an open PR?</div>
+            <div class="msg me">Yes — review PR #482, focus on the auth changes.</div>
+            <div class="msg agent">On it. Pulling <span class="mono-inline">#482</span>, reading the diff in <span class="mono-inline">src/auth/**</span>… I'll post findings and flag anything that needs your approval.</div>
+          </div>
+          <div class="composer"><input class="control" placeholder="Steer pr-reviewer…" /><button class="btn btn-primary">Send</button></div>
+        </div>
+        <div class="delta"><h4>Where install lands</h4><ul>
+          <li>After <b>done → Open fleet</b>, you arrive here — the fleet's <b>steer/chat</b> thread. If it were still provisioning, this page would show the install states first, then become the chat.</li>
+        </ul></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // page switch
+  const toolbarBtns = document.querySelectorAll('.seg [data-view]');
+  const pages = {
+    dashboard: document.querySelector('[data-page="dashboard"]'),
+    install: document.querySelector('[data-page="install"]'),
+    steer: document.querySelector('[data-page="steer"]'),
+    billing: document.querySelector('[data-page="billing"]'),
+    models: document.querySelector('[data-page="models"]'),
+    credentials: document.querySelector('[data-page="credentials"]'),
+  };
+  function showView(v){
+    Object.entries(pages).forEach(([k,el]) => el.classList.toggle('hidden', k !== v));
+    toolbarBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
+    document.querySelectorAll('[data-navfor]').forEach(n => n.classList.toggle('active', n.dataset.navfor === v));
+    if (v === 'install') resetInstall();
+  }
+  toolbarBtns.forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+  document.querySelectorAll('[data-navfor]').forEach(n => n.addEventListener('click', () => showView(n.dataset.navfor)));
+
+  // own-key flow: switch / cancel / use-platform
+  const optPlatform = document.getElementById('opt-platform');
+  const optOwnkey   = document.getElementById('opt-ownkey');
+  const config      = document.getElementById('ownkey-config');
+  function setMode(mode){
+    const own = mode === 'own';
+    optOwnkey.classList.toggle('active', own);
+    optPlatform.classList.toggle('active', !own);
+    config.classList.toggle('hidden', !own);
+    document.querySelector('[data-cur-platform]').classList.toggle('hidden', own);
+    document.querySelector('[data-cur-ownkey]').classList.toggle('hidden', !own);
+    document.querySelector('[data-active-platform]').classList.toggle('hidden', own);
+    document.querySelector('[data-use-platform]').classList.toggle('hidden', !own);
+  }
+  document.querySelector('[data-switch-ownkey]').addEventListener('click', () => setMode('own'));
+  document.querySelector('[data-cancel-ownkey]').addEventListener('click', () => setMode('platform'));
+  document.querySelector('[data-use-platform]').addEventListener('click', () => setMode('platform'));
+
+  // provider select → reveal Base URL only for custom
+  const providerSelect = document.getElementById('provider-select');
+  const baseurlField = document.getElementById('baseurl-field');
+  providerSelect.addEventListener('change', () => {
+    baseurlField.classList.toggle('hidden', providerSelect.value !== 'custom');
+  });
+
+  // credential rows expand/collapse
+  document.querySelectorAll('[data-cred-toggle]').forEach(s =>
+    s.addEventListener('click', () => s.closest('.cred-row').classList.toggle('open')));
+
+  // ===== install experience: inline state machine (no review page) =====
+  const installPicker = document.getElementById('install-picker');
+  const installStates = document.getElementById('install-states');
+  const stateList = document.getElementById('state-list');
+  const installDone = document.getElementById('install-done');
+  const installTitle = document.getElementById('install-states-title');
+  const doneName = document.getElementById('done-name');
+  let installTimers = [];
+  let installProvider = 'github';
+  function clearInstall(){ installTimers.forEach(clearTimeout); installTimers = []; }
+  function resetInstall(){ clearInstall(); if (installStates) installStates.classList.add('hidden'); if (installPicker) installPicker.classList.remove('hidden'); if (installDone) installDone.classList.add('hidden'); }
+  function sline(cls, glyph, html){ return '<div class="state-line ' + cls + '"><span class="g">' + glyph + '</span><span>' + html + '</span></div>'; }
+  function startInstall(ref){
+    clearInstall();
+    installProvider = /zoho/.test(ref) ? 'zoho' : 'github';
+    doneName.textContent = ref.split('/').pop().split('@')[0];
+    installPicker.classList.add('hidden');
+    installStates.classList.remove('hidden');
+    installDone.classList.add('hidden');
+    installTitle.textContent = 'installing · ' + ref;
+    stateList.innerHTML = sline('run','<span class="spin">◐</span>', 'importing <code>' + ref + '</code>… fetching SKILL.md, TRIGGER.md, support files');
+    installTimers.push(setTimeout(function(){
+      stateList.innerHTML =
+        sline('ok','✓', 'imported <code>' + ref + '</code>') +
+        sline('wait','○', 'first run: connect <b>' + installProvider + '</b> to create <span class="sx"><button class="btn btn-outline" id="connect-prov" style="padding:5px 12px">Connect ' + installProvider + '</button></span>');
+    }, 1300));
+  }
+  function startImportError(ref){
+    clearInstall();
+    installPicker.classList.add('hidden');
+    installStates.classList.remove('hidden');
+    installDone.classList.add('hidden');
+    installTitle.textContent = 'importing · ' + ref;
+    stateList.innerHTML = sline('run','<span class="spin">◐</span>', 'importing <code>' + ref + '</code>…');
+    installTimers.push(setTimeout(function(){
+      stateList.innerHTML = sline('err','✗', 'No SKILL.md found at <code>' + ref + '</code> · repo not found (404) · or rate-limited — <button class="btn-link" id="retry-install">retry</button>');
+    }, 1100));
+  }
+  document.addEventListener('click', function(e){
+    const t = e.target;
+    if (!t || !t.id) return;
+    if (t.id === 'connect-prov'){
+      stateList.innerHTML =
+        sline('ok','✓', 'imported') +
+        sline('ok','✓', installProvider + ' connected') +
+        sline('run','<span class="spin">◐</span>', 'creating teammate…');
+      installTimers.push(setTimeout(function(){
+        stateList.innerHTML =
+          sline('ok','✓', 'imported') +
+          sline('ok','✓', installProvider + ' connected') +
+          sline('ok','✓', 'created') +
+          sline('ok','✓', 'wake rules applied — cron · webhook');
+        installDone.classList.remove('hidden');
+      }, 1200));
+    }
+    if (t.id === 'retry-install'){ startInstall('acme/pr-reviewer@a1b2c3d'); }
+  });
+  document.querySelectorAll('[data-use-template]').forEach(function(b){
+    b.addEventListener('click', function(){ showView('install'); startInstall(b.dataset.ref || 'acme/pr-reviewer@a1b2c3d'); });
+  });
+  const importDemo = document.getElementById('import-demo');
+  if (importDemo) importDemo.addEventListener('click', function(){ startImportError('owner/repo'); });
+  const openTeammate = document.getElementById('open-teammate');
+  if (openTeammate) openTeammate.addEventListener('click', function(){ showView('steer'); });
+  const backTpl = document.getElementById('back-to-templates');
+  if (backTpl) backTpl.addEventListener('click', resetInstall);
+
+  // theme switch
+  const themeBtns = document.querySelectorAll('[data-theme-btn]');
+  themeBtns.forEach(b => b.addEventListener('click', () => {
+    document.documentElement.setAttribute('data-theme', b.dataset.themeBtn);
+    themeBtns.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+
+  // in-page underline tabs (illustrative)
+  document.querySelectorAll('[data-tabs]').forEach(group => {
+    group.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+      group.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+    }));
+  });
+
+  showView('install');
+</script>
+</body>
+</html>

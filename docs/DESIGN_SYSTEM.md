@@ -37,6 +37,19 @@
 
 ---
 
+## Interaction restraint — minimize end-user friction
+
+Restraint is procedural, not only visual. Default every flow to the **fewest steps the user must take** — friction is debt, justified only by real risk.
+
+- **No confirmation beats** where intent is already expressed. A primary action (e.g. "Use template") *is* the commit; don't gate it behind a second "Confirm." **Auto-proceed** once prerequisites are met.
+- **Resolve in place.** When a flow needs a credential or a value, surface the input **inline at the point of need** — never bounce the user to another page and back.
+- **Auto-resume.** The instant a gate is satisfied, the flow continues on its own; the user never re-initiates.
+- **Show, don't ask.** Push live state (the run is provisioning) rather than making the user poll, refresh, or click "check status."
+
+**The one exception:** destructive or irreversible actions still confirm. Cutting friction never overrides the safety-confirm rule.
+
+---
+
 ## Typography
 
 ### Font stack
@@ -128,6 +141,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | `--pulse` | `#14B8A6` | Pulse desaturates 15% in light mode. |
 | `--pulse-dim` | `#0D9488` | |
 | `--pulse-glow` | `rgba(20, 184, 166, 0.30)` | |
+| `--ink` | `#17211F` | Light-mode primary-CTA fill (solid ink, white text). Mint stays for accents/links/active/glow. |
 
 ### Forbidden color treatments
 
@@ -163,7 +177,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 
 ## Motion
 
-The system has **two** sanctioned animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Everything else is functional or absent.
+The system has **two** signature animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Beyond those, **marketing and docs stay still** — motion is functional or absent. The **operator dashboard** (the gated app) is the one deliberate exception: a lived-in workspace earns a restrained, fully reduced-motion-gated motion pass — content mount-rise, a slow ambient glow-drift, hover/press micro-interactions — see *Dashboard motion pass* below.
 
 ### Wake pulse (signature)
 
@@ -195,11 +209,42 @@ no JS timer — same discipline as the wake pulse.
 - One-shot: lines hold their final visible frame (`forwards`); the reveal never loops.
 - `prefers-reduced-motion: reduce` → every line visible at once, no reveal.
 
+### Dashboard motion pass (operator app)
+
+The gated operator dashboard is the one surface that performs — a restrained
+layer over the static system, scoped to `ui/packages/app` and defined in
+`app/globals.css`. It exists because the dashboard is a lived-in workspace, not
+a one-shot marketing read; a little life reads as responsive without tipping
+into the anti-vibes traps the rest of this doc forbids.
+
+- **Mount-rise:** page content fades + rises 10px (`rise-in`, 0.38s, no
+  overshoot) as it mounts / on route change, gently staggered across the page's
+  top-level sections. `both` fill resolves to the visible frame — never pins
+  `opacity: 0` as a resting state.
+- **Ambient glow-drift:** the dashboard's single `--pulse` glow drifts a few
+  percent over ~24s (`glow-drift`). Low-opacity, single radius — a slow breath,
+  explicitly **not** an aurora/mesh gradient.
+- **Micro-interactions:** a faint brightness lift on button hover, a 1px press
+  on active, a 1px sidebar-nav nudge on hover. Transform/filter only — the
+  colour transitions stay with the design-system primitives.
+
+**Rules:**
+- Scoped to the gated app dashboard. Marketing + docs keep the "instant, no
+  performance" restraint below.
+- **Every effect is gated:** keyframe animations are neutralised by the global
+  `prefers-reduced-motion: reduce` block; the hover/press lifts live inside a
+  `no-preference` query; the nav nudge uses the `motion-safe:` variant. Under
+  reduced motion the dashboard is as still as the rest of the system.
+- Pinned by `app/tests/shell-motion.test.ts` — the gate is structural, not a
+  review note.
+- Later dashboard motion extends this pass under the same reduced-motion
+  guarantee (the Billing balance meter-fill lands with that screen's rebuild).
+
 ### Functional motion
 
 - **Hovers:** `transition: 50ms ease-out`. Snap. No bounce, no spring, no `cubic-bezier` overshoot.
 - **Focus rings:** instant, no animated draw-on. `box-shadow: 0 0 0 3px var(--pulse-glow)`.
-- **Page transitions:** instant. No fade, no slide. Operational software does not perform.
+- **Page transitions:** instant on marketing + docs — no fade, no slide. The gated operator dashboard is the exception: page content performs a restrained mount-rise (≤0.4s, reduced-motion-gated) on route change — see *Dashboard motion pass* above.
 - **Log streams (operational):** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger. (The marketing install-demo terminal is the one sanctioned staggered reveal — see above.)
 - **Loading states:** prefer skeleton bars (1-pixel-thick borders) over spinners. If a spinner is required, use a 2px monochrome arc, not a circular pulse.
 
@@ -212,9 +257,9 @@ no JS timer — same discipline as the wake pulse.
 ### Forbidden motion
 
 - Bouncy easings (`elastic`, `bounce`, anything with overshoot)
-- Page-transition fades or slides
+- Page-transition fades or slides **on marketing + docs** (the gated dashboard mount-rise is the one sanctioned exception — *Dashboard motion pass*)
 - Scroll-driven animations on marketing (other than the static dot-grid)
-- Animated gradients
+- Animated gradients **as decoration** — no aurora/mesh gradients anywhere; the dashboard's slow, low-opacity single-radius glow-drift is the one sanctioned exception
 - Cursor-following effects, parallax, mouse-tracking glows
 - Spring physics on UI chrome
 
@@ -222,12 +267,15 @@ no JS timer — same discipline as the wake pulse.
 
 ## Component principles
 
-- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md`. Three variants: `primary` (pulse fill, near-black text), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
+- **Buttons:** mono font, 13px, padding `12px 16px`, border-radius `--r-md`. Three variants: `primary` (fills with `--cta` — the pulse in dark, **solid ink in light**; `--cta-foreground` text: dark on mint, white on ink), `default` (surface-2 fill, border-strong outline), `ghost` (transparent, muted text). No gradient buttons. No icon-only buttons larger than 36px square.
 - **Badges:** mono font, 11px, padding `4px 8px`, border-radius `--r-sm`. Status badges (`LIVE`, `degraded`, `failed`) get colored fills; informational badges get muted outlines.
 - **Form fields:** surface-2 background, border on default, pulse-cyan focus ring with `--pulse-glow` shadow. Mono font for input values (they're operational data, not prose).
 - **Cards:** surface-1 background, 1px border, `--r-md` radius. Padding 24px default, 16px in dense data views.
 - **Tables / lists:** prefer flat rows with 1px bottom borders over zebra-striping. Tabular-nums everywhere. Right-align numbers, left-align text.
 - **Sidebars:** surface-2 background. Mono nav items, 12px. Active item gets surface-3 fill, not a colored bar.
+- **Tabs:** one visual — an underline. Inactive triggers read `--text-muted` on a thin `--border` rail; the active trigger lights its 2px bottom-border to `--pulse` (a sanctioned "active" use of the currency) and its label to `--text`. No pill tray, no `bg-background` active fill, no shadow. The in-page Radix tabs and the route-style tab-nav share one style module (`design-system/tab-styles.ts`).
+- **Page header:** the page title sits on its own line; a one-line **description renders directly below it** (muted, body-sm), never beside it. An optional primary action pins top-right — the title + description form a left column, the action aligns to its top. One `PageHeader` primitive carries both the bare and the with-description/action shapes.
+- **Balance meter:** a thin (8px) full-width track (`--surface-3`) with a `--pulse-dim → --pulse` gradient fill whose width is the consumed fraction; the fill animates `0 → value` on load (`meter-fill`, reduced-motion-gated). A usage bar, not a gauge — the caption (spent · events) rides its end; the header CTA sits in the row above so nothing is stranded. App-surface element (`app-meter` in `globals.css`), not a marketing primitive.
 
 ---
 
@@ -279,6 +327,14 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-08 | Light mode is secondary, never the brand's hero shot | Devtools category baseline is dark; the brand's first impression must be dark. Light mode is a polite afterthought. |
 | 2026-05-11 | Lift `--text-subtle` to ≥4.5:1 WCAG AA in both themes | Audit found the pre-existing values failed body-text AA (dark 3.23:1, light 2.99:1). Tertiary text + CLI subtle output + eyebrow labels were borderline-illegible at small sizes. Dark `#5C6469 → #7A8085` (4.88:1); light `#8A918A → #67706B` (4.73:1); CLI xterm256 `240 → 244`. |
 | 2026-05-21 | Add a second sanctioned animation: the marketing install-demo terminal reveal | Supersedes the 2026-05-08 "only signature animation" call for marketing surfaces. The hero shows the install "running" via a one-shot staggered line reveal (opacity-only, CSS-driven, reduced-motion-safe). Scoped to marketing; operational log streams stay non-staggered. |
+| 2026-06-23 | Add "Interaction restraint — minimize end-user friction" principle | Indy: "always think about adding less friction to an end user." Restraint is procedural, not only visual — auto-proceed once intent is expressed (no confirm beats), resolve inputs inline, auto-resume on gate satisfaction, push state instead of poll. Surfaced from the M98 install-fleet flow (auto-create after import/gate). Destructive actions still confirm. |
+| 2026-06-23 | Retire the pill tab; one underline tab style (app) | M98 §1.1. The app shipped two tab visuals (a `bg-muted` pill tray with a `bg-background` active fill) applied inconsistently. Unified to a single underline: active = a `--pulse` 2px bottom-border on a `--border` rail; inactive `--text-muted`. Shared `design-system/tab-styles.ts` consumed by `Tabs` (Radix) + `TabNav` (links) + their tests (RULE UFS). Approved in the M98 mockup (`docs/design/M98_001-ui-polish-preview.html`). |
+| 2026-06-23 | Add a scoped motion pass to the operator dashboard (mount-rise, ambient glow-drift, hover/press micro-interactions) | M98 §1.5. A lived-in operator dashboard performs where marketing stays still — approved by Indy as full mockup motion (`docs/design/M98_001-ui-polish-preview.html`, signed off screen-by-screen). Supersedes the 2026-05-08 "everything else functional or absent" call and the §Motion "page transitions instant / operational software does not perform" rule **for the gated app dashboard only**; marketing + docs keep the restraint. Every effect is reduced-motion-gated; pinned by `app/tests/shell-motion.test.ts`. |
+| 2026-06-23 | Billing reads consumption-honest: balance + meter, a terminal usage ledger, one "Pay as you go" row — no seat grid | M98 §2. Consumption/prepaid billing has no seats, so the seat-plan grid is dropped for a single honest Current row + a volume-pricing link. The balance card leads with amount + a full-width usage meter; usage history is a terminal-native `date · amount · type · description` ledger (model + tokens fold into the description, since the telemetry has no free-text field). Presentation only — the billing data path is unchanged. |
+| 2026-06-24 | Split Models and Credentials into two destinations; option-card mode picker; `/credentials` is a real vault | M98 §3–§4. The conflated "Models & Credentials" tabbed page becomes two nav entries. Models collapses its triple "current setup" restatement into **two option-cards** — the active one badged "Current" reading "Active — nothing to do" (no button), the action living only on the option you'd switch *to*. `/credentials` (was a redirect) is a write-only **vault**: a kinds strip (Model providers · Custom secrets · Integrations) then those groups in order; integrations render "Planned" (no Connect — connector is M99), bridged by custom secrets. |
+| 2026-06-24 | Install is one shared, minimal, state-driven flow — no review page | M98 §9. The Dashboard card, the Fleets empty-state, and `fleets/new` compose ONE install component (template grid · `owner/repo` · paste-SKILL.md). One click commits and proceeds **inline** through terminal-native install states (importing → connect-to-continue → creating → done; errors retry) — the `BundlePreview` review page is removed. Create **auto-proceeds** (no confirm beat). Live status reuses the existing SSE fleet-event stream (no polling); an installing fleet always shows its state; "Open fleet" lands in the full-height steer/chat. |
+| 2026-06-23 | Page header: description renders below the title | M98 §1.2. `PageHeader` gained a `description` slot (muted body-sm, stacked under the title) + an optional top-right `actions` slot; the bare flex-row shape stays back-compatible. Fixes the description-beside-title drift (the app was rendering the page description as a right-aligned sibling). |
+| 2026-06-23 | Light-mode primary CTA = solid ink (not mint) | M98 §1.4. Added a `--cta` token isolated from `--pulse`: dark = the pulse, light = solid ink (`--ink` `#17211F`, white text). Keeps mint as currency (accents/links/active/glow) while the light-mode primary button reads as confident ink. `Button` default variant consumes `--cta`/`--cta-foreground`. |
 
 ---
 

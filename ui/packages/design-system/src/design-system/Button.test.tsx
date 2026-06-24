@@ -11,13 +11,23 @@ describe("Button", () => {
     expect(btn).toHaveAttribute("type", "button");
   });
 
-  it("applies the default variant — flat pulse fill, no gradient", () => {
+  it("applies the default variant — flat cta fill, no gradient", () => {
     render(<Button>Go</Button>);
     const btn = screen.getByRole("button");
-    expect(btn.className).toContain("bg-pulse");
-    expect(btn.className).toContain("text-on-pulse");
+    expect(btn.className).toContain("bg-cta");
+    expect(btn.className).toContain("text-cta-foreground");
     expect(btn.className).not.toContain("linear-gradient");
     expect(btn.className).not.toContain("rounded-full");
+  });
+
+  // Primary CTA fills with the theme-swapping --cta token: the pulse in dark,
+  // solid ink in light (mint reserved for accents/links/active/glow).
+  it("test_primary_button_ink_in_light: primary uses the swapping --cta token, not a fixed pulse fill", () => {
+    render(<Button>Go</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("bg-cta");
+    expect(cls).toContain("text-cta-foreground");
+    expect(cls).not.toContain("bg-pulse");
   });
 
   it("applies the destructive variant", () => {
@@ -151,7 +161,7 @@ describe("Button", () => {
     const html = renderToStaticMarkup(<Button>Hello</Button>);
     expect(html).toMatch(/^<button /);
     expect(html).toContain("Hello");
-    expect(html).toContain("text-on-pulse");
+    expect(html).toContain("text-cta-foreground");
   });
 
   it("SSR renders an <a> when asChild is used with a link child", () => {
@@ -162,7 +172,7 @@ describe("Button", () => {
     );
     expect(html).toMatch(/^<a /);
     expect(html).toContain('href="/x"');
-    expect(html).toContain("text-on-pulse");
+    expect(html).toContain("text-cta-foreground");
     expect(html).not.toContain("type=");
   });
 });
@@ -170,7 +180,7 @@ describe("Button", () => {
 describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
     const cls = buttonClassName("default");
-    expect(cls).toContain("text-on-pulse");
+    expect(cls).toContain("text-cta-foreground");
     expect(cls).toContain("rounded-md");
     expect(cls).toContain("inline-flex");
     expect(cls).toContain("font-mono");
