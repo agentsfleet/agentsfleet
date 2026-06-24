@@ -341,10 +341,21 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
 
   const CUSTOM_NAME = "vllm-gateway";
   const CUSTOM_URL = "https://vllm.corp/v1";
+  const CUSTOM_MODEL = "kimi-k2.6";
 
   function openCustom() {
     fireEvent.click(screen.getByRole("button", { name: /switch to own key/i }));
     fireEvent.click(screen.getByRole("button", { name: /custom — openai-compatible/i }));
+  }
+
+  // The custom own-key form requires a model (written into the credential so the
+  // resolver can activate it). The catalogue is empty here, so Step2Model renders
+  // a free-text "Model" input. Fill name + base URL + model — the trio that
+  // enables submit.
+  function fillCustom(model: string = CUSTOM_MODEL) {
+    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
+    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: model } });
   }
 
   it("picking Custom reveals the base-URL field (hidden under the stored path)", () => {
@@ -357,36 +368,38 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     expect(screen.getByLabelText(/base url/i)).toBeTruthy();
   });
 
-  it("test_models_custom_option_select: submit → createCredential(provider+base_url) → setProviderSelfManaged(ref)", async () => {
+  it("test_models_custom_option_select: submit → createCredential(provider+base_url+model) → setProviderSelfManaged(ref+model)", async () => {
     createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: CUSTOM_NAME } });
     setProviderSelfManagedActionMock.mockResolvedValue({
       ok: true,
-      data: { mode: PROVIDER_MODE.self_managed, provider: OPENAI_COMPATIBLE_PROVIDER, model: "" },
+      data: { mode: PROVIDER_MODE.self_managed, provider: OPENAI_COMPATIBLE_PROVIDER, model: CUSTOM_MODEL },
     });
     render(React.createElement(ProviderSelector, { ...baseProps }));
     openCustom();
-    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
-    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fillCustom();
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
 
     await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    // The created credential carries the selected model so the resolver probe
+    // can activate it (the § wiring's hard requirement).
     expect(createCredentialActionMock).toHaveBeenCalledWith(WORKSPACE_ID, {
       name: CUSTOM_NAME,
       data: {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: CUSTOM_URL,
+        [CREDENTIAL_FIELD.model]: CUSTOM_MODEL,
       },
     });
     await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({
       credential_ref: CUSTOM_NAME,
-      model: undefined,
+      model: CUSTOM_MODEL,
     });
     expect(routerRefresh).toHaveBeenCalled();
     expect(captureProductEventMock).toHaveBeenCalledWith(EVENTS.model_added, {
       provider: OPENAI_COMPATIBLE_PROVIDER,
       mode: PROVIDER_MODE.self_managed,
-      model: "",
+      model: CUSTOM_MODEL,
     });
   });
 
@@ -401,13 +414,17 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: "sk-custom-x" } });
     fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: CUSTOM_MODEL } });
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
     await waitFor(() => expect(createCredentialActionMock).toHaveBeenCalledTimes(1));
+    // model is required and always written into the credential; api_key joins it
+    // only when the key field is filled.
     expect(createCredentialActionMock).toHaveBeenCalledWith(WORKSPACE_ID, {
       name: CUSTOM_NAME,
       data: {
         [CREDENTIAL_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [CREDENTIAL_FIELD.baseUrl]: CUSTOM_URL,
+        [CREDENTIAL_FIELD.model]: CUSTOM_MODEL,
         [CREDENTIAL_FIELD.apiKey]: "sk-custom-x",
       },
     });
@@ -418,6 +435,9 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     openCustom();
     fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: "http://vllm.corp/v1" } });
     fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    // model fills the canSubmit gate so submit() actually reaches the https check
+    // — the behaviour under test.
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: CUSTOM_MODEL } });
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/https/i));
     expect(createCredentialActionMock).not.toHaveBeenCalled();
@@ -432,8 +452,7 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     });
     render(React.createElement(ProviderSelector, { ...baseProps }));
     openCustom();
-    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
-    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fillCustom();
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("duplicate name"));
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
@@ -449,8 +468,7 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     });
     render(React.createElement(ProviderSelector, { ...baseProps }));
     openCustom();
-    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
-    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fillCustom();
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("blocked_host"));
     expect(routerRefresh).not.toHaveBeenCalled();
@@ -461,6 +479,7 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     openCustom();
     fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: "http://x" } });
     fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: CUSTOM_MODEL } });
     fireEvent.click(screen.getByRole("button", { name: /save custom endpoint/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /stored credential/i }));
@@ -479,8 +498,7 @@ describe("ProviderSelector — custom OpenAI-compatible own-key option", () => {
     });
     render(React.createElement(ProviderSelector, { ...baseProps }));
     openCustom();
-    fireEvent.change(screen.getByLabelText(/base url/i), { target: { value: CUSTOM_URL } });
-    fireEvent.change(screen.getByLabelText(/credential name/i), { target: { value: CUSTOM_NAME } });
+    fillCustom();
     const field = screen.getByLabelText(/base url/i);
     fireEvent.keyDown(field, { key: "Enter" }); // enters busy
     fireEvent.keyDown(field, { key: "Enter" }); // guarded — no second create
