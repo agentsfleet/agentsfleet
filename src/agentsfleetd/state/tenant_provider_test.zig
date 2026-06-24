@@ -269,6 +269,36 @@ test "resolveActiveProvider with self_managed row returns user provider api_key 
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
 }
 
+test "resolveActiveProvider reflects an in-place credential update (rotate key, same ref)" {
+    // Case 5: tenant_providers.credential_ref is a pointer, not a copy — every
+    // resolve re-reads the vault, so rotating the key (an upsert on the same
+    // name) is picked up by the very next resolve with NO re-selection. The only
+    // persistent trace is vault.secrets.updated_at — no audit row is written.
+    setEncryptionKey();
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
+
+    const MODEL_ID = "accounts/fireworks/models/kimi-k2.6";
+    try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "rotating-key", TP_TEST_PROVIDER, "fw_OLD_key", MODEL_ID);
+    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "rotating-key", MODEL_ID, 256_000);
+
+    var rp1 = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    try std.testing.expectEqualStrings("fw_OLD_key", rp1.api_key);
+    rp1.deinit(ALLOC);
+
+    // Rotate the key in place — storeVaultJson upserts on (workspace_id, key_name).
+    try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "rotating-key", TP_TEST_PROVIDER, "fw_NEW_key", MODEL_ID);
+
+    // No re-activation: the same tenant_providers row now resolves the new key.
+    var rp2 = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer rp2.deinit(ALLOC);
+    try std.testing.expectEqualStrings("fw_NEW_key", rp2.api_key);
+}
+
 test "resolveActiveProvider carries a validated base_url for openai-compatible (end-to-end)" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
@@ -299,6 +329,40 @@ test "resolveActiveProvider carries a validated base_url for openai-compatible (
     try std.testing.expectEqualStrings(COMPAT, rp.provider);
     try std.testing.expectEqualStrings("sk_user_compat_xyz", rp.api_key);
     try std.testing.expectEqualStrings(CUSTOM_URL, rp.base_url.?);
+}
+
+test "resolveActiveProvider resolves an openai-compatible credential with NO api_key (keyless endpoint)" {
+    // The custom-endpoint api_key is OPTIONAL by spec: a keyless gateway stores
+    // {provider, base_url, model} with no key and must still activate — the
+    // resolver carries an empty bearer key forward. Regression guard for the
+    // UI/resolver contradiction greptile flagged: the forms omit a blank key, so
+    // the resolver must accept its absence rather than reject at the probe.
+    setEncryptionKey();
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
+
+    const KEYLESS_URL = "https://vllm.public.example/v1";
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(ALLOC);
+    try obj.put(ALLOC, "provider", .{ .string = COMPAT });
+    try obj.put(ALLOC, "model", .{ .string = "gpt-4o-mini" });
+    try obj.put(ALLOC, "base_url", .{ .string = KEYLESS_URL });
+    // No api_key field — the keyless case the forms produce when the key is blank.
+    try base.storeVaultJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "keyless-compat", .{ .object = obj });
+
+    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "keyless-compat", "gpt-4o-mini", 128_000);
+
+    var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
+    defer rp.deinit(ALLOC);
+
+    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
+    try std.testing.expectEqualStrings(COMPAT, rp.provider);
+    try std.testing.expectEqualStrings("", rp.api_key);
+    try std.testing.expectEqualStrings(KEYLESS_URL, rp.base_url.?);
 }
 
 test "resolveActiveProvider rejects an openai-compatible credential with an SSRF base_url" {

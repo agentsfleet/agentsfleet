@@ -177,10 +177,20 @@ pub fn probeSelfManagedCredential(
     if (parsed.value != .object) return ResolveError.CredentialDataMalformed;
     const obj = parsed.value.object;
     const provider_v = obj.get("provider") orelse return ResolveError.CredentialDataMalformed;
-    const api_key_v = obj.get(S_API_KEY) orelse return ResolveError.CredentialDataMalformed;
     const model_v = obj.get("model") orelse return ResolveError.CredentialDataMalformed;
-    if (provider_v != .string or api_key_v != .string or model_v != .string) return ResolveError.CredentialDataMalformed;
-    if (provider_v.string.len == 0 or api_key_v.string.len == 0 or model_v.string.len == 0) return ResolveError.CredentialDataMalformed;
+    if (provider_v != .string or model_v != .string) return ResolveError.CredentialDataMalformed;
+    if (provider_v.string.len == 0 or model_v.string.len == 0) return ResolveError.CredentialDataMalformed;
+
+    // api_key is required + non-empty for a named provider, but OPTIONAL for an
+    // openai-compatible custom endpoint — a keyless gateway dials with no bearer
+    // key (the spec's optional-key design). A present key must still be a string;
+    // a missing or blank key on a named provider stays malformed.
+    const is_compatible = std.mem.eql(u8, provider_v.string, OPENAI_COMPATIBLE_PROVIDER);
+    const api_key_str: []const u8 = if (obj.get(S_API_KEY)) |kv| blk: {
+        if (kv != .string) return ResolveError.CredentialDataMalformed;
+        break :blk kv.string;
+    } else "";
+    if (!is_compatible and api_key_str.len == 0) return ResolveError.CredentialDataMalformed;
 
     // Extract the optional base_url (string when present) and validate the
     // provider⇔base_url pairing through the SSRF guard BEFORE any owned alloc, so
@@ -194,7 +204,7 @@ pub fn probeSelfManagedCredential(
 
     const provider = try alloc.dupe(u8, provider_v.string);
     errdefer alloc.free(provider);
-    const api_key = try alloc.dupe(u8, api_key_v.string);
+    const api_key = try alloc.dupe(u8, api_key_str);
     errdefer {
         std.crypto.secureZero(u8, api_key);
         alloc.free(api_key);
