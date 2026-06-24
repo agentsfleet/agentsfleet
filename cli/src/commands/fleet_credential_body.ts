@@ -4,13 +4,15 @@
 //
 //   1. the generic `--data <json>` blob (or `--data=@-` stdin), and
 //   2. the typed custom-endpoint flags (`--provider openai-compatible
-//      --base-url <url> --api-key <key> [--model <m>]`) that compose the same
-//      `{ provider, api_key, base_url?, model? }` JSON.
+//      --base-url <url> --model <m> [--api-key <key>]`) that compose the same
+//      `{ provider, model, base_url?, api_key? }` JSON.
 //
 // `--base-url`'s https check already ran at PARSE time (commander option
 // validator, exit 2, no network); the only checks here are the field-pairing
-// rules (api_key required; openai-compatible ⇔ base_url present). Full SSRF
-// validation stays server-side in base_url_guard.zig (typed UZ-* error).
+// rules, kept in lockstep with the resolver: `--model` is always required;
+// `--api-key` is required for a named provider but OPTIONAL for openai-compatible
+// (a keyless gateway dials with no key); openai-compatible ⇔ base_url present.
+// Full SSRF validation stays server-side in base_url_guard.zig (typed UZ-* error).
 
 import { Effect } from "effect";
 import { ConfigError, ValidationError, type CliError } from "../errors/index.ts";
@@ -45,7 +47,7 @@ type ParsedData =
 
 const PROVIDER_ADD_USAGE =
   `agentsfleet credential add <name> --provider ${OPENAI_COMPATIBLE_PROVIDER} ` +
-  `--base-url https://host/v1 --api-key <key> [--model <m>]`;
+  `--base-url https://host/v1 --model <m> [--api-key <key>]`;
 
 const parseDataObject = (raw: string): ParsedData => {
   let parsed: unknown;
@@ -85,10 +87,14 @@ const typedProviderBody = (flags: CredentialAddFlags): ParsedData => {
   const baseUrl = flags.baseUrl?.trim();
   const model = flags.model?.trim();
 
-  if (apiKey.length === 0) {
+  const isCustom = provider === OPENAI_COMPATIBLE_PROVIDER;
+
+  // api_key is required for a named provider; OPTIONAL for an openai-compatible
+  // endpoint (a keyless gateway dials with no key) — mirrors the dashboard and
+  // the resolver, which only requires a non-empty key for named providers.
+  if (!isCustom && apiKey.length === 0) {
     return { ok: false, message: `--provider requires --api-key. ${PROVIDER_ADD_USAGE}` };
   }
-  const isCustom = provider === OPENAI_COMPATIBLE_PROVIDER;
   if (isCustom && (baseUrl === undefined || baseUrl.length === 0)) {
     return {
       ok: false,
@@ -101,13 +107,18 @@ const typedProviderBody = (flags: CredentialAddFlags): ParsedData => {
       message: `--base-url is only valid with --provider ${OPENAI_COMPATIBLE_PROVIDER}`,
     };
   }
+  // model is required to activate ANY self-managed credential — the resolver
+  // probe rejects a credential without one, whatever the provider.
+  if (model === undefined || model.length === 0) {
+    return { ok: false, message: `--provider requires --model. ${PROVIDER_ADD_USAGE}` };
+  }
 
   const value: Record<string, unknown> = {
     [CREDENTIAL_FIELD_PROVIDER]: provider,
-    [CREDENTIAL_FIELD_API_KEY]: apiKey,
+    [CREDENTIAL_FIELD_MODEL]: model,
   };
+  if (apiKey.length > 0) value[CREDENTIAL_FIELD_API_KEY] = apiKey;
   if (baseUrl !== undefined && baseUrl.length > 0) value[CREDENTIAL_FIELD_BASE_URL] = baseUrl;
-  if (model !== undefined && model.length > 0) value[CREDENTIAL_FIELD_MODEL] = model;
   return { ok: true, value };
 };
 

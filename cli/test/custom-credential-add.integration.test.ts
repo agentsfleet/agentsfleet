@@ -1,9 +1,11 @@
 // test_cli_custom_credential_add — the typed custom-endpoint credential-add
-// form (`--provider openai-compatible --base-url <url> --api-key <key>
-// [--model <m>]`).
+// form (`--provider openai-compatible --base-url <url> --model <m>
+// [--api-key <key>]`). Field-pairing rules mirror the resolver: model is always
+// required; api_key is required for a named provider but optional for
+// openai-compatible (keyless gateway); openai-compatible ⇔ base_url present.
 //
-//   - openai-compatible + a valid https base_url succeeds and POSTs a
-//     credential whose `data` carries { provider, api_key, base_url, model }.
+//   - openai-compatible + https base_url + model succeeds and POSTs a
+//     credential whose `data` carries { provider, base_url, model, api_key? }.
 //   - a non-https `--base-url` is rejected by the commander option validator:
 //     exit non-zero, human-text stderr, and ZERO network calls — the mock's
 //     `calls` ledger proves the rejection happened at PARSE time, before any
@@ -162,7 +164,59 @@ describe("credential add — custom OpenAI-compatible endpoint", () => {
     });
   });
 
-  test("typed form without --api-key is rejected client-side (no network)", async () => {
+  test("openai-compatible WITHOUT --api-key succeeds — a keyless gateway omits the key", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/credentials`]: () =>
+          jsonResponse(200, { credentials: [] }),
+        [`POST /v1/workspaces/${WS_ID}/credentials`]: () =>
+          jsonResponse(201, { name: CRED_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "credential", "add", CRED_NAME,
+            "--provider", OPENAI_COMPATIBLE_PROVIDER,
+            "--base-url", VALID_BASE_URL,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        const post = calls.find((c) => c.method === "POST");
+        const sent = JSON.parse(post?.body ?? "{}") as { data?: Record<string, unknown> };
+        expect(sent.data?.[CREDENTIAL_FIELD_PROVIDER]).toBe(OPENAI_COMPATIBLE_PROVIDER);
+        expect(sent.data?.[CREDENTIAL_FIELD_BASE_URL]).toBe(VALID_BASE_URL);
+        expect(sent.data?.[CREDENTIAL_FIELD_MODEL]).toBe(MODEL);
+        // No key was passed → the body omits api_key entirely (keyless).
+        expect(sent.data?.[CREDENTIAL_FIELD_API_KEY]).toBeUndefined();
+      });
+    });
+  });
+
+  test("a NAMED provider without --api-key is rejected (key required off the custom path)", async () => {
+    await authedScope(async () => {
+      const out = bufferStream();
+      const err = bufferStream();
+      const code = await runCli(
+        [
+          "credential", "add", CRED_NAME,
+          "--provider", "anthropic",
+          "--model", MODEL,
+          "--json",
+        ],
+        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+      );
+      expect(code).not.toBe(0);
+      const text = out.read() + err.read();
+      expect(text).toMatch(/--api-key/i);
+    });
+  });
+
+  test("typed form without --model is rejected (the resolver requires a model to activate)", async () => {
     await authedScope(async () => {
       const out = bufferStream();
       const err = bufferStream();
@@ -171,13 +225,14 @@ describe("credential add — custom OpenAI-compatible endpoint", () => {
           "credential", "add", CRED_NAME,
           "--provider", OPENAI_COMPATIBLE_PROVIDER,
           "--base-url", VALID_BASE_URL,
+          "--api-key", API_KEY,
           "--json",
         ],
         { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
-      expect(text).toMatch(/--api-key/i);
+      expect(text).toMatch(/--model/i);
     });
   });
 
