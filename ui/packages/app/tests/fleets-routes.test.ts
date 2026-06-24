@@ -106,10 +106,21 @@ describe("fleets routes", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("fleets list page renders empty-workspace state", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
+  it("fleets list page shell streams the header + skeleton before data", async () => {
+    // The shell paints the header synchronously; FleetsData is an async child,
+    // so renderToStaticMarkup renders the Suspense skeleton in its place and the
+    // data content stays absent until it streams in.
     const { default: Page } = await import("../app/(dashboard)/fleets/page");
     const markup = renderToStaticMarkup(await Page());
+    expect(markup).toContain("Fleets"); // PageTitle in the shell
+    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("platform-ops"); // data not yet resolved
+  });
+
+  it("fleets list page renders empty-workspace state", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("No workspace yet");
   });
 
@@ -125,8 +136,8 @@ describe("fleets routes", () => {
         json: async () => ({ items: [], total: 0, next_cursor: null }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("Start your fleet");
     // The empty-state composes the shared InstallEntry (its source affordance).
     expect(markup).toContain("Import from GitHub or paste SKILL.md");
@@ -136,8 +147,8 @@ describe("fleets routes", () => {
   it("fleets list page renders populated list + exhaustion banner", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     mockFetchBilling(exhaustedBilling);
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("href=\"/fleets/zom_1\"");
     expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
@@ -152,8 +163,8 @@ describe("fleets routes", () => {
       }
       return { ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     // Card still renders via the catch → [] arm; the shared source affordance shows.
     expect(markup).toContain("Start your fleet");
     expect(markup).toContain("Import from GitHub or paste SKILL.md");
@@ -171,8 +182,8 @@ describe("fleets routes", () => {
         json: async () => ({ items: [], total: 0, next_cursor: null }),
       };
     });
-    const { default: Page } = await import("../app/(dashboard)/fleets/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(markup).toContain("Start your fleet");
   });
 

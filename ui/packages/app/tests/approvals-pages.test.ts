@@ -96,13 +96,24 @@ describe("ApprovalsPage (workspace inbox)", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("notFound when no active workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
+  it("page shell streams the header + skeleton before the inbox", async () => {
+    // ApprovalsData is an async child, so renderToStaticMarkup renders the
+    // Suspense skeleton in its place — the list stub stays absent until it
+    // streams in, but the header title paints immediately.
     const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    const markup = renderToStaticMarkup(await Page());
+    expect(markup).toContain("Approvals"); // PageTitle in the shell
+    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
   });
 
-  it("renders the page title and forwards items to the list stub", async () => {
+  it("notFound when no active workspace", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    await expect(ApprovalsData()).rejects.toThrow("notFound");
+  });
+
+  it("renders the inbox section and forwards items to the list stub", async () => {
     listApprovalsMock.mockResolvedValueOnce({
       items: [
         {
@@ -127,18 +138,17 @@ describe("ApprovalsPage (workspace inbox)", () => {
       ],
       next_cursor: null,
     });
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Approvals");
-    expect(markup).toContain("Pending");
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
+    expect(markup).toContain("Pending"); // section aria-label
     expect(markup).toContain("approvals-list-stub");
     expect(markup).toContain('data-initial-items="1"');
   });
 
   it("falls back to empty initial list when listApprovals rejects", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
     expect(markup).toContain('data-initial-items="0"');
   });
 });
