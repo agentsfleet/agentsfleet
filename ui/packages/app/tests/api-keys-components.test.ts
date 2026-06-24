@@ -22,6 +22,17 @@ vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
 // dialog + list for this flow, so stub the tab chrome out.
 vi.mock("@/components/layout/SettingsTabs", () => ({ default: () => null }));
 
+// The "New API key" trigger ships behind a next/dynamic shim (M101 §5). For
+// these interaction tests, alias the shim back to the real dialog so the
+// trigger + form mount synchronously instead of behind the loading skeleton.
+vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", async () => ({
+  default: (
+    await vi.importActual<{ default: unknown }>(
+      "@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog",
+    )
+  ).default,
+}));
+
 const ACTIVE: ApiKeyRow = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   key_name: "ci-runner",
