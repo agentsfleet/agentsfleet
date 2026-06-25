@@ -62,53 +62,11 @@ pub const ReadOutcome = union(enum) {
     timed_out,
 };
 
-/// Cumulative token-usage snapshot riding a `usage` frame: three little-endian
-/// u64s (input, cached-input, output), field names matching the renew/report
-/// wire (RULE UFS). Counts are cumulative for the run, never deltas; `fold`
-/// keeps the per-field maximum so a regressed or replayed frame can never walk
-/// the parent's counters backwards (the server's GREATEST clamp is the second
-/// guard).
-pub const UsageSnapshot = struct {
-    input_tokens: u64 = 0,
-    cached_input_tokens: u64 = 0,
-    output_tokens: u64 = 0,
-
-    /// Fixed wire size of an encoded snapshot payload.
-    pub const WIRE_LEN: usize = 3 * @sizeOf(u64);
-
-    comptime {
-        // Wire-format drift guard: adding a field changes the struct size and
-        // must force the encode/decode pair (and WIRE_LEN) to be revisited.
-        std.debug.assert(@sizeOf(UsageSnapshot) == WIRE_LEN);
-    }
-
-    pub fn encode(self: UsageSnapshot) [WIRE_LEN]u8 {
-        var buf: [WIRE_LEN]u8 = undefined;
-        std.mem.writeInt(u64, buf[0..8], self.input_tokens, .little);
-        std.mem.writeInt(u64, buf[8..16], self.cached_input_tokens, .little);
-        std.mem.writeInt(u64, buf[16..24], self.output_tokens, .little);
-        return buf;
-    }
-
-    /// Null unless the payload is exactly `WIRE_LEN` bytes — a malformed frame
-    /// is dropped by the caller, which keeps its last-known counters (never
-    /// invented, never reset).
-    pub fn decode(payload: []const u8) ?UsageSnapshot {
-        if (payload.len != WIRE_LEN) return null;
-        return .{
-            .input_tokens = std.mem.readInt(u64, payload[0..8], .little),
-            .cached_input_tokens = std.mem.readInt(u64, payload[8..16], .little),
-            .output_tokens = std.mem.readInt(u64, payload[16..24], .little),
-        };
-    }
-
-    /// Per-field maximum fold — cumulative counters only ever grow.
-    pub fn fold(self: *UsageSnapshot, other: UsageSnapshot) void {
-        self.input_tokens = @max(self.input_tokens, other.input_tokens);
-        self.cached_input_tokens = @max(self.cached_input_tokens, other.cached_input_tokens);
-        self.output_tokens = @max(self.output_tokens, other.output_tokens);
-    }
-};
+/// Cumulative token-usage snapshot riding a `usage` frame. Lifted to its own
+/// file-as-struct (`UsageSnapshot.zig`) so the wire type owns its encode/decode/
+/// fold + drift guard; re-exported here as the canonical `pipe_proto.UsageSnapshot`
+/// the supervisor/renew path consumes.
+pub const UsageSnapshot = @import("UsageSnapshot.zig");
 
 /// Write one framed message to `fd`. Caller owns `payload`; it is copied to the
 /// kernel here, not retained.
@@ -287,23 +245,4 @@ test "UsageSnapshot encode/decode round-trips over a usage frame" {
     defer std.testing.allocator.free(out.frame.payload);
     try std.testing.expectEqual(FrameType.usage, out.frame.ftype);
     try std.testing.expectEqual(snap, UsageSnapshot.decode(out.frame.payload).?);
-}
-
-test "UsageSnapshot.decode rejects any payload that is not exactly the wire length" {
-    const short = [_]u8{0} ** (UsageSnapshot.WIRE_LEN - 1);
-    const long = [_]u8{0} ** (UsageSnapshot.WIRE_LEN + 1);
-    try std.testing.expect(UsageSnapshot.decode(&short) == null);
-    try std.testing.expect(UsageSnapshot.decode(&long) == null);
-    try std.testing.expect(UsageSnapshot.decode(&.{}) == null);
-}
-
-test "UsageSnapshot.fold keeps the per-field maximum so counters never regress" {
-    var acc = UsageSnapshot{};
-    acc.fold(.{ .input_tokens = 100, .cached_input_tokens = 0, .output_tokens = 40 });
-    try std.testing.expectEqual(@as(u64, 100), acc.input_tokens);
-    // A regressed (restarted-child) snapshot must not walk anything backwards.
-    acc.fold(.{ .input_tokens = 50, .cached_input_tokens = 2, .output_tokens = 20 });
-    try std.testing.expectEqual(@as(u64, 100), acc.input_tokens);
-    try std.testing.expectEqual(@as(u64, 2), acc.cached_input_tokens);
-    try std.testing.expectEqual(@as(u64, 40), acc.output_tokens);
 }
