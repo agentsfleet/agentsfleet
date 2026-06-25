@@ -15,14 +15,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
-const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
 const Policy = @import("network/Policy.zig");
 const child_exec = @import("child_exec.zig");
 
-/// The only tier without isolation — derived from the enum (RULE UFS).
-const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// System paths bound read-only when present (`--ro-bind-try` tolerates absence).
 const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt" };
@@ -85,7 +82,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     const self_exe = try resolveChildExe(io, alloc);
     defer alloc.free(self_exe);
 
-    const sandboxed = builtin.os.tag == .linux and !std.mem.eql(u8, cfg.sandbox_tier, DEV_NONE);
+    const sandboxed = builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
     if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy);
 
     try dup(alloc, &list, self_exe);

@@ -51,12 +51,11 @@ test "should let sandbox_args emit a parseable --workspace= value child_exec can
     // operation child_exec.flagValue performs on argv at runtime.
     const alloc = std.testing.allocator;
     const Config = @import("daemon/config.zig");
-    const contract = @import("contract");
     const cfg = Config{
         .control_plane_url = "http://127.0.0.1:8080",
         .runner_token = "agt_rtest",
         .host_id = "host-edge",
-        .sandbox_tier = @tagName(contract.protocol.SandboxTier.dev_none),
+        .sandbox_tier = .dev_none,
         .workspace_base = "/tmp/agentsfleet-runner",
         .network_policy = .deny_all_egress,
         .worker_count = 1,
