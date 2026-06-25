@@ -13,6 +13,11 @@ const migration_versions = @import("migration_versions.zig");
 const AppliedVersionSet = migration_versions.AppliedVersionSet;
 const migration_lock = @import("pool_migration_lock.zig");
 
+/// Doctor's schema-gate asserts the migrator URL is a direct/session connection
+/// (not a :6432 transaction pooler) before trusting the migrate path. Exposed
+/// here so `pool.zig` can re-export it onto the public `db` surface.
+pub const assertMigratorSessionConnection = migration_lock.assertSessionConnection;
+
 const log = logging.scoped(.db_migrate);
 
 const Conn = pg.Conn;
@@ -243,10 +248,16 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
     else
         false;
 
+    // Pooler-safe: probeAvailable uses a transaction-scoped advisory lock that
+    // auto-releases at statement end. The old tryAcquire/release pair took a
+    // SESSION lock here and, over the pooled .api connection serve-boot runs on,
+    // leaked it onto a backend (the separate release routed elsewhere) — the
+    // exact failure this milestone fixes for the migrate path. Advisory locks
+    // are cluster-wide, so contention by a direct-connection migrator is still
+    // detected.
     var lock_available = true;
     if (applied_versions < migrations.len) {
-        lock_available = migration_lock.tryAcquire(conn) catch false;
-        if (lock_available) migration_lock.release(conn);
+        lock_available = migration_lock.probeAvailable(conn) catch false;
     }
 
     return .{

@@ -31,6 +31,7 @@ const S_AUTH_SESSION_CODE_PEPPER = "auth_session_code_pepper";
 const S_AUDIT_LOG_PEPPER = "audit_log_pepper";
 const S_DOCTOR_SCHEMA_GATE_FAILED = "doctor.schema_gate_failed";
 const S_SCHEMA_GATE_COMPAT = "schema_gate_compat";
+const S_SCHEMA_GATE_SESSION = "schema_gate_session";
 const S_DB_API_CONFIG = "db_api_config";
 const S_DOCTOR_REDIS_CONNECT_FAILED = "doctor.redis_connect_failed";
 const S_OIDC_JWKS_REACHABILITY = "oidc_jwks_reachability";
@@ -137,6 +138,27 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             break :schema_gate_check;
         };
         defer pool.deinit();
+
+        // The migrator MUST be a direct/session connection. A :6432 transaction
+        // pooler breaks the session-scoped advisory lock and silently hangs
+        // migrate — surface it here instead of reporting green on the exact
+        // misconfiguration the schema gate exists to catch. Release before
+        // inspect so a size-1 migrator pool isn't starved.
+        const session_conn = pool.acquire() catch |err| {
+            log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "session_scope_acquire", .err = @errorName(err) });
+            try appendCheck(alloc, &results, S_SCHEMA_GATE_SESSION, false, "Unable to acquire migrator connection", &ok);
+            break :schema_gate_check;
+        };
+        const session_ok = if (db.assertMigratorSessionConnection(session_conn)) |_| true else |err| blk: {
+            log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "session_scope", .err = @errorName(err) });
+            break :blk false;
+        };
+        pool.release(session_conn);
+        if (!session_ok) {
+            try appendCheck(alloc, &results, S_SCHEMA_GATE_SESSION, false, "DATABASE_URL_MIGRATOR is a transaction pooler (:6432); migrations need a direct/session connection (:5432)", &ok);
+            break :schema_gate_check;
+        }
+        try appendCheck(alloc, &results, S_SCHEMA_GATE_SESSION, true, "Migrator uses a direct/session connection", &ok);
 
         const migrations = common.canonicalMigrations();
         const state = db.inspectMigrationState(pool, &migrations) catch |err| {
