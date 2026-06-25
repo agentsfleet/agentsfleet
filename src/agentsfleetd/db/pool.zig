@@ -73,6 +73,7 @@ pub const MigrationState = pool_types.MigrationState;
 
 pub const inspectMigrationState = pool_migrations.inspectMigrationState;
 pub const runMigrations = pool_migrations.runMigrations;
+pub const assertMigratorSessionConnection = pool_migrations.assertMigratorSessionConnection;
 
 /// Parse a Postgres connection URL into pg.Pool.Opts.
 /// URL format: postgres://user:pass@host:port/dbname[?query]

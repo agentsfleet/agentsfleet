@@ -710,3 +710,39 @@ test "integration: migration session-scope guard passes on a direct connection" 
 
     try migration_lock.assertSessionConnection(ctx.conn);
 }
+
+// probeAvailable is the inspect-side check (inspectMigrationState / serve-boot /
+// doctor). It MUST be pooler-safe: a transaction-scoped advisory lock that
+// auto-releases at statement end, so it never leaks the lock the way the old
+// session-scoped tryAcquire/release pair did over a pooled connection. Prove on
+// real PG: (1) free at rest, (2) detects contention while another session holds
+// the migrate lock, (3) reports free again once released, and crucially (4) a
+// true verdict NEVER retains the lock — another session can immediately acquire,
+// which a leaking session-scoped probe would have blocked.
+test "integration: probeAvailable detects contention and never leaks the lock" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    const a = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer a.pool.deinit();
+    defer a.pool.release(a.conn);
+    const b = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer b.pool.deinit();
+    defer b.pool.release(b.conn);
+
+    // (1) Free at rest; (4) that true probe did not retain the lock — A can take it.
+    try std.testing.expect(try migration_lock.probeAvailable(b.conn));
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+
+    // (2) Contention: while A holds the session lock, B's probe sees it taken.
+    // Repeated probes stay false and never accumulate a held lock on B.
+    try std.testing.expect(!try migration_lock.probeAvailable(b.conn));
+    try std.testing.expect(!try migration_lock.probeAvailable(b.conn));
+
+    // (3) Freed: once A releases, B's probe reports available again, and (4) the
+    // lock is still free for a real acquire afterward — proving auto-release.
+    migration_lock.release(a.conn);
+    try std.testing.expect(try migration_lock.probeAvailable(b.conn));
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+    migration_lock.release(a.conn);
+}
