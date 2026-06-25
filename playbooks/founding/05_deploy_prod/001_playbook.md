@@ -119,7 +119,7 @@ The release pipeline deploys in three stages:
 
 ### 3.2 `deploy-prod-canary` — First Worker Host
 
-1. Load tailscale authkey + Discord webhook from 1Password
+1. Load Tailscale OAuth secret + Discord webhook from 1Password
 2. Parse the first entry from `PROD_WORKER_HOSTS` GitHub variable
 3. Load that host's SSH key dynamically from vault (`op://$VAULT_PROD/<vault_key>/ssh-private-key`)
 4. Join tailnet, SSH to canary host, run `deploy.sh runner <version>`
