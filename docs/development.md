@@ -57,7 +57,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   in production (no env backdoor): `child_exec` emits a canned `result` frame,
   and the integration target forks a prebuilt stub-flagged
   `agentsfleet-runner-execstub` exe per lease. Exercised by
-  `src/runner/worker_pool_integration_test.zig` via `make test-integration-agentsfleet-runner`.
+  `src/runner/worker_pool_integration_test.zig` via `make test-integration-kernel`.
 - **Benign stderr in green runs:** `expected 5, found 1` /
   `expected .worker_started, found .server_started` lines come from the
   *negative* tests in `telemetry_test.zig` (deliberate mismatches asserted via

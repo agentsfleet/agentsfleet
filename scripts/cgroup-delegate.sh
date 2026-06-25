@@ -31,11 +31,10 @@ mkdir -p "$CG/fleet.runner"
 
 # Sweep stale per-exec scopes a crashed/aborted prior run may have left behind: a
 # create() that fails partway leaves an orphan exec-<id> dir, and the next create()
-# trips on it. Each is process-free once its child died; rmdir leaf-first. Idempotent
-# and CI-safe — a previous run's debris never fails the next.
-for d in $(find "$CG/fleet.runner" -mindepth 1 -type d 2>/dev/null | sort -r); do
-  rmdir "$d" 2>/dev/null || true
-done
+# trips on it. Each is process-free once its child died. `-depth` removes leaf-first;
+# `-exec rmdir` is whitespace-safe (no word-splitting). Idempotent and CI-safe — a
+# previous run's debris never fails the next.
+find "$CG/fleet.runner" -mindepth 1 -depth -type d -exec rmdir {} \; 2>/dev/null || true
 
 echo "+cpu +memory +pids" > "$CG/fleet.runner/cgroup.subtree_control"
 

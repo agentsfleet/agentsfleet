@@ -102,6 +102,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
+      # Privileged + private cgroup namespace so the security-enforcement proofs
+      # can delegate a cgroup-v2 controller subtree (cgroup pids/OOM cage). The
+      # GitHub runner is native amd64, so seccomp's arch-matched BPF filter is
+      # faithful (no QEMU). seccomp/Landlock need no privilege; the cgroup cage does.
+      options: --privileged --cgroupns=private
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -118,5 +123,5 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Runner sandbox proofs (env filter + kill-tree + cgroup-fault)
-        run: make test-integration-agentsfleet-runner
+      - name: Runner kernel integration proofs (env filter + kill-tree + seccomp/Landlock/cgroup)
+        run: sh scripts/cgroup-delegate.sh && make test-integration-kernel
