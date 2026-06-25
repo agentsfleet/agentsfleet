@@ -187,9 +187,11 @@ fn activateDefaultTx(
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
     , .{ key_id, input.provider, input.source_workspace_id, input.model, base_url, cap, now_ms });
-    // Exactly one active row: stand every other provider down.
+    // Exactly one active row: stand every other provider down. NULL their model
+    // so an inactive row never pins fk_platform_llm_keys_model — otherwise a
+    // deactivated provider's stale model would block deleting that catalogue row.
     _ = try conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE active = true AND provider <> $2",
+        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE active = true AND provider <> $2",
         .{ now_ms, input.provider },
     );
 }
@@ -211,8 +213,10 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
     };
     defer hx.ctx.pool.release(conn);
 
+    // NULL model alongside active=false so the deactivated row stops pinning
+    // fk_platform_llm_keys_model (lets the admin delete that catalogue model).
     _ = conn.exec(
-        "UPDATE core.platform_llm_keys SET active = false, updated_at = $1 WHERE provider = $2",
+        "UPDATE core.platform_llm_keys SET active = false, model = NULL, updated_at = $1 WHERE provider = $2",
         .{ clock.nowMillis(), provider },
     ) catch {
         common.internalOperationError(hx.res, "Failed to deactivate platform key", hx.req_id);
