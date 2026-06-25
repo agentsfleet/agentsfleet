@@ -125,10 +125,10 @@ check_prod() {
   check_ref "op://$v/planetscale-prod/api-connection-string"
   check_ref "op://$v/planetscale-prod/migrator-connection-string"
   check_ref "op://$v/upstash-prod/api-url"
-  # tailscale: authkey is for bare-metal worker node join (playbooks 06/07);
-  # oauth-client-id/oauth-secret are for CI tailnet join (deploy-dev.yml +
-  # release.yml). OAuth clients do not hit the 90-day auth-key cap.
-  check_ref "op://$v/tailscale/authkey"
+  # tailscale: oauth-client-id/oauth-secret mint tagged keys for
+  # CI tailnet join (ephemeral; deploy-dev.yml + release.yml) and bare-metal
+  # worker-node join (persistent, ephemeral=false; playbooks 06/07).
+  # OAuth clients do not hit the 90-day auth-key cap.
   check_ref "op://$v/tailscale/oauth-client-id"
   check_ref "op://$v/tailscale/oauth-secret"
   check_ref "op://$v/zombie-prod-worker-ant/ssh-private-key"
