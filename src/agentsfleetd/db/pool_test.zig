@@ -5,6 +5,7 @@ const pg = @import("pg");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
+const migration_lock = @import("pool_migration_lock.zig");
 
 const Pool = pool_mod.Pool;
 const Conn = pool_mod.Conn;
@@ -644,4 +645,68 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
         try std.testing.expect(try row.get(bool, 1)); // INSERT
         try std.testing.expect(try row.get(bool, 2)); // UPDATE
     }
+}
+
+// ── Migration advisory lock: retry decision + real-DB concurrency ──────────
+
+test "unit: migration lock retry decision (classifyAttempt)" {
+    const ml = migration_lock;
+    try std.testing.expectEqual(ml.Outcome.acquired, ml.classifyAttempt(true, 1, 3));
+    try std.testing.expectEqual(ml.Outcome.acquired, ml.classifyAttempt(true, 3, 3)); // acquired wins at the bound
+    try std.testing.expectEqual(ml.Outcome.retry, ml.classifyAttempt(false, 1, 3));
+    try std.testing.expectEqual(ml.Outcome.retry, ml.classifyAttempt(false, 2, 3));
+    try std.testing.expectEqual(ml.Outcome.exhausted, ml.classifyAttempt(false, 3, 3)); // bound reached
+    try std.testing.expectEqual(ml.Outcome.exhausted, ml.classifyAttempt(false, 9, 3)); // past the bound
+}
+
+// Concurrency proof: while session A holds the migration advisory lock, a
+// second session B must FAIL FAST (bounded) rather than block forever — the
+// exact hang this module exists to prevent. Two independent pools = two real
+// Postgres sessions; advisory locks are per-session.
+test "integration: migration lock serializes — second session fails fast, no hang" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+
+    const a = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer a.pool.deinit();
+    defer a.pool.release(a.conn);
+    const b = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer b.pool.deinit();
+    defer b.pool.release(b.conn);
+
+    // Session A takes the lock.
+    try migration_lock.acquireBounded(a.conn, 3, 5);
+
+    // Session B must fail fast with MigrationLockUnavailable — bounded, not hung.
+    const t0 = clock.nowMillis();
+    try std.testing.expectError(error.MigrationLockUnavailable, migration_lock.acquireBounded(b.conn, 3, 5));
+    const elapsed_ms = clock.nowMillis() - t0;
+    // pin test: literal is the contract — the sub-second ceiling proving "fail fast, not hang"
+    try std.testing.expect(elapsed_ms < 1_000); // 3 polls × 5ms; a hang would be minutes
+
+    // Once A releases, B acquires cleanly — proving a real lock, not a dead end.
+    migration_lock.release(a.conn);
+    try migration_lock.acquireBounded(b.conn, 3, 5);
+    migration_lock.release(b.conn);
+}
+
+test "unit: migration session-scope probe verdict (probeIsSession)" {
+    const ml = migration_lock;
+    const nonce = "n";
+    try std.testing.expect(ml.probeIsSession(nonce, nonce)); // survived round-trip → session
+    try std.testing.expect(!ml.probeIsSession(null, nonce)); // gone → transaction pooler
+    try std.testing.expect(!ml.probeIsSession("other", nonce)); // changed → transaction pooler
+}
+
+// The local/direct test connection keeps session state across statements, so
+// the pooler guard must PASS (no false positive). The pooled-positive case
+// needs a real PgBouncer and is covered by the probe's pure unit test above.
+test "integration: migration session-scope guard passes on a direct connection" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    try migration_lock.assertSessionConnection(ctx.conn);
 }
