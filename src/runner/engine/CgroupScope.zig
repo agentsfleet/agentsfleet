@@ -139,15 +139,8 @@ pub fn readCpuThrottledUs(self: *const CgroupScope) u64 {
     var fr = file.reader(self.io, &.{});
     var buf: [2048]u8 = undefined;
     const len = fr.interface.readSliceShort(&buf) catch return 0;
-    const content = buf[0..len];
-
-    // Look for "throttled_usec N" in cpu.stat output.
-    if (std.mem.indexOf(u8, content, S_THROTTLED_USEC)) |pos| {
-        const after = content[pos + S_THROTTLED_USEC.len ..];
-        const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
-        return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
-    }
-    return 0;
+    // "throttled_usec N" is the same `<key> N` shape as the events files.
+    return parseEventCount(buf[0..len], S_THROTTLED_USEC);
 }
 
 /// Check if the cgroup was OOM-killed (memory.events `oom_kill` > 0).
@@ -161,6 +154,18 @@ pub fn wasPidsExhausted(self: *const CgroupScope) bool {
     return self.readEventCount("pids.events", S_PIDS_MAX) > 0;
 }
 
+/// Parse a `<key> N` counter out of cgroup events-file CONTENT (M100 —
+/// pure, no I/O, so it is fixture-testable off-Linux). `key` includes its
+/// trailing space (e.g. `"oom_kill "`). Returns 0 when the key is absent or its
+/// value is empty/malformed — the same fail-safe the live readers rely on.
+/// `pub` for the sibling test.
+pub fn parseEventCount(content: []const u8, key: []const u8) u64 {
+    const pos = std.mem.indexOf(u8, content, key) orelse return 0;
+    const after = content[pos + key.len ..];
+    const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
+    return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
+}
+
 /// Read a `<key> N` counter from a cgroup events file (0 if absent/unreadable/off-linux).
 fn readEventCount(self: *const CgroupScope, events_file: []const u8, key: []const u8) u64 {
     if (builtin.os.tag != .linux) return 0;
@@ -172,14 +177,7 @@ fn readEventCount(self: *const CgroupScope, events_file: []const u8, key: []cons
     var fr = file.reader(self.io, &.{});
     var buf: [512]u8 = undefined;
     const len = fr.interface.readSliceShort(&buf) catch return 0;
-    const content = buf[0..len];
-
-    if (std.mem.indexOf(u8, content, key)) |pos| {
-        const after = content[pos + key.len ..];
-        const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
-        return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
-    }
-    return 0;
+    return parseEventCount(buf[0..len], key);
 }
 
 /// Destroy the cgroup scope, capture metrics, and clean up.
@@ -251,6 +249,32 @@ fn readControlValue(self: *const CgroupScope, control_file: []const u8) !u64 {
     const len = fr.interface.readSliceShort(&buf) catch return CgroupError.CgroupReadFailed;
     const trimmed = std.mem.trim(u8, buf[0..len], " \t\r\n");
     return std.fmt.parseInt(u64, trimmed, 10) catch 0;
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+test "parseEventCount reads the counter for valid memory.events / pids.events bytes (M100)" {
+    // Real memory.events shape — oom_kill is the field wasOomKilled() reads.
+    try std.testing.expectEqual(@as(u64, 3), parseEventCount("low 0\nhigh 0\nmax 0\noom 0\noom_kill 3\n", S_OOM_KILL));
+    // Real pids.events shape — `max` is the field wasPidsExhausted() reads.
+    try std.testing.expectEqual(@as(u64, 7), parseEventCount("max 7\n", S_PIDS_MAX));
+    // cpu.stat throttled_usec rides the same parser.
+    try std.testing.expectEqual(@as(u64, 12345), parseEventCount("nr_periods 0\nthrottled_usec 12345\n", S_THROTTLED_USEC));
+    // Counter at EOF with no trailing newline.
+    try std.testing.expectEqual(@as(u64, 9), parseEventCount("oom_kill 9", S_OOM_KILL));
+}
+
+test "parseEventCount fails safe (0) on missing/empty/malformed (M100)" {
+    // Absent key → 0 (e.g. memory.events with no oom_kill line yet).
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("low 0\nhigh 0\n", S_OOM_KILL));
+    // Empty content → 0.
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("", S_OOM_KILL));
+    // Malformed value (non-numeric / empty after key) → 0, never a parse panic.
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill abc\n", S_OOM_KILL));
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill \n", S_OOM_KILL));
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill", S_OOM_KILL)); // key present, no value
+    // Overflowing value → 0 (parseInt rejects), no panic.
+    try std.testing.expectEqual(@as(u64, 0), parseEventCount("oom_kill 99999999999999999999999999\n", S_OOM_KILL));
 }
 
 const std = @import("std");

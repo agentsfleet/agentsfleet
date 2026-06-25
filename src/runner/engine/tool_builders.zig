@@ -14,6 +14,11 @@ const BuildCtx = bridge.BuildCtx;
 const PolicyHttpRequestTool = @import("runtime/policy_http_request.zig");
 const MAX_RESPONSE_SIZE_BYTES = 1_000_000;
 
+// End-to-end builder tests (stripped from release builds; façade discovery).
+test {
+    _ = @import("tool_builders_test.zig");
+}
+
 // ── Core file tools ────────────────────────────────────────────────────────
 
 pub fn buildShell(ctx: BuildCtx) anyerror!tools_mod.Tool {
@@ -183,15 +188,23 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
     // runner unit-test path that drives the bridge with no session.
     if (ctx.policy) |policy_ptr| {
         const ptr = try ctx.alloc.create(PolicyHttpRequestTool);
-        // `inner.allowed_domains` mirrors the per-execution allowlist so
-        // NullClaw treats these hosts as operator-trusted: skip SSRF, allow
-        // private-IP resolution for hosts the fleet config explicitly
-        // declared. Our outer allowlist remains authoritative — anything
-        // off-list never reaches the inner tool.
+        // M100 (SSRF tenant-pin). The inner allowlist is left EMPTY on
+        // purpose. `network_policy.allow` is the TENANT-supplied set; feeding it
+        // as NullClaw's `allowed_domains` made the inner tool treat tenant hosts
+        // as operator-trusted — skipping SSRF + DNS pinning — so a tenant entry
+        // resolving to 169.254.169.254 / 10.x / loopback was dialed (exfil hole),
+        // and NullClaw's subdomain matcher silently widened our L4 exact-match
+        // list (split-brain). Empty → the inner tool runs `resolveConnectHost`
+        // (private-IP reject + curl `--resolve` rebind pin) on EVERY host.
+        // `PolicyHttpRequestTool.hostInAllowlist` (exact, case-insensitive)
+        // remains the authoritative gate, so nothing off-list reaches the inner
+        // tool and a wildcard can never widen it. Public registries still
+        // resolve to global IPs and pass the pin; an operator-trusted private
+        // internal service is a deliberate, separate opt-in (not shipped here).
         ptr.* = .{
             .policy = policy_ptr,
             .inner = .{
-                .allowed_domains = policy_ptr.network_policy.allow,
+                .allowed_domains = &.{},
                 .max_response_size = MAX_RESPONSE_SIZE_BYTES,
                 .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
             },

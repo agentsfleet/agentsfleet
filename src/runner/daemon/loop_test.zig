@@ -129,7 +129,7 @@ test "runner boots from a agt_r token straight into the lease loop with no regis
         .control_plane_url = try alloc.dupe(u8, url),
         .runner_token = try alloc.dupe(u8, contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64),
         .host_id = try alloc.dupe(u8, "boot-test-host"),
-        .sandbox_tier = try alloc.dupe(u8, "dev_none"),
+        .sandbox_tier = .dev_none,
         .workspace_base = try alloc.dupe(u8, "/tmp/agentsfleet-runner-boot-test"),
         .network_policy = .deny_all_egress,
         .worker_count = 1,
