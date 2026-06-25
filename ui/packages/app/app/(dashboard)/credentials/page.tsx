@@ -10,11 +10,11 @@ import {
   SectionLabel,
 } from "@agentsfleet/design-system";
 import { KeyRoundIcon } from "lucide-react";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials, type CredentialSummary } from "@/lib/api/credentials";
 import { VAULT_KIND, VAULT_KINDS } from "./lib/vault-kinds";
-import AddCredentialForm from "./components/AddCredentialForm";
+import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddCredentialFormDynamic";
 import CredentialsList from "./components/CredentialsList";
 import CustomSecretsList from "./components/CustomSecretsList";
 import CustomEndpointForm from "./components/CustomEndpointForm";
@@ -108,7 +108,7 @@ function CustomSecretsGroup({
             </span>
           </summary>
           <div className="border-t border-border p-4">
-            <AddCredentialForm workspaceId={workspaceId} />
+            <AddCredentialFormDynamic workspaceId={workspaceId} />
           </div>
         </details>
       </section>
@@ -132,8 +132,14 @@ export default async function CredentialsPage() {
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) {
+  const result = await withWorkspaceScope(token, async (workspaceId) => {
+    const [providerResult, credentialsResp] = await Promise.all([
+      getTenantProvider(token).catch((err) => ({ error: String(err) })),
+      listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
+    ]);
+    return { workspaceId, providerResult, credentialsResp };
+  });
+  if (!result) {
     return (
       <div>
         <PageHeader description={PAGE_DESCRIPTION}>
@@ -147,11 +153,7 @@ export default async function CredentialsPage() {
       </div>
     );
   }
-
-  const [providerResult, credentialsResp] = await Promise.all([
-    getTenantProvider(token).catch((err) => ({ error: String(err) })),
-    listCredentials(workspace.id, token).catch(() => ({ credentials: [] })),
-  ]);
+  const { workspaceId, providerResult, credentialsResp } = result;
   // The only KNOWN reference is the active model credential; a provider-fetch
   // error simply means we surface no referenced-by hint (never fabricated).
   const activeModelRef =
@@ -180,12 +182,12 @@ export default async function CredentialsPage() {
       <KindsStrip />
 
       <ProvidersGroup
-        workspaceId={workspace.id}
+        workspaceId={workspaceId}
         providerCredentials={providerCredentials}
         activeModelRef={activeModelRef}
       />
       <div id="add-custom-secret">
-        <CustomSecretsGroup workspaceId={workspace.id} secrets={customSecrets} />
+        <CustomSecretsGroup workspaceId={workspaceId} secrets={customSecrets} />
       </div>
       <IntegrationsGroup />
     </div>

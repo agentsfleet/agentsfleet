@@ -22,7 +22,24 @@ vi.mock("next/link", () => ({
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace: vi.fn() }));
+// Stub the scope wrapper; provide a self-contained `orFallback` that mirrors
+// the real one (rethrow a 403/404, degrade everything else). Not importOriginal
+// — the real module pulls in clerk/next-headers which collides with hoisting.
+vi.mock("@/lib/workspace", () => ({
+  withWorkspaceScope: vi.fn(),
+  orFallback:
+    <T,>(fallback: T) =>
+    (err: unknown): T => {
+      if (
+        err &&
+        typeof err === "object" &&
+        "status" in err &&
+        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
+      )
+        throw err;
+      return fallback;
+    },
+}));
 vi.mock("@/lib/api/tenant_provider", () => ({ getTenantProvider: vi.fn() }));
 vi.mock("@/lib/api/credentials", () => ({ listCredentials: vi.fn() }));
 vi.mock("@/lib/api/model_caps", () => ({
@@ -70,13 +87,12 @@ vi.mock("lucide-react", () => {
   };
 });
 
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
 import { getModelCaps } from "@/lib/api/model_caps";
 import { PROVIDER_MODE } from "@/lib/types";
 
-const WORKSPACE_FIXTURE = { id: "ws_1", name: "Acme" };
 const FIREWORKS_PROVIDER = "fireworks";
 const FIREWORKS_MODEL_ID = "kimi-k2.6";
 const ANTHROPIC_CREDENTIAL_NAME = "anthropic-prod";
@@ -106,12 +122,16 @@ function emptyCatalogue() {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_123") });
+  // Default: a workspace exists — run the page's data fn against `ws_1`.
+  // No-workspace tests override this to resolve `null`.
+  vi.mocked(withWorkspaceScope).mockImplementation(
+    async (_token: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws_1"),
+  );
 });
 afterEach(() => vi.clearAllMocks());
 
 describe("Models page", () => {
   it("test_models_no_inpage_credentials_tab: renders no Credentials tab trigger", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
     vi.mocked(getModelCaps).mockResolvedValue(emptyCatalogue());
@@ -132,7 +152,7 @@ describe("Models page", () => {
   });
 
   it("renders the no-workspace empty state under the Models title", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(null);
+    vi.mocked(withWorkspaceScope).mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/models/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain(">Models<");
@@ -146,7 +166,6 @@ describe("Models page", () => {
   });
 
   it("degrades to platform-default cards when getTenantProvider errors", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockRejectedValue(new Error("503"));
     vi.mocked(listCredentials).mockResolvedValue({ credentials: [] });
     vi.mocked(getModelCaps).mockRejectedValue(new Error("503"));
@@ -158,7 +177,6 @@ describe("Models page", () => {
 
 describe("Credentials vault page", () => {
   it("test_credentials_vault_order: kinds strip + groups in order providers→custom→integrations", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockResolvedValue({
       ...platformProvider(),
       mode: PROVIDER_MODE.self_managed,
@@ -199,7 +217,6 @@ describe("Credentials vault page", () => {
   });
 
   it("test_custom_secret_create_and_status: custom secrets list + an add form for NAME+value", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     // Platform mode → no active model credential, so every stored credential is a
     // custom secret and the providers group shows its empty state.
     vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
@@ -220,7 +237,6 @@ describe("Credentials vault page", () => {
   });
 
   it("never fabricates a referenced-by when the provider fetch fails", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockRejectedValue(new Error("503"));
     vi.mocked(listCredentials).mockResolvedValue({
       credentials: [{ name: STRIPE_SECRET_NAME, created_at: CREATED_AT_MS }],
@@ -234,7 +250,7 @@ describe("Credentials vault page", () => {
   });
 
   it("renders the no-workspace empty state under the Credentials title", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(null);
+    vi.mocked(withWorkspaceScope).mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain(">Credentials<");
@@ -248,7 +264,6 @@ describe("Credentials vault page", () => {
   });
 
   it("falls back to an empty vault when listCredentials errors", async () => {
-    vi.mocked(resolveActiveWorkspace).mockResolvedValue(WORKSPACE_FIXTURE as never);
     vi.mocked(getTenantProvider).mockResolvedValue(platformProvider());
     vi.mocked(listCredentials).mockRejectedValue(new Error("503"));
     const { default: Page } = await import("../app/(dashboard)/credentials/page");

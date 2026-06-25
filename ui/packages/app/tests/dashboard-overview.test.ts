@@ -193,8 +193,8 @@ describe("dashboard overview page", () => {
     listFleetsMock.mockResolvedValue(noFleets);
     getTenantBillingMock.mockResolvedValue(null);
     listFleetTemplatesMock.mockResolvedValue(templates);
-    const { default: FleetsPage } = await import("../app/(dashboard)/fleets/page");
-    const fleets = renderToStaticMarkup(await FleetsPage());
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    const fleets = renderToStaticMarkup(React.createElement(React.Fragment, null, await FleetsData()));
     expect(fleets).toContain(SHARED_LINK);
     expect(fleets).toContain(SHARED_SOURCE);
   });

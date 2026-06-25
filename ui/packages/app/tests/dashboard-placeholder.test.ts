@@ -111,20 +111,37 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
+  it("events page shell streams the header + skeleton before data", async () => {
+    // EventsData is an async child, so renderToStaticMarkup renders the Suspense
+    // skeleton in its place — the events section stays absent until it streams
+    // in, but the header title paints immediately.
+    mockAuth({ token: "token_abc" });
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Events"); // PageTitle in the shell
+    expect(m).toContain("data-skeleton"); // Skeleton fallback
+    expect(m).not.toContain("Workspace events"); // data not yet resolved
+  });
+
+  it("EventsData returns null when the token is missing", async () => {
+    mockAuth({ token: null });
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    expect(await EventsData()).toBeNull();
+  });
+
   it("events page calls notFound when no active workspace", async () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    await expect(EventsData()).rejects.toThrow("notFound");
   });
 
   it("events page renders Workspace events section with EventsList", async () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Events");
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await EventsData());
     expect(m).toContain("Workspace events");
   });
 
@@ -132,14 +149,20 @@ describe("placeholder pages", () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
-    const { default: Page } = await import("../app/(dashboard)/events/page");
-    const m = renderToStaticMarkup(await Page());
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await EventsData());
     expect(m).toContain("Workspace events");
   });
 
   it("settings page renders workspace info when authenticated", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
+    // The active id resolves from the hint; the NAME comes from the workspace
+    // list (the switcher's data), so the list must carry the named entry.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
+    listTenantWorkspacesCachedMock.mockResolvedValueOnce({
+      items: [{ id: "ws_xyz", name: "Production" }],
+      total: 1,
+    });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Workspace");
@@ -157,14 +180,17 @@ describe("placeholder pages", () => {
     expect(m).toContain("—");
   });
 
-  it("settings page falls back to the active workspace when listing workspaces fails", async () => {
+  it("settings page shows the hint workspace id (name unavailable) when listing workspaces fails", async () => {
     mockAuth({ token: "tkn", userId: "usr_42" });
+    // List is the source of the name; with it down we still have the id from
+    // the cookie/JWT hint, so the page synthesizes a name-less entry: the id
+    // renders, the name shows the em-dash placeholder.
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_fallback", name: "Fallback" });
     listTenantWorkspacesCachedMock.mockRejectedValueOnce(new Error("api-down"));
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
-    expect(m).toContain("Fallback");
     expect(m).toContain("ws_fallback");
+    expect(m).toContain("—"); // name unavailable without the list
   });
 
   it("settings page renders the tenant workspace list when available", async () => {

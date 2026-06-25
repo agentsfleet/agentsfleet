@@ -25,7 +25,33 @@ vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(async () => ({ getToken: getTokenMock })),
 }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
+// Derive the M101 resolver split from the legacy `resolveActiveWorkspace` mock
+// so the existing `.mockResolvedValue({ id })` / `.mockResolvedValueOnce(null)`
+// setups drive both the list route (withWorkspaceScope) and the detail route
+// (resolveActiveWorkspaceId) unchanged.
+vi.mock("@/lib/workspace", () => ({
+  resolveActiveWorkspace,
+  resolveActiveWorkspaceId: async (token: string) => {
+    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+    return ws ? { id: ws.id, source: "cookie" as const } : null;
+  },
+  withWorkspaceScope: async <T,>(token: string, fn: (workspaceId: string) => Promise<T>) => {
+    const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+    return ws ? fn(ws.id) : null;
+  },
+  orFallback:
+    <T,>(fallback: T) =>
+    (err: unknown): T => {
+      if (
+        err &&
+        typeof err === "object" &&
+        "status" in err &&
+        ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
+      )
+        throw err;
+      return fallback;
+    },
+}));
 vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
   getApproval: getApprovalMock,
@@ -70,13 +96,30 @@ describe("ApprovalsPage (workspace inbox)", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("notFound when no active workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
+  it("page shell streams the header + skeleton before the inbox", async () => {
+    // ApprovalsData is an async child, so renderToStaticMarkup renders the
+    // Suspense skeleton in its place — the list stub stays absent until it
+    // streams in, but the header title paints immediately.
     const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    const markup = renderToStaticMarkup(await Page());
+    expect(markup).toContain("Approvals"); // PageTitle in the shell
+    expect(markup).toContain("animate-pulse"); // Skeleton fallback
+    expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
   });
 
-  it("renders the page title and forwards items to the list stub", async () => {
+  it("ApprovalsData returns null when the token is missing", async () => {
+    getTokenMock.mockResolvedValueOnce(null);
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    expect(await ApprovalsData()).toBeNull();
+  });
+
+  it("notFound when no active workspace", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce(null);
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    await expect(ApprovalsData()).rejects.toThrow("notFound");
+  });
+
+  it("renders the inbox section and forwards items to the list stub", async () => {
     listApprovalsMock.mockResolvedValueOnce({
       items: [
         {
@@ -101,18 +144,17 @@ describe("ApprovalsPage (workspace inbox)", () => {
       ],
       next_cursor: null,
     });
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Approvals");
-    expect(markup).toContain("Pending");
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
+    expect(markup).toContain("Pending"); // section aria-label
     expect(markup).toContain("approvals-list-stub");
     expect(markup).toContain('data-initial-items="1"');
   });
 
   it("falls back to empty initial list when listApprovals rejects", async () => {
     listApprovalsMock.mockRejectedValueOnce(new Error("upstream 503"));
-    const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    const markup = renderToStaticMarkup(await Page());
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, await ApprovalsData()));
     expect(markup).toContain('data-initial-items="0"');
   });
 });

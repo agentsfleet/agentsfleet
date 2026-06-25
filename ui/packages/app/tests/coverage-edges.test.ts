@@ -88,6 +88,23 @@ describe("dashboard page inner async components", () => {
     });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn().mockResolvedValue(workspace),
+      resolveActiveWorkspaceId: vi.fn().mockResolvedValue(
+        workspace ? { id: workspace.id, source: "cookie" } : null,
+      ),
+      withWorkspaceScope: async (_t: string, fn: (id: string) => Promise<unknown>) =>
+        workspace ? fn(workspace.id) : null,
+      orFallback:
+        <T,>(fallback: T) =>
+        (err: unknown): T => {
+          if (
+            err &&
+            typeof err === "object" &&
+            "status" in err &&
+            ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
+          )
+            throw err;
+          return fallback;
+        },
       listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     }));
     vi.doMock("@/lib/api/fleets", () => ({
@@ -102,11 +119,15 @@ describe("dashboard page inner async components", () => {
         ERRORED: "errored",
       },
     }));
-    vi.doMock("@/lib/api/tenant_billing", () => ({
-      getTenantBilling: overrides.billing ?? vi.fn().mockResolvedValue({
+    {
+      const billingFn = overrides.billing ?? vi.fn().mockResolvedValue({
         balance_nanos: NANOS_PER_USD, is_exhausted: false, exhausted_at: null,
-      }),
-    }));
+      });
+      vi.doMock("@/lib/api/tenant_billing", () => ({
+        getTenantBilling: billingFn,
+        getTenantBillingCached: billingFn,
+      }));
+    }
     vi.doMock("@/lib/api/events", () => ({
       listWorkspaceEvents: overrides.activity ?? vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
       listFleetEvents: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
@@ -223,6 +244,7 @@ describe("DashboardLayout edge branches", () => {
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn(),
+      resolveActiveWorkspaceId: vi.fn(),
       listTenantWorkspacesCached: vi.fn(),
     }));
     vi.doMock("@/components/layout/Shell", () => ({
@@ -245,6 +267,7 @@ describe("DashboardLayout edge branches", () => {
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
+      resolveActiveWorkspaceId: vi.fn().mockResolvedValue(null),
       listTenantWorkspacesCached: vi.fn().mockRejectedValue(new Error("api-down")),
     }));
     vi.doMock("@/components/layout/Shell", () => ({

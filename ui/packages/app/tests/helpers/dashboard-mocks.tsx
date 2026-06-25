@@ -53,10 +53,40 @@ export function clerkServerMock() {
   return { auth: authMock };
 }
 
+// `@/lib/workspace` mock. The M101 resolver split (`resolveActiveWorkspaceId`
+// + `withWorkspaceScope`) is derived from the legacy `resolveActiveWorkspace`
+// mock so the dozens of shards that configure `resolveActiveWorkspace
+// .mockResolvedValue({ id })` / `.mockResolvedValue(null)` keep working
+// unchanged: an object → that workspace id is active; `null` → no workspace.
+// `orFallback` mirrors the real impl (rethrow a 403/404 so the scope retry can
+// fire, degrade everything else).
+function isWorkspaceRejection(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    "status" in err &&
+    ((err as { status: number }).status === 403 || (err as { status: number }).status === 404)
+  );
+}
+
 export function workspaceMock() {
   return {
     resolveActiveWorkspace,
     listTenantWorkspacesCached,
+    resolveActiveWorkspaceId: async (token: string) => {
+      const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+      return ws ? { id: ws.id, source: "cookie" as const } : null;
+    },
+    withWorkspaceScope: async <T,>(token: string, fn: (workspaceId: string) => Promise<T>) => {
+      const ws = (await resolveActiveWorkspace(token)) as { id: string } | null;
+      return ws ? fn(ws.id) : null;
+    },
+    orFallback:
+      <T,>(fallback: T) =>
+      (err: unknown): T => {
+        if (isWorkspaceRejection(err)) throw err;
+        return fallback;
+      },
   };
 }
 
