@@ -123,6 +123,12 @@ describe("placeholder pages", () => {
     expect(m).not.toContain("Workspace events"); // data not yet resolved
   });
 
+  it("EventsData returns null when the token is missing", async () => {
+    mockAuth({ token: null });
+    const { EventsData } = await import("../app/(dashboard)/events/page");
+    expect(await EventsData()).toBeNull();
+  });
+
   it("events page calls notFound when no active workspace", async () => {
     mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);

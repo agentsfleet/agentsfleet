@@ -117,6 +117,12 @@ describe("fleets routes", () => {
     expect(markup).not.toContain("platform-ops"); // data not yet resolved
   });
 
+  it("FleetsData returns null when the token is missing", async () => {
+    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
+    const { FleetsData } = await import("../app/(dashboard)/fleets/page");
+    expect(await FleetsData()).toBeNull();
+  });
+
   it("fleets list page renders empty-workspace state", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { FleetsData } = await import("../app/(dashboard)/fleets/page");
