@@ -40,6 +40,10 @@ await new Promise<void>((resolve, reject) => {
 });
 const { port } = server.address() as AddressInfo;
 vi.stubEnv("NEXT_PUBLIC_API_URL", `http://127.0.0.1:${port}`);
+// This suite drives the REAL transport against the local server above. Restore
+// the real fetch that vitest.setup.ts swaps out for a no-network default in the
+// unit suite (it captured the original under `__realFetch`).
+globalThis.fetch = (globalThis as { __realFetch?: typeof fetch }).__realFetch ?? globalThis.fetch;
 vi.resetModules();
 const { requestWithRetry } = await import("./retry");
 const { ApiError } = await import("./errors");
