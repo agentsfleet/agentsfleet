@@ -514,7 +514,8 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
+          TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Parse canary host from fleet config
@@ -539,9 +540,12 @@ jobs:
           WORKER_DEPLOY_USER: op://${{ vars.VAULT_PROD }}/${{ steps.canary.outputs.vault_key }}/deploy-user
 
       - name: Join Tailscale network
+        # Non-expiring Tailscale OAuth client (replaces the static authkey that
+        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
-          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
       - name: Deploy canary worker
@@ -575,13 +579,17 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
+          TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
+        # Non-expiring Tailscale OAuth client (replaces the static authkey that
+        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
-          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
       - name: Deploy remaining fleet sequentially
