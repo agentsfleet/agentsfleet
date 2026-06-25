@@ -193,16 +193,20 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          TAILSCALE_AUTHKEY: op://${{ vars.VAULT_PROD }}/tailscale/authkey
+          TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
+          TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
           WORKER_ANT_SSH_KEY: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/ssh-private-key
           WORKER_ANT_HOST: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/tailscale-hostname
           WORKER_ANT_USER: op://${{ vars.VAULT_DEV }}/zombie-dev-worker-ant/deploy-user
           DISCORD_WEBHOOK_URL: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
 
       - name: Join Tailscale network
+        # Non-expiring Tailscale OAuth client (replaces the static authkey that
+        # hit Tailscale's 90-day cap). Mints an ephemeral tag:ci node per run.
         uses: tailscale/github-action@v4
         with:
-          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ env.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci
 
       - name: Verify worker host readiness

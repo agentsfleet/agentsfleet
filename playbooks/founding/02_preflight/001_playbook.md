@@ -47,7 +47,9 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `grafana-prod` | `otlp-endpoint` | Fly.io PROD `GRAFANA_OTLP_ENDPOINT` (OTLP traces/metrics export) |
 | `grafana-prod` | `instance-id` | Fly.io PROD `GRAFANA_OTLP_INSTANCE_ID` |
 | `grafana-prod` | `api-key` | Fly.io PROD `GRAFANA_OTLP_API_KEY` |
-| `tailscale` | `authkey` | worker node provision |
+| `tailscale` | `authkey` | bare-metal worker node join (playbooks 06/07 bootstrap) |
+| `tailscale` | `oauth-client-id` | CI tailnet join (`deploy-dev.yml`, `release.yml`) |
+| `tailscale` | `oauth-secret` | CI tailnet join (`deploy-dev.yml`, `release.yml`) |
 | `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-prod-worker-ant` | `runner-token` | `agentsfleet-runner` daemon auth (admin-minted `agt_r`). Initial value is the placeholder `agt_rFAKE_REPLACE_BEFORE_PROD_WORKER_READY_TRUE`; owned/replaced by `07_runner_bootstrap_prod` once a real token is minted. |
 | `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
@@ -190,7 +192,9 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `grafana-prod` | `otlp-endpoint` | Grafana Cloud → Stack → OTLP → endpoint URL (`https://otlp-gateway-*.grafana.net/otlp`) |
 | `grafana-prod` | `instance-id` | Grafana Cloud → Stack → OTLP → instance ID (numeric) |
 | `grafana-prod` | `api-key` | Grafana Cloud → Access Policies → token with `metrics:write` + `traces:write` |
-| `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
+| `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable; for bare-metal node join. NOTE: auth keys are capped at 90 days — rotate when provisioning a new node) |
+| `tailscale` | `oauth-client-id` | Tailscale admin → Settings → OAuth clients → Generate client (scope: `auth_keys` write; tag: `tag:ci`). Copy the client ID shown on creation |
+| `tailscale` | `oauth-secret` | Same OAuth client as above — copy the secret (`tskey-client-…`) shown once at creation. Non-expiring; CI uses it to mint ephemeral `tag:ci` nodes |
 | `zombie-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 | `zombie-prod-worker-ant` | `runner-token` | Seed with placeholder `agt_rFAKE_REPLACE_BEFORE_PROD_WORKER_READY_TRUE`; replaced by `07_runner_bootstrap_prod` once a real `agt_r` is admin-minted. |
 | `zombie-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
