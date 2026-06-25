@@ -36,6 +36,7 @@ test {
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
     _ = @import("pipe_proto.zig");
+    _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
     _ = @import("engine/types.zig");
     _ = @import("engine/context_budget.zig");
