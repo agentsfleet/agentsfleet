@@ -50,8 +50,10 @@ pub fn redactedFinalReply(
 /// Collect every secret VALUE the redactor must scrub: api_key ∪ every leaf in
 /// `secrets_map` — the same set `secret_substitution` resolves — so the redaction
 /// set equals the substitution set (M100 §1, Invariant 1). Each maps to its
-/// `${secrets.NAME.FIELD}` placeholder. Slice + placeholders are `alloc`-owned
-/// (free with `freeSecrets`); `value` fields borrow the JSON inputs. Fails closed.
+/// `${secrets.NAME.FIELD}` placeholder. The returned `Secret`s are FULLY owned —
+/// both `value` and `placeholder` are `alloc`-duped, so the result outlives the
+/// caller's JSON and `freeSecrets` releases every field (no borrow footgun).
+/// Fails closed.
 pub fn collectSecrets(
     alloc: std.mem.Allocator,
     fleet_config: ?std.json.Value,
@@ -60,10 +62,18 @@ pub fn collectSecrets(
     var list: std.ArrayList(Secret) = .empty;
     errdefer freeSecretsList(alloc, &list);
 
-    // api_key — always a slot (empty value short-circuits; placeholder allocated for uniform free).
+    // api_key — always a slot (empty value short-circuits redaction; both fields
+    // duped so the set is fully owned and freed uniformly).
     const api_key = if (fleet_config) |ac| (json.getStr(ac, wire.api_key) orelse "") else "";
     try list.ensureUnusedCapacity(alloc, 1);
-    list.appendAssumeCapacity(.{ .value = api_key, .placeholder = try alloc.dupe(u8, S_SECRETS_LLM_API_KEY) });
+    {
+        const val = try alloc.dupe(u8, api_key);
+        const ph = alloc.dupe(u8, S_SECRETS_LLM_API_KEY) catch |e| {
+            alloc.free(val);
+            return e;
+        };
+        list.appendAssumeCapacity(.{ .value = val, .placeholder = ph });
+    }
 
     // Every tool credential: secrets_map is {name:{field:"value"}}; mirror
     // secret_substitution's traversal. Non-object/non-string shapes are skipped.
@@ -80,10 +90,14 @@ pub fn collectSecrets(
                         else => continue,
                     };
                     try list.ensureUnusedCapacity(alloc, 1);
-                    const ph = try std.fmt.allocPrint(alloc, "{s}{s}.{s}}}", .{
+                    const val = try alloc.dupe(u8, value);
+                    const ph = std.fmt.allocPrint(alloc, "{s}{s}.{s}}}", .{
                         S_SECRETS_PLACEHOLDER_PREFIX, name_e.key_ptr.*, field_e.key_ptr.*,
-                    });
-                    list.appendAssumeCapacity(.{ .value = value, .placeholder = ph });
+                    }) catch |e| {
+                        alloc.free(val);
+                        return e;
+                    };
+                    list.appendAssumeCapacity(.{ .value = val, .placeholder = ph });
                 }
             }
         }
@@ -92,14 +106,20 @@ pub fn collectSecrets(
     return list.toOwnedSlice(alloc);
 }
 
-/// Free a `collectSecrets` result: each placeholder, then the slice (values borrowed).
+/// Free a `collectSecrets` result: every owned field (value + placeholder), then the slice.
 pub fn freeSecrets(alloc: std.mem.Allocator, secrets: []const Secret) void {
-    for (secrets) |s| alloc.free(s.placeholder);
+    for (secrets) |s| {
+        alloc.free(s.value);
+        alloc.free(s.placeholder);
+    }
     alloc.free(secrets);
 }
 
 fn freeSecretsList(alloc: std.mem.Allocator, list: *std.ArrayList(Secret)) void {
-    for (list.items) |s| alloc.free(s.placeholder);
+    for (list.items) |s| {
+        alloc.free(s.value);
+        alloc.free(s.placeholder);
+    }
     list.deinit(alloc);
 }
 
