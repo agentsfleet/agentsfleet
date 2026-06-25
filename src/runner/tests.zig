@@ -45,6 +45,8 @@ test {
     _ = @import("engine/CgroupScope.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/seccomp.zig");
+    _ = @import("engine/stream_redactor.zig");
+    _ = @import("engine/runner_progress_redact_oom_test.zig");
     // runner egress networking — the facade's test block fans out to leaves
     _ = @import("network/network.zig");
     // W1 runner-daemon coverage

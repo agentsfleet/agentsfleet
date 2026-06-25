@@ -239,3 +239,38 @@ test "redactBytes: secret containing a NUL byte still matches" {
         .rationale = "Inputs are []u8 slices; std.mem.indexOf handles NUL inside the needle. Defensive — binary tool output containing a NUL would otherwise truncate.",
     });
 }
+
+// Relocated from runner_progress.zig (file-length headroom for the streaming
+// redactor); these pin the no-op aliasing and multi-secret one-pass behaviour.
+
+test "redactBytes is a no-op when no secret value matches" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]Secret{.{ .value = "shh-not-here", .placeholder = "${secrets.x.y}" }};
+    const result = try runner_progress.redactBytes(alloc, "{\"cmd\":\"ls\"}", &secrets);
+    try std.testing.expect(result.ptr == "{\"cmd\":\"ls\"}".ptr);
+}
+
+test "redactBytes replaces every occurrence of a secret value with the placeholder" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]Secret{.{ .value = "sk-abc123", .placeholder = "${secrets.llm.api_key}" }};
+    const result = try runner_progress.redactBytes(alloc, "{\"key\":\"sk-abc123\",\"again\":\"sk-abc123\"}", &secrets);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings(
+        "{\"key\":\"${secrets.llm.api_key}\",\"again\":\"${secrets.llm.api_key}\"}",
+        result,
+    );
+}
+
+test "redactBytes handles multiple distinct secrets in one pass" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]Secret{
+        .{ .value = "sk-abc", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = "tok-xyz", .placeholder = "${secrets.example.token}" },
+    };
+    const result = try runner_progress.redactBytes(alloc, "{\"a\":\"sk-abc\",\"b\":\"tok-xyz\"}", &secrets);
+    defer alloc.free(result);
+    try std.testing.expectEqualStrings(
+        "{\"a\":\"${secrets.llm.api_key}\",\"b\":\"${secrets.example.token}\"}",
+        result,
+    );
+}

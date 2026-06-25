@@ -221,6 +221,7 @@ pub fn executeInner(
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var adapter: runner_progress.Adapter = undefined;
     const obs = selectObserver(progress_fd, obs_runtime.observer(), &writer, &adapter, alloc, secrets_list);
+    defer if (progress_fd != null) adapter.deinit(alloc); // progress-fd path only inits adapter
     // With a live observer, drive mid-run capture off the checkpoint cadence the
     // lease carries (`adapter` is only initialized on the progress-fd path).
     if (progress_fd != null) {
