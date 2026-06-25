@@ -149,7 +149,8 @@ test "should omit --share-net under the deny_all network policy on Linux" {
     try std.testing.expect(indexOfStr(argv, "--share-net") == null);
 }
 
-/// `allow_all` (the default posture) re-shares the host network (`--share-net`).
+/// `allow_all` (opt-in posture; no longer the unset fallback — M100 §2)
+/// re-shares the host network (`--share-net`).
 fn cfgAllowAll(tier: []const u8) Config {
     var c = cfgWithTier(tier);
     c.network_policy = .allow_all;
@@ -181,10 +182,10 @@ test "should detach the controlling terminal with --new-session in the bwrap pre
     try std.testing.expect(ns.? < sep);
 }
 
-test "allow_all (default) re-shares host net; allow_list_egress does NOT" {
+test "allow_all (opt-in) re-shares host net; allow_list_egress does NOT" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // allow_all (the default posture): re-shares the host netns (--share-net)
+    // allow_all (opt-in posture): re-shares the host netns (--share-net)
     // so the lease has full egress until enforcement lands (2.0.1).
     const open = sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowAll(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);

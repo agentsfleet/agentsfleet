@@ -142,7 +142,9 @@ Every credential the runner can resolve is registered with the redactor, fed fro
 - **Dimension 1.3** — on redaction allocation failure the frame is dropped, never emitted raw → `test_redaction_oom_drops_frame_not_raw`
 - **Dimension 1.4** — every redaction test asserts the secret VALUE is absent from output, not only that the placeholder is present → `test_redacted_output_excludes_secret_value`
 
-### §2 — Fail-closed egress default + SSRF tenant-pin (P0)
+### §2 — Fail-closed egress default + SSRF tenant-pin (P0)  ✅ landed Jun 25, 2026
+
+> **Realization note.** No nullclaw fork was needed: the wrapper's outer exact-match gate is authoritative, so setting the inner allowlist to `&.{}` routes every tenant host through `resolveConnectHost` (private-IP reject + DNS pin) and closes the wildcard split-brain. The unset/typo fallback resolves to `allow_list_egress` (fails closed at the supervisor via the existing `egress_strict_unimplemented_fail_closed`); operators opt into interim open egress with `RUNNER_NETWORK_POLICY=allow_all`. §2.4's live DNS-rebind integration test rides §4's Linux lane; the reject half + pin routing are unit-proven.
 
 The runner never silently grants open egress, and the private-IP-reject + DNS-rebind pin runs for tenant-influenced allowlist hosts. **Implementation default:** unset/unknown `RUNNER_NETWORK_POLICY` resolves to a refuse-or-explicit posture (not silent `allow_all`); operator-baseline allowlist entries keep the internal-services skip, tenant-supplied `network.allow` entries go through `resolveConnectHost`.
 
@@ -152,7 +154,9 @@ The runner never silently grants open egress, and the private-IP-reject + DNS-re
 - **Dimension 2.4** — a tenant allowlist host is DNS-pinned (rebind defeated) on dial → `test_tenant_host_dns_pinned`
 - **Dimension 2.5** — wildcard/`*` entries cannot widen the L4 exact-match allowlist via the inner tool → `test_allowlist_no_wildcard_widening`
 
-### §3 — Bounded reliability: backoff, locks, deadlines, int-cast hardening (P1)
+### §3 — Bounded reliability: backoff, locks, deadlines, int-cast hardening (P1)  ✅ landed Jun 25, 2026
+
+> **Spec-vs-reality deviation (§3.2).** Zig 0.16 has **no `std.Thread.Mutex`** (removed for `std.Io.Mutex`). `common.Mutex` IS genuinely cross-thread (real atomics + OS futex) provided the build is not `single_threaded`. The fix is therefore a `comptime { assert(!builtin.single_threaded) }` guard in `call_deadline.zig` (makes the "correct by accident" reliance explicit) + a 2-thread functional mutual-exclusion test — NOT a type swap to a nonexistent type. `test_watchdog_uses_thread_mutex` is realized as the type+invariant assert. Amend the spec's §3.2 wording accordingly.
 
 Retries are bounded, cross-thread locks are unconditionally thread-safe, and untrusted/garbage integers saturate instead of panicking. **Implementation default:** one `backoff(attempt)` helper (exponential, capped at `MAX_BACKOFF_MS`, ±20% jitter from kernel getrandom) replaces the heartbeat/transport sites; watchdog `Mutex`/`Condition` → `std.Thread`; out-of-range casts → `std.math.cast … orelse` / saturating add.
 
@@ -162,7 +166,9 @@ Retries are bounded, cross-thread locks are unconditionally thread-safe, and unt
 - **Dimension 3.4** — `max_tokens` negative/oversized → clamped, no panic → `test_max_tokens_out_of_range_clamped`
 - **Dimension 3.5** — corrupt tar size → rejected before accumulate, no overflow panic → `test_corrupt_tar_size_rejected`
 
-### §4 — Kernel-enforcement test lane + input-matrix (P0)
+### §4 — Kernel-enforcement test lane + input-matrix (P0)  🟡 partial (§4.4 + §4.6 landed Jun 25, 2026)
+
+> **Status.** §4.4 (pure `CgroupScope.parseEventCount` extracted + fixture-tested) and §4.6 (`Plan` input-matrix) landed + green. §4.1–4.3 (root-gated seccomp/Landlock/cgroup real-process proofs) + §4.5 (`integration:` depth prefix) remain — they can only RUN on a Linux root host/CI, so they are deferred to that environment rather than written blind on Darwin.
 
 The sandbox is proven to enforce, not merely shaped. **Implementation default:** a root-gated Linux test lane (own build step, `integration:`-prefixed, `SkipZigTest` when unprivileged/off-Linux) forks a real child and asserts each primitive; `CgroupScope` events-parsers are extracted pure and fixture-tested.
 
@@ -327,6 +333,9 @@ No whole-file deletions planned → otherwise "N/A".
 
 - Single-spec (not multi-workstream-milestone) per Indy direction, Jun 24 2026: "Can you start this in 1 spec, why do we need gazillions spec?" — context: M100 decomposition.
 - §1 secret-redaction (Jun 25, 2026): `collectSecrets` moved to `runner_helpers` (RULE FLL), now returns an allocated slice over api_key ∪ every `secrets_map` leaf (mirrors `secret_substitution`'s traversal → redaction set == substitution set); `redactedFinalReply` now fails closed on redaction OOM (was `catch response` → raw leak); the observer drops tool-call/chunk frames on redaction OOM (was `catch raw`). Tests green (single-filter): D1.1 secrets_map coverage, D1.2 set parity (+ non-object/non-string skip), D1.4 secret-value-absence, D1.3 final-reply fail-closed-on-OOM. **Remaining within §1:** D1.3 direct observer-frame-drop (pipe-capture) test → add in VERIFY/`/write-unit-test` (logic shares the tested `redactBytes` error path).
+- §2 fail-closed egress + SSRF (Jun 25, 2026): **routine choice point** — unset/typo `RUNNER_NETWORK_POLICY` resolves to `allow_list_egress` (reuses the existing supervisor fail-closed refusal + the `egress_strict_unimplemented_fail_closed` error Product Clarity §10 names; forward-compatible with the documented end state) rather than a new error or `deny_all_egress`. Behaviour change: an *unset* policy now fails closed; operators set `allow_all` explicitly for the interim open posture. Local + reversible (one-line default flip). **SSRF realization:** the wrapper's outer exact gate is authoritative, so inner allowlist `&.{}` routes tenant hosts through `resolveConnectHost` — no nullclaw fork. Tests cross-platform (IP literals, hermetic): D2.1 fail-closed matrix, D2.3 private-IP reject (loopback/link-local/RFC1918), D2.5 wildcard non-widening, + end-to-end through the real `buildHttpRequest`.
+- §3 bounded reliability (Jun 25, 2026): **gate-flag triage / judgment** — §3.2's "use `std.Thread.Mutex`" is infeasible (type removed in Zig 0.16). Resolved by an enforced `comptime assert(!builtin.single_threaded)` over the futex-backed `common.Mutex` + a 2-thread mutual-exclusion test (see §3 header note). §3.3 `arm()` → `ArmOutcome`; a watchdog-spawn failure now fails the verb (`ClientError.WatchdogUnavailable`) instead of running unbounded. §3.1 backoff lives in new `common/backoff.zig` (sibling-helper re-exported by `constants.zig` — the established `clock.zig`/`sync.zig` pattern; keeps `loop.zig` under the 350 cap). All green.
+- §4 partial (Jun 25, 2026): §4.4 extracted pure `CgroupScope.parseEventCount` + fixture matrix; §4.6 `Plan` input-matrix. §4.1–4.3/4.5 (root-gated real-process enforcement proofs) deferred to a Linux-root/CI host — declined to author blind on Darwin where they only compile-and-skip (false-confidence risk). This is the remaining GA gate.
 
 ---
 

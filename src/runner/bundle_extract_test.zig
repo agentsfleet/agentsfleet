@@ -81,7 +81,8 @@ test "extractSupportFiles writes support files and folders, skips SKILL/TRIGGER"
 test "extractSupportFiles rejects path traversal" {
     const alloc = std.testing.allocator;
     const io = @import("common").globalIo();
-    const ws = try freshDir(io, "traversal");    const tar = try buildTar(alloc, &.{.{ .name = "../evil.md", .content = "x" }});
+    const ws = try freshDir(io, "traversal");
+    const tar = try buildTar(alloc, &.{.{ .name = "../evil.md", .content = "x" }});
     defer alloc.free(tar);
     try std.testing.expectError(error.UnsafePath, bundle_extract.extractSupportFiles(io, alloc, tar, ws));
 }
@@ -89,7 +90,8 @@ test "extractSupportFiles rejects path traversal" {
 test "extractSupportFiles rejects symlink entries" {
     const alloc = std.testing.allocator;
     const io = @import("common").globalIo();
-    const ws = try freshDir(io, "symlink");    const tar = try buildTar(alloc, &.{.{ .name = "link", .symlink_to = "/etc/passwd" }});
+    const ws = try freshDir(io, "symlink");
+    const tar = try buildTar(alloc, &.{.{ .name = "link", .symlink_to = "/etc/passwd" }});
     defer alloc.free(tar);
     try std.testing.expectError(error.UnsafePath, bundle_extract.extractSupportFiles(io, alloc, tar, ws));
 }
@@ -97,7 +99,7 @@ test "extractSupportFiles rejects symlink entries" {
 test "writeCache then readCache round-trips the tar bytes" {
     const alloc = std.testing.allocator;
     const io = @import("common").globalIo();
-    const base = try freshDir(io, "cache");    // A per-lease workspace under the base (where the temp file lands before rename).
+    const base = try freshDir(io, "cache"); // A per-lease workspace under the base (where the temp file lands before rename).
     const ws = "/tmp/agentsfleet-be-test-cache/lease-1";
     try std.Io.Dir.createDirAbsolute(io, ws, .default_dir);
 
@@ -114,6 +116,26 @@ test "writeCache then readCache round-trips the tar bytes" {
 test "readCache misses (returns null) when no cache file exists" {
     const alloc = std.testing.allocator;
     const io = @import("common").globalIo();
-    const base = try freshDir(io, "cache-miss");    const hash = "0000000000000000000000000000000000000000000000000000000000000000";
+    const base = try freshDir(io, "cache-miss");
+    const hash = "0000000000000000000000000000000000000000000000000000000000000000";
     try std.testing.expect(bundle_extract.readCache(io, alloc, base, hash) == null);
+}
+
+const MAX_BUNDLE_TAR_BYTES: usize = 4 * 1024 * 1024; // mirror of bundle_extract's cap
+
+test "accumulateBytes rejects a corrupt/oversized/overflowing size field, no panic (M100)" {
+    // A value that doesn't fit usize (corrupt header) → TooLarge, never @intCast panic.
+    if (@sizeOf(usize) < @sizeOf(u64)) {
+        try std.testing.expectError(error.TooLarge, bundle_extract.accumulateBytes(0, std.math.maxInt(u64)));
+    }
+    // A single entry already past the cap → TooLarge before any accumulate.
+    try std.testing.expectError(error.TooLarge, bundle_extract.accumulateBytes(0, MAX_BUNDLE_TAR_BYTES + 1));
+    // A near-usize-max running total + a large entry must SATURATE, not overflow-panic.
+    try std.testing.expectError(error.TooLarge, bundle_extract.accumulateBytes(std.math.maxInt(usize) - 1, 8));
+    // Cumulative breach across two in-range entries → TooLarge.
+    const half: u64 = @intCast(MAX_BUNDLE_TAR_BYTES / 2 + 1);
+    const after_first = try bundle_extract.accumulateBytes(0, half);
+    try std.testing.expectError(error.TooLarge, bundle_extract.accumulateBytes(after_first, half));
+    // A valid in-range fold returns the running total unchanged in shape.
+    try std.testing.expectEqual(@as(usize, 100), try bundle_extract.accumulateBytes(40, 60));
 }
