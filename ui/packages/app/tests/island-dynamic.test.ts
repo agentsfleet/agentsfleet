@@ -93,6 +93,14 @@ describe("interaction-only islands are excluded from the route's initial chunk",
   }
 });
 
+// Stub the heavy inner modules so calling the dynamic loader (below) resolves
+// to a light component without pulling clerk / design-system / form deps.
+vi.mock("@/app/(dashboard)/credentials/components/EditCredentialDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/credentials/components/AddCredentialForm", () => ({ default: () => null }));
+vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));
+
 // 5.2 — the shim mounts its inner component after the dynamic-load tick. Mock
 // next/dynamic so the mount path is deterministic without the Next.js loader
 // (mirrors tests/fleet-thread-dynamic.test.ts).
@@ -100,10 +108,15 @@ vi.mock("next/dynamic", () => {
   type Loader = () => Promise<unknown>;
   type LoaderOpts = { loading?: () => React.ReactNode };
   return {
-    default: (_loader: Loader, opts: LoaderOpts) =>
+    default: (loader: Loader, opts: LoaderOpts) =>
       function MockedDynamic() {
         const [ready, setReady] = React.useState(false);
-        React.useEffect(() => setReady(true), []);
+        React.useEffect(() => {
+          // Exercise the real import factory + its `.then` default-mapper so the
+          // shim's loader is covered (mirrors tests/fleet-thread-dynamic.test.ts).
+          void loader();
+          setReady(true);
+        }, []);
         if (!ready && opts.loading) return opts.loading();
         return React.createElement("div", { "data-testid": "mounted-inner" }, "inner");
       },

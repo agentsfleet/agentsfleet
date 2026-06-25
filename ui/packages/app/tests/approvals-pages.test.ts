@@ -107,6 +107,12 @@ describe("ApprovalsPage (workspace inbox)", () => {
     expect(markup).not.toContain("approvals-list-stub"); // data not yet resolved
   });
 
+  it("ApprovalsData returns null when the token is missing", async () => {
+    getTokenMock.mockResolvedValueOnce(null);
+    const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
+    expect(await ApprovalsData()).toBeNull();
+  });
+
   it("notFound when no active workspace", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce(null);
     const { ApprovalsData } = await import("../app/(dashboard)/approvals/page");
