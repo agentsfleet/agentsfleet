@@ -4,7 +4,7 @@
 **Milestone:** M100
 **Workstream:** 001
 **Date:** Jun 24, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — contains GA-blocking secret-leak and default-open-egress exposures in the sandboxed-agent runner.
 **Categories:** RUNNER
 **Batch:** B1 — single stream; Sections sequenced by Dependencies below.
@@ -192,7 +192,7 @@ The sandbox is proven to enforce, not merely shaped. **Implementation default:**
 `executeInner` becomes testable mechanism with an injectable provider, and the oversized/stringly-typed files adopt the in-repo file-as-struct discipline. **Implementation default:** `RunContext = @This()` owning the assembled runtime with `build()`/`run()`/`deinit()`; `RunDeps{ acquireProvider }` defaults to the runtime acquirer, tests pass a stub.
 
 - **Dimension 5.1** — the engine success path runs end-to-end against a stub provider (no live network) → `test_run_context_executes_with_stub_provider`
-- **Dimension 5.2** — observer selection is a `union(enum)`, removing the `undefined` writer/adapter out-params → `test_observer_select_union`
+- **Dimension 5.2** — ⏸️ DEFERRED (Indy-acked) — observer selection as `union(enum)`; cosmetic, the current `undefined` writer/adapter are guarded-safe behind `progress_fd != null`
 - **Dimension 5.3** — `loop.zig` lease lifecycle extracted to `lease_run.zig`; both files under the length cap → verify: 350-line gate
 - **Dimension 5.4** — `sandbox_tier` is a parsed `SandboxTier` enum on `Config` (no stringly-typed compares) → `test_config_sandbox_tier_enum`
 - **Dimension 5.5** — `UsageSnapshot` is its own file-as-struct, re-exported by `pipe_proto` → verify: import + existing usage tests pass
@@ -201,11 +201,11 @@ The sandbox is proven to enforce, not merely shaped. **Implementation default:**
 
 Unit iteration stops paying for nullclaw three times, and the daemon stops running the debug allocator in production. **Implementation default:** a stub `nullclaw` module wired into the unit-test graph (enabled by §5's seam); per-subsystem test steps; Linux-gated integration compile; split CI cache key; allocator chosen by `builtin.mode`.
 
-- **Dimension 6.1** — unit-test graph compiles against a stub nullclaw (heavy dep off the fast lane) → verify: `zig build --build-file build_runner.zig test` links no real nullclaw
-- **Dimension 6.2** — per-subsystem test steps exist (`test-engine`/`test-network`/`test-daemon`) → verify: steps run a subset
-- **Dimension 6.3** — integration-test compile is gated to the Linux lane → verify: macOS `test-unit` does not compile the integration root
-- **Dimension 6.4** — release builds use a non-DebugAllocator allocator → `test_release_allocator_not_debug`
-- **Dimension 6.5** — CI cache key splits dep artifacts from project objects → verify: workflow diff
+- **Dimension 6.1** — ⏸️ DEFERRED (Indy-acked) — unit-test graph compiles against a stub nullclaw (build-graph work; P2 compile speed)
+- **Dimension 6.2** — ⏸️ DEFERRED (Indy-acked: "not worth it") — per-subsystem test steps; P2 compile ergonomics with RULE NDC drift cost
+- **Dimension 6.3** — ✅ DONE (structurally satisfied — the unit test root excludes the integration root; macOS `test` does not compile `sandbox_integration_test.zig`)
+- **Dimension 6.4** — ✅ DONE — release builds select `smp_allocator` (non-Debug) → `test_release_allocator_not_debug`
+- **Dimension 6.5** — ⏸️ DEFERRED (Indy-acked) — CI cache key split; workflow-only, P2
 
 ---
 
@@ -288,16 +288,16 @@ Regression: all existing runner unit + integration tests stay green (no wire cha
 
 ## Acceptance Criteria
 
-- [ ] No resolvable secret reaches a frame/report — verify: `test_redacted_output_excludes_secret_value` + `test_redaction_set_equals_substitution_set`
-- [ ] Egress never silently open — verify: `test_unknown_network_policy_fails_closed`
-- [ ] Tenant hosts pinned/private-IP-rejected — verify: `test_tenant_host_dns_pinned` + `test_tenant_host_private_ip_rejected`
-- [ ] Backoff bounded — verify: `test_backoff_capped_and_jittered`
-- [ ] Each sandbox primitive proven (root lane) — verify: `test_integration_seccomp_*` / `_landlock_*` / `_cgroup_*`
-- [ ] Engine success path tested — verify: `test_run_context_executes_with_stub_provider`
-- [ ] `make lint` clean · `make test` (runner unit) passes · runner `test-integration` passes on Linux
-- [ ] `make memleak` clean for the runner allocator wiring
-- [ ] Cross-compile clean: `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux`
-- [ ] `gitleaks detect` clean · no added file over 350 lines
+- [x] No resolvable secret reaches a frame/report — redaction set == substitution set; all 3 emitters (tool-args, chunk, final-reply) fail-closed on OOM; cross-chunk boundary closed (S1)
+- [x] Egress never silently open — `Policy.fromSlice` returns `allow_all` only on exact match; unset/typo → `allow_list_egress`
+- [x] Tenant hosts pinned/private-IP-rejected — empty inner allowlist routes every host through `resolveConnectHost` (private-IP reject + DNS-rebind pin); exact-match gate, no wildcard widening
+- [x] Backoff bounded — saturating mul + `@min(MAX_BACKOFF_MS)` + bounded jitter (`backoff.zig`)
+- [x] Each sandbox primitive proven (root lane) — seccomp/Landlock/cgroup real-process proofs run on a real kernel (252/4/0)
+- [x] Engine success path tested — DI seam routes provider acquisition through the injected stub offline (`run_context_test.zig`)
+- [x] `make lint` clean · `make test` (runner unit) 338/7/0 · runner `test-integration` 252/4/0 on Linux
+- [x] `make memleak` clean for the runner allocator wiring (`std.testing.allocator` binding gate)
+- [x] Cross-compile clean: `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && -Dtarget=aarch64-linux`
+- [x] `gitleaks detect` clean · no added file over 350 lines
 
 ---
 
@@ -348,6 +348,13 @@ No whole-file deletions planned → otherwise "N/A".
 
 ---
 
+- **VERIFY close-out (Jun 25, 2026):** `/write-unit-test` coverage audit found the landed surface fully covered EXCEPT the §1 streaming observer frame-drop-on-OOM branches (tool-args + chunk), which the Discovery's §1 note had flagged as "remaining." Closed with `runner_progress_redact_oom_test.zig` (2 tests, mutation-killed: raw-on-OOM mutant fails on `!seen.started`). `/review` ran two independent adversarial passes (security + correctness/memory/concurrency) — both "ship as-is", all four spec security guarantees verified in the actual code (redaction set == substitution set; 3 emitters fail-closed; egress fail-closed; SSRF pin via empty inner allowlist → `resolveConnectHost`; int-casts hardened); loop→lease_run extraction and the UsageSnapshot lift verified behaviour-preserving/byte-identical.
+- **S1 fix — streaming cross-chunk secret redaction (Jun 25, 2026, Indy-directed "Fix now"):** the adversarial security pass found a P2 fail-open — the live-tail stream redacted each `StreamChunk` delta independently, so a secret split across two deltas (`"sk-ab"`+`"c123"`) streamed raw (durable final reply stayed clean). Closed by `engine/stream_redactor.zig` (file-as-struct): `push` carries the un-emitted tail (≤ longest-secret−1 bytes) across deltas, redacts the join, and emits only bytes no future delta can complete into a secret; the held tail is dropped at stream end (the redacted final reply carries it). 4 unit tests + 1 adapter-level boundary test through the real pipe; mutation-killed (hold≡0 → both boundary tests fail). `runner_progress.zig` kept under the 350-line cap by relocating the 3 `redactBytes` def-tests to `runner_progress_redact_test.zig` and registering the new module + oom test in `tests.zig`.
+  > 🤠 Indy (2026-06-25): "Fix now" — S1 stream-chunk boundary secret leak fixed before GA rather than deferred; context: `/review` P2 finding on the headline §1 redaction guarantee.
+- **De-scoped to follow-up (Indy-acked, Jun 25, 2026):** the remaining §5/§6 build-ergonomics + cosmetic items are deferred out of this milestone (GA scope §1–§4 + §5.1/5.3/5.4/5.5 + §6.3/6.4 complete). Verbatim acks:
+  > 🤠 Indy (2026-06-25): "Skip §6.2, it's not worth it" — §6.2 per-subsystem test steps deferred (P2 compile-speed ergonomics, RULE NDC maintenance cost).
+  > 🤠 Indy (2026-06-25): "Close out & open GA PR now" — §5.2 observer_select union, §6.1 nullclaw stub, §6.5 CI cache key all parked (P2/cosmetic); ship the GA hardening now.
+
 ## Skill-Driven Review Chain (mandatory)
 
 | When | Skill | Required output |
@@ -365,21 +372,23 @@ No whole-file deletions planned → otherwise "N/A".
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit | `zig build --build-file build_runner.zig test` | 330 pass / 7 skip / 0 fail | ✅ |
-| Integration (Linux, native arm64) | `make test-enforcement` (privileged container) | 251 pass / 4 skip / 0 fail — §4.1–4.3 proofs run on a real kernel | ✅ |
+| Unit | `zig build --build-file build_runner.zig test` | 338 pass / 7 skip / 0 fail (incl. +2 streaming OOM-drop + 5 cross-chunk redactor/adapter tests) | ✅ |
+| Integration (Linux, native arm64) | `make test-integration-kernel` (privileged container) | 252 pass / 4 skip / 0 fail — §4.1–4.3 proofs run on a real kernel | ✅ |
 | Cross-compile x86_64 | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux` | clean (runner exe + test graph) | ✅ |
 | Cross-compile aarch64 | `zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | clean | ✅ |
-| ZLint | `make _zlint_check` | 0 errors / 0 warnings, 521 files | ✅ |
-| pg-drain | `python3 lint-zig.py src` | passed, 515 files | ✅ |
-| Depth gate | `make _lint_zig_test_depth` | unit=2121 integration=206 (+4 enforcement) | ✅ |
-| Line / isolation | `make _zig_line_limit_check _runner_isolation_check` | ≤350 all new files; nullclaw-only deps | ✅ |
-| Memleak (runner) | DebugAllocator on the runner unit suite | green (binding leak gate) | ✅ |
-| Gitleaks | pre-commit `gitleaks` | _run at COMMIT_ | ⏳ |
+| ZLint | `make _zlint_check` | 0 errors / 0 warnings, 525 files | ✅ |
+| pg-drain | `python3 lint-zig.py src` | passed, 519 files | ✅ |
+| Depth gate | `make _lint_zig_test_depth` | unit=2129 integration=206 | ✅ |
+| Line / isolation | `make _zig_line_limit_check _runner_isolation_check` | ≤350 all files (runner.zig 349, runner_progress.zig 333); nullclaw-only deps | ✅ |
+| Memleak (runner) | `std.testing.allocator` on the runner unit suite (binding leak gate; `make memleak` targets agentsfleetd, untouched here) | green | ✅ |
+| Mutation (S1 + §1 OOM) | hold≡0 / raw-on-OOM mutants | both killed (boundary + drop tests fail) | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks, 2921 commits | ✅ |
 
 ---
 
 ## Out of Scope
 
+- **§5.2 observer_select union, §6.1 nullclaw build stub, §6.2 per-subsystem test steps, §6.5 CI cache key — de-scoped to follow-up (Indy-acked, see Discovery).** All P2/cosmetic build-ergonomics; the GA scope (§1–§4) + §5.1/5.3/5.4/5.5 + §6.3/6.4 landed. §5.2 is cosmetic (the current `undefined` writer/adapter are guarded-safe behind `progress_fd != null`); §6.1/6.2/6.5 are compile-speed/CI ergonomics with no behaviour impact.
 - The strict `allow_list_egress` netns/veth/nftables runtime (§2 hardens default/unknown only) — follow-up spec.
 - Capability drop (`CAP_SYS_ADMIN`/`CAP_NET_ADMIN`) in the child + `unshare`/`setns` seccomp denylist additions — documented residual; relevant when strict egress ships.
 - Clock-skew-tolerant lease TTL (server-relative) — restated from M90_001 Out of Scope.
