@@ -20,6 +20,15 @@ const log = logging.scoped(.runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 
+const Secret = runner_progress.Secret;
+
+/// Canonical placeholder for the LLM provider api_key — the one secret not keyed
+/// by a `secrets_map` name/field. RULE UFS: single source.
+const S_SECRETS_LLM_API_KEY = "${secrets.llm.api_key}";
+/// Leading bytes of every `${secrets.NAME.FIELD}` placeholder built for a
+/// `secrets_map` leaf; kept in lockstep with `secret_substitution`'s grammar.
+const S_SECRETS_PLACEHOLDER_PREFIX = "${secrets.";
+
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
 /// The terminal StageResponse content rides the same RPC channel as
@@ -31,9 +40,87 @@ pub fn redactedFinalReply(
     secrets: []const runner_progress.Secret,
 ) ![]const u8 {
     defer alloc.free(response);
-    const redacted = runner_progress.redactBytes(alloc, response, secrets) catch response;
+    // Fail CLOSED on redaction OOM — returning un-redacted `response` would leak a
+    // secret; propagate (caller maps to FleetRunFailed, no content). (M100 §1.)
+    const redacted = try runner_progress.redactBytes(alloc, response, secrets);
     defer if (redacted.ptr != response.ptr) alloc.free(redacted);
     return alloc.dupe(u8, redacted);
+}
+
+/// Collect every secret VALUE the redactor must scrub: api_key ∪ every leaf in
+/// `secrets_map` — the same set `secret_substitution` resolves — so the redaction
+/// set equals the substitution set (M100 §1, Invariant 1). Each maps to its
+/// `${secrets.NAME.FIELD}` placeholder. The returned `Secret`s are FULLY owned —
+/// both `value` and `placeholder` are `alloc`-duped, so the result outlives the
+/// caller's JSON and `freeSecrets` releases every field (no borrow footgun).
+/// Fails closed.
+pub fn collectSecrets(
+    alloc: std.mem.Allocator,
+    fleet_config: ?std.json.Value,
+    secrets_map: ?std.json.Value,
+) std.mem.Allocator.Error![]const Secret {
+    var list: std.ArrayList(Secret) = .empty;
+    errdefer freeSecretsList(alloc, &list);
+
+    // api_key — always a slot (empty value short-circuits redaction; both fields
+    // duped so the set is fully owned and freed uniformly).
+    const api_key = if (fleet_config) |ac| (json.getStr(ac, wire.api_key) orelse "") else "";
+    try list.ensureUnusedCapacity(alloc, 1);
+    {
+        const val = try alloc.dupe(u8, api_key);
+        const ph = alloc.dupe(u8, S_SECRETS_LLM_API_KEY) catch |e| {
+            alloc.free(val);
+            return e;
+        };
+        list.appendAssumeCapacity(.{ .value = val, .placeholder = ph });
+    }
+
+    // Every tool credential: secrets_map is {name:{field:"value"}}; mirror
+    // secret_substitution's traversal. Non-object/non-string shapes are skipped.
+    if (secrets_map) |sm| {
+        if (sm == .object) {
+            var names = sm.object.iterator();
+            while (names.next()) |name_e| {
+                const cred = name_e.value_ptr.*;
+                if (cred != .object) continue;
+                var fields = cred.object.iterator();
+                while (fields.next()) |field_e| {
+                    const value = switch (field_e.value_ptr.*) {
+                        .string => |s| s,
+                        else => continue,
+                    };
+                    try list.ensureUnusedCapacity(alloc, 1);
+                    const val = try alloc.dupe(u8, value);
+                    const ph = std.fmt.allocPrint(alloc, "{s}{s}.{s}}}", .{
+                        S_SECRETS_PLACEHOLDER_PREFIX, name_e.key_ptr.*, field_e.key_ptr.*,
+                    }) catch |e| {
+                        alloc.free(val);
+                        return e;
+                    };
+                    list.appendAssumeCapacity(.{ .value = val, .placeholder = ph });
+                }
+            }
+        }
+    }
+
+    return list.toOwnedSlice(alloc);
+}
+
+/// Free a `collectSecrets` result: every owned field (value + placeholder), then the slice.
+pub fn freeSecrets(alloc: std.mem.Allocator, secrets: []const Secret) void {
+    for (secrets) |s| {
+        alloc.free(s.value);
+        alloc.free(s.placeholder);
+    }
+    alloc.free(secrets);
+}
+
+fn freeSecretsList(alloc: std.mem.Allocator, list: *std.ArrayList(Secret)) void {
+    for (list.items) |s| {
+        alloc.free(s.value);
+        alloc.free(s.placeholder);
+    }
+    list.deinit(alloc);
 }
 
 /// Holds the runtime LLM provider bundle for the fleet loop.
@@ -72,7 +159,14 @@ pub fn applyFleetConfig(cfg: *Config, ac: std.json.Value) void {
         cfg.default_temperature = t;
         cfg.temperature = t;
     }
-    if (json.getInt(ac, wire.max_tokens)) |mt| cfg.max_tokens = @intCast(mt);
+    // M100: a tenant-influenced max_tokens that is negative, zero, or
+    // >u32max is bad input — cast it safely and ignore an out-of-range/zero
+    // value (leave the Config default) rather than @intCast-panicking.
+    if (json.getInt(ac, wire.max_tokens)) |mt| {
+        if (std.math.cast(u32, mt)) |v| {
+            if (v > 0) cfg.max_tokens = v;
+        }
+    }
     // system_prompt is not a Config field — it's passed via the message.
     // The fleet receives it as part of the composed message from composeMessage().
 }
@@ -224,44 +318,8 @@ pub fn composeMessage(
     return parts.toOwnedSlice(alloc);
 }
 
-test "redactBytes scrubs the lease-delivered provider api_key from a frame" {
-    // Invariant: the provider key (now sourced from policy.api_key, captured by
-    // collectSecrets as fleet_config.api_key) never reaches an activity frame.
-    const alloc = std.testing.allocator;
-    const secrets = [_]runner_progress.Secret{
-        .{ .value = "fw_live_provider_key", .placeholder = "${secrets.llm.api_key}" },
-    };
-    const raw = "POST api.fireworks.ai Authorization: Bearer fw_live_provider_key";
-    const out = try runner_progress.redactBytes(alloc, raw, &secrets);
-    defer if (out.ptr != raw.ptr) alloc.free(out);
-    try std.testing.expect(std.mem.indexOf(u8, out, "fw_live_provider_key") == null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "${secrets.llm.api_key}") != null);
-}
-
-test "redactedFinalReply substitutes the placeholder and frees the input" {
-    const alloc = std.testing.allocator;
-    const secrets = [_]runner_progress.Secret{
-        .{ .value = "sk-leak", .placeholder = "${secrets.llm.api_key}" },
-    };
-    const input = try alloc.dupe(u8, "hello sk-leak world");
-    const out = try redactedFinalReply(alloc, input, &secrets);
-    defer alloc.free(out);
-    try std.testing.expectEqualStrings("hello ${secrets.llm.api_key} world", out);
-}
-
-test "redactedFinalReply with no matching secret still transfers ownership" {
-    // Negative-path: when redactBytes returns the input slice unchanged
-    // (no hit), the helper must still free `input` and return a fresh
-    // copy — caller cannot tell the two paths apart from outside.
-    const alloc = std.testing.allocator;
-    const secrets = [_]runner_progress.Secret{
-        .{ .value = "absent-token", .placeholder = "${secrets.llm.api_key}" },
-    };
-    const input = try alloc.dupe(u8, "no leak here");
-    const out = try redactedFinalReply(alloc, input, &secrets);
-    defer alloc.free(out);
-    try std.testing.expectEqualStrings("no leak here", out);
-    // The std.testing.allocator catches double-free / leak; a defective
-    // implementation that returned `input` directly would either leak
-    // the dupe or double-free on the caller's defer.
+// Tests live in the sibling `runner_helpers_test.zig` (extracted to keep this
+// file under the 350-line cap once landed); pull them into the test build.
+test {
+    _ = @import("runner_helpers_test.zig");
 }

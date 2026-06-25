@@ -189,4 +189,27 @@ test "resolvConf is resolver-less (no nameserver directive)" {
     try std.testing.expect(rc.len > 0);
 }
 
+test "Plan input-matrix: boundary worker_index, empty entries, IPv6 fail-closed (M100)" {
+    const al = std.testing.allocator;
+    // Boundary: MAX_WORKER_INDEX (253) is the last valid index; 254 is rejected.
+    var p_max = try build(al, MAX_WORKER_INDEX, &.{});
+    p_max.deinit();
+    try std.testing.expectError(error.WorkerIndexOutOfRange, build(al, MAX_WORKER_INDEX + 1, &.{}));
+    try std.testing.expectError(error.WorkerIndexOutOfRange, build(al, std.math.maxInt(u32), &.{}));
+
+    // Empty allowlist → a valid plan whose hosts file is just the loopback preamble.
+    var p_empty = try build(al, 0, &.{});
+    defer p_empty.deinit();
+    const hosts = try p_empty.hostsFile(al);
+    defer al.free(hosts);
+    try std.testing.expectEqualStrings(HOSTS_PREAMBLE, hosts);
+
+    // An IPv6 entry slipped past the resolver filter must fail closed, not render
+    // a malformed hosts line.
+    const v6 = [_]HostEntry{.{ .name = "evil.example", .addr = .{ .ip6 = .{ .bytes = [_]u8{0} ** 16, .port = 0 } } }};
+    var p_v6 = try build(al, 0, &v6);
+    defer p_v6.deinit();
+    try std.testing.expectError(error.UnsupportedAddressFamily, p_v6.hostsFile(al));
+}
+
 const std = @import("std");

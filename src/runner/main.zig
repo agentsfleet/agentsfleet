@@ -46,9 +46,16 @@ pub fn main(init: std.process.Init) void {
     const io = init.io;
     const env_map = init.environ_map;
 
-    var gpa: std.heap.DebugAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    // Invariant 5: Debug keeps the leak-checking allocator; a release build uses
+    // the fast thread-safe smp_allocator (the daemon must not run the
+    // DebugAllocator in production). `deinit` runs unconditionally — a no-op when
+    // nothing was allocated through it in release.
+    var debug_gpa: std.heap.DebugAllocator(.{}) = .{};
+    defer _ = debug_gpa.deinit();
+    const alloc = switch (allocatorKind(builtin.mode)) {
+        .debug_leak_checked => debug_gpa.allocator(),
+        .release_smp => std.heap.smp_allocator,
+    };
 
     // argv is resolved once into the process arena (cleaned automatically on
     // exit); operator subcommands and the child-execute dispatch read this
@@ -72,15 +79,21 @@ pub fn main(init: std.process.Init) void {
 
     log.info("server_started", .{
         .host_id = cfg.host_id,
-        .sandbox_tier = cfg.sandbox_tier,
+        .sandbox_tier = @tagName(cfg.sandbox_tier),
     });
+
+    // M100: state the resolved egress posture at boot so "is egress open?"
+    // is answerable from the log alone. An unset/typo'd `RUNNER_NETWORK_POLICY`
+    // resolved to the fail-closed default (allow_list_egress) — never open —
+    // per network/Policy.zig; the label says which posture and what it means.
+    log.info("egress_posture_resolved", .{ .posture = cfg.network_policy.postureLabel() });
 
     // Fail-closed (Invariant 7): a release build is a real deployment, so refuse
     // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
     // rather than let it become the production default. Debug builds keep
     // dev_none for local development. `builtin.mode` matches agentsfleetd's dev gate.
-    if (devNoneForbidden(builtin.mode, sandboxTierFromStr(cfg.sandbox_tier))) {
-        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = cfg.sandbox_tier });
+    if (devNoneForbidden(builtin.mode, cfg.sandbox_tier)) {
+        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(cfg.sandbox_tier) });
         std.process.exit(1);
     }
 
@@ -115,12 +128,6 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     return registry.dispatch(argv, env_map, io, alloc, a1);
 }
 
-/// Parse sandbox tier from env string; defaults to `.dev_none` for unknown
-/// values. Single-sourced off the enum (RULE UFS) — no re-spelled tier literals.
-fn sandboxTierFromStr(s: []const u8) protocol.SandboxTier {
-    return std.meta.stringToEnum(protocol.SandboxTier, s) orelse .dev_none;
-}
-
 /// Startup security gate (Invariant 7): a release build refuses the no-isolation
 /// `dev_none` tier so it can never be the production default. Debug builds allow
 /// it for local development. Pure so the matrix is unit-testable.
@@ -131,7 +138,25 @@ fn devNoneForbidden(mode: std.builtin.OptimizeMode, tier: protocol.SandboxTier) 
 test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
     try std.testing.expect(devNoneForbidden(.ReleaseSafe, .dev_none));
     try std.testing.expect(devNoneForbidden(.ReleaseFast, .dev_none));
-    try std.testing.expect(devNoneForbidden(.ReleaseSafe, sandboxTierFromStr("garbage"))); // unknown → dev_none
+    // Unknown/typo'd tiers now parse to dev_none in config.parseSandboxTier
+    // (tested there), so they hit this same release refusal.
     try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
     try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
+}
+
+/// Allocator selected by build mode (M100, Invariant 5). Debug keeps the
+/// leak-checking DebugAllocator; a release build uses the fast thread-safe
+/// `smp_allocator` — the production daemon must not pay the DebugAllocator's
+/// bookkeeping cost. Pure so the choice is unit-testable.
+const AllocatorKind = enum { debug_leak_checked, release_smp };
+
+fn allocatorKind(mode: std.builtin.OptimizeMode) AllocatorKind {
+    return if (mode == .Debug) .debug_leak_checked else .release_smp;
+}
+
+test "release builds select the non-Debug allocator (Invariant 5)" {
+    try std.testing.expectEqual(AllocatorKind.debug_leak_checked, allocatorKind(.Debug));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSafe));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseFast));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSmall));
 }

@@ -5,12 +5,11 @@
 //! fires these synchronously on the same thread that called `fleet.runSingle`,
 //! so writes to the pipe are sequential — no locking, no concurrent producers.
 //!
-//! Args redaction: docs/architecture/ mandates that any secret bytes substituted
-//! into tool arguments are replaced with the canonical `${secrets.NAME.FIELD}`
-//! placeholder before the frame leaves this child. The redactor is constructed
-//! in runner.execute from the known fleet_config secrets (LLM api_key, GitHub
-//! token); runner.zig is the only file that knows the secret VALUES, and they
-//! never escape into an `ActivityFrame`.
+//! Args redaction: secret bytes are replaced with the canonical
+//! `${secrets.NAME.FIELD}` placeholder before any frame leaves this child. The
+//! redactor is fed api_key ∪ every `secrets_map` leaf (== the set
+//! `secret_substitution` resolves), built in runner.execute via `collectSecrets`;
+//! on redaction OOM the frame is DROPPED, never emitted raw (M100 §1).
 
 const std = @import("std");
 const logging = @import("log");
@@ -22,6 +21,7 @@ const contract = @import("contract");
 const pipe_proto = @import("../pipe_proto.zig");
 const inrun_memory = @import("inrun_memory.zig");
 const client_errors = @import("client_errors.zig");
+const stream_redactor = @import("stream_redactor.zig");
 
 const ActivityFrame = contract.activity.ActivityFrame;
 
@@ -106,6 +106,11 @@ pub const Adapter = struct {
     window_exceeded_logs: u32 = 0,
     chunk_threshold_logs: u32 = 0,
     last_prompt_tokens: u32 = 0,
+    /// Cross-delta carry for streaming redaction: holds the raw un-emitted tail
+    /// (a possible secret head) between `streamCallbackThunk` calls so a secret
+    /// split across two chunks is still redacted (M100 §1). Owned by this
+    /// adapter; released by `deinit`.
+    redact_carry: std.ArrayListUnmanaged(u8) = .empty,
 
     /// NullClaw Observer view of this adapter. Pass to `Fleet.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
@@ -136,6 +141,13 @@ pub const Adapter = struct {
         const payload = snap.encode();
         pipe_proto.writeFrame(self.writer.fd, .usage, &payload) catch |err|
             log.warn("usage_frame_write_failed", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+    }
+
+    /// Release the streaming-redaction carry. Call once when the run ends; the
+    /// held tail (a partial-secret head, if any) is intentionally never emitted
+    /// — the redacted final reply carries the complete content.
+    pub fn deinit(self: *Adapter, alloc: Allocator) void {
+        self.redact_carry.deinit(alloc);
     }
 
     fn fromPtr(ptr: *anyopaque) *Adapter {
@@ -173,12 +185,14 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // and emit a fresh `tool_call_started` carrying the
             // post-redaction bytes; otherwise just close the call.
             if (b.args) |raw| {
-                const redacted = redactBytes(self.alloc, raw, self.secrets) catch raw;
-                defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
-                const start_frame = ActivityFrame{
-                    .tool_call_started = .{ .name = b.tool, .args_redacted = redacted },
-                };
-                self.writer.write(start_frame);
+                // Drop the args frame on redaction OOM (raw could carry a secret);
+                // the completed frame below still closes the call (M100 §1).
+                if (redactBytes(self.alloc, raw, self.secrets)) |redacted| {
+                    defer if (redacted.ptr != raw.ptr) self.alloc.free(redacted);
+                    self.writer.write(.{ .tool_call_started = .{ .name = b.tool, .args_redacted = redacted } });
+                } else |err| {
+                    log.warn("tool_args_redaction_failed_frame_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+                }
             }
             const ms_signed = std.math.cast(i64, b.duration_ms) orelse std.math.maxInt(i64);
             const done_frame = ActivityFrame{
@@ -267,14 +281,18 @@ fn observerSetTraceId(_: *anyopaque, _: [32]u8) void {}
 
 fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     const self = Adapter.fromPtr(ctx);
-    if (chunk.is_final) return;
+    if (chunk.is_final) return; // held tail is dropped; the final reply carries it
     if (chunk.delta.len == 0) return;
-    const redacted = redactBytes(self.alloc, chunk.delta, self.secrets) catch chunk.delta;
-    defer if (redacted.ptr != chunk.delta.ptr) self.alloc.free(redacted);
-    const frame = ActivityFrame{
-        .fleet_response_chunk = .{ .text = redacted },
+    // Redact across chunk boundaries: a secret split between two deltas must not
+    // leak. `push` holds back a partial-secret head and emits only safe bytes;
+    // on OOM it leaves the carry intact and we drop the chunk (M100 §1).
+    const emit = stream_redactor.push(self.alloc, &self.redact_carry, chunk.delta, self.secrets) catch |err| {
+        log.warn("chunk_redaction_failed_dropped", .{ .error_code = client_errors.ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        return;
     };
-    self.writer.write(frame);
+    defer self.alloc.free(emit);
+    if (emit.len == 0) return;
+    self.writer.write(.{ .fleet_response_chunk = .{ .text = emit } });
 }
 
 // ── Args redaction ──────────────────────────────────────────────────────────
@@ -311,36 +329,5 @@ pub fn redactBytes(alloc: Allocator, raw: []const u8, secrets: []const Secret) !
     return current;
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-test "redactBytes is a no-op when no secret value matches" {
-    const alloc = std.testing.allocator;
-    const secrets = [_]Secret{.{ .value = "shh-not-here", .placeholder = "${secrets.x.y}" }};
-    const result = try redactBytes(alloc, "{\"cmd\":\"ls\"}", &secrets);
-    try std.testing.expect(result.ptr == "{\"cmd\":\"ls\"}".ptr);
-}
-
-test "redactBytes replaces every occurrence of a secret value with the placeholder" {
-    const alloc = std.testing.allocator;
-    const secrets = [_]Secret{.{ .value = "sk-abc123", .placeholder = "${secrets.llm.api_key}" }};
-    const result = try redactBytes(alloc, "{\"key\":\"sk-abc123\",\"again\":\"sk-abc123\"}", &secrets);
-    defer alloc.free(result);
-    try std.testing.expectEqualStrings(
-        "{\"key\":\"${secrets.llm.api_key}\",\"again\":\"${secrets.llm.api_key}\"}",
-        result,
-    );
-}
-
-test "redactBytes handles multiple distinct secrets in one pass" {
-    const alloc = std.testing.allocator;
-    const secrets = [_]Secret{
-        .{ .value = "sk-abc", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = "tok-xyz", .placeholder = "${secrets.example.token}" },
-    };
-    const result = try redactBytes(alloc, "{\"a\":\"sk-abc\",\"b\":\"tok-xyz\"}", &secrets);
-    defer alloc.free(result);
-    try std.testing.expectEqualStrings(
-        "{\"a\":\"${secrets.llm.api_key}\",\"b\":\"${secrets.example.token}\"}",
-        result,
-    );
-}
+// redactBytes contract tests live in runner_progress_redact_test.zig; the
+// streaming cross-chunk redactor and its tests live in stream_redactor.zig.
