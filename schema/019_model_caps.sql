@@ -5,8 +5,12 @@
 -- pin the cap into the right place. The agent runtime never reads this table
 -- directly.
 --
--- Cap or rate updates ship via new migrations using ON CONFLICT (model_id) DO
--- UPDATE. Never edit a released migration after it ships — bump a new slot.
+-- This table ships EMPTY — no seed. Platform admins populate and maintain the
+-- catalogue through the admin model-caps API (`/v1/admin/models`), which
+-- repopulates the in-process rate cache live on every mutation. Earlier
+-- revisions seeded a fixed 13-row catalogue here; that seed was removed once
+-- the admin write surface landed so a fresh environment starts from an
+-- admin-curated, not migration-frozen, catalogue.
 --
 -- The provider hosting a given model is carried explicitly in the `provider`
 -- column (anthropic | fireworks | minimax | pioneer | openai | moonshot | …).
@@ -47,42 +51,9 @@ CREATE TABLE IF NOT EXISTS core.model_caps (
     CONSTRAINT uq_model_caps_provider_model UNIQUE (provider, model_id)
 );
 
--- Seed catalogue. Caps and rates reflect each model's documented values at
--- seed time, scaled cents → nanos × 10,000,000 (1¢ = 10M nanos). The
--- created_at_ms / updated_at_ms values use a fixed epoch so re-running
--- migrations produces deterministic state.
--- Rates in nanos/Mtok. cached_input seeded at ~10% of fresh input where the
--- provider publishes no cache rate (a prompt-cache read costs roughly a tenth
--- of an uncached read); self-managed-only models carry zero across all tiers.
--- The same base model can recur under a different provider at a different rate
--- (e.g. Claude Opus 4.8 direct from Anthropic vs hosted on Pioneer) — each is
--- its own row, keyed by a provider-distinct model_id.
-INSERT INTO core.model_caps
-    (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
-VALUES
-    ('0195b4ba-8d3a-7f13-8abc-000000000191', 'claude-opus-4-8',                            'anthropic', 1000000,  5000000000,  500000000, 25000000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000192', 'claude-sonnet-4-6',                          'anthropic',  256000,  3000000000,  300000000, 15000000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000193', 'claude-haiku-4-5-20251001',                  'anthropic',  256000,  1000000000,  100000000,  5000000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000194', 'gpt-5.5',                                    'openai',     256000,           0,          0,           0, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000195', 'gpt-5.4',                                    'openai',     256000,           0,          0,           0, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000196', 'kimi-k2.6',                                  'moonshot',   256000,           0,          0,           0, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000197', 'accounts/fireworks/models/kimi-k2.6',        'fireworks',  256000,   950000000,  100000000,  4000000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000198', 'accounts/fireworks/models/deepseek-v4-pro',  'fireworks',  256000,  1740000000,  140000000,  3480000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-000000000199', 'minimax-m3',                                 'minimax',   1048576,   600000000,   60000000,  2400000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-00000000019a', 'claude-opus-4-8',                            'pioneer',   1000000,  5500000000,  550000000, 27500000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-00000000019b', 'claude-sonnet-4-6',                          'pioneer',   1000000,  3300000000,  330000000, 16500000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-00000000019c', 'claude-haiku-4-5',                           'pioneer',    200000,  1100000000,  110000000,  5500000000, 1745884800000, 1745884800000),
-    ('0195b4ba-8d3a-7f13-8abc-00000000019d', 'moonshotai/Kimi-K2.6',                       'pioneer',    262000,   950000000,   95000000,  4000000000, 1745884800000, 1745884800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-    provider                    = EXCLUDED.provider,
-    context_cap_tokens          = EXCLUDED.context_cap_tokens,
-    input_nanos_per_mtok        = EXCLUDED.input_nanos_per_mtok,
-    cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
-    output_nanos_per_mtok       = EXCLUDED.output_nanos_per_mtok,
-    updated_at_ms               = EXCLUDED.updated_at_ms;
-
--- api_runtime serves the public read endpoint and the rate-cache populator
--- at API server boot. No worker access — the worker never queries this table
--- directly; tenant_providers carries the resolved cap under self-managed, frontmatter
+-- api_runtime serves the public read endpoint + the rate-cache populator at API
+-- server boot, and the admin model-caps CRUD API (/v1/admin/models) writes the
+-- catalogue. No worker access — the worker never queries this table directly;
+-- tenant_providers carries the resolved cap under self-managed, frontmatter
 -- carries it under platform-managed.
-GRANT SELECT ON core.model_caps TO api_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON core.model_caps TO api_runtime;

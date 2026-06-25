@@ -90,7 +90,12 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
     };
     defer h.deinit();
 
-    // Admin-gated endpoint that survived the billing teardown.
+    // Platform-admin-gated endpoint (M100 tightened it from admin() to
+    // platformAdmin()): the gate requires the `platform_admin` claim, so a
+    // per-tenant role — user, operator, OR admin — is insufficient and is
+    // rejected with UZ-AUTH-021, not the role-mismatch UZ-AUTH-009. The
+    // platform-admin success path (200) is covered in
+    // model_caps_admin_integration_test, which carries a platform_admin token.
     const admin_keys_path = "/v1/admin/platform-keys";
 
     { // No token → 401
@@ -99,22 +104,23 @@ test "integration: RBAC endpoints enforce operator and admin roles over live HTT
         try r.expectStatus(.unauthorized);
         try r.expectErrorCode(error_codes.ERR_UNAUTHORIZED);
     }
-    { // User role → 403
+    { // User role lacks platform_admin → 403 UZ-AUTH-021
         const r = try (try h.get(admin_keys_path).bearer(TEST_USER_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
     }
-    { // Operator rejected for admin-only endpoint → 403
+    { // Operator role lacks platform_admin → 403 UZ-AUTH-021
         const r = try (try h.get(admin_keys_path).bearer(TEST_OPERATOR_TOKEN)).send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
-        try r.expectErrorCode(error_codes.ERR_INSUFFICIENT_ROLE);
+        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
     }
-    { // Admin → 200
+    { // A per-tenant admin (no platform_admin claim) is ALSO rejected → 403
         const r = try (try h.get(admin_keys_path).bearer(TEST_ADMIN_TOKEN)).send();
         defer r.deinit();
-        try r.expectStatus(.ok);
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(error_codes.ERR_PLATFORM_ADMIN_REQUIRED);
     }
 
     // RULE BIL regression — destructive lifecycle (PATCH fleet status =

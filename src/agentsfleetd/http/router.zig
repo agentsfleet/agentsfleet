@@ -23,6 +23,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/fleets/bundles")) return .fleet_bundles;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
+    if (std.mem.eql(u8, path, "/v1/admin/models")) return .admin_models;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
     // Clerk user.created signup event — internal auth-plane path. Exact-match.
     if (std.mem.eql(u8, path, "/v1/auth/identity-events/clerk")) return .auth_identity_event_clerk;
@@ -90,6 +91,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Admin platform key by provider ────────────────────────────────────
     if (matchers.matchAdminPlatformKey(p)) |provider| return .{ .delete_admin_platform_key = provider };
+
+    // ── Admin model-caps catalogue row by uid ─────────────────────────────
+    if (matchers.matchAdminModel(p)) |uid| return .{ .admin_model_by_id = uid };
 
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };

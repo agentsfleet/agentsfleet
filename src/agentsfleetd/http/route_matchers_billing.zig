@@ -7,6 +7,7 @@ const Path = @import("route_matchers.zig").Path;
 
 const SEG_TENANTS = "tenants";
 const SEG_ME = "me";
+const SEG_ADMIN = "admin";
 const SEG_BILLING = "billing";
 const SEG_CHARGES = "charges";
 const SEG_TELEMETRY = "telemetry";
@@ -15,7 +16,17 @@ const SEG_TELEMETRY = "telemetry";
 
 pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
     if (p.segs.len != 3) return null;
-    if (!p.eq(0, "admin") or !p.eq(1, "platform-keys")) return null;
+    if (!p.eq(0, SEG_ADMIN) or !p.eq(1, "platform-keys")) return null;
+    return p.param(2);
+}
+
+// ── /admin/models/{uid} ────────────────────────────────────────────────────
+// uid (uuidv7) keys the row — model_id can contain '/', so it cannot be a path
+// segment. The bare /admin/models collection is exact-matched in router.match().
+
+pub fn matchAdminModel(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, SEG_ADMIN) or !p.eq(1, "models")) return null;
     return p.param(2);
 }
 

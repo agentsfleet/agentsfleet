@@ -25,6 +25,12 @@ const WS_TP_SELF_MANAGED = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
 // same row via ON CONFLICT DO UPDATE. Using a test-scoped name keeps our
 // rows isolated from other integration tests.
 const TP_TEST_PROVIDER = "tenant_provider_test_fireworks";
+// The platform default's model/cap now live on the platform_llm_keys row (set by
+// PUT /admin/platform-keys), not a compile-time constant. These are test-scoped
+// fixture values: the tests seed them onto the row and assert the resolver echoes
+// the SAME values back — the specific strings/numbers are arbitrary.
+const TP_DEFAULT_MODEL = "tp-test-default-model";
+const TP_DEFAULT_CAP: u32 = 192_000;
 
 fn setEncryptionKey() void {
     crypto_primitives.setTestKek();
@@ -52,11 +58,12 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, true, $4, $4)
+        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $5, $6, true, $4, $4)
         \\ON CONFLICT (provider) DO UPDATE
-        \\SET source_workspace_id = EXCLUDED.source_workspace_id, active = true, updated_at = EXCLUDED.updated_at
-    , .{ key_id, provider, ws_id, now_ms });
+        \\SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model,
+        \\    context_cap_tokens = EXCLUDED.context_cap_tokens, active = true, updated_at = EXCLUDED.updated_at
+    , .{ key_id, provider, ws_id, now_ms, TP_DEFAULT_MODEL, @as(i32, @intCast(TP_DEFAULT_CAP)) });
 }
 
 fn seedSelfManagedCredential(
@@ -206,8 +213,8 @@ test "resolveActiveProvider with no row returns synthesised platform default" {
     try std.testing.expectEqual(tenant_provider.Mode.platform, rp.mode);
     try std.testing.expectEqualStrings(TP_TEST_PROVIDER, rp.provider);
     try std.testing.expectEqualStrings("fw_PLATFORM_xyz", rp.api_key);
-    try std.testing.expectEqualStrings(tenant_provider.PLATFORM_DEFAULT_MODEL, rp.model);
-    try std.testing.expectEqual(tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS, rp.context_cap_tokens);
+    try std.testing.expectEqualStrings(TP_DEFAULT_MODEL, rp.model);
+    try std.testing.expectEqual(TP_DEFAULT_CAP, rp.context_cap_tokens);
 }
 
 test "resolveActiveProvider with explicit platform row returns same shape as synth" {
@@ -227,8 +234,8 @@ test "resolveActiveProvider with explicit platform row returns same shape as syn
 
     try std.testing.expectEqual(tenant_provider.Mode.platform, rp.mode);
     try std.testing.expectEqualStrings(TP_TEST_PROVIDER, rp.provider);
-    try std.testing.expectEqualStrings(tenant_provider.PLATFORM_DEFAULT_MODEL, rp.model);
-    try std.testing.expectEqual(tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS, rp.context_cap_tokens);
+    try std.testing.expectEqualStrings(TP_DEFAULT_MODEL, rp.model);
+    try std.testing.expectEqual(TP_DEFAULT_CAP, rp.context_cap_tokens);
 }
 
 // PlatformKeyMissing path is exercised in §13's integration suite where the
@@ -647,7 +654,7 @@ test "upsertPlatform writes mode=platform with NULL credential_ref" {
     const row = (try q.next()).?;
     try std.testing.expectEqualStrings("platform", try row.get([]const u8, 0));
     try std.testing.expectEqualStrings(TP_TEST_PROVIDER, try row.get([]const u8, 1));
-    try std.testing.expectEqualStrings(tenant_provider.PLATFORM_DEFAULT_MODEL, try row.get([]const u8, 2));
-    try std.testing.expectEqual(@as(i32, @intCast(tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS)), try row.get(i32, 3));
+    try std.testing.expectEqualStrings(TP_DEFAULT_MODEL, try row.get([]const u8, 2));
+    try std.testing.expectEqual(@as(i32, @intCast(TP_DEFAULT_CAP)), try row.get(i32, 3));
     try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 4));
 }

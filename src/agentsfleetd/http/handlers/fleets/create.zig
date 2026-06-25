@@ -207,7 +207,7 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     // installing→active, then emits install:ready. Spawn failure is non-fatal:
     // the row stays installing and a later list/detail reconcile flips it (the
     // status column is authoritative). The 201 still reports installing.
-    create_install_steps.spawn(hx.ctx.pool, hx.ctx.queue, workspace_id, fleet_id) catch |err| {
+    create_install_steps.spawn(hx.ctx.pool, hx.ctx.queue, workspace_id, fleet_id, hx.ctx.install_wg) catch |err| {
         log.warn(
             "install_steps_spawn_failed",
             .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err), .fleet_id = fleet_id, .req_id = hx.req_id },
