@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   readPlatformAdminClaimMock,
   withTokenMock,
-  resolveActiveWorkspaceMock,
+  withWorkspaceScopeMock,
   createCredentialMock,
   listAdminModelsMock,
   createAdminModelMock,
@@ -24,7 +24,7 @@ const {
 } = vi.hoisted(() => ({
   readPlatformAdminClaimMock: vi.fn(),
   withTokenMock: vi.fn(),
-  resolveActiveWorkspaceMock: vi.fn(),
+  withWorkspaceScopeMock: vi.fn(),
   createCredentialMock: vi.fn(),
   listAdminModelsMock: vi.fn(),
   createAdminModelMock: vi.fn(),
@@ -35,7 +35,7 @@ const {
 
 vi.mock("@/lib/auth/platform", () => ({ readPlatformAdminClaim: readPlatformAdminClaimMock }));
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
-vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace: resolveActiveWorkspaceMock }));
+vi.mock("@/lib/workspace", () => ({ withWorkspaceScope: withWorkspaceScopeMock }));
 vi.mock("@/lib/api/credentials", () => ({ createCredential: createCredentialMock }));
 vi.mock("@/lib/api/admin_models", () => ({
   listAdminModels: listAdminModelsMock,
@@ -154,7 +154,9 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   beforeEach(() => readPlatformAdminClaimMock.mockResolvedValue(true));
 
   it("stores the key in the admin workspace vault then activates the catalogued default (no base_url)", async () => {
-    resolveActiveWorkspaceMock.mockResolvedValueOnce({ id: "ws-1" });
+    withWorkspaceScopeMock.mockImplementationOnce(
+      async (_t: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws-1"),
+    );
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "fireworks", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
@@ -176,7 +178,9 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   });
 
   it("threads base_url into both the vault payload and the activation for an openai-compatible default", async () => {
-    resolveActiveWorkspaceMock.mockResolvedValueOnce({ id: "ws-9" });
+    withWorkspaceScopeMock.mockImplementationOnce(
+      async (_t: string, fn: (workspaceId: string) => Promise<unknown>) => fn("ws-9"),
+    );
     setPlatformDefaultMock.mockResolvedValueOnce({ provider: "openai-compatible", model: "glm-5.2", active: true });
 
     const r = await setPlatformDefaultAction({
@@ -209,7 +213,7 @@ describe("setPlatformDefaultAction — two-step vault write + activation", () =>
   });
 
   it("fails with a clear error when there is no active workspace to store the key in", async () => {
-    resolveActiveWorkspaceMock.mockResolvedValueOnce(null);
+    withWorkspaceScopeMock.mockResolvedValueOnce(null);
 
     const r = await setPlatformDefaultAction({ provider: "fireworks", model: "glm-5.2", api_key: "sk-secret" });
 
