@@ -75,6 +75,12 @@ pub fn main(init: std.process.Init) void {
         .sandbox_tier = cfg.sandbox_tier,
     });
 
+    // M100: state the resolved egress posture at boot so "is egress open?"
+    // is answerable from the log alone. An unset/typo'd `RUNNER_NETWORK_POLICY`
+    // resolved to the fail-closed default (allow_list_egress) — never open —
+    // per network/Policy.zig; the label says which posture and what it means.
+    log.info("egress_posture_resolved", .{ .posture = cfg.network_policy.postureLabel() });
+
     // Fail-closed (Invariant 7): a release build is a real deployment, so refuse
     // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
     // rather than let it become the production default. Debug builds keep

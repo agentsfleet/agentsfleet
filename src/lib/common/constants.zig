@@ -21,6 +21,12 @@ pub const sleepNanos = sync.sleepNanos;
 /// for `std.crypto.random`/`std.posix.getrandom`. See `random.zig`.
 pub const secureRandomBytes = @import("random.zig").secureRandomBytes;
 
+/// Bounded, jittered exponential backoff for control-plane retries
+/// (`common.backoff.ms(attempt)`; bounds `MAX_BACKOFF_MS`/`BASE_MS`/`JITTER_PCT`).
+/// Single source for every retry sleep so an outage can't grow it unbounded.
+/// See `backoff.zig`.
+pub const backoff = @import("backoff.zig");
+
 /// Shared env-var reads over the 0.16 `Environ.Map` both binaries thread from
 /// `std.process.Init` (`common.env.owned`). See `env.zig`.
 pub const env = @import("env.zig");

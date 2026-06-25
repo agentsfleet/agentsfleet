@@ -5,6 +5,7 @@
 //! whose recv path treats a SO_RCVTIMEO EAGAIN as a programmer bug.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
@@ -55,6 +56,27 @@ const POLL_SLICE_MS: i64 = 50;
 /// retryable transport error and the pool replaces the dead connection on the
 /// next call. The thread spawns lazily on first arm and is joined by deinit
 /// (its wake path: the exit flag + condition signal).
+/// Result of `arm`: either the deadline is being enforced, or the watchdog
+/// thread could not be established (M100). The caller MUST treat
+/// `.watchdog_unavailable` as fatal for that verb — running the call unbounded
+/// is the silent-hang the watchdog exists to prevent.
+pub const ArmOutcome = enum { armed, watchdog_unavailable };
+
+comptime {
+    // M100 — make the watchdog's cross-thread correctness EXPLICIT instead
+    // of accidental. `common.Mutex`/`Condition` wrap `std.Io.Mutex`, whose
+    // blocking path is real atomics + an OS futex — but `Thread.futexWait`/`Wake`
+    // degrade to `unreachable`/no-op under a `single_threaded` BUILD. The
+    // watchdog runs on its own `std.Thread`, so a single-threaded build would
+    // silently break the deadline. (Zig 0.16 removed `std.Thread.Mutex`; the
+    // Io-backed primitive IS the thread-safe lock here — provided this holds.)
+    std.debug.assert(!builtin.single_threaded);
+}
+
+/// One watchdog per client. `mutex`/`cond` are the futex-backed `common.Mutex`/
+/// `Condition` (`std.Io.Mutex`): genuinely cross-thread under the multi-threaded
+/// build the comptime guard above enforces. The watchdog runs on its own OS
+/// thread while the client thread arms/disarms it.
 pub const CallWatchdog = struct {
     mutex: common.Mutex = .{},
     cond: common.Condition = .{},
@@ -64,14 +86,25 @@ pub const CallWatchdog = struct {
     // SAFETY: written by arm() before armed=true; read only while armed.
     handle: std.Io.net.Socket.Handle = undefined,
     deadline_at_ms: i64 = 0,
+    /// Test-only: force the lazy spawn to fail so the `.watchdog_unavailable`
+    /// path is exercisable (a real `std.Thread.spawn` failure can't be induced).
+    /// Comptime-dead in release — the gate below folds away.
+    force_spawn_fail_for_test: bool = false,
 
-    pub fn arm(self: *CallWatchdog, handle: std.Io.net.Socket.Handle, deadline_ms: u31) void {
+    pub fn arm(self: *CallWatchdog, handle: std.Io.net.Socket.Handle, deadline_ms: u31) ArmOutcome {
         self.mutex.lock();
         if (self.thread == null and !self.exit) {
-            self.thread = std.Thread.spawn(.{}, loop, .{self}) catch blk: {
-                // No watchdog thread → this call runs unbounded; visible, rare.
-                log.warn("cp_watchdog_spawn_failed", .{});
-                break :blk null;
+            const spawned: ?std.Thread = if (builtin.is_test and self.force_spawn_fail_for_test)
+                null
+            else
+                std.Thread.spawn(.{}, loop, .{self}) catch null;
+            self.thread = spawned orelse {
+                // No watchdog thread → refuse the call rather than run it
+                // unbounded. Persistent failure (thread exhaustion) makes the
+                // verb fail fast + loud, never a silent hang (M100).
+                self.mutex.unlock();
+                log.err("cp_watchdog_spawn_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS });
+                return .watchdog_unavailable;
             };
         }
         self.handle = handle;
@@ -79,6 +112,7 @@ pub const CallWatchdog = struct {
         self.armed = true;
         self.mutex.unlock();
         self.cond.signal();
+        return .armed;
     }
 
     pub fn disarm(self: *CallWatchdog) void {
@@ -130,3 +164,60 @@ pub const CallWatchdog = struct {
         self.mutex.unlock();
     }
 };
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+
+test "watchdog lock is the futex-backed cross-thread primitive under a multi-threaded build (M100)" {
+    // Zig 0.16 has no std.Thread.Mutex; the thread-safe lock here is the
+    // futex-backed common.Mutex (std.Io.Mutex). Its cross-thread correctness
+    // requires a multi-threaded build — the comptime guard in this file enforces
+    // that, and this asserts the invariant + the lock type a regression would
+    // have to break.
+    const wd: CallWatchdog = .{};
+    try std.testing.expect(@TypeOf(wd.mutex) == common.Mutex);
+    try std.testing.expect(@TypeOf(wd.cond) == common.Condition);
+    try std.testing.expect(!builtin.single_threaded);
+}
+
+test "watchdog mutex actually serializes two real threads (no lost updates)" {
+    // Functional proof the lock is genuinely cross-thread: two OS threads each
+    // bump a shared counter under the watchdog's mutex; a non-serializing lock
+    // would lose updates to the race.
+    const BUMPS_PER_THREAD: u64 = 50_000;
+    const Shared = struct {
+        mutex: common.Mutex = .{},
+        counter: u64 = 0,
+        fn bump(self: *@This()) void {
+            for (0..BUMPS_PER_THREAD) |_| {
+                self.mutex.lock();
+                self.counter += 1;
+                self.mutex.unlock();
+            }
+        }
+    };
+    var s: Shared = .{};
+    const t0 = try std.Thread.spawn(.{}, Shared.bump, .{&s});
+    const t1 = try std.Thread.spawn(.{}, Shared.bump, .{&s});
+    t0.join();
+    t1.join();
+    try std.testing.expectEqual(2 * BUMPS_PER_THREAD, s.counter);
+}
+
+test "watchdog spawn failure is fatal/observable, never silent-unbounded (M100)" {
+    // Forced spawn failure → arm reports .watchdog_unavailable (the caller turns
+    // this into a failed verb) and leaves the watchdog disarmed with no thread —
+    // the call is refused, not run without a deadline.
+    var wd: CallWatchdog = .{ .force_spawn_fail_for_test = true };
+    defer wd.deinit();
+    const outcome = wd.arm(0, DEFAULT_DEADLINE_MS);
+    try std.testing.expectEqual(ArmOutcome.watchdog_unavailable, outcome);
+    try std.testing.expect(!wd.armed);
+    try std.testing.expect(wd.thread == null);
+
+    // Recovery: once the forced-failure flag clears, a subsequent arm succeeds
+    // and spins up the real thread (proves the failure path didn't wedge state).
+    wd.force_spawn_fail_for_test = false;
+    try std.testing.expectEqual(ArmOutcome.armed, wd.arm(0, DEFAULT_DEADLINE_MS));
+    try std.testing.expect(wd.armed);
+    wd.disarm();
+}

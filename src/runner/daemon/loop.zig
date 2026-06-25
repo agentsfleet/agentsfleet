@@ -27,10 +27,6 @@ const log = logging.scoped(.fleet_runner);
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
-/// Backoff (ms) on control-plane transport errors; lease polls use server-supplied retry_after_ms.
-const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
-/// Consecutive heartbeat errors before escalating the sleep multiplier.
-const HEARTBEAT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
 /// One event for a graceful daemon stop; the `reason` field discriminates the
 /// trigger (signal drain, fleet stop, fleet drain). Named per RULE UFS (3 sites).
 const EVENT_SERVER_STOPPED = "server_stopped";
@@ -101,8 +97,10 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
         const hb = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
             heartbeat_errors += 1;
             log.warn("heartbeat_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err), .consecutive = heartbeat_errors });
-            const mult: u64 = if (heartbeat_errors >= HEARTBEAT_MAX_CONSECUTIVE_ERRORS) heartbeat_errors else 1;
-            sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS * mult);
+            // Bounded+jittered backoff (M100): exponential in the consecutive
+            // error count, capped at MAX_BACKOFF_MS — never the old unbounded
+            // `2s * heartbeat_errors` ramp. attempt is 0-based (first error → ~base).
+            sleepMs(io, constants.backoff.ms(heartbeat_errors - 1));
             continue;
         };
         heartbeat_errors = 0;
@@ -140,7 +138,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, cfg: Config, env_map: *cons
 pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runner_token: []const u8, cfg: Config, env_map: *const std.process.Environ.Map) void {
     const lease_parsed = cp.lease(alloc, runner_token, cfg.cp_deadlines.default_ms) catch |err| {
         log.warn("lease_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
-        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
+        sleepMs(io, constants.backoff.ms(0));
         return;
     };
     defer lease_parsed.deinit();
@@ -194,7 +192,7 @@ fn executeAndReport(
     // persistent failure (e.g. an unwritable workspace base) hot-spins the
     // worker's poll loop — amplified ×worker_count under the pool.
     const workspace_path = prepareWorkspace(io, &ws_buf, cfg.workspace_base, payload.lease_id) orelse {
-        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS);
+        sleepMs(io, constants.backoff.ms(0));
         return;
     };
     defer cleanupWorkspace(io, workspace_path);
@@ -257,7 +255,7 @@ fn executeAndReport(
         .checkpoint = .{ .last_event_id = payload.event.event_id, .last_response = result.content },
     }, cfg.cp_deadlines.report_ms) catch |err| {
         log.err("report_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .lease_id = payload.lease_id, .err = @errorName(err) });
-        sleepMs(io, TRANSPORT_ERROR_BACKOFF_MS); // back off so a down report endpoint can't hot-spin the pool
+        sleepMs(io, constants.backoff.ms(0)); // back off so a down report endpoint can't hot-spin the pool
         return;
     };
 

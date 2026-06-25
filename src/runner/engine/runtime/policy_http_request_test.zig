@@ -17,6 +17,14 @@ const PolicyHttpRequestTool = @import("policy_http_request.zig");
 const context_budget = @import("../context_budget.zig");
 
 const NETWORK_DISABLED: []const u8 = "Network disabled in tests";
+const BLOCKED_LOCAL: []const u8 = "Blocked local/private host";
+
+/// A globally-routable IP LITERAL. `resolveConnectHost` classifies it as global
+/// and returns it without any DNS lookup, so "reaches inner tool" assertions stay
+/// hermetic + offline-safe now that the inner allowlist is empty and every host
+/// flows through the SSRF resolve/pin path (M100). A hostname here would
+/// trigger a real getAddressList — flaky in CI, slow, network-dependent.
+const GLOBAL_HOST: []const u8 = "8.8.8.8";
 
 const k_url: []const u8 = "url";
 const k_headers: []const u8 = "headers";
@@ -25,6 +33,9 @@ fn buildSecretsMap(arena: std.mem.Allocator) !std.json.Value {
     var fly: std.json.ObjectMap = .empty;
     try fly.put(arena, "api_token", .{ .string = "FlyTokenXyz" });
     try fly.put(arena, "host", .{ .string = "api.fly.dev" });
+    // A global IP literal as a secret host — substitutes to a host that reaches
+    // the inner tool deterministically (no DNS) under the new SSRF wiring.
+    try fly.put(arena, "global", .{ .string = GLOBAL_HOST });
     var top: std.json.ObjectMap = .empty;
     try top.put(arena, "fly", .{ .object = fly });
     return .{ .object = top };
@@ -50,13 +61,13 @@ fn newPolicy(allow: []const []const u8, secrets: ?std.json.Value) context_budget
 }
 
 fn newTool(policy: *const context_budget.ExecutionPolicy) PolicyHttpRequestTool {
-    // Mirror the production wiring (`tool_builders.buildHttpRequest`):
-    // pass the outer allowlist down so NullClaw treats these hosts as
-    // operator-trusted and skips SSRF + builtin.is_test fires the
-    // `NETWORK_DISABLED` short-circuit deterministically.
+    // Mirror the production wiring (`tool_builders.buildHttpRequest`, M100 §2):
+    // the inner allowlist is EMPTY, so every host the outer exact-match gate
+    // admits flows through NullClaw's `resolveConnectHost` (private-IP reject +
+    // DNS-rebind pin). The outer `hostInAllowlist` stays authoritative.
     return .{
         .policy = policy,
-        .inner = .{ .allowed_domains = policy.network_policy.allow },
+        .inner = .{ .allowed_domains = &.{} },
     };
 }
 
@@ -78,16 +89,18 @@ test "host not in allowlist returns host_not_allowed" {
     try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
 }
 
-test "host in allowlist passes through to inner tool" {
+test "host in allowlist (global IP) passes through to inner tool" {
     const alloc = std.testing.allocator;
 
-    const allow = [_][]const u8{"api.fly.dev"};
+    // Allowlisted global host → outer gate admits → inner SSRF resolve passes
+    // (global IP) → reaches NullClaw's is_test short-circuit (NETWORK_DISABLED).
+    const allow = [_][]const u8{GLOBAL_HOST};
     const policy = newPolicy(&allow, null);
     var t = newTool(&policy);
 
     var args: JsonObjectMap = .empty;
     defer args.deinit(alloc);
-    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    try args.put(alloc, k_url, .{ .string = "https://8.8.8.8/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -107,13 +120,13 @@ test "substitution runs before allowlist check" {
     const arena = arena_state.allocator();
 
     const sm = try buildSecretsMap(arena);
-    const allow = [_][]const u8{"api.fly.dev"};
+    const allow = [_][]const u8{GLOBAL_HOST};
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
     var args: JsonObjectMap = .empty;
     defer args.deinit(alloc);
-    try args.put(alloc, k_url, .{ .string = "https://${secrets.fly.host}/v1/apps" });
+    try args.put(alloc, k_url, .{ .string = "https://${secrets.fly.global}/v1/apps" });
 
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
@@ -187,7 +200,7 @@ test "header values get substituted (success path reaches inner)" {
     const arena = arena_state.allocator();
 
     const sm = try buildSecretsMap(arena);
-    const allow = [_][]const u8{"api.fly.dev"};
+    const allow = [_][]const u8{GLOBAL_HOST};
     const policy = newPolicy(&allow, sm);
     var t = newTool(&policy);
 
@@ -197,7 +210,7 @@ test "header values get substituted (success path reaches inner)" {
 
     var args: JsonObjectMap = .empty;
     defer args.deinit(alloc);
-    try args.put(alloc, k_url, .{ .string = "https://api.fly.dev/v1/apps" });
+    try args.put(alloc, k_url, .{ .string = "https://8.8.8.8/v1/apps" });
     try args.put(alloc, k_headers, .{ .object = headers });
 
     const r = try t.execute(alloc, args);
@@ -244,6 +257,60 @@ test "empty allowlist denies every host" {
     defer freeResult(alloc, r);
     try std.testing.expect(!r.success);
     try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+}
+
+test "tenant host resolving to a private/link-local IP is rejected (M100)" {
+    // The exfil hole §2 closes: a TENANT-declared allowlist entry that points at
+    // a private/loopback/metadata IP used to skip SSRF and get dialed. With the
+    // inner allowlist empty, every admitted host flows through resolveConnectHost,
+    // so these are now blocked. IP literals → deterministic, no DNS.
+    const alloc = std.testing.allocator;
+    const hostile = [_][]const u8{
+        "169.254.169.254", // cloud metadata (link-local)
+        "127.0.0.1", // loopback
+        "10.0.0.1", // RFC1918 private
+    };
+    for (hostile) |h| {
+        const allow = [_][]const u8{h}; // tenant explicitly listed it
+        const policy = newPolicy(&allow, null);
+        var t = newTool(&policy);
+
+        const url = try std.fmt.allocPrint(alloc, "https://{s}/latest/meta-data", .{h});
+        defer alloc.free(url);
+        var args: JsonObjectMap = .empty;
+        defer args.deinit(alloc);
+        try args.put(alloc, k_url, .{ .string = url });
+
+        const r = try t.execute(alloc, args);
+        defer freeResult(alloc, r);
+        try std.testing.expect(!r.success);
+        // Reached the inner tool (passed the outer gate) and was blocked at the
+        // SSRF resolve — NOT a host_not_allowed and NOT NETWORK_DISABLED.
+        try std.testing.expectEqualStrings(BLOCKED_LOCAL, r.error_msg.?);
+    }
+}
+
+test "wildcard allowlist entry cannot widen the exact-match gate (M100)" {
+    // The outer gate is exact, case-insensitive. A `*`/`*.x` entry is matched
+    // literally — it can never admit a real host, so the inner subdomain matcher
+    // (the old split-brain) can't widen egress. Host is rejected at the outer
+    // gate, before any inner-tool / network path.
+    const alloc = std.testing.allocator;
+    const wildcards = [_][]const u8{ "*", "*.fly.dev", "8.8.8.*" };
+    for (wildcards) |w| {
+        const allow = [_][]const u8{w};
+        const policy = newPolicy(&allow, null);
+        var t = newTool(&policy);
+
+        var args: JsonObjectMap = .empty;
+        defer args.deinit(alloc);
+        try args.put(alloc, k_url, .{ .string = "https://8.8.8.8/v1/apps" });
+
+        const r = try t.execute(alloc, args);
+        defer freeResult(alloc, r);
+        try std.testing.expect(!r.success);
+        try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+    }
 }
 
 test "tool_name and tool_params match NullClaw http_request" {

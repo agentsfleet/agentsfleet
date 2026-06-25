@@ -34,9 +34,10 @@ const RO_BIND = "--ro-bind";
 /// `/etc/resolv.conf`. Bound only when `EgressScope` supplied host-side paths.
 const ETC_HOSTS = "/etc/hosts";
 const ETC_RESOLV = "/etc/resolv.conf";
-/// The `allow_all` posture (the default) re-shares the host network namespace
-/// so the lease has full egress while the filtered-veth enforcement
-/// (`allow_list_egress` + `establishEgress`) is unbuilt (lands 2.0.1).
+/// The `allow_all` posture (opt-in via `RUNNER_NETWORK_POLICY=allow_all`;
+/// no longer the unset fallback — that fails closed, M100 §2) re-shares the host
+/// network namespace so the lease has full egress while the filtered-veth
+/// enforcement (`allow_list_egress` + `establishEgress`) is unbuilt (lands 2.0.1).
 const SHARE_NET = "--share-net";
 
 /// Daemon env-var prefix that must NEVER reach a sandboxed child — the
@@ -136,9 +137,10 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 /// Append the bubblewrap wrapper: namespaces + ro system + rw workspace + the
 /// runner binary ro-bound (so the sandbox can exec it) + the per-lease resolver
 /// files when egress is enabled + `--`. INTERIM (until 2.0.1 option D): the
-/// `allow_all` posture re-shares the host netns (`--share-net`) so the lease has
-/// full egress while filtered-veth enforcement is unbuilt; `allow_list_egress`
-/// (strict) keeps its own netns and `deny_all` stays fully unshared (no network).
+/// opt-in `allow_all` posture re-shares the host netns (`--share-net`) so the
+/// lease has full egress while filtered-veth enforcement is unbuilt;
+/// `allow_list_egress` (strict / fail-closed default) keeps its own netns and
+/// `deny_all` stays fully unshared (no network).
 fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
@@ -165,10 +167,10 @@ fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]cons
     try dup(alloc, list, self_exe);
     try dup(alloc, list, "--chdir");
     try dup(alloc, list, workspace);
-    // The `allow_all` (default) posture re-shares the host netns so the lease
-    // has full egress; `allow_list_egress` keeps an unshared netns
-    // (egress arrives via the EgressScope veth) and `deny_all` has no network.
-    // Driven by the Policy strategy, not a hardcoded compare.
+    // The opt-in `allow_all` posture re-shares the host netns so the lease
+    // has full egress; `allow_list_egress` (the fail-closed default) keeps an
+    // unshared netns (egress arrives via the EgressScope veth) and `deny_all`
+    // has no network. Driven by the Policy strategy, not a hardcoded compare.
     if (net_policy.sharesHostNet()) try dup(alloc, list, SHARE_NET);
     // Resolver files: bind the parent-rendered static hosts + neutered
     // resolv.conf over the child's, so allowlist names resolve via /etc/hosts
