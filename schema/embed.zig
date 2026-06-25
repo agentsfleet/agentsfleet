@@ -1,5 +1,8 @@
 pub const core_foundation_sql = @embedFile("001_core_foundation.sql");
 pub const vault_sql = @embedFile("002_vault_schema.sql");
+// Created before platform_llm_keys (006) so that table can carry an inline FK
+// (provider, model) → core.model_caps(provider, model_id).
+pub const model_caps_sql = @embedFile("005_model_caps.sql");
 pub const platform_llm_keys_sql = @embedFile("006_platform_llm_keys.sql");
 pub const core_fleets_sql = @embedFile("007_core_fleets.sql");
 pub const core_fleet_sessions_sql = @embedFile("008_core_fleet_sessions.sql");
@@ -12,7 +15,6 @@ pub const api_keys_sql = @embedFile("015_api_keys.sql");
 pub const core_users_sql = @embedFile("016_core_users.sql");
 pub const tenant_billing_sql = @embedFile("017_tenant_billing.sql");
 pub const fleet_events_sql = @embedFile("018_fleet_events.sql");
-pub const model_caps_sql = @embedFile("019_model_caps.sql");
 pub const tenant_providers_sql = @embedFile("020_tenant_providers.sql");
 pub const fleet_runners_sql = @embedFile("021_fleet_runners.sql");
 pub const fleet_runner_leases_sql = @embedFile("022_fleet_runner_leases.sql");

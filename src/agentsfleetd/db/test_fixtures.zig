@@ -185,12 +185,12 @@ const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
 /// PLATFORM_DEFAULT_CAP_TOKENS constants were deleted), so a row without them
 /// resolves to PlatformKeyMissing → tenant_resolve_failed. These values match
 /// what the pre-M100 constants resolved to, keeping every lease-path test stable.
-/// Catalogue-free by design: resolvePlatformDefault reads model+cap straight off
-/// this row and never joins core.model_caps, so no seeded catalogue row is needed.
-/// CAVEAT: because the pair is uncatalogued, a platform lease through this fixture
-/// is billed run-fee-only (rate-cache MISS), not token tiers — a token-tier
-/// billing assertion must seed its own model_caps row (see
-/// service_token_splits_wire_test) rather than rely on this default.
+/// A matching core.model_caps row (zero token rates) is seeded first so the
+/// fk_platform_llm_keys_model FK is satisfied. Zero rates keep the lease billed
+/// run-fee-only (the cache resolves run-fee + 0 token nanos) — identical $ to the
+/// pre-FK rate-cache-MISS behaviour, minus the latent lease-issue panic. A
+/// token-tier billing assertion still seeds its OWN (provider, model) pair with
+/// real rates (see service_token_splits_wire_test), not this default.
 const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
 const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
 
@@ -228,6 +228,21 @@ pub fn seedPlatformProviderWithKey(
     const tenant_billing = @import("../state/tenant_billing.zig");
     const id_format = @import("../types/id_format.zig");
     const model_rate_cache = @import("../state/model_rate_cache.zig");
+
+    // The catalogue row the platform default points at — required by
+    // fk_platform_llm_keys_model. Zero token rates keep the lease run-fee-only
+    // (cache resolves run-fee + 0 token nanos), matching the pre-FK MISS path.
+    // Seeded BEFORE populate() so the cache picks it up (no lease-issue panic).
+    const caps_uid = try id_format.generateFleetId(alloc);
+    defer alloc.free(caps_uid);
+    _ = try conn.exec(
+        \\INSERT INTO core.model_caps
+        \\  (uid, model_id, provider, context_cap_tokens,
+        \\   input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
+        \\   created_at_ms, updated_at_ms)
+        \\VALUES ($1::uuid, $2, $3, $4, 0, 0, 0, $5, $5)
+        \\ON CONFLICT (provider, model_id) DO NOTHING
+    , .{ caps_uid, TEST_PLATFORM_MODEL, TEST_PROVIDER_NAME, TEST_PLATFORM_CAP_TOKENS, clock.nowMillis() });
 
     // Populate the process-global model rate cache from core.model_caps so
     // computeStageCharge() can resolve the platform default model. The
