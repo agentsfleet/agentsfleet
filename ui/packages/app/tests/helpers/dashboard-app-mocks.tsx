@@ -87,7 +87,13 @@ export function fleetActionsMock() {
 }
 
 export function tenantBillingMock() {
-  return { getTenantBilling: getTenantBillingMock, listTenantBillingCharges: listTenantBillingChargesMock };
+  return {
+    getTenantBilling: getTenantBillingMock,
+    // M101: routes read billing through the cache()-wrapped reader; both names
+    // resolve to the same mock fn so existing setups on `getTenantBillingMock` apply.
+    getTenantBillingCached: getTenantBillingMock,
+    listTenantBillingCharges: listTenantBillingChargesMock,
+  };
 }
 
 export function tenantProviderMock() {

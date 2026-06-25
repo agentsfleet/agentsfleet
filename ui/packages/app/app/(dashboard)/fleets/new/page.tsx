@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@agentsfleet/design-system";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { listFleetTemplatesCached } from "@/lib/api/fleet-bundles";
 import { listCredentials } from "@/lib/api/credentials";
 import { InstallFleet } from "./InstallFleet";
@@ -22,8 +22,21 @@ export default async function InstallFleetPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) {
+  const params = await searchParams;
+  const result = await withWorkspaceScope(token, async (workspaceId) => {
+    const [templates, credentialNames] = await Promise.all([
+      listFleetTemplatesCached(token)
+        .then((response) => response.items)
+        .catch(() => []),
+      listCredentials(workspaceId, token)
+        .then((response) => response.credentials.map((credential) => credential.name))
+        // null (not []) when the vault read fails: the preview must not mistake an
+        // unreadable vault for an empty one and falsely gate create.
+        .catch(orFallback(null)),
+    ]);
+    return { workspaceId, templates, credentialNames };
+  });
+  if (!result) {
     return (
       <div>
         <PageHeader>
@@ -35,18 +48,7 @@ export default async function InstallFleetPage({
       </div>
     );
   }
-
-  const [templates, credentialNames, params] = await Promise.all([
-    listFleetTemplatesCached(token)
-      .then((response) => response.items)
-      .catch(() => []),
-    listCredentials(workspace.id, token)
-      .then((response) => response.credentials.map((credential) => credential.name))
-      // null (not []) when the vault read fails: the preview must not mistake an
-      // unreadable vault for an empty one and falsely gate create.
-      .catch(() => null),
-    searchParams,
-  ]);
+  const { workspaceId, templates, credentialNames } = result;
   const initialTemplateId =
     typeof params.template === "string" ? params.template : undefined;
 
@@ -56,7 +58,7 @@ export default async function InstallFleetPage({
         <PageTitle>Install fleet</PageTitle>
       </PageHeader>
       <InstallFleet
-        workspaceId={workspace.id}
+        workspaceId={workspaceId}
         templates={templates}
         presentCredentialNames={credentialNames}
         initialTemplateId={initialTemplateId}

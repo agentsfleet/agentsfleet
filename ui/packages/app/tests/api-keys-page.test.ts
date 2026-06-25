@@ -22,6 +22,12 @@ vi.mock("@clerk/nextjs/server", () => ({ auth: authMock }));
 vi.mock("@/lib/workspace", () => ({
   listTenantWorkspacesCached: listTenantWorkspacesCachedMock,
   resolveActiveWorkspace: resolveActiveWorkspaceMock,
+  // The settings index renders via resolveActiveWorkspaceId — derive it from
+  // the legacy mock so existing `.mockResolvedValue({ id })` setups still drive it.
+  resolveActiveWorkspaceId: async (token: string) => {
+    const ws = (await resolveActiveWorkspaceMock(token)) as { id: string } | null;
+    return ws ? { id: ws.id, source: "cookie" as const } : null;
+  },
 }));
 
 // Partial mock — keep the real DEFAULT_SORT / DEFAULT_PAGE_SIZE the page passes.

@@ -5,7 +5,7 @@ import { Section } from "@agentsfleet/design-system";
 import type { ApiKeyListResponse } from "@/lib/api/api_keys";
 import SettingsTabs from "@/components/layout/SettingsTabs";
 import ApiKeyList, { type ApiKeyListHandle } from "./ApiKeyList";
-import CreateApiKeyDialog from "./CreateApiKeyDialog";
+import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 
 // Client wrapper so the header "New API key" action and the list share a refresh
 // without a full-route reload: the dialog calls the list's ref on create, which
@@ -20,7 +20,7 @@ export default function ApiKeysView({ initial }: { initial: ApiKeyListResponse }
           Keys let outside tools — n8n, Zapier, cron, CI — call this workspace&apos;s API. Each key is
           shown once when created, so store it somewhere safe.
         </p>
-        <CreateApiKeyDialog onCreated={() => listRef.current?.refresh()} />
+        <CreateApiKeyDialogDynamic onCreated={() => listRef.current?.refresh()} />
       </div>
       <Section asChild>
         <section aria-label="API keys">

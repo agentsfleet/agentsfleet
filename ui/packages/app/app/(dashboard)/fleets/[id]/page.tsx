@@ -2,10 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@agentsfleet/design-system";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
-import { getTenantBilling } from "@/lib/api/tenant_billing";
+import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import { listFleetEvents } from "@/lib/api/events";
 import { listApprovals } from "@/lib/api/approvals";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { resolveActiveWorkspaceId } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetApprovalsPanel from "@/components/domain/FleetApprovalsPanel";
@@ -28,14 +28,15 @@ export default async function FleetDetailPage({
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) notFound();
+  const active = await resolveActiveWorkspaceId(token);
+  if (!active) notFound();
+  const workspaceId = active.id;
 
   const [fleet, billing, eventsPage, pendingApprovals] = await Promise.all([
-    getFleet(workspace.id, id, token),
-    getTenantBilling(token).catch(() => null),
-    listFleetEvents(workspace.id, id, token, { limit: 20 }).catch(() => ({ items: [], next_cursor: null })),
-    listApprovals(workspace.id, token, { fleetId: id, limit: 50 }).catch(() => ({ items: [], next_cursor: null })),
+    getFleet(workspaceId, id, token),
+    getTenantBillingCached(token).catch(() => null),
+    listFleetEvents(workspaceId, id, token, { limit: 20 }).catch(() => ({ items: [], next_cursor: null })),
+    listApprovals(workspaceId, token, { fleetId: id, limit: 50 }).catch(() => ({ items: [], next_cursor: null })),
   ]);
   if (!fleet) notFound();
 
@@ -45,7 +46,7 @@ export default async function FleetDetailPage({
   // `webhook:<source>:*`; cron as `cron:*`.
   const triggerList = fleet.triggers ?? [];
   const lastDeliveryByKey = await resolveLastDeliveries(
-    workspace.id,
+    workspaceId,
     id,
     token,
     triggerList,
@@ -86,11 +87,11 @@ export default async function FleetDetailPage({
             <Badge variant="destructive">{pendingCountLabel} pending approval{pendingApprovals.items.length === 1 ? "" : "s"}</Badge>
           ) : null}
         </div>
-        <KillSwitch workspaceId={workspace.id} fleet={fleet} />
+        <KillSwitch workspaceId={workspaceId} fleet={fleet} />
       </PageHeader>
 
       <FleetInstallGate
-        workspaceId={workspace.id}
+        workspaceId={workspaceId}
         fleetId={fleet.id}
         fleetName={fleet.name}
         status={fleet.status}
@@ -110,7 +111,7 @@ export default async function FleetDetailPage({
         <section aria-label="Configuration">
           <SectionLabel>Configuration</SectionLabel>
           <FleetConfig
-            workspaceId={workspace.id}
+            workspaceId={workspaceId}
             fleetId={fleet.id}
             fleetName={fleet.name}
           />
@@ -120,7 +121,7 @@ export default async function FleetDetailPage({
       <Section asChild>
         <section aria-label="Pending approvals">
           <SectionLabel>Pending approvals</SectionLabel>
-          <FleetApprovalsPanel workspaceId={workspace.id} fleetId={fleet.id} token={token} />
+          <FleetApprovalsPanel workspaceId={workspaceId} fleetId={fleet.id} token={token} />
         </section>
       </Section>
 
@@ -128,7 +129,7 @@ export default async function FleetDetailPage({
         <section aria-label="Live activity">
           <SectionLabel>Live activity</SectionLabel>
           <FleetThreadDynamic
-            workspaceId={workspace.id}
+            workspaceId={workspaceId}
             fleetId={fleet.id}
             initial={eventsPage.items}
           />
@@ -139,7 +140,7 @@ export default async function FleetDetailPage({
         <section aria-label="Recent Activity">
           <SectionLabel>Recent Activity</SectionLabel>
           <EventsList
-            scope={{ kind: "fleet", workspaceId: workspace.id, fleetId: fleet.id }}
+            scope={{ kind: "fleet", workspaceId: workspaceId, fleetId: fleet.id }}
             initial={eventsPage}
           />
         </section>

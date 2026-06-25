@@ -18,6 +18,18 @@ vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnerEventsAction: listRunnerEventsActionMock,
 }));
 
+// The "Add runner" trigger ships behind a next/dynamic shim (M101 §5). For the
+// mint-flow interaction test (which renders RunnersView), alias the shim back
+// to the real dialog so the trigger + form mount synchronously instead of
+// behind the loading skeleton.
+vi.mock("@/components/domain/island-dynamic/AddRunnerDialogDynamic", async () => ({
+  default: (
+    await vi.importActual<{ default: unknown }>(
+      "@/app/(dashboard)/admin/runners/components/AddRunnerDialog",
+    )
+  ).default,
+}));
+
 const REGISTERED: RunnerListItem = {
   id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
   host_id: "web-fresh-1",

@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { PageHeader, PageTitle, Section } from "@agentsfleet/design-system";
 import type { RunnerListResponse } from "@/lib/api/runners";
 import RunnerList, { type RunnerListHandle } from "./RunnerList";
-import AddRunnerDialog from "./AddRunnerDialog";
+import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";
 
 // Client wrapper so the header "Add runner" action and the list can share a
 // refresh without a full-route reload: the dialog calls the list's ref on
@@ -15,7 +15,7 @@ export default function RunnersView({ initial }: { initial: RunnerListResponse }
     <div>
       <PageHeader>
         <PageTitle>Runners</PageTitle>
-        <AddRunnerDialog onCreated={() => listRef.current?.refresh()} />
+        <AddRunnerDialogDynamic onCreated={() => listRef.current?.refresh()} />
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
         Runners are hosts you enroll to execute Fleet work. Adding one mints an install token

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { EmptyState, PageHeader, PageTitle, Section, SectionLabel } from "@agentsfleet/design-system";
 import { ZapIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope, orFallback } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
 import { getModelCaps, type ModelCap } from "@/lib/api/model_caps";
@@ -20,8 +20,17 @@ export default async function ProviderSettingsPage() {
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
-  const workspace = await resolveActiveWorkspace(token);
-  if (!workspace) {
+  const result = await withWorkspaceScope(token, async (workspaceId) => {
+    const [providerResult, credentialsResp, catalogue] = await Promise.all([
+      getTenantProvider(token).catch((err) => ({ error: String(err) })),
+      listCredentials(workspaceId, token).catch(orFallback({ credentials: [] })),
+      getModelCaps()
+        .then((caps) => caps.models)
+        .catch(() => [] as ModelCap[]),
+    ]);
+    return { workspaceId, providerResult, credentialsResp, catalogue };
+  });
+  if (!result) {
     return (
       <div>
         <PageHeader description={PAGE_DESCRIPTION}>
@@ -35,14 +44,7 @@ export default async function ProviderSettingsPage() {
       </div>
     );
   }
-
-  const [providerResult, credentialsResp, catalogue] = await Promise.all([
-    getTenantProvider(token).catch((err) => ({ error: String(err) })),
-    listCredentials(workspace.id, token).catch(() => ({ credentials: [] })),
-    getModelCaps()
-      .then((caps) => caps.models)
-      .catch(() => [] as ModelCap[]),
-  ]);
+  const { workspaceId, providerResult, credentialsResp, catalogue } = result;
   // A provider-fetch error degrades the option cards to platform-default state
   // rather than failing the page; `provider` is null in that case.
   const provider = "error" in providerResult ? null : providerResult;
@@ -62,7 +64,7 @@ export default async function ProviderSettingsPage() {
             marked below.
           </p>
           <ProviderSelector
-            workspaceId={workspace.id}
+            workspaceId={workspaceId}
             currentMode={activeMode}
             currentCredentialRef={provider?.credential_ref ?? null}
             currentModel={provider?.model ?? ""}

@@ -2,7 +2,7 @@
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import { readPlatformAdminClaim } from "@/lib/auth/platform";
-import { resolveActiveWorkspace } from "@/lib/workspace";
+import { withWorkspaceScope } from "@/lib/workspace";
 import { ERROR_CODE } from "@/lib/errors";
 import { createCredential as apiCreateCredential } from "@/lib/api/credentials";
 import {
@@ -70,19 +70,24 @@ export async function setPlatformDefaultAction(body: {
 }): Promise<ActionResult<{ provider: string; model: string; active: boolean }>> {
   return asPlatformAdmin(() =>
     withToken(async (t) => {
-      const ws = await resolveActiveWorkspace(t);
-      if (!ws) throw new Error("No active workspace to store the platform key in");
+      // withWorkspaceScope resolves the active workspace from the 0-RTT
+      // cookie/claim hint and self-heals a stale hint against the authoritative
+      // list (M101 §2) — preserving the pre-M101 "always a valid workspace"
+      // contract this action relied on. Both writes run under the same id.
+      const result = await withWorkspaceScope(t, async (workspaceId) => {
+        const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
+        if (body.base_url) data.base_url = body.base_url;
+        await apiCreateCredential(workspaceId, { name: body.provider, data }, t);
 
-      const data: Record<string, unknown> = { provider: body.provider, api_key: body.api_key, model: body.model };
-      if (body.base_url) data.base_url = body.base_url;
-      await apiCreateCredential(ws.id, { name: body.provider, data }, t);
-
-      return setPlatformDefault(t, {
-        provider: body.provider,
-        source_workspace_id: ws.id,
-        model: body.model,
-        base_url: body.base_url,
+        return setPlatformDefault(t, {
+          provider: body.provider,
+          source_workspace_id: workspaceId,
+          model: body.model,
+          base_url: body.base_url,
+        });
       });
+      if (!result) throw new Error("No active workspace to store the platform key in");
+      return result;
     }),
   );
 }

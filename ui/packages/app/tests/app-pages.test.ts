@@ -57,6 +57,8 @@ vi.mock("lucide-react", () => ({
 
 vi.mock("@/lib/workspace", () => ({
   resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
+  resolveActiveWorkspaceId: vi.fn().mockResolvedValue(null),
+  withWorkspaceScope: vi.fn().mockResolvedValue(null),
   listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 }));
 
