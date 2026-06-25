@@ -59,6 +59,10 @@ const Job = struct {
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,
+    /// Optional drain handle — `finish()`ed exactly once on worker exit so a
+    /// harness can `wait()` for in-flight workers before tearing down the pool.
+    /// Null in production (no graceful pool teardown to race).
+    wg: ?*constants.WaitGroup = null,
 };
 
 fn allocator() std.mem.Allocator {
@@ -73,13 +77,21 @@ pub fn spawn(
     queue: *queue_redis.Client,
     workspace_id: []const u8,
     fleet_id: []const u8,
+    wg: ?*constants.WaitGroup,
 ) !void {
     const job = try prepareJob(pool, queue, workspace_id, fleet_id);
     errdefer freeJob(job);
+    job.wg = wg;
+
+    // Register BEFORE the spawn so a harness that drains immediately after this
+    // returns observes the worker; the matching finish() is the worker's last act
+    // (or the errdefer below if the spawn itself fails).
+    if (wg) |w| w.start();
+    errdefer if (wg) |w| w.finish();
 
     const thread = try std.Thread.spawn(.{}, worker, .{job});
     thread.detach();
-    // The worker owns `job` now; the errdefer above does not fire because the
+    // The worker owns `job` now; the errdefers above do not fire because the
     // spawn succeeded and no error path remains.
 }
 
@@ -112,7 +124,11 @@ fn freeJob(job: *Job) void {
 }
 
 /// Detached entrypoint: run the progression, then free the job unconditionally.
+/// The drain handle (if any) is `finish()`ed last — after the job's pool work is
+/// done — so a harness `wait()`ing on it never frees the pool under the worker.
 fn worker(job: *Job) void {
+    const wg = job.wg;
+    defer if (wg) |w| w.finish();
     defer freeJob(job);
     runProgression(job);
 }

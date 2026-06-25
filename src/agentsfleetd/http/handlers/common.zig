@@ -84,6 +84,13 @@ pub const Context = struct {
     /// startup (the credit gate reads this, not the env, per request). Defaults
     /// so test/fixture Contexts that omit it get the production default.
     balance_policy: balance_policy.Policy = balance_policy.DEFAULT,
+    /// Optional drain handle for detached install-progression workers (fleet
+    /// create spawns one per fleet). Production leaves it null — the process
+    /// exits without a graceful pool teardown, so the detached workers are
+    /// harmless. Integration harnesses set it so deinit() can wait for in-flight
+    /// workers BEFORE freeing the pool, closing the use-after-free a worker would
+    /// hit calling pool.acquire() after teardown.
+    install_wg: ?*constants.WaitGroup = null,
 };
 
 /// Parse traceparent header from request, or generate a root trace context.

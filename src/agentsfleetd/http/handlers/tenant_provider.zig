@@ -254,17 +254,35 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const
             .credential_ref = cred_ref,
         };
     }
-    // Synth platform default for tenants with no row.
+    // No explicit row → the tenant runs on the live platform default. Source it
+    // from the active platform key row (provider/model/cap), not a constant, so
+    // this view tracks whatever the admin set in /admin/models.
     const mode = try alloc.dupe(u8, S_PLATFORM);
     errdefer alloc.free(mode);
-    const provider = try alloc.dupe(u8, "fireworks");
+
+    if (try tenant_provider.platformDefaultView(alloc, conn)) |dv| {
+        var view = dv;
+        errdefer view.deinit(alloc);
+        return .{
+            .mode = mode,
+            .provider = view.provider,
+            .model = view.model,
+            .context_cap_tokens = view.context_cap_tokens,
+            .credential_ref = null,
+        };
+    }
+
+    // No platform default configured yet — report platform mode with empty
+    // provider/model so the dashboard shows "not configured" rather than a
+    // stale hardcoded model.
+    const provider = try alloc.dupe(u8, "");
     errdefer alloc.free(provider);
-    const model = try alloc.dupe(u8, tenant_provider.PLATFORM_DEFAULT_MODEL);
+    const model = try alloc.dupe(u8, "");
     return .{
         .mode = mode,
         .provider = provider,
         .model = model,
-        .context_cap_tokens = tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS,
+        .context_cap_tokens = 0,
         .credential_ref = null,
     };
 }

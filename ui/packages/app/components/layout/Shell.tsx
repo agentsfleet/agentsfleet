@@ -65,6 +65,7 @@ const CONFIGURATION_NAV: NavEntry[] = [
 // the routes, so this is discoverability, not the security boundary).
 const PLATFORM_NAV: NavEntry[] = [
   { label: "Runners", href: "/admin/runners", icon: ServerIcon },
+  { label: "Model catalogue", href: "/admin/models", icon: CpuIcon },
 ];
 
 const ORGANIZATION_NAV: NavEntry[] = [

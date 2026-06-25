@@ -18,6 +18,7 @@ const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
+const admin_models = @import("handlers/admin/model_caps_admin.zig");
 const memory = @import("handlers/memory/handler.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
@@ -193,6 +194,24 @@ pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.
         return;
     }
     admin_keys.innerDeleteAdminPlatformKey(hx.*, req, route.delete_admin_platform_key);
+}
+
+pub fn invokeAdminModels(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    switch (req.method) {
+        .GET => admin_models.innerGetAdminModels(hx.*, req),
+        .POST => admin_models.innerPostAdminModel(hx.*, req),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
+}
+
+pub fn invokeAdminModelById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const uid = route.admin_model_by_id;
+    switch (req.method) {
+        .PATCH => admin_models.innerPatchAdminModel(hx.*, req, uid),
+        .DELETE => admin_models.innerDeleteAdminModel(hx.*, req, uid),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 // ── Webhooks — split to route_table_invoke_webhooks.zig (RULE FLL) ──────────

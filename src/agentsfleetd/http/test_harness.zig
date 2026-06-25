@@ -96,6 +96,12 @@ pub const TestHarness = struct {
     /// `bringUpServer` retries on a fresh port instead of the thread panicking
     /// the whole process.
     bind_failed: std.atomic.Value(bool) = .{ .raw = false },
+    /// Drains detached install-progression workers (spawned by fleet create)
+    /// before `deinit()` frees the pool + queue they hold. Without it a worker
+    /// mid-`flipToActive` calls `pool.acquire()` on a freed pool → segfault — a
+    /// timing-flaky crash under the parallel test runner. `ctx.install_wg` points
+    /// here so `create_install_steps.spawn` registers each worker.
+    install_wg: constants.WaitGroup = .{},
 
     /// Connect Redis using the same env var `serve.zig` uses (REDIS_URL_API,
     /// role .api) — the harness simulates the API server. Returns the raw
@@ -208,6 +214,7 @@ pub const TestHarness = struct {
             .ready_max_queue_depth = null,
             .ready_max_queue_age_ms = null,
             .telemetry = &h.telemetry,
+            .install_wg = &h.install_wg,
         };
         h.registry = server_bringup.defaultRegistry(h, cfg);
         try cfg.configureRegistry(&h.registry, h);
@@ -265,6 +272,13 @@ pub const TestHarness = struct {
         self.hub.deinit();
         self.streams.deinit();
         self.verifier.deinit();
+        // The server is fully stopped + deinit'd above, so no handler can spawn
+        // another install worker. Drain any already-detached worker before
+        // freeing the queue + pool it borrows — a worker mid-flipToActive
+        // otherwise acquires a freed pool (segfault, flaky under the parallel
+        // runner). page/c-allocator-backed job memory is process-stable, so only
+        // the queue + pool lifetimes need this barrier.
+        self.install_wg.wait();
         // Redis-backed SessionStore is a pure facade — no per-instance
         // teardown. `queue.deinit()` below releases the underlying pool.
         if (self.has_redis) self.queue.deinit();

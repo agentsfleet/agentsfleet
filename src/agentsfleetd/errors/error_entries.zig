@@ -138,6 +138,9 @@ pub const ENTRIES = [_]Entry{
         "or request the catalogue be extended."),
     e("UZ-PROVIDER-005", .bad_request, "Custom endpoint base_url invalid or unsafe", "An openai-compatible credential needs a valid `base_url`: it must use https and must not target a " ++
         "loopback, private, link-local, or cloud-metadata host. A non-openai-compatible provider must not carry a `base_url`."),
+    e("UZ-PROVIDER-006", .not_found, "Catalogue model not found", "No core.model_caps row matches this id. List the catalogue to find a valid id, or add the model first."),
+    e("UZ-PROVIDER-007", .conflict, "Catalogue model is the active platform default", "This model is the active platform default. Point the default at another catalogued model before deleting it."),
+    e("UZ-PROVIDER-008", .conflict, "Catalogue model already exists", "A catalogue row for this provider and model already exists. Edit the existing row instead of adding a duplicate."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     // ── STARTUP ──────────────────────────────────────────────────────────────
     e("UZ-STARTUP-001", .internal_server_error, "Environment check failed", "Required environment variables are missing. Run 'agentsfleetd doctor' to see which ones."),
