@@ -46,9 +46,16 @@ pub fn main(init: std.process.Init) void {
     const io = init.io;
     const env_map = init.environ_map;
 
-    var gpa: std.heap.DebugAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    // Invariant 5: Debug keeps the leak-checking allocator; a release build uses
+    // the fast thread-safe smp_allocator (the daemon must not run the
+    // DebugAllocator in production). `deinit` runs unconditionally — a no-op when
+    // nothing was allocated through it in release.
+    var debug_gpa: std.heap.DebugAllocator(.{}) = .{};
+    defer _ = debug_gpa.deinit();
+    const alloc = switch (allocatorKind(builtin.mode)) {
+        .debug_leak_checked => debug_gpa.allocator(),
+        .release_smp => std.heap.smp_allocator,
+    };
 
     // argv is resolved once into the process arena (cleaned automatically on
     // exit); operator subcommands and the child-execute dispatch read this
@@ -140,4 +147,21 @@ test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
     try std.testing.expect(devNoneForbidden(.ReleaseSafe, sandboxTierFromStr("garbage"))); // unknown → dev_none
     try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
     try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
+}
+
+/// Allocator selected by build mode (M100, Invariant 5). Debug keeps the
+/// leak-checking DebugAllocator; a release build uses the fast thread-safe
+/// `smp_allocator` — the production daemon must not pay the DebugAllocator's
+/// bookkeeping cost. Pure so the choice is unit-testable.
+const AllocatorKind = enum { debug_leak_checked, release_smp };
+
+fn allocatorKind(mode: std.builtin.OptimizeMode) AllocatorKind {
+    return if (mode == .Debug) .debug_leak_checked else .release_smp;
+}
+
+test "release builds select the non-Debug allocator (Invariant 5)" {
+    try std.testing.expectEqual(AllocatorKind.debug_leak_checked, allocatorKind(.Debug));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSafe));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseFast));
+    try std.testing.expectEqual(AllocatorKind.release_smp, allocatorKind(.ReleaseSmall));
 }
