@@ -13,6 +13,7 @@ test {
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
     _ = @import("daemon/loop_test.zig");
+    _ = @import("daemon/lease_run.zig");
     _ = @import("daemon/forwarders.zig");
     _ = @import("daemon/worker_pool.zig");
     _ = @import("daemon/worker_pool_test.zig");
