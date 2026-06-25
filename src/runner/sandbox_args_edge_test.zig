@@ -18,15 +18,15 @@ const sandbox_args = @import("sandbox_args.zig");
 const child_exec = @import("child_exec.zig");
 const Config = @import("daemon/config.zig");
 
-const DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
-const LANDLOCK_FULL = @tagName(contract.protocol.SandboxTier.landlock_full);
-const CONTAINER_NESTED = @tagName(contract.protocol.SandboxTier.container_nested);
+const DEV_NONE = contract.protocol.SandboxTier.dev_none;
+const LANDLOCK_FULL = contract.protocol.SandboxTier.landlock_full;
+const CONTAINER_NESTED = contract.protocol.SandboxTier.container_nested;
 const WORKSPACE = "/tmp/fleet-ws-edge";
 
 /// Build a daemon Config struct literal for argv tests. buildArgv reads only
 /// `sandbox_tier`; the other slices are inert placeholders, never freed here
 /// (no Config.deinit — these are static literals, not allocator-owned).
-fn cfgWithTier(tier: []const u8) Config {
+fn cfgWithTier(tier: contract.protocol.SandboxTier) Config {
     return Config{
         .control_plane_url = "http://127.0.0.1:8080",
         .runner_token = "agt_rtest",
@@ -151,7 +151,7 @@ test "should omit --share-net under the deny_all network policy on Linux" {
 
 /// `allow_all` (opt-in posture; no longer the unset fallback — M100 §2)
 /// re-shares the host network (`--share-net`).
-fn cfgAllowAll(tier: []const u8) Config {
+fn cfgAllowAll(tier: contract.protocol.SandboxTier) Config {
     var c = cfgWithTier(tier);
     c.network_policy = .allow_all;
     return c;
@@ -159,7 +159,7 @@ fn cfgAllowAll(tier: []const u8) Config {
 
 /// `allow_list_egress` — the kernel-enforced posture (own netns, no
 /// `--share-net`).
-fn cfgAllowListEgress(tier: []const u8) Config {
+fn cfgAllowListEgress(tier: contract.protocol.SandboxTier) Config {
     var c = cfgWithTier(tier);
     c.network_policy = .allow_list_egress; // strict, kernel-enforced
     return c;

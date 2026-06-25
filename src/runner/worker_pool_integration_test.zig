@@ -231,7 +231,7 @@ fn stubCfg(url: []const u8) Config {
         .control_plane_url = url,
         .runner_token = contract.protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 8,
         .host_id = "pool-integ-host",
-        .sandbox_tier = "dev_none",
+        .sandbox_tier = .dev_none,
         .workspace_base = "/tmp/agentsfleet-runner-pool-integ",
         .network_policy = .deny_all_egress,
         .registry_allowlist = &.{},

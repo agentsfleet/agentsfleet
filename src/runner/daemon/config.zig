@@ -22,8 +22,9 @@ runner_token: []const u8,
 /// host_id is set server-side when the operator pre-mints the token.
 host_id: []const u8,
 /// Self-reported isolation tier the daemon enforces locally (the dev_none gate
-/// + sandbox setup). Defaults to `dev_none`.
-sandbox_tier: []const u8,
+/// + sandbox setup). Parsed to the enum at load (M100) — no stringly-typed
+/// tier compares downstream. Unset/unrecognized → `dev_none`.
+sandbox_tier: contract.protocol.SandboxTier,
 /// Base directory under which per-lease workspace subdirs are created.
 workspace_base: []const u8,
 /// Egress policy for sandboxed leases (`RUNNER_NETWORK_POLICY`), resolved once
@@ -70,9 +71,9 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         return ConfigError.MissingEnvVar;
     errdefer alloc.free(host_id);
 
-    const tier = (getOwned(env_map, alloc, ENV_RUNNER_SANDBOX_TIER) catch null) orelse
-        (alloc.dupe(u8, DEFAULT_SANDBOX_TIER) catch return ConfigError.OutOfMemory);
-    errdefer alloc.free(tier);
+    const tier_raw = getOwned(env_map, alloc, ENV_RUNNER_SANDBOX_TIER) catch null;
+    defer if (tier_raw) |raw| alloc.free(raw);
+    const tier = parseSandboxTier(tier_raw);
 
     const workspace_base = (getOwned(env_map, alloc, ENV_RUNNER_WORKSPACE_BASE) catch null) orelse
         (alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory);
@@ -193,7 +194,7 @@ pub fn deinit(self: Config) void {
     self.alloc.free(self.control_plane_url);
     self.alloc.free(self.runner_token);
     self.alloc.free(self.host_id);
-    self.alloc.free(self.sandbox_tier);
+    // sandbox_tier is now an enum (M100) — nothing to free.
     self.alloc.free(self.workspace_base);
     freeStrList(self.alloc, self.registry_allowlist);
 }
@@ -249,9 +250,17 @@ pub const ENV_RUNNER_REGISTRY_ALLOWLIST = "RUNNER_REGISTRY_ALLOWLIST";
 pub const MIN_CP_DEADLINE_MS: u31 = 100;
 pub const MAX_CP_DEADLINE_MS: u31 = 60_000;
 
-// Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
-// only tier that runs without isolation — dev default; prod must override.
-const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
+/// Parse `RUNNER_SANDBOX_TIER` into the enum (M100). Unset or unrecognized →
+/// `dev_none` (the only un-isolated tier); the main.zig release gate then
+/// refuses `dev_none` in a release build, so a typo fails closed. Pure-ish
+/// (logs the typo) — unit-tested without env.
+fn parseSandboxTier(raw: ?[]const u8) contract.protocol.SandboxTier {
+    const s = raw orelse return .dev_none;
+    return std.meta.stringToEnum(contract.protocol.SandboxTier, s) orelse {
+        log.warn("runner_sandbox_tier_invalid", .{ .error_code = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG, .raw = s, .fallback = @tagName(contract.protocol.SandboxTier.dev_none) });
+        return .dev_none;
+    };
+}
 const DEFAULT_WORKSPACE_BASE = "/tmp/agentsfleet-runner";
 
 /// Worker-pool sizing bounds (RULE UFS: the clamp is single-sourced). Default 1
@@ -320,4 +329,17 @@ test "parseRegistryAllowlist on null or whitespace-only yields an empty slice" {
     const r2 = try parseRegistryAllowlist(a, "  ,  ");
     defer freeStrList(a, r2);
     try std.testing.expectEqual(@as(usize, 0), r2.len);
+}
+
+test "parseSandboxTier maps env strings to the enum; unset/invalid fail closed to dev_none (M100)" {
+    const T = contract.protocol.SandboxTier;
+    try std.testing.expectEqual(T.landlock_full, parseSandboxTier("landlock_full"));
+    try std.testing.expectEqual(T.container_nested, parseSandboxTier("container_nested"));
+    try std.testing.expectEqual(T.macos_seatbelt, parseSandboxTier("macos_seatbelt"));
+    try std.testing.expectEqual(T.dev_none, parseSandboxTier("dev_none"));
+    // Unset → dev_none (the release gate then refuses it). Invalid → dev_none too.
+    try std.testing.expectEqual(T.dev_none, parseSandboxTier(null));
+    try std.testing.expectEqual(T.dev_none, parseSandboxTier("garbage"));
+    try std.testing.expectEqual(T.dev_none, parseSandboxTier(""));
+    try std.testing.expectEqual(T.dev_none, parseSandboxTier("LANDLOCK_FULL")); // case-sensitive enum names
 }

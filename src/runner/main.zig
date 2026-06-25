@@ -79,7 +79,7 @@ pub fn main(init: std.process.Init) void {
 
     log.info("server_started", .{
         .host_id = cfg.host_id,
-        .sandbox_tier = cfg.sandbox_tier,
+        .sandbox_tier = @tagName(cfg.sandbox_tier),
     });
 
     // M100: state the resolved egress posture at boot so "is egress open?"
@@ -92,8 +92,8 @@ pub fn main(init: std.process.Init) void {
     // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
     // rather than let it become the production default. Debug builds keep
     // dev_none for local development. `builtin.mode` matches agentsfleetd's dev gate.
-    if (devNoneForbidden(builtin.mode, sandboxTierFromStr(cfg.sandbox_tier))) {
-        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = cfg.sandbox_tier });
+    if (devNoneForbidden(builtin.mode, cfg.sandbox_tier)) {
+        log.err("dev_none_rejected_in_release_build", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .sandbox_tier = @tagName(cfg.sandbox_tier) });
         std.process.exit(1);
     }
 
@@ -128,12 +128,6 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     return registry.dispatch(argv, env_map, io, alloc, a1);
 }
 
-/// Parse sandbox tier from env string; defaults to `.dev_none` for unknown
-/// values. Single-sourced off the enum (RULE UFS) — no re-spelled tier literals.
-fn sandboxTierFromStr(s: []const u8) protocol.SandboxTier {
-    return std.meta.stringToEnum(protocol.SandboxTier, s) orelse .dev_none;
-}
-
 /// Startup security gate (Invariant 7): a release build refuses the no-isolation
 /// `dev_none` tier so it can never be the production default. Debug builds allow
 /// it for local development. Pure so the matrix is unit-testable.
@@ -144,7 +138,8 @@ fn devNoneForbidden(mode: std.builtin.OptimizeMode, tier: protocol.SandboxTier) 
 test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
     try std.testing.expect(devNoneForbidden(.ReleaseSafe, .dev_none));
     try std.testing.expect(devNoneForbidden(.ReleaseFast, .dev_none));
-    try std.testing.expect(devNoneForbidden(.ReleaseSafe, sandboxTierFromStr("garbage"))); // unknown → dev_none
+    // Unknown/typo'd tiers now parse to dev_none in config.parseSandboxTier
+    // (tested there), so they hit this same release refusal.
     try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
     try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
 }
