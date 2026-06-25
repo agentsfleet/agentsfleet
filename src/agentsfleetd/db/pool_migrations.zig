@@ -11,6 +11,7 @@ const error_codes = @import("../errors/error_registry.zig");
 const sql_splitter = @import("sql_splitter.zig");
 const migration_versions = @import("migration_versions.zig");
 const AppliedVersionSet = migration_versions.AppliedVersionSet;
+const migration_lock = @import("pool_migration_lock.zig");
 
 const log = logging.scoped(.db_migrate);
 
@@ -25,8 +26,6 @@ const MigrationState = types.MigrationState;
 
 const S_PG_ERROR = "pg_error";
 const S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI = "SELECT 1 FROM audit.schema_migration_failures LIMIT 1";
-
-const MigrationAdvisoryLockKey: i64 = 0x7A6F6D6269650001;
 
 // Stack scratch for reapOrphanedMigrationRows' IN-list (no heap): per-version
 // decimal width (incl. comma) × the version cap × live copies held at once
@@ -69,24 +68,6 @@ fn hasFailedMigrationRecords(conn: *Conn) !bool {
     ));
     defer result.deinit();
     return (try result.next()) != null;
-}
-
-fn tryAcquireMigrationLock(conn: *Conn) !bool {
-    var result = PgQuery.from(try conn.query("SELECT pg_try_advisory_lock($1)", .{MigrationAdvisoryLockKey}));
-    defer result.deinit();
-    const row = try result.next() orelse return false;
-    return row.get(bool, 0);
-}
-
-fn acquireMigrationLock(conn: *Conn) !void {
-    var result = PgQuery.from(try conn.query("SELECT pg_advisory_lock($1)", .{MigrationAdvisoryLockKey}));
-    defer result.deinit();
-    _ = try result.next();
-}
-
-fn releaseMigrationLock(conn: *Conn) void {
-    var result = PgQuery.from(conn.query("SELECT pg_advisory_unlock($1)", .{MigrationAdvisoryLockKey}) catch return);
-    result.deinit();
 }
 
 fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
@@ -264,8 +245,8 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
 
     var lock_available = true;
     if (applied_versions < migrations.len) {
-        lock_available = tryAcquireMigrationLock(conn) catch false;
-        if (lock_available) releaseMigrationLock(conn);
+        lock_available = migration_lock.tryAcquire(conn) catch false;
+        if (lock_available) migration_lock.release(conn);
     }
 
     return .{
@@ -293,11 +274,16 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
         return err;
     };
 
-    acquireMigrationLock(conn) catch |err| {
+    migration_lock.assertSessionConnection(conn) catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "migrate.assert_session");
+        return err;
+    };
+
+    migration_lock.acquire(conn) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "migrate.acquire_lock");
         return err;
     };
-    defer releaseMigrationLock(conn);
+    defer migration_lock.release(conn);
 
     var reap_scratch: [REAP_SCRATCH_BYTES]u8 = undefined;
     var reap_fba = std.heap.FixedBufferAllocator.init(&reap_scratch);
