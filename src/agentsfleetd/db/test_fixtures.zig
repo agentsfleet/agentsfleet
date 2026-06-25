@@ -180,6 +180,19 @@ pub fn teardownFleets(conn: *pg.Conn, workspace_id: []const u8) void {
 
 const TEST_PROVIDER_NAME = "test_fireworks";
 const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
+/// The platform default's model + context cap the seeded platform_llm_keys row
+/// carries. M100 sources these from the row (the old PLATFORM_DEFAULT_MODEL /
+/// PLATFORM_DEFAULT_CAP_TOKENS constants were deleted), so a row without them
+/// resolves to PlatformKeyMissing → tenant_resolve_failed. These values match
+/// what the pre-M100 constants resolved to, keeping every lease-path test stable.
+/// Catalogue-free by design: resolvePlatformDefault reads model+cap straight off
+/// this row and never joins core.model_caps, so no seeded catalogue row is needed.
+/// CAVEAT: because the pair is uncatalogued, a platform lease through this fixture
+/// is billed run-fee-only (rate-cache MISS), not token tiers — a token-tier
+/// billing assertion must seed its own model_caps row (see
+/// service_token_splits_wire_test) rather than rely on this default.
+const TEST_PLATFORM_MODEL = "accounts/fireworks/models/kimi-k2.6";
+const TEST_PLATFORM_CAP_TOKENS: i32 = 256_000;
 
 /// Set ENCRYPTION_MASTER_KEY in the process env so vault.storeJson /
 /// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
@@ -219,10 +232,9 @@ pub fn seedPlatformProviderWithKey(
     // Populate the process-global model rate cache from core.model_caps so
     // computeStageCharge() can resolve the platform default model. The
     // production server boots this from serve.zig; integration tests don't
-    // hit that path. Use page_allocator: the cache is process-global and
-    // outlives any single test, so a per-test allocator would be flagged as
-    // leaked. populate() deinits any prior cache before reseating.
-    try model_rate_cache.populate(std.heap.page_allocator, conn);
+    // hit that path. populate() owns the cache's process-lifetime memory
+    // internally and deinits any prior cache before reseating.
+    try model_rate_cache.populate(conn);
 
     // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
     var obj: std.json.ObjectMap = .empty;
@@ -236,13 +248,16 @@ pub fn seedPlatformProviderWithKey(
     defer alloc.free(key_id);
     const now_ms: i64 = clock.nowMillis();
     _ = try conn.exec(
-        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, true, $4, $4)
+        \\INSERT INTO core.platform_llm_keys
+        \\  (id, provider, source_workspace_id, model, context_cap_tokens, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, true, $6, $6)
         \\ON CONFLICT (provider) DO UPDATE
         \\SET source_workspace_id = EXCLUDED.source_workspace_id,
+        \\    model = EXCLUDED.model,
+        \\    context_cap_tokens = EXCLUDED.context_cap_tokens,
         \\    active = true,
         \\    updated_at = EXCLUDED.updated_at
-    , .{ key_id, TEST_PROVIDER_NAME, workspace_id, now_ms });
+    , .{ key_id, TEST_PROVIDER_NAME, workspace_id, TEST_PLATFORM_MODEL, TEST_PLATFORM_CAP_TOKENS, now_ms });
 
     // Starter grant — funds the receive + stage debits the writepath fires.
     try tenant_billing.insertStarterGrant(conn, TEST_TENANT_ID);

@@ -24,6 +24,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const pg = @import("pg");
 const resolver = @import("tenant_provider_resolver.zig");
+const credential_probe = @import("credential_probe.zig");
 
 pub const Mode = enum {
     const Self = @This();
@@ -38,14 +39,6 @@ pub const Mode = enum {
         };
     }
 };
-
-/// Platform-default model resolved when a tenant has no explicit
-/// tenant_providers row OR has an explicit row with mode=platform.
-pub const PLATFORM_DEFAULT_MODEL: []const u8 = "accounts/fireworks/models/kimi-k2.6";
-
-/// Platform-default context cap matching PLATFORM_DEFAULT_MODEL's row in
-/// core.model_caps. Kept in sync with schema/019_model_caps.sql.
-pub const PLATFORM_DEFAULT_CAP_TOKENS: u32 = 256_000;
 
 /// Resolved provider configuration for one event. The api_key field is
 /// process-internal — it never serializes into HTTP responses, logs,
@@ -111,7 +104,9 @@ pub fn resolveActiveProvider(
     defer if (row) |*r| @constCast(r).deinit(alloc);
 
     if (row == null or row.?.mode == .platform) {
-        return resolver.resolvePlatformDefault(alloc, conn, row);
+        // The platform default is sourced wholly from the active platform key row
+        // (live, per-lease) — the tenant's own snapshot is intentionally ignored.
+        return resolver.resolvePlatformDefault(alloc, conn);
     }
     return resolver.resolveSelfManaged(alloc, conn, tenant_id, row.?);
 }
@@ -133,7 +128,7 @@ pub fn upsertSelfManaged(
     model: []const u8,
     context_cap_tokens: u32,
 ) (ResolveError || anyerror)!void {
-    var probe = try resolver.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
+    var probe = try credential_probe.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
     defer probe.deinit(alloc);
 
     const now_ms: i64 = clock.nowMillis();
@@ -188,22 +183,56 @@ pub fn upsertPlatform(
         tenant_id,
         Mode.platform.label(),
         plk.provider,
-        PLATFORM_DEFAULT_MODEL,
-        @as(i32, @intCast(PLATFORM_DEFAULT_CAP_TOKENS)),
+        plk.model,
+        @as(i32, @intCast(plk.context_cap_tokens)),
         now_ms,
     });
 }
 
-pub const ProbedCredential = resolver.ProbedCredential;
+/// The active platform default's display fields (provider/model/cap) — no key,
+/// no vault touch. For the GET /v1/tenants/me/provider view a tenant with no
+/// explicit row falls back to. `null` when no platform default is configured.
+/// Caller owns the returned strings and must call .deinit(alloc).
+pub const PlatformDefaultView = struct {
+    const Self = @This();
+
+    provider: []u8,
+    model: []u8,
+    context_cap_tokens: u32,
+
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.provider);
+        alloc.free(self.model);
+    }
+};
+
+pub fn platformDefaultView(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+) (ResolveError || anyerror)!?PlatformDefaultView {
+    var plk = resolver.loadActivePlatformKey(alloc, conn) catch |err| switch (err) {
+        ResolveError.PlatformKeyMissing => return null,
+        else => return err,
+    };
+    defer plk.deinit(alloc);
+
+    const provider = try alloc.dupe(u8, plk.provider);
+    errdefer alloc.free(provider);
+    const model = try alloc.dupe(u8, plk.model);
+    return .{ .provider = provider, .model = model, .context_cap_tokens = plk.context_cap_tokens };
+}
+
+pub const ProbedCredential = credential_probe.ProbedCredential;
 
 /// The provider id that opts a self-managed credential into a custom
-/// OpenAI-compatible endpoint (re-exported from the resolver — the credential
-/// JSON's `provider` value, distinct from the runner's `custom:<url>` wire name).
-pub const OPENAI_COMPATIBLE_PROVIDER = resolver.OPENAI_COMPATIBLE_PROVIDER;
+/// OpenAI-compatible endpoint (re-exported from credential_probe — the
+/// credential JSON's `provider` value, distinct from the runner's `custom:<url>`
+/// wire name).
+pub const OPENAI_COMPATIBLE_PROVIDER = credential_probe.OPENAI_COMPATIBLE_PROVIDER;
 
 /// Validate a self-managed credential's provider⇔base_url pairing (pure; SSRF +
 /// https-checked). Re-exported for the §6 validation unit tests.
-pub const validateCredentialEndpoint = resolver.validateCredentialEndpoint;
+pub const validateCredentialEndpoint = credential_probe.validateCredentialEndpoint;
 
 /// Probe the tenant's self-managed credential and return the {provider, api_key,
 /// model} triplet. Used by the HTTP PUT handler to read the effective
@@ -216,7 +245,7 @@ pub fn probeSelfManaged(
     tenant_id: []const u8,
     credential_ref: []const u8,
 ) (ResolveError || anyerror)!ProbedCredential {
-    return resolver.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
+    return credential_probe.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
 }
 
 test {

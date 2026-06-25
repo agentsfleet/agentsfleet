@@ -33,6 +33,37 @@ pub const Mutex = struct {
     }
 };
 
+/// Counting barrier — `std.Thread.WaitGroup` is absent in this Zig, so it is
+/// rebuilt on the `Mutex`/`Condition` above. `start` registers a pending unit,
+/// `finish` retires one and wakes waiters when the count reaches zero, `wait`
+/// blocks until then. Reusable across rounds; the count is guarded so start/
+/// finish/wait are safe from any thread (detached workers `finish`, a teardown
+/// thread `wait`s).
+pub const WaitGroup = struct {
+    mutex: Mutex = .{},
+    cond: Condition = .{},
+    count: usize = 0,
+
+    pub fn start(self: *WaitGroup) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.count += 1;
+    }
+
+    pub fn finish(self: *WaitGroup) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.count -= 1;
+        if (self.count == 0) self.cond.broadcast();
+    }
+
+    pub fn wait(self: *WaitGroup) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        while (self.count != 0) self.cond.wait(&self.mutex);
+    }
+};
+
 /// Condition variable paired with `Mutex` (faithful `std.Io.Condition` wrapper).
 pub const Condition = struct {
     inner: std.Io.Condition = .init,

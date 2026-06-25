@@ -144,7 +144,7 @@ fn seedModelRates(conn: *pg.Conn) !void {
         \\   output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
         \\   updated_at_ms = EXCLUDED.updated_at_ms
     , .{ MODEL_CAPS_UID, MODEL, PROVIDER, MODEL_CONTEXT_CAP_TOKENS, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK, now_ms });
-    try model_rate_cache.populate(std.heap.page_allocator, conn);
+    try model_rate_cache.populate(conn);
 }
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
@@ -160,7 +160,7 @@ fn teardown(conn: *pg.Conn) void {
     // Drop this suite's catalogue row and reseat the process-global cache so
     // later suites in the same run never see the private pair.
     execIgnore(conn, "DELETE FROM core.model_caps WHERE provider = $1 AND model_id = $2", .{ PROVIDER, MODEL });
-    model_rate_cache.populate(std.heap.page_allocator, conn) catch |err|
+    model_rate_cache.populate(conn) catch |err|
         std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
     base.teardownTenant(conn);
     base.teardownWorkspace(conn, WORKSPACE_ID);
