@@ -2,7 +2,7 @@
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
-**Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
+**Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale OAuth client secret in `ZMB_CD_PROD/tailscale/oauth-secret`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
 Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `agentsfleet-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `agentsfleet-runner` daemon.)
 
@@ -116,12 +116,12 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" "ec
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 HOST=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/hostname")
 USER=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/deploy-user")
-TAILSCALE_AUTHKEY=$(op read "op://$VAULT_PROD/tailscale/authkey")
+TS_OAUTH_SECRET=$(op read "op://$VAULT_PROD/tailscale/oauth-secret")
 
 ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no "${USER}@${HOST}" << REMOTE
 set -euo pipefail
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --authkey "$TAILSCALE_AUTHKEY" --hostname zombie-dev-worker-ant
+sudo tailscale up --auth-key "${TS_OAUTH_SECRET}?ephemeral=false&preauthorized=true" --advertise-tags=tag:ci --hostname zombie-dev-worker-ant
 tailscale status
 REMOTE
 ```
