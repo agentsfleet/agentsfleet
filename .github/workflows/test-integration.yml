@@ -98,7 +98,7 @@ jobs:
   # pgroup). Kept a separate job so the env-filter / kill-tree / cgroup-fault
   # proofs actually execute on a Linux host rather than only compiling. Mirrors
   # the test-unit-agentsfleet-runner job: same CI container, same Zig 0.16.0 toolchain.
-  test-integration-agentsfleet-runner:
+  test-integration-kernel:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0

@@ -13,7 +13,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M99
 **Workstream:** 001
 **Date:** Jun 23, 2026
-**Status:** PENDING
+**Status:** DEFERRED
 **Priority:** P1 — operator-facing: a fleet can act on GitHub via a one-click Connect, and the platform stops forcing a hand-pasted Personal Access Token (PAT) as a custom secret. Also forestalls a design trap surfaced by Indy: per-connector minters bolted into agentsfleetd that do not scale.
 **Categories:** Application Programming Interface (API), Command-Line Interface (CLI), User Interface (UI)
 **Batch:** B1 — single workstream; suggested staging is the broker core + first driver + mint channel + bridge (§1–§4, backend) before the connector surfaces (§5–§6). Surfaces may split to M99_002 if the diff gets heavy.
@@ -22,6 +22,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Provenance:** agent-generated (interactive design session with Indy, Jun 23, 2026) — born from decoupling the GitHub connector out of M98_001 after stress-testing the token lifecycle (25h gap before first event, 24h-active fleet, single run > token lifetime, steer-after-6h with no trigger). Re-confirm at PLAN.
 
 **Canonical architecture:** `docs/AUTH.md` (the credential boundary — secrets ride the lease, the App private key is platform-side, the sandbox child holds no control-plane key) + `docs/architecture/runner_fleet.md` (daemon ↔ runner ↔ sandboxed-child model). This spec adds a daemon-side broker + a child→runner→daemon mint request; it introduces no new trust plane.
+
+> **⏸ DEFERRED — superseded before implementation.** The connectors / credential-broker design here is being reconceived as an **agent identity proxy** in a forthcoming spec. This file was never started (no branch, no code); it is parked in `done/` as a deferral record so the milestone number isn't silently dropped. **Do not revive this file** — re-spec under the agent-identity-proxy framing. The Indy-acked deferral quote is captured in the Pull Request's Session Notes (per the Deferral-discipline rule).
 
 ---
 
