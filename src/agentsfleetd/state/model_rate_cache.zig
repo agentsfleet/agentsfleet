@@ -1,17 +1,28 @@
 //! Process-singleton cache of per-model token rates.
 //!
 //! Populated at API server boot from core.model_caps; read on the hot path by
-//! tenant_billing.computeStageCharge under platform-managed posture. The cache
-//! is treated as read-only after boot — concurrent readers hit the StringHashMap
-//! without locks. A future refresh path (every hour, per spec) will need to add
-//! synchronization; until then any rate change requires an API restart.
+//! tenant_billing.computeStageCharge under platform-managed posture. The admin
+//! model-caps CRUD API calls populate() again after every mutation so a rate
+//! change is live with no restart.
+//!
+//! Concurrency: the process-global is guarded by a mutex. Hot-path readers
+//! (lookup_model_rate) take the lock and copy the ModelRate value out (the
+//! struct holds no pointers into the map), so the lock releases the moment the
+//! lookup returns — lookups never alias map memory across the unlock. populate()
+//! builds the fresh Cache OUTSIDE the lock — the DB query never blocks readers —
+//! then takes the lock only to swap the pointer and free the old arena. A failed
+//! rebuild leaves the live cache untouched (build-then-swap, never
+//! deinit-then-build).
 //!
 //! Tests construct Cache directly via initFromConn so they never touch the
-//! process-global; only serve.zig's boot path calls populate() / deinit().
+//! process-global; only serve.zig's boot path and the admin CRUD handler call
+//! populate() / deinit().
 
 const std = @import("std");
 const pg = @import("pg");
+const common = @import("common");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const model_caps_store = @import("model_caps_store.zig");
 
 pub const ModelRate = struct {
     input_nanos_per_mtok: i64,
@@ -29,9 +40,8 @@ const RatesMap = std.StringHashMapUnmanaged(ModelRate);
 const KEY_SEP: u8 = 0x1f;
 
 const SELECT_RATES =
-    \\SELECT provider, model_id, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, context_cap_tokens
-    \\FROM core.model_caps
-;
+    "SELECT provider, model_id, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, context_cap_tokens" ++
+    "\nFROM " ++ model_caps_store.TABLE;
 
 /// Write the composite (provider, model) lookup key into `buf`. Returns null
 /// if the pair does not fit — caller treats that as a cache miss (loud at
@@ -93,18 +103,58 @@ pub const Cache = struct {
 // ── Process-global singleton (initialized at API boot) ─────────────────────
 
 var global: ?Cache = null;
+var global_lock: common.Mutex = .{};
 
-pub fn populate(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+/// (Re)build the rate cache from core.model_caps. Safe to call at runtime under
+/// concurrent readers: the fresh Cache is built before the lock is taken, so the
+/// DB query never blocks the hot path, and a failed rebuild leaves the live
+/// cache in place. Called at boot (serve.zig) and after every admin model-caps
+/// mutation.
+///
+/// The cache is a PROCESS SINGLETON, so it owns its memory off
+/// `std.heap.page_allocator` — not a caller-supplied allocator. An earlier
+/// design threaded the caller's allocator through here; the admin CRUD handler
+/// then passed its request-scoped `ctx.alloc`, leaving the global cache holding
+/// request-lifetime memory (a use-after-free once the request arena reset, and a
+/// cross-allocator free on the next build-then-swap). Owning the backing here
+/// removes that footgun: no caller can tie cache lifetime to a transient scope.
+pub fn populate(conn: *pg.Conn) !void {
+    const fresh = try Cache.initFromConn(std.heap.page_allocator, conn);
+    global_lock.lock();
+    defer global_lock.unlock();
     if (global) |*g| g.deinit();
-    global = try Cache.initFromConn(alloc, conn);
+    global = fresh;
 }
 
 pub fn lookup_model_rate(provider: []const u8, model: []const u8) ?ModelRate {
+    global_lock.lock();
+    defer global_lock.unlock();
     if (global) |*g| return g.lookup(provider, model);
     return null;
 }
 
 pub fn deinit() void {
+    global_lock.lock();
+    defer global_lock.unlock();
     if (global) |*g| g.deinit();
     global = null;
+}
+
+// ── Tests (pure — no DB) ────────────────────────────────────────────────────
+
+test "writeKey: the same model under two providers yields distinct keys" {
+    // The cross-provider collision guard: claude-opus-4-8 on anthropic must NOT
+    // map to the same rate-cache key as on pioneer (different rates).
+    var a: [512]u8 = undefined;
+    var b: [512]u8 = undefined;
+    const ka = writeKey(&a, "anthropic", "claude-opus-4-8").?;
+    const kb = writeKey(&b, "pioneer", "claude-opus-4-8").?;
+    try std.testing.expect(!std.mem.eql(u8, ka, kb));
+    // And the separator is the unit-separator, never a byte a provider/model carries.
+    try std.testing.expectEqual(@as(usize, "anthropic".len), std.mem.indexOfScalar(u8, ka, KEY_SEP).?);
+}
+
+test "writeKey: returns null (cache miss, never wrong rate) when the pair overflows" {
+    var small: [4]u8 = undefined;
+    try std.testing.expect(writeKey(&small, "anthropic", "claude-opus-4-8") == null);
 }

@@ -69,6 +69,7 @@ test {
     _ = @import("observability/otel_metrics_cardinality.zig");
     _ = logging.sinks;
     _ = @import("state/tenant_billing.zig");
+    _ = @import("state/model_rate_cache.zig");
     _ = @import("state/account_teardown.zig");
     _ = @import("state/account_teardown_test.zig");
     _ = @import("state/heroku_names.zig");
@@ -132,6 +133,8 @@ test {
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
     _ = @import("http/handlers/model_caps.zig");
     _ = @import("http/handlers/model_caps_integration_test.zig");
+    _ = @import("http/handlers/admin/model_caps_admin.zig");
+    _ = @import("http/handlers/admin/model_caps_admin_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");

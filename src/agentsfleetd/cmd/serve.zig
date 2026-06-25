@@ -157,7 +157,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
             std.process.exit(1);
         };
         defer api_pool.release(cache_conn);
-        model_rate_cache.populate(alloc, cache_conn) catch |err| {
+        model_rate_cache.populate(cache_conn) catch |err| {
             log.err(S_STARTUP_MODEL_RATE_CACHE_FAILED, .{ .err = @errorName(err) });
             std.process.exit(1);
         };

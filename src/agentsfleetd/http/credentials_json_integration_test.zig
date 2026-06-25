@@ -57,7 +57,20 @@ fn setTestEncryptionKey() void {
 
 fn setupSeedData(conn: *pg.Conn) !void {
     const now_ms = clock.nowMillis();
-    try model_rate_cache.populate(std.heap.page_allocator, conn);
+    // Catalogue the model the self-managed credential names (anthropic /
+    // claude-sonnet-4-6) so the PUT /provider catalogue-gate (UZ-PROVIDER-004)
+    // passes. core.model_caps ships seedless (M100), so a test that sets a
+    // provider must seed the priced row it resolves against, then repopulate the
+    // rate cache below from it.
+    _ = try conn.exec(
+        \\INSERT INTO core.model_caps
+        \\  (uid, model_id, provider, context_cap_tokens, input_nanos_per_mtok,
+        \\   cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at_ms, updated_at_ms)
+        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0ac001'::uuid, 'claude-sonnet-4-6', 'anthropic',
+        \\        256000, 3000000000, 300000000, 15000000000, $1, $1)
+        \\ON CONFLICT (provider, model_id) DO NOTHING
+    , .{now_ms});
+    try model_rate_cache.populate(conn);
     _ = try conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID});
     _ = try conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID});
     _ = try conn.exec(

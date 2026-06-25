@@ -26,8 +26,8 @@ const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
 
-const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const tenant_billing = @import("../../state/tenant_billing.zig");
+const model_caps_store = @import("../../state/model_caps_store.zig");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 
@@ -42,14 +42,9 @@ pub const MODEL_CAPS_PATH_KEY = "da5b6b3810543fe108d816ee972e4ff8"; // gitleaks:
 /// Full URL path. Constants used by the router and by tests.
 pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/cap.json";
 
-const ModelCap = struct {
-    id: []const u8,
-    provider: []const u8,
-    context_cap_tokens: i32,
-    input_nanos_per_mtok: i64,
-    cached_input_nanos_per_mtok: i64,
-    output_nanos_per_mtok: i64,
-};
+/// The public per-model row shape — owned by model_caps_store (model_id as `id`,
+/// provider, cap, rates). The store's listForPublic returns these directly.
+const ModelCap = model_caps_store.PublicRow;
 
 const Rates = struct {
     run_nanos_per_sec: i64,
@@ -68,23 +63,6 @@ const ResponseBody = struct {
     rates: Rates,
     billing: GlobalBilling,
 };
-
-/// SELECT clause shared by both list-all and filter-by-model paths.
-const SELECT_ALL =
-    \\SELECT model_id, provider, context_cap_tokens,
-    \\       input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-    \\       updated_at_ms
-    \\  FROM core.model_caps
-    \\ ORDER BY model_id
-;
-
-const SELECT_ONE =
-    \\SELECT model_id, provider, context_cap_tokens,
-    \\       input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
-    \\       updated_at_ms
-    \\  FROM core.model_caps
-    \\ WHERE model_id = $1
-;
 
 pub fn innerGetModelCaps(hx: Hx, req: *httpz.Request) void {
     if (req.method != .GET) {
@@ -106,13 +84,10 @@ pub fn innerGetModelCaps(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    if (body.models.len == 0 and model_param == null) {
-        // Empty catalogue with no filter = migration didn't seed; treat as
-        // unhealthy so the operator notices the install isn't complete.
-        common.internalDbUnavailable(hx.res, hx.req_id);
-        return;
-    }
-
+    // An empty catalogue is a valid state: the table ships unseeded and platform
+    // admins populate it through /v1/admin/models. Return 200 with an empty
+    // `models` array — callers (install skill, dashboard) render "no models yet"
+    // rather than treating provisioning as broken.
     hx.ok(.ok, body);
 }
 
@@ -121,30 +96,13 @@ fn buildResponse(
     conn: *pg.Conn,
     model_filter: ?[]const u8,
 ) !ResponseBody {
-    var models: std.ArrayList(ModelCap) = .empty;
-    errdefer models.deinit(alloc);
+    const catalogue = try model_caps_store.listForPublic(alloc, conn, model_filter);
 
-    var max_updated_ms: i64 = 0;
-
-    if (model_filter) |m| {
-        var q = PgQuery.from(try conn.query(SELECT_ONE, .{m}));
-        defer q.deinit();
-        while (try q.next()) |row| {
-            try appendRow(alloc, &models, &max_updated_ms, row);
-        }
-    } else {
-        var q = PgQuery.from(try conn.query(SELECT_ALL, .{}));
-        defer q.deinit();
-        while (try q.next()) |row| {
-            try appendRow(alloc, &models, &max_updated_ms, row);
-        }
-    }
-
-    const version = try formatVersion(alloc, max_updated_ms);
+    const version = try formatVersion(alloc, catalogue.max_updated_ms);
     const cfg = tenant_billing.publicConfig();
     return .{
         .version = version,
-        .models = try models.toOwnedSlice(alloc),
+        .models = catalogue.models,
         .rates = .{ .run_nanos_per_sec = cfg.run_nanos_per_sec, .event_nanos = cfg.event_nanos },
         .billing = .{
             .starter_credit_nanos = cfg.starter_credit_nanos,
@@ -154,33 +112,10 @@ fn buildResponse(
     };
 }
 
-fn appendRow(
-    alloc: std.mem.Allocator,
-    models: *std.ArrayList(ModelCap),
-    max_updated_ms: *i64,
-    row: anytype,
-) !void {
-    const id = try alloc.dupe(u8, try row.get([]const u8, 0));
-    const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
-    const cap = try row.get(i32, 2);
-    const in_rate = try row.get(i64, 3);
-    const cached_rate = try row.get(i64, 4);
-    const out_rate = try row.get(i64, 5);
-    const updated = try row.get(i64, 6);
-    try models.append(alloc, .{
-        .id = id,
-        .provider = provider,
-        .context_cap_tokens = cap,
-        .input_nanos_per_mtok = in_rate,
-        .cached_input_nanos_per_mtok = cached_rate,
-        .output_nanos_per_mtok = out_rate,
-    });
-    if (updated > max_updated_ms.*) max_updated_ms.* = updated;
-}
-
-/// Format the maximum updated_at_ms as YYYY-MM-DD (UTC). Empty result set
-/// produces "1970-01-01" — the empty-catalogue branch in the handler 503s
-/// before the response goes out, so the value is never actually visible.
+/// Format the maximum updated_at_ms as YYYY-MM-DD (UTC). An empty catalogue
+/// (the table ships unseeded — admins populate it via /admin/models) yields
+/// max_updated_ms = 0 → "1970-01-01"; the handler returns that with a 200 and an
+/// empty `models` array (a valid not-yet-provisioned state), never a 503.
 fn formatVersion(alloc: std.mem.Allocator, max_updated_ms: i64) ![]const u8 {
     const seconds: i64 = @divTrunc(max_updated_ms, 1000);
     const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(@max(seconds, 0)) };
