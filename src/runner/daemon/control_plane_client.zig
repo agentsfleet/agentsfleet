@@ -33,7 +33,7 @@ tls: bool,
 /// Bounds the in-flight call (lazy thread; joined by deinit).
 watchdog: call_deadline.CallWatchdog = .{},
 
-pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
+pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse, WatchdogUnavailable };
 
 // Re-exported call-bounding policy (defaults + resolved set) — single source
 // in call_deadline.zig; config.zig and the cmd verbs consume these names.
@@ -272,7 +272,12 @@ fn pooledHandle(self: *LoopbackClient) ?std.Io.net.Socket.Handle {
 /// One bearer-authed POST on the persistent client. Returns the status +
 /// response body (owned by `alloc`).
 fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, payload: []const u8, deadline_ms: u31) !PostResult {
-    if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
+    // Fail the verb closed if the deadline can't be enforced (M100) — an
+    // unbounded call is the silent hang the watchdog exists to prevent.
+    if (self.pooledHandle()) |handle| {
+        if (self.watchdog.arm(handle, deadline_ms) == .watchdog_unavailable)
+            return ClientError.WatchdogUnavailable;
+    }
     defer self.watchdog.disarm();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
@@ -305,7 +310,12 @@ fn post(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []con
 /// read-only `getSelf`/`memoryHydrate` verbs and consumed by `bundle_extract` for
 /// the Fleet Bundle snapshot download.
 pub fn get(self: *LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8, deadline_ms: u31) !PostResult {
-    if (self.pooledHandle()) |handle| self.watchdog.arm(handle, deadline_ms);
+    // Fail the verb closed if the deadline can't be enforced (M100) — an
+    // unbounded call is the silent hang the watchdog exists to prevent.
+    if (self.pooledHandle()) |handle| {
+        if (self.watchdog.arm(handle, deadline_ms) == .watchdog_unavailable)
+            return ClientError.WatchdogUnavailable;
+    }
     defer self.watchdog.disarm();
 
     const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });

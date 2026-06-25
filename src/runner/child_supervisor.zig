@@ -56,12 +56,6 @@ const failed = result_mod.failed;
 /// snapshot without importing pipe_proto directly.
 pub const UsageSnapshot = pipe_proto.UsageSnapshot;
 
-/// The one tier that runs WITHOUT isolation (dev only) — derived from the
-/// `SandboxTier` enum (RULE UFS: single source, never a re-spelled literal). A
-/// production startup guard must reject this tier so it can't become the prod
-/// default.
-const SANDBOX_TIER_DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
-
 /// Run one leased event in a forked, sandboxed child and return its result.
 /// Never errors: every supervision failure maps to a failed `ExecutionResult`
 /// so the caller always has an outcome to report.
@@ -107,12 +101,12 @@ fn supervise(
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
     // be established, refuse the lease — never run prompt-injectable tool
     // execution unsandboxed.
-    const requires_sandbox = !std.mem.eql(u8, cfg.sandbox_tier, SANDBOX_TIER_DEV_NONE);
+    const requires_sandbox = cfg.sandbox_tier != .dev_none;
     var scope: ?cgroup = establishSandbox(io, alloc, requires_sandbox) catch {
         log.err("sandbox_unavailable_fail_closed", .{
             .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
             .lease_id = payload.lease_id,
-            .tier = cfg.sandbox_tier,
+            .tier = @tagName(cfg.sandbox_tier),
         });
         return failed(.startup_posture);
     };

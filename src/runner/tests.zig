@@ -13,6 +13,7 @@ test {
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
     _ = @import("daemon/loop_test.zig");
+    _ = @import("daemon/lease_run.zig");
     _ = @import("daemon/forwarders.zig");
     _ = @import("daemon/worker_pool.zig");
     _ = @import("daemon/worker_pool_test.zig");
@@ -36,6 +37,7 @@ test {
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
     _ = @import("pipe_proto.zig");
+    _ = @import("UsageSnapshot.zig");
     _ = @import("engine/runner.zig");
     _ = @import("engine/types.zig");
     _ = @import("engine/context_budget.zig");
@@ -43,6 +45,8 @@ test {
     _ = @import("engine/CgroupScope.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/seccomp.zig");
+    _ = @import("engine/stream_redactor.zig");
+    _ = @import("engine/runner_progress_redact_oom_test.zig");
     // runner egress networking — the facade's test block fans out to leaves
     _ = @import("network/network.zig");
     // W1 runner-daemon coverage
