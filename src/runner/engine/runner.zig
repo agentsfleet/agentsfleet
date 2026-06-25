@@ -37,6 +37,7 @@ const runner_progress = @import("runner_progress.zig");
 const runner_observer = @import("runner_observer.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
+const run_context = @import("run_context.zig");
 
 const log = logging.scoped(.runner);
 
@@ -84,7 +85,7 @@ pub fn execute(
 
     const start = clock.nowMillis();
 
-    const result = executeInner(env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
+    const result = executeInner(.{}, env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
         log.err("runner_execute_failed", .{
@@ -110,7 +111,7 @@ pub fn execute(
     };
 }
 
-const InnerResult = struct {
+pub const InnerResult = struct {
     content: []const u8,
     token_count: u64,
     input_tokens: u64,
@@ -124,7 +125,10 @@ pub fn usageSplits(fleet: *const Fleet) struct { input: u64, output: u64 } {
     return .{ .input = fleet.promptTokensUsed(), .output = fleet.completionTokensUsed() };
 }
 
-fn executeInner(
+/// `pub` for `run_context_test.zig` — the DI seam (M100) makes this path
+/// drivable against an injected stub provider, offline.
+pub fn executeInner(
+    deps: run_context.RunDeps,
     env_map: *const std.process.Environ.Map,
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
@@ -167,10 +171,12 @@ fn executeInner(
         }
     }
 
-    // 2. Build provider (real LLM bundle, or a stub in test builds).
+    // 2. Build provider through the injectable seam (M100): production wires the
+    // real LLM bundle; a test injects a stub to drive this path offline. The
+    // bundle is owned here regardless — a stub leaves it empty so deinit no-ops.
     var provider_bundle: runner_helpers.ProviderBundle = .{};
     defer provider_bundle.deinit();
-    const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.FleetInitFailed;
+    const provider_i = deps.acquireProvider(alloc, &cfg, &provider_bundle) catch return RunnerError.FleetInitFailed;
 
     // 3. Build tools from spec (or allTools as fallback).
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {

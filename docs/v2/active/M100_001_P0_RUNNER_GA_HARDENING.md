@@ -179,7 +179,9 @@ The sandbox is proven to enforce, not merely shaped. **Implementation default:**
 - **Dimension 4.5** — the runner's integration tests are counted by the depth gate (`integration:` prefix adopted) → verify: `make/quality.mk` depth count includes runner lane
 - **Dimension 4.6** — input-matrix sweep (empty / null / oversize / not-sent / malformed) added for `call_deadline`, `Policy`, `AllowList`, `Plan`, `Socket` → `test_*_input_matrix`
 
-### §5 — RunContext/DI seam + struct discipline (P1)
+### §5 — RunContext/DI seam + struct discipline (P1)  🟡 partial (§5.1 seam landed Jun 25, 2026)
+
+> **Status.** §5.1 DI seam landed + green: `run_context.zig` defines `RunDeps{ acquireProvider }` (default = the runtime bundle acquirer); `executeInner` is parameterized by it and the production `execute()` passes the default — behaviour-preserving (all 326 prior tests still pass). `run_context_test.zig` proves, offline, that the execute path routes provider acquisition through the injected seam (stub invoked exactly once → failure propagates as `FleetInitFailed`). **Realization note:** the seam is delivered as injected `RunDeps` on `executeInner` rather than a heap `RunContext{build/run/deinit}` struct — the observer/fleet vtables capture stack pointers (`&adapter`, `&fleet`) whose stability a heap restructure would jeopardize for no testability gain. The full stub-provider content/token assertion (the ideal Dimension 5.1) is now UNBLOCKED by this seam but needs a nullclaw mock `Provider`; §5.2/5.4/5.5 (observer union, sandbox_tier enum, UsageSnapshot file-as-struct) remain.
 
 `executeInner` becomes testable mechanism with an injectable provider, and the oversized/stringly-typed files adopt the in-repo file-as-struct discipline. **Implementation default:** `RunContext = @This()` owning the assembled runtime with `build()`/`run()`/`deinit()`; `RunDeps{ acquireProvider }` defaults to the runtime acquirer, tests pass a stub.
 
