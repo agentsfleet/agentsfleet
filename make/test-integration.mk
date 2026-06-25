@@ -2,44 +2,40 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-agentsfleet-runner test-enforcement test-enforcement-docker _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _test-integration-agentsfleetd _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 
-# agentsfleet-runner integration tests — real-process sandbox proofs (fork/spawn at
-# the environ_map boundary, kill(-pgid) tree reap). Its own build graph
-# (build_runner.zig), no datastore and NO docker infra: it forks real children
-# and reads /proc, a distinct privileged-Linux execution environment from both
-# the app integration lane (Postgres/Redis below) and the fast unit lane. The
-# bodies are Linux-gated (SkipZigTest elsewhere); on macOS this compiles only.
-test-integration-agentsfleet-runner:  ## Run agentsfleet-runner integration tests (real-process sandbox proofs; Linux, no datastore)
-	@echo "→ [agentsfleet-runner] Running integration tests via build_runner.zig (env filter + kill-tree)..."
+# The runner's own real-process integration lane (build_runner.zig, no datastore):
+# it forks real children and asserts real KERNEL behaviour — the env allowlist +
+# kill(-pgid) tree reap + CLOEXEC proofs AND the security-enforcement proofs
+# (seccomp trap / Landlock deny / cgroup pids+OOM cage). Linux-only (bodies
+# SkipZigTest off-Linux), a distinct execution environment from the Postgres/Redis
+# app lane below and the fast unit lane.
+#
+# Delegation discipline: the cgroup-cage proofs need a delegated cgroup-v2
+# controller subtree. That delegation (scripts/cgroup-delegate.sh) is a
+# DISPOSABLE-ENVIRONMENT concern — it drains the root cgroup + writes
+# subtree_control, which must NEVER touch a developer's host. So it runs ONLY
+# inside the macOS throwaway container below (and the privileged CI step). A bare
+# `make test-integration-kernel` on a Linux host runs the lane WITHOUT delegating;
+# the cgroup proofs then SkipZigTest (requireCgroupDelegation) — no host mutation,
+# no false green. In production the runner's cgroup subtree is delegated by the
+# init system (systemd Delegate=) / container runtime; this script is never deployed.
+RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
+
+test-integration-kernel:  ## Run the runner's real-process kernel integration tests (env/kill-tree + seccomp/Landlock/cgroup); native on Linux, auto-containerized on macOS
+ifeq ($(shell uname),Darwin)
+	@echo "→ [kernel] macOS host has no Linux kernel — running the lane in a disposable privileged Linux container..."
+	@docker run --rm --privileged --cgroupns=private --platform "linux/$(shell uname -m | sed 's/x86_64/amd64/')" \
+	  -v "$(CURDIR)":"$(CURDIR)" -w "$(CURDIR)" \
+	  "$(RUNNER_CI_IMAGE)" sh -c 'sh scripts/cgroup-delegate.sh && make test-integration-kernel'
+else
+	@echo "→ [kernel] Running runner integration tests via build_runner.zig (env filter + kill-tree + seccomp/Landlock/cgroup)..."
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build --build-file build_runner.zig test-integration --summary all
-	@echo "✓ [agentsfleet-runner] Integration tests passed (Linux real-process proofs)"
-
-# -----------------------------------------------------------------------------
-# Kernel-enforcement proofs (M100 §4) — seccomp trap / Landlock deny / cgroup cage.
-# The proofs live in the runner integration lane above; these two targets give it
-# the privileged Linux context it needs: a delegated cgroup-v2 controller subtree
-# (scripts/cgroup-delegate.sh — one source of truth, shared with CI). Skip-safe:
-# a proof SkipZigTests when its kernel/privilege prerequisite is absent.
-# -----------------------------------------------------------------------------
-SEC_ENFORCEMENT_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
-
-# Native lane — what CI runs on a privileged Linux host. No Docker: ubuntu-latest
-# already has the kernel features + root. Delegates controllers, then runs the lane.
-test-enforcement:  ## Run runner kernel-enforcement proofs natively (privileged Linux/CI)
-	@sh scripts/cgroup-delegate.sh
-	@$(MAKE) test-integration-agentsfleet-runner
-
-# Local (macOS) reproduction — run the SAME native lane inside the CI Zig image as a
-# privileged, native-arch container, so a dev gets the exact proof CI gets without
-# hand-rolling Docker. Shares the worktree; the Zig build cache lands in .tmp/.
-test-enforcement-docker:  ## Reproduce the enforcement lane locally in a privileged Linux container
-	@docker run --rm --privileged --cgroupns=private --platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
-	  -v "$(CURDIR)":"$(CURDIR)" -w "$(CURDIR)" \
-	  "$(SEC_ENFORCEMENT_IMAGE)" make test-enforcement
+	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
+endif
 
 TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:6379
