@@ -242,7 +242,12 @@ test "platform default FK: a platform_llm_keys row cannot reference an uncatalog
     , .{ FK_GHOST_ID, WORKSPACE_ID, now })) |_| {
         return error.FkShouldHaveRejectedUncataloguedModel;
     } else |_| {
-        // expected: foreign_key_violation — the row is refused.
+        // Must be a Postgres foreign_key_violation (SQLSTATE 23503), not an
+        // incidental failure — a malformed uid or the workspace FK would also
+        // throw and falsely "prove" enforcement. The driver carries the sqlstate
+        // on conn.err.?.code (see signup_bootstrap.zig / fleet_memory_role_test).
+        const pg_err = conn.err orelse return error.ExpectedPgError;
+        try std.testing.expectEqualStrings("23503", pg_err.code);
     }
 }
 
