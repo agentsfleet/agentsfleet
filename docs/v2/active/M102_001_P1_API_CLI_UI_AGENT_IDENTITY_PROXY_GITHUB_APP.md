@@ -114,7 +114,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `src/runner/engine/runtime/policy_http_request.zig` · `tool_bridge.zig` | EDIT | mintable-kind path: `${secrets.X.token}` → broker fetch; static unchanged; partial-sub guard preserved |
 | `src/agentsfleetd/fleet/secrets_resolve.zig` | EDIT | classify static vs mintable kind; emit a handle (not a token) for mintable; check the integration grant |
 | `src/agentsfleetd/http/handlers/connectors/github_connect.zig` · `github_callback.zig` | CREATE | App-install flow; store `{kind:"github_app", installation_id}` in `fleet:github` (no token); map `installation_id ↔ workspace` |
-| `src/agentsfleetd/http/handlers/webhooks/github_ingress.zig` | CREATE | App-level ingress (one URL); verify App HMAC; route by `installation_id` → workspace → matching fleet(s) |
+| `src/agentsfleetd/http/handlers/webhooks/ingress.zig` | CREATE | generic `POST /v1/ingress/{provider}`; dispatch via the verifier/router registry; route by the descriptor's routing-key → workspace → matching fleet(s) |
+| `src/agentsfleetd/fleet_runtime/webhook_verify.zig` | EDIT | extend `PROVIDER_REGISTRY` descriptor with `routing_key_path` + the app-level (one-URL) model; seed the `github` entry |
 | `ui/packages/app/app/(dashboard)/credentials/components/IntegrationsConnectors.tsx` | CREATE/EDIT | GitHub Connect / connected / **Reconnect**; Slack/Zoho "Planned" |
 | `cli/src/commands/connectors.ts` · `services/connectors.ts` | CREATE/EDIT | `agentsfleet connector` status/list; structured-JSON error on disconnected |
 | _error registry module_ | EDIT | `UZ-GH-*` (reconnect/mint-failed) + `UZ-CRED-*` (unknown-integration) + `hint()` |
@@ -159,11 +160,12 @@ When `PolicyHttpRequestTool` resolves `${secrets.<integration>.token}` for a **m
 - **Dimension 4.2** — the partial-substitution guard holds: residual `${secrets.` aborts the call → `test_bridge_refuses_partial_sub`
 - **Dimension 4.3** — a static-kind credential resolves with no mint (unchanged path) → `test_bridge_static_unchanged`
 
-### §5 — GitHub App connect surface (UI-first) + App-level webhook ingress
-A live GitHub **Connect** runs the App-install flow, storing `{kind:"github_app", installation_id}` (no token) and mapping `installation_id ↔ workspace`. The App's single webhook URL (set once at App creation) lands at the ingress; the receiver verifies the App HMAC and routes by `installation_id` → workspace → matching fleet(s).
+### §5 — GitHub App connect surface (UI-first) + generic webhook ingress
+A live GitHub **Connect** runs the App-install flow, storing `{kind:"github_app", installation_id}` (no token) and mapping `installation_id ↔ workspace`. The ingress is **generic — `POST /v1/ingress/{provider}`** — backed by an inbound verifier/router registry (RULE CFG, mirrors the outbound broker; extends the existing `webhook_verify.PROVIDER_REGISTRY`). A provider entry is a descriptor: `{scheme, header(s), prefix, timestamp_window?, routing_key_path, lifecycle_hook?}`. M102 ships ONE entry (`github`); Slack/Linear/Jira/Zoho are later descriptors (a new scheme impl or lifecycle hook only when the signature *family* is new — `hmac_sha256_body`, `hmac_sha256_ts_body`, `atlassian_jwt`). The receiver verifies the provider signature and routes by the descriptor's routing-key (`installation_id` for github) → workspace → matching fleet(s).
 - **Dimension 5.1** — Connect → install → callback stores the handle (no token) + the `installation_id ↔ workspace` map → `test_github_connect_stores_handle`
-- **Dimension 5.2** — App webhook → verify App HMAC → route by `installation_id` to the matching fleet's events stream → `test_ingress_routes_by_installation_id`
+- **Dimension 5.2** — App webhook at `/v1/ingress/github` → verify App HMAC → route by `installation_id` to the matching fleet's events stream → `test_ingress_routes_by_installation_id`
 - **Dimension 5.3** — connected shows; uninstalled shows **Reconnect**; Slack/Zoho render "Planned" → `test_github_states_and_planned`
+- **Dimension 5.4** — adding a provider is a registry descriptor; the `/v1/ingress/{provider}` route + dispatch carry no per-provider branch (a fake provider entry verifies + routes with no handler edit) → `test_ingress_registry_is_data_driven`
 
 ### §6 — Grant + approval placement
 The standing **integration grant** (`core.integration_grants`) gates whether a fleet may use `github` at all — checked at lease-issue (no mintable handle without an approved grant) and re-checked at mint. The existing **approval gate** stays the per-write gate (poll/continuation), unchanged.
@@ -197,8 +199,8 @@ Runner mint route (existing agt_r plane):
 GitHub App connect + App-level webhook:
   Connect -> App install -> callback { installation_id }
           -> vault fleet:github = { "kind":"github_app", "installation_id":"…" }   # NO token; map installation_id <-> workspace
-  App single webhook URL -> POST /v1/ingress/github  (one platform App secret; payload.installation.id)
-          -> verify App HMAC -> installation_id -> workspace -> matching fleet(s) -> XADD fleet:{id}:events
+  App single webhook URL -> POST /v1/ingress/{provider}  (provider="github"; one platform App secret; payload.installation.id)
+          -> verifier/router registry (one descriptor per provider) -> verify sig -> routing_key -> workspace -> matching fleet(s) -> XADD fleet:{id}:events
 
 Tool placeholder (UNCHANGED for SKILL authors):
   ${secrets.github.token}  -> mintable kind -> broker mint ; static kind -> stored value
@@ -258,6 +260,7 @@ Mint result is a tagged union; `${secrets.…}` shape + kind ids are named const
 | 5.1 | integration | `test_github_connect_stores_handle` | callback → `fleet:github` has handle, no token; ws map written |
 | 5.2 | integration | `test_ingress_routes_by_installation_id` | App webhook → verified → XADD to the matching fleet only |
 | 5.3 | unit | `test_github_states_and_planned` | connected/reconnect render; slack/zoho "Planned" + hint |
+| 5.4 | integration | `test_ingress_registry_is_data_driven` | a fake provider descriptor verifies + routes with no `/v1/ingress` handler edit |
 | 6.1 | integration | `test_mint_requires_approved_grant` | no approved grant → mint refused, no token |
 | 6.2 | integration | `test_lease_gates_mintable_on_grant` | approved → mintable handle attached; revoked → static-only |
 | 7.1 | e2e (cli) | `test_cli_connector_status` | `connector status --json` reflects live state |
@@ -317,6 +320,7 @@ grep -rn "private_key\|app_private" src/agentsfleetd/runner src/runner --include
 
 - **Origin (Indy + Orly/CTO, Jun 25–26 2026):** reborn from DEFERRED M99_001 per its "re-spec under the agent-identity-proxy framing" note. Indy's caveat is the reason to exist — *"the agentsfleetd-credentials-proxy: this will become too static that expanding and supporting more connectors will be a pain."* Resolution: config-driven driver registry (RULE CFG), connector = descriptor.
 - **Refinements this session:** (1) App-level webhook ingress routed by `installation_id` — one App webhook URL set once by the platform, no per-repo registration (M99 §5 under-specified). (2) grant/approval placement made explicit — grant at lease+mint, approval gate per-write unchanged. (3) Surface order: Indy chose **UI-first**.
+- **Provider generalization (Indy, Jun 26):** both planes are data-driven. Inbound = `/v1/ingress/{provider}` + verifier/router registry; per-provider variation is a descriptor (sig scheme, header, routing-key path, optional lifecycle handshake). Outbound = ~3 driver kinds (`github_app` JWT→token; `oauth_refresh` for Slack/Linear/Jira-3LO/Zoho; `static`). Linear/Jira/Zoho/Slack all "follow suit" as descriptors; new code only for a genuinely new signature family (Jira `atlassian_jwt`) or lifecycle handshake.
 - **Doc-shape review:** `docs/v2/reviews/m102-doc-shape-review.md` (C1–C9 + invariants-that-hold); §8 absorbs it.
 - **Open to confirm at PLAN:** App registration ownership + admin-vault key storage; child→runner mint request framing; whether the App webhook reuses `/v1/webhooks/{fleet_id}` internally or a new `/v1/ingress/github` path.
 - **Deferrals:** `oauth_refresh` driver, per-fleet cryptographic identity / Agent Auth wire format, Stripe Agentic Commerce Protocol, exact-action approval-hash binding — Out of Scope, not dropped Dimensions; custom secrets bridge the non-GitHub connectors until then.
@@ -350,7 +354,7 @@ grep -rn "private_key\|app_private" src/agentsfleetd/runner src/runner --include
 
 ## Out of Scope
 
-- The `oauth_refresh` driver + Slack/Zoho/Jira/Linear connectors — follow-up; custom secrets bridge them (the abstraction is built here so they are descriptors).
+- The `oauth_refresh` driver + Slack/Zoho/Jira/Linear connectors (outbound) AND their inbound ingress descriptors / new scheme impls / lifecycle handshakes (Slack `url_verification`, Atlassian install lifecycle) — follow-up. The generic `/v1/ingress/{provider}` + verifier registry ship here with the `github` entry only; each new provider is a descriptor (+ a scheme impl only for a new signature family — Jira's `atlassian_jwt` is the likely first). Custom secrets bridge outbound until a driver lands.
 - Per-fleet cryptographic identity / Agent Auth Protocol wire-format alignment — the v3 capability-token layer; the App installation is the identity for now.
 - Stripe Agentic Commerce Protocol — a future financial-mutation capability, gated by the same approval machinery.
 - Exact-action approval-hash binding ("approve this comment on this line") — reuse the coarse integration grant now; the named Approach-B follow-up.
